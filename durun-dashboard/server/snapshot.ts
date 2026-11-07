@@ -9,6 +9,7 @@ import { autoActionOf, isAllowable, trashOf } from './deliver.ts';
 import { isHelperSession } from './haiku.ts';
 import { improveState } from './improve.ts';
 import { learnState } from './reflect.ts';
+import { workflowNameOf, workflowState } from './workflow.ts';
 import { slackKeyOf, slackLinksIn } from './slack.ts';
 import { badgeIssue, badgeOf, badgePr, cachedPr, findJiraKeys, jiraBase, jiraIssue, jiraKeyOfUrl, jiraRefreshedAt, mentionedBadges, prPending } from './integrations.ts';
 import { hasJev } from './jev.ts';
@@ -245,6 +246,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     archiveWhenIdle: meta.archiveWhenIdle,
     movedTo: meta.movedTo,
     pinned: !!meta.pinned,
+    workflow: workflowNameOf(meta.workflow),
     dangerous: !!meta.dangerous,
     autoActions: autoActionOf(meta.id),
     links: meta.links ?? [],
@@ -423,6 +425,7 @@ export const buildSnapshot = (): Snapshot => {
     sessionOrder: state.sessionOrder,
     improve: improveState(),
     learn: learnState(),
+    workflows: workflowState(),
     autoContinue: !!state.autoContinue,
     agentPriority: state.agentPriority ?? 'normal',
     auth: authRequests(),

@@ -249,6 +249,8 @@ export type Session = {
   movedTo?: string;
   /** 人間がピン留めした。一覧の先頭にまとめて出す。 */
   pinned: boolean;
+  /** このセッションを起動したワークフローの名前。前に受け取ったスナップショットには無いことがある。 */
+  workflow?: string;
   /** 人間がデンジャラスモードにした。権限の確認を尋ねずに許可する。前に受け取ったスナップショットには無いことがある。 */
   dangerous?: boolean;
   /** デンジャラスモードで、ダッシュボードが人間に代わって許可や実行をした回数と、最後にしたこと。サーバーを起動し直すと数え直す。 */
@@ -422,6 +424,44 @@ export type HarnessItem = { kind: 'instructions' | 'skill' | 'memory' | 'hook'; 
 /** kindToggles は種類ごとまとめての切り替え（記憶とフック）。 */
 export type Harness = { items: HarnessItem[]; kindToggles: Partial<Record<HarnessItem['kind'], HarnessToggle>> };
 
+/**
+ * ワークフローのトリガー。schedule は at（HH:MM）に動き、days（0 が日曜）があればその曜日だけ動く。
+ * github-review は、自分へのレビュー依頼が新しく届いたときに動く。
+ */
+export type WorkflowTrigger = { kind: 'schedule'; at: string; days?: number[] } | { kind: 'github-review' };
+
+/**
+ * ワークフローの定義。人間とエージェントが workflows.json に書く。
+ * mode が new ならイベントごとにセッションを起動し、動いているものを maxSessions（既定 1）までに抑える。
+ * continue なら 1 つのセッションを引き継いでイベントを送り、セッションが無いかアーカイブされていたら起動する。
+ */
+export type WorkflowDef = {
+  id: string;
+  name: string;
+  enabled: boolean;
+  cwd: string;
+  prompt: string;
+  triggers: WorkflowTrigger[];
+  mode: 'new' | 'continue';
+  maxSessions?: number;
+  model?: string;
+  effort?: string;
+};
+
+export type WorkflowInfo = WorkflowDef & {
+  /** 動いているセッションの数 */
+  running: number;
+  /** まだセッションに渡していないイベントの数 */
+  queued: number;
+  /** continue で引き継いでいるセッション */
+  sessionId?: string;
+  lastRunAt?: number;
+  error?: string;
+};
+
+/** file は定義を書いた workflows.json の場所。error は定義を読めなかった理由。 */
+export type WorkflowState = { file: string; workflows: WorkflowInfo[]; error?: string };
+
 /** 学習アプリの設定。scheduled なら、人間が作業を止めてしばらくたったら 1 日 1 回まで学習する。 */
 export type LearnSettings = { scheduled: boolean };
 
@@ -487,6 +527,8 @@ export type Snapshot = {
   improve: ImproveState;
   /** 学習アプリの設定と記録。前に受け取ったスナップショットには無いことがある。 */
   learn?: LearnState;
+  /** ワークフローの定義と動き。前に受け取ったスナップショットには無いことがある。 */
+  workflows?: WorkflowState;
   /** 自動継続モード。スリープや通信の途切れで止まったセッションを、確認のダイアログを出さずに続けさせる。Claude のログインが切れて止まったセッションも、ログインが戻ったら続けさせる。前に受け取ったスナップショットには無いことがある。 */
   autoContinue?: boolean;
   /** エージェントのプロセスの優先度。前に受け取ったスナップショットには無いことがある。 */

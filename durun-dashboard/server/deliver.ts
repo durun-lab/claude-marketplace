@@ -149,14 +149,22 @@ export const startSession = async (cwd: string, prompt: string, model?: string, 
   if (!theme) return;
   // 起動は済んでいるので、テーマを付けられなくても失敗にしない。
   try {
-    const sessionId = await backgroundedSession(output);
-    if (!sessionId) throw new Error('セッションの id を引けません');
-    ensureSession(sessionId, cwd).theme = theme;
+    (await trackedSession(output, cwd)).theme = theme;
     touch();
   } catch (e) {
     console.error(`起動したセッションにテーマを付けられません: ${(e as Error).message}`);
   }
 };
+
+const trackedSession = async (output: string, cwd: string): Promise<SessionMeta> => {
+  const sessionId = await backgroundedSession(output);
+  if (!sessionId) throw new Error('起動したセッションの id を引けません');
+  return ensureSession(sessionId, cwd);
+};
+
+/** バックグラウンドのセッションを起動し、ダッシュボードの記録を返す。記録に印を付けたいときに使う。id を引けなければ reject する。 */
+export const startTrackedSession = async (cwd: string, prompt: string, model?: string, effort?: string): Promise<SessionMeta> =>
+  trackedSession(await claudeOutput(['--bg', ...modelFlags(model, effort), '--', prompt], cwd), cwd);
 
 /**
  * claude stop は止める指示を出すとすぐに戻り、supervisor が止まったと記録するのは 1、2 秒後になる。
