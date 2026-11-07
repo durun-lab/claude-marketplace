@@ -42,5 +42,5 @@ test-group = "cef-host"
 max-threads = 2
 
 [[profile.default.overrides]]
-filter = "package(mm-decode-cuvid) | package(mm-decode-d3d12va)"
+filter = "package(mm-decode-cuvid) | package(mm-decode-d3d12va) | (package(mm-runtime) & binary(decode_auto))"
 test-group = "gpu-decode"
