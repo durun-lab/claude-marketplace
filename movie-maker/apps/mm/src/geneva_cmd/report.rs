@@ -11,7 +11,7 @@ pub enum Gap {
     Mask,
     /// クリップの効果（ぼかし）。
     Effects,
-    /// 重ね方（`normal` 以外）。
+    /// 知らない合成モードの名前（`blend`）。
     Blend,
     /// クリップのトランジション。
     Transition,
@@ -36,7 +36,7 @@ impl Gap {
         match self {
             Self::Mask => ("mask", "楕円と画像のマスクを除いた（角丸の矩形だけ描く）"),
             Self::Effects => ("effects", "クリップの効果を除いた"),
-            Self::Blend => ("blend", "重ね方を normal にした"),
+            Self::Blend => ("blend", "知らない合成モードを normal にした"),
             Self::Transition => ("transition", "トランジションを除いた"),
             Self::Animation => ("animation", "CSS のアニメーションを除いた"),
             Self::FitFill => ("fit", "fill を contain にした"),

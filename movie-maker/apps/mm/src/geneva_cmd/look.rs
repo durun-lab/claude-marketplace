@@ -1,4 +1,4 @@
-//! 色と重ね方: `solid` の source を movie-maker の単色のノードに、`blend` をレイヤーの合成モードにする。
+//! 単色、合成モード、効果: `solid` の source を movie-maker の単色のノードに、`blend` をレイヤーの合成モードに、`effects` の `blur` をぼかしの効果にする。
 
 use mm_doc::{BlendMode, Effect, Layer, Node};
 use mm_types::{Id, ParamValue, RationalTime, Result, Rgba};
@@ -135,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn 重ね方は_geneva_の名前をそのまま合成モードにする() {
+    fn blend_は_geneva_の名前をそのまま合成モードにする() {
         let mut report = Report::default();
         let mode = |b: &str, r: &mut Report| blend(r, &json!({"blend": b}));
         assert_eq!(mode("add", &mut report), BlendMode::Add);

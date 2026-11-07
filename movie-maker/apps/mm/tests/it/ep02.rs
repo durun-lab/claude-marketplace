@@ -5,7 +5,7 @@
 //! 素材はリポジトリに入れず、素材のフォルダーは読むだけにする。`MM_EP02_DIR` に回のフォルダーを渡したときだけ実行し、
 //! 無ければ何もせず通る。既定は ep02 の特徴の出る区間だけを書き出し、`MM_EP02_FULL=1` で全体を書き出す。
 //! 巻き戻しのトランジション（geneva のマークアップ）は `web.cef` で描くので、CEF の無い環境（`CEF_PATH` が無い）では
-//! その区間を飛ばす。
+//! その区間をスキップする。
 
 use std::path::PathBuf;
 
@@ -96,6 +96,12 @@ const PEAK_MAX_DBFS: f64 = 0.0;
 /// 画像のマスクはトランジションの 85 クリップ（トラックマットの描画が無い）。
 const KNOWN_GAPS: [(&str, u64); 1] = [("mask", 85)];
 
+/// 画像のマスクを変換できない要素として認めているか。`check_gaps` が一覧の一致を確かめるので、マスクを描けるように
+/// なって `KNOWN_GAPS` から外せば、画像のマスクの区間も 1 フレームの下限が元に戻る。
+fn image_mask_undrawn() -> bool {
+    KNOWN_GAPS.iter().any(|(what, _)| *what == "mask")
+}
+
 /// 閾値。全体の書き出しは全部を含むので、いちばんゆるい組を使う。
 fn limits(look: Look) -> Limits {
     let web = look == Look::Web;
@@ -105,7 +111,7 @@ fn limits(look: Look) -> Limits {
         } else {
             SSIM_MEAN_MIN
         },
-        ssim_frame_min: if look == Look::ImageMask {
+        ssim_frame_min: if look == Look::ImageMask && image_mask_undrawn() {
             SSIM_FRAME_MIN_IMAGE_MASK
         } else {
             SSIM_FRAME_MIN
@@ -123,7 +129,7 @@ fn limits(look: Look) -> Limits {
     }
 }
 
-/// 区間（秒）と、その区間の描くもの。`full` なら全体 1 つ。CEF が無ければ CEF の要る区間を飛ばす。
+/// 区間（秒）と、その区間の描くもの。`full` なら全体 1 つ。CEF が無ければ CEF の要る区間をスキップする。
 fn windows(duration: f64, full: bool, cef: bool) -> Vec<((f64, f64), Look)> {
     if full {
         return vec![((0.0, duration), Look::ImageMask)];
@@ -133,7 +139,7 @@ fn windows(duration: f64, full: bool, cef: bool) -> Vec<((f64, f64), Look)> {
         .filter(|(start, what, look)| {
             let skip = *look == Look::Web && !cef;
             if skip {
-                eprintln!("{ENV_CEF} が無いので {start} 秒の区間（{what}）を飛ばす");
+                eprintln!("{ENV_CEF} が無いので {start} 秒の区間（{what}）をスキップする");
             }
             !skip
         })

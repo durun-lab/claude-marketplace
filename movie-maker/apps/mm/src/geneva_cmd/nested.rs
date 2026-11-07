@@ -1,6 +1,6 @@
 //! 入れ子のコンポジション（geneva の `compositions` と、それを指す `composition` の source）。
 //!
-//! geneva の入れ子は自分の大きさとレイヤーを持ち、1 枚の絵として画像と同じように置かれる。中の時刻はそれを見せる
+//! geneva の入れ子は自分の大きさとレイヤーを持ち、1 枚の画像として画像と同じように置かれる。中の時刻はそれを見せる
 //! クリップの始まりから数え、割合は入れ子の大きさに対する。movie-maker の入れ子のコンポジションも同じ扱い
 //! （レイヤーの `in` からの時刻で描き、`(0, 0, 幅, 高さ)` に置く）なので、中のレイヤーは本編と同じ変換で作る。
 
@@ -13,7 +13,7 @@ use serde_json::{Map, Value};
 use super::look;
 use super::visual::{self, Ctx};
 
-/// 入れ子の名前ごとの大きさ。幅か高さが無い入れ子は誤り。
+/// 入れ子の名前ごとの大きさ。幅か高さが無い入れ子はエラー。
 pub fn sizes(defs: &Map<String, Value>) -> Result<HashMap<String, [u32; 2]>> {
     defs.iter()
         .map(|(name, def)| {
@@ -62,13 +62,21 @@ fn inner_layers(ctx: &mut Ctx<'_>, name: &str, def: &Value) -> Result<Vec<Layer>
     let mut layers = visual::visual_layers(ctx, &list)?;
     let background = def.get("background").and_then(Value::as_str);
     look::lay_background(&mut layers, background.unwrap_or(look::TRANSPARENT))?;
+    // レイヤー、マスク、効果の ID は種類ごとにプロジェクト全体で重ならないので、入れ子の名前で区切る。
     for l in &mut layers {
-        l.id = Id::new(format!("{name}/{}", l.id));
+        l.id = scoped(name, &l.id);
         for m in &mut l.masks {
-            m.id = Id::new(format!("{name}/{}", m.id));
+            m.id = scoped(name, &m.id);
+        }
+        for e in &mut l.effects {
+            e.id = scoped(name, &e.id);
         }
     }
     Ok(layers)
+}
+
+fn scoped<T>(name: &str, id: &Id<T>) -> Id<T> {
+    Id::new(format!("{name}/{id}"))
 }
 
 #[cfg(test)]
@@ -84,7 +92,8 @@ mod tests {
         json!({
             "pip": {"width": 566, "height": 318, "background": "#000", "layers": [{"id": "v", "clips": [
                 {"source": {"kind": "image", "asset": "png"}, "start": "0f", "duration": "54f",
-                 "fit": "none", "transform": {"anchor": "0 0", "position": [-321.5, -276.5], "scale": 0.5}}
+                 "fit": "none", "transform": {"anchor": "0 0", "position": [-321.5, -276.5], "scale": 0.5},
+                 "effects": [{"kind": "blur", "radius": 4}]}
             ]}]}
         })
         .as_object()
@@ -125,12 +134,13 @@ mod tests {
             ["pip/background", "pip/v-0"],
             "ID はプロジェクト全体で重ならない"
         );
+        assert_eq!(pip.layers[1].effects[0].id.as_str(), "pip/v-0-fx0");
         let pos = pip.layers[1].transform.position.value.as_vec2().unwrap();
         assert_eq!(pos, [-321.5, -276.5]);
     }
 
     #[test]
-    fn 入れ子を指すクリップは入れ子の大きさの絵として置く() {
+    fn 入れ子を指すクリップは入れ子の大きさの画像として置く() {
         let media = media();
         let mut ctx = Ctx::new(Rational::integer(30), [1920.0, 1080.0], &media);
         ctx.comps = sizes(&defs()).unwrap();
@@ -151,7 +161,7 @@ mod tests {
     }
 
     #[test]
-    fn 大きさの無い入れ子は誤り() {
+    fn 大きさの無い入れ子はエラー() {
         let bad = json!({"x": {"width": 10, "layers": []}});
         assert!(sizes(bad.as_object().unwrap()).is_err());
     }

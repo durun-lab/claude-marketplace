@@ -123,7 +123,7 @@ fn cover_は画面を覆う倍率で中央に置く() {
 }
 
 #[test]
-fn 単色は画面の大きさの絵として重ね方と一緒に置く() {
+fn 単色は画面の大きさの画像として合成モードと一緒に置く() {
     let (l, report) = one(json!({
         "source": {"kind": "solid", "color": "#EBCF9C"}, "start": "0f", "duration": "71f",
         "blend": "multiply", "opacity": 0.42
