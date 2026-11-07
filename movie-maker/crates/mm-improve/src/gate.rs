@@ -131,7 +131,28 @@ fn to_subdir(files: Vec<String>, ctx: &Ctx) -> Vec<String> {
         .collect()
 }
 
+/// 回のコミットを PR の土台（`origin/<upstream>`）へ cherry-pick してから PR を作る。衝突したら PR を作らずに差し戻す。
 fn open_pr(ctx: &Ctx, run: &RunState, g: &Gathered) -> RunOutcome {
+    let rejected = |why: String| RunOutcome::Rejected {
+        reason: format!(
+            "PR までで止めるはずが、{why}（ブランチ {} に残した）。PR は作っていない",
+            run.branch
+        ),
+    };
+    let onto = match git::upstream_ref(&ctx.cfg.repo, &ctx.cfg.upstream) {
+        Ok(r) => r,
+        Err(e) => return rejected(format!("PR の土台を引けない: {e}")),
+    };
+    match git::replant(&run.worktree, &run.branch, &onto) {
+        Ok(true) => create_pr(ctx, run, g),
+        Ok(false) => rejected(format!(
+            "回のコミットを {onto} に cherry-pick すると衝突した"
+        )),
+        Err(e) => rejected(format!("回のコミットを {onto} に載せ替えられない: {e}")),
+    }
+}
+
+fn create_pr(ctx: &Ctx, run: &RunState, g: &Gathered) -> RunOutcome {
     let title = commit_message(&run.id, &g.done)
         .lines()
         .next()

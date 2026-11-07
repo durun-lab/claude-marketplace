@@ -27,7 +27,7 @@ durun-dashboard の `improve.ts` と `errors.ts` から採ったもの:
 - 失敗したら待機して、同じ失敗を繰り返さない。新しい要望か、ON にし直すと待機を解く。OFF は動いている回を終えてから止まる。
 - 使用制限で止まった回は区切らず、明ける時刻（会話ログの `apiErrorParams.rate_limit_info.resetsAt`）の 1 分後に「続けて」で同じセッションを続ける。
 - 自動の起票の `ErrorRecord`、鍵、上限（[計装](17-instrumentation.md#継続的改善とのつなぎ)）。要望が済んだら、その記録の回数と最長を数え直す。
-- 本線は専用のブランチ `local/movie-maker`（dashboard の `local/dashboard` と同じ型）。人の main のチェックアウトには並行の WIP があることが多く、そこへ自動で早送りすると巻き込むため。無ければ `main` から切る。`mm improve --mainline`（と `--upstream`）で変えられる。PR までで止めるときの PR は `--upstream`（既定 `main`）へ向ける。
+- 本線は専用のブランチ `local/movie-maker`（dashboard の `local/dashboard` と同じ型）。人の main のチェックアウトには並行の WIP があることが多く、そこへ自動で早送りすると巻き込むため。無ければ `main` から切る。`mm improve --mainline`（と `--upstream`）で変えられる。PR までで止めるときは、回のコミットを `origin/<upstream>`（既定 `origin/main`）から切り直したブランチに cherry-pick してから PR を作り、取り込み先の先行分を載せない。cherry-pick が衝突したら PR を作らず、要望は未対応に残して返事にその旨を書く。
 
 新しく設計したもの:
 

@@ -50,6 +50,17 @@ impl Fixture {
         run_git(&repo, &["config", "core.autocrlf", "false"]);
         run_git(&repo, &["add", "-A"]);
         run_git(&repo, &["commit", "-q", "-m", "init"]);
+        // PR の土台の origin/main を引けるよう、遠隔に見立てた裸のリポジトリを置く。
+        let origin = dir.path().join("origin.git");
+        run_git(
+            dir.path(),
+            &["init", "-q", "--bare", "-b", "main", "origin.git"],
+        );
+        run_git(
+            &repo,
+            &["remote", "add", "origin", origin.to_str().unwrap()],
+        );
+        run_git(&repo, &["push", "-q", "origin", "main"]);
         let data = dir.path().join("data");
         Self {
             _dir: dir,
@@ -70,6 +81,22 @@ impl Fixture {
     /// ブランチ `rev` のファイルの中身。
     pub fn file_at(&self, rev: &str, path: &str) -> String {
         git(&self.repo, &["show", &format!("{rev}:mm/{path}")]).unwrap()
+    }
+
+    /// 取り込み先だけにあるコミット（main と origin/main には無い先行分）を作る。
+    pub fn local_commit(&self, path: &str, body: &str) {
+        let mainline = mm_improve::DEFAULT_MAINLINE;
+        run_git(&self.repo, &["checkout", "-q", "-b", mainline]);
+        std::fs::write(self.repo.join("mm").join(path), body).unwrap();
+        run_git(&self.repo, &["add", "-A"]);
+        run_git(&self.repo, &["commit", "-q", "-m", "local only"]);
+        run_git(&self.repo, &["checkout", "-q", "main"]);
+    }
+
+    /// `from` から `to` までに変えたファイル。
+    pub fn diff_names(&self, from: &str, to: &str) -> Vec<String> {
+        let out = git(&self.repo, &["diff", "--name-only", from, to]).unwrap();
+        out.lines().map(str::to_owned).collect()
     }
 
     pub fn branch_exists(&self, branch: &str) -> bool {

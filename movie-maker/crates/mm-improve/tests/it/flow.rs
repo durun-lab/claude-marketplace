@@ -93,6 +93,61 @@ fn change_outside_merge_area_stops_at_pull_request() {
 }
 
 #[test]
+fn pull_request_carries_only_the_round_commit_on_origin_upstream() {
+    let fx = Fixture::new();
+    fx.local_commit("src/local.txt", "local only\n");
+    let agent = FakeAgent::new(vec![Script::Write(vec![("core/engine.txt", "faster\n")])]);
+    let forge = Arc::new(FakeForge::default());
+    let imp = fx.improver(agent, FakeChecks::passing(), forge.clone());
+    imp.submit(feedback("エンジンを速く")).unwrap();
+
+    let report = finished(imp.run_once().unwrap());
+
+    assert!(
+        matches!(report.outcome, RunOutcome::PullRequest { .. }),
+        "{report:?}"
+    );
+    let branch = forge.prs.lock().unwrap()[0].0.clone();
+    assert_eq!(
+        fx.diff_names("origin/main", &branch),
+        vec!["mm/core/engine.txt".to_owned()],
+        "取り込み先の先行分は PR に載らない"
+    );
+}
+
+#[test]
+fn cherry_pick_conflict_replies_without_pull_request() {
+    let fx = Fixture::new();
+    fx.local_commit("core/local.txt", "local only\n");
+    let agent = FakeAgent::new(vec![Script::Write(vec![("core/local.txt", "changed\n")])]);
+    let forge = Arc::new(FakeForge::default());
+    let imp = fx.improver(agent, FakeChecks::passing(), forge.clone());
+    let item = imp.submit(feedback("local を直して")).unwrap();
+
+    let report = finished(imp.run_once().unwrap());
+
+    let RunOutcome::Rejected { reason } = &report.outcome else {
+        panic!("{report:?}")
+    };
+    assert!(
+        reason.contains("cherry-pick") && reason.contains("PR は作っていない"),
+        "{reason}"
+    );
+    assert!(forge.prs.lock().unwrap().is_empty());
+    let item = imp.get(&item.id).unwrap();
+    assert_eq!(item.status, FeedbackStatus::Pending);
+    assert!(
+        matches!(&item.replies[0].outcome, Outcome::Rejected { reason } if reason.contains("cherry-pick"))
+    );
+    let branch = format!("fix/movie-maker-improve-{}", report.run_id);
+    assert_eq!(
+        fx.file_at(&branch, "core/local.txt"),
+        "changed",
+        "回の変更はブランチに残る"
+    );
+}
+
+#[test]
 fn hold_path_inside_merge_area_stops_at_pull_request() {
     let fx = Fixture::new();
     let agent = FakeAgent::new(vec![Script::Write(vec![(

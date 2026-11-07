@@ -126,6 +126,31 @@ pub fn land(repo: &Path, mainline: &str, branch: &str) -> Result<String> {
     Ok(new)
 }
 
+/// PR の土台。`origin/<upstream>` を取ってきて使い、遠隔が無いリポジトリ（試験のフィクスチャ）では手元の `<upstream>` を使う。
+pub fn upstream_ref(repo: &Path, upstream: &str) -> Result<String> {
+    // 取れなくても、前に取った `origin/<upstream>` か手元の版で続ける。
+    git_ok(repo, &["fetch", "-q", "origin", upstream])?;
+    let remote = format!("refs/remotes/origin/{upstream}");
+    if git_ok(repo, &["rev-parse", "--verify", "--quiet", &remote])? {
+        Ok(format!("origin/{upstream}"))
+    } else {
+        Ok(upstream.to_owned())
+    }
+}
+
+/// worktree の HEAD のコミットだけを `onto` の先端に載せ替える（`branch` を `onto` から切り直して cherry-pick）。
+/// 取り込み先が `onto` より進んでいても、その先行分を PR に載せないため。衝突したら `branch` を元のコミットに戻して `false`。
+pub fn replant(wt: &Path, branch: &str, onto: &str) -> Result<bool> {
+    let commit = git(wt, &["rev-parse", "HEAD"])?;
+    git(wt, &["checkout", "-q", "-B", branch, onto])?;
+    if git_ok(wt, &["cherry-pick", &commit])? {
+        return Ok(true);
+    }
+    git_ok(wt, &["cherry-pick", "--abort"])?;
+    git(wt, &["checkout", "-q", "-B", branch, &commit])?;
+    Ok(false)
+}
+
 /// `branch` が無ければ `from` から切る。チェックアウトはしない。
 pub fn ensure_branch(repo: &Path, branch: &str, from: &str) -> Result<()> {
     let refname = format!("refs/heads/{branch}");
