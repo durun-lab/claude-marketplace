@@ -29,10 +29,11 @@ fn wgpu_と_glyphon_と_dsp_を選べる() {
     assert!(names.contains(&("audio", "dsp")), "{names:?}");
     assert_eq!(
         engine.registry().len(),
-        mm_nodes_basic::all_kinds().len() + 1,
-        "mm-nodes-basic の種類と web.cef"
+        mm_nodes_basic::all_kinds().len() + 2,
+        "mm-nodes-basic の種類と web.cef、audio.clap"
     );
     assert!(engine.registry().get("web.cef").is_some());
+    assert!(engine.registry().get(mm_host_clap::KIND_ID).is_some());
 }
 
 #[test]

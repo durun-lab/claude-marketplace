@@ -308,6 +308,9 @@ fn registry(render: Backend) -> Result<Registry> {
         for kind in mm_nodes_basic::all_kinds() {
             r.register(kind)?;
         }
+        r.register(Arc::new(mm_host_clap::ClapEffectKind::new(
+            mm_host_clap::find_host(),
+        )))?;
         r.register(crate::cef::web_cef())?;
     } else {
         r.register(Arc::new(SolidKind))?;
