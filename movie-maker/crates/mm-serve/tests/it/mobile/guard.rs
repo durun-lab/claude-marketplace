@@ -139,14 +139,16 @@ fn 読み出しは_x_mm_mobile_なしで通り_資格は要る() {
         project.get("assets").is_none() && project.get("project").is_none(),
         "素材のパスを返さない"
     );
+    let story = r.send(&read, "GET", "/m/api/story/overview", None);
+    assert_eq!(story.status, 200, "{}", story.error_message());
     let anonymous = Req {
         cookie: None,
         ..read
     };
-    assert_eq!(
-        code(&r.send(&anonymous, "GET", "/m/api/proposals", None)),
-        "no_device"
-    );
+    for path in ["/m/api/proposals", "/m/api/story/overview", "/m/api/events"] {
+        let res = r.send(&anonymous, "GET", path, None);
+        assert_eq!(code(&res), "no_device", "{path}");
+    }
 }
 
 #[test]

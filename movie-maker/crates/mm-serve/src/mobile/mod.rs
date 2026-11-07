@@ -32,7 +32,6 @@ pub use devices::{
     PAIRING_TTL,
 };
 pub use guard::{COOKIE_NAME, LOGIN_HEADER, MOBILE_HEADER, PAIR_PATH};
-pub use ops::MOBILE_OPS;
 pub use tailnet::{hosts_in_status, tailnet_hosts};
 
 /// 人の待ち受けの既定のポート。
@@ -129,16 +128,19 @@ impl DeviceInfo {
     }
 }
 
-/// 人の待ち受けのルーター。ほかのモジュールの `/m/api/` は名前の順に 1 行ずつ `merge` する。
+/// 人の待ち受けのルーター。ほかのモジュールの `/m/api/` は名前の順に 1 行ずつ `merge` か `nest` する。
+/// 守りは最後に全体へ掛けるので、`nest` した認証なしのルーター（Story の読み出しなど）も守りの内側に入る。
 pub(crate) fn router(state: Arc<MobileState>) -> Router {
+    let core = state.core.clone();
     Router::new()
         .merge(ops::routes())
         .merge(pair::routes())
         .merge(proposals::routes())
         .merge(read::routes())
+        .with_state(state.clone())
+        .nest("/m/api", crate::story_http::story_routes(core))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
-        .layer(middleware::from_fn_with_state(state.clone(), guard::guard))
-        .with_state(state)
+        .layer(middleware::from_fn_with_state(state, guard::guard))
 }
 
 /// 動いている人の待ち受け。落とすと待ち受けを止める。

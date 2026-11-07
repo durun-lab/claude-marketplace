@@ -1,6 +1,6 @@
 //! モバイルからの操作の即時の適用（`POST /m/api/ops`）と取り消し（`POST /m/api/undo`）。
 //!
-//! 即時に適用するのは Story で切る・並べる操作と目印（[`MOBILE_OPS`]）だけで、ほかは 403 `not_on_mobile`。
+//! 即時に適用するのは Story で切る・並べる操作と目印（`mm_story::MOBILE_OPS`）だけで、ほかは 403 `not_on_mobile`。
 //! ほかの操作は提案（`POST /m/api/proposals`）で出し、PC かモバイルで承認する。
 
 use std::sync::Arc;
@@ -21,22 +21,6 @@ use super::guard::refuse;
 use super::{MobileError, MobileState};
 use crate::core::{Caller, Change, ChangeOf, Core, ServeError};
 use crate::http::blocking;
-
-/// モバイルから即時に適用できる操作（名前の順）。足すときは `docs/design/12-mobile.md` の「権限」の表と同じ PR で変える。
-pub const MOBILE_OPS: &[&str] = &[
-    "addMarker",
-    "addSelection",
-    "addTopic",
-    "cutWords",
-    "deleteWords",
-    "fixTranscript",
-    "insertTopics",
-    "rate",
-    "removeMarker",
-    "removeSelection",
-    "removeTopic",
-    "tag",
-];
 
 pub(super) fn routes() -> Router<Arc<MobileState>> {
     Router::new()
@@ -88,7 +72,7 @@ pub(super) fn not_on_mobile(txn: &Transaction) -> Vec<&'static str> {
         .ops
         .iter()
         .map(Op::name)
-        .filter(|n| !MOBILE_OPS.contains(n))
+        .filter(|n| !mm_story::is_mobile_op(n))
         .collect();
     names.sort_unstable();
     names.dedup();
@@ -177,20 +161,5 @@ impl Core {
                 stored.map(|t| self.finish(s, &t, Some(target))),
             ))
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn 即時の操作の表は名前の順で全部が操作の名前() {
-        let mut sorted = MOBILE_OPS.to_vec();
-        sorted.sort_unstable();
-        assert_eq!(sorted, MOBILE_OPS);
-        for name in MOBILE_OPS {
-            assert!(Op::NAMES.contains(name), "{name} は操作に無い");
-        }
     }
 }

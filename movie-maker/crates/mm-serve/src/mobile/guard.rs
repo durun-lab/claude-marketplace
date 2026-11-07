@@ -26,7 +26,8 @@ pub const PAIR_PATH: &str = "/m/pair";
 /// 資格の要る API の前置き。これの外の読み出し（PWA の画面）は資格の無い端末にも配り、登録の画面を出す。
 const API_PREFIX: &str = "/m/api/";
 
-/// 守りを通った要求に、登録した端末（[`DeviceInfo`]）を `Extension` で付ける。
+/// 守りを通った要求に、登録した端末（[`DeviceInfo`]）と、その端末の呼び出し側（`Caller`、`Entry::Mobile`）を
+/// `Extension` で付ける。Claude の待ち受けと共有するハンドラーは `Extension<Caller>` があれば本体の名乗りを受けない。
 pub(crate) async fn guard(
     State(st): State<Arc<MobileState>>,
     mut req: Request,
@@ -35,6 +36,7 @@ pub(crate) async fn guard(
     match check(&st, req.method(), req.uri().path(), req.headers()) {
         Ok(device) => {
             if let Some(d) = device {
+                req.extensions_mut().insert(d.caller());
                 req.extensions_mut().insert(d);
             }
             next.run(req).await

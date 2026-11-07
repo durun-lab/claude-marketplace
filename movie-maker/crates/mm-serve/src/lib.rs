@@ -29,7 +29,7 @@ pub use frames::{encode_png, parse_time, render_png, EngineFrames, FrameRequest,
 pub use mobile::{
     hosts_in_status, tailnet_hosts, DeviceInfo, Devices, MobileConfig, MobileServer, PairingCode,
     COOKIE_NAME, CREDENTIAL_BYTES, DEVICES_FILE, LOGIN_HEADER, MOBILE_HEADER, MOBILE_HTTPS_PORT,
-    MOBILE_OPS, MOBILE_PORT, PAIRING_CODE_LEN, PAIRING_MAX_FAILURES, PAIRING_TTL, PAIR_PATH,
+    MOBILE_PORT, PAIRING_CODE_LEN, PAIRING_MAX_FAILURES, PAIRING_TTL, PAIR_PATH,
 };
 pub use review::{Approval, ProposalEvent, ProposalOpView, ProposalView};
 pub use server::Server;
