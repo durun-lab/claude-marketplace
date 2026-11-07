@@ -188,6 +188,18 @@ mod tests {
         assert_eq!(Page::read(&p), None);
     }
 
+    /// serde_json の `preserve_order` が依存のどこかで有効になると、同じ値でも書いた順でキーが変わる。
+    #[test]
+    fn data_の文字列はキーを名前の順に並べる() {
+        let mut p = Params::new();
+        p.set(HTML_PARAM, ParamValue::Text("<p>x</p>".into())).set(
+            DATA_PARAM,
+            ParamValue::Json(serde_json::from_str(r#"{"b": 1, "a": {"d": 2, "c": 3}}"#).unwrap()),
+        );
+        let page = Page::read(&p).unwrap();
+        assert_eq!(page.data_text, r#"{"a":{"c":3,"d":2},"b":1}"#);
+    }
+
     #[test]
     fn 静止のページは時刻を_0_に揃える() {
         let mut p = Params::new();
