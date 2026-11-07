@@ -11,6 +11,7 @@
 //! - 書き手は 1 プロセスだけ（OS のファイルロック）。ほかのプロセスは読み取りだけで開く。
 
 mod backup;
+mod comments;
 mod docio;
 mod docio_bins;
 mod edit;
@@ -31,6 +32,9 @@ mod wal;
 
 pub use backup::{
     format_timestamp, parse_timestamp, select_backups_to_delete, BackupFile, BackupJob,
+};
+pub use comments::{
+    Comment, CommentFilter, CommentRange, CommentState, NewComment, Reply, Shape, ShapeKind,
 };
 pub use export::{ExportReport, VERSIONS_DIR};
 pub use files::{load_json, load_project, rebase_project, store_dir, DB_FILE};

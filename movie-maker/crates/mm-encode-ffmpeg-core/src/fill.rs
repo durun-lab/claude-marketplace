@@ -12,7 +12,7 @@ use crate::transfer::{EncodeTable, EncodeTable16, EncodeTableHdr};
 
 /// 線形 → 符号化値の表。8 ビットは NV12 向け、16 ビットは 10 ビットの YUV 向け、HDR は Rec.2020 の PQ か HLG。
 pub(crate) enum Encoding {
-    /// 境界の表（255 個）を持つので、ほかの形と大きさを揃えるため箱に入れる。
+    /// 境界の表（255 個）を持つので、ほかの形と大きさを揃えるためBox に入れる。
     Code8(Box<EncodeTable>),
     Code16(EncodeTable16),
     Hdr(EncodeTableHdr),
@@ -40,7 +40,7 @@ impl Encoding {
     }
 
     /// 1 フレームを符号化値のフレームにする。SDR はスケーラーに渡す RGBA、HDR はエンコーダーにそのまま渡す
-    /// 10 bit の 4:2:0 の YUV（swscale は 16 bit の RGB を桁送りで 10 bit に縮め、PQ の上端で符号語が 3 段ほど
+    /// 10 bit の 4:2:0 の YUV（swscale は 16 bit の RGB を桁送りで 10 bit に縮め、PQ の上端で符号語が 3 工程ほど
     /// ずれるので、HDR の行列とレンジはここで解く）。
     pub(crate) fn prepare(&self, image: &RgbaImage) -> Prepared {
         let rgba = |fill: &dyn Fn(&mut frame::Video)| {

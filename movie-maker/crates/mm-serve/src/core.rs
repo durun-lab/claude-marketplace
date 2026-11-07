@@ -3,7 +3,7 @@
 //! 適用は `Mutex` で順に並べ、書けたら変わった所を購読者（SSE、アプリの描画、WebView）に送る。
 
 use std::collections::BTreeSet;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -13,6 +13,8 @@ use mm_ops::{Entry, OpContext, OpError, Transaction};
 use mm_store::{Actor, BackupJob, Store, StoredTxn, TranscriptInput, TxnKind, UndoPlan};
 use mm_types::{AssetId, MmError};
 use serde::Serialize;
+
+use crate::kinds::{KindInfo, KindQuery};
 use tokio::sync::broadcast;
 
 use crate::frames::{FrameRequest, FrameSource};
@@ -171,7 +173,11 @@ pub struct Core {
     events: broadcast::Sender<Change>,
     /// 提案の追加と決定の通知。プロジェクトのデータは変わらないので `events` とは分ける。
     pub(crate) proposals: broadcast::Sender<crate::review::ProposalEvent>,
+    /// コメントの追加と状態の変化の通知。
+    pub(crate) comments: broadcast::Sender<crate::comments::CommentEvent>,
     pub(crate) frames: Option<Arc<dyn FrameSource>>,
+    /// 文字起こしを入れ直した回数。単語はプロジェクトのデータの外にあり変更の通知も出ないので、使い回す側がこれで見分ける。
+    transcripts: AtomicU64,
 }
 
 impl Core {
@@ -179,13 +185,16 @@ impl Core {
     pub fn new(store: Store, frames: Option<Arc<dyn FrameSource>>) -> Arc<Self> {
         let (events, _) = broadcast::channel(EVENT_BACKLOG);
         let (proposals, _) = broadcast::channel(EVENT_BACKLOG);
+        let (comments, _) = broadcast::channel(EVENT_BACKLOG);
         Arc::new(Self {
             version: AtomicI64::new(store.doc_version()),
             store: Mutex::new(Some(store)),
             backup: Mutex::new(None),
             events,
             proposals,
+            comments,
             frames,
+            transcripts: AtomicU64::new(0),
         })
     }
 
@@ -246,7 +255,14 @@ impl Core {
     ) -> Result<Change, ServeError> {
         let change = self.with_store(|s| {
             let ctx = OpContext::new(caller.entry);
-            let stored = s.apply_txn(txn, &ctx, caller.actor.clone(), now_ms(), responds_to)?;
+            let stored = s.apply_txn(
+                txn,
+                &ctx,
+                caller.actor.clone(),
+                now_ms(),
+                responds_to.clone(),
+            )?;
+            self.announce_response(s, responds_to.as_deref(), stored.id);
             Ok(self.finish(s, &stored, None))
         })?;
         Ok(change)
@@ -305,8 +321,16 @@ impl Core {
             if !known {
                 return Err(ServeError::BadRequest(format!("素材 {asset} が無い")));
             }
-            Ok(s.put_transcript(asset, content_hash, input)?)
+            let words = s.put_transcript(asset, content_hash, input)?;
+            self.transcripts.fetch_add(1, Ordering::SeqCst);
+            Ok(words)
         })
+    }
+
+    /// 文字起こしのバージョン。`put_transcript` のたびに 1 進む（起動ごとに 0 から）。
+    /// 字幕の焼き込みのように単語から作るものを、プロジェクトのデータと合わせて使い回すときのキーにする。
+    pub fn transcript_version(&self) -> u64 {
+        self.transcripts.load(Ordering::SeqCst)
     }
 
     /// 前のバックアップが終わっていなければ、新しいのは始めない（次の書き込みで間隔を見直す）。
@@ -365,6 +389,15 @@ impl Core {
         frames
             .frame_png(&project, request)
             .map_err(ServeError::from)
+    }
+
+    /// 描画に使うノードの種類の定義（MCP の `kinds`）。
+    pub fn kinds(&self, query: &KindQuery) -> Result<Vec<KindInfo>, ServeError> {
+        let frames = self
+            .frames
+            .as_ref()
+            .ok_or_else(|| ServeError::Unavailable("この HTTP サーバーは描画を持たない".into()))?;
+        frames.kinds(query).map_err(ServeError::from)
     }
 
     /// 閉じる。バックアップと WAL の書き戻しをして、以後の要求は 503 にする。

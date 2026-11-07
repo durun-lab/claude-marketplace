@@ -74,6 +74,13 @@ write = ["crates/mm-export/", "apps/mm/src/render_cmd.rs", "apps/mm/src/captions
 avoid = []
 
 [[area]]
+name = "stream"
+title = "モバイル版への映像の配信"
+write = ["crates/mm-stream/"]
+avoid = ["crates/mm-render/", "crates/mm-export/", "crates/mm-serve/", "crates/mm-*-api/"]
+note = "HLS の区間、素材の音だけ、提案の区間の短い動画を作る関数を持つ。描画はレンダラーを呼ぶだけで変えない。HTTP のパス（/m/api/stream など）は claude-entry が mm-serve に書いて呼ぶ。docs/design/12-mobile.md の「映像の届け方」"
+
+[[area]]
 name = "pack"
 title = "パック"
 write = [
@@ -103,6 +110,13 @@ write = [
 ]
 avoid = ["ui/panels/*/", "ui/sdk/src/generated/", "ui/theme/"]
 note = "1 つの担当は 1 つのパネルの画面、パネルの API、アプリ側の処理をまとめて書く。ほかのパネルは触らない。タブ、ビルド、スクリーンショットへの載せ方は [[shared]] の 1 行"
+
+[[area]]
+name = "ui-mobile"
+title = "UI（モバイル版の PWA）"
+write = ["ui/mobile/"]
+avoid = ["ui/panels/", "ui/shell/", "ui/sdk/", "ui/theme/", "ui/tools/"]
+note = "パネルの model.ts と型は import で使い、書き換えない（足りなければそのパネルの担当に頼む）。HTTP の API の実装、ビルド、デモ、スクリーンショットは ui/mobile/ の中に置く。ui/pnpm-workspace.yaml の mobile の 1 行は骨組みの PR が足す。docs/design/12-mobile.md の「画面」"
 
 [[area]]
 name = "app-shell"

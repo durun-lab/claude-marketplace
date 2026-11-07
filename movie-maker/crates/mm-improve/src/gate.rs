@@ -293,10 +293,7 @@ fn conclude(
         RunOutcome::Rejected { reason } => st.waiting = Some(reason.clone()),
         _ => {}
     }
-    let keep_branch = matches!(
-        outcome,
-        RunOutcome::Rejected { .. } | RunOutcome::PullRequest { .. }
-    );
+    let keep_branch = outcome.keeps_branch();
     let report = RunReport {
         run_id: run.id.clone(),
         outcome,

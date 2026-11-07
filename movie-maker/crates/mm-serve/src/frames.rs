@@ -7,11 +7,13 @@ use std::sync::mpsc::{channel, Sender};
 use std::sync::Mutex;
 
 use mm_doc::Project;
-use mm_node_api::Quality;
+use mm_node_api::{NodeRegistry, Quality};
 use mm_runtime::{assemble, Engine, RuntimeConfig};
 use mm_types::transfer::linear_to_code8;
 use mm_types::RgbaImage;
 use mm_types::{CompositionId, Id, MmError, RationalTime, Result, Rgba, Size};
+
+use crate::kinds::{describe_kinds, KindInfo, KindQuery};
 
 /// 描くフレームの指定。
 #[derive(Debug, Clone, PartialEq)]
@@ -31,6 +33,13 @@ pub trait FrameSource: Send + Sync {
 
     /// 操作が触った ID に頼ったキャッシュを捨てる。キャッシュを持たない実装は何もしない。
     fn invalidate(&self, _touched: &[String]) {}
+
+    /// 描画に使うノードの種類の定義。種類の一覧を持たない実装は `Unsupported`。
+    fn kinds(&self, _query: &KindQuery) -> Result<Vec<KindInfo>> {
+        Err(MmError::Unsupported(
+            "この描画はノードの種類の一覧を持たない".into(),
+        ))
+    }
 }
 
 /// `Engine` を専用のスレッドで持つ描画。最初の要求で組み立てる。
@@ -45,6 +54,10 @@ enum Job {
         reply: Sender<Result<Vec<u8>>>,
     },
     Invalidate(Vec<String>),
+    Kinds {
+        query: KindQuery,
+        reply: Sender<Result<Vec<KindInfo>>>,
+    },
 }
 
 impl EngineFrames {
@@ -69,6 +82,12 @@ impl EngineFrames {
                         } => {
                             let result = ensure(&mut engine, &config)
                                 .and_then(|e| render_png(e, &project, &request));
+                            let _ = reply.send(result);
+                        }
+                        Job::Kinds { query, reply } => {
+                            let result = ensure(&mut engine, &config).and_then(|e| {
+                                describe_kinds(e.registry() as &dyn NodeRegistry, &query)
+                            });
                             let _ = reply.send(result);
                         }
                     }
@@ -112,6 +131,16 @@ impl FrameSource for EngineFrames {
 
     fn invalidate(&self, touched: &[String]) {
         let _ = self.send(Job::Invalidate(touched.to_vec()));
+    }
+
+    fn kinds(&self, query: &KindQuery) -> Result<Vec<KindInfo>> {
+        let (reply, rx) = channel();
+        self.send(Job::Kinds {
+            query: query.clone(),
+            reply,
+        })?;
+        rx.recv()
+            .map_err(|_| MmError::Internal("描画のスレッドが結果を返す前に終わった".into()))?
     }
 }
 

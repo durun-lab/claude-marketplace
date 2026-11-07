@@ -11,12 +11,15 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use mm_ops::{Op, Transaction};
+use mm_types::Params;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
-use crate::core::{Caller, ServeError};
+use crate::comments::ListQuery;
+use crate::core::{Caller, Core, ServeError};
 use crate::frames::{parse_time, FrameRequest};
 use crate::http::{blocking, error_body, AppState};
+use crate::kinds::KindQuery;
 use crate::mcp_tools::{tools, COMMON_ARGS};
 
 /// 応じられる MCP の仕様の日付。先頭が最新で、要求が無いか知らない日付のときに返す（仕様の版の交渉）。
@@ -30,7 +33,8 @@ const INVALID_PARAMS: i64 = -32602;
 const INSTRUCTIONS: &str = "動画編集アプリ movie-maker を操作する。操作ごとのツール（ripple、addLayer など）は 1 回で 1 つの取り消しの単位になる。\
 コメントへの対応のように複数の操作を 1 つの単位にしたいときは transaction を使い、responds_to にコメントの ID を渡す。\
 frame で仕上がりを見て確かめ、間違えたら undo で戻す。ロックの付いたレイヤーには触れない。\
-人に見てから入れてほしい編集は propose で提案として保留する（承認と却下は人がアプリでする）。proposals で状態を読み、frame の proposal で提案を適用したフレームを見る。";
+人に見てから入れてほしい編集は propose で提案として保留する（承認と却下は人がアプリでする）。proposals で状態を読み、frame の proposal で提案を適用したフレームを見る。\
+comments で人のコメント（open が未対応）を読み、対応したら responds_to つきで適用か提案し、comment_reply で返事を書く。コメントを done にするのは人。";
 
 /// `POST /mcp`。通知（`id` が無い）は 202 で本体なし、それ以外は JSON-RPC の応答を JSON で返す。
 pub(crate) async fn post_mcp(State(st): State<Arc<AppState>>, body: Bytes) -> Response {
@@ -141,6 +145,15 @@ async fn run_tool(
             };
             Ok(vec![result])
         }
+        "comments" => {
+            let a: CommentsArgs = parse_args(args)?;
+            comments(core, a).await
+        }
+        "comment_reply" => {
+            let a: CommentReplyArgs = parse_args(args)?;
+            let c = blocking(move || core.reply_comment(&a.id, &a.text, &caller)).await?;
+            Ok(vec![text(&c)])
+        }
         "proposals" => {
             let proposals = blocking(move || core.proposals()).await?;
             Ok(vec![text(&json!({ "proposals": proposals }))])
@@ -158,6 +171,15 @@ async fn run_tool(
             Ok(vec![text(&view)])
         }
         "frame" => frame(core, args).await,
+        "kinds" => {
+            let a: KindsArgs = parse_args(args)?;
+            let query = KindQuery {
+                kind: a.kind,
+                params: a.params.unwrap_or_default(),
+            };
+            let kinds = blocking(move || core.kinds(&query)).await?;
+            Ok(vec![text(&json!({ "kinds": kinds }))])
+        }
         op if tools().op_names.contains(op) => {
             let (txn, responds_to) = op_transaction(op, args)?;
             let change = blocking(move || core.apply(txn, &caller, responds_to)).await?;
@@ -176,6 +198,52 @@ struct TransactionArgs {
     ops: Vec<Op>,
     base_version: Option<u64>,
     responds_to: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct KindsArgs {
+    kind: Option<String>,
+    params: Option<Params>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CommentsArgs {
+    id: Option<String>,
+    state: Option<mm_store::CommentState>,
+    comp: Option<String>,
+    from: Option<String>,
+    to: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CommentReplyArgs {
+    id: String,
+    text: String,
+}
+
+/// `comments`。`id` があれば 1 件、無ければ絞り込みの一覧。
+async fn comments(core: Arc<Core>, a: CommentsArgs) -> Result<Vec<Value>, ServeError> {
+    let query = ListQuery {
+        state: a.state,
+        comp: a.comp,
+        from: a.from,
+        to: a.to,
+    };
+    if let Some(id) = a.id {
+        if query.is_set() {
+            return Err(ServeError::BadRequest(
+                "id と絞り込みの条件は一緒に渡せない".into(),
+            ));
+        }
+        let c = blocking(move || core.comment(&id)).await?;
+        return Ok(vec![text(&c)]);
+    }
+    let filter = query.filter()?;
+    let list = blocking(move || core.comments(&filter)).await?;
+    Ok(vec![text(&json!({ "comments": list }))])
 }
 
 #[derive(Deserialize)]

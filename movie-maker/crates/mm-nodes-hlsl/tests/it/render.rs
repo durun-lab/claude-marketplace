@@ -129,6 +129,12 @@ fn 時刻で動く縞は各時刻で_shader_wgsl_と画素が一致する() {
 }
 
 #[test]
+fn 源の素材はレンダラーのデコーダーに渡さない() {
+    // 真だとレンダラーが .hlsl をデコーダーで開こうとして、そのレイヤーが描けない。
+    assert!(!ShaderHlslKind::default().decodes_asset());
+}
+
+#[test]
 fn 素材のファイルの源でも描ける() {
     let Some((ctx, dxc)) = gpu_and_dxc() else {
         return;

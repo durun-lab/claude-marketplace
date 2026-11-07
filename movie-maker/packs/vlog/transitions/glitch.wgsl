@@ -7,7 +7,8 @@ fn grid(s: f32) -> vec2<f32> {
     let h = hash11(s * 3.1 + uSeed);
     return select(select(select(vec2<f32>(24.0, 36.0), vec2<f32>(8.0, 18.0), h < 0.75), vec2<f32>(32.0, 18.0), h < 0.5), vec2<f32>(16.0, 9.0), h < 0.25);
 }
-fn prob(p: f32) -> f32 { return sat(0.04 + 1.1 * io3(win(p, 0.08, 0.8))); }
+// 下限の 0.04 を境の頭で立ち上げ、進み具合 0 のコマを前の場面のままにする。
+fn prob(p: f32) -> f32 { return sat(0.04 * win(p, 0.0, 0.03) + 1.1 * io3(win(p, 0.08, 0.8))); }
 fn cellOf(s: f32) -> vec2<f32> {
     let g = grid(s);
     let uv = P / REF;

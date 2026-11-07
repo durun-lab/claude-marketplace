@@ -2,8 +2,16 @@
 //!
 //! ホストだけを `TerminateProcess` で止めると、ホストの子のプロセスがしばらく残って一時フォルダーを掴み続ける。
 //! ジョブに入れておけば、止めるときに木ごと止められ、アプリがクラッシュしてジョブのハンドルが閉じたときも一緒に止まる。
+//!
+//! ドライバーの中で止まったプロセスは `TerminateProcess` でも終わらないので、止めた後に待つのは期限までにする。
 
-use std::process::Child;
+use std::process::{Child, ExitStatus};
+use std::time::{Duration, Instant};
+
+/// 止めたプロセスが終わるのを待つ期限。過ぎたら待つのをやめ、プロセスのハンドルだけを手放す。
+const KILL_WAIT: Duration = Duration::from_secs(5);
+/// 終わったかを見直す間隔。
+const EXIT_STEP: Duration = Duration::from_millis(10);
 
 #[cfg(windows)]
 mod imp {
@@ -81,12 +89,70 @@ mod imp {
 
 pub use imp::Job;
 
-/// `child` を、ジョブがあればジョブごと止めて、終わるのを待つ。
+/// `child` を、ジョブがあればジョブごと止めて、[`KILL_WAIT`] まで終わるのを待つ。
+/// 期限までに終わらなければ `TimedOut` を返す。呼び出し側はそのプロセスを捨てて先へ進む。
 pub fn kill_tree(child: &mut Child, job: Option<&Job>) -> std::io::Result<()> {
     if let Some(job) = job {
         job.terminate();
     }
-    // 既に終わっていれば kill は失敗するが、wait で後片付けだけする。
+    // 既に終わっていれば kill は失敗するが、待つ所で後片付けだけする。
     let _ = child.kill();
-    child.wait().map(|_| ())
+    match wait_exit(child, KILL_WAIT)? {
+        Some(_) => Ok(()),
+        None => Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            format!(
+                "プロセス {} が止めても {KILL_WAIT:?} の間に終わらない",
+                child.id()
+            ),
+        )),
+    }
+}
+
+/// `limit` まで終わるのを待つ。終わらなければ `None`。
+pub fn wait_exit(child: &mut Child, limit: Duration) -> std::io::Result<Option<ExitStatus>> {
+    let start = Instant::now();
+    loop {
+        if let Some(status) = child.try_wait()? {
+            return Ok(Some(status));
+        }
+        if start.elapsed() >= limit {
+            return Ok(None);
+        }
+        std::thread::sleep(EXIT_STEP);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::{Command, Stdio};
+
+    /// 標準入力が閉じるまで終わらない子。
+    fn waiting_child() -> Child {
+        let (program, args): (&str, &[&str]) = if cfg!(windows) {
+            ("cmd", &["/c", "more"])
+        } else {
+            ("cat", &[])
+        };
+        Command::new(program)
+            .args(args)
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .spawn()
+            .expect("子を起こせる")
+    }
+
+    #[test]
+    fn 終わらない子は期限で待つのをやめる() {
+        let mut child = waiting_child();
+        let start = Instant::now();
+        assert!(wait_exit(&mut child, Duration::from_millis(50))
+            .unwrap()
+            .is_none());
+        assert!(start.elapsed() < Duration::from_secs(5));
+        let job = Job::attach(&child);
+        kill_tree(&mut child, job.as_ref()).expect("止められる子は止まる");
+        assert!(child.try_wait().unwrap().is_some());
+    }
 }

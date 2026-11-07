@@ -59,7 +59,7 @@ impl PluginDesc {
 /// 1 つのパラメータ。値は CLAP の plain value、VST3 の正規化した値（`min`..=`max`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ParamDesc {
-    /// パラメータの `id`（CLAP の `clap_id`、VST3 の `ParamID`）。プラグインの版が変わっても変わらない。
+    /// パラメータの `id`（CLAP の `clap_id`、VST3 の `ParamID`）。プラグインのバージョンが変わっても変わらない。
     pub id: u32,
     pub name: String,
     /// `/` で区切った置き場所（VST3 は単位の ID）。

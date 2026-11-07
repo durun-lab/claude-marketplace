@@ -13,7 +13,7 @@ use mm_host_pipe::audio::serve::{serve_blocks, Link, Plugin};
 
 use super::plugin::MmHost;
 
-/// 処理中のプラグインと、1 回の処理に使い回す CLAP の入れ物。
+/// 処理中のプラグインと、1 回の処理に使い回す CLAP のバッファー。
 struct Clap {
     processor: StartedPluginAudioProcessor<MmHost>,
     ports_in: AudioPorts,

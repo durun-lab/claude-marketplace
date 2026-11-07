@@ -4,7 +4,8 @@
 use std::sync::Arc;
 
 use mm_serve::{Approval, Caller, Core, ProposalView};
-use tauri::State;
+use mm_store::{Comment, CommentFilter, CommentState};
+use tauri::{Emitter, State};
 
 use crate::win::review::{self, Preview};
 use crate::win::state::Shared;
@@ -14,6 +15,9 @@ pub fn handler(invoke: tauri::ipc::Invoke) -> bool {
     let h: fn(tauri::ipc::Invoke) -> bool = tauri::generate_handler![
         review_list,
         review_approve,
+        review_comment_reply,
+        review_comment_state,
+        review_comments,
         review_reject,
         review_reopen,
         review_undo,
@@ -126,6 +130,61 @@ pub async fn review_preview(
     blocking(state, move |s| {
         let preview = id.map(|id| Preview { id, ops });
         review::set_preview(&s.shared, preview)
+    })
+    .await
+}
+
+/// コメントの追加・返信・状態の変化を Review パネルへ知らせる Tauri のイベント。中身は `mm_serve::CommentEvent`。
+const COMMENTS_CHANGED_EVENT: &str = "mm:comments-changed";
+
+/// コメントの通知を WebView へ転送するスレッドを始める。モバイルや Claude が書いたものも同じ道で届く。
+pub fn forward_comments(app: &tauri::AppHandle, core: &Core) {
+    let handle = app.clone();
+    let started = core.on_comment(move |event| {
+        let _ = handle.emit(COMMENTS_CHANGED_EVENT, event);
+    });
+    if let Err(e) = started {
+        tracing::warn!("コメントの通知を受けるスレッドを始められない: {e}");
+    }
+}
+
+/// 全部のコメント（書いた順）。絞り込みはパネルが持つ。
+#[tauri::command]
+pub async fn review_comments(state: Review<'_>) -> Result<Vec<Comment>, String> {
+    blocking(state, |s| {
+        s.core()?
+            .comments(&CommentFilter::default())
+            .map_err(|e| e.to_string())
+    })
+    .await
+}
+
+/// コメントに返信する。人の操作経路（`gui`）で書く。
+#[tauri::command]
+pub async fn review_comment_reply(
+    state: Review<'_>,
+    id: String,
+    text: String,
+) -> Result<Comment, String> {
+    blocking(state, move |s| {
+        s.core()?
+            .reply_comment(&id, &text, &Caller::webview())
+            .map_err(|e| e.to_string())
+    })
+    .await
+}
+
+/// コメントの状態を `open`、`done`、`wontfix` に決める。`fresh` は Claude の対応でだけなるので、`Core` が拒否する。
+#[tauri::command]
+pub async fn review_comment_state(
+    state: Review<'_>,
+    id: String,
+    value: CommentState,
+) -> Result<Comment, String> {
+    blocking(state, move |s| {
+        s.core()?
+            .set_comment_state(&id, value, &Caller::webview())
+            .map_err(|e| e.to_string())
     })
     .await
 }

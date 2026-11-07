@@ -1,0 +1,110 @@
+:root {
+  --bg: #f5f5f7;
+  --surface: #ffffff;
+  --text: #1c1c1e;
+  --muted: #6c6c70;
+  --line: #d8d8dc;
+  --accent: #0a6cff;
+  --on-accent: #ffffff;
+  --ok: #1a8a3a;
+  --warn: #b26a00;
+  --bad: #c62828;
+  --radius: 10px;
+  --tap: 48px;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101012;
+    --surface: #1c1c1f;
+    --text: #f2f2f4;
+    --muted: #9a9aa0;
+    --line: #34343a;
+    --accent: #4d94ff;
+    --on-accent: #08111f;
+    --ok: #4cc26b;
+    --warn: #e0a040;
+    --bad: #ff6b6b;
+  }
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.45 system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+#root { height: 100%; }
+
+/* 画面の縦を 3 段に割る。上の接続の表示と下のタブは固定で、中だけが動く。 */
+.app { display: flex; flex-direction: column; height: 100%; padding-top: env(safe-area-inset-top); }
+.bar {
+  display: flex; align-items: center; justify-content: space-between;
+  min-height: 44px; padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--surface);
+}
+.brand { font-weight: 600; }
+main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.screen { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 16px; overflow-y: auto; }
+
+.tabs {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  border-top: 1px solid var(--line); background: var(--surface);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.tabs button {
+  min-height: var(--tap); border: 0; background: none; color: var(--muted);
+  font: inherit; font-size: 13px; font-weight: 600;
+}
+.tabs button.on { color: var(--accent); }
+
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.chip i { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.chip.online i { background: var(--ok); }
+.chip.offline i { background: var(--warn); }
+.chip.unpaired i { background: var(--bad); }
+.chip b { font-weight: 600; color: var(--warn); margin-left: 4px; }
+
+h1 { font-size: 22px; margin: 0 0 8px; }
+.hint { color: var(--muted); margin: 0 0 16px; }
+.empty { color: var(--muted); text-align: center; padding: 24px 0; list-style: none; }
+.facts { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; margin: 0; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+input {
+  width: 100%; min-height: var(--tap); padding: 0 12px;
+  border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface); color: var(--text);
+  font: inherit; font-size: 16px; /* 16px 未満だと iOS Safari が入力で拡大する */
+}
+input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+button.primary {
+  min-height: var(--tap); padding: 0 20px; border: 0; border-radius: var(--radius);
+  background: var(--accent); color: var(--on-accent); font: inherit; font-weight: 600;
+}
+button.primary:disabled { opacity: 0.4; }
+button.link { border: 0; background: none; color: var(--accent); font: inherit; padding: 8px; margin: -8px -8px -8px 8px; }
+
+.pair { display: flex; flex-direction: column; gap: 16px; padding: 24px 16px; }
+.pair label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 14px; }
+.pair .code { font: 600 26px ui-monospace, Menlo, Consolas, monospace; letter-spacing: 0.2em; text-align: center; text-transform: uppercase; }
+.error { color: var(--bad); margin: 0; }
+
+.comments { padding: 0; }
+.list { flex: 1; overflow-y: auto; list-style: none; margin: 0; padding: 12px 16px; display: flex; flex-direction: column; gap: 10px; }
+.item { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; }
+.item p { margin: 0 0 6px; }
+.item.pending { border-style: dashed; }
+.item.rejected { border-color: var(--bad); }
+.meta { display: flex; justify-content: space-between; align-items: center; color: var(--muted); font-size: 13px; }
+.state { font-weight: 600; }
+.state.fresh { color: var(--accent); }
+.state.done { color: var(--ok); }
+.state.wontfix { color: var(--muted); }
+.composer {
+  display: flex; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--line); background: var(--surface);
+}

@@ -82,7 +82,7 @@ flowchart BT
 
 1. 基礎は GPU と FFmpeg に依存しない。`cargo test` が数秒で回る。`mm-trace` も基礎で、`tracing` と出力の `Layer` だけを持つ。実装と組み立てはこれを使ってスパンを置き、API クレートは置かない（[計装](17-instrumentation.md#スパンの決まり)）。wgpu のタイムスタンプを読む所は `mm-render` に置き、`mm-trace` には wgpu を入れない。
 2. API クレートは基礎だけに依存する。API クレート同士の間では、上の図に書いた型の共有（`FrameCx` が `mm-decode-api` の `FrameSource` を持つ、など）だけを認め、実装には依存しない。
-3. 実装は API クレートと基礎に依存し、ほかの実装には依存しない。`mm-nodes-basic` が素材を読むときは `mm-decode-api` のトレイトを `FrameCx` 経由で受け取る。`mm-render` が色を変えるときも `mm-color-api` 経由。例外は「共通実装」で、`mm-gpu`、`mm-decode-ffmpeg-core`、`mm-decode-hw`、`mm-encode-ffmpeg-core`、`mm-host-pipe` の 5 つ。GPU を触る実装は `mm-gpu`（wgpu のコンテキストとアダプターの選び方、`GpuHelper` の wgpu 実装、GPU のフレームの中身の型）に依存してよい（RFC 0001）。API クレートは wgpu を出さないので、wgpu の型を合わせる場所がここになる。FFmpeg のデコーダー（`mm-decode-ffmpeg`、`-d3d12va`、`-cuvid`）は `mm-decode-ffmpeg-core`（映像の時間軸、シーク、YUV の行列。FFmpeg の CPU の部分だけ）に、GPU でデコードする 2 つはさらに `mm-decode-hw`（D3D12 のアダプター、キューの待ち、YUV の変換と描画パス）に依存してよい（RFC 0007）。FFmpeg のエンコーダー（`mm-encode-ffmpeg`、`mm-encode-nvenc`）は `mm-encode-ffmpeg-core`（コーデックの指定から MP4 と MOV に書く部分）に依存してよい（RFC 0015）。別プロセスのホスト（`mm-host-cef`、`mm-host-ofx`、`mm-host-clap`）と、ホストに画像を渡す種類（`mm-nodes-ofx`）は `mm-host-pipe`（子プロセスの起動、`mm-host-api` のプロトコルの 1 行ずつの往復、名前つきの共有メモリ）に依存してよい（RFC 0120、RFC 0132）。共通実装は API クレートと基礎、`mm-gpu` にだけ依存し、ほかの実装には依存しない。ソースを `#[path]` で取り込む形は使わない。
+3. 実装は API クレートと基礎に依存し、ほかの実装には依存しない。`mm-nodes-basic` が素材を読むときは `mm-decode-api` のトレイトを `FrameCx` 経由で受け取る。`mm-render` が色を変えるときも `mm-color-api` 経由。例外は「共通実装」で、`mm-gpu`、`mm-decode-ffmpeg-core`、`mm-decode-hw`、`mm-encode-ffmpeg-core`、`mm-host-pipe` の 5 つ。GPU を触る実装は `mm-gpu`（wgpu のコンテキストとアダプターの選び方、`GpuHelper` の wgpu 実装、GPU のフレームの中身の型）に依存してよい（RFC 0001）。API クレートは wgpu を出さないので、wgpu の型を合わせる場所がここになる。FFmpeg のデコーダー（`mm-decode-ffmpeg`、`-d3d12va`、`-cuvid`）は `mm-decode-ffmpeg-core`（映像の時間軸、シーク、YUV の行列。FFmpeg の CPU の部分だけ）に、GPU でデコードする 2 つはさらに `mm-decode-hw`（D3D12 のアダプター、キューの待ち、YUV の変換と描画パス）に依存してよい（RFC 0007）。FFmpeg のエンコーダー（`mm-encode-ffmpeg`、`mm-encode-nvenc`）は `mm-encode-ffmpeg-core`（コーデックの指定から MP4 と MOV に書く部分）に依存してよい（RFC 0015）。別プロセスのホスト（`mm-host-cef`、`mm-host-ofx`、`mm-host-clap`、`mm-host-vst3`）と、ホストに画像を渡す種類（`mm-nodes-ofx`）は `mm-host-pipe`（子プロセスの起動、`mm-host-api` のプロトコルの 1 行ずつの往復、名前つきの共有メモリ、`describe` の実行、プラグインの置き場所の決まりと共有ライブラリの読み込み、音のプラグインのホストの共通部分 `audio`）に依存してよい（RFC 0120、RFC 0132、RFC 0139）。共通実装は API クレートと基礎、`mm-gpu` にだけ依存し、ほかの実装には依存しない。ソースを `#[path]` で取り込む形は使わない。
 4. 実装を選ぶのは `mm-runtime` だけ。操作経路（アプリ、CLI、サーバー、自動の改善）は `mm-runtime` の組み立てた `Engine` を受け取る。
 
 `mm-pack` は操作経路（アプリと CLI）が使う部品で、`mm-ops` と API クレートの型（`mm-text-api`、`mm-audio-api`）だけに依存し、実装を選ばない。実装のクレートは試験（dev-dependencies）でだけ使う。
@@ -117,6 +117,8 @@ movie-maker/
     mm-nodes-cef/       web.cef（mm-host-cef に頼む側）
     mm-nodes-ofx/       ofx（mm-host-ofx に頼む側）
     mm-nodes-lottie/    lottie
+    mm-nodes-hlsl/      shader.hlsl（DXC で SPIR-V、naga で WGSL）
+    mm-nodes-genai/     gen.ai（見積もり、承認、生成の関門と、生成した素材の参照）
     mm-decode-ffmpeg/   FFmpeg のライブラリ。CPU のデコードと、ProRes・DNxHR・EXR の読み
     mm-decode-d3d12va/  NVDEC を d3d12va で。コピーなしで wgpu にラップする
     mm-decode-cuvid/    NVDEC を cuvid で。CUDA の外部メモリで 1 コピー
@@ -133,8 +135,9 @@ movie-maker/
     mm-text-cef/        HTML のテンプレートを mm-host-cef で描く
     mm-host-cef/        実行ファイル。CEF のオフスクリーン描画 → 共有テクスチャ
     mm-host-ofx/        実行ファイル。OpenFX のホスト
-    mm-host-pipe/       共通実装。ホストを子プロセスで起こし、プロトコルを 1 行ずつ往復する。大きなデータは名前つきの共有メモリ（RFC 0120、0132）
-    mm-host-audio/      実行ファイル。VST3 と CLAP のホスト
+    mm-host-pipe/       共通実装。ホストを子プロセスで起こし、プロトコルを 1 行ずつ往復する。大きなデータは名前つきの共有メモリ（RFC 0120、0132）。音のプラグインのホストの共通部分（audio、RFC 0139）
+    mm-host-clap/       実行ファイル。CLAP のホストと、音の効果の種類 audio.clap
+    mm-host-vst3/       実行ファイル。VST3 のホストと、音の効果の種類 audio.vst3
     mm-cache-fs/        <project>/cache/ の実装（contentHash で引く、大きさ、消す）
     mm-ingest/          取り込みの流れ（ハッシュ、プレビュー動画、波形、サムネイル、外のツールの起動、付属ファイルの取り込み）
     mm-runtime/         assemble()（実装を選んで Engine を作る）、ノードの種類のレジストリ、再生の状態（再生位置、選択）
@@ -214,9 +217,11 @@ movie-maker/
 | Web のノードの種類と OFX のホスト | `crates/mm-host-*`、`mm-nodes-cef`、`mm-nodes-ofx` | `mm-host-api` |
 | 取り込みと cache/ | `crates/mm-ingest`、`mm-cache-*`、`tools/` | `mm-ingest-api`、`mm-cache-api` |
 | 書き出し | `crates/mm-export` | |
+| モバイル版への映像の配信 | `crates/mm-stream` | `mm-render`、`mm-export`、`mm-serve`（HTTP のパスは Claude の操作経路が書く） |
 | パック | `crates/mm-pack`、`packs/` | `mm-ops` の中（新しい操作は「プロジェクトのデータと操作」の形で足す）、`ui/panels/` |
 | UI（wgpu のサーフェス） | `crates/mm-ui-layout`、`mm-ui-wgpu` | `ui/` |
 | UI（1 つのパネルの縦の切り口） | `ui/panels/<panel>/`、`ui/sdk/src/<panel>.ts`、`apps/movie-maker/src/<panel>*` | ほかのパネル、`ui/sdk/src/generated/`、`ui/theme` |
+| UI（モバイル版の PWA） | `ui/mobile` | `ui/panels`（モデルは import で使う）、`ui/shell`、`ui/sdk`、`ui/theme`、`ui/tools` |
 | アプリの骨組み | `apps/movie-maker`（パネルとパックの切り口を除く）、`ui/shell`、`ui/tools` | パネルの切り口のファイル |
 | Claude の操作経路 | `crates/mm-serve`、`apps/mm` | |
 | 自動の改善 | `crates/mm-improve` | |

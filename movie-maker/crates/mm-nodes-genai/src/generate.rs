@@ -16,7 +16,7 @@ use crate::kind::{GenAiKind, GENAI_KIND};
 use crate::provider::{Estimate, Generated, Providers};
 use crate::request::{GenRequest, Media, ASSET_PARAM};
 
-/// 素材の ID に使う鍵の長さ（16 進の文字数）。
+/// 素材の ID に使うキーの長さ（16 進の文字数）。
 const ASSET_KEY_CHARS: usize = 16;
 /// 素材を置くトランザクションの名前。
 pub const GENERATE_TXN_NAME: &str = "生成 AI の素材を置く";
@@ -26,7 +26,7 @@ pub fn media_dir(project_root: &Path) -> PathBuf {
     project_root.join("media").join("genai")
 }
 
-/// 頼みの鍵から決まる素材の ID。同じ頼みは同じ素材になる。
+/// 頼みのキーから決まる素材の ID。同じ頼みは同じ素材になる。
 pub fn asset_id_for(key: &str) -> AssetId {
     Id::new(format!("gen_{}", &key[..ASSET_KEY_CHARS.min(key.len())]))
 }
@@ -50,7 +50,7 @@ pub struct GenAi {
 }
 
 impl GenAi {
-    /// `media_dir` は [`media_dir`] の場所。自動の改善の回の印（[`crate::IMPROVE_ROUND_ENV`]）をここで読む。
+    /// `media_dir` は [`media_dir`] の場所。自動の改善の回の環境変数（[`crate::IMPROVE_ROUND_ENV`]）をここで読む。
     pub fn new(media_dir: impl Into<PathBuf>, providers: Providers) -> Self {
         Self {
             media_dir: media_dir.into(),
@@ -59,7 +59,7 @@ impl GenAi {
         }
     }
 
-    /// 自動の改善の回の中として扱う。印は足せるだけで外せない。
+    /// 自動の改善の回の中として扱う。環境変数は足せるだけで外せない。
     pub fn in_round(mut self, id: impl Into<String>) -> Self {
         self.round = Some(id.into());
         self
@@ -86,6 +86,14 @@ impl GenAi {
             Reuse::None => provider.estimate(&req)?,
             _ => Estimate::FREE,
         };
+        // NaN と負の費用は上限との比べ方を素通りするので、見積もりの工程で拒否する。
+        if !estimate.cost_usd.is_finite() || estimate.cost_usd < 0.0 {
+            return Err(MmError::Internal(format!(
+                "提供元 {} の見積もりの費用 {} が正の有限の値でない",
+                req.provider, estimate.cost_usd
+            ))
+            .into());
+        }
         Ok(Quote {
             layer: layer.clone(),
             key,
@@ -96,7 +104,7 @@ impl GenAi {
         })
     }
 
-    /// 見積もりを人が承認する。上限は見積もりの費用。MCP の経路と自動の改善の回の中では断る。
+    /// 見積もりを人が承認する。上限は見積もりの費用。MCP の経路と自動の改善の回の中では拒否する。
     pub fn approve(&self, quote: &Quote, entry: Entry) -> Result<Approval, GenError> {
         check_round(self.round().as_deref())?;
         check_approver(entry)?;
@@ -108,7 +116,7 @@ impl GenAi {
         })
     }
 
-    /// 承認の内で生成し、素材を置くトランザクションを返す。見積もりを出し直し、承認の後にパラメータが変わっていたら断る。
+    /// 承認の内で生成し、素材を置くトランザクションを返す。見積もりを出し直し、承認の後にパラメータが変わっていたら拒否する。
     pub fn generate(&self, project: &Project, approval: &Approval) -> Result<Generation, GenError> {
         check_round(self.round().as_deref())?;
         check_approver(approval.entry)?;
@@ -155,7 +163,7 @@ impl GenAi {
         self.media_dir.join(format!("{key}.json"))
     }
 
-    /// 生成物を `media/genai/<鍵>.<拡張子>` に書き、素材の JSON を隣に書く。
+    /// 生成物を `media/genai/<キー>.<拡張子>` に書き、素材の JSON を隣に書く。
     fn store(
         &self,
         key: &str,
@@ -240,7 +248,7 @@ fn read_asset(path: &Path) -> Result<Asset, GenError> {
     Ok(serde_json::from_slice(&bytes).map_err(MmError::from)?)
 }
 
-/// 書きかけを `.part` に書いてから置く。途中で止まったファイルを完成品と取り違えない。
+/// 書いている途中の内容を `.part` に書いてから置く。途中で止まったファイルを完成品と取り違えない。
 fn write_whole(path: &Path, bytes: &[u8]) -> Result<(), GenError> {
     let mut part = path.as_os_str().to_os_string();
     part.push(".part");

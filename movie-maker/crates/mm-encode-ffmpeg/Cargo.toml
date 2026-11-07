@@ -1,6 +1,6 @@
 [package]
 name = "mm-encode-ffmpeg"
-description = "FFmpeg のライブラリによるエンコーダー。H.264（1 パスと 2 パス）、ProRes、DNxHR を MP4 と MOV に書く"
+description = "FFmpeg のライブラリによるエンコーダー。H.264（1 パス、2 パス、配信の区間の目標のビットレート）、ProRes、DNxHR を MP4、MOV、MPEG-TS に書く"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

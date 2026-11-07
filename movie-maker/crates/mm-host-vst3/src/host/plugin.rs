@@ -183,7 +183,7 @@ impl Instance {
         Ok(())
     }
 
-    /// 内部の状態（遅延の中身など）を消す。VST3 に消す口は無いので、処理を止めて活性を切り、入れ直す。
+    /// 内部の状態（遅延の中身など）を消す。VST3 に消す API は無いので、処理を止めて活性を切り、入れ直す。
     pub fn reset(&self) -> Result<(), String> {
         // SAFETY: 活性の間に呼ぶ。止めた順の逆で入れ直す。
         unsafe {
@@ -196,7 +196,7 @@ impl Instance {
     }
 }
 
-/// パラメータの記述。値は正規化した値（0..=1）で、単位（`unitId`）は根（0）でなければ置き場所に書く。
+/// パラメータの記述。値は正規化した値（0..=1）で、単位（`unitId`）はルート（0）でなければ置き場所に書く。
 fn param_desc(info: &ParameterInfo) -> ParamDesc {
     let flag = |f: int32| info.flags & f != 0;
     ParamDesc {
@@ -270,7 +270,7 @@ unsafe fn buses(component: &ComPtr<IComponent>, dir: BusDirections) -> Buses {
     out
 }
 
-/// 主のバスをステレオに、ほかは今の配置にした列。
+/// 主のバスをステレオに、ほかは今の配置にした並び。
 unsafe fn arrangements(
     processor: &ComPtr<IAudioProcessor>,
     dir: BusDirections,

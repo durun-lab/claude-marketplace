@@ -56,6 +56,8 @@ mm-render-api = { path = "crates/mm-render-api" }
 mm-runtime = { path = "crates/mm-runtime" }
 mm-serve = { path = "crates/mm-serve" }
 mm-store = { path = "crates/mm-store" }
+mm-story = { path = "crates/mm-story" }
+mm-stream = { path = "crates/mm-stream" }
 mm-testkit = { path = "crates/mm-testkit" }
 mm-text-api = { path = "crates/mm-text-api" }
 mm-text-cef = { path = "crates/mm-text-cef" }
@@ -96,6 +98,8 @@ ebur128 = "0.1"
 half = "2.7"
 bytemuck = { version = "1.20", features = ["derive"] }
 png = "0.18"
+# mm-stream の静止画のコマ（libwebp の C のビルド）。
+webp = "0.3.1"
 # mm-serve。127.0.0.1 だけで待つ HTTP（axum）と、その非同期の実行環境。
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "json", "query"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time"] }

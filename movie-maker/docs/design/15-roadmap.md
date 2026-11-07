@@ -10,8 +10,8 @@
 | 5 | `Review`、MCP と対応のトランザクション、OTIO、ep03 の再現、durun-dashboard の API | Claude が MCP で同じ編集をでき、承認・却下できる。ep03 の再現が前の書き出しと一致する（2026-11-07 にテストの閾値を満たした。[結果と足りない機能](11-testing.md#ep03-の再現の結果)） | `review` パネル ‖ MCP ‖ OTIO（`mm-doc` への変換） ‖ `packs/vlog` |
 | 6 | `web.cef` と vlog のパック、ep04 | ep04 を movie-maker で作れる | `mm-nodes-cef` と `mm-text-cef` ‖ パック ‖ `mm-host-ofx`（段階 8 の準備） |
 | 7 | 自動の改善（worktree の囲い、Feedback、subsecond） | 要望を起票すると、自動で直って返事が付く | `mm-improve` ‖ `feedback` パネル ‖ `areas.toml` の検査 |
-| 8 | `ofx`、VST3、CLAP、`lottie`、`gen.ai`、HLSL、HDR | 種類を足すだけで使える | 全部が別の実装のクレート。互いに独立 |
-| 9 | モバイル版 | 出先で Story とコメントと操作の発行ができる | |
+| 8 | `ofx`、VST3、CLAP、`lottie`、`gen.ai`、HLSL、HDR | 種類を足すだけで使える（2026-11-08 の判定: 組み立ての登録の 1 行で、レンダラーと MCP の `kinds` は新しい種類とそのパラメータ（`params_for`）を扱える。Inspector は種類の定義を引く経路が無く、プロジェクトに入っている値からしか入力欄を作れないので残り） | 全部が別の実装のクレート。互いに独立 |
+| 9 | モバイル版（`mm-serve` が配る PWA、[設計](12-mobile.md)） | 出先で Story とコメントと操作の発行ができる | 人の待ち受けと端末の登録（`mm-serve`、`Entry::Mobile`） ‖ コメントの API と MCP のツール ‖ Story の読み出しを `mm-story` に ‖ 映像の配信（`mm-stream`） ‖ `ui/mobile` の骨組み。続けて `ui/mobile` の Watch と Proposals ‖ `ui/mobile` の Story ‖ アプリの端末の登録 ‖ デスクトップの Review のコメント ‖ durun-dashboard のつなぎ。最後に通しの確認（iOS の Safari と Android の Chrome、実機） |
 | 10 | 機能の網羅性テスト: ep02（`D:/dev/DTM_Vlog/ep02/`）を movie-maker で再現する。再現の途中で見つけた機能の不足は、見つけたそばから足す | ep02 を movie-maker で作り直せ、前の書き出しと見比べて同じ内容になっている。足りなかった機能の一覧と、それぞれを足した PR が設計書に戻っている | 不足ごとに別の worktree（見つけた順に起こす） |
 
 「‖」で区切ったものは別の worktree で同時に進められる。段階の順は「終わりの条件」を確かめる順で、各領域はそれより早く始めてよい（インターフェースとモックの実装があるので）。
