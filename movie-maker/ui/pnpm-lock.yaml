@@ -41,6 +41,9 @@ importers:
       '@mm/sdk':
         specifier: workspace:*
         version: link:../sdk
+      '@mm/story':
+        specifier: workspace:*
+        version: link:../panels/story
       hls.js:
         specifier: 1.6.15
         version: 1.6.15

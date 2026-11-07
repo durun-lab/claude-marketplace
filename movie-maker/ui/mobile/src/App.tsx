@@ -3,17 +3,13 @@ import type { Controller } from "./controller.ts";
 import { useStore } from "./hooks.ts";
 import { PairScreen, codeFromSearch, guessDeviceName } from "./pairing/PairScreen.tsx";
 import { ProposalsScreen } from "./proposals/ProposalsScreen.tsx";
-import { Frame } from "./screens/Frame.tsx";
+import { StoryScreen } from "./story/StoryScreen.tsx";
 import { StatusChip } from "./StatusChip.tsx";
 import { WatchScreen } from "./watch/WatchScreen.tsx";
 import type { Attach } from "./watch/usePlayback.ts";
 
 export const TABS = ["Watch", "Story", "Proposals"] as const;
 export type Tab = (typeof TABS)[number];
-
-const ROLES: Record<Exclude<Tab, "Proposals" | "Watch">, string> = {
-  Story: "Pick, reject and reorder transcript ranges.",
-};
 
 export interface AppProps {
   /** 映像のつなぎ方。テストとデモが差し替える。 */
@@ -35,10 +31,10 @@ export const App = ({ controller, search = "", userAgent = "", initialTab = "Wat
       <PairScreen controller={controller} initialCode={codeFromSearch(search)} initialName={guessDeviceName(userAgent)} />
     ) : tab === "Watch" ? (
       <WatchScreen controller={controller} attach={attach} />
-    ) : tab === "Proposals" ? (
-      <ProposalsScreen controller={controller} />
+    ) : tab === "Story" ? (
+      <StoryScreen controller={controller} />
     ) : (
-      <Frame title={tab} role={ROLES[tab]} project={snap.project} />
+      <ProposalsScreen controller={controller} />
     );
   return (
     <div class="app">
