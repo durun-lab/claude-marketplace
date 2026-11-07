@@ -10,7 +10,9 @@ const COMPOSITION_PREFIX: &str = "export-sequence-";
 const LAYER_ID: &str = "export-sequence-layer";
 
 /// `project` に、`sequence` を全長で置いたコンポジションを足し、`target` がそれを描くようにして返す。
-/// 大きさと fps はレンダーターゲットのものを使う。
+/// fps はレンダーターゲットのものを使う。大きさは、見せ方を引き継ぐレイヤーがあればそのコンポジションの大きさにする
+/// （再フレーミングと字幕の置き場所はその画素で書いてあり、レンダーターゲットの大きさへはレンダラーが拡大・縮小する）。
+/// 無ければレンダーターゲットの大きさ。
 pub(crate) fn retarget_to_sequence(
     mut project: Project,
     target: &RenderTargetId,
@@ -42,8 +44,9 @@ pub(crate) fn retarget_to_sequence(
     layer.framing = host.map(|(_, l)| l.framing.clone()).unwrap_or_default();
     layer.audio = host.and_then(|(_, l)| l.audio.clone());
     let mixer = host.and_then(|(c, _)| c.mixer.clone());
+    let (width, height) = host.map_or((rt.width, rt.height), |(c, _)| (c.width, c.height));
     project.compositions.push(
-        Composition::new(id.clone(), rt.width, rt.height, rt.fps, duration)
+        Composition::new(id.clone(), width, height, rt.fps, duration)
             .with_layers(vec![layer])
             .with_mixer_opt(mixer),
     );
@@ -172,6 +175,23 @@ mod tests {
         let framing = exported_framing(p);
         assert_eq!(framing.cuts.len(), 1);
         assert_eq!(framing.cuts[0].cut.as_str(), "a");
+    }
+
+    #[test]
+    fn 再フレーミングはショートの画素で書いてあるのでショートの大きさで描き_ターゲットへ縮める() {
+        let mut p = project();
+        p.compositions.push(short_comp("short", 40.0));
+        p.render_targets[0].composition = Id::new("short");
+        (p.render_targets[0].width, p.render_targets[0].height) = (180, 320);
+        let (p, comp) = retarget_to_sequence(p, &Id::new("t"), &Id::new("s")).unwrap();
+        let c = p.composition(&comp).unwrap();
+        assert_eq!((c.width, c.height), (360, 640));
+        let rt = p.render_target(&Id::new("t")).unwrap();
+        assert_eq!(
+            (rt.width, rt.height),
+            (180, 320),
+            "書き出しの大きさは変えない"
+        );
     }
 
     #[test]

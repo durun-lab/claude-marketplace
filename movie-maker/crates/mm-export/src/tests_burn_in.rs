@@ -157,6 +157,30 @@ fn 置き場所が無ければ下部中央_あればその位置と幅に置く(
 }
 
 #[test]
+fn sequence_の書き出しは大きさの違うレンダーターゲットでも同じ割合の所に字幕を置く() {
+    let (mut p, id) = project();
+    p.composition_mut(&id).unwrap().layers[0].framing.caption = Some(CaptionPlacement {
+        position: Param::constant(ParamValue::Vec2([300.0, 600.0])),
+        width: Param::constant(ParamValue::Number(400.0)),
+    });
+    let target = p.render_targets[0].id.clone();
+    p.render_targets[0].width = WIDTH / 2;
+    p.render_targets[0].height = HEIGHT / 2;
+    let (p, export) = crate::sequence::retarget_to_sequence(p, &target, &Id::new("s")).unwrap();
+    let comp = p.composition(&export).unwrap();
+    let (w, h) = (f64::from(comp.width), f64::from(comp.height));
+    let text = &caption_layers(&burned(&p, &export), &export)[1];
+    let width = text.source.params["max_width"].value.as_number().unwrap();
+    assert_eq!(width / w, 400.0 / f64::from(WIDTH), "帯の幅の割合");
+    let [_, y] = position_of(text);
+    assert!(
+        y / h < 600.0 / f64::from(HEIGHT),
+        "帯の下端より上: {y} / {h}"
+    );
+    assert!(y / h > 0.5, "下半分に置く: {y} / {h}");
+}
+
+#[test]
 fn 字幕にできる文字起こしが無ければレイヤーを足さない() {
     let (p, id) = project();
     let none = burn_in_captions(&p, &id, &TranscriptWords::new(), shaper().as_ref()).unwrap();
