@@ -240,7 +240,7 @@ pub fn watch_changes(
     mut notify: impl FnMut(&mm_serve::Change) + Send + 'static,
 ) -> std::io::Result<()> {
     let Some(core) = shared.core.get() else {
-        // 口は Sync を要るので Mutex で包む。呼ぶのは再生スレッドだけで競合しない。
+        // on_json_edit は Sync を要るので Mutex で包む。呼ぶのは再生スレッドだけで競合しない。
         let notify = std::sync::Mutex::new(notify);
         shared.on_json_edit(move |change| (notify.lock().expect("notify"))(change));
         return Ok(());

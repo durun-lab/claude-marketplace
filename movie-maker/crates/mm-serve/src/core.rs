@@ -3,7 +3,7 @@
 //! 適用は `Mutex` で順に並べ、書けたら変わった所を購読者（SSE、アプリの描画、WebView）に送る。
 
 use std::collections::BTreeSet;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -174,6 +174,8 @@ pub struct Core {
     /// コメントの追加と状態の変化の通知。
     pub(crate) comments: broadcast::Sender<crate::comments::CommentEvent>,
     pub(crate) frames: Option<Arc<dyn FrameSource>>,
+    /// 文字起こしを入れ直した回数。単語はプロジェクトのデータの外にあり変更の通知も出ないので、使い回す側がこれで見分ける。
+    transcripts: AtomicU64,
 }
 
 impl Core {
@@ -190,6 +192,7 @@ impl Core {
             proposals,
             comments,
             frames,
+            transcripts: AtomicU64::new(0),
         })
     }
 
@@ -316,8 +319,16 @@ impl Core {
             if !known {
                 return Err(ServeError::BadRequest(format!("素材 {asset} が無い")));
             }
-            Ok(s.put_transcript(asset, content_hash, input)?)
+            let words = s.put_transcript(asset, content_hash, input)?;
+            self.transcripts.fetch_add(1, Ordering::SeqCst);
+            Ok(words)
         })
+    }
+
+    /// 文字起こしのバージョン。`put_transcript` のたびに 1 進む（起動ごとに 0 から）。
+    /// 字幕の焼き込みのように単語から作るものを、プロジェクトのデータと合わせて使い回すときのキーにする。
+    pub fn transcript_version(&self) -> u64 {
+        self.transcripts.load(Ordering::SeqCst)
     }
 
     /// 前のバックアップが終わっていなければ、新しいのは始めない（次の書き込みで間隔を見直す）。

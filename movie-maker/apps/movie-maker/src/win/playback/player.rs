@@ -14,7 +14,7 @@ use mm_ops::{apply_transaction, Entry, Op, OpContext};
 use mm_runtime::{assemble, Backend, Engine, RuntimeConfig};
 use mm_types::{CompositionId, Rational, RationalTime, Result, Size, TimeRange};
 
-use super::burned::{Burned, StoreStamp};
+use super::burned::Burned;
 use super::intake::{collect_batch, fit_chunk};
 use super::{Command, PlaybackInfo};
 use crate::win::clock::{AudioClock, PlayClock, SwitchClock, WallClock};
@@ -281,7 +281,7 @@ impl Player {
     }
 
     /// 操作を 1 つのトランザクションとして適用し、触った ID に頼ったキャッシュだけを捨てる。逆操作も返す。
-    /// 適用したら `kind`（`apply`、`undo`、`redo`）で `mm:doc-changed` の口に知らせる。
+    /// 適用したら `kind`（`apply`、`undo`、`redo`）で `mm:doc-changed` で知らせる。
     fn commit(
         &mut self,
         kind: &'static str,
@@ -521,11 +521,11 @@ impl Player {
         if !mm_export::burn_in_enabled(&self.project, &self.comp) {
             return self.project.clone();
         }
-        let stamp = self.store_dir.as_deref().map(StoreStamp::of);
+        let transcripts = self.shared.core.get().map(|c| c.transcript_version());
         if let Some(burned) = self
             .burned
             .as_ref()
-            .filter(|b| b.fits(&self.project, &stamp))
+            .filter(|b| b.fits(&self.project, transcripts))
         {
             return burned.shown.clone();
         }
@@ -540,7 +540,7 @@ impl Player {
         };
         self.burned = Some(Burned {
             from: self.project.clone(),
-            stamp,
+            transcripts,
             shown: shown.clone(),
         });
         shown
