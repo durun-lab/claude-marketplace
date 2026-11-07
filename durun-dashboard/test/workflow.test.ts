@@ -17,10 +17,15 @@ test('定義を読み、省いた項目は既定にする', () => {
 });
 
 test('引き継ぐモードと同時数とレビュー依頼のトリガーを読む', () => {
-  const { workflows } = parseWorkflows(JSON.stringify({ workflows: [def({ mode: 'continue', maxSessions: 3, triggers: [{ kind: 'github-review' }, { kind: 'schedule', at: '18:30', days: [1, 5, 9] }] })] }));
+  const { workflows } = parseWorkflows(JSON.stringify({ workflows: [def({ mode: 'continue', compact: true, maxSessions: 3, triggers: [{ kind: 'github-review' }, { kind: 'schedule', at: '18:30', days: [1, 5, 9] }] })] }));
   assert.equal(workflows[0]?.mode, 'continue');
   assert.equal(workflows[0]?.maxSessions, 3);
+  assert.equal(workflows[0]?.compact, true);
   assert.deepEqual(workflows[0]?.triggers, [{ kind: 'github-review' }, { kind: 'schedule', at: '18:30', days: [1, 5] }]);
+});
+
+test('compact は引き継ぐモードでだけ読む', () => {
+  assert.equal(parseWorkflows(JSON.stringify({ workflows: [def({ compact: true })] })).workflows[0]?.compact, undefined);
 });
 
 test('1 つでも読めない定義があれば、どれも動かさない', () => {

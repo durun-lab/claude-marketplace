@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { EFFORT_LEVELS, MODELS, type WorkflowDef, type WorkflowInfo, type WorkflowState, type WorkflowTrigger } from '../shared/types.ts';
 import { readLiveSessions } from './claude.ts';
-import { sendMessage, startTrackedSession } from './deliver.ts';
+import { COMPACT_COMMAND, compactSession, sendMessage, startTrackedSession } from './deliver.ts';
 import { githubInbox } from './integrations.ts';
 import { DATA_DIR, newId, persist, state, touch, type WorkflowRun } from './store.ts';
 
@@ -37,7 +37,7 @@ const triggerOf = (raw: unknown): WorkflowTrigger => {
 
 const defOf = (raw: unknown, i: number): WorkflowDef => {
   if (!isObject(raw)) throw new Error(`${i + 1} 番目がオブジェクトではありません`);
-  const { id, name, enabled, cwd, prompt, triggers, mode, maxSessions, model, effort } = raw;
+  const { id, name, enabled, cwd, prompt, triggers, mode, maxSessions, compact, model, effort } = raw;
   if (typeof id !== 'string' || !ID_PATTERN.test(id)) throw new Error(`${i + 1} 番目の id は英数字とハイフンで書いてください`);
   if (typeof cwd !== 'string' || !path.isAbsolute(cwd)) throw new Error(`${id} の cwd は絶対パスで書いてください`);
   if (typeof prompt !== 'string' || !prompt.trim()) throw new Error(`${id} の prompt が空です`);
@@ -49,6 +49,7 @@ const defOf = (raw: unknown, i: number): WorkflowDef => {
     prompt,
     triggers: Array.isArray(triggers) ? triggers.map(triggerOf) : [],
     mode: mode === 'continue' ? 'continue' : 'new',
+    ...(mode === 'continue' && compact === true ? { compact: true } : {}),
     ...(Number.isInteger(maxSessions) && (maxSessions as number) > 0 ? { maxSessions: maxSessions as number } : {}),
     ...(typeof model === 'string' && (MODELS as readonly string[]).includes(model) ? { model } : {}),
     ...(typeof effort === 'string' && (EFFORT_LEVELS as readonly string[]).includes(effort) ? { effort } : {}),
@@ -140,13 +141,27 @@ const continuedSession = (run: WorkflowRun): string | undefined => {
   return meta && !meta.archived ? id : undefined;
 };
 
+const queueTo = (sessionId: string, texts: string[]): void => {
+  for (const text of texts) state.queue.push({ id: newId(), sessionId, text, createdAt: Date.now() });
+};
+
 /**
  * 引き継いでいるセッションへイベントを送る。動いているセッションにはチャットのキューに積み、入力待ちになったら送らせる。
  * 止まっているセッションには、まとめて送って再開させる。
+ * compact なら、前回までの会話を compact してから送る。止まっているセッションは compact で再開させ、イベントはその後ろのキューに積む。
  */
-const deliverTo = (sessionId: string, texts: string[]): void => {
-  if (!readLiveSessions().has(sessionId)) sendMessage(sessionId, texts.join(SEPARATOR));
-  else for (const text of texts) state.queue.push({ id: newId(), sessionId, text, createdAt: Date.now() });
+const deliverTo = (w: WorkflowDef, sessionId: string, texts: string[]): void => {
+  const live = readLiveSessions().has(sessionId);
+  if (live) return queueTo(sessionId, w.compact ? [COMPACT_COMMAND, ...texts] : texts);
+  if (!w.compact) return void sendMessage(sessionId, texts.join(SEPARATOR));
+  compactSession(sessionId, state.sessions[sessionId]?.cwd ?? w.cwd)
+    .then(() => queueTo(sessionId, texts))
+    // compact できなくても、イベントは落とさずに送る。
+    .catch((e: Error) => {
+      runOf(w.id).error = `セッションを compact できません: ${e.message}`;
+      sendMessage(sessionId, texts.join(SEPARATOR));
+    })
+    .finally(touch);
 };
 
 /** 待たせているイベントを、動かせるだけセッションに渡す。 */
@@ -164,7 +179,7 @@ const dispatch = (w: WorkflowDef): void => {
   const sessionId = continuedSession(run);
   if (sessionId) {
     run.lastRunAt = Date.now();
-    deliverTo(sessionId, texts);
+    deliverTo(w, sessionId, texts);
   } else launch(w, run, texts.join(SEPARATOR));
   touch();
 };
@@ -245,6 +260,7 @@ const consultPrompt = (target: WorkflowDef | undefined): string => `${MARK} 人�
   - { "kind": "schedule", "at": "09:00", "days": [1, 2, 3, 4, 5] }: 時刻で動く。days は 0 が日曜で、省くと毎日
   - { "kind": "github-review" }: GitHub で自分へのレビュー依頼が新しく届いたときに動く
 - mode: "new" はイベントごとに新しいセッションを起動する。"continue" は 1 つのセッションを引き継いでイベントをチャットに送り、セッションが無いかアーカイブされていたら新しく起動する
+- compact: mode が "continue" のとき、true なら、イベントを送る前に毎回前回までの会話を compact する
 - maxSessions: mode が "new" のとき、同時に動かすセッションの上限（既定 1）。上限を超えたイベントは、空くまで待たせる
 - model（${MODELS.join(' / ')}）、effort（${EFFORT_LEVELS.join(' / ')}）: 省くと Claude Code の設定に従う
 

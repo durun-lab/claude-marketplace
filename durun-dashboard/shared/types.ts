@@ -433,7 +433,7 @@ export type WorkflowTrigger = { kind: 'schedule'; at: string; days?: number[] } 
 /**
  * ワークフローの定義。人間とエージェントが workflows.json に書く。
  * mode が new ならイベントごとにセッションを起動し、動いているものを maxSessions（既定 1）までに抑える。
- * continue なら 1 つのセッションを引き継いでイベントを送り、セッションが無いかアーカイブされていたら起動する。
+ * continue なら 1 つのセッションを引き継いでイベントを送り、セッションが無いかアーカイブされていたら起動する。compact なら、送る前に毎回前回までの会話を compact する。
  */
 export type WorkflowDef = {
   id: string;
@@ -444,6 +444,7 @@ export type WorkflowDef = {
   triggers: WorkflowTrigger[];
   mode: 'new' | 'continue';
   maxSessions?: number;
+  compact?: boolean;
   model?: string;
   effort?: string;
 };

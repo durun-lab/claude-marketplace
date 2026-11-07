@@ -24,7 +24,7 @@ export const WorkflowIcon = () => <DesktopIcon icon={WORKFLOW_ICON} title={WORKF
 const triggerText = (t: WorkflowTrigger): string =>
   t.kind === 'github-review' ? 'レビュー依頼' : `${t.days ? `${t.days.map((d) => DAYS[d]).join('')} ` : '毎日 '}${t.at}`;
 
-const actionText = (w: WorkflowInfo): string => (w.mode === 'continue' ? '1 つのセッションを引き継ぐ' : `新しいセッション（同時 ${w.maxSessions ?? 1} まで）`);
+const actionText = (w: WorkflowInfo): string => (w.mode === 'continue' ? `1 つのセッションを引き継ぐ${w.compact ? '（毎回 compact）' : ''}` : `新しいセッション（同時 ${w.maxSessions ?? 1} まで）`);
 
 /** 相談のセッションを起動し、そのチャットへ移る。 */
 const consult = (id?: string) =>
@@ -74,7 +74,7 @@ export const WorkflowFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot })
               <div class="xp-task-body">
                 {state.error && <p class="recycle-error">{state.error}</p>}
                 <p>時刻や、GitHub で自分へのレビュー依頼が届いたことをきっかけに、セッションを動かします。</p>
-                <p>「新しいセッション」はイベントごとに起動し、同時に動かす数を抑えます。「引き継ぐ」は 1 つのセッションのチャットにイベントを送ります。</p>
+                <p>「新しいセッション」はイベントごとに起動し、同時に動かす数を抑えます。「引き継ぐ」は 1 つのセッションのチャットにイベントを送り、毎回前回までの会話を compact することもできます。</p>
                 <p>作るときと変えるときは、エージェントと相談します。</p>
               </div>
             </section>
