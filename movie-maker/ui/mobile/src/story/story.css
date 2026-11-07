@@ -1,5 +1,6 @@
 /* Story。色は app.css の変数を使い、決める操作は下の 3 分の 1 に置く。押す所は --tap（48px）以上。 */
-.story { padding: 0; gap: 0; overflow: hidden; position: relative; }
+/* app.css は後から読まれるので、.screen の余白に勝つよう .screen と重ねて指定する。 */
+.screen.story { padding: 0; gap: 0; overflow: hidden; position: relative; }
 .story .error { padding: 8px 16px; }
 .st-meta { color: var(--muted); font-size: 13px; margin: 4px 0; }
 .st-time { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }

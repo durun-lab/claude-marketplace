@@ -40,7 +40,7 @@ export const topicsOver = (words: readonly StoryWord[], topics: readonly Topic[]
   return topics.filter((t) => compareTime(t.in, last.start) <= 0 && compareTime(first.start, t.out) < 0);
 };
 
-/** 評価の画面の文言。FCP の Favorite / Reject / 未評価に当てる。 */
+/** 評価の画面の文言。FCP の Favorite / Reject / 未評価に対応させる。 */
 export const RATING_LABELS: Record<Rating, string> = { favorite: "Keep", rejected: "Reject", unrated: "Hold" };
 
 const ASCII_CHAR = /^[\x20-\x7e]$/;

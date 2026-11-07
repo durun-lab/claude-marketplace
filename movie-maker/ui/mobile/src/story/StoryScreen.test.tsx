@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { App } from "../App.tsx";
 import { createController } from "../controller.ts";
 import { createMockServer } from "../mock/mockServer.ts";
+import { createMemoryStore } from "../outbox/store.ts";
 
 const host = document.createElement("div");
 document.body.append(host);
@@ -24,11 +25,10 @@ const wordButton = (text: string): HTMLButtonElement =>
 /** Story のタブで 1 つ目の素材を開いた状態。 */
 const openStory = async () => {
   const server = createMockServer({ paired: true, online: true });
-  const memory = new Map<string, string>();
   const controller = createController({
     ...server.platform,
     onNetworkBack: () => undefined,
-    storage: { getItem: (k) => memory.get(k) ?? null, setItem: (k, v) => void memory.set(k, v) },
+    outboxStore: createMemoryStore(),
   });
   await controller.connection.start();
   act(() => render(<App controller={controller} initialTab="Story" />, host));
@@ -106,7 +106,7 @@ describe("Story の確定の操作", () => {
 });
 
 describe("Story の衝突と並べ替え", () => {
-  it("版が古くて 409 になったら画面に出して選択を外し、再送しない", async () => {
+  it("バージョンが古くて 409 になったら画面に出して選択を外し、再送しない", async () => {
     const server = await openStory();
     await pickRange();
     server.story.conflictNext();

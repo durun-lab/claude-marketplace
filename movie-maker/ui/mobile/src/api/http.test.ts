@@ -16,7 +16,7 @@ describe("createApi", () => {
     expect(post?.credentials).toBe("same-origin");
   });
 
-  it("母艦の失敗は status と code つきの ApiError にする", async () => {
+  it("PC の失敗は status と code つきの ApiError にする", async () => {
     const api = createApi(async () => ok({ error: { code: "not_latest", message: "stale" } }, 409));
     await expect(api.post("/m/api/undo", {})).rejects.toMatchObject({ status: 409, code: "not_latest", message: "stale" });
   });

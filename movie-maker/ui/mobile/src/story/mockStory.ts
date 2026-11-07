@@ -56,13 +56,13 @@ interface Txn {
 export interface MockStory {
   /** Story の要求なら応答を返し、そうでなければ `null`。 */
   handle: (req: MockRequest) => Response | null;
-  /** 次の操作を 409 `conflict` で断る（版が古いときの画面を試す）。 */
+  /** 次の操作を 409 `conflict` で拒否する（バージョンが古いときの画面を試す）。 */
   conflictNext: () => void;
   topics: Topic[];
   words: StoryWord[];
-  /** 提案として受けた操作の列。 */
+  /** 提案として受けた操作の並び。 */
   proposals: Txn[];
-  /** 適用した操作の列（古い順）。 */
+  /** 適用した操作の並び（古い順）。 */
   applied: Txn[];
 }
 
@@ -120,7 +120,7 @@ const read = (s: MockStory, url: URL): Response | null => {
   return null;
 };
 
-/** 母艦の Story の応答を手元で返す偽物。操作は受けた分だけ状態に反映する。 */
+/** PC の Story の応答を手元で返す偽物。操作は受けた分だけ状態に反映する。 */
 export const createMockStory = (): MockStory => {
   let conflict = false;
   const s: MockStory = {
@@ -133,7 +133,6 @@ export const createMockStory = (): MockStory => {
       const url = new URL(req.path, "http://mock");
       if (req.method === "GET" && url.pathname.startsWith("/m/api/story/")) return read(s, url);
       if (req.method !== "POST") return null;
-      if (url.pathname === "/m/api/undo") return json(HTTP_OK, { version: 0 });
       const txn = (req.body as { txn?: Txn } | null)?.txn;
       if (!txn) return null;
       if (url.pathname === "/m/api/proposals") {

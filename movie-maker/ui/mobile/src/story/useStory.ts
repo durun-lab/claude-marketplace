@@ -15,7 +15,7 @@ export interface StoryData {
 }
 
 /**
- * 素材の一覧と、開いている素材の文字起こしを読む。`version`（母艦のプロジェクトの版）が変わるたびに読み直すので、
+ * 素材の一覧と、開いている素材の文字起こしを読む。`version`（PC のプロジェクトのバージョン）が変わるたびに読み直すので、
  * PC や Claude の変更も画面に届く。
  */
 export const useStoryData = (client: StoryClient, version: number): StoryData => {

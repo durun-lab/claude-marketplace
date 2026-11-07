@@ -9,6 +9,21 @@ export interface Player {
   stop: () => void;
 }
 
+/** `startPlayback` が触る `<audio>` の部分。 */
+export type MediaLike = Pick<HTMLMediaElement, "currentTime" | "readyState" | "getAttribute" | "play"> & { src: string };
+
+const HAVE_METADATA = 1;
+
+/**
+ * `src` を `start` 秒から鳴らし始める。iOS の Safari は押した操作の中で `play()` を呼ばないと拒否するので、
+ * 読み込みを待たずにすぐ呼び、始めの位置は読み込み済みならシーク、まだならメディアフラグメント（`#t=`）で渡す。
+ */
+export const startPlayback = (el: MediaLike, src: string, start: number): Promise<void> => {
+  if (el.getAttribute("src")?.split("#")[0] === src && el.readyState >= HAVE_METADATA) el.currentTime = start;
+  else el.src = `${src}#t=${start}`;
+  return el.play();
+};
+
 /** 素材の音だけを鳴らす。範囲の終わりで止める。 */
 export const usePlayer = (): Player => {
   const ref = useRef<HTMLAudioElement | null>(null);
@@ -35,14 +50,10 @@ export const usePlayer = (): Player => {
     const el = ref.current;
     if (!el) return;
     end.current = stopAt;
-    const go = (): void => {
-      el.currentTime = start;
-      el.play().then(() => setPlaying(true), () => setPlaying(false));
-    };
-    if (el.getAttribute("src") === src && el.readyState >= 1) return go();
-    el.addEventListener("loadedmetadata", go, { once: true });
-    el.src = src;
-    el.load();
+    startPlayback(el, src, start).then(
+      () => setPlaying(true),
+      () => setPlaying(false),
+    );
   };
   return { ref, playing, play, stop };
 };

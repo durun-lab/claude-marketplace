@@ -64,7 +64,7 @@ const makeSender = (cx: ActionContext, setNotice: (n: Notice | null) => void) =>
   };
 };
 
-/** 範囲の時刻を母艦に聞いて操作を組む。選んでいなければ何もしない。 */
+/** 範囲の時刻を PC に聞いて操作を組む。選んでいなければ何もしない。 */
 const withRange = async (cx: ActionContext, build: (asset: string, range: WordRange) => Op[]): Promise<Op[]> => {
   const asset = cx.transcript?.asset;
   const words = selectedWords(cx);

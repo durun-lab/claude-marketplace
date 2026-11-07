@@ -1,0 +1,6 @@
+## モバイル版
+
+| 用語 | 定義 | 識別子 |
+|---|---|---|
+| 送信待ちのキュー | 送れていないコメントを端末に置き、つながったら入れた順に送る所。IndexedDB に 1 件ずつ置き、再送は `client_id` で二重に書かれない | `ui/mobile/src/outbox/`、`client_id` |
+| PC で決める | モバイルの操作を即時に適用せず、提案として出すこと。PC の Review かモバイルの `Proposals` で承認する | `onPc`、`POST /m/api/proposals` |

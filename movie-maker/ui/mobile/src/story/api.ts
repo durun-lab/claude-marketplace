@@ -5,7 +5,7 @@ import { API_ROOT, ApiError, type Api } from "../api/http.ts";
 const STORY_ROOT = `${API_ROOT}/story`;
 const CONFLICT = 409;
 
-/** 送った結果。`conflict` は母艦の版が進んでいて適用されなかった（読み直して選び直す）。 */
+/** 送った結果。`conflict` は PC のバージョンが進んでいて適用されなかった（読み直して選び直す）。 */
 export type SendResult = { kind: "applied" | "proposed" } | { kind: "conflict" } | { kind: "failed"; message: string };
 
 export interface SendOptions {
@@ -15,7 +15,7 @@ export interface SendOptions {
   onPc: boolean;
 }
 
-/** Story が母艦に頼むこと。形は `StoryApi`（デスクトップ）の読み出しと同じで、操作は HTTP で送る。 */
+/** Story が PC に頼むこと。形は `StoryApi`（デスクトップ）の読み出しと同じで、操作は HTTP で送る。 */
 export interface StoryClient {
   overview: () => Promise<StoryOverview>;
   transcript: (asset: string) => Promise<StoryTranscript>;
@@ -34,7 +34,7 @@ const classify = (e: unknown): SendResult => {
   return { kind: "failed", message: e instanceof Error ? e.message : String(e) };
 };
 
-/** `base_version` は送る時点の最後に読んだ版。母艦が古いと判定したら `conflict`。 */
+/** `base_version` は送る時点の最後に読んだバージョン。PC が古いと判定したら `conflict`。 */
 export const createStoryClient = (api: Api, baseVersion: () => number): StoryClient => ({
   overview: () => api.get(`${STORY_ROOT}/overview`),
   transcript: (asset) => api.get(`${STORY_ROOT}/transcript?asset=${q(asset)}`),
