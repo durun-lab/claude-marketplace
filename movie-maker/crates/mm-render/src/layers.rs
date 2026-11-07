@@ -48,7 +48,7 @@ pub(crate) struct CompCx<'a> {
 
 impl CompCx<'_> {
     /// コンポジションの画素から描く先の画素への倍率。
-    fn comp_to_out(&self) -> f32 {
+    pub(crate) fn comp_to_out(&self) -> f32 {
         self.size.width as f32 / self.comp.width as f32
     }
 
