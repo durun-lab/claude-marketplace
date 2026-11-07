@@ -9,8 +9,10 @@ publish.workspace = true
 [dependencies]
 mm-types = { workspace = true }
 mm-doc = { workspace = true }
+mm-eval = { workspace = true }
 mm-ops = { workspace = true }
 mm-store = { workspace = true }
+mm-stream = { workspace = true }
 mm-story = { workspace = true }
 mm-node-api = { workspace = true }
 mm-runtime = { workspace = true }

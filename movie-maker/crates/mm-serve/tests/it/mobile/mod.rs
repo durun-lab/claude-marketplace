@@ -5,6 +5,7 @@ mod assets;
 mod comments;
 mod events;
 mod guard;
+mod media;
 mod ops;
 mod pairing;
 

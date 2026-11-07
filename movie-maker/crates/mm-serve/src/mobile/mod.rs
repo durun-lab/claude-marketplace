@@ -5,8 +5,10 @@
 //! 名乗りは登録した端末の名前。パスは全部 `/m` の下に置く。
 
 mod assets;
+mod cuts;
 mod devices;
 mod guard;
+mod media;
 mod ops;
 mod pair;
 mod proposals;
@@ -147,6 +149,7 @@ pub(crate) fn router(state: Arc<MobileState>) -> Router {
     });
     Router::new()
         .merge(assets::routes())
+        .merge(media::routes())
         .merge(ops::routes())
         .merge(pair::routes())
         .merge(proposals::routes())

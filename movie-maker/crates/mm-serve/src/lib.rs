@@ -8,7 +8,8 @@
 //! - [`MobileServer`]: 人の待ち受け（モバイル版、`/m`）。`tailscale serve` の後ろで、登録した端末だけを
 //!   `Entry::Mobile` として受ける。端末の登録と登録を外すのは [`Devices`] を PC のアプリから呼ぶ。
 //! - [`Client`]: `mm` と結合テストが使うクライアント。
-//! - [`FrameSource`]: `GET /frame` の描画。[`EngineFrames`] が専用のスレッドの `Engine` で描く。
+//! - [`FrameSource`]: `GET /frame` の描画。[`EngineFrames`] が `mm-stream` の `Streamer` の `Engine`
+//!   （モバイルの映像の配信と共有する 1 つ）で描く。
 
 mod client;
 mod comments;
