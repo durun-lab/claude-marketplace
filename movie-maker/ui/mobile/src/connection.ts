@@ -1,7 +1,7 @@
 import { API_ROOT, isUnauthorized, type Api } from "./api/http.ts";
 import type { ProjectInfo } from "./api/types.ts";
 
-/** 接続の状態。`unpaired` は資格が無いか取り消された（401）。 */
+/** 接続の状態。`unpaired` は資格が無いか登録を外された（401）。 */
 export type LinkState = "checking" | "unpaired" | "online" | "offline";
 
 export interface ConnectionSnapshot {
