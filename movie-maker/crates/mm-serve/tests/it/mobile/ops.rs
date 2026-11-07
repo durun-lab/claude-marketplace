@@ -58,6 +58,8 @@ fn 表の外の操作は_not_on_mobile_で断り_提案なら出せる() {
         (Some("mobile"), Some("phone"))
     );
     assert_eq!(p["state"], "pending");
+    // シーケンスに当たらない提案でも、コンポジションの時刻の欄は空の列で返す。
+    assert_eq!(p["comp_spans"], serde_json::json!([]));
     assert_eq!(r.version(), 0);
 }
 
