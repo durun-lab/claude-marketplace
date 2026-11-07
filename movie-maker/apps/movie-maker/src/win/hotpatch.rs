@@ -1,7 +1,7 @@
 //! 開発のときだけ、動いているアプリの Rust の関数を差し替える（`hotpatch` feature と `dx serve --hotpatch`）。
 //!
 //! 差し替えは [`call`] の中でだけ効く。操作の適用と IPC のハンドラーの本体を [`call`] で囲む。
-//! 入力中と書き出し中に届いたパッチは当てずに持ち、ウィンドウの題に印を出して、両方が終わったときに当てる。
+//! 入力中と書き出し中に届いたパッチは適用せずに持ち、ウィンドウのタイトルにマーカーを出して、両方が終わったときに適用する。
 //! feature を切ったビルドでは [`call`] は渡した関数をそのまま呼び、ほかは何もしない。
 
 #[cfg(feature = "hotpatch")]
@@ -20,7 +20,7 @@ pub enum Busy {
     Export,
 }
 
-/// 当てるか待たせるかの決め。パッチの型を引数にして、feature を切った試験でも確かめる。
+/// 適用するか待たせるかの判定。パッチの型を引数にして、feature を切ったテストでも確かめる。
 #[cfg(any(feature = "hotpatch", test))]
 #[derive(Debug)]
 pub struct Gate<T> {
@@ -45,12 +45,12 @@ impl<T> Gate<T> {
         !self.input && !self.export
     }
 
-    /// 待たせているパッチがあるか（印を出すか）。
+    /// 待たせているパッチがあるか（マーカーを出すか）。
     pub fn held(&self) -> bool {
         self.pending.is_some()
     }
 
-    /// 届いたパッチを受ける。いま当ててよければ返し、だめなら持つ。
+    /// 届いたパッチを受ける。いま適用してよければ返し、だめなら持つ。
     /// dx のパッチは起動したときのバイナリとの差分なので、持つのは最新の 1 つでよい。
     pub fn offer(&mut self, patch: T) -> Option<T> {
         if self.idle() {
@@ -86,15 +86,15 @@ mod live {
 
     /// 書き出しのキューの状態のイベント。`deliver_ipc.rs` と `ui/sdk` の `EXPORT_PROGRESS_EVENT` と同じ名前。
     const EXPORT_PROGRESS_EVENT: &str = "mm:export-progress";
-    /// 印を出さないときのウィンドウの題。`app.rs` の `create_window` と同じ。
+    /// マーカーを出さないときのウィンドウのタイトル。`app.rs` の `create_window` と同じ。
     const TITLE: &str = "movie-maker";
-    /// パッチを待たせている間のウィンドウの題。
-    const TITLE_HELD: &str = "movie-maker（Rust の更新あり。入力と書き出しの後に当てる）";
+    /// パッチを待たせている間のウィンドウのタイトル。
+    const TITLE_HELD: &str = "movie-maker（Rust の更新あり。入力と書き出しの後に適用する）";
 
     static GATE: Mutex<Gate<subsecond::JumpTable>> = Mutex::new(Gate::new());
     static APP: Mutex<Option<AppHandle>> = Mutex::new(None);
 
-    /// `f` を差し替えの入口として呼ぶ。パッチが当たった後は新しい関数に入る。
+    /// `f` をホットパッチの呼び出し箇所として呼ぶ。パッチを適用した後は新しい関数に入る。
     pub fn call<O>(f: impl FnOnce() -> O) -> O {
         // subsecond はポインタ 1 本分の大きさのクロージャを関数ポインタとみなし、差し替えを素通りする。
         // 2 本分の詰め物を一緒に捕まえ、どのクロージャもその大きさにならないようにする。
@@ -103,7 +103,9 @@ mod live {
         let mut f = Some(f);
         subsecond::call(move || {
             std::hint::black_box(&pad);
-            let f = f.take().expect("差し替えの入口の関数は 1 回だけ呼ぶ");
+            let f = f
+                .take()
+                .expect("ホットパッチの呼び出し箇所の関数は 1 回だけ呼ぶ");
             f()
         })
     }
@@ -137,7 +139,7 @@ mod live {
         set_busy(Busy::Input, busy);
     }
 
-    /// 入力や書き出しの始まりと終わりを受ける。両方が終わったら、待たせていたパッチを当てる。
+    /// 入力や書き出しの始まりと終わりを受ける。両方が終わったら、待たせていたパッチを適用する。
     fn set_busy(why: Busy, busy: bool) {
         if let Some(table) = with_gate(|gate| gate.set(why, busy)) {
             apply(table);

@@ -19,26 +19,26 @@ pub const DEFAULT_PERF_THRESHOLD: f64 = 0.05;
 pub struct ImproveConfig {
     /// 要望、回の状態、設定の置き場所。
     pub data_dir: PathBuf,
-    /// git の作業ツリーの根（`git rev-parse --show-toplevel`）。
+    /// git の作業ツリーのルート（`git rev-parse --show-toplevel`）。
     pub repo: PathBuf,
-    /// 根から movie-maker までの相対パス（`movie-maker`）。根そのものなら空。
+    /// ルートから movie-maker までの相対パス（`movie-maker`）。ルートそのものなら空。
     pub subdir: PathBuf,
-    /// 取り込む先のブランチ。人の main のチェックアウトには並行の WIP があることが多いので、既定は専用の
+    /// 本線のブランチ。人の main のチェックアウトには並行の WIP があることが多いので、既定は専用の
     /// `local/movie-maker`（durun-dashboard の `local/dashboard` と同じ型）。
     pub mainline: String,
-    /// 取り込む先のブランチが無いときに切る元で、PR までで止めるときの PR の向き先。
+    /// 本線のブランチが無いときに切る元で、PR までで止めるときの PR の向き先。
     pub upstream: String,
     /// 回の worktree の置き場所。
     pub worktrees_dir: PathBuf,
 }
 
-/// 取り込む先のブランチの既定。
+/// 本線のブランチの既定。
 pub const DEFAULT_MAINLINE: &str = "local/movie-maker";
 /// 切る元と PR の向き先の既定。
 pub const DEFAULT_UPSTREAM: &str = "main";
 
 impl ImproveConfig {
-    /// `data_dir` と根を決めて作る。worktree は `data_dir/worktrees/` に置く。
+    /// `data_dir` とルートを決めて作る。worktree は `data_dir/worktrees/` に置く。
     pub fn new(data_dir: impl Into<PathBuf>, repo: impl Into<PathBuf>) -> Self {
         let data_dir = data_dir.into();
         Self {
@@ -51,13 +51,13 @@ impl ImproveConfig {
         }
     }
 
-    /// 根からの相対パスを決める。
+    /// ルートからの相対パスを決める。
     pub fn with_subdir(mut self, subdir: impl Into<PathBuf>) -> Self {
         self.subdir = subdir.into();
         self
     }
 
-    /// 取り込む先のブランチを決める。
+    /// 本線のブランチを決める。
     pub fn with_mainline(mut self, mainline: impl Into<String>) -> Self {
         self.mainline = mainline.into();
         self
@@ -69,7 +69,7 @@ impl ImproveConfig {
         self
     }
 
-    /// `start` を含む git の作業ツリーから、根と相対パスを引いて作る。
+    /// `start` を含む git の作業ツリーから、ルートと相対パスを引いて作る。
     pub fn discover(data_dir: impl Into<PathBuf>, start: &Path) -> Result<Self> {
         let top = git::git(start, &["rev-parse", "--show-toplevel"])?;
         let prefix = git::git(start, &["rev-parse", "--show-prefix"])?;
@@ -103,7 +103,7 @@ impl ImproveConfig {
         self.data_dir.join(name)
     }
 
-    /// 根からの相対を movie-maker からの相対にする。movie-maker の外は `../` を付け、どの領域にも当たらないようにする。
+    /// ルートからの相対を movie-maker からの相対にする。movie-maker の外は `../` を付け、どの領域にも当たらないようにする。
     pub fn relative(&self, files: Vec<String>) -> Vec<String> {
         let sub = self.subdir.to_string_lossy().replace('\\', "/");
         if sub.is_empty() {
@@ -171,7 +171,7 @@ pub struct SettingsPatch {
 }
 
 impl Settings {
-    /// `patch` を当てる。
+    /// `patch` を適用する。
     pub fn apply(&mut self, patch: &SettingsPatch) {
         let text = |v: &Option<String>| v.clone().filter(|s| !s.is_empty());
         if let Some(e) = patch.enabled {

@@ -21,12 +21,12 @@ use crate::state::{ImproveState, Phase, RunOutcome, RunReport, RunState};
 use crate::store::FeedbackStore;
 use crate::time::{now_ms, short_hex, stamp, uuid_v4};
 
-/// 印を書かずに止まったときに続きを頼む上限。
+/// 完了のマーカーを書かずに止まったときに続きを頼む上限。
 const MAX_NUDGES: u32 = 2;
 /// 1 つの回で `claude -p` を呼ぶ上限。会話ログに古い使用制限が残っているなど、すぐ終わる呼び出しを繰り返さない。
 pub const MAX_CALLS: u32 = 12;
 const MS_PER_MIN: u64 = 60_000;
-/// 明ける時刻ちょうどに頼むとまだ断られることがあるので、少し待ってから続ける。
+/// 明ける時刻ちょうどに頼むとまだ拒否されることがあるので、少し待ってから続ける。
 pub const AFTER_RESET_MS: u64 = 60_000;
 pub(crate) const STATE_FILE: &str = "state.json";
 pub(crate) const SETTINGS_FILE: &str = "settings.json";
@@ -64,12 +64,12 @@ pub(crate) struct Ctx {
 }
 
 thread_local! {
-    /// このスレッドが `errors.json` の錠を持っているか。持っている間の panic を panic のフックが記録しようとして、
-    /// 同じ錠を待って止まらないようにする。
+    /// このスレッドが `errors.json` のロックを持っているか。持っている間の panic を panic のフックが記録しようとして、
+    /// 同じロックを待って止まらないようにする。
     static HOLDING_ERRORS: Cell<bool> = const { Cell::new(false) };
 }
 
-/// 抜けるとき（panic で巻き戻るときも）に印を戻す。
+/// 抜けるとき（panic で巻き戻るときも）にフラグを戻す。
 struct ReleaseErrors;
 
 impl Drop for ReleaseErrors {
@@ -79,7 +79,7 @@ impl Drop for ReleaseErrors {
 }
 
 impl Ctx {
-    /// `errors.json` を錠の中で読み、`f` で変えて書く。このスレッドが既に持っていれば何もせず `None`。
+    /// `errors.json` をロックの中で読み、`f` で変えて書く。このスレッドが既に持っていれば何もせず `None`。
     pub fn with_errors<R>(&self, f: impl FnOnce(&mut ErrorBook) -> Result<R>) -> Result<Option<R>> {
         if HOLDING_ERRORS.replace(true) {
             return Ok(None);
@@ -122,7 +122,7 @@ impl Ctx {
         run.worktree.join(&self.cfg.subdir)
     }
 
-    /// 本線の areas.toml。回が書き換えても、取り込む先の版で判定する。無ければ全部を人の承認に回す。
+    /// 本線の areas.toml。回が書き換えても、本線のコミットで判定する。無ければ全部を人の承認に回す。
     pub fn areas(&self) -> Result<Areas> {
         let path = self.cfg.subdir.join("docs").join("areas.toml");
         let path = path.to_string_lossy().replace('\\', "/");
@@ -133,7 +133,7 @@ impl Ctx {
     }
 }
 
-/// 1 歩進める。錠は呼ぶ側が持つ。
+/// 1 歩進める。ロックは呼ぶ側が持つ。
 pub(crate) fn step(ctx: &Ctx) -> Result<Step> {
     let mut st = ctx.state()?;
     let run = match st.run.clone() {
@@ -239,7 +239,7 @@ fn drive(ctx: &Ctx, mut st: ImproveState, mut run: RunState) -> Result<Step> {
         if let Some(reason) = exhausted(&run) {
             return fail(ctx, &mut st, &run, RunOutcome::Failed { reason });
         }
-        // 呼ぶ前に回数を書く。呼んでいる間にプロセスが落ちても、次は同じセッションを続ける。
+        // 呼ぶ前に回数を書く。呼んでいる間にプロセスがクラッシュしても、次は同じセッションを続ける。
         let resume = run.calls > 0;
         run.calls += 1;
         run.limit_resets_at = None;
@@ -266,7 +266,7 @@ fn drive(ctx: &Ctx, mut st: ImproveState, mut run: RunState) -> Result<Step> {
     crate::gate::gate(ctx, st, run)
 }
 
-/// ターンの終わり。印があれば検査へ、無ければ続きを頼む（上限まで。超えたら印の無いまま検査で落とす）。
+/// ターンの終わり。完了のマーカーがあれば検査へ、無ければ続きを頼む（上限まで。超えたら完了のマーカーの無いまま検査で失敗にする）。
 fn after_turn(run: &mut RunState, last_message: String, prompt: &mut String) {
     if !last_message.contains(DONE_MARK) && run.nudges < MAX_NUDGES {
         run.nudges += 1;
@@ -277,7 +277,7 @@ fn after_turn(run: &mut RunState, last_message: String, prompt: &mut String) {
     run.phase = Phase::Gate;
 }
 
-/// 予算と時間の上限を持たない回（回の途中で版が変わった状態のファイル）に、いまの設定の値を入れる。
+/// 予算と時間の上限を持たない回（回の途中でアプリのバージョンが変わった状態のファイル）に、いまの設定の値を入れる。
 fn fill_limits(ctx: &Ctx, run: &mut RunState) -> Result<()> {
     if run.budget_usd.is_some() && run.wall_ms.is_some() {
         return Ok(());
@@ -308,7 +308,7 @@ fn exhausted(run: &RunState) -> Option<String> {
     (run.calls >= MAX_CALLS).then(|| format!("claude -p を {MAX_CALLS} 回呼んでも回が終わらない"))
 }
 
-/// 回を動かしていたプロセスが、Stop の後で検査の前に落ちていたら、フックが残した最後の発言で区切る。
+/// 回を動かしていたプロセスが、Stop の後で検査の前にクラッシュしていたら、フックが残した最後の発言で区切る。
 fn recover_stop(ctx: &Ctx, run: &mut RunState) {
     if run.phase != Phase::Agent || run.calls == 0 || run.limit_resets_at.is_some() {
         return;

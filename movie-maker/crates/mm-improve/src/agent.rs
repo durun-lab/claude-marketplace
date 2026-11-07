@@ -1,7 +1,7 @@
-//! 回の実装を任せる相手。[`Agent`] を差し替えられる層にし、本物は [`ClaudeCli`]（`claude -p`）、試験は決まった差分を書く偽物にする。
+//! 回の実装を任せる相手。[`Agent`] を差し替えられる層にし、実際の実装は [`ClaudeCli`]（`claude -p`）、テストは決まった差分を書くモックにする。
 //!
 //! `claude -p` の区切りは Stop フックで取る。フックが最後の発言と会話ログの場所を回のフォルダーの `stop.json` に書くので、
-//! アプリが途中で落ちても、次に起きたときに回を終えられる。
+//! アプリが途中でクラッシュしても、次に起きたときに回を終えられる。
 
 use std::fs::{File, OpenOptions};
 use std::io::Write;
@@ -33,7 +33,7 @@ const MS_PER_SEC: u64 = 1000;
 pub struct AgentRequest<'a> {
     /// セッションの ID（UUID）。
     pub session_id: &'a str,
-    /// 同じセッションを続けるか（使用制限の後と、印を書かずに止まったとき）。
+    /// 同じセッションを続けるか（使用制限の後と、完了のマーカーを書かずに止まったとき）。
     pub resume: bool,
     /// 頼む文。
     pub prompt: &'a str,
@@ -79,7 +79,7 @@ pub trait Agent: Send + Sync {
     fn run(&self, req: &AgentRequest<'_>) -> AgentEnd;
 }
 
-/// `claude -p` を起こす本物。
+/// `claude -p` を起こす実際の実装。
 #[derive(Clone, Debug)]
 pub struct ClaudeCli {
     /// 実行ファイル。
@@ -112,9 +112,9 @@ struct StopHook {
     last_assistant_message: Option<String>,
 }
 
-/// 回の `claude -p` に断らせるコマンド。回のブランチ以外の参照（取り込み先の `local/movie-maker` など）を動かすと
+/// 回の `claude -p` に拒否させるコマンド。回のブランチ以外の参照（本線の `local/movie-maker` など）を動かすと
 /// 囲いの検査を通らずに取り込まれるので、ブランチを切り替える・参照を書く・遠隔へ出す操作を止める。
-/// 確認の要る操作は `--permission-prompts none` で断られるが、auto のモードが通しうるものをここで決まった形で断る。
+/// 確認の要る操作は `--permission-prompts none` で拒否されるが、auto のモードが通しうるものをここで決まった形で拒否する。
 pub const DENIED_COMMANDS: &[&str] = &[
     "Bash(gh:*)",
     "Bash(git -C:*)",
@@ -129,7 +129,7 @@ pub const DENIED_COMMANDS: &[&str] = &[
 ];
 
 /// 回の `claude -p` の設定。Stop フックは標準入力の JSON をそのまま `stop.json` に書く
-/// （Windows でも Claude Code はフックを Git Bash で走らせる）。[`DENIED_COMMANDS`] を断らせる。
+/// （Windows でも Claude Code はフックを Git Bash で実行する）。[`DENIED_COMMANDS`] を拒否させる。
 pub fn run_settings(run_dir: &Path) -> String {
     let file = run_dir
         .join(STOP_FILE)
@@ -157,7 +157,7 @@ impl ClaudeCli {
             .map(str::to_owned)
             .to_vec();
         args.extend(["--permission-mode".into(), self.permission_mode.clone()]);
-        // 確認の要る操作は誰も答えないので断る。
+        // 確認の要る操作は誰も答えないので拒否する。
         args.extend(["--permission-prompts".into(), "none".into()]);
         args.extend(["--settings".into(), run_settings(req.run_dir)]);
         for d in req.read_dirs {
@@ -278,7 +278,7 @@ fn finish(
     }
 }
 
-/// 終わるまで待つ。`limit` を過ぎたら木ごと止める。見張りはタイマー 1 つで、終わったら起こして畳む。
+/// 終わるまで待つ。`limit` を過ぎたら木ごと止める。見張りはタイマー 1 つで、終わったら起こして片付ける。
 fn wait_with_deadline(child: &mut Child, limit: Duration) -> Result<(ExitStatus, bool)> {
     let (tx, rx) = mpsc::channel::<()>();
     let pid = child.id();
@@ -295,7 +295,7 @@ fn wait_with_deadline(child: &mut Child, limit: Duration) -> Result<(ExitStatus,
     Ok((status?, timed_out))
 }
 
-/// Stop フックが残した最後の発言。回を動かしていたプロセスが落ちた後に、回を区切れるかを見るのに使う。
+/// Stop フックが残した最後の発言。回を動かしていたプロセスがクラッシュした後に、回を区切れるかを見るのに使う。
 pub fn stop_message(run_dir: &Path) -> Option<String> {
     let stop: StopHook = read_json(&run_dir.join(STOP_FILE)).ok().flatten()?;
     stop.last_assistant_message.filter(|m| !m.trim().is_empty())
@@ -319,7 +319,7 @@ pub fn find_transcript(session_id: &str) -> Option<PathBuf> {
 }
 
 /// 会話ログが使用制限で終わっていれば、明ける時刻（ミリ秒）。
-/// Claude Code は断られたときに合成の発言を足し、`apiError` と `apiErrorParams.rate_limit_info.resetsAt`（秒）を添える。
+/// Claude Code は拒否されたときに合成の発言を足し、`apiError` と `apiErrorParams.rate_limit_info.resetsAt`（秒）を添える。
 pub fn usage_limit(transcript: &Path) -> Option<u64> {
     let text = std::fs::read_to_string(transcript).ok()?;
     let mut limit = None;

@@ -1,4 +1,4 @@
-//! 囲いの抜けを塞いだことの確かめ。名前の変更、取り込み先を動かす回、検査の最中の停止、取り込めない取り込み先、
+//! 囲いの抜けを塞いだことの確かめ。名前の変更、本線を動かす回、検査の最中の停止、取り込めない本線、
 //! 回の予算の累計、自動の起票の同時の記録。
 
 use std::sync::Arc;
@@ -93,7 +93,7 @@ fn stop_during_checks_does_not_land() {
     assert_eq!(report.outcome, RunOutcome::Stopped);
     assert_eq!(fx.main_file("src/greet.txt"), "Helo, world");
     assert_eq!(imp.get(&item.id).unwrap().status, FeedbackStatus::Pending);
-    assert!(!fx.data.join("stop").exists(), "止めた印は片付ける");
+    assert!(!fx.data.join("stop").exists(), "停止のフラグは片付ける");
 }
 
 #[test]
@@ -119,7 +119,7 @@ fn landing_on_a_dirty_checkout_is_rejected_and_keeps_human_changes() {
     assert_eq!(imp.get(&item.id).unwrap().status, FeedbackStatus::Pending);
     assert!(
         imp.status().unwrap().run.is_none(),
-        "回は検査の段に残らない"
+        "回は検査の工程に残らない"
     );
 }
 

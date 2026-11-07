@@ -3,7 +3,7 @@ import type { FeedbackItem, ImproveStatus, Outcome, RunOutcome } from "./api.ts"
 /** コミットを見分けるのに足りる短い桁数（git の既定の短縮と同じ）。 */
 const SHORT_COMMIT = 7;
 
-/** 一覧に出す状態。保存された状態に、回の中と差し戻し（検査で落ちて未対応に戻ったもの）を足した 5 つ。 */
+/** 一覧に出す状態。保存された状態に、回の中と差し戻し（検査に通らず未対応に戻ったもの）を足した 5 つ。 */
 export type Stage = "pending" | "inRun" | "landed" | "held" | "sentBack";
 
 export const STAGE_LABEL: Record<Stage, string> = {
@@ -14,7 +14,7 @@ export const STAGE_LABEL: Record<Stage, string> = {
   sentBack: "Sent back",
 };
 
-/** 要望の状態。未対応のうち、回に渡したものは回の中、最後の返事が検査の落ちなら差し戻し。 */
+/** 要望の状態。未対応のうち、回に渡したものは回の中、最後の返事が検査に通らなかったなら差し戻し。 */
 export const stageOf = (item: FeedbackItem, status: ImproveStatus | null): Stage => {
   if (item.status === "done") return "landed";
   if (item.status === "held") return "held";

@@ -95,7 +95,7 @@ impl PipeHost {
                 Ok(host)
             }
             other => {
-                // 接続が落ちたのなら request が数えている。
+                // ホストがクラッシュしていたら request が数えている。
                 if !matches!(other, Err(MmError::HostCrashed(_))) {
                     host.count_crash();
                 }
@@ -108,7 +108,7 @@ impl PipeHost {
         }
     }
 
-    /// ホストが落ちたことを数える（`mm_trace::names::host_crash_counter`）。アプリはこのカウンタで自動の起票をする。
+    /// ホストがクラッシュしたことを数える（`mm_trace::names::host_crash_counter`）。アプリはこのカウンタで自動の起票をする。
     /// こちらから止めたホスト（時間切れ、Shutdown）は数えない。
     fn count_crash(&self) {
         mm_trace::counter!(
@@ -400,7 +400,7 @@ mod tests {
     }
 
     #[test]
-    fn 起動直後に落ちたホストを_1_回だけ数える() {
+    fn 起動直後にクラッシュしたホストを_1_回だけ数える() {
         use tracing_subscriber::prelude::*;
         let (layer, metrics) = mm_trace::MetricsLayer::new();
         let subscriber = tracing_subscriber::registry().with(layer);

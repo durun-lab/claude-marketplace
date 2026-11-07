@@ -12,7 +12,7 @@ use mm_types::Result;
 
 use crate::compare::parse_threshold;
 
-/// `mm improve`。上の段の登録は `main.rs` の 1 行。
+/// `mm improve`。上の階層の登録は `main.rs` の 1 行。
 #[derive(Subcommand)]
 pub enum Cmd {
     /// 自動の改善。要望をためて、別の worktree で claude -p に直させ、検査を通ったものを取り込む。
@@ -20,11 +20,11 @@ pub enum Cmd {
         /// 要望と回の状態の置き場所。
         #[arg(long, global = true)]
         data_dir: Option<PathBuf>,
-        /// 取り込む先のブランチ。人の main のチェックアウトの WIP を巻き込まないよう、既定は専用のブランチ。
+        /// 本線のブランチ。人の main のチェックアウトの WIP を巻き込まないよう、既定は専用のブランチ。
         /// 無ければ `--upstream` から切る。
         #[arg(long, global = true, default_value = mm_improve::DEFAULT_MAINLINE)]
         mainline: String,
-        /// 取り込む先を切る元で、PR までで止めるときの PR の向き先。
+        /// 本線を切る元で、PR までで止めるときの PR の向き先。
         #[arg(long, global = true, default_value = mm_improve::DEFAULT_UPSTREAM)]
         upstream: String,
         #[command(subcommand)]
@@ -172,7 +172,7 @@ fn improver(cfg: ImproveConfig, perf: &str, export: bool) -> Improver {
     })
 }
 
-/// 整形した JSON を出す。serde に直接は依存しないので、値は `serde_json::to_value` で受け取る。
+/// 字下げした JSON を出す。serde に直接は依存しないので、値は `serde_json::to_value` で受け取る。
 fn print_json(v: serde_json::Result<serde_json::Value>) -> Result<()> {
     println!("{}", serde_json::to_string_pretty(&v?)?);
     Ok(())

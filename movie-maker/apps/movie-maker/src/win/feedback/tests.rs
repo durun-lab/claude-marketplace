@@ -1,5 +1,5 @@
 //! 段階 7 の終わりの条件「要望を起票すると、自動で直って返事が付く」の通し。
-//! アプリと同じ窓口（`Feedback`）と裏の回し手で、フィクスチャの git に要望を起票し、偽の `claude -p` が直して、
+//! アプリと同じサービス（`Feedback`）とバックグラウンドの実行で、フィクスチャの git に要望を起票し、`claude -p` のモックが直して、
 //! パネルが読む形（`feedback_list` の JSON）に返事が付くまでを確かめる。
 
 use std::path::{Path, PathBuf};
@@ -19,9 +19,9 @@ use super::Feedback;
 
 /// フィクスチャの areas.toml。`src/` は取り込んでよい。
 const AREAS: &str = "[improve]\nmerge = [\"src/\"]\nhold = []\n";
-/// Feedback パネルの試験とデモが使う、返事の付いた要望。アプリが返す JSON と同じ形であることをここで確かめる。
+/// Feedback パネルのテストとデモが使う、返事の付いた要望。アプリが返す JSON と同じ形であることをここで確かめる。
 const PANEL_FIXTURE: &str = include_str!("../../../../../ui/panels/feedback/fixtures/replied.json");
-/// 知らせの間を待つ上限（偽物の回）。
+/// 知らせの間を待つ上限（モックの回）。
 const WAIT: Duration = Duration::from_secs(120);
 /// 実物の回の時間の上限（分）。知らせは回の始めと終わりにしか来ないので、待つ上限もこれに合わせる。
 const REAL_WALL_MINUTES: u32 = 15;
@@ -36,7 +36,7 @@ fn run_git(dir: &Path, args: &[&str]) {
     assert!(out.status.success(), "git {args:?}: {out:?}");
 }
 
-/// 一時フォルダーの git。根の下の `mm/` を movie-maker に見立てる。
+/// 一時フォルダーの git。ルートの下の `mm/` を movie-maker に見立てる。
 struct Fixture {
     _dir: tempfile::TempDir,
     repo: PathBuf,
@@ -96,7 +96,7 @@ impl Fixture {
     }
 }
 
-/// 綴りを直して、渡された要望の全部に返事をする `claude -p` の偽物。
+/// 綴りを直して、渡された要望の全部に返事をする `claude -p` のモック。
 struct FakeClaude;
 
 impl mm_improve::Agent for FakeClaude {
@@ -137,7 +137,7 @@ impl Forge for NoForge {
     }
 }
 
-/// アプリと同じく裏の回し手を有効にした窓口と、変化の知らせを受ける口。
+/// アプリと同じくバックグラウンドの実行を有効にしたサービスと、変化の知らせを受け取る関数。
 fn service(imp: Improver) -> (Arc<Feedback>, Receiver<()>) {
     let svc = Feedback::new(imp.with_background(), json!({ "project": "fixture" }));
     let (tx, rx) = mpsc::channel();
@@ -207,7 +207,7 @@ fn shape_of(v: &Value) -> Vec<String> {
 }
 
 #[test]
-fn 要望を起票すると裏の回が直して返事がパネルの形で付く() {
+fn 要望を起票するとバックグラウンドの回が直して返事がパネルの形で付く() {
     let fx = Fixture::new();
     let imp = Improver::new(
         fx.config(),
@@ -234,7 +234,7 @@ fn 要望を起票すると裏の回が直して返事がパネルの形で付�
     assert_eq!(
         shape_of(&listed[0]),
         shape_of(&fixture),
-        "パネルの試験の JSON とアプリの JSON の形が揃っている"
+        "パネルのテストの JSON とアプリの JSON の形が揃っている"
     );
     assert_eq!(listed[0]["replies"][0]["outcome"]["kind"], "landed");
     assert!(!svc.status().unwrap().running);
@@ -278,10 +278,10 @@ fn panic_の中身を文にする() {
     assert!(super::panic_message(s.as_ref()).starts_with("panic"));
 }
 
-/// 実物の `claude -p` での通し（予算 1 ドル）。費用がかかるので既定では走らせない。
+/// 実物の `claude -p` での通し（予算 1 ドル）。費用がかかるので既定では実行しない。
 /// `cargo nextest run -p movie-maker --run-ignored only real_claude` で 1 回だけ回す。
 #[test]
-#[ignore = "実物の claude -p を呼び費用がかかる。手で 1 回だけ走らせる"]
+#[ignore = "実物の claude -p を呼び費用がかかる。手で 1 回だけ実行する"]
 fn real_claude_が要望を直して返事が付く() {
     let fx = Fixture::new();
     let imp = Improver::new(

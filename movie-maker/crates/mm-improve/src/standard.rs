@@ -1,4 +1,4 @@
-//! 本物の部品（`claude -p`、cargo の検査、`gh` の PR）での組み立て。アプリと `mm improve` が同じものを使う。
+//! 実際の部品（`claude -p`、cargo の検査、`gh` の PR）での組み立て。アプリと `mm improve` が同じものを使う。
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -17,7 +17,7 @@ pub fn run_target_dir(cfg: &ImproveConfig) -> PathBuf {
 }
 
 impl Improver {
-    /// 本物の部品で組む。`claude -p` と検査は同じ `CARGO_TARGET_DIR` を使い、incremental を切る
+    /// 実際の部品で組む。`claude -p` と検査は同じ `CARGO_TARGET_DIR` を使い、incremental を切る
     /// （incremental の target は 1 つで十数 GB になる）。`tune` で検査の既定（性能のシナリオなど）を変える。
     pub fn standard(cfg: ImproveConfig, tune: impl FnOnce(&mut CargoChecks)) -> Self {
         let target = run_target_dir(&cfg);

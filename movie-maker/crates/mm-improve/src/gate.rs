@@ -54,7 +54,7 @@ pub(crate) fn gate(ctx: &Ctx, mut st: ImproveState, run: RunState) -> Result<Ste
     }
     let mut g = gather(ctx, &run, empty.done)?;
     if tip != run.base_commit {
-        // 回のほかに取り込み先を動かすものは無いはずなので、回が参照を書き換えた恐れとして人に見せる。
+        // 回のほかに本線を動かすものは無いはずなので、回が参照を書き換えた恐れとして人に見せる。
         g.held.push(format!(
             "回の間に {} が動いた（{} → {}）",
             ctx.cfg.mainline, run.base_commit, tip
@@ -68,7 +68,7 @@ pub(crate) fn gate(ctx: &Ctx, mut st: ImproveState, run: RunState) -> Result<Ste
     conclude(ctx, &mut st, &run, g, outcome)
 }
 
-/// 検査で落ちたら差し戻し、人の承認が要れば PR までで止め、全部通れば本線へ取り込む。
+/// 検査に通らなければ差し戻し、人の承認が要れば PR までで止め、全部通れば本線へ取り込む。
 fn decide(ctx: &Ctx, run: &RunState, g: &Gathered) -> Result<RunOutcome> {
     let fails: Vec<String> = g
         .checks
@@ -78,7 +78,7 @@ fn decide(ctx: &Ctx, run: &RunState, g: &Gathered) -> Result<RunOutcome> {
         .collect();
     if !fails.is_empty() {
         let reason = format!(
-            "囲いの検査で落ちた（ブランチ {} に残した）\n{}",
+            "囲いの検査に通らなかった（ブランチ {} に残した）\n{}",
             run.branch,
             fails.join("\n")
         );
@@ -87,8 +87,8 @@ fn decide(ctx: &Ctx, run: &RunState, g: &Gathered) -> Result<RunOutcome> {
     if !g.held.is_empty() {
         return Ok(open_pr(ctx, run, g));
     }
-    // 取り込み先のチェックアウトに人の未コミットの変更があると早送りできない。回を検査の段に残すと
-    // 起こすたびに同じ所で落ちるので、ブランチを残して差し戻す。
+    // 本線のチェックアウトに人の未コミットの変更があると早送りできない。回を検査の工程に残すと
+    // 起こすたびに同じ所で失敗するので、ブランチを残して差し戻す。
     Ok(
         match git::land(&ctx.cfg.repo, &ctx.cfg.mainline, &run.branch) {
             Ok(commit) => RunOutcome::Landed { commit },

@@ -1,6 +1,6 @@
 # 並行開発の境界。docs/design/14-dev-structure.md の「並行開発の境界」と「作業の分担」の表と同じ内容。
 # worktree やエージェントに任せるときは、この表の 1 つの [[area]] を渡す。
-# 自動の改善の回は、`git diff --name-only` を `write` と [[shared]] の `path` と突き合わせ、外のファイルを変えた PR を落とす。
+# 自動の改善の回は、変えたファイル（名前の変更は前後の両方）を末尾の `[improve]` と突き合わせ、外のファイルを変えた回を PR までで止める。
 # パスは movie-maker/ からの相対で、末尾の "/" はその配下の全部。glob は "*" だけ。
 # `<panel>` は任せるときに 1 つのパネルの名前（media、mixer など）に置き換える。1 つの担当は 1 つの名前だけを持つ。
 # [[shared]] は、どの領域の PR も決まった形（`rule`）でだけ書いてよい共有のファイル。消す・並べ替える・形を変えるのは `reshape` の担当。
@@ -330,7 +330,7 @@ reshape = "integration"
 
 # ---- 自動の改善の回の取り込み ----
 # 14-dev-structure.md の「自動の改善の領域」の表。回が変えたファイルが全部 `merge` に収まり、`hold` に当たらなければ取り込む。
-# それ以外は PR までで止めて人の承認を待つ。mm-improve が本線の版のこのファイルで判定する（`mm improve areas` で試せる）。
+# それ以外は PR までで止めて人の承認を待つ。mm-improve が本線のコミットのこのファイルで判定する（`mm improve areas` で試せる）。
 [improve]
 merge = [
   "ui/panels/*/",

@@ -1,4 +1,4 @@
-//! 計装の見張り。予算を超えたスパンと、ホストの落ちた回数のカウンタ（`mm_trace::names::host_crash_counter`）を
+//! 計装の見張り。予算を超えたスパンと、ホストのクラッシュの回数のカウンタ（`mm_trace::names::host_crash_counter`）を
 //! 自動の起票に回す `Layer`。同じものは mm-improve がまとめて数えるが、記録はファイルの読み書きなので、ここで間を空けて送る。
 
 use std::collections::HashMap;
@@ -49,7 +49,7 @@ pub struct Watch {
     last_sent: Mutex<HashMap<String, Instant>>,
 }
 
-/// アプリの見張り。起票はアプリの窓口（[`super::service`]）へ送り、窓口が無ければ捨てる。
+/// アプリの見張り。起票はアプリのサービス（[`super::service`]）へ送り、サービスが無ければ捨てる。
 pub fn watch_layer() -> Watch {
     let sink: Sink = Arc::new(|input| {
         if let Some(svc) = super::service() {
@@ -110,7 +110,7 @@ impl Watch {
         }
         let mut input = ErrorInput::error(
             source,
-            format!("{host} のホストが落ちた（応答の途中で終わったか、要求の合間に終わっていた）"),
+            format!("{host} のホストがクラッシュした（応答の途中で終わったか、要求の合間に終わっていた）"),
         );
         input.where_ = Some(host.to_owned());
         (self.sink)(input);
@@ -243,7 +243,7 @@ mod tests {
     }
 
     #[test]
-    fn ホストの落ちた回数のカウンタをクラッシュとして送る() {
+    fn ホストのクラッシュの回数のカウンタをクラッシュとして送る() {
         let cef = mm_trace::names::host_crash_counter("host_cef");
         let ofx = mm_trace::names::host_crash_counter("host_ofx");
         let seen = capture(|| {

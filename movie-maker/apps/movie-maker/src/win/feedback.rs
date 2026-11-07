@@ -32,27 +32,27 @@ const ATTACHMENTS_DIR: &str = "attachments";
 static SERVICE: OnceLock<Arc<Feedback>> = OnceLock::new();
 
 thread_local! {
-    /// panic の記録の中で起きた panic をもう一度記録しないための印。
+    /// panic の記録の中で起きた panic をもう一度記録しないためのフラグ。
     static IN_PANIC_HOOK: Cell<bool> = const { Cell::new(false) };
 }
 
-/// 変化を知らせる先。アプリでは Tauri のイベント、試験では数える。
+/// 変化を知らせる先。アプリでは Tauri のイベント、テストでは数える。
 pub type Notify = Arc<dyn Fn() + Send + Sync>;
 
-/// 自動の改善の窓口。IPC のコマンド、panic の記録、計装の見張りが共有する。
+/// 自動の改善のサービス。IPC のコマンド、panic の記録、計装の見張りが共有する。
 pub struct Feedback {
     improver: Improver,
     /// 送られた要望の `context.app` に添えるもの（開いているプロジェクトなど）。
     app_context: Value,
-    /// 自動の起票は描画のスレッドからも来るので、ファイルの読み書きは裏のスレッドで順に行う。
+    /// 自動の起票は描画のスレッドからも来るので、ファイルの読み書きはバックグラウンドのスレッドで順に行う。
     reports: Sender<ErrorInput>,
-    /// 回を起こしうる契機。裏のスレッドが回の終わりまで待ってから知らせる。
+    /// 回を起こしうる契機。バックグラウンドのスレッドが回の終わりまで待ってから知らせる。
     kicks: Sender<()>,
     notify: Arc<OnceLock<Notify>>,
 }
 
 impl Feedback {
-    /// 窓口を作り、自動の起票と回の終わりを待つスレッドを 1 本ずつ起こす。窓口を落とすとスレッドも終わる。
+    /// サービスを作り、自動の起票と回の終わりを待つスレッドを 1 本ずつ起こす。サービスを破棄するとスレッドも終わる。
     pub fn new(improver: Improver, app_context: Value) -> Arc<Self> {
         let (reports, report_rx) = mpsc::channel();
         let (kicks, kick_rx) = mpsc::channel();
@@ -122,7 +122,7 @@ impl Feedback {
         Ok(status)
     }
 
-    /// エラーか遅い処理を裏で記録する。呼んだスレッドを待たせない。
+    /// エラーか遅い処理をバックグラウンドで記録する。呼んだスレッドを待たせない。
     pub fn report(&self, input: ErrorInput) {
         let _ = self.reports.send(input);
     }
@@ -162,7 +162,7 @@ fn spawn_reporter(improver: Improver, rx: Receiver<ErrorInput>, kicks: Sender<()
     });
 }
 
-/// 契機ごとに裏の回し手が止まるまで待ち、知らせる。待つ間に来た契機は、終わった後にもう一度待つので取りこぼさない。
+/// 契機ごとにバックグラウンドの実行が止まるまで待ち、知らせる。待つ間に来た契機は、終わった後にもう一度待つので取りこぼさない。
 fn spawn_watcher(improver: Improver, rx: Receiver<()>, notify: Arc<OnceLock<Notify>>) {
     std::thread::spawn(move || {
         while rx.recv().is_ok() {
@@ -178,12 +178,12 @@ fn spawn_watcher(improver: Improver, rx: Receiver<()>, notify: Arc<OnceLock<Noti
     });
 }
 
-/// アプリの窓口。起動で作れなかったら `None`。
+/// アプリのサービス。起動で作れなかったら `None`。
 pub fn service() -> Option<Arc<Feedback>> {
     SERVICE.get().cloned()
 }
 
-/// 起動時に呼ぶ。窓口を作り、panic を記録するフックを入れ、回を起こす契機を与える。
+/// 起動時に呼ぶ。サービスを作り、panic を記録するフックを入れ、回を起こす契機を与える。
 /// 作業ツリーが見つからなければ自動の改善は使わない（パネルは理由を出す）。
 pub fn start(project: &Path) {
     let improver = match standard_improver() {
@@ -212,7 +212,7 @@ pub fn connect(app: tauri::AppHandle) {
     }
 }
 
-/// `mm improve` と同じ組み立て（[`Improver::standard`]）で、裏の回し手を有効にする。
+/// `mm improve` と同じ組み立て（[`Improver::standard`]）で、バックグラウンドの実行を有効にする。
 fn standard_improver() -> mm_types::Result<Improver> {
     let data_dir = ImproveConfig::default_data_dir()?;
     let start = std::env::var_os(REPO_ENV)

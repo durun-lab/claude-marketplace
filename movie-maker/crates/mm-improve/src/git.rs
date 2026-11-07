@@ -8,7 +8,7 @@ use mm_types::{MmError, Result};
 /// git のファイルのモードのうち、中身の差分で判定できないもの（シンボリックリンクと submodule）。
 const SPECIAL_MODES: [&str; 2] = ["120000", "160000"];
 
-/// `git -C dir <args>` を走らせ、標準出力を前後の空白を除いて返す。失敗したら標準エラーを添えて返す。
+/// `git -C dir <args>` を実行し、標準出力を前後の空白を除いて返す。失敗したら標準エラーを添えて返す。
 pub fn git(dir: &Path, args: &[&str]) -> Result<String> {
     git_raw(dir, args).map(|s| s.trim().to_owned())
 }
@@ -29,13 +29,13 @@ fn git_raw(dir: &Path, args: &[&str]) -> Result<String> {
 /// 変えた 1 つのファイル。
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Change {
-    /// 根からの相対パス。
+    /// ルートからの相対パス。
     pub path: String,
     /// 前か後がシンボリックリンクか submodule。
     pub special: bool,
 }
 
-/// `base` から `to`（`None` なら作業ツリー）までに変えたファイル（根からの相対）。
+/// `base` から `to`（`None` なら作業ツリー）までに変えたファイル（ルートからの相対）。
 /// 名前の変更は、消したファイルと足したファイルの 2 つに分ける。変更先だけを見ると、領域の外のファイルを
 /// 中へ移した変更が取り込めてしまうため。`-z` で読むので、日本語のパスも引用符に包まれない。
 pub fn changes(dir: &Path, base: &str, to: Option<&str>) -> Result<Vec<Change>> {
@@ -44,7 +44,7 @@ pub fn changes(dir: &Path, base: &str, to: Option<&str>) -> Result<Vec<Change>> 
     Ok(parse_raw(&git_raw(dir, &args)?))
 }
 
-/// `git diff --raw -z` の「:<前のモード> <後のモード> <前> <後> <状態>\0<パス>\0」の列を読む。
+/// `git diff --raw -z` の「:<前のモード> <後のモード> <前> <後> <状態>\0<パス>\0」の並びを読む。
 fn parse_raw(out: &str) -> Vec<Change> {
     let mut tokens = out.split('\0');
     let mut changes = Vec::new();
@@ -119,7 +119,7 @@ pub fn rebase(wt: &Path, onto: &str) -> Result<bool> {
     Ok(false)
 }
 
-/// `base` から HEAD までに変えたファイル（根からの相対パス。名前の変更は前と後の両方）。
+/// `base` から HEAD までに変えたファイル（ルートからの相対パス。名前の変更は前と後の両方）。
 pub fn changed_files(wt: &Path, base: &str) -> Result<Vec<String>> {
     Ok(changes(wt, base, Some("HEAD"))?
         .into_iter()
@@ -127,7 +127,7 @@ pub fn changed_files(wt: &Path, base: &str) -> Result<Vec<String>> {
         .collect())
 }
 
-/// 作業ツリーの追跡していないファイル（根からの相対パス）。
+/// 作業ツリーの追跡していないファイル（ルートからの相対パス）。
 pub fn untracked(dir: &Path) -> Result<Vec<String>> {
     let top = git(dir, &["rev-parse", "--show-toplevel"])?;
     let out = git_raw(
@@ -178,9 +178,9 @@ pub fn land(repo: &Path, mainline: &str, branch: &str) -> Result<String> {
     Ok(new)
 }
 
-/// PR の土台。`origin/<upstream>` を取ってきて使い、遠隔が無いリポジトリ（試験のフィクスチャ）では手元の `<upstream>` を使う。
+/// PR の土台。`origin/<upstream>` を取ってきて使い、遠隔が無いリポジトリ（テストのフィクスチャ）では手元の `<upstream>` を使う。
 pub fn upstream_ref(repo: &Path, upstream: &str) -> Result<String> {
-    // 取れなくても、前に取った `origin/<upstream>` か手元の版で続ける。
+    // 取れなくても、前に取った `origin/<upstream>` か手元のブランチで続ける。
     git_ok(repo, &["fetch", "-q", "origin", upstream])?;
     let remote = format!("refs/remotes/origin/{upstream}");
     if git_ok(repo, &["rev-parse", "--verify", "--quiet", &remote])? {
@@ -191,7 +191,7 @@ pub fn upstream_ref(repo: &Path, upstream: &str) -> Result<String> {
 }
 
 /// worktree の HEAD のコミットだけを `onto` の先端に載せ替える（`branch` を `onto` から切り直して cherry-pick）。
-/// 取り込み先が `onto` より進んでいても、その先行分を PR に載せないため。衝突したら `branch` を元のコミットに戻して `false`。
+/// 本線が `onto` より進んでいても、その先行分を PR に載せないため。衝突したら `branch` を元のコミットに戻して `false`。
 pub fn replant(wt: &Path, branch: &str, onto: &str) -> Result<bool> {
     let commit = git(wt, &["rev-parse", "HEAD"])?;
     git(wt, &["checkout", "-q", "-B", branch, onto])?;
@@ -212,7 +212,7 @@ pub fn ensure_branch(repo: &Path, branch: &str, from: &str) -> Result<()> {
     Ok(())
 }
 
-/// `rev` の `path` の中身。areas.toml を回の変更の前の版で読むのに使う。
+/// `rev` の `path` の中身。areas.toml を回の変更の前のコミットで読むのに使う。
 pub fn show(repo: &Path, rev: &str, path: &str) -> Result<String> {
     git(repo, &["show", &format!("{rev}:{path}")])
 }

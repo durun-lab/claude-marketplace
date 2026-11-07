@@ -106,7 +106,7 @@ impl Areas {
     }
 
     /// 自動の改善の回が取り込んでよいか。`merge` の外か `hold` に当たるファイルがあれば止める。
-    /// 正規化されていないパスは止める。`hold` は大文字と小文字を区別せずに当てる
+    /// 正規化されていないパスは止める。`hold` は大文字と小文字を区別せずに照合する
     /// （Windows のファイルシステムでは `mm-text-API/` が `mm-text-api/` と同じフォルダーになる）。
     pub fn improve_verdict(&self, files: &[String]) -> ImproveVerdict {
         let held: Vec<String> = files

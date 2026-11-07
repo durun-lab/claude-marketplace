@@ -324,7 +324,7 @@ movie-maker/
 | `crates/mm-render`、`mm-decode-*`、`mm-encode-*`、`mm-host-*`、`mm-color-ocio`、`mm-export` | PR までで止める | GPU と unsafe なバックエンド、別プロセス、書き出しの一致。期待画像で機械が検査しても人が見る |
 | `crates/mm-improve`、`mm-serve`、`apps/` | PR までで止める | 自分自身と操作経路の変更 |
 
-- 回の worktree では、書いてよい領域の外のファイルを変えた PR は検査で落とす（`git diff --name-only` を `areas.toml` と突き合わせる）。
+- 回の worktree で、書いてよい領域の外のファイルを変えた回は取り込まずに PR までで止める（`git diff --raw -z --no-renames` を `areas.toml` の `[improve]` と突き合わせる。名前の変更は前後の両方、シンボリックリンクと submodule は外と同じに扱う）。
 - 費用のかかる操作（`gen.ai`）と実際のプロジェクトは、回からは触れない（[自動の改善](10-review-improve.md#自動の改善)の囲い）。
 
 
