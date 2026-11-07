@@ -173,6 +173,8 @@ pub struct Core {
     events: broadcast::Sender<Change>,
     /// 提案の追加と決定の通知。プロジェクトのデータは変わらないので `events` とは分ける。
     pub(crate) proposals: broadcast::Sender<crate::review::ProposalEvent>,
+    /// コメントの追加と状態の変化の通知。
+    pub(crate) comments: broadcast::Sender<crate::comments::CommentEvent>,
     pub(crate) frames: Option<Arc<dyn FrameSource>>,
 }
 
@@ -181,12 +183,14 @@ impl Core {
     pub fn new(store: Store, frames: Option<Arc<dyn FrameSource>>) -> Arc<Self> {
         let (events, _) = broadcast::channel(EVENT_BACKLOG);
         let (proposals, _) = broadcast::channel(EVENT_BACKLOG);
+        let (comments, _) = broadcast::channel(EVENT_BACKLOG);
         Arc::new(Self {
             version: AtomicI64::new(store.doc_version()),
             store: Mutex::new(Some(store)),
             backup: Mutex::new(None),
             events,
             proposals,
+            comments,
             frames,
         })
     }
@@ -248,7 +252,14 @@ impl Core {
     ) -> Result<Change, ServeError> {
         let change = self.with_store(|s| {
             let ctx = OpContext::new(caller.entry);
-            let stored = s.apply_txn(txn, &ctx, caller.actor.clone(), now_ms(), responds_to)?;
+            let stored = s.apply_txn(
+                txn,
+                &ctx,
+                caller.actor.clone(),
+                now_ms(),
+                responds_to.clone(),
+            )?;
+            self.announce_response(s, responds_to.as_deref(), stored.id);
             Ok(self.finish(s, &stored, None))
         })?;
         Ok(change)

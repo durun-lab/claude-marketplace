@@ -16,7 +16,9 @@ use serde_json::{json, Value};
 
 const NOW: i64 = 1_700_000_000_000;
 /// 操作でないツールの名前（名前の順）。操作のツールは mm-ops の一覧から取るので、操作を足しても書き直さない。
-const NON_OP_TOOLS: [&str; 8] = [
+const NON_OP_TOOLS: [&str; 10] = [
+    "comment_reply",
+    "comments",
     "frame",
     "kinds",
     "project",

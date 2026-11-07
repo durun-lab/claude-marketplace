@@ -217,9 +217,11 @@ movie-maker/
 | Web のノードの種類と OFX のホスト | `crates/mm-host-*`、`mm-nodes-cef`、`mm-nodes-ofx` | `mm-host-api` |
 | 取り込みと cache/ | `crates/mm-ingest`、`mm-cache-*`、`tools/` | `mm-ingest-api`、`mm-cache-api` |
 | 書き出し | `crates/mm-export` | |
+| モバイル版への映像の配信 | `crates/mm-stream` | `mm-render`、`mm-export`、`mm-serve`（HTTP のパスは Claude の操作経路が書く） |
 | パック | `crates/mm-pack`、`packs/` | `mm-ops` の中（新しい操作は「プロジェクトのデータと操作」の形で足す）、`ui/panels/` |
 | UI（wgpu のサーフェス） | `crates/mm-ui-layout`、`mm-ui-wgpu` | `ui/` |
 | UI（1 つのパネルの縦の切り口） | `ui/panels/<panel>/`、`ui/sdk/src/<panel>.ts`、`apps/movie-maker/src/<panel>*` | ほかのパネル、`ui/sdk/src/generated/`、`ui/theme` |
+| UI（モバイル版の PWA） | `ui/mobile` | `ui/panels`（モデルは import で使う）、`ui/shell`、`ui/sdk`、`ui/theme`、`ui/tools` |
 | アプリの骨組み | `apps/movie-maker`（パネルとパックの切り口を除く）、`ui/shell`、`ui/tools` | パネルの切り口のファイル |
 | Claude の操作経路 | `crates/mm-serve`、`apps/mm` | |
 | 自動の改善 | `crates/mm-improve` | |

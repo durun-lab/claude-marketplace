@@ -3517,6 +3517,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "toml 1.2.0+spec-1.1.0",
+ "windows",
 ]
 
 [[package]]
@@ -3803,6 +3804,7 @@ dependencies = [
  "mm-ops",
  "mm-runtime",
  "mm-store",
+ "mm-story",
  "mm-testkit",
  "mm-types",
  "png",
@@ -3827,6 +3829,21 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "tempfile",
+]
+
+[[package]]
+name = "mm-story"
+version = "0.1.0"
+dependencies = [
+ "mm-doc",
+ "mm-eval",
+ "mm-ingest",
+ "mm-ingest-api",
+ "mm-ops",
+ "mm-store",
+ "mm-types",
+ "serde",
  "tempfile",
 ]
 
@@ -3947,6 +3964,7 @@ dependencies = [
  "mm-runtime",
  "mm-serve",
  "mm-store",
+ "mm-story",
  "mm-testkit",
  "mm-trace",
  "mm-types",

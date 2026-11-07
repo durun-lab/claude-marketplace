@@ -19,7 +19,9 @@ use crate::git;
 use crate::prompt::{prompt_for, PromptContext, CONTINUE_PROMPT, DONE_MARK, NUDGE_PROMPT};
 use crate::state::{ImproveState, Phase, RunOutcome, RunReport, RunState};
 use crate::store::FeedbackStore;
+use crate::sweep::{sweep, BRANCH_PREFIX};
 use crate::time::{now_ms, short_hex, stamp, uuid_v4};
+use crate::write_guard::WriteGuard;
 
 /// 完了のマーカーを書かずに止まったときに続きを頼む上限。
 const MAX_NUDGES: u32 = 2;
@@ -133,9 +135,11 @@ impl Ctx {
     }
 }
 
-/// 1 歩進める。ロックは呼ぶ側が持つ。
+/// 1 歩進める。ロックは呼ぶ側が持つ。前のプロセスが落ちて残した worktree とブランチを先に片付ける。
 pub(crate) fn step(ctx: &Ctx) -> Result<Step> {
     let mut st = ctx.state()?;
+    // 片付けられなくても（ファイルを掴まれているなど）回は起こせる。次の歩みでまた試す。
+    drop(sweep(ctx, &st));
     let run = match st.run.clone() {
         Some(run) => run,
         None => match start(ctx, &mut st)? {
@@ -166,7 +170,7 @@ fn start(ctx: &Ctx, st: &mut ImproveState) -> Result<std::result::Result<RunStat
     ctx.clear_stop()?;
     let now = now_ms();
     let id = format!("{}-{}", stamp(now), short_hex());
-    let branch = format!("fix/movie-maker-improve-{id}");
+    let branch = format!("{BRANCH_PREFIX}{id}");
     let worktree = ctx.cfg.worktrees_dir.join(&id);
     git::ensure_branch(&ctx.cfg.repo, &ctx.cfg.mainline, &ctx.cfg.upstream)?;
     let base_commit = git::git(&ctx.cfg.repo, &["rev-parse", &ctx.cfg.mainline])?;
@@ -345,7 +349,7 @@ fn call_agent(ctx: &Ctx, run: &mut RunState, prompt: &str, resume: bool) -> Resu
     let wall = Duration::from_millis(run.wall_ms.unwrap_or(0).saturating_sub(run.agent_ms));
     let run_dir = ctx.cfg.run_dir(&run.id);
     let root = ctx.root_of(run);
-    let read_dirs = [ctx.store.dir().to_path_buf()];
+    let guard = WriteGuard::for_run(&ctx.cfg.data_dir, ctx.store.dir(), &ctx.cfg.repo, &root);
     let record_pid = |pid: u32| {
         // すぐ止める手段がほかのプロセスからも pid を引けるよう、状態に書く。書けなくても回は続ける。
         if let Ok(mut st) = ctx.state() {
@@ -363,7 +367,7 @@ fn call_agent(ctx: &Ctx, run: &mut RunState, prompt: &str, resume: bool) -> Resu
         prompt,
         cwd: &root,
         run_dir: &run_dir,
-        read_dirs: &read_dirs,
+        guard: &guard,
         settings: &settings,
         wall,
         on_spawn: &record_pid,

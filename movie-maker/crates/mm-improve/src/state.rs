@@ -102,6 +102,13 @@ pub enum RunOutcome {
     Stopped,
 }
 
+impl RunOutcome {
+    /// 回のブランチを残すか。取り込めなかった回と PR までで止めた回は、人が見るので残す。
+    pub fn keeps_branch(&self) -> bool {
+        matches!(self, Self::Rejected { .. } | Self::PullRequest { .. })
+    }
+}
+
 /// 終えた回の記録（`runs/<ID>/report.json` と状態の `last`）。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

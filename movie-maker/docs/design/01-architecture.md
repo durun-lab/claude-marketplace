@@ -10,7 +10,7 @@
 | Web 由来のノードの種類（HTML の文字、Three.js） | そのまま動く | CEF を埋め込み、共有テクスチャで受ける（OBS のブラウザソースの型） | B と同じ |
 | 文字の多い画面（Story、Review、Inspector）の作りやすさ | HTML と CSS。Claude が直しやすい | WebView で HTML と CSS。同じ | egui/Slint で書く。表や長文の画面は手間が大きく、Claude が直す回数も増える〔推〕 |
 | 直して確かめる速さ | ブラウザのリロードだけ | WebView 側はリロード、Rust 側はコンパイル（部分的な差し替えで縮める。[自動の改善](10-review-improve.md#自動の改善)） | 全部 Rust のコンパイル |
-| 出先の作業 | そのまま使える（通信量が多い） | モバイル版を別に作る（Tauri は iOS と Android に出せる） | 同じ |
+| 出先の作業 | そのまま使える（通信量が多い） | モバイル版を別に作る（自宅の PC の `mm-serve` が配る PWA。[モバイル版](12-mobile.md)） | 同じ |
 | 安全性 | TypeScript | Rust がコア。UI の WebView は境界の外 | Rust が全部 |
 | 実装の手間 | いちばん小さい | レンダラーを Rust で書く。Tauri のウィンドウに wgpu のサーフェスと WebView2 を並べる所と CEF の取り込みが難所（段階 0） | レンダラーに加えて UI の部品を全部 Rust で書く |
 | 先行事例 | MasterSelects（WebGPU + Rust の補助）[13] | Gyroflow（Rust のコア + wgpu + Qt/QML の UI）[9]、OBS のブラウザソース（CEF の共有テクスチャ）[6][7] | Rerun（egui + wgpu）[10]、Zed（gpui）、OpenCut の desktop（gpui、まだ空）[14] |

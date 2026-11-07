@@ -119,6 +119,34 @@ fn transaction_tool(
 fn fixed_tools() -> Vec<Value> {
     let none = json!({"type": "object", "properties": {}, "additionalProperties": false});
     vec![
+        json!({
+            "name": "comment_reply",
+            "description": "コメントに返信する（Claude の返事。人のアプリに出る）。状態は変えない。コメントは操作の対応（responds_to つきの transaction か、承認された propose）で fresh になる。done と wontfix は人が決める",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string", "description": "コメントの ID（comments で読む）"},
+                    "text": {"type": "string", "description": "返事の本文"},
+                },
+                "required": ["id", "text"],
+                "additionalProperties": false,
+            },
+        }),
+        json!({
+            "name": "comments",
+            "description": "レビューのコメントを読む。時刻か範囲、描き込み、返信、状態（open が未対応、fresh が対応済みで人の確認待ち、done、wontfix）。id を渡すと 1 件、渡さなければ一覧（書いた順）。from と to を両方渡すとその区間と重なるものだけ",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string", "description": "コメントの ID。渡すと 1 件だけ読む（ほかの条件は渡さない）"},
+                    "state": {"type": "string", "enum": ["open", "fresh", "done", "wontfix"], "description": "状態で絞る"},
+                    "comp": {"type": "string", "description": "コンポジションの ID で絞る"},
+                    "from": {"type": "string", "description": "区間の始め（秒。\"1.5\" や \"3/2\"）。to と一緒に渡す"},
+                    "to": {"type": "string", "description": "区間の終わり（秒）。from と一緒に渡す"},
+                },
+                "additionalProperties": false,
+            },
+        }),
         json!({"name": "undo", "description": "直前のトランザクションを取り消す。戻すものが無ければ change が null", "inputSchema": none}),
         json!({"name": "redo", "description": "取り消したトランザクションをやり直す。無ければ change が null", "inputSchema": none}),
         json!({"name": "project", "description": "今のプロジェクトのデータ（version、undo_depth、project）を読む", "inputSchema": none}),

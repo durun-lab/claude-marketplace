@@ -3,6 +3,7 @@ packages:
   - sdk
   - shell
   - panels/*
+  - mobile
 
 allowBuilds:
   esbuild: true
