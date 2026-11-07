@@ -68,6 +68,7 @@ const buildUsage = (sessionId: string, log: claude.LogSummary | undefined, subs:
   return {
     model: log?.model ?? sl?.model,
     effort: sl?.effort,
+    permissionMode: log?.permissionMode,
     contextTokens,
     contextWindow,
     contextPercent: exact ? (sl?.usedPercent ?? 0) : (contextTokens / contextWindow) * 100,

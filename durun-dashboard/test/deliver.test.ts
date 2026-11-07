@@ -654,7 +654,7 @@ if (args[0] === 'stop') later(300, ${js(dropWorkers(roster))});`,
   assert.deepEqual(queued(), ['保留']);
 });
 
-test('モデルと effort を変えるときは、止めてからフラグを付けて再開し、複製ができたら設定とやり取りを複製へ移して元をアーカイブする', async () => {
+test('モデルと effort と権限モードを変えるときは、止めてからフラグを付けて再開し、複製ができたら設定とやり取りを複製へ移して元をアーカイブする', async () => {
   // 偽の claude は呼ばれた引数を書き足す。フラグ付きの再開は、本物と同じく複製のジョブ j9 を起動したと書く。agents は、元の j8 と複製の j9 を返す。
   const bin = path.join(tmp, 'bin-switch');
   const callsFile = path.join(tmp, 'calls-switch');
@@ -676,11 +676,11 @@ if (args[0] === '--bg') console.log('note: the flags you passed started a copy a
   state.docs.push({ id: 'd8', sessionId: 's8', title: '資料', format: 'markdown', content: '', createdAt: 0, seen: true });
   state.sessionOrder = ['s8'];
 
-  assert.equal(await switchSession('s8', '続けて', 'opus', 'high'), 's9');
+  assert.equal(await switchSession('s8', '続けて', 'opus', 'high', 'acceptEdits'), 's9');
   const calls = fs.readFileSync(callsFile, 'utf8').split('\n\n').slice(0, -1).map((c) => c.split('\n'));
   assert.deepEqual(calls, [
     ['stop', 'j8'],
-    ['--bg', '--resume', 's8', '--model', 'opus', '--effort', 'high', '--', '続けて'],
+    ['--bg', '--resume', 's8', '--model', 'opus', '--effort', 'high', '--permission-mode', 'acceptEdits', '--', '続けて'],
     ['agents', '--json', '--all'],
     ['agents', '--json', '--all'],
     ['rm', 'j8'],

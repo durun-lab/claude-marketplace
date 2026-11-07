@@ -1,7 +1,7 @@
 import type { RefObject } from 'preact';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { EFFORT_LEVELS, MODELS, type Attention, type ChatEntry, type OutboxMessage, type QueuedMessage, type Session, type SessionStatus } from '../shared/types.ts';
-import { DELIVERY_TOAST, api, attempt } from './api.ts';
+import { EFFORT_LEVELS, MODELS, PERMISSION_MODES, type Attention, type ChatEntry, type OutboxMessage, type QueuedMessage, type Session, type SessionStatus } from '../shared/types.ts';
+import { DELIVERY_TOAST, type Launch, api, attempt } from './api.ts';
 import { ATTACH_DRAG_TYPE, insertAt, useAttachMode } from './attach.ts';
 import { type Badges, type Candidate, type Typed, badgeTypedAt, candidates, typedAt } from './completion.ts';
 import { WidgetPanel } from './Dashboard.tsx';
@@ -295,7 +295,7 @@ const SendModeMenu = ({ mode, onChange }: { mode: SendMode; onChange: (mode: Sen
 };
 
 const SWITCH_HELP = '選び直して送ると、会話を引き継いだ複製を選んだ設定で起動し、元のセッションはアーカイブします';
-const FORK_HELP = '会話を引き継いだ別のセッションを選んでいるモデルと effort で起動してメッセージを渡し、その画面へ移ります。元のセッションは残ります';
+const FORK_HELP = '会話を引き継いだ別のセッションを選んでいるモデルと effort とモードで起動してメッセージを渡し、その画面へ移ります。元のセッションは残ります';
 const STOP_HELP = '作業中でもセッションを止めます。次にメッセージを送ると再開します';
 const NO_STOP_HELP = '端末で開いているセッションは、ここからは止められません';
 const NO_SWITCH_HELP = '作業中のセッションと端末で開いているセッションは、ここからは変えられません';
@@ -304,32 +304,38 @@ const NO_SWITCH_HELP = '作業中のセッションと端末で開いている�
 const isLive = (s: Session): boolean => s.status === 'busy' || s.status === 'idle';
 
 /**
- * 止めて再開できるセッションだけ、モデルと effort を変えられる。
+ * 止めて再開できるセッションだけ、モデルと effort とモードを変えられる。
  * 端末で開いているセッションは、入力待ちでもダッシュボードからは止められない。
  */
 const canSwitch = (s: Session): boolean => s.status !== 'busy' && (s.status !== 'idle' || s.kind === 'bg');
 
 /**
- * 今のモデルと effort を選択肢で見せ、選び直した値を持つ。
- * 選択肢に無いモデルと、分からない effort は、空の選択肢に今の値を出す。
+ * 今のモデルと effort と権限モードを選択肢で見せ、選び直した値を持つ。
+ * 選択肢に無いモデルや権限モードと、分からない effort は、空の選択肢に今の値を出す。
  */
 const useModelChoice = (s: Session) => {
-  const current = { model: MODELS.find((m) => s.usage.model?.includes(m)) ?? '', effort: EFFORT_LEVELS.find((e) => e === s.usage.effort) ?? '' };
-  const [picked, setPicked] = useState<{ model?: string; effort?: string }>({});
-  const model = picked.model ?? current.model;
-  const effort = picked.effort ?? current.effort;
+  const current = {
+    model: MODELS.find((m) => s.usage.model?.includes(m)) ?? '',
+    effort: EFFORT_LEVELS.find((e) => e === s.usage.effort) ?? '',
+    permissionMode: PERMISSION_MODES.find((m) => m === s.usage.permissionMode) ?? '',
+  };
+  const [picked, setPicked] = useState<Partial<Launch>>({});
+  const chosen = { ...current, ...picked };
   const enabled = canSwitch(s);
   const title = enabled ? SWITCH_HELP : NO_SWITCH_HELP;
+  const field = (key: keyof Launch, label: string, options: readonly string[], now?: string) => (
+    <Choice label={label} value={chosen[key]} options={options} empty={!current[key] && (now ?? '不明')} disabled={!enabled} title={title} onChange={(v) => setPicked((p) => ({ ...p, [key]: v }))} />
+  );
   return {
     /** 起動に渡す値。選び直していないモデルは、今の正式な名前で引き継ぐ。 */
-    model: model || (s.usage.model ?? ''),
-    effort,
-    changed: enabled && (model !== current.model || effort !== current.effort),
+    launch: { ...chosen, model: chosen.model || (s.usage.model ?? '') },
+    changed: enabled && (Object.keys(current) as (keyof Launch)[]).some((k) => chosen[k] !== current[k]),
     reset: () => setPicked({}),
     fields: (
       <>
-        <Choice label="モデル" value={model} options={MODELS} empty={!current.model && (s.usage.model ?? '不明')} disabled={!enabled} title={title} onChange={(v) => setPicked((p) => ({ ...p, model: v }))} />
-        <Choice label="effort" value={effort} options={EFFORT_LEVELS} empty={!current.effort && (s.usage.effort ?? '不明')} disabled={!enabled} title={title} onChange={(v) => setPicked((p) => ({ ...p, effort: v }))} />
+        {field('model', 'モデル', MODELS, s.usage.model)}
+        {field('effort', 'effort', EFFORT_LEVELS, s.usage.effort)}
+        {field('permissionMode', 'モード', PERMISSION_MODES, s.usage.permissionMode)}
       </>
     ),
   };
@@ -383,10 +389,10 @@ const MessageForm = ({ s }: { s: Session }) => {
     return !!res;
   };
   const switchAndSend = async () => {
-    const res = await attempt('モデルと effort の切り替え', () => api.switchModel(s.id, text, choice.model, choice.effort));
+    const res = await attempt('モデルと effort とモードの切り替え', () => api.switchModel(s.id, text, choice.launch));
     if (!res) return false;
     choice.reset();
-    toast(res.sessionId === s.id ? 'モデルと effort を変えて届けました' : 'モデルと effort を変えた複製に乗り換えて届けました');
+    toast(res.sessionId === s.id ? '設定を変えて届けました' : '設定を変えた複製に乗り換えて届けました');
     // このセッションの画面を開いていれば、会話が続く複製の画面へ移る。
     if (res.sessionId !== s.id && currentSessionId() === s.id) location.hash = href.session(res.sessionId);
     return true;
@@ -403,7 +409,7 @@ const MessageForm = ({ s }: { s: Session }) => {
   const fork = async () => {
     if (busy || !text.trim()) return;
     setBusy(true);
-    const res = await attempt('セッションの分岐', () => api.fork(s.id, text, choice.model, choice.effort));
+    const res = await attempt('セッションの分岐', () => api.fork(s.id, text, choice.launch));
     setBusy(false);
     if (!res) return;
     setText('');

@@ -42,6 +42,9 @@ const seg = (value: string): string => encodeURIComponent(value).replaceAll('%3A
 
 const session = (id: string): string => `/api/sessions/${seg(id)}`;
 
+/** 複製や分岐の起動に渡すモデルと effort と権限モード。空の項目は元のセッションか Claude Code の設定に従う。 */
+export type Launch = { model: string; effort: string; permissionMode: string };
+
 /** ファイルを読む API の場所。エクスプローラーからセッションの外で開いたファイルは id が空で、セッションを付けずに読む。 */
 const files = (id: string): string => (id ? session(id) : '/api');
 
@@ -158,12 +161,10 @@ export const api = {
   queue: (id: string, text: string) => postJson<{ queued: boolean }>(`${session(id)}/queue`, { text }),
   rewind: (id: string, rewindTo: string, text: string) =>
     postJson<{ message: OutboxMessage; delivery: Delivery }>(`${session(id)}/rewind`, { rewindTo, text }),
-  /** モデルと effort を変えて送る。会話が続くセッションの id が返る。複製に乗り換えたときは、元とは別の id になる。 */
-  switchModel: (id: string, text: string, model: string, effort: string) =>
-    postJson<{ sessionId: string }>(`${session(id)}/switch`, { text, model, effort }),
+  /** モデルと effort と権限モードを変えて送る。会話が続くセッションの id が返る。複製に乗り換えたときは、元とは別の id になる。 */
+  switchModel: (id: string, text: string, launch: Launch) => postJson<{ sessionId: string }>(`${session(id)}/switch`, { text, ...launch }),
   /** 会話を引き継いだ別のセッションを起動して送る。分岐したセッションの id が返る。 */
-  fork: (id: string, text: string, model: string, effort: string) =>
-    postJson<{ sessionId: string }>(`${session(id)}/fork`, { text, model, effort }),
+  fork: (id: string, text: string, launch: Launch) => postJson<{ sessionId: string }>(`${session(id)}/fork`, { text, ...launch }),
   suggestions: (id: string) => postJson<Replies>(`${session(id)}/suggestions`),
   summary: (id: string) => postJson<SessionSummary>(`${session(id)}/summary`),
   glossary: (id: string) => postJson<Glossary>(`${session(id)}/glossary`),

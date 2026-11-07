@@ -132,7 +132,11 @@ const claudeOutput = (args: string[], cwd: string, env = process.env, started?: 
 const runClaude = (args: string[], cwd: string, env = process.env): Promise<void> => claudeOutput(args, cwd, env).then(() => undefined);
 
 /** 起動に渡すモデルと effort。空なら渡さず、Claude Code の設定に従わせる。 */
-const modelFlags = (model?: string, effort?: string): string[] => [...(model ? ['--model', model] : []), ...(effort ? ['--effort', effort] : [])];
+const modelFlags = (model?: string, effort?: string, permissionMode?: string): string[] => [
+  ...(model ? ['--model', model] : []),
+  ...(effort ? ['--effort', effort] : []),
+  ...(permissionMode ? ['--permission-mode', permissionMode] : []),
+];
 
 /**
  * 人間が画面から始めるセッション。依頼が - で始まる箇条書きでもオプションと解釈されないよう、-- の後に置く。
@@ -706,7 +710,7 @@ export const continueStopped = async (sessionId: string, cwd: string): Promise<v
  * 端末で始めて終わったセッションは保存したオプションを持たないので、同じ id のまま続く。
  * 止めて再開するので、作業中のセッションと端末で開いているセッションでは失敗する。
  */
-export const switchSession = async (sessionId: string, text: string, model?: string, effort?: string): Promise<string> => {
+export const switchSession = async (sessionId: string, text: string, model?: string, effort?: string, permissionMode?: string): Promise<string> => {
   const meta = state.sessions[sessionId];
   if (!meta) throw new Error(`unknown session: ${sessionId}`);
   const live = readLiveSessions().get(sessionId);
@@ -718,7 +722,7 @@ export const switchSession = async (sessionId: string, text: string, model?: str
   touch();
   let output: string;
   try {
-    output = await relaunch(sessionId, meta.cwd, joinTexts(pending), live?.jobId, undefined, modelFlags(model, effort));
+    output = await relaunch(sessionId, meta.cwd, joinTexts(pending), live?.jobId, undefined, modelFlags(model, effort, permissionMode));
     // claude はセッションを起動しないまま正常に終わることがある。届いたことにすると、本文がどこにも残らない。
     if (!backgroundedJob(output)) throw new UpstreamError(output.trim() || 'claude がセッションを起動しませんでした');
   } catch (e) {
@@ -752,10 +756,10 @@ const follow = async (sessionId: string, output: string): Promise<string> => {
  * 元のセッションは止めずに残すので、作業中のセッションと端末で開いているセッションからも分岐できる。
  * テーマと、set_task で付けた JIRA の課題と、人間が登録したり外したりしたバッジは、分岐先にも付ける。名前は、ほかの新しいセッションと同じく、最初の応答の後に haiku に付けさせる。
  */
-export const forkSession = async (sessionId: string, text: string, model?: string, effort?: string): Promise<string> => {
+export const forkSession = async (sessionId: string, text: string, model?: string, effort?: string, permissionMode?: string): Promise<string> => {
   const meta = state.sessions[sessionId];
   if (!meta) throw new Error(`unknown session: ${sessionId}`);
-  const output = await claudeOutput(['--bg', '--resume', sessionId, '--fork-session', ...modelFlags(model, effort), '--', text], meta.cwd);
+  const output = await claudeOutput(['--bg', '--resume', sessionId, '--fork-session', ...modelFlags(model, effort, permissionMode), '--', text], meta.cwd);
   const fork = await backgroundedSession(output);
   if (!fork) throw new Error('分岐したセッションの id を引けません');
   Object.assign(ensureSession(fork, meta.cwd), { theme: meta.theme, jira: [...meta.jira], badges: meta.badges, hiddenBadges: meta.hiddenBadges, slack: meta.slack, hiddenSlack: meta.hiddenSlack });
