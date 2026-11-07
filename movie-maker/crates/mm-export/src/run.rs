@@ -171,7 +171,7 @@ fn export_target(
     let target = project.render_target(target)?;
     let comp = project.composition(&target.composition)?;
     let settings = encode_settings(target);
-    let range = snap_to_frames(resolve_range(comp.range()?, options.range)?, settings.fps)?;
+    let range = resolve_range(comp.range()?, options.range, settings.fps)?;
     let prepared = deliver::prepare(project, target, comp, range, options.transcript.as_deref())?;
     let mut encoder = open_encoder(engine, target, &prepared)?;
     encoder.begin(&settings)?;
@@ -273,11 +273,13 @@ fn snap_to_frames(range: TimeRange, fps: Rational) -> Result<TimeRange> {
     TimeRange::new(snap(range.start)?, snap(range.end)?)
 }
 
-/// 指定の区間をコンポジションの範囲に収める。範囲の外を含む指定は拒否する（黙って縮めない）。
-fn resolve_range(whole: TimeRange, wanted: Option<TimeRange>) -> Result<TimeRange> {
+/// 指定の区間をフレームの境界に合わせてから、コンポジションの範囲に収める。範囲の外や空の指定は拒否する（黙って縮めない）。
+/// 合わせた後で検査するので、丸めて空になった区間も範囲外へ寄った端も通らない。指定が無ければ全体をそのまま返す。
+fn resolve_range(whole: TimeRange, wanted: Option<TimeRange>, fps: Rational) -> Result<TimeRange> {
     let Some(wanted) = wanted else {
         return Ok(whole);
     };
+    let wanted = snap_to_frames(wanted, fps)?;
     if wanted.is_empty() || wanted.start < whole.start || wanted.end > whole.end {
         return Err(MmError::InvalidArgument(format!(
             "書き出す区間 [{}, {}) がコンポジションの範囲 [{}, {}) に収まらない",
@@ -308,6 +310,36 @@ mod tests {
         assert_eq!(r.start, RationalTime::new(301, 30).unwrap());
         assert_eq!(r.end, RationalTime::new(421, 30).unwrap());
         assert_eq!(r.frame_indices(fps), 301..421);
+    }
+
+    #[test]
+    fn 丸めて空になる区間は拒否する() {
+        let fps = Rational::integer(30);
+        let whole = range((0, 1), (20, 1));
+        let tiny = range((10_033_333, 1_000_000), (100_333_335, 10_000_000));
+        assert!(resolve_range(whole, Some(tiny), fps).is_err());
+    }
+
+    #[test]
+    fn 丸めた端が範囲外に出る指定は拒否する() {
+        let fps = Rational::integer(30);
+        // 終端が全体の 4 秒を 0.1 フレーム未満だけ超えても、境界に寄せた後の 4 秒には収まる
+        let whole = range((0, 1), (4, 1));
+        let edge = range((0, 1), (40_000_003, 10_000_000));
+        assert_eq!(
+            resolve_range(whole, Some(edge), fps).unwrap().end,
+            RationalTime::seconds(4)
+        );
+        // 全体の終端が境界の直前にあると、寄せた終端が全体を超えるので拒否する
+        let whole = range((0, 1), (399_999, 100_000));
+        assert!(resolve_range(whole, Some(whole), fps).is_err());
+    }
+
+    #[test]
+    fn 指定が無ければ全体に丸めを掛けない() {
+        let fps = Rational::integer(30);
+        let whole = range((10_033_333, 1_000_000), (14_033_333, 1_000_000));
+        assert_eq!(resolve_range(whole, None, fps).unwrap(), whole);
     }
 
     #[test]

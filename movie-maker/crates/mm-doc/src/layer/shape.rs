@@ -138,7 +138,7 @@ pub enum FadeCurve {
     /// 振幅の直線（`p`）。geneva と Final Cut Pro の Linear。
     #[default]
     Linear,
-    /// 等パワー（`sin(p π/2)`）。重なった 2 つのフェードの和の大きさが保たれる。Final Cut Pro の +3dB。
+    /// 等パワー（`sin(p π/2)`）。重なった 2 つのフェードの 2 乗和（パワー）が保たれる。Final Cut Pro の +3dB。
     EqualPower,
     /// dB の直線。-60 dB から 0 dB まで、`p = 0` だけ無音。
     Db,

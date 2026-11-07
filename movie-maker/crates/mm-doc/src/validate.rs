@@ -187,6 +187,7 @@ fn validate_layer(project: &Project, ids: &HashSet<&str>, layer: &Layer) -> Resu
     }
     validate_framing(layer)?;
     validate_fades(layer)?;
+    validate_mask_rects(layer)?;
     for node in layer.nodes() {
         validate_node(project, &format!("レイヤー {id}"), node)?;
     }
@@ -203,6 +204,32 @@ fn validate_framing(layer: &Layer) -> Result<()> {
         ))),
         None => Ok(()),
     }
+}
+
+/// 矩形のマスクの位置と大きさは Vec2、角の半径は Number（キーフレームの値も同じ）。
+/// 型が違うと評価が黙って 0 に倒れ、レイヤーが消えるので読み込みと操作の時点で拒否する。
+fn validate_mask_rects(layer: &Layer) -> Result<()> {
+    let is_vec2 = |v: &ParamValue| matches!(v, ParamValue::Vec2(_));
+    let is_number = |v: &ParamValue| matches!(v, ParamValue::Number(_));
+    for mask in &layer.masks {
+        let Some(rect) = &mask.rect else { continue };
+        let fields: [(&str, &Param, &dyn Fn(&ParamValue) -> bool, &str); 3] = [
+            ("rect.position", &rect.position, &is_vec2, "Vec2"),
+            ("rect.size", &rect.size, &is_vec2, "Vec2"),
+            ("rect.radius", &rect.radius, &is_number, "Number"),
+        ];
+        for (name, param, ok, ty) in fields {
+            let values =
+                std::iter::once(&param.value).chain(param.keyframes.iter().map(|k| &k.value));
+            if !values.into_iter().all(ok) {
+                return Err(invalid(format!(
+                    "レイヤー {} のマスク {} の {name} は {ty} でなければならない",
+                    layer.id, mask.id
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// 音のフェードの長さは正。長さ 0 のフェードは「無い」と区別がつかないので `None` で表す。
