@@ -111,13 +111,26 @@ const rememberLive = (meta: SessionMeta, live: claude.LiveSession): void => {
   }
 };
 
-const toSubagent = (sub: claude.SubagentLog, alive: boolean): Subagent => ({
+// 1 回の応答を考える時間の上限の見込み。これより長く答えの無い通知は、届いた後にサブエージェントが止まったとみなす。
+const REPLY_WAIT_MS = 5 * 60_000;
+
+/**
+ * サブエージェントが作業中か。SubagentHandback で結果を返して終わり、それ以外のツール呼び出しで止まっていれば作業中。
+ * 文章で返し終えた後も、届いた通知や依頼に答えている間と、自分で動かしたバックグラウンドのタスクを待つ間は作業中とする。
+ */
+export const subagentRunning = (log: claude.LogSummary, alive: boolean, runningBg: Set<string>, now = Date.now()): boolean => {
+  if (!alive || log.lastToolUse === 'SubagentHandback') return false;
+  if (log.lastUsageAt === undefined || log.lastToolUse) return true;
+  if (log.unanswered && now - (log.lastActivityAt ?? 0) < REPLY_WAIT_MS) return true;
+  return [...log.bgTasks.keys()].some((id) => runningBg.has(id));
+};
+
+const toSubagent = (sub: claude.SubagentLog, alive: boolean, runningBg: Set<string>): Subagent => ({
   id: sub.id,
   type: sub.type,
   description: sub.description,
   model: sub.model,
-  // サブエージェントは SubagentHandback で結果を返して終わる。それ以外のツール呼び出しで止まっていれば作業中。
-  running: alive && (sub.log.lastUsageAt === undefined || (!!sub.log.lastToolUse && sub.log.lastToolUse !== 'SubagentHandback')),
+  running: subagentRunning(sub.log, alive, runningBg),
   outputTokens: sub.log.totals.output,
 });
 
@@ -196,6 +209,8 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
   const prs = shown([...branchPrs, ...badges.flatMap((b) => (b.kind === 'pr' && badgePr(b.url, keep)) || [])]);
   const badgeJira = badges.flatMap((b) => (b.kind === 'jira' && jiraKeyOfUrl(new URL(b.url))) || []);
   const jiraKeys = new Set([...meta.jira, ...badgeJira, ...findJiraKeys([...branches, name, ...branchPrs.map((p) => p.title)])]);
+  const background = claude.backgroundOf([...(log ? [log] : []), ...subs.map((s) => s.log)]).map((t) => toBgTask(t, live));
+  const runningBg = new Set(background.filter((t) => t.status === 'running').map((t) => t.id));
   const repo = repoName(meta.cwd);
   const review = state.attention.find((a) => a.sessionId === meta.id && a.kind === 'review');
   const session: Session = {
@@ -216,8 +231,8 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     lastMessage: clipMessage(log?.lastMessage),
     lastMessageAt: log?.lastMessageAt,
     tasks: claude.readTasks(meta.id),
-    subagents: subs.map((s) => toSubagent(s, !!live)),
-    background: claude.backgroundOf([...(log ? [log] : []), ...subs.map((s) => s.log)]).map((t) => toBgTask(t, live)),
+    subagents: subs.map((s) => toSubagent(s, !!live, runningBg)),
+    background,
     pr,
     prs,
     prsPending: branches.some((b) => prPending(meta.cwd, b, keep)),

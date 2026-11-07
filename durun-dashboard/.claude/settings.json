@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh pr merge --auto *)",
+      "Bash(gh pr merge * --auto)",
+      "Bash(gh pr merge * --auto *)"
+    ]
+  }
+}

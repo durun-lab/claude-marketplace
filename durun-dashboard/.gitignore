@@ -4,4 +4,7 @@ public/app.js
 public/dolphin-worker.js
 public/chunks/
 .env.local
-.claude/worktrees/
+# ルートの .gitignore は .claude/ を外すが、改善のセッションの許可ルールはリポジトリで共有する。
+!.claude/
+.claude/*
+!.claude/settings.json
