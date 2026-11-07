@@ -1,7 +1,7 @@
 import type { Transport } from "@mm/sdk";
 import { API_ROOT, PAIR_PATH, createApi, type Api, type FetchLike } from "./api/http.ts";
 import { createMobileTransport } from "./api/transport.ts";
-import type { CommentDraft, CommentItem, PairResult } from "./api/types.ts";
+import type { CommentDraft, PairResult } from "./api/types.ts";
 import { createConnection, type Connection, type EventSourceLike } from "./connection.ts";
 import { createOutbox, type KeyValueStore, type Outbox } from "./outbox/outbox.ts";
 
@@ -22,8 +22,7 @@ export interface Controller {
   /** 登録の符号を送り、成功したら接続をやり直す。 */
   pair: (code: string, deviceName: string) => Promise<PairResult>;
   /** コメントを送信待ちの列に入れ、つながっていればすぐ送る。 */
-  comment: (text: string) => Promise<void>;
-  listComments: () => Promise<CommentItem[]>;
+  comment: (draft: Omit<CommentDraft, "client_id">) => Promise<void>;
 }
 
 const sendDraft = (api: Api) => (draft: CommentDraft) => api.post(`${API_ROOT}/comments`, draft);
@@ -50,10 +49,9 @@ export const createController = (platform: Platform): Controller => {
       await connection.start();
       return res;
     },
-    comment: async (text) => {
-      outbox.add(text, null);
+    comment: async (draft) => {
+      outbox.add(draft);
       if (connection.get().state === "online") await flush();
     },
-    listComments: () => api.get<CommentItem[]>(`${API_ROOT}/comments`),
   };
 };

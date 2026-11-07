@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@mm/sdk": "workspace:*",
+    "hls.js": "1.6.15",
     "preact": "^10.27.0"
   }
 }

@@ -17,10 +17,35 @@ const DIST = fileURLToPath(new URL("./dist/", import.meta.url));
 const OUT = fileURLToPath(new URL("./screenshots/", import.meta.url));
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".webmanifest": "application/manifest+json" };
 
+// 母艦の映像の配信の偽物。HLS と提案の短い動画は demo/media の実物、コマは前後で色の違う SVG。
+const MEDIA = fileURLToPath(new URL("./demo/media/", import.meta.url));
+const MEDIA_TYPES = { ".m3u8": "application/vnd.apple.mpegurl", ".m4s": "video/iso.segment", ".mp4": "video/mp4" };
+const frameSvg = (query) => {
+  const after = query.has("proposal");
+  const [bg, fg] = after ? ["#1f6f4a", "#9be7c0"] : ["#3b4252", "#b7c0d0"];
+  const shift = after ? 90 : 0;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 405"><rect width="720" height="405" fill="${bg}"/>
+<circle cx="${240 + shift}" cy="200" r="90" fill="${fg}"/><text x="360" y="360" font-size="34" font-family="sans-serif" fill="#fff" text-anchor="middle">${after ? "After" : "Before"} t=${query.get("t")}s</text></svg>`;
+};
+const serveMedia = async (url, res) => {
+  const name = url.pathname.split("/").pop();
+  if (url.pathname === "/m/api/frame") {
+    res.writeHead(200, { "Content-Type": "image/svg+xml" });
+    return res.end(frameSvg(url.searchParams));
+  }
+  const file = url.pathname.endsWith("/clip.mp4") ? "clip.mp4" : name.replace(/^360p_init/, "360p_init");
+  const ok = /^[\w.]+$/.test(file) && (await stat(MEDIA + file).catch(() => null));
+  res.writeHead(ok ? 200 : 404, { "Content-Type": MEDIA_TYPES[extname(file)] ?? "text/plain" });
+  if (ok) createReadStream(MEDIA + file).pipe(res);
+  else res.end();
+};
+
 const serve = () =>
   new Promise((resolve) => {
     const server = createServer(async (req, res) => {
-      const path = new URL(req.url, "http://x").pathname;
+      const url = new URL(req.url, "http://x");
+      const path = url.pathname;
+      if (/^\/m\/api\/(stream\/|frame|proposals\/\d+\/clip\.mp4)/.test(path)) return serveMedia(url, res);
       const file = path === "/m/" ? "index.html" : path.replace(/^\/m\//, "");
       const ok = path.startsWith("/m/") && !file.includes("..") && (await stat(DIST + file).catch(() => null));
       res.writeHead(ok ? 200 : 404, { "Content-Type": TYPES[extname(file)] ?? "text/plain" });
@@ -34,12 +59,28 @@ const TARGETS = [
   { name: "iphone", type: webkit, device: "iPhone 14" },
   { name: "android", type: chromium, device: "Pixel 7" },
 ];
+// 3 つ目は撮る前の操作。描き込みは映像の上を指でなぞる。
+const draw = async (page) => {
+  const box = await page.locator(".draw").boundingBox();
+  const at = (x, y) => [box.x + box.width * x, box.y + box.height * y];
+  await page.mouse.move(...at(0.2, 0.25));
+  await page.mouse.down();
+  for (const [x, y] of [[0.3, 0.2], [0.45, 0.3], [0.55, 0.5], [0.7, 0.45]]) await page.mouse.move(...at(x, y), { steps: 4 });
+  await page.mouse.up();
+};
 const SHOTS = [
   ["pair", "state=unpaired&code=ABCD2345"],
-  ["comments", "state=online&tab=Comments"],
-  ["offline-queue", "state=queued&tab=Comments"],
   ["watch", "state=online&tab=Watch"],
+  ["watch-compose", "state=online&view=compose"],
+  ["watch-draw", "state=online&view=compose", async (page) => {
+    await page.getByRole("button", { name: "Draw" }).click();
+    await draw(page);
+    await page.locator("textarea").fill("Move this title up a little.");
+  }],
+  ["watch-thread", "state=online&view=thread"],
+  ["offline-queue", "state=queued&tab=Watch"],
   ["proposals", "state=online&tab=Proposals"],
+  ["proposal-detail", "state=online&tab=Proposals&view=detail"],
 ];
 
 const shoot = async (base, target) => {
@@ -49,10 +90,11 @@ const shoot = async (base, target) => {
     await context.pages()[0]?.close();
     const page = await context.newPage();
     await page.emulateMedia({ colorScheme: scheme });
-    for (const [name, query] of SHOTS) {
+    for (const [name, query, before] of SHOTS) {
       await page.goto(`${base}/m/demo.html?${query}`);
       await page.waitForSelector(".tabs, .pair");
-      await page.waitForTimeout(200);
+      await page.waitForTimeout(900);
+      await before?.(page);
       await page.screenshot({ path: `${OUT}${target.name}-${scheme}-${name}.png` });
     }
   }

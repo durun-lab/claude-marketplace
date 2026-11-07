@@ -6,6 +6,7 @@ import { App } from "./App.tsx";
 import { createController } from "./controller.ts";
 import { MOCK_PAIR_CODE, createMockServer } from "./mock/mockServer.ts";
 import { codeFromSearch, guessDeviceName, normalizeCode } from "./pairing/PairScreen.tsx";
+import "./testing/stubMedia.ts";
 
 const host = document.createElement("div");
 document.body.append(host);
@@ -29,19 +30,21 @@ const setup = (init: { paired: boolean; online: boolean }, search = "") => {
 const settle = () => act(() => new Promise<void>((r) => setTimeout(r, 0)));
 const submit = (selector: string) =>
   act(() => void must(host.querySelector<HTMLFormElement>(selector)).dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })));
-const type = (el: HTMLInputElement, value: string) =>
+const press = (text: string) =>
+  act(() => void [...host.querySelectorAll<HTMLElement>("button")].find((b) => b.textContent?.trim().startsWith(text))?.click());
+const type = (el: HTMLInputElement | HTMLTextAreaElement, value: string) =>
   act(() => {
     el.value = value;
     el.dispatchEvent(new Event("input", { bubbles: true }));
   });
 
 describe("App", () => {
-  it("登録済みなら 4 つのタブと接続中の表示を出す", async () => {
+  it("登録済みなら 3 つのタブと接続中の表示を出す", async () => {
     const { controller, mount } = setup({ paired: true, online: true });
     await mount();
     await act(() => controller.connection.start());
     await settle();
-    expect([...host.querySelectorAll("[role=tab]")].map((t) => t.textContent)).toEqual(["Watch", "Story", "Comments", "Proposals"]);
+    expect([...host.querySelectorAll("[role=tab]")].map((t) => t.textContent)).toEqual(["Watch", "Story", "Proposals"]);
     expect(host.querySelector(".chip")?.textContent).toContain("Connected");
   });
 
@@ -68,13 +71,19 @@ describe("App", () => {
     expect(host.querySelector("[role=tab]")).toBeNull();
   });
 
+});
+
+describe("App のコメント", () => {
   it("圏外で書いたコメントは送信待ちに入り、再接続で母艦に届く", async () => {
-    const { controller, server, mount } = setup({ paired: true, online: false });
+    const { controller, server, mount } = setup({ paired: true, online: true });
     await mount();
     await act(() => controller.connection.start());
+    await settle();
+    await act(() => void server.setOnline(false));
     expect(host.querySelector(".chip")?.textContent).toContain("Offline");
-    await type(must(host.querySelector<HTMLInputElement>('input[aria-label="Comment"]')), "check 0:42");
-    await submit("form.composer");
+    await press("Comment");
+    await type(must(host.querySelector<HTMLTextAreaElement>("textarea")), "check 0:42");
+    await submit("form.compose");
     expect(host.querySelector(".chip")?.textContent).toContain("1 queued");
     expect(host.querySelector(".pending")?.textContent).toContain("Waiting to send");
     server.setOnline(true);

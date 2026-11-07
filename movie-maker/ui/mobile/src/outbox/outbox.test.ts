@@ -10,24 +10,37 @@ const memory = (): KeyValueStore => {
 describe("outbox", () => {
   it("ページを開き直しても送信待ちが残る", () => {
     const store = memory();
-    createOutbox(store).add("one", null);
+    createOutbox(store).add({ comp: "c1", text: "one" });
     expect(createOutbox(store).list().map((c) => c.text)).toEqual(["one"]);
   });
 
   it("再接続で入れた順に送り、送れたものを消す", async () => {
     const outbox = createOutbox(memory());
-    outbox.add("a", null);
-    outbox.add("b", null);
+    outbox.add({ comp: "c1", text: "a" });
+    outbox.add({ comp: "c1", text: "b" });
     const sent: string[] = [];
-    await outbox.flush(async (d) => void sent.push(d.text));
+    await outbox.flush(async (d) => void sent.push(d.text ?? ""));
     expect(sent).toEqual(["a", "b"]);
     expect(outbox.list()).toEqual([]);
   });
 
+});
+
+describe("outbox の本文", () => {
+  it("範囲と描き込みを保ったまま、端末の記録を除いた本文を送る", async () => {
+    const store = memory();
+    const drawing = [{ kind: "rect" as const, points: [[0.1, 0.2], [0.3, 0.4]] as [number, number][] }];
+    const range = { in: { num: 1, den: 1 }, out: { num: 2, den: 1 } };
+    const queued = createOutbox(store).add({ comp: "c1", range, drawing });
+    const sent: unknown[] = [];
+    await createOutbox(store).flush(async (d) => void sent.push(d));
+    expect(sent).toEqual([{ comp: "c1", range, drawing, client_id: queued.client_id }]);
+  });
+
   it("通信の失敗で止まり、残りを残す", async () => {
     const outbox = createOutbox(memory());
-    outbox.add("a", null);
-    outbox.add("b", null);
+    outbox.add({ comp: "c1", text: "a" });
+    outbox.add({ comp: "c1", text: "b" });
     let calls = 0;
     await outbox.flush(async () => {
       calls++;
@@ -39,8 +52,8 @@ describe("outbox", () => {
 
   it("母艦に断られたコメントは error を付けて残し、次を送る", async () => {
     const outbox = createOutbox(memory());
-    outbox.add("bad", null);
-    outbox.add("good", null);
+    outbox.add({ comp: "c1", text: "bad" });
+    outbox.add({ comp: "c1", text: "good" });
     await outbox.flush(async (d) => {
       if (d.text === "bad") throw new ApiError(400, "invalid", "too long");
     });
@@ -58,13 +71,13 @@ describe("outbox の失敗への備え", () => {
       throw new Error("denied");
     };
     const outbox = createOutbox({ getItem: denied, setItem: denied });
-    outbox.add("a", null);
+    outbox.add({ comp: "c1", text: "a" });
     expect(outbox.list()).toHaveLength(1);
   });
 
   it("同時に flush しても二重に送らない", async () => {
     const outbox = createOutbox(memory());
-    outbox.add("a", null);
+    outbox.add({ comp: "c1", text: "a" });
     let calls = 0;
     const slow = async () => {
       calls++;

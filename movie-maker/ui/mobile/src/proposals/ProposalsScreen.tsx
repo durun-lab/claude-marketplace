@@ -1,0 +1,45 @@
+import { useState } from "preact/hooks";
+import type { Controller } from "../controller.ts";
+import { ProposalCard } from "./ProposalCard.tsx";
+import { ProposalDetail } from "./ProposalDetail.tsx";
+import { useProposals } from "./useProposals.ts";
+import "./proposals.css";
+
+/** Proposals のタブ。一覧（新しい順）と、1 件の画面。決めた後の 5 秒は `Undo` を下に出す。 */
+export const ProposalsScreen = ({ controller, now = Date.now() }: { controller: Controller; now?: number }) => {
+  const proposals = useProposals(controller);
+  const [openId, setOpenId] = useState<number | null>(null);
+  const opened = proposals.items.find((p) => p.id === openId) ?? null;
+  return (
+    <>
+      {opened ? (
+        <ProposalDetail
+          key={opened.id}
+          proposal={opened}
+          onBack={() => setOpenId(null)}
+          onApprove={(ops) => proposals.approve(opened, ops)}
+          onReject={() => proposals.reject(opened)}
+          onReopen={() => proposals.reopen(opened)}
+        />
+      ) : (
+        <section class="screen proposals">
+          {proposals.error && <p class="error">{proposals.error}</p>}
+          <ul class="list">
+            {proposals.items.map((p) => (
+              <ProposalCard key={p.id} p={p} now={now} onOpen={() => setOpenId(p.id)} />
+            ))}
+            {proposals.items.length === 0 && <li class="empty">No proposals yet.</li>}
+          </ul>
+        </section>
+      )}
+      {proposals.offer && (
+        <div class="undo" role="status">
+          <span>{proposals.offer.label}</span>
+          <button type="button" class="link" onClick={() => void proposals.undo()}>
+            Undo
+          </button>
+        </div>
+      )}
+    </>
+  );
+};

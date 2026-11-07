@@ -1,4 +1,3 @@
-import type { RationalTime } from "@mm/sdk";
 import { ApiError, isRetryable } from "../api/http.ts";
 import type { CommentDraft } from "../api/types.ts";
 
@@ -16,7 +15,7 @@ export interface KeyValueStore {
 
 export interface Outbox {
   list: () => PendingComment[];
-  add: (text: string, at: RationalTime | null) => PendingComment;
+  add: (draft: Omit<CommentDraft, "client_id">) => PendingComment;
   remove: (clientId: string) => void;
   /** 先頭から順に送る。再送で解消し得る失敗に当たったら、そこで止めて残りを残す。 */
   flush: (send: (draft: CommentDraft) => Promise<unknown>) => Promise<void>;
@@ -32,6 +31,14 @@ const read = (store: KeyValueStore, key: string): PendingComment[] => {
   } catch {
     return [];
   }
+};
+
+/** 端末の記録（`queued_at`、`error`）を除き、母艦に送る本文だけにする。 */
+const toDraft = (item: PendingComment): CommentDraft => {
+  const draft: Partial<PendingComment> = { ...item };
+  delete draft.queued_at;
+  delete draft.error;
+  return draft as CommentDraft;
 };
 
 const RADIX = 36;
@@ -59,8 +66,8 @@ export const createOutbox = (store: KeyValueStore, key = STORAGE_KEY, now: () =>
     commit(items.map((c) => (c.client_id === clientId ? { ...c, ...patch } : c)));
   return {
     list: () => items,
-    add: (text, at) => {
-      const item: PendingComment = { client_id: newId(), text, at, queued_at: now() };
+    add: (draft) => {
+      const item: PendingComment = { ...draft, client_id: newId(), queued_at: now() };
       commit([...items, item]);
       return item;
     },
@@ -70,7 +77,7 @@ export const createOutbox = (store: KeyValueStore, key = STORAGE_KEY, now: () =>
       flushing = true;
       const sendOne = async (item: PendingComment): Promise<boolean> => {
         try {
-          await send({ client_id: item.client_id, text: item.text, at: item.at });
+          await send(toDraft(item));
           commit(items.filter((c) => c.client_id !== item.client_id));
         } catch (e) {
           if (isRetryable(e)) return false;
