@@ -6,8 +6,9 @@ use mm_encode_ffmpeg_core::{
 };
 
 /// 扱う名前（エイリアスを含む）。
-pub const SUPPORTED_NAMES: [&str; 15] = [
+pub const SUPPORTED_NAMES: [&str; 16] = [
     "h264",
+    "h264_ts",
     "libx264",
     "h264_2pass",
     "hevc_hlg",
@@ -43,6 +44,16 @@ const HVC1: [u8; 4] = *b"hvc1";
 pub fn spec_of(codec: &str) -> Option<CodecSpec> {
     match codec {
         "h264" | "libx264" => Some(x264()),
+        "h264_ts" => Some(
+            CodecSpec::new(
+                "libx264",
+                Container::MpegTs,
+                VideoInput::Nv12,
+                AudioCodec::Aac,
+                Rate::Stream,
+            )
+            .option("preset", X264_PRESET),
+        ),
         "h264_2pass" => Some(
             CodecSpec::new(
                 "libx264",
@@ -142,6 +153,11 @@ mod tests {
         assert_eq!(
             (x.container, x.input, x.passes),
             (Container::Mp4, VideoInput::Nv12, 1)
+        );
+        let ts = spec_of("h264_ts").unwrap();
+        assert_eq!(
+            (ts.container, ts.rate.clone()),
+            (Container::MpegTs, Rate::Stream)
         );
         let two = spec_of("h264_2pass").unwrap();
         assert_eq!(two.passes, 2);

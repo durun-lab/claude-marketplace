@@ -86,6 +86,7 @@ fn settings(path: PathBuf, size: Size, fps: Rational, audio: bool) -> EncodeSett
             sample_rate: RATE,
             channels: 2,
         }),
+        stream: None,
     }
 }
 
