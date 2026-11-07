@@ -1,4 +1,4 @@
-// トラックマット: 切り抜くレイヤーの画像に、同じ画素のマットの被覆率を掛ける。
+// トラックマット: マットの被覆率を返し、ブレンドで切り抜くレイヤーの画素（描く先）に掛ける。
 // どちらも出力の大きさで、変形・切り抜き・マスク・不透明度を掛けた後の線形の光の premultiplied の画像。
 // 大きさが同じなので標本化せず、画素をそのまま読む。
 
@@ -11,8 +11,7 @@ struct Matte {
 }
 
 @group(0) @binding(0) var<uniform> matte: Matte;
-@group(0) @binding(1) var layer_tex: texture_2d<f32>;
-@group(0) @binding(2) var matte_tex: texture_2d<f32>;
+@group(0) @binding(1) var matte_tex: texture_2d<f32>;
 
 const FLAG_LUMA: u32 = 1u;
 const FLAG_INVERTED: u32 = 2u;
@@ -42,6 +41,5 @@ fn coverage(m: vec4<f32>) -> f32 {
 
 @fragment
 fn fs_main(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
-    let p = vec2<i32>(position.xy);
-    return textureLoad(layer_tex, p, 0) * coverage(textureLoad(matte_tex, p, 0));
+    return vec4<f32>(coverage(textureLoad(matte_tex, vec2<i32>(position.xy), 0)));
 }

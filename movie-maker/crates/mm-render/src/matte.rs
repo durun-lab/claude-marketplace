@@ -1,6 +1,6 @@
 //! トラックマット（`Layer.track_matte`）。After Effects の Track Matte と同じく、切り抜くレイヤーとマットのレイヤーを
-//! それぞれ出力の大きさのテクスチャに描き（変形、切り抜き、マスク、効果、不透明度を掛けた後）、画素ごとに
-//! マットの被覆率を掛けて 1 枚にする。その 1 枚を、切り抜くレイヤーの合成モードで重ねる。
+//! それぞれ出力の大きさのテクスチャに描き（変形、切り抜き、マスク、効果、不透明度を掛けた後）、切り抜くレイヤーの
+//! テクスチャに画素ごとにマットの被覆率を掛ける。その 1 枚を、切り抜くレイヤーの合成モードで重ねる。
 //!
 //! - 被覆率はマットのアルファか輝度。輝度は作業色空間（線形の光、Rec.709 の原色）の上で premultiplied のまま取るので、
 //!   straight の輝度にアルファを掛けた値になる（CSS の `mask-mode: luminance`、geneva の `mask.asset` と同じ式）。
@@ -69,25 +69,25 @@ impl MattePass {
         Self { pipeline, layout }
     }
 
-    /// `out` に `layer` × マットの被覆率を描くパスを `encoder` に積む。3 枚とも同じ大きさ。
+    /// `layer` にマットの被覆率をその場で掛けるパスを `encoder` に積む。2 枚とも同じ大きさ。
     pub(crate) fn encode(
         &self,
         device: &wgpu::Device,
         encoder: &mut wgpu::CommandEncoder,
-        (layer, matte, out): (&wgpu::Texture, &wgpu::Texture, &wgpu::Texture),
+        (layer, matte): (&wgpu::Texture, &wgpu::Texture),
         flags: u32,
         timestamp_writes: Option<wgpu::RenderPassTimestampWrites<'_>>,
     ) {
-        let group = self.bind_group(device, flags, (layer, matte));
-        let out_view = out.create_view(&wgpu::TextureViewDescriptor::default());
+        let group = self.bind_group(device, flags, matte);
+        let layer_view = layer.create_view(&wgpu::TextureViewDescriptor::default());
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("render.matte"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &out_view,
+                view: &layer_view,
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+                    load: wgpu::LoadOp::Load,
                     store: wgpu::StoreOp::Store,
                 },
             })],
@@ -103,7 +103,7 @@ impl MattePass {
         &self,
         device: &wgpu::Device,
         flags: u32,
-        (layer, matte): (&wgpu::Texture, &wgpu::Texture),
+        matte: &wgpu::Texture,
     ) -> wgpu::BindGroup {
         let uniform = MatteUniform {
             flags,
@@ -114,8 +114,7 @@ impl MattePass {
             contents: bytemuck::bytes_of(&uniform),
             usage: wgpu::BufferUsages::UNIFORM,
         });
-        let view = |t: &wgpu::Texture| t.create_view(&wgpu::TextureViewDescriptor::default());
-        let (layer_view, matte_view) = (view(layer), view(matte));
+        let matte_view = matte.create_view(&wgpu::TextureViewDescriptor::default());
         device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("mm-render matte"),
             layout: &self.layout,
@@ -126,10 +125,6 @@ impl MattePass {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&layer_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
                     resource: wgpu::BindingResource::TextureView(&matte_view),
                 },
             ],
@@ -137,18 +132,8 @@ impl MattePass {
     }
 }
 
-/// 0 が `Matte`、1 が切り抜くレイヤー、2 がマット。
+/// 0 が `Matte`、1 がマット。
 fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
-    let texture = |binding| wgpu::BindGroupLayoutEntry {
-        binding,
-        visibility: wgpu::ShaderStages::FRAGMENT,
-        ty: wgpu::BindingType::Texture {
-            sample_type: wgpu::TextureSampleType::Float { filterable: false },
-            view_dimension: wgpu::TextureViewDimension::D2,
-            multisampled: false,
-        },
-        count: None,
-    };
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("mm-render matte layout"),
         entries: &[
@@ -162,11 +147,26 @@ fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
                 },
                 count: None,
             },
-            texture(1),
-            texture(2),
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
         ],
     })
 }
+
+/// 描く先の画素に、シェーダーが返す被覆率を掛ける（`dst × src`）。
+const MULTIPLY_DST: wgpu::BlendComponent = wgpu::BlendComponent {
+    src_factor: wgpu::BlendFactor::Zero,
+    dst_factor: wgpu::BlendFactor::Src,
+    operation: wgpu::BlendOperation::Add,
+};
 
 fn create_pipeline(device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> wgpu::RenderPipeline {
     let luma = LUMA.map(|c| format!("{c:?}")).join(", ");
@@ -199,7 +199,10 @@ fn create_pipeline(device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> wgp
             compilation_options: Default::default(),
             targets: &[Some(wgpu::ColorTargetState {
                 format: FRAME_FORMAT,
-                blend: None,
+                blend: Some(wgpu::BlendState {
+                    color: MULTIPLY_DST,
+                    alpha: MULTIPLY_DST,
+                }),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         }),
@@ -247,7 +250,8 @@ impl WgpuRenderer {
             .map(Some)
     }
 
-    /// 切り抜くレイヤーとマットを別のテクスチャに描き、掛け合わせた 1 枚を返す。
+    /// 切り抜くレイヤーとマットを別のテクスチャに描き、レイヤーの側にマットの被覆率を掛けた 1 枚を返す。
+    /// 出力の大きさのテクスチャは 1 つのマットにつき 2 枚で、コマンドの提出の後に使い回される。
     fn combine(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
@@ -259,8 +263,6 @@ impl WgpuRenderer {
         let passes = item.passes;
         let layer_tex = self.flatten(encoder, cx.size, item, temps)?;
         let matte_tex = self.flatten(encoder, cx.size, matte, temps)?;
-        let out = self.gpu.create(cx.size)?;
-        temps.push(out);
         let Self {
             gpu,
             matte: pass,
@@ -273,11 +275,11 @@ impl WgpuRenderer {
         pass.encode(
             device,
             encoder,
-            (texture(layer_tex), texture(matte_tex), texture(out)),
+            (texture(layer_tex), texture(matte_tex)),
             flags,
             timer.pass_writes(),
         );
-        Ok(full_frame(cx, out, passes))
+        Ok(full_frame(cx, layer_tex, passes))
     }
 
     /// 1 枚を、出力の大きさの透明なテクスチャに source-over で描く。

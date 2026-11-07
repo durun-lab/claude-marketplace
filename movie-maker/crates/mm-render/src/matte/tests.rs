@@ -78,7 +78,6 @@ fn run_pass(ctx: &Arc<GpuContext>, m: &TrackMatte) -> Vec<Rgba> {
         matte_image.set_pixel(x as u32, 0, *px);
     }
     let matte_frame = gpu.upload(&matte_image).expect("上げられる");
-    let out = gpu.create(size).expect("作れる");
     let pass = MattePass::new(&ctx.device);
     let mut encoder = ctx
         .device
@@ -90,15 +89,12 @@ fn run_pass(ctx: &Arc<GpuContext>, m: &TrackMatte) -> Vec<Rgba> {
         (
             texture(texture_id(&layer)),
             texture(texture_id(&matte_frame)),
-            texture(out),
         ),
         flags(m),
         None,
     );
     ctx.queue.submit([encoder.finish()]);
-    let image = gpu
-        .download(&FrameRef::Gpu(mm_node_api::GpuTexture { id: out, size }))
-        .expect("読める");
+    let image = gpu.download(&layer).expect("読める");
     (0..size.width).map(|x| image.pixel(x, 0)).collect()
 }
 
