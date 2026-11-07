@@ -11,6 +11,7 @@ mm-types = { workspace = true }
 mm-doc = { workspace = true }
 mm-ops = { workspace = true }
 mm-store = { workspace = true }
+mm-story = { workspace = true }
 mm-node-api = { workspace = true }
 mm-runtime = { workspace = true }
 axum = { workspace = true }
