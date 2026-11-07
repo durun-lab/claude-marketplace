@@ -23,6 +23,8 @@ mm-ops = { workspace = true }
 # `mm pack`。パックのマクロを展開して適用する。
 mm-pack = { workspace = true }
 mm-store = { workspace = true }
+# `mm improve`。
+mm-improve = { workspace = true }
 mm-ingest = { workspace = true }
 mm-serve = { workspace = true }
 # 文字起こしの付属ファイルの型（`mm ingest` が DB の入力に変換する）。

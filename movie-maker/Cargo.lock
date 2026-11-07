@@ -2857,6 +2857,7 @@ dependencies = [
  "mm-eval",
  "mm-export",
  "mm-gpu",
+ "mm-improve",
  "mm-ingest",
  "mm-ingest-api",
  "mm-node-api",
@@ -3202,6 +3203,18 @@ dependencies = [
  "mm-types",
  "serde_json",
  "windows",
+]
+
+[[package]]
+name = "mm-improve"
+version = "0.1.0"
+dependencies = [
+ "getrandom 0.3.4",
+ "mm-types",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "toml 1.2.0+spec-1.1.0",
 ]
 
 [[package]]
