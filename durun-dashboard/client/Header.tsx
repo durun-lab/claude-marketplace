@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState } from 'preact/hooks';
-import type { Attention, DocMeta, ImproveState, MemoryStatus, RateLimit, Session, Snapshot } from '../shared/types.ts';
+import { AGENT_PRIORITIES, type AgentPriority, type Attention, type DocMeta, type ImproveState, type MemoryStatus, type RateLimit, type Session, type Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { AppIcon, useApps } from './apps.tsx';
 import { createDashboard, duplicateDashboard, renameDashboard, switchDashboard, useDashboards } from './dashboards.ts';
@@ -236,7 +236,11 @@ type MenuProps = { onSearch: () => void; onEdit?: () => void };
  * 名前の左のボタンで開くメニュー。外を押すか Esc で閉じるよう、popover で開く。
  * リンクは popovertarget で閉じられないので、項目を押したら、ここでまとめて閉じる。
  */
-const AppMenu = ({ onSearch, onEdit, docs, autoContinue }: MenuProps & { docs: DocMeta[]; autoContinue: boolean }) => {
+// 押すたびに通常、低め、アイドルの順に選び直す。
+const PRIORITY_LABEL: Record<AgentPriority, string> = { normal: '通常', low: '低め', idle: 'アイドル' };
+const nextPriority = (p: AgentPriority): AgentPriority => AGENT_PRIORITIES[(AGENT_PRIORITIES.indexOf(p) + 1) % AGENT_PRIORITIES.length] ?? 'normal';
+
+const AppMenu = ({ onSearch, onEdit, docs, autoContinue, agentPriority }: MenuProps & { docs: DocMeta[]; autoContinue: boolean; agentPriority: AgentPriority }) => {
   const light = useLightMode();
   const skin = useSkin();
   // Esc でも全画面が解けるので、押した状態は fullscreenchange から取る。
@@ -393,6 +397,9 @@ const AppMenu = ({ onSearch, onEdit, docs, autoContinue }: MenuProps & { docs: D
           <button class="app-menu-item" aria-pressed={autoContinue} title="スリープや通信の途切れで止まったセッションを、確認のダイアログを出さずに、API に届くようになったら続けさせる。Claude のログインが切れて止まったセッションも、ログインが戻ったら続けさせる" onClick={() => void attempt('自動継続モードの切り替え', () => api.autoContinue(!autoContinue))}>
             <svg class="app-menu-foot-icon is-green" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg>自動継続モード
           </button>
+          <button class="app-menu-item" aria-pressed={agentPriority !== 'normal'} title="エージェントのプロセスの優先度。低めやアイドルにすると、ゲームやほかの作業に CPU を先に回す。押すたびに通常、低め、アイドルの順に切り替わる" onClick={() => void attempt('エージェントの優先度の切り替え', () => api.agentPriority(nextPriority(agentPriority)))}>
+            <svg class="app-menu-foot-icon is-orange" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 13h2V9H3zM7 13h2V6H7zM11 13h2V3h-2z" /></svg>優先度: {PRIORITY_LABEL[agentPriority]}
+          </button>
         </div>
       </div>
       {renaming && (
@@ -532,7 +539,7 @@ export const Header = ({ snapshot, assets, connected, home, onSearch, onEdit, on
   const stale = useLiveReload(assets);
   return (
     <header class="topbar">
-      <AppMenu onSearch={onSearch} onEdit={onEdit} docs={snapshot?.docs ?? []} autoContinue={!!snapshot?.autoContinue} />
+      <AppMenu onSearch={onSearch} onEdit={onEdit} docs={snapshot?.docs ?? []} autoContinue={!!snapshot?.autoContinue} agentPriority={snapshot?.agentPriority ?? 'normal'} />
       <Brand home={home} />
       {/* 浮かべたウィンドウのボタンは、Float.tsx の FloatFrame がここへ置く。 */}
       <div class="taskbar-windows" />

@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
-import { type AssistantMessage, type BranchView, PR_REVIEW_EVENTS, type PrReviewEvent, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, GITHUB_LIST_MAX, type Glossary, type GithubSearch, type HarnessToggle, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PERMISSION_MODES, PR_URL, type ImproveSettings, JIRA_LIST_MAX, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type SlackConversation, type TextSaveResult } from '../shared/types.ts';
+import { AGENT_PRIORITIES, type AgentPriority, type AssistantMessage, type BranchView, PR_REVIEW_EVENTS, type PrReviewEvent, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, GITHUB_LIST_MAX, type Glossary, type GithubSearch, type HarnessToggle, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PERMISSION_MODES, PR_URL, type ImproveSettings, JIRA_LIST_MAX, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type SlackConversation, type TextSaveResult } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
@@ -26,6 +26,7 @@ import { faviconOf } from './favicon.ts';
 import { UpstreamError } from './haiku.ts';
 import { handleHook, holdPermission, type HookInput } from './hooks.ts';
 import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
+import { applyAgentPriority, setAgentPriority } from './agentPriority.ts';
 import { learnNow, noteActivity, updateLearn } from './reflect.ts';
 import { harness, setHarnessToggle } from './harness.ts';
 import { fileCandidates, listDir, saveText } from './explorer.ts';
@@ -1327,6 +1328,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/learn\/run$/, () => learnNow()],
   [/^\/api\/learn\/toggle$/, (_, b) => setHarnessToggle(CLAUDE_DIR, harnessToggleOf(b), field<boolean>(b, 'on', 'boolean'))],
   [/^\/api\/auto-continue$/, (_, b) => setAutoContinue(field<boolean>(b, 'enabled', 'boolean'))],
+  [/^\/api\/agent-priority$/, (_, b) => setAgentPriority((oneOf(b, 'priority', AGENT_PRIORITIES) || 'normal') as AgentPriority)],
   [/^\/api\/auth\/([^/]+)$/, ([, id = ''], b) => answerAuth(id, field<boolean>(b, 'ok', 'boolean'))],
   // ブラウザでのログインは数分かかるので、終わるのを待たずに返す。進み具合と失敗は、スナップショットで知らせる。
   [/^\/api\/claude\/login$/, () => void loginClaude().catch(() => {})],
@@ -1556,10 +1558,13 @@ onChange(flushQueue);
 onChange(flushArchives);
 // 使用率の推移は statusline が変わるたびに記録する。起動時にも記録し、次の更新まで推移が空にならないようにする。
 recordRateLimits();
+// 新しく動き出したセッションにも、人間が選んだ優先度を掛ける。起動したときにも、前から動いているセッションへ掛ける。
+applyAgentPriority();
 watch(SESSIONS_DIR, false, () => {
   scheduleBroadcast();
   flushQueue();
   flushArchives();
+  applyAgentPriority();
 });
 watch(STATUSLINE_DIR, false, () => {
   recordRateLimits();
