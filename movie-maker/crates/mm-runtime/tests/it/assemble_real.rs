@@ -32,6 +32,7 @@ fn wgpu_と_glyphon_と_dsp_を選べる() {
         assert!(engine.registry().get(kind.id()).is_some(), "{}", kind.id());
     }
     assert!(engine.registry().get("web.cef").is_some());
+    assert!(engine.registry().get("gen.ai").is_some());
     assert!(engine.registry().get("shader.hlsl").is_some());
     assert!(engine.registry().get(mm_host_clap::KIND_ID).is_some());
 }

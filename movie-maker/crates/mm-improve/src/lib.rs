@@ -31,7 +31,7 @@ mod time;
 
 pub use agent::{
     find_transcript, stop_hook_settings, usage_limit, Agent, AgentEnd, AgentRequest, ClaudeCli,
-    STOP_FILE,
+    ROUND_ENV, STOP_FILE,
 };
 pub use areas::{matches, Area, AreaReport, Areas, ImproveAreas, ImproveVerdict, Shared};
 pub use checks::{
