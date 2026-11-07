@@ -4,6 +4,8 @@ use std::str::FromStr;
 
 use mm_types::{MmError, Rational, Result};
 
+use crate::hls::SEGMENT_SECONDS;
+
 /// 音の AAC のビットレート（bit/s）。
 pub(crate) const AUDIO_BITS_PER_SECOND: u32 = 64_000;
 /// fps の上限。これを超える素材は半分にして重ねる。
@@ -13,8 +15,10 @@ const TS_OVERHEAD_PERCENT: u32 = 20;
 
 /// 映像の上限（maxrate）の、目標に対する割合（百分率）。
 const MAXRATE_PERCENT: u32 = 115;
-/// 4 秒の区間の最大が maxrate を超える割合（百分率）。VBV のバッファーが区間ごとに満タンから始まるため。
-const VBV_PEAK_PERCENT: u32 = 145;
+/// VBV のバッファーの長さ（上限の何秒分か）。`StreamOutput::video_max_rate` の契約と同じ値。
+const VBV_BUFFER_SECONDS: u32 = 2;
+/// 符号化の始まりの VBV のバッファーの埋まり具合の上限（百分率）。x264 の既定の `vbv-init` 0.9。
+const VBV_INIT_PERCENT: u32 = 90;
 
 /// `value` の `percent` パーセント。
 fn scale(value: u32, percent: u32) -> u32 {
@@ -70,10 +74,15 @@ impl HlsQuality {
         scale(self.video_bits_per_second(), MAXRATE_PERCENT)
     }
 
-    /// プレイリストの `BANDWIDTH`（bit/s）。区間のピークのビットレートで、VBV が区間ごとに満タンから始まるぶんの
-    /// 上振れ（上限の約 1.45 倍）と音と MPEG-TS のヘッダーを見込む。
+    /// 親のプレイリストの `BANDWIDTH`（bit/s）。HLS（RFC 8216）の区間のピークのビットレートで、配信の区間は
+    /// 見られてから作るので、VBV が許す 1 区間の最大を出す。区間ごとに符号化し直すとバッファーが 9 割埋まった所から
+    /// 始まるため、映像は上限 × 区間の秒数にバッファーの 9 割を足した量まで出うる（4 秒の区間で上限の 1.45 倍）。
+    /// 音と MPEG-TS のヘッダーも足す。
     pub fn peak_bits_per_second(self) -> u32 {
-        let video_peak = scale(self.video_max_bits_per_second(), VBV_PEAK_PERCENT);
+        let max = u64::from(self.video_max_bits_per_second());
+        let burst = max * u64::from(VBV_BUFFER_SECONDS * VBV_INIT_PERCENT)
+            / u64::from(100 * SEGMENT_SECONDS);
+        let video_peak = (max + burst) as u32;
         scale(
             video_peak + AUDIO_BITS_PER_SECOND,
             100 + TS_OVERHEAD_PERCENT,
@@ -149,6 +158,11 @@ mod tests {
         let peak = HlsQuality::P360.peak_bits_per_second();
         assert!(peak > total * 3 / 2 && peak < total * 2, "{peak}");
         assert!(HlsQuality::P540.peak_bits_per_second() > HlsQuality::P360.peak_bits_per_second());
+        // 映像の上限 405,565 bit/s の 4 秒分にバッファー（上限の 2 秒分）の 9 割を足して 4 秒で割り、音と TS の 20% を足す。
+        let max = u64::from(HlsQuality::P360.video_max_bits_per_second());
+        let video = (max * 4 + max * 2 * 9 / 10) / 4;
+        let want = (video + u64::from(AUDIO_BITS_PER_SECOND)) * 120 / 100;
+        assert_eq!(u64::from(peak), want);
     }
 
     #[test]

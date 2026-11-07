@@ -20,7 +20,7 @@ const TARGET_ID: &str = "mm-stream";
 /// 配信の区間を書くコーデック（H.264 + AAC の MPEG-TS）。
 const STREAM_CODEC: &str = "h264_ts";
 
-/// 区間 `index` を作って `out` に置く。書きかけは `mm-export` が同じ場所の `.partial.ts` に置き、完成してから名前を替える。
+/// 区間 `index` を作って `out` に置く。一時ファイルは `mm-export` が同じ場所の `<キー>.partial.ts` に置き、完成してから置き換える。
 pub(crate) fn render_segment(
     engine: &mut Engine,
     project: &Project,

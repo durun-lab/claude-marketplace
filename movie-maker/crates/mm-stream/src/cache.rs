@@ -82,7 +82,7 @@ pub(crate) fn touch(path: &std::path::Path) {
     }
 }
 
-/// `<キー>.ts` の形のファイル。書き出しの書きかけ（`<キー>.partial.ts`）は区間に数えない。
+/// `<キー>.ts` の形のファイル。書き出しの一時ファイル（`<キー>.partial.ts`）は配信の区間に数えない。
 fn is_segment(path: &std::path::Path) -> bool {
     path.extension().is_some_and(|e| e == SEGMENT_EXT)
         && path

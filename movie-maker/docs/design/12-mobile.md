@@ -167,7 +167,7 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 | WebRTC で Program を流す | 再生の操作をその場で返す | 見ている間ずっと 1〜3 Mbps、PC は常にエンコード | 採らない。レビューに 60 fps のスクラブは要らず、電池と回線を食う |
 | プレビュー動画をそのまま | | 1 時間 2.6 GB | 採らない |
 
-- HLS の区間は見られたときに作る。プレイリストは今のバージョンのコンポジションの全区間を並べ、区間の要求が来たら描いて符号化して返し、次の 2 区間を先に作る。符号化は `mm-export` から `mm-encode-ffmpeg` の `h264_ts` で、目標のビットレートの H.264 と AAC の MPEG-TS に 1 回で書く。親のプレイリストの `BANDWIDTH` は VBV の上振れ（区間ごとに満タンから始まり、上限の約 1.45 倍）を見込んだピークの値。描くのは `mm-stream` の専用のスレッドの 1 つの `Engine` で、PC の再生を止めない。`GET /frame` も `Streamer::with_engine` で同じ `Engine` を使える。
+- HLS の区間は見られたときに作る。プレイリストは今のバージョンのコンポジションの全区間を並べ、区間の要求が来たら描いて符号化して返し、次の 2 区間を先に作る。符号化は `mm-export` から `mm-encode-ffmpeg` の `h264_ts` で、目標のビットレートの H.264 と AAC の MPEG-TS に 1 回で書く。親のプレイリスト（`Streamer::master_playlist`）の `BANDWIDTH` は、VBV が許す 1 区間の最大（区間ごとにバッファーが 9 割埋まった所から始まり、4 秒の区間で上限の 1.45 倍）を見込んだピークの値。`mm-serve` は今は画質ごとのプレイリスト（`{quality}.m3u8`）を直接配り、親のプレイリストの URL を持たない。描くのは `mm-stream` の専用のスレッドの 1 つの `Engine` で、PC の再生を止めない。`GET /frame` も `Streamer::with_engine` で同じ `Engine` を使える。
 - 区間のキーは区間の時間の範囲に掛かるもの（レイヤーとカットの JSON、区間の中の相対の位置、ノードの種類のバージョンと `cache_fingerprint`、素材の `contentHash`。[RFC 0013](../rfcs/0013-render-order-and-cache-keys.md) のフレームのキャッシュと同じ考え方）と画質から作り、URL に入れる。編集で変わらない区間はキーが同じなので作り直さず、端末のブラウザーにも残る（`Cache-Control: immutable`）。区間は `cache/mobile/hls/` に置き、上限（既定 2 GiB）を超えたら使った時刻の古いものから捨てる。消しても作り直せる。
 - コンテナは fMP4 でなく MPEG-TS にする。区間を 1 つずつ別に符号化して、編集の前後で作った区間を 1 本のプレイリストに混ぜるので、区間ごとに PAT、PMT、SPS、PPS を持ち、共通の初期化の区間（`EXT-X-MAP`）が要らない形が合う。
 - iOS の Safari は HLS をそのまま再生する。Android の Chrome は直接の再生に頼らず、Media Source Extensions の上の hls.js で再生する。HEVC は端末ごとの差が大きいので使わない。
