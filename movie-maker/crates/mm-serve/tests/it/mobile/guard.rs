@@ -69,6 +69,24 @@ fn 各検査で落ちた要求は適用されない() {
             "forbidden_origin",
         ),
         (
+            "null の Origin",
+            Req {
+                origin: Some("null".into()),
+                ..ok.clone()
+            },
+            403,
+            "forbidden_origin",
+        ),
+        (
+            "ダッシュボードの Origin（同じ名前の 443）",
+            Req {
+                origin: Some(format!("https://{}", super::HOST)),
+                ..ok.clone()
+            },
+            403,
+            "forbidden_origin",
+        ),
+        (
             "Tailscale の見出しが無い",
             Req {
                 login: None,
@@ -120,7 +138,9 @@ fn 各検査で落ちた要求は適用されない() {
         assert_eq!(code(&res), expected, "{label}");
     }
     assert_eq!(r.version(), 0);
-    assert_eq!(post_marker(&r, &ok).status, 200);
+    // 同じサイトのページが足した同じ名前のクッキーが前にあっても、登録した資格で通る。
+    let tossed = Req::device(&format!("mm_device=00ff; {cookie}"));
+    assert_eq!(post_marker(&r, &tossed).status, 200);
 }
 
 #[test]
@@ -166,7 +186,7 @@ fn 人の待ち受けに_mcp_と_claude_の道は無い() {
 }
 
 #[test]
-fn 取り消した端末と取り消していない端末() {
+fn 登録を外した端末は断り_外していない端末は通す() {
     let r = rig();
     let phone = r.pair("phone");
     let tablet = r.pair("tablet");

@@ -318,10 +318,16 @@ async fn get_events(
     event_stream(&st.core)
 }
 
-/// `GET /events` と人の待ち受けの `GET /m/api/events` が送る同じ通知の列。
-pub(crate) fn event_stream(
+fn event_stream(
     core: &Arc<Core>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ServeError> {
+    Ok(Sse::new(event_items(core)?).keep_alive(KeepAlive::default()))
+}
+
+/// `GET /events` と人の待ち受けの `GET /m/api/events` が送る同じ通知の列。
+pub(crate) fn event_items(
+    core: &Arc<Core>,
+) -> Result<impl tokio_stream::Stream<Item = Result<Event, Infallible>>, ServeError> {
     let rx = core.subscribe();
     let version = core.version()?;
     let proposals_rx = core.subscribe_proposals();
@@ -357,8 +363,7 @@ pub(crate) fn event_stream(
             Event::default().event("error").data(e.to_string())
         })))
     });
-    let stream = tokio_stream::iter([Ok(hello?)]).chain(changes.merge(proposals).merge(comments));
-    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+    Ok(tokio_stream::iter([Ok(hello?)]).chain(changes.merge(proposals).merge(comments)))
 }
 
 /// SQLite と描画は同期の処理なので、非同期の実行環境を止めない別のスレッドで行う。

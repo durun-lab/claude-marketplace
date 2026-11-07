@@ -1,13 +1,14 @@
 //! 登録した端末と登録の符号。PC には端末の資格の BLAKE3 のハッシュだけを置く（`devices.json`）。
 //!
 //! 登録の符号は同時に 1 つだけ持ち、期限を過ぎるか、1 回使うか、決まった回数を間違えると消す。
-//! 登録と取り消しは PC のアプリの Rust の呼び出しからだけ受け、HTTP には出さない。
+//! 登録と登録を外すのは PC のアプリの Rust の呼び出しからだけ受け、HTTP には出さない。
 
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
+use tokio::sync::watch;
 
 use crate::core::{now_ms, ServeError};
 use crate::http::constant_time_eq;
@@ -76,7 +77,8 @@ struct DevicesFile {
 
 struct Pending {
     code: String,
-    expires_at_ms: i64,
+    /// 期限は単調な時計で確かめ、PC の時計を戻しても延びない。
+    deadline: Instant,
     failures: u32,
 }
 
@@ -90,6 +92,8 @@ pub struct Devices {
     path: PathBuf,
     ttl: Duration,
     state: Mutex<State>,
+    /// 登録を外すたびに増える番号。開いている SSE が見張り、自分の端末が外されたら閉じる。
+    revocations: watch::Sender<u64>,
 }
 
 impl Devices {
@@ -109,6 +113,7 @@ impl Devices {
                 file,
                 pending: None,
             }),
+            revocations: watch::Sender::new(0),
         })
     }
 
@@ -130,7 +135,7 @@ impl Devices {
         let expires_at_ms = now_ms().saturating_add(ttl_ms);
         self.lock()?.pending = Some(Pending {
             code: code.clone(),
-            expires_at_ms,
+            deadline: Instant::now() + self.ttl,
             failures: 0,
         });
         Ok(PairingCode {
@@ -147,17 +152,27 @@ impl Devices {
         login: &str,
     ) -> Result<Result<(DeviceInfo, String), PairError>, ServeError> {
         let mut st = self.lock()?;
-        // 名前の誤りで符号を使い切らないよう、名前を先に確かめる。
-        let name = name.trim();
-        if name.is_empty() || name.chars().count() > NAME_MAX_CHARS {
-            return Ok(Err(PairError::BadName));
-        }
-        if st.file.devices.iter().any(|d| d.name == name) {
-            return Ok(Err(PairError::NameTaken));
-        }
-        if let Err(e) = take_code(&mut st.pending, code) {
+        // 符号を先に確かめ、符号を知らない者に登録した名前を探らせない。名前の誤りでは符号を消さない。
+        if let Err(e) = check_code(&mut st.pending, code) {
             return Ok(Err(e));
         }
+        let name = name.trim();
+        if name.is_empty()
+            || name.chars().count() > NAME_MAX_CHARS
+            || name.chars().any(char::is_control)
+        {
+            return Ok(Err(PairError::BadName));
+        }
+        // 取り消しの判定と画面の表示は名前で見分けるので、大文字と小文字の違いだけの名前も同じとみなす。
+        if st
+            .file
+            .devices
+            .iter()
+            .any(|d| d.name.to_lowercase() == name.to_lowercase())
+        {
+            return Ok(Err(PairError::NameTaken));
+        }
+        st.pending = None;
         let credential = random_hex(CREDENTIAL_BYTES)?;
         let record = DeviceRecord {
             id: random_hex(DEVICE_ID_BYTES)?,
@@ -174,7 +189,7 @@ impl Devices {
         Ok(Ok((info(&record), credential)))
     }
 
-    /// 資格（クッキーの値）の端末。無いか取り消した端末なら `None`。
+    /// 資格（クッキーの値）の端末。無いか登録を外した端末なら `None`。
     pub(crate) fn find(&self, credential: &str) -> Result<Option<DeviceInfo>, ServeError> {
         let hash = hash_credential(credential);
         let st = self.lock()?;
@@ -191,7 +206,7 @@ impl Devices {
         Ok(self.lock()?.file.devices.iter().map(info).collect())
     }
 
-    /// 端末を取り消す。以後その資格の要求は 401。無い ID なら `false`。
+    /// 端末の登録を外す。以後その資格の要求は 401 で、開いている SSE も閉じる。無い ID なら `false`。
     pub fn revoke(&self, id: &str) -> Result<bool, ServeError> {
         let mut st = self.lock()?;
         let Some(pos) = st.file.devices.iter().position(|d| d.id == id) else {
@@ -202,7 +217,19 @@ impl Devices {
             st.file.devices.insert(pos, removed);
             return Err(e);
         }
+        drop(st);
+        self.revocations.send_modify(|n| *n = n.wrapping_add(1));
         Ok(true)
+    }
+
+    /// `id` の端末が今も登録されているか。
+    pub(crate) fn is_paired(&self, id: &str) -> Result<bool, ServeError> {
+        Ok(self.lock()?.file.devices.iter().any(|d| d.id == id))
+    }
+
+    /// 登録を外した知らせ。値は外すたびに変わるので、受けたら [`Self::is_paired`] で確かめ直す。
+    pub(crate) fn subscribe_revocations(&self) -> watch::Receiver<u64> {
+        self.revocations.subscribe()
     }
 
     fn save(&self, file: &DevicesFile) -> Result<(), ServeError> {
@@ -213,18 +240,17 @@ impl Devices {
     }
 }
 
-/// 符号を確かめる。合えば消し、違えば数え、期限か回数を超えたら消す。
-fn take_code(pending: &mut Option<Pending>, given: &str) -> Result<(), PairError> {
+/// 符号を確かめる。違えば数え、期限か回数を超えたら消す。合った符号は登録を決めてから消す。
+fn check_code(pending: &mut Option<Pending>, given: &str) -> Result<(), PairError> {
     let Some(p) = pending.as_mut() else {
         return Err(PairError::NoCode);
     };
-    if now_ms() > p.expires_at_ms {
+    if Instant::now() > p.deadline {
         *pending = None;
         return Err(PairError::NoCode);
     }
     let given = normalize_code(given);
     if constant_time_eq(given.as_bytes(), p.code.as_bytes()) {
-        *pending = None;
         return Ok(());
     }
     p.failures += 1;
@@ -234,11 +260,16 @@ fn take_code(pending: &mut Option<Pending>, given: &str) -> Result<(), PairError
     Err(PairError::WrongCode)
 }
 
-/// 手で入れた符号の区切り（空白とハイフン）を除き、大文字にそろえる。
+/// 手で入れた符号の区切り（空白とハイフン）を除いて大文字にそろえ、Crockford の Base32 の読み替え
+/// （O を 0、I と L を 1）をする。
 fn normalize_code(raw: &str) -> String {
     raw.chars()
         .filter(|c| !c.is_whitespace() && *c != '-')
-        .map(|c| c.to_ascii_uppercase())
+        .map(|c| match c.to_ascii_uppercase() {
+            'O' => '0',
+            'I' | 'L' => '1',
+            other => other,
+        })
         .collect()
 }
 

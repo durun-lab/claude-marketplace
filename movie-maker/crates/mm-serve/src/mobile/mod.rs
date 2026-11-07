@@ -123,7 +123,7 @@ impl IntoResponse for MobileError {
 }
 
 impl DeviceInfo {
-    /// この端末から来た操作の呼び出し側（`Entry::Mobile`、名乗りは端末の名前）。
+    /// この端末から来た操作の発行元（`Entry::Mobile`、名乗りは端末の名前）。
     pub fn caller(&self) -> Caller {
         Caller::mobile(&self.name)
     }

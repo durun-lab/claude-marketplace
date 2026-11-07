@@ -26,7 +26,7 @@ pub const PAIR_PATH: &str = "/m/pair";
 /// 資格の要る API の前置き。これの外の読み出し（PWA の画面）は資格の無い端末にも配り、登録の画面を出す。
 const API_PREFIX: &str = "/m/api/";
 
-/// 守りを通った要求に、登録した端末（[`DeviceInfo`]）と、その端末の呼び出し側（`Caller`、`Entry::Mobile`）を
+/// 守りを通った要求に、登録した端末（[`DeviceInfo`]）と、その端末の発行元（`Caller`、`Entry::Mobile`）を
 /// `Extension` で付ける。Claude の待ち受けと共有するハンドラーは `Extension<Caller>` があれば本体の名乗りを受けない。
 pub(crate) async fn guard(
     State(st): State<Arc<MobileState>>,
@@ -118,18 +118,27 @@ fn check_device(
     headers: &HeaderMap,
     login: &str,
 ) -> Result<DeviceInfo, MobileError> {
-    let credential = cookie(headers, COOKIE_NAME).ok_or_else(|| {
-        refuse(
+    // 同じ tailnet の別の端末のページは同じサイトなので、同じ名前のクッキーを足せる。どれか 1 つが合えば通す。
+    let credentials: Vec<&str> = cookies(headers, COOKIE_NAME).collect();
+    if credentials.is_empty() {
+        return Err(refuse(
             StatusCode::UNAUTHORIZED,
             "no_device",
             "端末の資格が無い（登録の符号で登録する）",
-        )
-    })?;
-    let device = st.devices.find(credential)?.ok_or_else(|| {
+        ));
+    }
+    let mut found = None;
+    for credential in credentials {
+        found = st.devices.find(credential)?;
+        if found.is_some() {
+            break;
+        }
+    }
+    let device = found.ok_or_else(|| {
         refuse(
             StatusCode::UNAUTHORIZED,
             "unknown_device",
-            "端末の資格が登録に無いか取り消された",
+            "端末の資格が登録に無いか外された",
         )
     })?;
     if device.login != login {
@@ -154,15 +163,15 @@ fn header_str<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
     headers.get(name).and_then(|v| v.to_str().ok())
 }
 
-/// `Cookie` の見出し（複数に分かれていてもよい）から 1 つの値を引く。
-fn cookie<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
+/// `Cookie` の見出し（複数に分かれていてもよい）から、名前の合う値を全部引く。
+fn cookies<'a>(headers: &'a HeaderMap, name: &'a str) -> impl Iterator<Item = &'a str> {
     headers
         .get_all(header::COOKIE)
         .iter()
         .filter_map(|v| v.to_str().ok())
         .flat_map(|v| v.split(';'))
         .filter_map(|pair| pair.trim().split_once('='))
-        .find(|(k, _)| *k == name)
+        .filter(move |(k, _)| *k == name)
         .map(|(_, v)| v)
 }
 
@@ -188,10 +197,13 @@ mod tests {
     fn クッキーは複数の組と見出しから引ける() {
         let mut h = HeaderMap::new();
         h.append(header::COOKIE, "a=1; mm_device=abc".parse().unwrap());
-        assert_eq!(cookie(&h, COOKIE_NAME), Some("abc"));
+        assert_eq!(cookies(&h, COOKIE_NAME).collect::<Vec<_>>(), ["abc"]);
         let mut split = HeaderMap::new();
-        split.append(header::COOKIE, "a=1".parse().unwrap());
-        split.append(header::COOKIE, "mm_device=xyz".parse().unwrap());
-        assert_eq!(cookie(&split, COOKIE_NAME), Some("xyz"));
+        split.append(header::COOKIE, "mm_device=tossed".parse().unwrap());
+        split.append(header::COOKIE, "a=1; mm_device=xyz".parse().unwrap());
+        assert_eq!(
+            cookies(&split, COOKIE_NAME).collect::<Vec<_>>(),
+            ["tossed", "xyz"]
+        );
     }
 }

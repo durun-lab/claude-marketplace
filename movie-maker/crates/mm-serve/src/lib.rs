@@ -6,7 +6,7 @@
 //!   起動ごとのトークン（プロジェクトの外の持ち主専用のフォルダー）を確かめる。
 //! - 提案: Claude の編集を適用せずに保留し、人が承認・却下する（[`Core::propose`]、[`Core::approve`]、`/proposals`）。
 //! - [`MobileServer`]: 人の待ち受け（モバイル版、`/m`）。`tailscale serve` の後ろで、登録した端末だけを
-//!   `Entry::Mobile` として受ける。端末の登録と取り消しは [`Devices`] を PC のアプリから呼ぶ。
+//!   `Entry::Mobile` として受ける。端末の登録と登録を外すのは [`Devices`] を PC のアプリから呼ぶ。
 //! - [`Client`]: `mm` と結合テストが使うクライアント。
 //! - [`FrameSource`]: `GET /frame` の描画。[`EngineFrames`] が専用のスレッドの `Engine` で描く。
 

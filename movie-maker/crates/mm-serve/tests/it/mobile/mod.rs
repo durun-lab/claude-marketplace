@@ -2,8 +2,10 @@
 //! `Tailscale-User-Login` を自分で付けて送る。
 
 mod comments;
+mod events;
 mod guard;
 mod ops;
+mod pairing;
 
 use std::path::Path;
 use std::time::Duration;
