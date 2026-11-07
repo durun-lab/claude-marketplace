@@ -12,6 +12,7 @@ fn rig_with_assets() -> Rig {
     let files = [
         ("index.html", "<!doctype html><title>mm</title>"),
         ("app.js", "console.log(1)"),
+        ("hls-AB12CD34.js", "export const h = 1"),
         ("sw.js", "self.skipWaiting()"),
         ("manifest.webmanifest", r#"{"scope":"./"}"#),
     ];
@@ -45,6 +46,12 @@ fn ファイルは型を付けて返し_service_worker_のスコープを絞る(
     );
     assert_eq!(sw.header("service-worker-allowed"), Some("/m/"));
     assert_eq!(sw.header("cache-control"), Some("no-cache"));
+    // ES モジュールの分割した塊も、型が JavaScript でないとブラウザーが読まない。
+    let chunk = r.send(&Req::tailnet(), "GET", "/m/hls-AB12CD34.js", None);
+    assert_eq!(
+        chunk.header("content-type"),
+        Some("text/javascript; charset=utf-8")
+    );
     let manifest = r.send(&Req::tailnet(), "GET", "/m/manifest.webmanifest", None);
     assert_eq!(
         manifest.header("content-type"),
@@ -59,6 +66,45 @@ fn 無いファイルと_api_の未知のパスは_404() {
     for path in ["/m/missing.js", "/m/api/nothing", "/m/%2e%2e/secret.txt"] {
         let res = r.send(&device, "GET", path, None);
         assert_eq!(res.status, 404, "{path}");
+    }
+}
+
+#[test]
+fn 未登録の端末に_api_を言い換えたパスや置き場の外を指す名前で画面を返さない() {
+    let r = rig_with_assets();
+    let paths = [
+        "/m//api/project",
+        "/m/%61pi/project",
+        "/m/%2561pi/project",
+        "/m/a/%2e%2e/index.html",
+        "/m/%5c..%5cindex.html",
+    ];
+    for path in paths {
+        let res = r.send(&Req::tailnet(), "GET", path, None);
+        assert_eq!(res.status, 404, "{path}");
+    }
+}
+
+#[test]
+fn 置き場があっても_host_と本人の見出しを先に確かめる() {
+    let r = rig_with_assets();
+    let bad_host = Req {
+        host: Some("evil.example".into()),
+        ..Req::tailnet()
+    };
+    let no_login = Req {
+        login: None,
+        ..Req::tailnet()
+    };
+    for path in ["/m/", "/m/pair", "/m/sw.js"] {
+        let refused = r.send(&bad_host, "GET", path, None);
+        assert_eq!(code(&refused), "forbidden_host", "{path}");
+        assert!(refused.body.windows(5).all(|w| w != b"<titl"), "{path}");
+        assert_eq!(
+            code(&r.send(&no_login, "GET", path, None)),
+            "no_tailnet_login",
+            "{path}"
+        );
     }
 }
 

@@ -1,4 +1,4 @@
-/* 値は全部 theme の変数から取り、ここでは色や寸法を持たない。影は使わず border と角丸で区切る。 */
+/* 色と間隔は theme の変数から取り、ここでは色を持たない。影は使わず border と角丸で区切る。 */
 .mm-devices {
   display: flex;
   flex-direction: column;
@@ -26,11 +26,11 @@
   text-align: center;
 }
 
+/* QR の白地と余白は SVG が持つ（テーマに依らず読めるように）。 */
 .mm-devices-qr {
   line-height: 0;
-  padding: var(--mm-space-sm);
   border-radius: var(--mm-radius-md);
-  background: #fff;
+  overflow: hidden;
 }
 
 .mm-devices-qr svg {

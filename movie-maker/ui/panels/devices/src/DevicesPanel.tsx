@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { Device, DevicesApi, MobileStatus, Pairing } from "./api.ts";
 import { formatCode, formatPairedAt, remaining } from "./model.ts";
 import { useDevices } from "./useDevices.ts";
@@ -13,9 +13,24 @@ export interface DevicesPanelProps {
 
 type Running = Extract<MobileStatus, { state: "running" }>;
 
-/** 登録した端末 1 件。登録を外すときは、その場で確かめてから外す。 */
+/**
+ * 登録した端末 1 件。登録を外すときは、その場で確かめてから外す。確かめている間は Cancel にフォーカスを置き、
+ * Enter の押し続けや Escape で外してしまわないようにする。
+ */
 const DeviceRow = ({ device, busy, onUnpair }: { device: Device; busy: boolean; onUnpair: () => void }) => {
   const [confirming, setConfirming] = useState(false);
+  const cancel = useRef<HTMLButtonElement>(null);
+  const unpair = useRef<HTMLButtonElement>(null);
+  const asked = useRef(false);
+  useEffect(() => {
+    // やめたときは Unpair に戻し、キーボードの位置を見失わせない。
+    if (confirming) cancel.current?.focus();
+    else if (asked.current) unpair.current?.focus();
+    asked.current = confirming;
+  }, [confirming]);
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "Escape") setConfirming(false);
+  };
   return (
     <li class="mm-devices-row">
       <span class="mm-devices-name">{device.name}</span>
@@ -23,16 +38,16 @@ const DeviceRow = ({ device, busy, onUnpair }: { device: Device; busy: boolean; 
         Paired {formatPairedAt(device.paired_at_ms)}
       </span>
       {confirming ? (
-        <span class="mm-devices-confirm">
+        <span class="mm-devices-confirm" onKeyDown={onKeyDown}>
           <button type="button" class="mm-devices-button mm-devices-danger" disabled={busy} onClick={onUnpair}>
             Unpair {device.name}
           </button>
-          <button type="button" class="mm-devices-button" onClick={() => setConfirming(false)}>
+          <button type="button" class="mm-devices-button" ref={cancel} onClick={() => setConfirming(false)}>
             Cancel
           </button>
         </span>
       ) : (
-        <button type="button" class="mm-devices-button" aria-label={`Unpair ${device.name}`} onClick={() => setConfirming(true)}>
+        <button type="button" class="mm-devices-button" ref={unpair} aria-label={`Unpair ${device.name}`} onClick={() => setConfirming(true)}>
           Unpair
         </button>
       )}

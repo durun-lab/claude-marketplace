@@ -1,6 +1,7 @@
 //! 端末の登録の画面の裏側。人の待ち受け（`MobileServer`）をアプリと一緒に始め、登録の符号と端末の一覧を渡す。
 //! 待ち受けの起動は tailnet の名前を CLI で読むので別のスレッドで行い、画面は `Starting` を見て読み直す。
 
+use std::collections::HashSet;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use mm_serve::{
@@ -13,8 +14,8 @@ use crate::win::state::Shared;
 
 /// ui のビルドが PWA を置く、アプリの画面の下のフォルダー（`ui/tools/build.ts`）。
 const PWA_DIR: &str = "m";
-/// 置き場に PWA があるかを確かめる、存在しない名前。
-const MISSING_PROBE: &str = "__mm_missing__";
+/// PWA の入口。これが埋め込まれていれば PWA がある。
+const PWA_INDEX: &str = "index.html";
 /// 設定の手順（12-mobile.md）で使う `tailscale serve` のコマンド。
 const SERVE_COMMAND: &str = "tailscale serve --bg --https=8443 http://127.0.0.1:7338";
 
@@ -248,47 +249,47 @@ fn qr_svg(url: &str) -> Option<String> {
 /// Tauri が実行ファイルに埋め込んだ画面（`ui/dist/m/`）を PWA の置き場にする。
 pub struct TauriAssets {
     handle: tauri::AppHandle,
-    /// Tauri は見つからない名前に shell の index.html を返す。その中身を覚え、PWA のファイルと取り違えない。
-    shell_index: Option<Vec<u8>>,
+    /// 埋め込んだ PWA のファイルの名前（`/m/` からの相対）。asset resolver は無い名前に `<名前>.html` や
+    /// shell の index.html を返すので、名前がここにあるときだけ引く。
+    names: HashSet<String>,
 }
 
 impl std::fmt::Debug for TauriAssets {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("TauriAssets")
+        write!(f, "TauriAssets({} files)", self.names.len())
     }
 }
 
 impl TauriAssets {
     pub fn new(handle: tauri::AppHandle) -> Self {
-        let mut assets = Self {
-            handle,
-            shell_index: None,
-        };
-        assets.shell_index = assets.fetch(MISSING_PROBE).map(|a| a.bytes);
-        assets
-    }
-
-    fn fetch(&self, path: &str) -> Option<tauri::Asset> {
-        self.handle
-            .asset_resolver()
-            .get(format!("{PWA_DIR}/{path}"))
-    }
-
-    /// PWA のファイル。shell の index.html が返ったときは、そのファイルが無いということ。
-    fn lookup(&self, path: &str) -> Option<Vec<u8>> {
-        let bytes = self.fetch(path)?.bytes;
-        (self.shell_index.as_deref() != Some(bytes.as_slice())).then_some(bytes)
+        let names = pwa_names(handle.asset_resolver().iter().map(|(key, _)| key));
+        Self { handle, names }
     }
 
     /// 置き場に PWA の index.html があるか。無い構成（`pnpm build` の前など）では `GET /m/` を 404 にする。
     fn has_pwa(&self) -> bool {
-        self.lookup("index.html").is_some()
+        self.names.contains(PWA_INDEX)
     }
+}
+
+/// 埋め込んだファイルのキー（`/m/app.js` の形）から、PWA の置き場の中の名前を集める。
+/// `iter` の中身は圧縮したままなので名前だけを使い、中身は `get` で解いて読む。
+fn pwa_names<K: AsRef<str>>(keys: impl Iterator<Item = K>) -> HashSet<String> {
+    let prefix = format!("/{PWA_DIR}/");
+    keys.filter_map(|k| k.as_ref().strip_prefix(&prefix).map(str::to_owned))
+        .collect()
 }
 
 impl MobileAssets for TauriAssets {
     fn get(&self, path: &str) -> Option<MobileAsset> {
-        Some(MobileAsset::new(self.lookup(path)?, path))
+        if !self.names.contains(path) {
+            return None;
+        }
+        let asset = self
+            .handle
+            .asset_resolver()
+            .get(format!("{PWA_DIR}/{path}"))?;
+        Some(MobileAsset::new(asset.bytes, path))
     }
 }
 
@@ -324,5 +325,20 @@ mod tests {
         let svg = qr_svg("https://desk.tail1234.ts.net:8443/m/pair?code=ABCD2345").unwrap();
         assert!(svg.starts_with("<svg"), "{}", &svg[..40]);
         assert!(svg.contains("#ffffff") && svg.contains("#000000"));
+    }
+
+    #[test]
+    fn pwa_の名前は_m_の下のキーだけを相対で集める() {
+        let keys = [
+            "/index.html",
+            "/m/index.html",
+            "/m/hls-ab12.js",
+            "/mm/x.js",
+            "/shell.js",
+        ];
+        let names = pwa_names(keys.into_iter());
+        let mut sorted: Vec<_> = names.iter().map(String::as_str).collect();
+        sorted.sort_unstable();
+        assert_eq!(sorted, ["hls-ab12.js", "index.html"]);
     }
 }

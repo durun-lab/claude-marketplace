@@ -90,6 +90,22 @@ describe("DevicesPanel", () => {
   });
 });
 
+describe("DevicesPanel の登録を外す確かめ", () => {
+  it("確かめている間は Cancel にフォーカスを置き、Escape でやめて Unpair に戻す", async () => {
+    const api = fakeApi(RUNNING, [PHONE]);
+    await mount(api);
+    await click(button("Unpair"));
+    expect(document.activeElement).toBe(button("Cancel"));
+    act(() => {
+      button("Cancel")?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    await flush();
+    expect(button("Unpair Pixel")).toBeUndefined();
+    expect(document.activeElement).toBe(button("Unpair"));
+    expect(api.revoke).not.toHaveBeenCalled();
+  });
+});
+
 describe("createIpcDevicesApi", () => {
   it("コマンドの名前と引数で呼び、失敗は Error にする", async () => {
     const call = vi.fn(async (command: string) => {

@@ -17,7 +17,7 @@ use super::MobileState;
 const INDEX: &str = "index.html";
 /// `/m/api/` の下は資格の要る API で、未知のパスを画面にしない。
 const API_PREFIX: &str = "api/";
-/// Service Worker の名前。スコープを `/m/` に絞る見出しを付ける。
+/// Service Worker の名前。最大のスコープを `/m/` と明示する見出しを付け、`/` の下（ダッシュボード）へ広げさせない。
 const SERVICE_WORKER: &str = "sw.js";
 
 /// PWA の 1 ファイル。
@@ -38,6 +38,7 @@ impl MobileAsset {
 }
 
 /// PWA のファイルの置き場。`path` は `/m/` からの相対（`app.js`、`index.html`）。無ければ `None`。
+/// 待ち受けは `/`、英数字、`.`、`-`、`_` だけで、`..` や空の区切りを含まない名前だけを渡す。
 pub trait MobileAssets: std::fmt::Debug + Send + Sync {
     fn get(&self, path: &str) -> Option<MobileAsset>;
 }
@@ -108,7 +109,7 @@ async fn file(State(st): State<Arc<MobileState>>, UrlPath(path): UrlPath<String>
 /// 名前のファイルを返す。拡張子の無い名前は画面の中の経路なので入口を返し、拡張子のある名前は無ければ 404。
 fn serve(st: &MobileState, path: &str) -> Response {
     let not_found = || StatusCode::NOT_FOUND.into_response();
-    if path.starts_with(API_PREFIX) {
+    if path.starts_with(API_PREFIX) || !is_plain_name(path) {
         return not_found();
     }
     let Some(assets) = &st.assets else {
@@ -125,7 +126,7 @@ fn serve(st: &MobileState, path: &str) -> Response {
     };
     let mut res = ([(header::CONTENT_TYPE, asset.mime)], asset.bytes).into_response();
     let h = res.headers_mut();
-    // ファイル名にハッシュが無いので、版の更新が届くよう毎回確かめさせる（高速化は Service Worker の担当）。
+    // ファイル名にハッシュが無いので、ビルドの更新が届くよう毎回確かめさせる（高速化は Service Worker の担当）。
     h.insert(header::CACHE_CONTROL, HeaderValue::from_static("no-cache"));
     h.insert(
         header::X_CONTENT_TYPE_OPTIONS,
@@ -135,4 +136,29 @@ fn serve(st: &MobileState, path: &str) -> Response {
         h.insert("service-worker-allowed", HeaderValue::from_static("/m/"));
     }
     res
+}
+
+/// 置き場に渡してよい名前か。ビルドの出力の名前の文字だけにし、`..`、空の区切り、`\`、`%` を断る。
+/// 置き場の実装（Tauri の asset resolver は `%` をもう一度解く）に依らず、置き場の外を指させない。
+fn is_plain_name(path: &str) -> bool {
+    let plain = |c: char| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_');
+    path.split('/')
+        .all(|seg| !seg.is_empty() && seg != "." && seg != ".." && seg.chars().all(plain))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 置き場にはビルドの出力の形の名前だけを渡す() {
+        for ok in ["app.js", "index.html", "icons/icon-192.png", "watch"] {
+            assert!(is_plain_name(ok), "{ok}");
+        }
+        for bad in [
+            "", "../x", "a/../b", "./a", "a//b", "/a", "a/", "a\\b", "%2e%2e/x", "a b",
+        ] {
+            assert!(!is_plain_name(bad), "{bad}");
+        }
+    }
 }
