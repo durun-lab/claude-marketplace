@@ -3,6 +3,17 @@
 use mm_node_api::NodeKind;
 use mm_types::{MmError, Params, Result, Rgba, RgbaImage, Size};
 
+/// シェーダーへ渡す数を引く。無いか、NaN・無限大（f32 にして溢れる値も）なら `fallback`。
+/// NaN は `clamp` や `max` を素通りし、GPU の上で全画素を NaN にするため、ここで既定値に落とす。
+pub(crate) fn finite_number(params: &Params, name: &str, fallback: f64) -> f32 {
+    let value = params.number_or(name, fallback) as f32;
+    if value.is_finite() {
+        value
+    } else {
+        fallback as f32
+    }
+}
+
 /// 今のバージョンの値だけを受ける `migrate`。バージョンが違えば移行が無いと返す。
 pub(crate) fn migrate_same_version(
     kind: &dyn NodeKind,
@@ -82,5 +93,20 @@ mod tests {
         let out = fit_contain(img, Size::new(8, 4));
         assert_eq!(out.pixel(0, 0).a, 0.0, "左の余白は透明");
         assert_eq!(out.pixel(4, 2).a, 1.0, "中央は素材");
+    }
+
+    #[test]
+    fn 有限でない数は既定値に落とす() {
+        let mut params = Params::new();
+        params
+            .set("nan", mm_types::ParamValue::Number(f64::NAN))
+            .set("inf", mm_types::ParamValue::Number(f64::NEG_INFINITY))
+            .set("huge", mm_types::ParamValue::Number(1e300))
+            .set("ok", mm_types::ParamValue::Number(0.25));
+        assert_eq!(finite_number(&params, "nan", 0.5), 0.5);
+        assert_eq!(finite_number(&params, "inf", 0.5), 0.5);
+        assert_eq!(finite_number(&params, "huge", 0.5), 0.5, "f32 で溢れる値");
+        assert_eq!(finite_number(&params, "ok", 0.5), 0.25);
+        assert_eq!(finite_number(&params, "none", 0.5), 0.5);
     }
 }

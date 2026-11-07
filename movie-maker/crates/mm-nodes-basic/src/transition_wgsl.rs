@@ -16,7 +16,7 @@ use mm_types::{MmError, ParamSchema, ParamSpec, ParamType, ParamValue, Params, R
 
 use crate::gpu_pass::{input_texture, InputTexture, Pass, PassCache};
 use crate::transition::TRANSITION_PROGRESS_PARAM;
-use crate::util::migrate_same_version;
+use crate::util::{finite_number, migrate_same_version};
 use crate::KIND_VERSION;
 
 /// トランジションの長さ（秒）のパラメータの名前。レンダラーが書く。
@@ -28,6 +28,8 @@ pub const TRANSITION_REWIND_PARAM: &str = "rewind";
 const NUMBER_PARAMS: usize = 8;
 /// `duration` の既定（秒）。
 const DEFAULT_DURATION: f64 = 1.0;
+/// `progress` の既定。
+const DEFAULT_PROGRESS: f64 = 0.5;
 
 /// コードの既定。線形の光の上のクロスディゾルブ。
 const DEFAULT_CODE: &str = "fn mm_transition(uv: vec2<f32>) -> vec4<f32> {\n    return mix(mm_from(uv), mm_to(uv), u.progress);\n}\n";
@@ -75,6 +77,18 @@ struct Uniform {
 }
 
 impl Uniform {
+    /// パラメータから作る。有限でない数は既定値に落とし、進み具合は 0..1、長さは 0 以上に収める。
+    fn of(params: &Params, size: Size, scale: f32) -> Self {
+        Self {
+            size,
+            progress: finite_number(params, TRANSITION_PROGRESS_PARAM, DEFAULT_PROGRESS)
+                .clamp(0.0, 1.0),
+            duration: finite_number(params, TRANSITION_DURATION_PARAM, DEFAULT_DURATION).max(0.0),
+            scale,
+            numbers: std::array::from_fn(|i| finite_number(params, &format!("p{i}"), 0.0)),
+        }
+    }
+
     /// `size`、`progress`、`ratio`、`time`、`duration`、`scale`、詰め物、`p0`..`p7` の順で 16 個。
     fn bytes(&self) -> Vec<u8> {
         let (w, h) = (self.size.width as f32, self.size.height as f32);
@@ -170,7 +184,12 @@ impl NodeKind for TransitionWgslKind {
                 ParamType::Text,
                 ParamValue::Text(DEFAULT_CODE.into()),
             ),
-            number_spec(TRANSITION_PROGRESS_PARAM, Some(0.0), Some(1.0), 0.5),
+            number_spec(
+                TRANSITION_PROGRESS_PARAM,
+                Some(0.0),
+                Some(1.0),
+                DEFAULT_PROGRESS,
+            ),
             number_spec(TRANSITION_DURATION_PARAM, Some(0.0), None, DEFAULT_DURATION),
             number_spec(TRANSITION_REWIND_PARAM, Some(0.0), None, 0.0),
         ];
@@ -206,19 +225,7 @@ impl NodeKind for TransitionWgslKind {
             .and_then(ParamValue::as_text)
             .unwrap_or(DEFAULT_CODE)
             .to_string();
-        let uniform = Uniform {
-            size: cx.size,
-            progress: cx
-                .params
-                .number_or(TRANSITION_PROGRESS_PARAM, 0.5)
-                .clamp(0.0, 1.0) as f32,
-            duration: cx
-                .params
-                .number_or(TRANSITION_DURATION_PARAM, DEFAULT_DURATION)
-                .max(0.0) as f32,
-            scale: cx.scale,
-            numbers: std::array::from_fn(|i| cx.params.number_or(&format!("p{i}"), 0.0) as f32),
-        };
+        let uniform = Uniform::of(cx.params, cx.size, cx.scale);
         let t = cx.time;
         let from = cx.inputs.frame(0, t)?;
         let to = cx.inputs.frame(1, t)?;
@@ -228,5 +235,50 @@ impl NodeKind for TransitionWgslKind {
             ));
         };
         self.mix_gpu(gpu, (from, to), &code, &uniform)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn params(values: &[(&str, f64)]) -> Params {
+        let mut p = Params::new();
+        for (name, v) in values {
+            p.set(*name, ParamValue::Number(*v));
+        }
+        p
+    }
+
+    #[test]
+    fn 有限でない数は既定値に落としてシェーダーへ渡す() {
+        let p = params(&[
+            (TRANSITION_PROGRESS_PARAM, f64::NAN),
+            (TRANSITION_DURATION_PARAM, f64::INFINITY),
+            ("p0", f64::NAN),
+            ("p7", f64::NEG_INFINITY),
+            ("p3", 2.5),
+        ]);
+        let u = Uniform::of(&p, Size::new(4, 2), 1.0);
+        assert_eq!(u.progress, DEFAULT_PROGRESS as f32);
+        assert_eq!(u.duration, DEFAULT_DURATION as f32);
+        assert_eq!(u.numbers[0], 0.0);
+        assert_eq!(u.numbers[7], 0.0);
+        assert_eq!(u.numbers[3], 2.5);
+        let bytes = u.bytes();
+        assert!(bytes
+            .chunks_exact(4)
+            .all(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]).is_finite()));
+    }
+
+    #[test]
+    fn 範囲の外の進み具合と負の長さは収める() {
+        let p = params(&[
+            (TRANSITION_PROGRESS_PARAM, 3.0),
+            (TRANSITION_DURATION_PARAM, -1.0),
+        ]);
+        let u = Uniform::of(&p, Size::new(4, 2), 1.0);
+        assert_eq!(u.progress, 1.0);
+        assert_eq!(u.duration, 0.0);
     }
 }

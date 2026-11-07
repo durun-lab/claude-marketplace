@@ -78,14 +78,14 @@ impl Clip {
         for mask in &layer.masks {
             let Some(m) = evaluate_mask(mask, t) else {
                 dropped.push(format!(
-                    "mask {}: 頂点の並びのマスクは描けないので飛ばす",
+                    "mask {}: 頂点の並びのマスクは描けないのでスキップする",
                     mask.id
                 ));
                 continue;
             };
             let Some(slot) = clip.masks.get_mut(clip.mask_count as usize) else {
                 dropped.push(format!(
-                    "mask {}: 1 枚のレイヤーに描けるマスクは {MAX_MASKS} 枚までなので飛ばす",
+                    "mask {}: 1 枚のレイヤーに描けるマスクは {MAX_MASKS} 枚までなのでスキップする",
                     mask.id
                 ));
                 continue;
