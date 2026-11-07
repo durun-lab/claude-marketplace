@@ -1,7 +1,7 @@
 //! FFmpeg を使うエンコーダーの共通実装（`mm-decode-api` の `Encoder` の実装）。
 //!
 //! コーデックの指定（[`CodecSpec`]）から、映像と音を MP4 か MOV に書く。フレームは線形の RGBA の f32 で受け取り、
-//! Rec.1886 の符号化値に直してからエンコーダーの画素形式（Rec.709、tv レンジ）にして送る。レンダラーが GPU で作った NV12
+//! 信号の符号化値（SDR は Rec.1886、HDR は Rec.2020 の PQ か HLG）に直してからエンコーダーの画素形式（tv レンジ）にして送る。レンダラーが GPU で作った NV12
 //! （`push_nv12_frames`）は、NV12 を受けるコーデックなら変換せずに送る。フレームの時刻は 1 フレームごとに `1 / fps` 進める
 //! （書き出しは CFR）。2 パスの指定は、1 回目に統計を取り、2 回目に書く。
 //!
@@ -11,12 +11,17 @@
 
 pub mod spec;
 
-pub use spec::{AudioCodec, CodecSpec, Container, Rate, VideoInput};
+pub use spec::{
+    AudioCodec, CodecSpec, Container, OutputSignal, Rate, VideoInput, HDR10_MASTER_DISPLAY,
+    HDR10_MAX_CLL,
+};
 
 #[cfg(feature = "ffmpeg")]
 mod audio;
 #[cfg(feature = "ffmpeg")]
 mod extras;
+#[cfg(feature = "ffmpeg")]
+mod fill;
 #[cfg(feature = "ffmpeg")]
 mod transfer;
 #[cfg(feature = "ffmpeg")]

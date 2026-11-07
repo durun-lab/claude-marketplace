@@ -40,6 +40,16 @@ fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
 }
 ";
 
+/// プレーンのテクスチャの値（0..1）→ 符号語の倍率。FFmpeg の 10 bit のプレーン（`YUV420P10LE`）は符号語を
+/// 16 bit の下位に詰めるので、上位に詰める P010 の `YuvParams::texture_code_scale` と違い 65535 倍で戻る。
+fn planar_code_scale(bits: u32) -> f32 {
+    if bits == 8 {
+        f32::from(u8::MAX)
+    } else {
+        f32::from(u16::MAX)
+    }
+}
+
 /// プレーンのテクスチャの組。素材の形式と大きさが変わったら作り直す。
 struct Planes {
     format: wgpu::TextureFormat,
@@ -141,9 +151,10 @@ impl GpuUploader {
             Matrix::from_frame(src.color_space(), src.height()),
             is_full_range(src.color_range()),
             bits,
-            YuvParams::texture_code_scale(bits),
+            planar_code_scale(bits),
             (size.width, size.height),
-        );
+        )
+        .with_frame_signal(src);
         self.params.update(&self.queue, params);
         let target = self.pool.take();
         self.pass

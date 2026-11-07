@@ -8,7 +8,7 @@ use ffmpeg_next as ff;
 use mm_decode_api::{AudioStreamInfo, MediaInfo};
 use mm_types::{MmError, RationalTime, Result, Size};
 
-use crate::matrix::{check_transfer, Matrix};
+use crate::matrix::{color_space_of, Matrix, Transfer};
 use crate::timeline::{can_read_forward, Timeline};
 
 /// 開いた入力と、映像のデコーダー。パケットを送ってフレームを受ける。
@@ -114,13 +114,14 @@ pub struct Sequencer {
 }
 
 impl Sequencer {
-    /// PTS を走査して時間軸を作る。PQ と HLG の素材は `Unsupported`。
+    /// PTS を走査して時間軸を作る。PQ と HLG の素材は色空間を `bt2100_pq`、`bt2100_hlg` と名乗る。
     pub fn new(path: &Path, reader: StreamReader) -> Result<Self> {
         let dec = reader.decoder();
-        check_transfer(dec.color_transfer_characteristic())?;
         let size = Size::new(dec.width(), dec.height());
         let matrix = Matrix::from_frame(dec.color_space(), dec.height());
-        let timeline = Timeline::build(path, &reader.stream(), size, matrix.color_space())?;
+        let transfer = Transfer::from_characteristic(dec.color_transfer_characteristic());
+        let color_space = color_space_of(matrix, transfer);
+        let timeline = Timeline::build(path, &reader.stream(), size, color_space)?;
         Ok(Self {
             reader,
             timeline,

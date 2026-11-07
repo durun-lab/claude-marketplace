@@ -32,7 +32,7 @@ impl FfmpegDecoder {
         Ok(dec)
     }
 
-    /// 素材を開く。ファイルが無ければ `NotFound`、読めなければ `Corrupt`、PQ と HLG は `Unsupported`。
+    /// 素材を開く。ファイルが無ければ `NotFound`、読めなければ `Corrupt`。PQ と HLG は 1 を超える線形の光で返す。
     pub fn open(path: &Path) -> Result<Self> {
         if !path.exists() {
             return Err(MmError::NotFound(path.display().to_string()));

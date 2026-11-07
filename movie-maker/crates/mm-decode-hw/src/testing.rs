@@ -289,7 +289,7 @@ pub fn distinct_in_row(image: &RgbaImage, y: u32) -> usize {
 /// 元の素材（`fixtures/media/generate.sh` の生成物）の置き場に、派生した素材を無ければ ffmpeg の CLI で作る。
 /// `lavfi` は入力の式、`encode` は出力の引数。テストのプロセスが同時に作っても壊れないよう、別名で書いてから置く。
 pub fn derived_fixture(name: &str, lavfi: &str, encode: &[&str]) -> PathBuf {
-    let out = media_root().join("out");
+    let out = derived_dir();
     let target = out.join(name);
     if target.exists() {
         return target;
@@ -310,29 +310,9 @@ pub fn derived_fixture(name: &str, lavfi: &str, encode: &[&str]) -> PathBuf {
     target
 }
 
-/// 伝達特性を PQ か HLG と宣言した素材（中身は単色）。`trc` は ffmpeg の `-color_trc` の名前。
-pub fn hdr_transfer_fixture(trc: &str) -> PathBuf {
-    derived_fixture(
-        &format!("trc_{trc}.mp4"),
-        &format!(
-            "color=c=0x606060:s=320x180:r=30,format=yuv420p,\
-             setparams=color_primaries=bt2020:color_trc={trc}:colorspace=bt2020nc,trim=end_frame=10"
-        ),
-        &[
-            "-c:v",
-            "libx264",
-            "-crf",
-            "12",
-            "-pix_fmt",
-            "yuv420p",
-            "-color_primaries",
-            "bt2020",
-            "-color_trc",
-            trc,
-            "-colorspace",
-            "bt2020nc",
-        ],
-    )
+/// 派生のフィクスチャ（ffmpeg の CLI で作る素材）の置き場。HDR の素材（`mm_testkit::hdr::fixture`）もここに作る。
+pub fn derived_dir() -> PathBuf {
+    media_root().join("out")
 }
 
 /// 色差だけが左から右へなだらかに増える素材（輝度は一定）。色差の補間の確認に使う。

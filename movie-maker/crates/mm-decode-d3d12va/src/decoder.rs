@@ -138,7 +138,8 @@ impl D3d12vaDecoder {
             self.bits,
             YuvParams::texture_code_scale(self.bits),
             (hw.width(), hw.height()),
-        );
+        )
+        .with_frame_signal(&hw);
         planes.wait_decode_on(&self.queue)?;
         let target = self.pool.take();
         self.converter.submit(&planes, params, &target);

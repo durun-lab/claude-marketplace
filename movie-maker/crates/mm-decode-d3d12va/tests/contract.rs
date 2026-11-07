@@ -15,6 +15,7 @@ use mm_decode_d3d12va::{gpu_request, D3d12vaDecoder, D3d12vaFactory, PROBE_ENV};
 use mm_gpu::GpuContext;
 use mm_testkit::decode::{contract, DecodeFixture};
 use mm_testkit::decode_vfr::vfr_contract;
+use mm_testkit::hdr::{self, HdrKind};
 use mm_types::{MmError, Rational, RationalTime};
 
 const FILES: [&str; 6] = [
@@ -283,18 +284,22 @@ fn 試しデコードの最後にデバイスの無事を確かめられる() {
     );
 }
 
+/// HEVC Main10 の PQ と HLG を P010 のまま読み、1 を超える線形の光（作業色空間）にする。
 #[test]
-fn pq_と_hlg_の素材は拒否する() {
+fn pq_と_hlg_の素材を_p010_から線形の光で読む() {
     if !available() {
         return;
     }
-    for trc in ["smpte2084", "arib-std-b67"] {
-        let path = common::hdr_transfer_fixture(trc);
-        let opened = factory().open(&path, None);
-        assert!(
-            matches!(opened, Err(MmError::Unsupported(_))),
-            "{trc}: {:?}",
-            opened.err()
+    for kind in [HdrKind::Pq, HdrKind::Hlg] {
+        let path = hdr::fixture(&common::derived_dir(), kind);
+        let mut dec = factory().open(&path, None).expect("開ける");
+        assert_eq!(dec.info().color_space.0, kind.color_space());
+        let frame = dec.next_frame().expect("デコード").expect("フレーム");
+        let image = frame.image.as_ref().expect("CPU の画像");
+        hdr::check_bands(image, kind, "d3d12va").unwrap();
+        eprintln!(
+            "d3d12va の {kind:?} の帯の最大の相対の差 {:e}",
+            hdr::max_relative_error(image, kind)
         );
     }
 }

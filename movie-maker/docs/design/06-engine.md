@@ -65,8 +65,9 @@ flowchart LR
 - `mm render <project> <target>` が、同じレンダラーを headless（サーフェスなし）で動かし、1 フレームずつ描く。NVENC へは GPU の中で渡す。
 - 長い書き出しは区間に分け、プロセスを並行に起動して描き、つなぐ。区間ごとに再開できる。並行の数は VRAM と NVENC の数で決める。
 - 細かい画質の指定（2 パス、10 bit、ProRes、DNxHR）は、リードバックして FFmpeg のエンコーダーに渡す。10 ビットの YUV へは、線形の f32 を 16 ビットの Rec.1886 の符号化値に直してから縮める（8 ビットを経由しない）。
+- HDR（`hevc_pq`、`hevc_hlg`）は、線形の f32（1.0 が 203 cd/m²、1 を超える値も持つ）を Rec.2020 の原色の PQ か HLG にして、10 ビットの 4:2:0 の YUV を自前で作り libx265 に渡す。HDR10 のマスタリングの表示と MaxCLL / MaxFALL は SEI に書く（[RFC](../rfcs/hdr.md)）。
 - 実装の現状（段階 4、RFC 0015）:
-  - コーデックの名前は `mm-encode-ffmpeg`（`h264`、`h264_2pass`、`prores_422hq`、`prores_4444`、`dnxhr_lb` / `sq` / `hq` / `hqx` / `444`）と `mm-encode-nvenc`（`h264_nvenc`、`hevc_nvenc`）が決める。ProRes と DNxHR は MOV に 24 ビット PCM、それ以外は MP4 に AAC。
+  - コーデックの名前は `mm-encode-ffmpeg`（`h264`、`h264_2pass`、`hevc_pq`、`hevc_hlg`、`prores_422hq`、`prores_4444`、`dnxhr_lb` / `sq` / `hq` / `hqx` / `444`）と `mm-encode-nvenc`（`h264_nvenc`、`hevc_nvenc`）が決める。ProRes と DNxHR は MOV に 24 ビット PCM、それ以外は MP4 に AAC。
   - NVENC は FFmpeg の `h264_nvenc` / `hevc_nvenc` を使う。GPU が作った NV12 のリードバック（3 枚先行）を CPU のメモリから渡し、GPU の中では渡さない。NVIDIA の SDK を直接使うと、セッションとバッファの管理、MP4 への多重化、コンテナと音の扱いを自前で持つことになる。NVENC の 1 セッションは 1080p で約 440〜500 fps（p4）が上限で、1 プロセスの書き出しは 449 fps（測定は [計装の予算の表](17-instrumentation.md#予算の表)）。速さを決めるのはエンコーダーのハードウェアなので、SDK を直接使っても変わらない。GPU の中で渡す経路は、レンダラーの wgpu（D3D12）のテクスチャを NVENC の入力に共有する橋が要り、上の上限の手前では利得が出ないので作っていない。
   - NVIDIA の GPU が無いと NVENC は使えないと返し、`encode: auto` の組み立てが `h264_nvenc` を libx264 の `h264` で書く。候補の作成、字幕とチャプターの受け取り、開くのどれで失敗しても次の候補へ進み、実際に書いた実装（`ffmpeg/h264` など）を書き出しの結果（`ExportSummary::encoder`）に載せる。
   - 出力先の拡張子はコーデックのコンテナに合わせる。ProRes と DNxHR は `.mov`、x264 と NVENC は `.mp4` か `.m4v` でなければ、書き出す前に拒否する。

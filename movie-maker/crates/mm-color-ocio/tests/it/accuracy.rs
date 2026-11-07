@@ -79,7 +79,7 @@ fn ocioとlutクレートのsrgbが一致する() {
 mod gpu {
     use super::*;
     use mm_color_lut::gpu_eval::GpuEval;
-    use mm_color_lut::LUT3D_APPLY_WGSL;
+    use mm_color_lut::lut3d_apply_wgsl;
 
     #[test]
     fn wgslをgpuで実行するとocioのcpuと一致する() {
@@ -113,13 +113,19 @@ mod gpu {
         let ocio = OcioColor::builtin().expect("設定").with_lut_size(65);
         let from = space("ACEScg");
         let program = ocio.display_program(&from, None, None).expect("変換");
-        let TransformProgram::Lut3d { size, data } = program else {
+        let TransformProgram::Lut3d { size, data, shaper } = program else {
             panic!("ACES の表示変換は 3D LUT になるはず（{program:?}）");
         };
-        // 0..1 に収まる中間色で比べる。LUT の外（1 超）はベイクできない。
-        let inputs: Vec<[f32; 3]> = SAMPLES.to_vec();
+        // PQ のシェーパーで 1 を超えるハイライトも格子に入るので、中間色に 1 超の色を足して比べる。
+        let highlights = [[4.0, 4.0, 4.0], [8.0, 2.0, 0.5]];
+        let inputs: Vec<[f32; 3]> = SAMPLES.iter().chain(&highlights).copied().collect();
+        let source = format!(
+            "{}{}",
+            mm_types::transfer::TRANSFER_WGSL,
+            lut3d_apply_wgsl(shaper)
+        );
         let got = gpu
-            .run(LUT3D_APPLY_WGSL, &inputs, Some((size, &data)))
+            .run(&source, &inputs, Some((size, &data)))
             .expect("GPU で実行");
         let want: Vec<_> = inputs
             .iter()

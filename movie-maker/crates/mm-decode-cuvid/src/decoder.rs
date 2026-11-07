@@ -116,7 +116,8 @@ impl CuvidDecoder {
             self.bits,
             1.0,
             (cuda_frame.width(), cuda_frame.height()),
-        );
+        )
+        .with_frame_signal(&cuda_frame);
         // コピーを積んだ以上、読み終えの値を必ず進める。待つ側（次のコピー）が止まらないように。
         let wait = self.ring.wait_copy_on(slot);
         let target = self.pool.take();
