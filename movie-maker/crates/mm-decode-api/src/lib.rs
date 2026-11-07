@@ -180,6 +180,7 @@ pub trait Decoder: Send {
     fn decode_audio(&mut self, range: TimeRange) -> Result<AudioBlock>;
     /// デコードしている実装の名前（`ffmpeg`、`d3d12va`、`cuvid`）。実装を選ぶファクトリー（`auto`）が開いた
     /// デコーダーでも、実際に選ばれた実装を返す。画素は実装で変わりうるので、フレームのキャッシュのキーに入る。
+    /// 画素の作り方が素材の信号で分かれる実装は、分かれた側の名前に版を付けてよい（`ffmpeg+wide.1`）。
     /// `None` は、開いたファクトリーの名前で足りる（モックなど）。
     fn backend_id(&self) -> Option<&'static str> {
         None

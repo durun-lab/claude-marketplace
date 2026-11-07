@@ -151,7 +151,11 @@ impl Drop for CuvidDecoder {
 
 impl Decoder for CuvidDecoder {
     fn backend_id(&self) -> Option<&'static str> {
-        Some("cuvid")
+        Some(if self.seq.wide_signal() {
+            mm_decode_ffmpeg_core::wide_backend_id!("cuvid")
+        } else {
+            "cuvid"
+        })
     }
 
     fn info(&self) -> &MediaInfo {

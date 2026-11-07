@@ -123,6 +123,34 @@ pub fn is_rec2020(primaries: Primaries, transfer: Transfer) -> bool {
     }
 }
 
+/// 画素形式の 1 成分のビット数。記述子が無い形式は 8。
+pub fn bit_depth(format: ff::format::Pixel) -> u32 {
+    // SAFETY: av_pix_fmt_desc_get は静的な記述子へのポインタか null を返す。
+    unsafe {
+        let desc = ff::ffi::av_pix_fmt_desc_get(format.into());
+        if desc.is_null() {
+            8
+        } else {
+            (*desc).comp[0].depth as u32
+        }
+    }
+}
+
+/// 8 bit を経由せずに線形にする広い信号の素材か（8 bit を超える、PQ か HLG、Rec.2020 の原色）。
+pub fn is_wide(bits: u32, transfer: Transfer, rec2020: bool) -> bool {
+    bits > 8 || transfer.is_hdr() || rec2020
+}
+
+/// 広い信号の素材を読むデコーダーの実装の名前（`Decoder::backend_id`）に、画素の作り方の版を付ける。
+/// 名前はフレームのキャッシュのキーに入るので、版を上げると広い信号の素材の画像だけが描き直され、
+/// 8 bit の Rec.709 の素材の画像は残る。
+#[macro_export]
+macro_rules! wide_backend_id {
+    ($name:literal) => {
+        concat!($name, "+wide.1")
+    };
+}
+
 /// プロジェクトのデータに出す色空間の名前。HDR は伝達特性の名前（`bt2100_pq`、`bt2100_hlg`）、SDR は行列の名前。
 pub fn color_space_of(matrix: Matrix, transfer: Transfer) -> ColorSpace {
     match transfer {
@@ -169,6 +197,17 @@ mod tests {
         assert!(is_rec2020(Primaries::Unspecified, Transfer::Pq));
         assert!(!is_rec2020(Primaries::Unspecified, Transfer::Bt1886));
         assert!(!is_rec2020(Primaries::BT709, Transfer::Hlg));
+    }
+
+    #[test]
+    fn 広い信号は_8_bit_を超えるか_hdr_か_rec2020() {
+        assert!(!is_wide(8, Transfer::Bt1886, false));
+        assert!(is_wide(10, Transfer::Bt1886, false));
+        assert!(is_wide(8, Transfer::Hlg, true));
+        assert!(is_wide(8, Transfer::Bt1886, true));
+        assert_eq!(bit_depth(ff::format::Pixel::YUV420P), 8);
+        assert_eq!(bit_depth(ff::format::Pixel::YUV420P10LE), 10);
+        assert_eq!(crate::wide_backend_id!("ffmpeg"), "ffmpeg+wide.1");
     }
 
     #[test]

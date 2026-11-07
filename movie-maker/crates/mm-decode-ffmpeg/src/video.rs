@@ -99,7 +99,11 @@ impl FfmpegDecoder {
 
 impl Decoder for FfmpegDecoder {
     fn backend_id(&self) -> Option<&'static str> {
-        Some("ffmpeg")
+        Some(if self.seq.wide_signal() {
+            mm_decode_ffmpeg_core::wide_backend_id!("ffmpeg")
+        } else {
+            "ffmpeg"
+        })
     }
 
     fn info(&self) -> &MediaInfo {

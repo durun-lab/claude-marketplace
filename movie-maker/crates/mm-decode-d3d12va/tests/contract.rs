@@ -304,6 +304,26 @@ fn pq_と_hlg_の素材を_p010_から線形の光で読む() {
     }
 }
 
+/// 広い信号の素材だけ実装の名前に画素の版を付け、フレームのキャッシュで前の作り方の画素を引かない。
+/// 8 bit の Rec.709 の素材は名前を変えず、覚えた画像を使い続ける。
+#[test]
+fn 広い信号の素材だけ実装の名前に画素の版を付ける() {
+    if !available() {
+        return;
+    }
+    let ctx = ctx();
+    let id = |path: &std::path::Path| {
+        D3d12vaDecoder::open(path, &ctx)
+            .expect("開ける")
+            .backend_id()
+    };
+    let wide = mm_decode_ffmpeg_core::wide_backend_id!("d3d12va");
+    assert_eq!(id(&fixtures(&FILES).join("cfr.mp4")), Some("d3d12va"));
+    assert_eq!(id(&fixtures(&FILES).join("p10.mp4")), Some(wide));
+    let pq = hdr::fixture(&common::derived_dir(), HdrKind::Pq);
+    assert_eq!(id(&pq), Some(wide));
+}
+
 #[test]
 fn 色差は隣の画素へ線形に補間される() {
     if !available() {

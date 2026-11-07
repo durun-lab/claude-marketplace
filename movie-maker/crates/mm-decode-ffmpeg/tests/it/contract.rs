@@ -39,6 +39,18 @@ fn pq_と_hlg_の素材を_8_bit_を経由せず線形の光で読む() {
     }
 }
 
+/// 広い信号の素材だけ実装の名前に画素の版を付け、フレームのキャッシュで前の作り方の画素を引かない。
+/// 8 bit の Rec.709 の素材は名前を変えず、覚えた画像を使い続ける。
+#[test]
+fn 広い信号の素材だけ実装の名前に画素の版を付ける() {
+    let dir = common::fixtures();
+    let id = |path: &std::path::Path| FfmpegDecoderFactory.open(path, None).unwrap().backend_id();
+    let wide = mm_decode_ffmpeg_core::wide_backend_id!("ffmpeg");
+    assert_eq!(id(&dir.join("cfr.mp4")), Some("ffmpeg"));
+    assert_eq!(id(&dir.join("p10.mp4")), Some(wide));
+    assert_eq!(id(&hdr::fixture(&dir, HdrKind::Pq)), Some(wide));
+}
+
 #[test]
 fn 契約の素材でも焼き込んだ番号がフレームの番号と一致する() {
     let dir = common::fixtures();

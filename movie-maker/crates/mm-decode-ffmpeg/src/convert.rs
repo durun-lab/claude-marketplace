@@ -7,7 +7,9 @@ use ff::format::Pixel;
 use ff::software::scaling::{Context as Scaler, Flags};
 use ff::{ffi, frame};
 use ffmpeg_next as ff;
-use mm_decode_ffmpeg_core::matrix::{is_full_range, is_rec2020, Matrix, Transfer};
+use mm_decode_ffmpeg_core::matrix::{
+    bit_depth, is_full_range, is_rec2020, is_wide, Matrix, Transfer,
+};
 use mm_types::transfer::code8_table;
 use mm_types::{MmError, Result, RgbaImage, Size};
 
@@ -43,7 +45,7 @@ impl SourceKey {
 
     /// 8 bit を経由しない経路か。
     fn is_wide(self) -> bool {
-        self.bits > 8 || self.transfer.is_hdr() || self.rec2020
+        is_wide(self.bits, self.transfer, self.rec2020)
     }
 
     /// swscale の出力。広い経路は色差を補間しただけの 16 bit の YUV（行列とレンジは `wide` が解く）。
@@ -52,19 +54,6 @@ impl SourceKey {
             Pixel::YUVA444P16LE
         } else {
             Pixel::RGBA
-        }
-    }
-}
-
-/// 画素形式の 1 成分のビット数。記述子が無い形式は 8。
-fn bit_depth(format: Pixel) -> u32 {
-    // SAFETY: av_pix_fmt_desc_get は静的な記述子へのポインタか null を返す。
-    unsafe {
-        let desc = ffi::av_pix_fmt_desc_get(format.into());
-        if desc.is_null() {
-            8
-        } else {
-            (*desc).comp[0].depth as u32
         }
     }
 }
