@@ -3165,6 +3165,7 @@ dependencies = [
  "cef",
  "mm-gpu",
  "mm-host-api",
+ "mm-host-pipe",
  "mm-testkit",
  "mm-trace",
  "mm-types",
@@ -3184,10 +3185,21 @@ dependencies = [
  "cc",
  "libloading 0.8.9",
  "mm-host-api",
+ "mm-host-pipe",
  "mm-testkit",
  "mm-types",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "mm-host-pipe"
+version = "0.1.0"
+dependencies = [
+ "mm-host-api",
+ "mm-types",
+ "serde_json",
+ "windows",
 ]
 
 [[package]]

@@ -37,7 +37,7 @@ pub(crate) fn work_dirs() -> Vec<std::path::PathBuf> {
 #[cfg(not(feature = "cef"))]
 #[test]
 fn 起動に失敗したホストの一時フォルダーを残さない() {
-    use mm_host_cef::PipeHost;
+    use mm_host_cef::CefLauncher;
     let spec = mm_host_api::HostSpec {
         executable: built_host().to_path_buf(),
         args: Vec::new(),
@@ -46,7 +46,7 @@ fn 起動に失敗したホストの一時フォルダーを残さない() {
         client_pid: None,
     };
     assert!(
-        PipeHost::start(spec).is_err(),
+        CefLauncher::start(spec).is_err(),
         "feature 無しのホストは起動しない"
     );
     assert_eq!(work_dirs(), Vec::<std::path::PathBuf>::new());

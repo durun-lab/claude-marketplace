@@ -18,9 +18,8 @@ use serde::{Deserialize, Serialize};
 use mm_host_api::SharedFrame;
 use mm_types::Params;
 
-pub use launcher::{
-    describe_bundle, OfxLauncher, PipeHost, DESCRIBE_COMMAND, SERVE_COMMAND, SPEC_ENV,
-};
+pub use launcher::{describe_bundle, OfxLauncher, DESCRIBE_COMMAND};
+pub use mm_host_pipe::{PipeHost, SERVE_COMMAND, SPEC_ENV};
 
 /// 時刻（秒）を OpenFX のフレームの番号に直すときの既定のフレームレート。
 pub const DEFAULT_FRAME_RATE: f64 = 30.0;

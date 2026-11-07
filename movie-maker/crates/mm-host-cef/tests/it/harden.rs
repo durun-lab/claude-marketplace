@@ -6,7 +6,7 @@ use std::net::TcpListener;
 use std::time::Duration;
 
 use mm_host_api::{HostProcess, SharedFrame};
-use mm_host_cef::PipeHost;
+use mm_host_cef::CefLauncher;
 use mm_types::{RationalTime, Size};
 
 use crate::serve::{gpu, host_exe, marker, prepare, read_shared, render, spec, to_image};
@@ -48,7 +48,7 @@ fn ページの遷移と外への要求を拒否し_data_の画像は描く() {
     let page = LEAK_PAGE
         .replace("FILE_URL", &file_url)
         .replace("PORT", &port.to_string());
-    let mut host = PipeHost::start(spec(&exe, None)).expect("起動");
+    let mut host = CefLauncher::start(spec(&exe, None)).expect("起動");
     prepare(&mut host, &page);
     for n in 0..4 {
         let t = RationalTime::seconds(n);
@@ -128,7 +128,7 @@ fn 初めて使う_web_フォントは読み込みを待ってから描く() {
     };
     let ctx = gpu();
     let size = Size::new(320, 64);
-    let mut host = PipeHost::start(spec(&exe, None)).expect("起動");
+    let mut host = CefLauncher::start(spec(&exe, None)).expect("起動");
     prepare(&mut host, &page);
     let first = to_image(
         &render(
@@ -170,7 +170,7 @@ fn 描画の遅いページでも前のフレームを返さずに待つ() {
     let Some(exe) = host_exe() else { return };
     let ctx = gpu();
     let size = Size::new(64, 36);
-    let mut host = PipeHost::start(spec(&exe, Some(std::process::id()))).expect("起動");
+    let mut host = CefLauncher::start(spec(&exe, Some(std::process::id()))).expect("起動");
     prepare(&mut host, SLOW_PAGE);
     for seq in 1..=4u64 {
         let t = RationalTime::new(i128::from(seq), 30).unwrap();
@@ -185,7 +185,7 @@ fn 描画の遅いページでも前のフレームを返さずに待つ() {
 #[test]
 fn kill_したホストの一時フォルダーを消す() {
     let Some(exe) = host_exe() else { return };
-    let mut host = PipeHost::start(spec(&exe, None)).expect("起動");
+    let mut host = CefLauncher::start(spec(&exe, None)).expect("起動");
     prepare(&mut host, "<!doctype html><p>x</p>");
     render(
         &mut host,
@@ -230,7 +230,7 @@ fn 渡す共有ハンドルは読み取りの権限だけ() {
     let Some(exe) = host_exe() else { return };
     let ctx = gpu();
     let size = Size::new(32, 16);
-    let mut host = PipeHost::start(spec(&exe, Some(std::process::id()))).expect("起動");
+    let mut host = CefLauncher::start(spec(&exe, Some(std::process::id()))).expect("起動");
     prepare(&mut host, "<!doctype html><p>x</p>");
     let frame = render(&mut host, RationalTime::ZERO, size, serde_json::json!({}));
     let SharedFrame::SharedTexture { handle, .. } = frame else {
@@ -268,7 +268,7 @@ fn sandbox_つきのホストも同じ画素で描く() {
     let frames: Vec<_> = [exe, sandboxed]
         .iter()
         .map(|exe| {
-            let mut host = PipeHost::start(spec(exe, Some(std::process::id()))).expect("起動");
+            let mut host = CefLauncher::start(spec(exe, Some(std::process::id()))).expect("起動");
             prepare(&mut host, page);
             let t = RationalTime::seconds(1);
             to_image(&render(&mut host, t, size, serde_json::json!({})), &ctx)

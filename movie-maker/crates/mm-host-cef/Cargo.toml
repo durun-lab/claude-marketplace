@@ -19,6 +19,7 @@ required-features = ["cef"]
 
 [dependencies]
 mm-host-api = { workspace = true }
+mm-host-pipe = { workspace = true }
 mm-types = { workspace = true }
 serde_json = { workspace = true }
 cef = { workspace = true, optional = true }
@@ -34,7 +35,6 @@ mm-gpu = { workspace = true, optional = true }
 windows = { workspace = true, features = [
   "Win32_Foundation",
   "Win32_Security",
-  "Win32_System_JobObjects",
   "Win32_System_Threading",
   "Win32_Media",
   "Win32_Graphics_Direct3D12",

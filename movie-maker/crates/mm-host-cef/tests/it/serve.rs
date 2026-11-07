@@ -248,7 +248,7 @@ fn 共有テクスチャと_cpu_の画像が期待画像と一致する() {
     let Some(golden) = golden() else { return };
     let t = RationalTime::seconds(1);
     for client in [Some(std::process::id()), None] {
-        let mut host = PipeHost::start(spec(&exe, client)).expect("起動");
+        let mut host = CefLauncher::start(spec(&exe, client)).expect("起動");
         prepare(&mut host, PAGE);
         let frame = render(&mut host, t, GOLDEN_SIZE, serde_json::json!({}));
         assert_eq!(
@@ -271,7 +271,7 @@ pub(crate) fn marker(bgra: &[u8], width: u32) -> u64 {
 fn 古い時刻のフレームを返さない() {
     let Some(exe) = host_exe() else { return };
     let ctx = gpu();
-    let mut host = PipeHost::start(spec(&exe, Some(std::process::id()))).expect("起動");
+    let mut host = CefLauncher::start(spec(&exe, Some(std::process::id()))).expect("起動");
     prepare(&mut host, PAGE);
     let size = Size::new(320, 180);
     const FRAMES: u64 = 120;
@@ -297,7 +297,7 @@ fn 別プロセス越しの往復を測る() {
     const WARMUP: i64 = 30;
     const FRAMES: i64 = 300;
     for size in [Size::new(1920, 1080), Size::new(1280, 720)] {
-        let mut host = PipeHost::start(spec(&exe, Some(std::process::id()))).expect("起動");
+        let mut host = CefLauncher::start(spec(&exe, Some(std::process::id()))).expect("起動");
         prepare(&mut host, BENCH_PAGE);
         let mut ms = Vec::new();
         for n in 0..WARMUP + FRAMES {
