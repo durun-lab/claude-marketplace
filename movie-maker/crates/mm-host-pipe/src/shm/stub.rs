@@ -41,7 +41,7 @@ impl Mapping {
     }
 
     /// # Safety
-    /// 作れないので呼ばれない。Windows の実装と同じ約束。
+    /// 作れないので呼ばれない。Windows の実装と同じ規約。
     pub unsafe fn get_mut<T>(&mut self) -> &mut T {
         unreachable!("共有メモリは作れない")
     }

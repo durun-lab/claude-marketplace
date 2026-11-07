@@ -50,6 +50,11 @@ impl PluginStandard for Vst3 {
     const HOST_STEM: &'static str = "mm-host-vst3";
     const HOST_ENV: &'static str = HOST_ENV;
     const LINK_PREFIX: &'static str = "mm-vst3";
+    const EXTENSION: &'static str = "vst3";
+
+    fn plugin_dirs() -> Vec<PathBuf> {
+        default_dirs()
+    }
 }
 
 /// 1 つの VST3 のプラグインのインスタンス。

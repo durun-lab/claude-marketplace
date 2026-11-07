@@ -3479,6 +3479,7 @@ dependencies = [
 name = "mm-host-pipe"
 version = "0.1.0"
 dependencies = [
+ "libloading 0.8.9",
  "mm-audio-api",
  "mm-host-api",
  "mm-node-api",
@@ -3804,6 +3805,7 @@ dependencies = [
  "mm-runtime",
  "mm-store",
  "mm-story",
+ "mm-testkit",
  "mm-types",
  "png",
  "serde",

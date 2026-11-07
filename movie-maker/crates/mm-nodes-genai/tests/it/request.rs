@@ -1,4 +1,4 @@
-//! 頼みの鍵と偽の提供元の出力。
+//! 頼みのキーとモックの提供元の出力。
 
 use mm_node_api::NodeKind;
 use mm_nodes_genai::{
@@ -21,7 +21,7 @@ fn media(name: &str) -> (&'static str, ParamValue) {
 }
 
 #[test]
-fn 同じ頼みは同じ鍵で_プロンプトとシードと版で変わる() {
+fn 同じ頼みは同じキーで_プロンプトとシードとバージョンで変わる() {
     let base = request(&[]);
     assert_eq!(base.key(REV), request(&[]).key(REV));
     let prompt = request(&[("prompt", ParamValue::Text("x".into()))]);
@@ -32,7 +32,7 @@ fn 同じ頼みは同じ鍵で_プロンプトとシードと版で変わる() {
 }
 
 #[test]
-fn 種類に関係しない値と素材の参照は鍵に入らない() {
+fn 種類に関係しない値と素材の参照はキーに入らない() {
     let image = request(&[]);
     let longer = request(&[("duration", ParamValue::Number(9.0))]);
     let placed = request(&[("asset", ParamValue::AssetRef(Id::new("gen_x")))]);
@@ -44,7 +44,7 @@ fn 種類に関係しない値と素材の参照は鍵に入らない() {
 }
 
 #[test]
-fn 整数でない大きさと長さ_0_は断る() {
+fn 整数でない大きさと長さ_0_は拒否する() {
     let mut p = GenAiKind.params().defaults();
     p.set("width", ParamValue::Number(10.5));
     assert!(GenRequest::from_params(&p).is_err());
@@ -55,7 +55,7 @@ fn 整数でない大きさと長さ_0_は断る() {
 }
 
 #[test]
-fn 偽の画像は頼んだ大きさの_png_で決定的() {
+fn モックの画像は頼んだ大きさの_png_で決定的() {
     let req = request(&[
         ("width", ParamValue::Number(7.0)),
         ("height", ParamValue::Number(5.0)),
@@ -73,7 +73,7 @@ fn 偽の画像は頼んだ大きさの_png_で決定的() {
 }
 
 #[test]
-fn 偽の音と動画は頼んだ長さ() {
+fn モックの音と動画は頼んだ長さ() {
     let fake = FakeProvider::new();
     let audio = request(&[media("audio"), ("duration", ParamValue::Number(0.5))]);
     let wav = fake.generate(&audio).unwrap();
@@ -93,7 +93,7 @@ fn 偽の音と動画は頼んだ長さ() {
 }
 
 #[test]
-fn 偽の見積もりは料金表から() {
+fn モックの見積もりは料金表から() {
     let fake = FakeProvider::new();
     let video = request(&[media("video"), ("duration", ParamValue::Number(3.0))]);
     let e = fake.estimate(&video).unwrap();

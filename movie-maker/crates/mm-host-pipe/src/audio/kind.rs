@@ -1,6 +1,6 @@
 //! 音の効果の種類（`audio.clap`、`audio.vst3`）。レイヤーの `effects` に置くと、レンダラーがレイヤーの音にかける。
 //!
-//! パラメータ: `plugin`（プラグインのファイル）、`plugin_id`（空ならファイルの最初のプラグイン）、
+//! パラメータ: `plugin`（プラグインのファイル。規格の置き場所の中だけ）、`plugin_id`（空ならファイルの最初のプラグイン）、
 //! `param.<パラメータの id>`（[`super::ParamDesc`] の値。キーフレームを打てる）。
 //! 効果のインスタンス（`AudioEffectCx::instance`）ごとにホストを 1 つ持ち、区間が前の区間の続きでなければ
 //! プラグインの状態を消す（ミキサーのダッキングと同じ扱い）。
@@ -24,7 +24,7 @@ use super::PluginStandard;
 pub const PLUGIN_PARAM: &str = "plugin";
 /// プラグインの `id` のパラメータの名前。
 pub const PLUGIN_ID_PARAM: &str = "plugin_id";
-/// プラグインのパラメータの名前の頭。後ろにパラメータの `id` を 10 進で付ける。
+/// プラグインのパラメータの名前の接頭辞。後ろにパラメータの `id` を 10 進で付ける。
 pub const PARAM_PREFIX: &str = "param.";
 const KIND_VERSION: u32 = 1;
 /// 1 回の往復の既定の期限。プラグインの読み込みを含む。
@@ -43,6 +43,8 @@ struct Instance<S: PluginStandard> {
 pub struct PluginEffectKind<S: PluginStandard> {
     executable: Option<PathBuf>,
     timeout: Duration,
+    /// `plugin` が指してよい置き場所。
+    roots: Vec<PathBuf>,
     instances: Mutex<HashMap<String, Instance<S>>>,
 }
 
@@ -52,6 +54,7 @@ impl<S: PluginStandard> PluginEffectKind<S> {
         Self {
             executable,
             timeout: DEFAULT_TIMEOUT,
+            roots: S::plugin_dirs(),
             instances: Mutex::new(HashMap::new()),
         }
     }
@@ -59,6 +62,12 @@ impl<S: PluginStandard> PluginEffectKind<S> {
     /// 1 回の往復の期限を変える。
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
+        self
+    }
+
+    /// `plugin` が指してよい置き場所を `roots` に替える（テストのプラグインの置き場所など）。
+    pub fn with_roots(mut self, roots: Vec<PathBuf>) -> Self {
+        self.roots = roots;
         self
     }
 
@@ -185,7 +194,8 @@ impl<S: PluginStandard> NodeKind for PluginEffectKind<S> {
             instances.remove(cx.instance);
         }
         if !instances.contains_key(cx.instance) {
-            let effect = AudioEffect::start(self.spec()?, &path, plugin.clone(), cx.sample_rate)?;
+            let real = crate::resolve_in_roots(&self.roots, &path, S::is_plugin_name)?;
+            let effect = AudioEffect::start(self.spec()?, real, plugin.clone(), cx.sample_rate)?;
             let instance = Instance {
                 effect,
                 path,
@@ -229,7 +239,7 @@ fn run<S: PluginStandard>(
 mod tests {
     use super::*;
 
-    /// ホストを起こさない試験に使う規格。
+    /// ホストを起こさないテストに使う規格。
     struct TestStandard;
 
     impl PluginStandard for TestStandard {
@@ -245,6 +255,11 @@ mod tests {
         const HOST_STEM: &'static str = "mm-host-test";
         const HOST_ENV: &'static str = "MM_TEST_HOST";
         const LINK_PREFIX: &'static str = "mm-test";
+        const EXTENSION: &'static str = "test";
+
+        fn plugin_dirs() -> Vec<PathBuf> {
+            Vec::new()
+        }
     }
 
     #[test]
@@ -274,5 +289,36 @@ mod tests {
         kind.process_audio(&cx, &mut block).expect("素通し");
         assert_eq!(block, before);
         assert_eq!(kind.instance_count(), 0);
+    }
+
+    #[test]
+    fn 置き場所の外のプラグインはホストを起こさずに拒否する() {
+        let tmp = std::env::temp_dir().join(format!("mm-audio-kind-{}", std::process::id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let outside = tmp.join("evil.test");
+        std::fs::write(&outside, b"").unwrap();
+        let kind = PluginEffectKind::<TestStandard>::new(Some("ホストは起こさない.exe".into()))
+            .with_roots(vec![tmp.join("plugins")]);
+        let mut params = kind.params().defaults();
+        params.set(
+            PLUGIN_PARAM,
+            ParamValue::Text(outside.display().to_string()),
+        );
+        let params = [(0, params)];
+        let cx = AudioEffectCx {
+            range: mm_types::TimeRange::new(RationalTime::ZERO, RationalTime::seconds(1)).unwrap(),
+            instance: "c/l/e",
+            params: &params,
+            sample_rate: 48_000,
+            channels: 2,
+        };
+        let mut block = AudioBlock::silence(48_000, 2, 4);
+        let err = kind.process_audio(&cx, &mut block);
+        assert!(
+            matches!(err, Err(MmError::NotFound(_) | MmError::InvalidArgument(_))),
+            "{err:?}"
+        );
+        assert_eq!(kind.instance_count(), 0);
+        std::fs::remove_dir_all(&tmp).unwrap();
     }
 }

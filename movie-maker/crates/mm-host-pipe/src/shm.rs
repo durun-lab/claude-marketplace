@@ -39,7 +39,7 @@ pub fn object_names(link: &str) -> [String; 3] {
     ["mem", "req", "done"].map(|suffix| format!("{link}-{suffix}"))
 }
 
-/// `bytes` をそのまま f32（リトルエンディアン）の列として見る。写さずに済むので、画像の受け渡しはこれを使う。
+/// `bytes` をそのまま f32（リトルエンディアン）の配列として見る。コピーせずに済むので、画像の受け渡しはこれを使う。
 /// ビッグエンディアンの機械か、f32 の境界に合わないか、長さが 4 の倍数でなければ `None`。
 pub fn as_f32(bytes: &[u8]) -> Option<&[f32]> {
     if cfg!(target_endian = "big") {
@@ -50,7 +50,7 @@ pub fn as_f32(bytes: &[u8]) -> Option<&[f32]> {
     (pre.is_empty() && post.is_empty()).then_some(mid)
 }
 
-/// [`as_f32`] の書ける版。
+/// [`as_f32`] の書き込み用。
 pub fn as_f32_mut(bytes: &mut [u8]) -> Option<&mut [f32]> {
     if cfg!(target_endian = "big") {
         return None;
@@ -102,13 +102,13 @@ mod tests {
     }
 
     #[test]
-    fn f32_を往復し_範囲の外は断る() {
+    fn f32_を往復し_範囲の外は拒否する() {
         let mut bytes = vec![0u8; 16];
         write_f32(&mut bytes, 4, &[1.5, -2.0]).unwrap();
         assert_eq!(read_f32(&bytes, 4, 2), Some(vec![1.5, -2.0]));
         assert_eq!(read_f32(&bytes, 12, 2), None);
         assert_eq!(write_f32(&mut bytes, 12, &[1.0, 2.0]), None);
-        // 境界に合わない位置は 1 つずつ写す経路で読み書きする。
+        // 境界に合わない位置は 1 つずつコピーする経路で読み書きする。
         write_f32(&mut bytes, 1, &[3.25]).unwrap();
         assert_eq!(read_f32(&bytes, 1, 1), Some(vec![3.25]));
     }
