@@ -1,12 +1,12 @@
 {
   "name": "next",
   "title": "次回予告",
-  "description": "締めの次回予告。サファイアの爆発と紙吹雪の上に「次回予告！」、下に次の ToDo の紙（空の欄、回の番号、「つづく →」）。web.cef で描く",
+  "description": "締めの次回予告。サファイアの爆発と紙吹雪の上に「次回予告！」、下に次の ToDo の紙（空の欄、エピソードの番号、「つづく →」）。web.cef で描く",
   "params": {
     "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
     "id": {"type": "id", "description": "レイヤーの ID"},
     "text": {"type": "text", "description": "次の ToDo（「シンセとコードの作り込み」）"},
-    "no": {"type": "text", "default": "", "description": "次の回の番号（#2 の 2）。空なら出さない"},
+    "no": {"type": "text", "default": "", "description": "次のエピソードの番号（#2 の 2）。空なら出さない"},
     "kicker": {"type": "text", "default": "次回", "description": "見出し。「次回」なら「次回予告！」、ほかは「〜！」"},
     "aside": {"type": "text", "default": "", "description": "紙の右下に貼る小さな札（「たぶん」）。空なら出さない"},
     "x": {"type": "number", "default": "1372", "description": "真ん中の x（コンポジションの画素）。VR ではアバターの頭と顔を避けて右上"},

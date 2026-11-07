@@ -1,11 +1,11 @@
 {
   "name": "card",
   "title": "見出しの ToDo",
-  "description": "節の頭の見出し。紙にその回の ToDo を全部並べ（章の一覧として見せる）、済んだ行はチェックと取り消し線、今の行は黄色の欄と再生の印とマーカー。plain なら節の題だけ。web.cef で描く",
+  "description": "節の頭の見出し。紙にそのエピソードの ToDo を全部並べ（章の一覧として見せる）、済んだ行はチェックと取り消し線、今の行は黄色の欄と再生の印とマーカー。plain なら節の題だけ。web.cef で描く",
   "params": {
     "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
     "id": {"type": "id", "description": "レイヤーの ID"},
-    "list": {"type": "text", "default": "", "description": "その回の ToDo を「|」で区切って並べる（作曲|ボーカルミックス|FX とビルドアップ）"},
+    "list": {"type": "text", "default": "", "description": "そのエピソードの ToDo を「|」で区切って並べる（作曲|ボーカルミックス|FX とビルドアップ）"},
     "no": {"type": "number", "default": "1", "description": "今の行（1 から）"},
     "text": {"type": "text", "default": "", "description": "list が空のときに出す 1 行（plain の節の題）"},
     "tag": {"type": "text", "default": "", "description": "紙の札の文字。空なら「今日の ToDo」。サブトピックの小さな ToDo では親の題"},

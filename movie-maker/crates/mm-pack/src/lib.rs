@@ -21,6 +21,7 @@ mod expand;
 mod layout;
 mod macros;
 mod pack;
+mod page;
 mod sticker;
 mod style;
 mod theme;

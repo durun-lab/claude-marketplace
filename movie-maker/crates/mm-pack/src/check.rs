@@ -43,6 +43,11 @@ pub fn check(pack: &Pack) -> Report {
     }
     check_mixer(pack, &mut report);
     check_names(pack, &mut report);
+    for (name, html) in &pack.pages {
+        crate::page::check_page(name, html)
+            .into_iter()
+            .for_each(|e| report.push(e));
+    }
     for def in &pack.macros {
         check_references(pack, def, &mut report);
     }
