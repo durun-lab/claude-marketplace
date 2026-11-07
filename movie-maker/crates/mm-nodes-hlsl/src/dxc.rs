@@ -91,7 +91,7 @@ impl Dxc {
     }
 
     /// `mm_fs` を入口に、ピクセルシェーダーとして SPIR-V にする。
-    /// 起動の失敗と時間切れは `Stage::Run`（覚えない）、源の誤りは `Stage::Dxc`。
+    /// 起動の失敗と時間切れは `Stage::Run`（キャッシュしない）、源の誤りは `Stage::Dxc`。
     pub(crate) fn compile(&self, job: &DxcJob<'_>) -> Result<Vec<u8>, ConvertError> {
         self.compile_with(job, &["-E", "mm_fs"])
     }
@@ -156,7 +156,7 @@ struct Finished {
     stderr: String,
 }
 
-/// `cmd` を `limit` まで待って走らせる。過ぎたら止めて `TimedOut`。出力は別のスレッドで読み、パイプを詰まらせない。
+/// `cmd` を `limit` まで待って実行する。過ぎたら止めて `TimedOut`。出力は別のスレッドで読み、パイプを詰まらせない。
 fn run_bounded(cmd: &mut Command, limit: Duration) -> std::io::Result<Finished> {
     let mut child = cmd
         .stdin(Stdio::null())
@@ -214,7 +214,7 @@ fn candidates() -> Vec<PathBuf> {
         .collect();
     out.extend(winget_candidates());
     if let Some(paths) = std::env::var_os("PATH") {
-        // 空や相対の項目は作業フォルダーに解かれ、そこに置かれた dxc を起こしてしまうので飛ばす。
+        // 空や相対の項目は作業フォルダーに解かれ、そこに置かれた dxc を起こしてしまうのでスキップする。
         out.extend(
             std::env::split_paths(&paths)
                 .filter(|dir| dir.is_absolute())

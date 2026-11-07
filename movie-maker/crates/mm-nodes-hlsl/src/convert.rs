@@ -1,7 +1,7 @@
 //! HLSL → SPIR-V（DXC）→ WGSL（naga）の変換と、そのキャッシュ。
 //!
-//! キャッシュは DXC の版と全文のハッシュで引き、源の失敗も覚える（毎フレーム DXC を起こさない）。
-//! DXC を起こせない失敗と時間切れ（`Stage::Run`）は一過性なので覚えない。並行の書き出しは
+//! キャッシュは DXC のバージョンと全文のハッシュで引き、源の失敗もキャッシュする（毎フレーム DXC を起こさない）。
+//! DXC を起こせない失敗と時間切れ（`Stage::Run`）は一過性なのでキャッシュしない。並行の書き出しは
 //! ワーカーごとに組み立てるので、キャッシュはプロセスで 1 つにする。
 
 use std::collections::HashMap;
@@ -44,7 +44,7 @@ pub struct ConvertError {
 impl fmt::Display for ConvertError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let stage = match self.stage {
-            Stage::Run => "DXC を走らせられない",
+            Stage::Run => "DXC を実行できない",
             Stage::Dxc => "DXC が HLSL を SPIR-V にできない",
             Stage::Naga => "naga が SPIR-V を WGSL にできない",
         };

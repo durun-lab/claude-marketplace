@@ -22,7 +22,7 @@ use crate::KIND_VERSION;
 
 /// LUT の入力の色空間の名前。`mm-color-api` の名前の表のうち、LUT でよく使う 3 つ。
 const SPACES: [&str; 3] = ["lin_rec709", "srgb", "bt709"];
-/// `color.lut` の画素の作り方の版（定義域の外を端の値に足して持ち越す）。フレームのキャッシュの指紋に入れる。
+/// `color.lut` の画素の作り方のバージョン（定義域の外を端の値に足して持ち越す）。フレームのキャッシュの指紋に入れる。
 const LUT_PIXEL_VERSION: &str = "carry.1";
 /// LUT の `.cube` の素材（`AssetRef`）を持つパラメータの名前。
 pub const LUT_PARAM: &str = "lut";
@@ -209,7 +209,7 @@ impl NodeKind for ColorLutKind {
         Traits::PIXEL
     }
 
-    /// 定義域の外の値を端の値に足して持ち越す作り方の版。画素の作り方を変えたら上げ、覚えた画像を引かない。
+    /// 定義域の外の値を端の値に足して持ち越す作り方のバージョン。画素の作り方を変えたら上げ、キャッシュした画像を引かない。
     fn cache_fingerprint(
         &self,
         _params: &Params,
@@ -412,7 +412,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn 画素の作り方の版をフレームのキャッシュの指紋に出す() {
+    fn 画素の作り方のバージョンをフレームのキャッシュの指紋に出す() {
         let fp = ColorLutKind::default().cache_fingerprint(&Params::new(), &|_| None);
         assert_eq!(fp.as_deref(), Some(LUT_PIXEL_VERSION));
     }

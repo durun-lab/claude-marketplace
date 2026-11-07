@@ -20,7 +20,7 @@ const DESCRIBE_LIMIT: u64 = 16 * 1024 * 1024;
 const EXIT_WAIT: Duration = Duration::from_secs(2);
 
 /// `executable describe <path>` を別プロセスで実行し、出力の JSON を `T` で読む。
-/// `name` は時間切れの `what` の頭（`host_clap` なら `host_clap.describe`）。
+/// `name` は時間切れの `what` の先頭（`host_clap` なら `host_clap.describe`）。
 pub fn run_describe<T: DeserializeOwned>(
     executable: &Path,
     path: &Path,

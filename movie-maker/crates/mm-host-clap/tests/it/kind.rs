@@ -13,7 +13,7 @@ fn kind() -> ClapEffectKind {
         .with_timeout(TIMEOUT)
         .with_roots(vec![plugin_path()
             .parent()
-            .expect("試験のプラグインのフォルダー")
+            .expect("テストのプラグインのフォルダー")
             .to_path_buf()])
 }
 

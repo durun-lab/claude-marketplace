@@ -13,7 +13,7 @@ fn kind() -> Vst3EffectKind {
         .with_timeout(TIMEOUT)
         .with_roots(vec![plugin_path()
             .parent()
-            .expect("試験のプラグインのフォルダー")
+            .expect("テストのプラグインのフォルダー")
             .to_path_buf()])
 }
 
@@ -115,7 +115,10 @@ fn クラッシュの後も同じインスタンスで処理を続ける() {
     apply(&kind, GAIN, 0, &mut a, false).expect("処理");
     let first = kind.instance_pid("comp/layer/effect");
     let mut b = signal(64, 1);
-    assert!(apply(&kind, GAIN, 64, &mut b, true).is_err(), "落ちる");
+    assert!(
+        apply(&kind, GAIN, 64, &mut b, true).is_err(),
+        "クラッシュする"
+    );
     let mut c = signal(64, 2);
     apply(&kind, GAIN, 128, &mut c, false).expect("起こし直して処理");
     assert_ne!(kind.instance_pid("comp/layer/effect"), first);

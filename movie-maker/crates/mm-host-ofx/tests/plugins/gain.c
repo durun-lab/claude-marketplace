@@ -12,7 +12,7 @@
 #include "ofxMessage.h"
 #include "ofxPixels.h"
 
-/* gain に掛ける倍率。同じ識別子で画素だけが違う版（MmTestGainV2）を作り、共有ライブラリの差し替えを試す。 */
+/* gain に掛ける倍率。同じ識別子で画素だけが違うバージョン（MmTestGainV2）を作り、共有ライブラリの差し替えを試す。 */
 #ifndef MM_GAIN_SCALE
 #define MM_GAIN_SCALE 1.0
 #endif

@@ -25,7 +25,7 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
-# kinds の試験に登録する種類。
+# kinds のテストに登録する種類。
 mm-testkit = { workspace = true }
 
 [lints]

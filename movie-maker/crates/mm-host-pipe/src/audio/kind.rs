@@ -24,7 +24,7 @@ use super::PluginStandard;
 pub const PLUGIN_PARAM: &str = "plugin";
 /// プラグインの `id` のパラメータの名前。
 pub const PLUGIN_ID_PARAM: &str = "plugin_id";
-/// プラグインのパラメータの名前の頭。後ろにパラメータの `id` を 10 進で付ける。
+/// プラグインのパラメータの名前の接頭辞。後ろにパラメータの `id` を 10 進で付ける。
 pub const PARAM_PREFIX: &str = "param.";
 const KIND_VERSION: u32 = 1;
 /// 1 回の往復の既定の期限。プラグインの読み込みを含む。
@@ -65,7 +65,7 @@ impl<S: PluginStandard> PluginEffectKind<S> {
         self
     }
 
-    /// `plugin` が指してよい置き場所を `roots` に替える（試験のプラグインの置き場所など）。
+    /// `plugin` が指してよい置き場所を `roots` に替える（テストのプラグインの置き場所など）。
     pub fn with_roots(mut self, roots: Vec<PathBuf>) -> Self {
         self.roots = roots;
         self
@@ -239,7 +239,7 @@ fn run<S: PluginStandard>(
 mod tests {
     use super::*;
 
-    /// ホストを起こさない試験に使う規格。
+    /// ホストを起こさないテストに使う規格。
     struct TestStandard;
 
     impl PluginStandard for TestStandard {
@@ -292,7 +292,7 @@ mod tests {
     }
 
     #[test]
-    fn 置き場所の外のプラグインはホストを起こさずに断る() {
+    fn 置き場所の外のプラグインはホストを起こさずに拒否する() {
         let tmp = std::env::temp_dir().join(format!("mm-audio-kind-{}", std::process::id()));
         std::fs::create_dir_all(&tmp).unwrap();
         let outside = tmp.join("evil.test");

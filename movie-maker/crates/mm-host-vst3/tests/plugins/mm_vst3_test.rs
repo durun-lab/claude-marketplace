@@ -245,7 +245,7 @@ impl<const DELAY: bool> IAudioProcessorTrait for Effect<DELAY> {
     }
 }
 
-/// 全部のパラメータの変化を（位置、id、値）の列にし、位置の順に並べる。
+/// 全部のパラメータの変化を（位置、id、値）の並びにし、位置の順に並べる。
 unsafe fn param_points(changes: *mut IParameterChanges) -> Vec<(usize, u32, f64)> {
     let mut points = Vec::new();
     let Some(changes) = ComRef::from_raw(changes) else {

@@ -18,7 +18,7 @@ pub fn is_bundle_name(path: &Path) -> bool {
 }
 
 /// パラメータ `bundle` の名前を、置き場所 `roots` の中のバンドルの実体のパスにする。
-/// 相対の名前は `roots` の順に探し、`..` やドライブを含む名前は断る。絶対パスは置き場所の中だけを受ける。
+/// 相対の名前は `roots` の順に探し、`..` やドライブを含む名前は拒否する。絶対パスは置き場所の中だけを受ける。
 pub fn resolve_named(roots: &[PathBuf], name: &str) -> Result<PathBuf> {
     let real = mm_host_pipe::resolve_in_roots(roots, name, is_bundle_name)?;
     if real.is_dir() {

@@ -21,9 +21,9 @@ use crate::time::now_ms;
 
 /// Stop フックが書くファイル。
 pub const STOP_FILE: &str = "stop.json";
-/// 回の印。`claude -p` とその子（`mm` など）に回の ID を渡し、費用のかかる操作（`gen.ai` の生成）は回の中では断る。
+/// 回の環境変数。`claude -p` とその子（`mm` など）に回の ID を渡し、費用のかかる操作（`gen.ai` の生成）は回の中では拒否する。
 pub const ROUND_ENV: &str = "MM_IMPROVE_RUN";
-/// 回のフォルダーの名前が読めないときの回の印の値。印そのものは必ず付ける。
+/// 回のフォルダーの名前が読めないときの回の環境変数の値。環境変数そのものは必ず付ける。
 const UNKNOWN_ROUND: &str = "unknown";
 const OUT_FILE: &str = "agent-out.json";
 const LOG_FILE: &str = "agent.log";
@@ -149,7 +149,7 @@ pub fn run_settings(run_dir: &Path) -> String {
 }
 
 impl ClaudeCli {
-    /// 子に渡す環境変数。足す環境変数に回の印（[`ROUND_ENV`]。値は回のフォルダーの名前 = 回の ID）を重ねる。
+    /// 子に渡す環境変数。足す環境変数に回の環境変数（[`ROUND_ENV`]。値は回のフォルダーの名前 = 回の ID）を重ねる。
     pub fn child_env(&self, req: &AgentRequest<'_>) -> Vec<(String, String)> {
         let round = req.run_dir.file_name().map_or_else(
             || UNKNOWN_ROUND.to_owned(),
@@ -389,7 +389,7 @@ mod tests {
     }
 
     #[test]
-    fn 回の_claude_には回の印を渡す() {
+    fn 回の_claude_には回の環境変数を渡す() {
         let cli = ClaudeCli {
             env: vec![("CARGO_TARGET_DIR".into(), "t".into())],
             ..ClaudeCli::default()

@@ -25,7 +25,7 @@ pub const OCIO_ID: &str = "ocio";
 const ENTRY: &str = "OCIOConvert";
 /// ベイクする 3D LUT の一辺の既定。
 const DEFAULT_LUT_SIZE: u32 = 33;
-/// 3D LUT のベイクの作り方の版（線形の入力に PQ のシェーパーを掛ける）。上げると覚えた画像を引かない。
+/// 3D LUT のベイクの作り方のバージョン（線形の入力に PQ のシェーパーを掛ける）。上げるとキャッシュした画像を引かない。
 const BAKE_VERSION: &str = "shaper1";
 
 /// mm の色空間名と OCIO の名前の対応。ここに無い名前は OCIO の名前としてそのまま引く。

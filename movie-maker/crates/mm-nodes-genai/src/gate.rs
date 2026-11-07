@@ -10,11 +10,11 @@ use mm_types::{LayerId, MmError};
 use crate::provider::Estimate;
 use crate::request::Media;
 
-/// 自動の改善の回の印。`mm-improve` が回の `claude -p` に回の ID を入れて渡し、子のプロセス（`mm` など）が受け継ぐ。
-/// 名前は `mm_improve::ROUND_ENV` と同じ（試験で確かめる）。
+/// 自動の改善の回の環境変数。`mm-improve` が回の `claude -p` に回の ID を入れて渡し、子のプロセス（`mm` など）が受け継ぐ。
+/// 名前は `mm_improve::ROUND_ENV` と同じ（テストで確かめる）。
 pub const IMPROVE_ROUND_ENV: &str = "MM_IMPROVE_RUN";
 
-/// 承認した上限を見積もりが超えたと見なす差。浮動小数の丸めで断らないための幅。
+/// 承認した上限を見積もりが超えたと見なす差。浮動小数の丸めで拒否しないための幅。
 const COST_EPSILON_USD: f64 = 1e-9;
 
 /// 生成の関門の失敗。
@@ -44,7 +44,7 @@ impl From<std::io::Error> for GenError {
 }
 
 /// 今のプロセスが自動の改善の回の中なら、その回の ID。
-/// 空の値も回の中と見なす。回の Claude が `MM_IMPROVE_RUN=` で上書きして印を外せないようにするため。
+/// 空の値も回の中と見なす。回の Claude が `MM_IMPROVE_RUN=` で上書きして環境変数を外せないようにするため。
 pub fn current_round() -> Option<String> {
     std::env::var_os(IMPROVE_ROUND_ENV).map(|v| v.to_string_lossy().into_owned())
 }
@@ -55,9 +55,9 @@ pub fn current_round() -> Option<String> {
 pub enum Reuse {
     /// 使い回せるものが無い。提供元を呼ぶ。
     None,
-    /// 同じ鍵のファイルが `media/genai/` にある（取り消しの後など）。素材を足し直す。
+    /// 同じキーのファイルが `media/genai/` にある（取り消しの後など）。素材を足し直す。
     File { path: PathBuf },
-    /// 同じ鍵の素材がプロジェクトにある。パラメータを向け直すだけ。
+    /// 同じキーの素材がプロジェクトにある。パラメータを向け直すだけ。
     Asset,
 }
 
@@ -79,7 +79,7 @@ impl Quote {
         &self.layer
     }
 
-    /// 頼みの鍵（パラメータと提供元の版の BLAKE3）。
+    /// 頼みのキー（パラメータと提供元のバージョンの BLAKE3）。
     pub fn key(&self) -> &str {
         &self.key
     }
@@ -105,7 +105,7 @@ impl Quote {
     }
 }
 
-/// 人の承認の印。見積もりの鍵と費用の上限を持つ。作るのは [`crate::GenAi::approve`] だけで、
+/// 人の承認。見積もりのキーと費用の上限を持つ。作るのは [`crate::GenAi::approve`] だけで、
 /// 自動の改善の回の中と MCP の経路からは作れない。
 #[derive(Debug, Clone, PartialEq)]
 pub struct Approval {
@@ -130,7 +130,7 @@ impl Approval {
     pub(crate) fn covers(&self, quote: &Quote) -> Result<(), GenError> {
         if quote.layer != self.layer || quote.key != self.key {
             return Err(GenError::NotApproved(format!(
-                "承認はレイヤー {} の鍵 {}、今はレイヤー {} の鍵 {}",
+                "承認はレイヤー {} のキー {}、今はレイヤー {} のキー {}",
                 self.layer, self.key, quote.layer, quote.key
             )));
         }
@@ -154,7 +154,7 @@ pub(crate) fn check_approver(entry: Entry) -> Result<(), GenError> {
     Ok(())
 }
 
-/// 自動の改善の回の中なら断る。
+/// 自動の改善の回の中なら拒否する。
 pub(crate) fn check_round(round: Option<&str>) -> Result<(), GenError> {
     match round {
         Some(id) => Err(GenError::Forbidden(format!(

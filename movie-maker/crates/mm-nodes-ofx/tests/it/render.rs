@@ -1,4 +1,4 @@
-//! レンダラー（`mm-render` の wgpu）の効果として描く試験。プレビューと書き出しで同じ画素になること、キーフレームの値が
+//! レンダラー（`mm-render` の wgpu）の効果として描くテスト。プレビューと書き出しで同じ画素になること、キーフレームの値が
 //! フレームごとに届くこと、プラグインのクラッシュがそのレイヤーだけの誤りで済むこと、1080p の 1 フレームの時間。
 //! GPU が無ければスキップし、`MM_REQUIRE_GPU` があれば失敗にする。
 
@@ -219,7 +219,7 @@ fn プラグインのクラッシュはそのレイヤーだけの誤りにな�
     assert!(r.take_errors().is_empty(), "ホストを起こし直して描ける");
 }
 
-/// 試験の Gain のバンドルを `root` の下に写す。
+/// テストの Gain のバンドルを `root` の下にコピーする。
 fn copy_gain(root: &Path) -> PathBuf {
     let arch = Path::new("Contents").join(mm_host_ofx::scan::arch_dir());
     let dst = root.join(GAIN).join(&arch);
@@ -236,7 +236,7 @@ fn copy_gain(root: &Path) -> PathBuf {
     binary
 }
 
-/// 共有ライブラリを gain が 2 倍の版に差し替える。読み込んだままのホストがいても、名前を変えれば置ける。
+/// 共有ライブラリを gain が 2 倍のバージョンに差し替える。読み込んだままのホストがいても、名前を変えれば置ける。
 fn swap_to_v2(binary: &Path) {
     let arch = Path::new("Contents").join(mm_host_ofx::scan::arch_dir());
     let v2 = Path::new(TEST_PLUGINS)
@@ -245,7 +245,7 @@ fn swap_to_v2(binary: &Path) {
         .join("MmTestGainV2.ofx");
     std::fs::rename(binary, binary.with_extension("old")).unwrap();
     std::fs::copy(v2, binary).unwrap();
-    // 写しても更新時刻が元のままのことがあるので、差し替えた時刻にする。
+    // コピーしても更新時刻が元のままのことがあるので、差し替えた時刻にする。
     let file = std::fs::File::options().write(true).open(binary).unwrap();
     file.set_modified(std::time::SystemTime::now()).unwrap();
 }

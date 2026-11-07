@@ -1,6 +1,6 @@
 //! Program のビューアー。エンジンが返した線形の画像（`RgbaImage`）を Rgba16Float で持ち、
 //! 書き出しと同じ Rec.1886 の表示の式（`mm_types::transfer`）で画面に出す。HDR の素材は SDR の表示へ
-//! BT.2390 の EETF（`mm_types::tonemap`）で収める。素材の上限が 1 のままなら恒等で、SDR の絵は変わらない。
+//! BT.2390 の EETF（`mm_types::tonemap`）で収める。素材の上限が 1 のままなら恒等で、SDR の画像は変わらない。
 
 use half::f16;
 use mm_types::tonemap::TONEMAP_WGSL;

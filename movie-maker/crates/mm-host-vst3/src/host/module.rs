@@ -103,10 +103,10 @@ impl Module {
         })
     }
 
-    /// `cid` のクラスのインスタンスを `I` の口で作る。
+    /// `cid` のクラスのインスタンスを `I` のインターフェースで作る。
     pub fn create<I: Interface>(&self, cid: &TUID) -> Result<ComPtr<I>, String> {
         let mut obj: *mut c_void = std::ptr::null_mut();
-        // SAFETY: クラスの ID と口の ID は 16 バイトの列で、作られた口の参照を受け取る。
+        // SAFETY: クラスの ID とインターフェースの ID は 16 バイトの配列で、作られたインターフェースの参照を受け取る。
         unsafe {
             let result =
                 self.factory

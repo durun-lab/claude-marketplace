@@ -9,7 +9,7 @@ use std::path::{Component, Path, PathBuf};
 use mm_types::{MmError, Result};
 
 /// `env` の環境変数か、このプロセスの実行ファイルと同じフォルダー、その親のフォルダーの `stem`（拡張子なし）。
-/// 親も見るのは、試験の実行ファイル（`target/<profile>/deps/`）から `target/<profile>/` のホストを引くため。
+/// 親も見るのは、テストの実行ファイル（`target/<profile>/deps/`）から `target/<profile>/` のホストを引くため。
 pub fn find_executable(env: &str, stem: &str) -> Option<PathBuf> {
     if let Some(path) = std::env::var_os(env) {
         return Some(PathBuf::from(path)).filter(|p| p.is_file());
@@ -27,7 +27,7 @@ pub fn find_executable(env: &str, stem: &str) -> Option<PathBuf> {
 
 /// パラメータのプラグインの名前を、置き場所 `roots` の中の実体のパスにする。
 /// `is_plugin` は名前（拡張子や末尾）でプラグインかを見る。相対の名前は `roots` の順に探し、`..` やドライブを
-/// 含む名前は断る。絶対パスは置き場所の中だけを受ける。
+/// 含む名前は拒否する。絶対パスは置き場所の中だけを受ける。
 pub fn resolve_in_roots(
     roots: &[PathBuf],
     name: &str,

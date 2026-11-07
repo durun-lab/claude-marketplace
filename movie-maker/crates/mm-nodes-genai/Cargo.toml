@@ -16,7 +16,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 blake3 = { workspace = true }
-# 偽の提供元が決まった画像を PNG で書く。
+# モックの提供元が決まった画像を PNG で書く。
 png = { workspace = true }
 
 [dev-dependencies]

@@ -32,13 +32,13 @@ pub trait PluginStandard: Send + Sync + 'static {
     const NAME: &'static str;
     /// 種類の名前（`audio.clap`）。
     const KIND_ID: &'static str;
-    /// ホストの起こし方。`name` は時間切れの `what` の頭（`host_clap.process`）にもなる。
+    /// ホストの起こし方。`name` は時間切れの `what` の先頭（`host_clap.process`）にもなる。
     const PIPE: PipeKind;
     /// ホストの実行ファイルの名前（拡張子を除く）。
     const HOST_STEM: &'static str;
     /// ホストの実行ファイルを直に指す環境変数。
     const HOST_ENV: &'static str;
-    /// 共有メモリとイベントの名前の頭（`mm-clap`）。
+    /// 共有メモリとイベントの名前の接頭辞（`mm-clap`）。
     const LINK_PREFIX: &'static str;
     /// プラグインのファイルかバンドルの拡張子（`clap`）。
     const EXTENSION: &'static str;

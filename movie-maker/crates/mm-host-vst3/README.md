@@ -21,7 +21,7 @@ VST3 の音のプラグイン（`.vst3` のバンドル）を別プロセスで�
 
 | 候補 | 形 | ライセンス | 判断 |
 |---|---|---|---|
-| `vst3` 0.3（coupler-rs） | C++ のヘッダーから `com-scrape` で生成したバインディングを同梱（0.3.0 から SDK が要らない）。COM の口を Rust の型で実装できる（`Class`、`ComWrapper`） | MIT / Apache-2.0 | 採った。07-standards の指定と同じで、テストのプラグインも同じクレートで書ける |
+| `vst3` 0.3（coupler-rs） | C++ のヘッダーから `com-scrape` で生成したバインディングを同梱（0.3.0 から SDK が要らない）。COM のインターフェースを Rust の型で実装できる（`Class`、`ComWrapper`） | MIT / Apache-2.0 | 採った。07-standards の指定と同じで、テストのプラグインも同じクレートで書ける |
 | `vst3-sys`（RustAudio） | 手で書いたバインディングと COM の補助（`vst3-com`） | GPL-3.0 | 採らない。crates.io に無く（git だけ）、2020 年ごろから止まっている |
 | VST3 SDK（C++）を `cc` で作る | 公式の参考の実装（`hosting/`、`vstsdk`） | MIT（3.8.0 から） | 採らない。CMake と C++ のビルドが要り、ホストの本体を C++ で書くことになる |
 
@@ -33,18 +33,18 @@ VST3 SDK は 3.8.0（2025 年 10 月）から MIT になった。このクレー
 |---|---|---|
 | `mm-host-clap`（RFC 0133） | 別プロセス、制御はパイプの JSON、音は共有メモリで同じ呼び出しの中で往復、インスタンスごとに 1 プロセス、シークで `reset` | 全部。共通の部分は `mm_host_pipe::audio` に移して両方が使う |
 | VST3 SDK の参考のホスト（`audiohost`、`validator`） | 処理の部品を作って初期化し、編集の部品が別のクラスなら作って `IConnectionPoint` で互いにつなぐ。配置、バスの活性、`setupProcessing`、`setActive`、`setProcessing` の順 | 同じ手順 |
-| REAPER、Bitwig のプラグインの隔離 | 別プロセスで動かし、落ちたプラグインだけを止める〔推〕 | `mm-host-clap` と同じ |
+| REAPER、Bitwig のプラグインの隔離 | 別プロセスで動かし、クラッシュしたプラグインだけを止める〔推〕 | `mm-host-clap` と同じ |
 | VST3 のホストのオートメーション（Cubase など） | パラメータを正規化した値（0..1）で書き、`IParameterChanges` のサンプルの位置つきの点で渡す〔推〕 | パラメータは正規化した値で持ち、格子の点を `IParamValueQueue` の点にする |
 
 新しく決めたこと（RFC 0139）:
 
 - 種類 `audio.vst3` のパラメータ `param.<id>` は VST3 の `ParamID` の正規化した値（0..=1）。CLAP は plain value だが、VST3 は `IParameterChanges` が正規化した値を運び、plain value への変換（`normalizedParamToPlain`）は編集の部品の仕事で処理のスレッドで呼べないため。範囲の外の値は 0..=1 に収める。
 - `plugin_id` はクラスの ID の 32 桁の 16 進。並びはプラグインのソースの `FUID (a, b, c, d)` と同じで、`moduleinfo.json` の `CID` と同じ文字になる。空ならバンドルの最初の Audio Module Class。
-- 状態の消去（シーク）は `setProcessing(false)`、`setActive(false)`、`setActive(true)`、`setProcessing(true)`。VST3 には CLAP の `reset` に当たる口が無い。SDK の文書は `setProcessing` を「遅延やリバーブの中身を消してよい所」とし、`setActive` は確保し直しを含む入れ直しなので、両方を呼べばどちらで消すプラグインも消える。
+- 状態の消去（シーク）は `setProcessing(false)`、`setActive(false)`、`setActive(true)`、`setProcessing(true)`。VST3 には CLAP の `reset` に相当する API が無い。SDK の文書は `setProcessing` を「遅延やリバーブの中身を消してよい所」とし、`setActive` は確保し直しを含む入れ直しなので、両方を呼べばどちらで消すプラグインも消える。
 - ホストのプロセスの中では、読み込みから処理までを 1 つのスレッドで呼ぶ。VST3 は初期化を主のスレッド、処理を音のスレッドと決めているが、編集の画面を開かないこのホストでは、プラグインから見える呼び出しの順を 1 本にする方が単純で、プラグインが 2 つのスレッドの取り合いで止まらない。
-- 位置の情報（`processContext`）は、テンポ 120、4/4 拍子、止まっている状態、時刻 0 を毎回渡す。空にすると落ちるプラグインがあり、時刻を進めると始めた位置で結果が変わるため。
+- 位置の情報（`processContext`）は、テンポ 120、4/4 拍子、止まっている状態、時刻 0 を毎回渡す。空にするとクラッシュするプラグインがあり、時刻を進めると始めた位置で結果が変わるため。
 - 主でないバス（サイドチェインなど）は止め、無音の入力と捨てる出力を渡す。ノートのイベントは渡さない（空の `IEventList`）。
-- 共有ライブラリは解放しない。`describe` で作ったインスタンスも片付けずにプロセスごと捨てる（片付けの呼び出しで落ちるプラグインがあるため）。
+- 共有ライブラリは解放しない。`describe` で作ったインスタンスも片付けずにプロセスごと捨てる（片付けの呼び出しでクラッシュするプラグインがあるため）。
 
 ## 遅れと性能
 
@@ -69,7 +69,7 @@ VST3 SDK は 3.8.0（2025 年 10 月）から MIT になった。このクレー
 
 ## 受け渡しの規約
 
-`mm-host-clap` の README の「受け渡しの規約」と同じ（共有メモリの名前の頭は `Local\mm-vst3-`、時間切れの `what` は `host_vst3.process`）。違いは次のとおり。
+`mm-host-clap` の README の「受け渡しの規約」と同じ（共有メモリの名前の接頭辞は `Local\mm-vst3-`、時間切れの `what` は `host_vst3.process`）。違いは次のとおり。
 
 - `Prepare` の `path` は `.vst3` のバンドル（フォルダー）か 1 つのファイル、`plugin` はクラスの ID の 16 進。
 - ホストは主のバスをステレオに配置できるか確かめ、32 ビットの浮動小数、最大 4096 フレーム、`kRealtime` で活性にする。
@@ -80,7 +80,7 @@ VST3 SDK は 3.8.0（2025 年 10 月）から MIT になった。このクレー
 cargo nextest run -p mm-host-vst3
 ```
 
-`cargo test`（nextest も同じ）が例 `mm_vst3_test` を DLL に作り、`tests/it/` が試験のプロセスごとにバンドルの形（`MmTest.vst3/Contents/x86_64-win/MmTest.vst3`）に写して読む。`--test it` だけを作ると例が無く、試験は理由つきで落ちる。
+`cargo test`（nextest も同じ）が例 `mm_vst3_test` を DLL に作り、`tests/it/` がテストのプロセスごとにバンドルの形（`MmTest.vst3/Contents/x86_64-win/MmTest.vst3`）にコピーして読む。`--test it` だけを作ると例が無く、テストは理由つきでクラッシュする。
 
 | プラグイン | 形 | 確かめること |
 |---|---|---|
@@ -95,5 +95,5 @@ cargo nextest run -p mm-host-vst3
 - プラグインの状態の保存（`IComponent::getState`、編集の部品への `setComponentState`）、編集の画面（`IPlugView`）、値の表示の文字（`getParamStringByValue`）、単位の名前（`IUnitInfo`）。
 - ノートのイベント（楽器）、モノラルとサラウンドの配置、バスへの挿し込み。
 - 64 ビットの浮動小数での処理（`kSample64`）。
-- macOS と Linux のモジュールの入口（`bundleEntry`、`ModuleEntry`）。今は Windows の `InitDll` だけを呼ぶ。
+- macOS と Linux のモジュールのエントリーポイント（`bundleEntry`、`ModuleEntry`）。今は Windows の `InitDll` だけを呼ぶ。
 - 置き場所の走査と describe の結果のキャッシュ、Inspector でプラグインを選ぶ画面、使わなくなったインスタンスのホストの片付け（`mm-host-clap` と同じ）。

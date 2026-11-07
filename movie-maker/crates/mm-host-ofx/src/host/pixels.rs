@@ -130,7 +130,7 @@ impl Pixels {
         Self::from_rows(image.size(), image.data(), depth)
     }
 
-    /// 上の行からの RGBA f32 の列（`RgbaImage` と同じ並び）から。Float の深さは行ごとの写しで済ませる。
+    /// 上の行からの RGBA f32 の配列（`RgbaImage` と同じ並び）から。Float の深さは行ごとのコピーで済ませる。
     pub fn from_rows(size: Size, data: &[f32], depth: Depth) -> std::result::Result<Self, String> {
         let mut px = Self::new(size, depth)?;
         let w = size.width as usize * CHANNELS;
@@ -161,7 +161,7 @@ impl Pixels {
         Ok(px)
     }
 
-    /// 上の行からの RGBA f32 の列に書く。有限でない値は 0 にする（`Depth::decode` と同じ）。
+    /// 上の行からの RGBA f32 の配列に書く。有限でない値は 0 にする（`Depth::decode` と同じ）。
     pub fn write_rows(&self, out: &mut [f32]) -> std::result::Result<(), String> {
         let w = self.width as usize * CHANNELS;
         let height = self.height as usize;
@@ -234,7 +234,7 @@ impl Pixels {
 
     /// f32 の並び。割り当ては u64 の境界なので f32 の境界も満たす。
     fn floats(&self) -> &[f32] {
-        // SAFETY: bytes と同じ割り当てを f32 の列として読む。どのビット列も f32 として正しい。
+        // SAFETY: bytes と同じ割り当てを f32 の配列として読む。どのビット列も f32 として正しい。
         unsafe { std::slice::from_raw_parts(self.data.cast::<f32>(), self.words * 2) }
     }
 
