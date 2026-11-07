@@ -1,5 +1,5 @@
 import type {
-  CdMeta, AssistantMessage, TranslateStatus, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, GithubSearch, Glossary, Harness, HarnessToggle, ImproveSettings, InboxSection, PrReviewEvent, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, SlackChannel, SlackConversation, TextSaveResult,
+  AgentPriority, CdMeta, AssistantMessage, TranslateStatus, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, GithubSearch, Glossary, Harness, HarnessToggle, ImproveSettings, InboxSection, PrReviewEvent, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, SlackChannel, SlackConversation, TextSaveResult,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -211,6 +211,7 @@ export const api = {
   harness: () => getJson<Harness>('/api/learn/harness'),
   harnessToggle: ({ setting, key }: HarnessToggle, on: boolean) => postJson('/api/learn/toggle', { setting, key, on }),
   autoContinue: (enabled: boolean) => postJson<void>('/api/auto-continue', { enabled }),
+  agentPriority: (priority: AgentPriority) => postJson<void>('/api/agent-priority', { priority }),
   assistant: (messages: AssistantMessage[], sessionId: string) => postJson<AssistantReply>('/api/assistant', { messages, sessionId }),
   /** 文章校正の進み具合を、届いた順に onEvent に渡す。signal で中止すると、サーバーも残りの文を読ませない。明確化では、readings に答えがある文は読み直さない。 */
   proofread: async (mode: ProofMode, text: string, glossary: string, readings: (ProofReading | null)[], onEvent: (e: ProofEvent) => void, signal: AbortSignal): Promise<void> => {

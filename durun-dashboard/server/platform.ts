@@ -6,12 +6,15 @@ import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { HostOs, MemoryStatus, ToolName } from '../shared/types.ts';
+import type { AgentPriority, HostOs, MemoryStatus, ToolName } from '../shared/types.ts';
 import { toMemoryStatus, toMemoryUsage } from './memory.ts';
 import { run as runOffThread } from './run.ts';
 
 /** 外のコマンドを動かして標準出力を返す。テストでは偽物に差し替える。 */
 export type Run = (file: string, args: string[]) => Promise<string>;
+
+/** プロセスの優先度を変える。テストでは偽物に差し替える。 */
+export type SetPriority = (pid: number, priority: number) => void;
 
 const realRun: Run = async (file, args) => (await runOffThread(file, args)).stdout;
 
@@ -145,6 +148,11 @@ export type Platform = {
   killTree: (child: ChildProcess, run?: Run) => void;
   /** 直近 1 分の load average。測れない OS では undefined。 */
   loadAverage: () => number | undefined;
+  /**
+   * プロセスの優先度を変え、変えられたかを返す。変えたプロセスがこの後に起動するプロセスも、同じ優先度を受け継ぐ。
+   * Mac と Linux では、一般のユーザーは nice を上げられても下げられないので、通常へ戻すことはできない。
+   */
+  setProcessPriority: (pid: number, priority: AgentPriority, set?: SetPriority) => boolean;
   /** ドキュメントのフォルダー。Windows では、OneDrive に移したときも追えるよう、既知のフォルダーから引く。読めなければ undefined。 */
   documentsDir: (run?: Run) => Promise<string | undefined>;
   /**
@@ -208,6 +216,19 @@ const credentialsFile = (files: Files, dir: string): Promise<string | undefined>
   }
 };
 
+// Windows では os.constants の値が優先度クラスに読み替えられ、BELOW_NORMAL と IDLE になる。
+const PRIORITY_VALUES: Record<AgentPriority, number> = { normal: os.constants.priority.PRIORITY_NORMAL, low: os.constants.priority.PRIORITY_BELOW_NORMAL, idle: os.constants.priority.PRIORITY_LOW };
+
+const trySetPriority = (pid: number, priority: AgentPriority, set: SetPriority): boolean => {
+  try {
+    set(pid, PRIORITY_VALUES[priority]);
+    return true;
+  } catch {
+    // 終わったばかりのプロセスや、権限の足りないプロセスは変えられない。次にセッションが増減したときに掛け直す。
+    return false;
+  }
+};
+
 const FL_USER_DATA = path.join('Image-Line', 'FL Studio');
 const WIN_DEV_DIR = 'D:\\dev';
 
@@ -259,6 +280,7 @@ const posix = {
   // sh は -c の 1 つのコマンドを自分と入れ替えて動かすので、sh を止めればコマンドも止まる。
   killTree: (child: ChildProcess) => void child.kill(),
   loadAverage: () => os.loadavg()[0],
+  setProcessPriority: (pid: number, priority: AgentPriority, set: SetPriority = os.setPriority) => priority !== 'normal' && trySetPriority(pid, priority, set),
   documentsDir: async () => path.posix.join(os.homedir(), 'Documents'),
   flUserDataCandidates: (documents: string | undefined) => (documents ? [path.posix.join(documents, 'Image-Line', 'FL Studio')] : []),
   // FL の Mac 版は WebView2 を使わないので、デバッグのポートを開いて起動する道が無い。
@@ -408,6 +430,8 @@ const win32: Platform = {
   },
   // Node の os.loadavg は、Windows では負荷によらず 0 を返す。
   loadAverage: () => undefined,
+  // Windows はプロセスの優先度クラスを、ユーザーの権限で上げ下げどちらにも変えられる。
+  setProcessPriority: (pid, priority, set = os.setPriority) => trySetPriority(pid, priority, set),
   // reg.exe はコンソールのコードページで書くので、日本語のパスが化ける。PowerShell に UTF-8 で書かせる。
   documentsDir: async (run = realRun) => {
     try {
