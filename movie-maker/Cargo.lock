@@ -3346,8 +3346,11 @@ name = "mm-host-pipe"
 version = "0.1.0"
 dependencies = [
  "mm-host-api",
+ "mm-trace",
  "mm-types",
  "serde_json",
+ "tracing",
+ "tracing-subscriber",
  "windows",
 ]
 

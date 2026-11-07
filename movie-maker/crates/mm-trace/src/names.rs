@@ -13,6 +13,23 @@ pub fn is_valid_span_name(name: &str) -> bool {
     is_ident(crate_part) && is_ident(verb_part)
 }
 
+/// 別プロセスのホストが落ちた回数のカウンタの、ホストの種類の後ろの部分。
+const CRASH: &str = "crash";
+
+/// 別プロセスのホストが落ちた回数のカウンタの名前（`<ホストの種類>.crash`、`host_cef.crash` など）。
+/// 数えるのはホストとの接続（`mm-host-pipe`）、読むのはアプリの自動の起票。ログの文に頼らず同じ名前で引き合う。
+pub fn host_crash_counter(host: &str) -> String {
+    format!("{host}{SEPARATOR}{CRASH}")
+}
+
+/// カウンタの名前がホストの落ちた回数なら、ホストの種類。
+pub fn crashed_host(counter: &str) -> Option<&str> {
+    counter
+        .strip_suffix(CRASH)?
+        .strip_suffix(SEPARATOR)
+        .filter(|h| is_ident(h))
+}
+
 fn is_ident(s: &str) -> bool {
     !s.is_empty()
         && s.chars()
@@ -31,5 +48,13 @@ mod tests {
         assert!(!is_valid_span_name("render.frame.layer"));
         assert!(!is_valid_span_name("Render.Frame"));
         assert!(!is_valid_span_name("render."));
+    }
+
+    #[test]
+    fn ホストの落ちた回数のカウンタの名前を往復する() {
+        assert_eq!(host_crash_counter("host_cef"), "host_cef.crash");
+        assert_eq!(crashed_host("host_ofx.crash"), Some("host_ofx"));
+        assert_eq!(crashed_host("cache.hit"), None);
+        assert_eq!(crashed_host(".crash"), None);
     }
 }

@@ -95,6 +95,10 @@ impl PipeHost {
                 Ok(host)
             }
             other => {
+                // 接続が落ちたのなら request が数えている。
+                if !matches!(other, Err(MmError::HostCrashed(_))) {
+                    host.count_crash();
+                }
                 // 起動の失敗を返すのが先で、止められなかったことは Drop の後片付けに任せる。
                 let _ = host.kill();
                 Err(MmError::HostCrashed(format!(
@@ -102,6 +106,15 @@ impl PipeHost {
                 )))
             }
         }
+    }
+
+    /// ホストが落ちたことを数える（`mm_trace::names::host_crash_counter`）。アプリはこのカウンタで自動の起票をする。
+    /// こちらから止めたホスト（時間切れ、Shutdown）は数えない。
+    fn count_crash(&self) {
+        mm_trace::counter!(
+            mm_trace::names::host_crash_counter(self.kind.name).as_str(),
+            1
+        );
     }
 
     /// 動いているホストの一時フォルダー。止めた後や、一時フォルダーを使わないホストは `None`。
@@ -135,12 +148,14 @@ impl PipeHost {
             }
             Err(RecvTimeoutError::Disconnected) => {
                 // 出力が閉じたのはプロセスが終わる途中なので、終わるまで待って is_alive を偽にそろえる。
+                self.count_crash();
                 self.kill()?;
                 return Err(MmError::HostCrashed("ホストの出力が閉じた".into()));
             }
         };
         // 読めない行をスキップすると、読み捨てる数が合わなくなり、以後の要求が前の要求の応答を受け取り続ける。
         serde_json::from_str(&line).or_else(|e| {
+            self.count_crash();
             self.kill()?;
             Err(MmError::HostCrashed(format!("ホストの応答が読めない: {e}")))
         })
@@ -290,13 +305,19 @@ impl HostProcess for PipeHost {
     }
 
     fn request(&mut self, req: &HostRequest, timeout: Duration) -> Result<HostResponse> {
-        let alive = self.is_alive();
+        if self.conn.is_some() && !self.is_alive() {
+            // 要求の合間に終わっていた。止めて接続を外し、同じクラッシュを 2 度数えない。
+            self.count_crash();
+            self.kill()?;
+        }
         let conn = self
             .conn
             .as_mut()
-            .filter(|_| alive)
             .ok_or_else(|| MmError::HostCrashed("ホストが動いていない".into()))?;
-        Self::send(conn, req)?;
+        if let Err(e) = Self::send(conn, req) {
+            self.count_crash();
+            return Err(e);
+        }
         let deadline = Instant::now() + timeout;
         loop {
             let response = self.next_response(deadline, timeout)?;
@@ -376,6 +397,23 @@ mod tests {
             .map(|d| d.flatten().filter(is_ours).count())
             .unwrap_or(0);
         assert!(after <= before, "一時フォルダーが残った");
+    }
+
+    #[test]
+    fn 起動直後に落ちたホストを_1_回だけ数える() {
+        use tracing_subscriber::prelude::*;
+        let (layer, metrics) = mm_trace::MetricsLayer::new();
+        let subscriber = tracing_subscriber::registry().with(layer);
+        // git は `serve` を知らないので、何も答えずに終わる（出力が閉じる）。
+        let started = tracing::subscriber::with_default(subscriber, || {
+            PipeHost::start(KIND, spec("git")).err()
+        });
+        assert!(
+            matches!(started, Some(MmError::HostCrashed(_))),
+            "{started:?}"
+        );
+        let name = mm_trace::names::host_crash_counter(KIND.name);
+        assert_eq!(metrics.snapshot().counters.get(&name), Some(&1.0));
     }
 
     fn is_ours(entry: &std::fs::DirEntry) -> bool {

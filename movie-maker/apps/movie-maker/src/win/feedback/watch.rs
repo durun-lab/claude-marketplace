@@ -1,5 +1,5 @@
-//! 計装の見張り。予算を超えたスパンと、ホストを起こし直した警告（クラッシュ）を自動の起票に回す `Layer`。
-//! 同じものは mm-improve がまとめて数えるが、記録はファイルの読み書きなので、ここで間を空けて送る。
+//! 計装の見張り。予算を超えたスパンと、ホストの落ちた回数のカウンタ（`mm_trace::names::host_crash_counter`）を
+//! 自動の起票に回す `Layer`。同じものは mm-improve がまとめて数えるが、記録はファイルの読み書きなので、ここで間を空けて送る。
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use mm_improve::{ErrorInput, ErrorSource};
 use tracing::field::{Field, Visit};
 use tracing::span::{Attributes, Id};
-use tracing::{Event, Level, Subscriber};
+use tracing::{Event, Subscriber};
 use tracing_subscriber::layer::{Context, Layer};
 use tracing_subscriber::registry::LookupSpan;
 
@@ -28,13 +28,10 @@ const WARMUP: Duration = Duration::from_secs(10);
 /// 同じスパンかホストを続けて送らない間隔。
 const THROTTLE: Duration = Duration::from_secs(10);
 
-/// ホストを使うクレートの target の前置きと、起票の出どころ。
-const HOST_TARGETS: &[(&str, ErrorSource)] = &[
-    ("mm_host_cef", ErrorSource::HostCef),
-    ("mm_nodes_cef", ErrorSource::HostCef),
-    ("mm_text_cef", ErrorSource::HostCef),
-    ("mm_host_ofx", ErrorSource::HostOfx),
-    ("mm_nodes_ofx", ErrorSource::HostOfx),
+/// ホストの種類（`mm-host-pipe` の `PipeKind::name`）と、起票の出どころ。
+const HOSTS: &[(&str, ErrorSource)] = &[
+    ("host_cef", ErrorSource::HostCef),
+    ("host_ofx", ErrorSource::HostOfx),
 ];
 
 /// 起票の送り先。
@@ -104,34 +101,29 @@ impl Watch {
         (self.sink)(ErrorInput::slow(ErrorSource::App, name, ms, budget));
     }
 
-    fn crash(&self, target: &str, fields: &Fields) {
-        let Some(source) = host_source(target) else {
+    fn crash(&self, host: &str) {
+        let Some(source) = host_source(host) else {
             return;
         };
-        let Some(why) = &fields.why else {
-            return;
-        };
-        if !self.allow(target) {
+        if !self.allow(host) {
             return;
         }
-        let mut input = ErrorInput::error(source, format!("{}: {why}", fields.message));
-        input.where_ = Some(target.to_owned());
+        let mut input = ErrorInput::error(
+            source,
+            format!("{host} のホストが落ちた（応答の途中で終わったか、要求の合間に終わっていた）"),
+        );
+        input.where_ = Some(host.to_owned());
         (self.sink)(input);
     }
 }
 
-fn host_source(target: &str) -> Option<ErrorSource> {
-    HOST_TARGETS
-        .iter()
-        .find(|(prefix, _)| target.starts_with(prefix))
-        .map(|(_, s)| *s)
+fn host_source(host: &str) -> Option<ErrorSource> {
+    HOSTS.iter().find(|(h, _)| *h == host).map(|(_, s)| *s)
 }
 
 /// イベントのうち見るフィールド。
 #[derive(Default)]
 struct Fields {
-    message: String,
-    why: Option<String>,
     metric: Option<String>,
     name: Option<String>,
     value: Option<f64>,
@@ -148,8 +140,6 @@ impl Visit for Fields {
         match field.name() {
             "metric" => self.metric = Some(value.to_owned()),
             "name" => self.name = Some(value.to_owned()),
-            "why" => self.why = Some(value.to_owned()),
-            "message" => self.message = value.to_owned(),
             _ => {}
         }
     }
@@ -157,8 +147,6 @@ impl Visit for Fields {
     fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
         let text = format!("{value:?}");
         match field.name() {
-            "message" => self.message = text,
-            "why" => self.why = Some(text),
             "name" => self.name = Some(text.trim_matches('"').to_owned()),
             "metric" => self.metric = Some(text.trim_matches('"').to_owned()),
             _ => {}
@@ -190,22 +178,23 @@ where
     }
 
     fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
-        let meta = event.metadata();
-        let metrics = meta.target() == mm_trace::METRICS_TARGET;
-        if !metrics && *meta.level() != Level::WARN {
+        if event.metadata().target() != mm_trace::METRICS_TARGET {
             return;
         }
         let mut fields = Fields::default();
         event.record(&mut fields);
-        if !metrics {
-            self.crash(meta.target(), &fields);
+        let Some(name) = &fields.name else {
             return;
-        }
-        // 外で測った時間（GPU のタイムスタンプ）は `record_span` のイベントでマイクロ秒が届く。
-        if let (Some("span"), Some(name), Some(us)) =
-            (fields.metric.as_deref(), &fields.name, fields.value)
-        {
-            self.slow(name, us / 1000.0);
+        };
+        match (fields.metric.as_deref(), fields.value) {
+            // 外で測った時間（GPU のタイムスタンプ）は `record_span` のイベントでマイクロ秒が届く。
+            (Some("span"), Some(us)) => self.slow(name, us / 1000.0),
+            (Some("counter"), _) => {
+                if let Some(host) = mm_trace::names::crashed_host(name) {
+                    self.crash(host);
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -254,17 +243,23 @@ mod tests {
     }
 
     #[test]
-    fn ホストを起こし直した警告をクラッシュとして送る() {
+    fn ホストの落ちた回数のカウンタをクラッシュとして送る() {
+        let cef = mm_trace::names::host_crash_counter("host_cef");
+        let ofx = mm_trace::names::host_crash_counter("host_ofx");
         let seen = capture(|| {
-            tracing::warn!(target: "mm_nodes_cef::hosts", why = "ホストの出力が閉じた", "web.cef のホストを起こし直す");
-            tracing::warn!(target: "mm_nodes_cef::hosts", why = "続けて", "web.cef のホストを起こし直す");
-            tracing::warn!(target: "mm_render", why = "ホストでない", "別の警告");
-            tracing::warn!(target: "mm_text_cef", "why の無い警告");
+            mm_trace::counter!(cef.as_str(), 1);
+            mm_trace::counter!(cef.as_str(), 1);
+            mm_trace::counter!(ofx.as_str(), 1);
+            mm_trace::counter!("cache.hit", 1);
+            tracing::warn!(target: "mm_nodes_cef::hosts", why = "ログの文", "web.cef のホストを起こし直す");
         });
-        assert_eq!(seen.len(), 1, "{seen:?}");
-        assert_eq!(seen[0].source, ErrorSource::HostCef);
-        assert_eq!(seen[0].where_.as_deref(), Some("mm_nodes_cef::hosts"));
-        assert!(seen[0].message.contains("ホストの出力が閉じた"));
+        let sources: Vec<ErrorSource> = seen.iter().map(|i| i.source).collect();
+        assert_eq!(
+            sources,
+            vec![ErrorSource::HostCef, ErrorSource::HostOfx],
+            "{seen:?}"
+        );
+        assert_eq!(seen[0].where_.as_deref(), Some("host_cef"));
     }
 
     #[test]
