@@ -1,12 +1,19 @@
-//! デコードしたフレーム（YUV など）を CPU の RGBA f32 にする。
+//! デコードしたフレーム（YUV など）を CPU の RGBA f32（作業色空間の線形）にする。
+//!
+//! 8 bit の SDR（Rec.709 の原色）は swscale で 8 bit の RGBA にして 256 段の表で線形にする。10 bit 以上、HDR（PQ と
+//! HLG）、Rec.2020 の原色の素材は 8 bit を経由せず、16 bit の 4:4:4 の YUV から線形にする（`wide`）。
 
 use ff::format::Pixel;
 use ff::software::scaling::{Context as Scaler, Flags};
 use ff::{ffi, frame};
 use ffmpeg_next as ff;
-use mm_decode_ffmpeg_core::matrix::{is_full_range, Matrix};
+use mm_decode_ffmpeg_core::matrix::{
+    bit_depth, is_full_range, is_rec2020, is_wide, Matrix, Transfer,
+};
 use mm_types::transfer::code8_table;
 use mm_types::{MmError, Result, RgbaImage, Size};
+
+use crate::wide::WideYuv;
 
 /// 変換器の作り直しが要るかを決める、入力の性質。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,6 +23,39 @@ struct SourceKey {
     height: u32,
     matrix: Matrix,
     full_range: bool,
+    transfer: Transfer,
+    rec2020: bool,
+    bits: u32,
+}
+
+impl SourceKey {
+    fn of(src: &frame::Video) -> Self {
+        let transfer = Transfer::from_characteristic(src.color_transfer_characteristic());
+        Self {
+            format: src.format(),
+            width: src.width(),
+            height: src.height(),
+            matrix: Matrix::from_frame(src.color_space(), src.height()),
+            full_range: is_full_range(src.color_range()),
+            transfer,
+            rec2020: is_rec2020(src.color_primaries(), transfer),
+            bits: bit_depth(src.format()),
+        }
+    }
+
+    /// 8 bit を経由しない経路か。
+    fn is_wide(self) -> bool {
+        is_wide(self.bits, self.transfer, self.rec2020)
+    }
+
+    /// swscale の出力。広い経路は色差を補間しただけの 16 bit の YUV（行列とレンジは `wide` が解く）。
+    fn target(self) -> Pixel {
+        if self.is_wide() {
+            Pixel::YUVA444P16LE
+        } else {
+            Pixel::RGBA
+        }
+    }
 }
 
 /// swscale の色空間の番号。
@@ -31,7 +71,7 @@ fn sws_id(matrix: Matrix) -> i32 {
 pub struct RgbaConverter {
     scaler: Option<(SourceKey, Scaler)>,
     out: Option<frame::Video>,
-    /// 符号化値 → 線形。作業色空間は線形の premultiplied なので、アルファを掛ける前に適用する。
+    /// 8 bit の符号化値 → 線形。作業色空間は線形の premultiplied なので、アルファを掛ける前に適用する。
     linear: [f32; 256],
 }
 
@@ -52,13 +92,7 @@ unsafe impl Send for RgbaConverter {}
 impl RgbaConverter {
     /// 1 フレームを RGBA の画像にする。アルファがあれば premultiplied にする。
     pub fn convert(&mut self, src: &frame::Video) -> Result<RgbaImage> {
-        let key = SourceKey {
-            format: src.format(),
-            width: src.width(),
-            height: src.height(),
-            matrix: Matrix::from_frame(src.color_space(), src.height()),
-            full_range: is_full_range(src.color_range()),
-        };
+        let key = SourceKey::of(src);
         if self.scaler.as_ref().map(|(k, _)| *k) != Some(key) {
             self.scaler = Some((key, make_scaler(&key)?));
             self.out = None;
@@ -66,11 +100,23 @@ impl RgbaConverter {
         let (_, scaler) = self.scaler.as_mut().expect("直前に作った");
         let out = self
             .out
-            .get_or_insert_with(|| frame::Video::new(Pixel::RGBA, key.width, key.height));
+            .get_or_insert_with(|| frame::Video::new(key.target(), key.width, key.height));
         scaler
             .run(src, out)
             .map_err(|e| MmError::Corrupt(format!("RGBA への変換: {e}")))?;
-        to_image(out, Size::new(key.width, key.height), &self.linear)
+        let size = Size::new(key.width, key.height);
+        if key.is_wide() {
+            WideYuv::new(
+                key.matrix,
+                key.full_range,
+                key.bits,
+                key.transfer,
+                key.rec2020,
+            )
+            .to_image(out, size)
+        } else {
+            to_image(out, size, &self.linear)
+        }
     }
 }
 
@@ -79,13 +125,19 @@ fn make_scaler(key: &SourceKey) -> Result<Scaler> {
         key.format,
         key.width,
         key.height,
-        Pixel::RGBA,
+        key.target(),
         key.width,
         key.height,
         Flags::BICUBIC | Flags::ACCURATE_RND | Flags::FULL_CHR_H_INT,
     )
     .map_err(|e| MmError::Unsupported(format!("{:?} を RGBA にできない: {e}", key.format)))?;
-    // swscale の既定は 601 のため、宣言した行列とレンジを明示する。RGB 入力では -1 が返るが無視してよい。
+    // swscale の既定は 601 のため、宣言した行列とレンジを明示する。広い経路は YUV のレンジを変えずに通す。
+    // RGB 入力では -1 が返るが無視してよい。
+    let dst_full = if key.is_wide() {
+        key.full_range as i32
+    } else {
+        1
+    };
     unsafe {
         let coeffs = ffi::sws_getCoefficients(sws_id(key.matrix));
         ffi::sws_setColorspaceDetails(
@@ -93,7 +145,7 @@ fn make_scaler(key: &SourceKey) -> Result<Scaler> {
             coeffs,
             key.full_range as i32,
             coeffs,
-            1,
+            dst_full,
             0,
             1 << 16,
             1 << 16,

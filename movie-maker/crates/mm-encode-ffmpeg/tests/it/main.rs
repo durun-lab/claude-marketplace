@@ -8,4 +8,6 @@ mod common;
 #[cfg(feature = "ffmpeg")]
 mod contract;
 #[cfg(feature = "ffmpeg")]
+mod hdr;
+#[cfg(feature = "ffmpeg")]
 mod roundtrip;

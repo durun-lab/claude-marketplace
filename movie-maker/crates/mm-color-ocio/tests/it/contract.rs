@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use mm_color_api::{ColorTransform, TransformProgram};
+use mm_color_api::{ColorTransform, LutShaper, TransformProgram};
 use mm_color_ocio::{OcioColor, DISPLAY_SPACE};
 use mm_types::ColorSpace;
 
@@ -42,15 +42,21 @@ fn aces_の表示変換は_3d_lut_で返り格子の値がapplyと一致する()
         ColorSpace("ACEScg".into()),
         ColorSpace(DISPLAY_SPACE.into()),
     );
-    let TransformProgram::Lut3d { size, data } = ocio.program(&from, &to).expect("変換") else {
+    let TransformProgram::Lut3d { size, data, shaper } = ocio.program(&from, &to).expect("変換")
+    else {
         panic!("ACES の表示変換は 3D LUT になるはず");
     };
+    assert_eq!(
+        shaper,
+        LutShaper::Pq,
+        "ACEScg は線形の光なので PQ のシェーパーで格子に収める"
+    );
     let n = size as usize;
     assert_eq!(data.len(), n * n * n * 3);
     assert!(data.iter().all(|v| v.is_finite()));
-    // R が最も速く変わる順序の、格子の 1 点（r=2, g=5, b=7）。
+    // R が最も速く変わる順序の、格子の 1 点（r=2, g=5, b=7）。格子の座標はシェーパーの逆で入力に戻す。
     let step = (n - 1) as f32;
-    let rgb = [2.0 / step, 5.0 / step, 7.0 / step];
+    let rgb = [2.0 / step, 5.0 / step, 7.0 / step].map(|g| shaper.invert(g));
     let want = ocio.apply(&from, &to, rgb).expect("CPU");
     let at = ((7 * n + 5) * n + 2) * 3;
     for (i, w) in want.iter().enumerate() {

@@ -119,6 +119,12 @@ impl Ui {
         self.playhead = secs;
     }
 
+    /// Program と Source のトーンマップの素材の上限（線形、1.0 が SDR の白）。1 以下はトーンマップしない。
+    pub fn set_hdr_peak(&mut self, peak: f32) {
+        self.program.set_source_peak(peak);
+        self.source.set_source_peak(peak);
+    }
+
     /// Program に出すフレーム。
     pub fn set_frame(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, image: &RgbaImage) {
         self.program.set_image(device, queue, image);

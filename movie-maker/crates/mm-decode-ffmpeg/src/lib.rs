@@ -16,6 +16,7 @@ mod sound_only;
 #[cfg(feature = "gpu")]
 mod upload;
 mod video;
+mod wide;
 
 use std::path::Path;
 use std::sync::OnceLock;

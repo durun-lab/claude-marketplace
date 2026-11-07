@@ -7,25 +7,16 @@ license.workspace = true
 publish.workspace = true
 
 [dependencies]
-mm-audio-api = { workspace = true }
-mm-host-api = { workspace = true }
 mm-host-pipe = { workspace = true }
-mm-node-api = { workspace = true }
 mm-types = { workspace = true }
-serde = { workspace = true }
 serde_json = { workspace = true }
 clack-host = { workspace = true }
 clack-extensions = { workspace = true }
 
-[target.'cfg(windows)'.dependencies]
-windows = { workspace = true, features = [
-  "Win32_Foundation",
-  "Win32_Security",
-  "Win32_System_Console",
-  "Win32_System_Diagnostics_Debug",
-  "Win32_System_Memory",
-  "Win32_System_Threading",
-] }
+[dev-dependencies]
+mm-audio-api = { workspace = true }
+mm-host-api = { workspace = true }
+mm-node-api = { workspace = true }
 
 [build-dependencies]
 cc = { workspace = true }

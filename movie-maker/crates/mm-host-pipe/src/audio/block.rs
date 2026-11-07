@@ -3,6 +3,7 @@
 //! アプリが名前つきで作り、ホストが名前で開く。1 回の往復は、アプリが入力とパラメータのイベントを書いて
 //! 要求のイベントを立て、ホストが処理して出力を書き完了のイベントを立てる。番を持たない側は触らない。
 //! イベントの待ちと立てるのが両方のプロセスのメモリの順序をそろえる。
+//! 名前つきの区画とイベントは [`crate::shm`] で、ここは区画の中の並び（[`Block`]）を持つ。
 
 use mm_types::{MmError, Result};
 
@@ -17,7 +18,7 @@ const ERROR_BYTES: usize = 512;
 /// ホストが `Prepare` の後に書くプラグインの記述（JSON）の上限（バイト）。
 const INFO_BYTES: usize = 256 * 1024;
 /// 共有メモリの先頭の印。
-const MAGIC: u32 = u32::from_le_bytes(*b"MMCL");
+const MAGIC: u32 = u32::from_le_bytes(*b"MMAU");
 /// 共有メモリの並びの版。並びを変えたら上げる。
 const LAYOUT_VERSION: u32 = 1;
 
@@ -27,7 +28,7 @@ const LAYOUT_VERSION: u32 = 1;
 pub enum Command {
     /// `frames` フレームを処理する。
     Process = 0,
-    /// プラグインの内部の状態（遅延の中身など）を消す（CLAP の `reset`）。
+    /// プラグインの内部の状態（遅延の中身など）を消す（CLAP の `reset`、VST3 は活性を切って入れ直す）。
     Reset = 1,
 }
 
@@ -51,7 +52,7 @@ pub struct ParamEvent {
     pub value: f64,
 }
 
-/// 共有メモリの中身。音は CLAP と同じくチャンネルごとに分けて（planar）持つ。
+/// 共有メモリの中身。音は CLAP と VST3 の処理の入れ物と同じく、チャンネルごとに分けて（planar）持つ。
 #[repr(C)]
 pub struct Block {
     magic: u32,
@@ -153,39 +154,39 @@ fn truncate_utf8(s: &str, limit: usize) -> &[u8] {
     &s.as_bytes()[..end]
 }
 
-/// 共有メモリと 2 つのイベントの名前。`link` はアプリが作る元の名前。
-pub fn object_names(link: &str) -> [String; 3] {
-    ["mem", "req", "done"].map(|suffix| format!("{link}-{suffix}"))
+pub use crate::shm::{object_names, unique_link, Event, Process, Wake};
+
+/// 音のブロックの共有メモリ。名前つきの区画（[`crate::shm::Mapping`]）を [`Block`] の大きさで写し、先頭を使う。
+pub struct Mapping(crate::shm::Mapping);
+
+impl Mapping {
+    /// 名前つきで作る（アプリ）。中身は 0 で埋まっている。
+    pub fn create(name: &str) -> Result<Self> {
+        let mut mapping = Self(crate::shm::Mapping::create(
+            name,
+            std::mem::size_of::<Block>(),
+        )?);
+        mapping.block().init();
+        Ok(mapping)
+    }
+
+    /// 名前で開く（ホスト）。
+    pub fn open(name: &str) -> Result<Self> {
+        let mut mapping = Self(crate::shm::Mapping::open(
+            name,
+            std::mem::size_of::<Block>(),
+        )?);
+        mapping.block().check()?;
+        Ok(mapping)
+    }
+
+    /// 中身。番を持っている間だけ使う（相手は自分の番の間しか書かない）。
+    pub fn block(&mut self) -> &mut Block {
+        // SAFETY: Block は repr(C) で整数、浮動小数、その配列だけを持ち、どのビット列も正しい値。
+        // 大きさは Block で写し、並び（8 バイト）は写しの先頭の 4 KiB 境界が満たす。
+        unsafe { self.0.get_mut::<Block>() }
+    }
 }
-
-/// このプロセスで重ならない元の名前。`Local\` はログオンのセッションの中だけで見える名前空間。
-pub fn unique_link() -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    let n = NEXT.fetch_add(1, Ordering::Relaxed);
-    format!("Local\\mm-clap-{}-{n}", std::process::id())
-}
-
-/// 待った結果。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Wake {
-    /// イベントが立った。
-    Signaled,
-    /// 相手のプロセスが終わった。
-    Exited,
-    /// 期限を過ぎた。
-    TimedOut,
-}
-
-#[cfg(windows)]
-mod imp;
-#[cfg(not(windows))]
-mod stub;
-
-#[cfg(windows)]
-pub use imp::{Event, Mapping, Process};
-#[cfg(not(windows))]
-pub use stub::{Event, Mapping, Process};
 
 #[cfg(test)]
 mod tests {
@@ -199,13 +200,13 @@ mod tests {
         assert!(std::str::from_utf8(cut).is_ok());
     }
 
+    #[cfg(windows)]
     #[test]
-    fn 名前は元の名前から_3_つ作る() {
-        let [mem, req, done] = object_names("Local\\x");
-        assert_eq!(
-            (mem.as_str(), req.as_str(), done.as_str()),
-            ("Local\\x-mem", "Local\\x-req", "Local\\x-done")
-        );
-        assert_ne!(unique_link(), unique_link());
+    fn 作った側の印と版を開いた側が確かめる() {
+        let name = unique_link("mm-audio-test");
+        let mut made = Mapping::create(&name).expect("作れる");
+        made.block().set_info(b"{}").expect("書ける");
+        let mut opened = Mapping::open(&name).expect("開ける");
+        assert_eq!(opened.block().info(), b"{}");
     }
 }

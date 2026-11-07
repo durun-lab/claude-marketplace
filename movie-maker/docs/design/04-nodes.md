@@ -43,7 +43,7 @@ pub trait NodeKind: Send + Sync {
 | `ofx` | OpenFX のプラグイン。別プロセスのホストが描き、共有テクスチャで受ける | 次 |
 | `shader.hlsl` | DXC で SPIR-V にしてから naga で WGSL に。naga は HLSL を直接読めない [4] | 後 |
 | `lottie` | Lottie（rlottie か pure Rust の実装）で CPU に描いてアップロード | 後 |
-| `gen.ai` | 生成 AI。`offline`。費用のかかる API は操作の側で見積もりを強制し、自動の改善の回からは呼べない | 後 |
+| `gen.ai` | 生成 AI。`offline`。費用のかかる API は操作の側で見積もりを強制し、自動の改善の回からは呼べない（下の「gen.ai の作り」） | 後 |
 
 ## 入れ子
 
@@ -114,6 +114,18 @@ pub trait NodeKind: Send + Sync {
 - 使える名前: `mm_from(uv)`、`mm_to(uv)`（出ていくカットと入ってくるカットを双線形で引く。範囲の外は端の色）、`u.progress`（0..1）、`u.ratio`（幅 / 高さ）、`u.time`（トランジションの中の秒 = `progress * duration`）、`u.duration`（掛かる長さの秒）、`u.size`、`u.scale`、`u.p0`（`p0`..`p3`）、`u.p1`（`p4`..`p7`）。
 - パラメータ: `code`、`progress` と `duration`（レンダラーが書く）、`rewind`（レンダラーが読む）、`p0`..`p7`。コードはパラメータにコピーするので、パックのフォルダーが無くても同じに描ける。
 - コンパイルの失敗は `shader.wgsl` と同じ扱い（エラーを記録し、その境は透明）。パックは共通のコードをトランジションのコードの前に連結して渡す（vlog の `transitions/_prelude.wgsl`）。
+
+## gen.ai の作り
+
+`mm-nodes-genai`。パラメータと提供元の候補は crate の README。
+
+- パラメータはプロンプトと設定（`media` が `image`・`video`・`audio`、`width`、`height`、`duration`、`seed`、`provider`）と、生成した素材の参照 `asset`。描くのは `asset` の素材だけで、毎フレーム生成しない。素材は `AssetRef` なので、レンダラーは撮影素材と同じくデコーダーで開いて `FrameCx::footage` に渡し、種類は `footage` と同じ形（CPU の画像は画布に収める、GPU のフレームは借用する、音は `audio_in`）で返す。`asset` が空の間は透明で無音。
+- `offline` は「生成は待つのが前提」の意味で、生成は `prepare` でも `render` でもなく操作経路の側で済ませる。生成は費用とファイルの副作用を持つので操作（`Op`）にせず、結果を普通の操作（`addAsset` と `setParam`）の 1 つのトランザクションで返す。取り消しとやり直しはそのまま効く。
+- 生成は `GenAi` の 3 段でしか起きない。`quote`（提供元の料金表から費用と時間。通信しない）→ `approve`（人の承認の印。頼みの鍵と費用の上限を持つ）→ `generate`（見積もりを出し直し、承認の後にパラメータが変わっていれば `NotApproved`、上限を超えれば `OverBudget` で断る）。
+- 承認の印は MCP の経路（`Entry::Mcp`）からは作れない。提案と同じく、頼んだ Claude 自身が承認すると確認の意味が無いため（[RFC 0078](../rfcs/0078-review-proposals.md)）。
+- 自動の改善の回の中では `approve` と `generate` を `Forbidden` で断る。`mm-improve` が回の `claude -p` に環境変数 `MM_IMPROVE_RUN`（回の ID）を渡し、子の `mm` が受け継ぐ。`GenAi` は作るときと呼ぶたびにこれを読み、印は足せるだけで外せない。
+- 同じ頼みは使い回す。頼みの鍵はパラメータ（`asset` と種類に関係しない値を除く）と提供元の版の BLAKE3。素材は `<project>/media/genai/<鍵>.<拡張子>` と素材の JSON（`<鍵>.json`）に置き、取り消してもファイルは残すので、同じ鍵はもう一度提供元を呼ばずに置き直せる。見積もりは 0 になる。
+- 提供元は `Provider`（`estimate`、`generate`、`revision`）で差し替える。今は偽の提供元（`fake`。単色の PNG と Y4M、正弦波の WAV）だけで、実際のサービスは人が決めてから足す。
 
 
 ---

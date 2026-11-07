@@ -7,12 +7,12 @@ CLAP の音のプラグイン（`.clap`）を別プロセスで読み込み、�
 
 | 部分 | 場所 | 役目 |
 |---|---|---|
-| 種類 `audio.clap`（`ClapEffectKind`） | `src/kind.rs` | 効果のインスタンスごとにホストを 1 つ持つ。続きでない区間ではプラグインを `reset` する |
-| 1 つのインスタンス（`ClapEffect`） | `src/effect.rs` | ホストを起こし、共有メモリで往復させる。パラメータは差だけをイベントにする |
-| 共有メモリとイベント | `src/shm.rs`、`src/shm/imp.rs` | 並び（`Block`）と、Windows の名前つきのファイルマッピングと自動で戻るイベント |
-| ランチャー（`ClapLauncher`、`describe_bundle`、`find_host`） | `src/launcher.rs` | `mm-host-clap serve` を `mm_host_pipe::PipeHost` で起こし、`describe` を 1 ファイル 1 プロセスで実行する |
-| 記述と要求の形（`BundleDesc`、`PluginDesc`、`ParamDesc`、`PrepareParams`） | `src/desc.rs` | ホストとアプリの間の JSON |
-| ホストの実行ファイル | `src/host/` | `clack-host` でプラグインを読み込み、音のスレッドで処理する |
+| CLAP の名前（`Clap`）、`ClapEffect`、`ClapEffectKind`、`describe_bundle`、`find_host` | `src/lib.rs` | VST3 と共通の `mm_host_pipe::audio` に CLAP の名前（種類、実行ファイル、時間切れの `what`）を渡す |
+| 種類の本体（`PluginEffectKind`） | `mm_host_pipe::audio::kind` | 効果のインスタンスごとにホストを 1 つ持つ。続きでない区間ではプラグインを `reset` する |
+| 1 つのインスタンス（`AudioEffect`） | `mm_host_pipe::audio::effect` | ホストを起こし、共有メモリで往復させる。パラメータは差だけをイベントにする |
+| 共有メモリとイベント（`shm`） | `mm_host_pipe::audio::block` | 区画の中の並び（`Block`）。名前つきのファイルマッピングと自動で戻るイベントは `mm_host_pipe::shm` |
+| 記述と要求の形（`BundleDesc`、`PluginDesc`、`ParamDesc`、`PrepareParams`） | `mm_host_pipe::audio::desc` | ホストとアプリの間の JSON |
+| ホストの実行ファイル | `src/host/` | `clack-host` でプラグインを読み込み、音のスレッドで処理する。サブコマンドと要求の繰り返しは `mm_host_pipe::audio::serve` |
 | 公式のヘッダー | `vendor/clap/` | CLAP の `include/`（MIT、タグ `1.2.6`）。テストのプラグインを作るためだけに使う |
 | テストのプラグイン | `tests/plugins/mm_test.c` | `build.rs` が `MmTest.clap` に作る |
 
@@ -83,7 +83,6 @@ cargo nextest run -p mm-host-clap
 
 ## 段階 8 の後に回すもの
 
-- VST3（`vst3` クレートと SDK）。共有メモリの受け渡し（`shm.rs`）はそのとき共通実装へ移す。
 - プラグインの遅れの補正（`clap.latency`）と尾（`clap.tail`）。今は遅れのあるプラグインの音がその分だけ遅れて出る。
 - プラグインの状態の保存（`clap.state`）、GUI（`clap.gui`）、値の表示の文字（`value_to_text`）。
 - バスへの挿し込み（`CompMixer` のバスの効果）と、モノラルとサラウンドの配置。

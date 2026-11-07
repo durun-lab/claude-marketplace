@@ -4,6 +4,7 @@ mod audio_effects;
 mod cache_keys;
 mod common;
 mod contract;
+mod decoder_version;
 mod fonts;
 mod footage_reuse;
 mod frame_cache;

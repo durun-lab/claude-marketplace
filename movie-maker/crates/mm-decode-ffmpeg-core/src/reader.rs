@@ -8,7 +8,7 @@ use ffmpeg_next as ff;
 use mm_decode_api::{AudioStreamInfo, MediaInfo};
 use mm_types::{MmError, RationalTime, Result, Size};
 
-use crate::matrix::{check_transfer, Matrix};
+use crate::matrix::{bit_depth, color_space_of, is_rec2020, is_wide, Matrix, Transfer};
 use crate::timeline::{can_read_forward, Timeline};
 
 /// 開いた入力と、映像のデコーダー。パケットを送ってフレームを受ける。
@@ -103,6 +103,14 @@ pub struct IndexedFrame {
     pub frame: frame::Video,
 }
 
+/// ストリームの宣言の画素形式の 1 成分のビット数。GPU のデコーダー（`hevc_cuvid` など）は開くと画素形式が
+/// GPU の形式に変わるので、デコーダーではなくストリームの宣言から読む。
+fn declared_bits(stream: &ff::format::stream::Stream<'_>) -> u32 {
+    ff::codec::context::Context::from_parameters(stream.parameters())
+        .and_then(|c| c.decoder().video())
+        .map_or(8, |v| bit_depth(v.format()))
+}
+
 /// フレームを番号の順に出す。シークは目的のフレームの手前のキーフレームからデコードして破棄する。
 pub struct Sequencer {
     reader: StreamReader,
@@ -111,16 +119,23 @@ pub struct Sequencer {
     next_index: i64,
     held: Option<(i64, frame::Video)>,
     ended: bool,
+    wide: bool,
 }
 
 impl Sequencer {
-    /// PTS を走査して時間軸を作る。PQ と HLG の素材は `Unsupported`。
+    /// PTS を走査して時間軸を作る。PQ と HLG の素材は色空間を `bt2100_pq`、`bt2100_hlg` と名乗る。
     pub fn new(path: &Path, reader: StreamReader) -> Result<Self> {
         let dec = reader.decoder();
-        check_transfer(dec.color_transfer_characteristic())?;
         let size = Size::new(dec.width(), dec.height());
         let matrix = Matrix::from_frame(dec.color_space(), dec.height());
-        let timeline = Timeline::build(path, &reader.stream(), size, matrix.color_space())?;
+        let transfer = Transfer::from_characteristic(dec.color_transfer_characteristic());
+        let color_space = color_space_of(matrix, transfer);
+        let wide = is_wide(
+            declared_bits(&reader.stream()),
+            transfer,
+            is_rec2020(dec.color_primaries(), transfer),
+        );
+        let timeline = Timeline::build(path, &reader.stream(), size, color_space)?;
         Ok(Self {
             reader,
             timeline,
@@ -128,7 +143,13 @@ impl Sequencer {
             next_index: 0,
             held: None,
             ended: false,
+            wide,
         })
+    }
+
+    /// 8 bit を経由せずに線形にする広い信号の素材か（`matrix::is_wide`）。
+    pub fn wide_signal(&self) -> bool {
+        self.wide
     }
 
     /// 素材の情報。

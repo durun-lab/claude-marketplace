@@ -2,14 +2,15 @@
 //! （入れ子の先、シーケンス、効果）の指紋から作る。
 //!
 //! 画素を変えうる外の入力は全部キーに入れる: 評価済みのパラメータ、素材の `contentHash`（効果が参照する
-//! LUT などの素材も）、色の変換の設定の指紋（`ColorTransform::config_fingerprint`）、素材ごとに選ばれた
-//! デコーダーの実装（`Decoder::backend_id`）。`contentHash` が空の素材（まだ取り込んでいない）に頼る画像は覚えない。
+//! LUT などの素材も）、種類の指紋（`NodeKind::cache_fingerprint`。`ofx` のプラグインの印）、色の変換の設定の指紋
+//! （`ColorTransform::config_fingerprint`）、素材ごとに選ばれたデコーダーの実装（`Decoder::backend_id`）。`contentHash` が空の素材（まだ取り込んでいない）に頼る画像は覚えない。
 
 use std::collections::BTreeSet;
+use std::path::PathBuf;
 
 use mm_doc::{Composition, Layer, Node, Project, SEQUENCE_KIND, SEQUENCE_PARAM};
 use mm_eval::{node_params_at, source_time};
-use mm_node_api::{FrameCx, NodeKind, NodeRegistry, Quality};
+use mm_node_api::{FrameCx, InputFrames, NodeKind, NodeRegistry, Quality};
 use mm_render_api::{digest_bytes, size_bucket, FrameCacheKey};
 use mm_types::{AssetId, CompositionId, Id, ParamValue, Params, RationalTime, Size};
 
@@ -71,14 +72,20 @@ pub(crate) fn kind_key(
     // 素材が無い時間で変わる種類は、時刻そのものがキーに要る。素材があれば素材のフレームの番号で足りる。
     let exact_time =
         (traits.time_varying && source_frame.is_none()).then(|| frame.time.to_string());
+    let inputs: &dyn InputFrames = &*frame.inputs;
+    let fingerprint = kind.cache_fingerprint(frame.params, &|id| inputs.asset_path(id))?;
     let r = frame.region;
-    let params_json = serde_json::json!({
+    let mut params_json = serde_json::json!({
         "p": frame.params,
         "canvas": [frame.size.width, frame.size.height],
         "region": [r.x.to_bits(), r.y.to_bits(), r.width.to_bits(), r.height.to_bits()],
         "t": exact_time,
-    })
-    .to_string();
+    });
+    // 指紋の無い種類（ほとんど）のキーは変えない。
+    if !fingerprint.is_empty() {
+        params_json["fp"] = fingerprint.into();
+    }
+    let params_json = params_json.to_string();
     let key = FrameCacheKey {
         kind: kind.id().to_owned(),
         kind_version: kind.version(),
@@ -169,6 +176,7 @@ impl Walk<'_> {
                 return None;
             }
             self.asset(&params)?;
+            self.kind_fingerprint(kind.as_ref(), &params)?;
             for effect in layer.effects.iter().filter(|e| e.enabled) {
                 self.deps.push(effect.id.as_str().to_owned());
                 self.node(&effect.node, t)?;
@@ -202,7 +210,19 @@ impl Walk<'_> {
         }
         let params = node_params_at(node, t).with_defaults(&kind.params());
         self.asset(&params)?;
+        self.kind_fingerprint(kind.as_ref(), &params)?;
         Some(params)
+    }
+
+    /// 種類の指紋（`NodeKind::cache_fingerprint`）を指紋に入れる。引けなければ `None`（覚えない）。
+    fn kind_fingerprint(&mut self, kind: &dyn NodeKind, params: &Params) -> Option<()> {
+        let project = self.env.project;
+        let asset_path = |id: &AssetId| project.asset(id).ok().map(|a| PathBuf::from(&a.path));
+        let fingerprint = kind.cache_fingerprint(params, &asset_path)?;
+        if !fingerprint.is_empty() {
+            self.fingerprint.push_str(&format!("|fp={fingerprint}"));
+        }
+        Some(())
     }
 
     /// シーケンスはコンポジションの JSON の外にあるので、中身（カット、トランジション）と素材も指紋と依存に入れる。

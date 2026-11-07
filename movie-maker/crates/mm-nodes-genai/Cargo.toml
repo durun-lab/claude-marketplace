@@ -1,0 +1,29 @@
+[package]
+name = "mm-nodes-genai"
+description = "gen.ai のノードの種類。生成 AI の提供元を差し替えられる層、見積もりと承認の強制、生成した素材の使い回し"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-types = { workspace = true }
+mm-doc = { workspace = true }
+mm-ops = { workspace = true }
+mm-node-api = { workspace = true }
+mm-audio-api = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+blake3 = { workspace = true }
+# 偽の提供元が決まった画像を PNG で書く。
+png = { workspace = true }
+
+[dev-dependencies]
+mm-decode-api = { workspace = true }
+mm-improve = { workspace = true }
+mm-testkit = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

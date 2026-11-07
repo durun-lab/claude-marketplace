@@ -35,7 +35,7 @@ mod write_guard;
 
 pub use agent::{
     find_transcript, run_settings, usage_limit, Agent, AgentEnd, AgentRequest, ClaudeCli,
-    DENIED_COMMANDS, STOP_FILE,
+    DENIED_COMMANDS, ROUND_ENV, STOP_FILE,
 };
 pub use areas::{matches, Area, AreaReport, Areas, ImproveAreas, ImproveVerdict, Shared};
 pub use checks::{

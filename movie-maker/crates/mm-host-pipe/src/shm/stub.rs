@@ -4,28 +4,46 @@ use std::time::Duration;
 
 use mm_types::{MmError, Result};
 
-use super::{Block, Wake};
+use super::Wake;
 
 fn unsupported<T>() -> Result<T> {
     Err(MmError::Unsupported(
-        "CLAP のホストの共有メモリは Windows だけ".into(),
+        "ホストとの共有メモリは Windows だけ".into(),
     ))
 }
 
 /// 共有メモリ 1 つ（作れない）。
-pub struct Mapping(Box<Block>);
+pub struct Mapping(Vec<u8>);
 
 impl Mapping {
-    pub fn create(_name: &str) -> Result<Self> {
+    pub fn create(_name: &str, _len: usize) -> Result<Self> {
         unsupported()
     }
 
-    pub fn open(_name: &str) -> Result<Self> {
+    pub fn open(_name: &str, _len: usize) -> Result<Self> {
         unsupported()
     }
 
-    pub fn block(&mut self) -> &mut Block {
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn bytes(&self) -> &[u8] {
+        &self.0
+    }
+
+    pub fn bytes_mut(&mut self) -> &mut [u8] {
         &mut self.0
+    }
+
+    /// # Safety
+    /// 作れないので呼ばれない。Windows の実装と同じ約束。
+    pub unsafe fn get_mut<T>(&mut self) -> &mut T {
+        unreachable!("共有メモリは作れない")
     }
 }
 

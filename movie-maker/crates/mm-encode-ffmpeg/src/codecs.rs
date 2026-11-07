@@ -1,12 +1,17 @@
 //! コーデックの名前から書き方（`CodecSpec`）を決める表。
 
-use mm_encode_ffmpeg_core::{AudioCodec, CodecSpec, Container, Rate, VideoInput};
+use mm_encode_ffmpeg_core::{
+    AudioCodec, CodecSpec, Container, OutputSignal, Rate, VideoInput, HDR10_MASTER_DISPLAY,
+    HDR10_MAX_CLL,
+};
 
 /// 扱う名前（エイリアスを含む）。
-pub const SUPPORTED_NAMES: [&str; 13] = [
+pub const SUPPORTED_NAMES: [&str; 15] = [
     "h264",
     "libx264",
     "h264_2pass",
+    "hevc_hlg",
+    "hevc_pq",
     "prores",
     "prores_ks",
     "prores_422hq",
@@ -29,6 +34,10 @@ const PRORES_HQ: &str = "hq";
 const PRORES_4444: &str = "4444";
 /// ProRes の vendor。QuickTime が Apple のエンコーダーとして扱う。
 const PRORES_VENDOR: &str = "apl0";
+/// x265 の品質（x264 の 18 とおよそ同じ見た目）。
+const X265_CRF: &str = "20";
+/// HEVC を QuickTime と Apple の端末で開くための codec_tag。
+const HVC1: [u8; 4] = *b"hvc1";
 
 /// 名前から指定を決める。扱えない名前は `None`。
 pub fn spec_of(codec: &str) -> Option<CodecSpec> {
@@ -45,6 +54,8 @@ pub fn spec_of(codec: &str) -> Option<CodecSpec> {
             .option("preset", X264_PRESET)
             .with_passes(2),
         ),
+        "hevc_pq" => Some(x265_hdr(OutputSignal::Pq)),
+        "hevc_hlg" => Some(x265_hdr(OutputSignal::Hlg)),
         "prores" | "prores_ks" | "prores_422hq" => Some(prores(PRORES_HQ, VideoInput::Yuv422p10)),
         "prores_4444" => Some(prores(PRORES_4444, VideoInput::Yuv444p10)),
         "dnxhd" | "dnxhr_hq" => Some(dnxhr("dnxhr_hq", VideoInput::Yuv422p8)),
@@ -65,6 +76,28 @@ fn x264() -> CodecSpec {
         Rate::Quality("crf", X264_CRF),
     )
     .option("preset", X264_PRESET)
+}
+
+/// HEVC Main10 の HDR（libx265）。色の宣言は VUI に、HDR10 のマスタリングの表示と MaxCLL / MaxFALL は SEI に書く。
+fn x265_hdr(signal: OutputSignal) -> CodecSpec {
+    let params = match signal {
+        OutputSignal::Pq => format!(
+            "hdr10=1:repeat-headers=1:colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc:\
+             master-display={HDR10_MASTER_DISPLAY}:max-cll={HDR10_MAX_CLL}"
+        ),
+        _ => "repeat-headers=1:colorprim=bt2020:transfer=arib-std-b67:colormatrix=bt2020nc".into(),
+    };
+    CodecSpec::new(
+        "libx265",
+        Container::Mp4,
+        VideoInput::Yuv420p10,
+        AudioCodec::Aac,
+        Rate::Quality("crf", X265_CRF),
+    )
+    .option("preset", X264_PRESET)
+    .option("x265-params", params)
+    .with_codec_tag(HVC1)
+    .with_signal(signal)
 }
 
 fn prores(profile: &str, input: VideoInput) -> CodecSpec {
@@ -124,5 +157,12 @@ mod tests {
         let d = spec_of("dnxhr_hqx").unwrap();
         assert_eq!((d.encoder, d.input), ("dnxhd", VideoInput::Yuv422p10));
         assert_eq!(spec_of("dnxhr_hq").unwrap().input, VideoInput::Yuv422p8);
+        let pq = spec_of("hevc_pq").unwrap();
+        assert_eq!(
+            (pq.encoder, pq.input, pq.signal),
+            ("libx265", VideoInput::Yuv420p10, OutputSignal::Pq)
+        );
+        assert_eq!(spec_of("hevc_hlg").unwrap().signal, OutputSignal::Hlg);
+        assert_eq!(x.signal, OutputSignal::Sdr, "SDR の書き出しは変えない");
     }
 }

@@ -29,9 +29,38 @@ pub enum VideoInput {
     Yuv422p8,
     /// 10 ビットの 4:2:2。ProRes 422 と DNxHR HQX。
     Yuv422p10,
+    /// 10 ビットの 4:2:0。HEVC Main10（HDR）。
+    Yuv420p10,
     /// 10 ビットの 4:4:4。ProRes 4444 と DNxHR 444。
     Yuv444p10,
 }
+
+/// 書き出す信号の伝達特性と原色。線形の作業色空間（Rec.709）から、この信号の符号化値にしてエンコーダーに渡す。
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum OutputSignal {
+    /// Rec.709 の原色、Rec.1886 の表示の式（SDR）。1 を超える値は白に切る。
+    #[default]
+    Sdr,
+    /// Rec.2020 の原色、PQ（SMPTE ST 2084、HDR10）。線形の 1.0 が 203 cd/m²。
+    Pq,
+    /// Rec.2020 の原色、HLG（ARIB STD-B67）。表示の上限 1000 cd/m² の OOTF を外して符号化する。
+    Hlg,
+}
+
+impl OutputSignal {
+    /// HDR か。
+    pub fn is_hdr(self) -> bool {
+        self != OutputSignal::Sdr
+    }
+}
+
+/// HDR10 のマスタリングの表示とコンテンツの明るさ。x265 の `master-display` と `max-cll` にそのまま書く。
+/// 表示は P3-D65 の 1000 cd/m²（多くの HDR10 の納品の既定）、MaxCLL / MaxFALL は表示の上限と、その 4 割。
+/// 描いた画素から測って書く形は、ヘッダーの前に全フレームを描く 2 パスが要るので、まだ固定の値で持つ。
+pub const HDR10_MASTER_DISPLAY: &str =
+    "G(13250,34500)B(7500,3000)R(34000,16000)WP(15635,16450)L(10000000,1)";
+/// HDR10 の MaxCLL と MaxFALL（cd/m²）。
+pub const HDR10_MAX_CLL: &str = "1000,400";
 
 impl VideoInput {
     /// NV12 の 8 ビットの中間を経由せず、線形の f32 から 16 ビットの符号化値を作って変換する形式か（NV12 以外の全部）。
@@ -75,6 +104,8 @@ pub struct CodecSpec {
     pub passes: u32,
     /// ストリームの codec_tag（HEVC を QuickTime で開くための `hvc1` など）。
     pub codec_tag: Option<[u8; 4]>,
+    /// 書き出す信号。既定は SDR（Rec.709）。
+    pub signal: OutputSignal,
 }
 
 impl CodecSpec {
@@ -95,7 +126,14 @@ impl CodecSpec {
             options: Vec::new(),
             passes: 1,
             codec_tag: None,
+            signal: OutputSignal::Sdr,
         }
+    }
+
+    /// 書き出す信号を決める。
+    pub fn with_signal(mut self, signal: OutputSignal) -> Self {
+        self.signal = signal;
+        self
     }
 
     /// エンコーダーのオプションを足す。

@@ -125,6 +125,46 @@ fn program_は線形の画像を_rec1886_の表示の値で出す() {
     assert!(close(centre, [191, 191, 191], 2), "{centre:?}");
 }
 
+/// HDR の素材の上限を渡すと、1 を超えるハイライトを白に潰さず SDR の表示に収める。上限 1 なら今までどおり。
+#[test]
+fn program_は_hdr_の上限を渡すとハイライトを_bt2390_で収める() {
+    let Some((device, queue)) = gpu() else { return };
+    let mut ui = Ui::new(&device, FORMAT);
+    ui.set_model(model());
+    ui.resize(W, H);
+    let shade = |ui: &mut Ui, v: f32| {
+        let img = RgbaImage::filled(Size::new(16, 9), Rgba::new(v, v, v, 1.0));
+        ui.set_frame(&device, &queue, &img);
+        let out = render(&device, &queue, ui);
+        let p = ui.layout().program;
+        px(&out, (p.x + p.w / 2.0) as u32, (p.y + p.h / 2.0) as u32)[0]
+    };
+    assert_eq!(shade(&mut ui, 2.0), 255, "上限 1 では 1 を超える値は白");
+    assert!(
+        close([shade(&mut ui, 0.5); 3], [191; 3], 2),
+        "上限 1 の SDR は恒等"
+    );
+    ui.set_hdr_peak(1000.0 / 203.0);
+    let (mid, high, peak) = (
+        shade(&mut ui, 1.0),
+        shade(&mut ui, 3.0),
+        shade(&mut ui, 4.9),
+    );
+    assert!(
+        mid < high && high < peak,
+        "ハイライトの階調が残る: {mid} {high} {peak}"
+    );
+    assert!(peak >= 250, "素材の上限は白の付近: {peak}");
+    assert!(
+        close(
+            [shade(&mut ui, 0.05); 3],
+            [mm_types::transfer::linear_to_code8(0.05); 3],
+            2
+        ),
+        "暗部は変えない"
+    );
+}
+
 /// 1 色で塗った Rgba16Float のテクスチャ（レンダラーの出力の形）。
 fn filled_texture(device: &wgpu::Device, queue: &wgpu::Queue, value: f64) -> wgpu::Texture {
     let texture = device.create_texture(&wgpu::TextureDescriptor {

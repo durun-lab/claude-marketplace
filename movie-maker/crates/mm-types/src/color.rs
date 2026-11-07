@@ -100,6 +100,16 @@ impl ColorSpace {
         Self("bt2020".into())
     }
 
+    /// PQ（SMPTE ST 2084）、Rec.2020 の原色。HDR10 の素材と書き出し。線形の 1.0 は 203 cd/m²。
+    pub fn bt2100_pq() -> Self {
+        Self("bt2100_pq".into())
+    }
+
+    /// HLG（ARIB STD-B67）、Rec.2020 の原色。表示の上限 1000 cd/m² の OOTF を含む。
+    pub fn bt2100_hlg() -> Self {
+        Self("bt2100_hlg".into())
+    }
+
     /// 画像の既定の入力。
     pub fn srgb() -> Self {
         Self("srgb".into())

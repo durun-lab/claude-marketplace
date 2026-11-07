@@ -3,7 +3,10 @@
 
 use mm_color_api::{ColorTransform, TransformProgram};
 use mm_color_lut::gpu_eval::GpuEval;
-use mm_color_lut::{bake_lut3d, sample_trilinear, Cdl, LutColor, LUT3D_APPLY_WGSL};
+use mm_color_lut::{
+    bake_lut3d, lut3d_apply_wgsl, sample_lut3d, sample_trilinear, Cdl, LutColor, LUT3D_APPLY_WGSL,
+};
+use mm_types::{transfer, ColorSpace};
 
 /// テスト用の色。黒、18% グレー、白、原色、彩度の高い色。
 const SAMPLES: [[f32; 3]; 8] = [
@@ -21,6 +24,18 @@ fn max_diff(a: &[[f32; 3]], b: &[[f32; 3]]) -> f32 {
     a.iter()
         .zip(b)
         .flat_map(|(x, y)| x.iter().zip(y).map(|(p, q)| (p - q).abs()))
+        .fold(0.0, f32::max)
+}
+
+/// 1 を超える値（PQ の 1.0 は線形で約 49）は相対の差、1 以下は絶対の差の最大。GPU の `pow` の誤差は値に比例する。
+fn max_scaled_diff(a: &[[f32; 3]], b: &[[f32; 3]]) -> f32 {
+    a.iter()
+        .zip(b)
+        .flat_map(|(x, y)| {
+            x.iter()
+                .zip(y)
+                .map(|(p, q)| (p - q).abs() / q.abs().max(1.0))
+        })
         .fold(0.0, f32::max)
 }
 
@@ -42,7 +57,7 @@ fn 伝達関数のwgslがcpuと一致する() {
                 .iter()
                 .map(|&c| ct.apply(from, to, c).unwrap())
                 .collect();
-            let d = max_diff(&got, &want);
+            let d = max_scaled_diff(&got, &want);
             assert!(d < 1e-4, "{} -> {}: 差 {d}", from.0, to.0);
         }
     }
@@ -69,7 +84,7 @@ fn lutのwgslがcpuの補間と一致する() {
     let Some(gpu) = GpuEval::new() else {
         return;
     };
-    let TransformProgram::Lut3d { size, data } =
+    let TransformProgram::Lut3d { size, data, .. } =
         bake_lut3d(17, |c| Ok(c.map(|v| v.powf(2.2)))).unwrap()
     else {
         panic!("Lut3d のはず");
@@ -82,4 +97,34 @@ fn lutのwgslがcpuの補間と一致する() {
         .map(|&c| sample_trilinear(size, &data, c))
         .collect();
     assert!(max_diff(&got, &want) < 1e-4);
+}
+
+#[test]
+fn シェーパーつきのlutのwgslがcpuと一致し_1を超える値を切らない() {
+    let Some(gpu) = GpuEval::new() else {
+        return;
+    };
+    let ct = LutColor;
+    let (from, to) = (ColorSpace::working(), ColorSpace::bt2100_pq());
+    let TransformProgram::Lut3d { size, data, shaper } = ct.bake(&from, &to, 65).unwrap() else {
+        panic!("Lut3d のはず");
+    };
+    let highlights = [[4.0, 2.0, 0.5], [10.0, 10.0, 10.0], [0.18, 1.5, 3.0]];
+    let inputs: Vec<[f32; 3]> = SAMPLES.iter().chain(&highlights).copied().collect();
+    let source = format!("{}{}", transfer::TRANSFER_WGSL, lut3d_apply_wgsl(shaper));
+    let got = gpu
+        .run(&source, &inputs, Some((size, &data)))
+        .expect("GPU で実行");
+    let cpu: Vec<_> = inputs
+        .iter()
+        .map(|&c| sample_lut3d(size, &data, shaper, c))
+        .collect();
+    assert!(max_diff(&got, &cpu) < 1e-4, "GPU と CPU の補間");
+    let exact: Vec<_> = inputs
+        .iter()
+        .map(|&c| ct.apply(&from, &to, c).unwrap())
+        .collect();
+    let d = max_diff(&cpu, &exact);
+    eprintln!("PQ のシェーパーつき 65^3 の LUT と式の最大差 {d:e}");
+    assert!(d < 2e-3, "1 を超える線形の値も格子の中で引ける: {d}");
 }
