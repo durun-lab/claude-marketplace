@@ -3,7 +3,8 @@ import type { StoryHit, StoryOverview, StoryTranscript, WordRange } from "@mm/st
 import { API_ROOT, ApiError, type Api } from "../api/http.ts";
 
 const STORY_ROOT = `${API_ROOT}/story`;
-const CONFLICT = 409;
+/** バージョンが古くて適用されなかった失敗の code。ほかの 409（取り消しの not_latest など）は理由をそのまま出す。 */
+const STALE_CODES = new Set(["conflict", "future_base"]);
 
 /** 送った結果。`conflict` は PC のバージョンが進んでいて適用されなかった（読み直して選び直す）。 */
 export type SendResult = { kind: "applied" | "proposed" } | { kind: "conflict" } | { kind: "failed"; message: string };
@@ -30,7 +31,7 @@ export interface StoryClient {
 const q = encodeURIComponent;
 
 const classify = (e: unknown): SendResult => {
-  if (e instanceof ApiError && e.status === CONFLICT) return { kind: "conflict" };
+  if (e instanceof ApiError && STALE_CODES.has(e.code)) return { kind: "conflict" };
   return { kind: "failed", message: e instanceof Error ? e.message : String(e) };
 };
 
