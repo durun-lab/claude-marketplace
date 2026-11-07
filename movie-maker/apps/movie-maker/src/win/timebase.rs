@@ -1,10 +1,9 @@
 //! アプリの時間軸の変換。コンポジションの秒（再生位置）、シーケンスの時刻、素材の時刻の間の行き来をここに集め、
 //! Program の表示、イン点・アウト点、split、ドラッグ、Story の移動先が同じ規則で数える。写像そのものは `mm-eval`（有理数）を使う。
 
-use mm_doc::{Composition, Layer, Project, Sequence, FOOTAGE_KIND, FOOTAGE_PARAM};
-use mm_doc::{SEQUENCE_KIND, SEQUENCE_PARAM};
+use mm_doc::{Composition, Layer, Project, FOOTAGE_KIND, FOOTAGE_PARAM};
 use mm_eval::{comp_time, place_cuts, source_time};
-use mm_types::{Id, Rational, RationalTime};
+use mm_types::{Rational, RationalTime};
 
 /// 浮動小数の秒を有理数に直すときの分母。単語の時刻（ミリ秒）より十分細かい。
 const SECS_DEN: u32 = 1_000_000;
@@ -36,14 +35,8 @@ pub fn secs(t: f64) -> Result<RationalTime, String> {
     RationalTime::new(num, SECS_DEN).map_err(|e| e.to_string())
 }
 
-/// レイヤーのシーケンス。シーケンスのレイヤーでなければ `None`。
-pub fn layer_sequence<'a>(project: &'a Project, layer: &Layer) -> Option<&'a Sequence> {
-    if layer.source.kind != SEQUENCE_KIND {
-        return None;
-    }
-    let id = Id::new(layer.source.text_param(SEQUENCE_PARAM)?);
-    project.sequence(&id).ok()
-}
+/// レイヤーのシーケンス。Story の読み出しと同じ規則なので `mm-story` のものを使う。
+pub use mm_story::layer_sequence;
 
 /// レイヤーの中の時刻 `inner` が、レイヤーの `[in, out)` に入っているときのコンポジションの時刻。
 fn shown_at(layer: &Layer, inner: RationalTime) -> Option<RationalTime> {

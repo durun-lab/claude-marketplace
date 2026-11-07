@@ -4,3 +4,4 @@ mod guard;
 mod http;
 mod mcp;
 mod proposals;
+mod story;
