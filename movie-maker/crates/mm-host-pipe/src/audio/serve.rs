@@ -156,13 +156,28 @@ impl HostMain {
             }
         });
         match result {
-            Ok(()) => ExitCode::SUCCESS,
+            Ok(()) => end_without_teardown(),
             Err(e) => {
                 eprintln!("{}: {e}", self.name);
                 ExitCode::FAILURE
             }
         }
     }
+}
+
+/// 応答を書き終えたら、プラグインの終わりの処理（DLL の切り離し、atexit）を走らせずにプロセスを終える。
+/// 解放しなかったインスタンスの終わりの処理で落ちるプラグインがあり、書き終えた結果まで失敗に見えるため。
+#[cfg(windows)]
+fn end_without_teardown() -> ExitCode {
+    use windows::Win32::System::Threading::{GetCurrentProcess, TerminateProcess};
+    // SAFETY: このプロセス自身を終えるだけ。応答の出力は書くたびに flush してある。
+    let _ = unsafe { TerminateProcess(GetCurrentProcess(), 0) };
+    ExitCode::SUCCESS
+}
+
+#[cfg(not(windows))]
+fn end_without_teardown() -> ExitCode {
+    ExitCode::SUCCESS
 }
 
 /// 結果の JSON を 1 行で書く。
