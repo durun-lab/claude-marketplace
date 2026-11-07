@@ -11,6 +11,7 @@ import { IE_ICON, IE_KEY, IE_TITLE, InternetExplorerIcon, openInternetExplorer }
 import { NOTEPAD_ICON, NOTEPAD_KEY, NOTEPAD_TITLE, NotepadIcon, openNotepad } from './Notepad.tsx';
 import { PROOFREAD_ICON, PROOFREAD_KEY, PROOFREAD_TITLE, ProofreadIcon, openProofread } from './Proofread.tsx';
 import { LEARN_ICON, LEARN_KEY, LEARN_TITLE, LearnIcon, openLearn } from './Learn.tsx';
+import { WORKFLOW_ICON, WORKFLOW_KEY, WORKFLOW_TITLE, WorkflowIcon, openWorkflow } from './Workflow.tsx';
 import { RECYCLE_BIN_ICON, RECYCLE_BIN_KEY, RECYCLE_BIN_TITLE, RecycleBinIcon, openRecycleBin } from './RecycleBin.tsx';
 import { TERMINAL_ICON, TERMINAL_KEY, TERMINAL_TITLE, TerminalIcon, openTerminal } from './Terminal.tsx';
 import { FL_ICON, FL_KEY, FL_TITLE, FlConnectIcon, openFlConnect } from './FlConnect.tsx';
@@ -229,6 +230,7 @@ const WIDGETS: Record<string, Widget<HomeData>> = {
   [BOOKMARKS_KEY]: { title: BOOKMARKS_TITLE, icon: BOOKMARKS_ICON, Body: BookmarksIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openBookmarks() },
   [RECYCLE_BIN_KEY]: { title: RECYCLE_BIN_TITLE, icon: RECYCLE_BIN_ICON, Body: ({ snapshot }) => <RecycleBinIcon full={!!snapshot.trash?.length} />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openRecycleBin() },
   [LEARN_KEY]: { title: LEARN_TITLE, icon: LEARN_ICON, Body: () => <LearnIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openLearn() },
+  [WORKFLOW_KEY]: { title: WORKFLOW_TITLE, icon: WORKFLOW_ICON, Body: () => <WorkflowIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openWorkflow() },
   newSession: { title: NEW_SESSION_TITLE, icon: NEW_SESSION_ICON, Body: () => <NewSessionIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openNewSession() },
 };
 

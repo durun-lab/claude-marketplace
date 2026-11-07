@@ -76,6 +76,8 @@ export type SessionMeta = {
   improver?: boolean;
   /** 学習アプリが提案を作らせるために起動したセッション */
   learner?: boolean;
+  /** このセッションを起動したワークフローの id */
+  workflow?: string;
   /** 巻き戻して送ったターンを動かす claude -p の pid。端末のセッションと同じに見えるが、ダッシュボードが起動したものなので止められる。 */
   printPid?: number;
   /** 使用制限か通信の途切れで止まったのを続けさせたか、続けないと人間が答えたときの、止まった時刻。同じもので 2 度続けさせず、2 度尋ねないために残す。 */
@@ -121,6 +123,12 @@ export type ImproveRun = {
   nudges?: number;
 };
 
+/**
+ * ワークフローの動き。queue はまだセッションに渡していないイベントの本文。sessionId は continue で引き継いでいるセッション。
+ * seenPrs は、既に動いたレビュー依頼の PR の URL。無ければまだ一度も読んでおらず、そのとき届いている依頼では動かない。
+ */
+export type WorkflowRun = { queue: string[]; sessionId?: string; lastRunAt?: number; seenPrs?: string[]; error?: string };
+
 /** ダッシュボード自身で起きた想定外のエラー。同じエラーは 1 件にまとめて数える。item は起票した改善要望のファイル名。 */
 export type ErrorRecord = {
   source: 'server' | 'client';
@@ -161,6 +169,10 @@ type State = {
   agentPriority?: AgentPriority;
   /** 学習アプリ。pid は提案を作っている学習のセッションのもの。 */
   learn: LearnSettings & { runs: LearnRun[]; pid?: number; error?: string };
+  /** ワークフローごとの動き。定義は workflows.json にある。 */
+  workflowRuns?: Record<string, WorkflowRun>;
+  /** ワークフローの時刻のトリガーを最後に確かめた時刻。これより後に過ぎた時刻で動かす。 */
+  workflowCheckedAt?: number;
   /** 人間がダッシュボードから Claude にログインし直した時刻。これより前にログインが切れて止まったセッションは、もうログインを尋ねない。 */
   claudeLoginAt?: number;
   /** エラーをまとめる鍵ごとの記録 */

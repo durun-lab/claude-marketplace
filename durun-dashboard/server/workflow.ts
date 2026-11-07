@@ -1,0 +1,292 @@
+// ワークフローアプリ。Claude Code のルーティンのように、トリガーでセッションを動かす。ルーティンと違い、手元のダッシュボードで動く。
+// 定義は workflows.json に置き、人間とエージェントが書く。ダッシュボードは書き換えを読み直してすぐ使い、ON と OFF の切り替えだけを書き込む。
+// 動きは 1 分ごとに確かめる。時刻のトリガーはその間に過ぎた時刻で、レビュー依頼のトリガーは GitHub の Inbox に新しく現れた PR で動く。
+import fs from 'node:fs';
+import path from 'node:path';
+import { EFFORT_LEVELS, MODELS, type WorkflowDef, type WorkflowInfo, type WorkflowState, type WorkflowTrigger } from '../shared/types.ts';
+import { readLiveSessions } from './claude.ts';
+import { COMPACT_COMMAND, compactSession, sendMessage, startTrackedSession } from './deliver.ts';
+import { githubInbox } from './integrations.ts';
+import { DATA_DIR, newId, persist, state, touch, type WorkflowRun } from './store.ts';
+
+export const WORKFLOWS_FILE = path.join(DATA_DIR, 'workflows.json');
+const TICK_MS = 60_000;
+// スリープ明けなどで長く確かめていなかったときも、丸 1 日より前の時刻では動かさない。
+const LOOKBACK_MS = 24 * 60 * 60_000;
+const DAY_MS = 24 * 60 * 60_000;
+const SEEN_KEPT = 500;
+const MARK = '[durun-dashboard ワークフロー]';
+const DIRECT_SECTION = 'Needs your review';
+const ID_PATTERN = /^[\w-]+$/;
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+// 溜まったイベントを 1 つの依頼にまとめるときの区切り。
+const SEPARATOR = '\n\n---\n\n';
+
+type Parsed = { workflows: WorkflowDef[]; error?: string };
+
+const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
+
+const triggerOf = (raw: unknown): WorkflowTrigger => {
+  if (isObject(raw) && raw.kind === 'github-review') return { kind: 'github-review' };
+  if (isObject(raw) && raw.kind === 'schedule' && typeof raw.at === 'string' && TIME_PATTERN.test(raw.at)) {
+    const days = Array.isArray(raw.days) ? raw.days.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6) : undefined;
+    return { kind: 'schedule', at: raw.at, ...(days?.length ? { days } : {}) };
+  }
+  throw new Error(`トリガー ${JSON.stringify(raw)} を読めません`);
+};
+
+const defOf = (raw: unknown, i: number): WorkflowDef => {
+  if (!isObject(raw)) throw new Error(`${i + 1} 番目がオブジェクトではありません`);
+  const { id, name, enabled, cwd, prompt, triggers, mode, maxSessions, compact, model, effort } = raw;
+  if (typeof id !== 'string' || !ID_PATTERN.test(id)) throw new Error(`${i + 1} 番目の id は英数字とハイフンで書いてください`);
+  if (typeof cwd !== 'string' || !path.isAbsolute(cwd)) throw new Error(`${id} の cwd は絶対パスで書いてください`);
+  if (typeof prompt !== 'string' || !prompt.trim()) throw new Error(`${id} の prompt が空です`);
+  return {
+    id,
+    name: typeof name === 'string' && name.trim() ? name.trim() : id,
+    enabled: enabled === true,
+    cwd,
+    prompt,
+    triggers: Array.isArray(triggers) ? triggers.map(triggerOf) : [],
+    mode: mode === 'continue' ? 'continue' : 'new',
+    ...(mode === 'continue' && compact === true ? { compact: true } : {}),
+    ...(Number.isInteger(maxSessions) && (maxSessions as number) > 0 ? { maxSessions: maxSessions as number } : {}),
+    ...(typeof model === 'string' && (MODELS as readonly string[]).includes(model) ? { model } : {}),
+    ...(typeof effort === 'string' && (EFFORT_LEVELS as readonly string[]).includes(effort) ? { effort } : {}),
+  };
+};
+
+/** workflows.json の本文を読む。1 つでも読めない定義があれば、どれも動かさずに理由を返す。書きかけの定義で動かさないため。 */
+export const parseWorkflows = (text: string): Parsed => {
+  try {
+    const raw: unknown = JSON.parse(text);
+    const list = isObject(raw) ? raw.workflows : undefined;
+    if (!Array.isArray(list)) throw new Error('workflows の配列がありません');
+    const workflows = list.map(defOf);
+    const dup = workflows.find((w, i) => workflows.findIndex((o) => o.id === w.id) !== i);
+    if (dup) throw new Error(`id ${dup.id} が重なっています`);
+    return { workflows };
+  } catch (e) {
+    return { workflows: [], error: `${path.basename(WORKFLOWS_FILE)} を読めません: ${(e as Error).message}` };
+  }
+};
+
+let cache: { mtime: number; parsed: Parsed } | undefined;
+
+/** 定義を読む。書き換えたときだけ読み直す。ファイルが無ければ、定義は無い。 */
+const readWorkflows = (): Parsed => {
+  let mtime: number;
+  try {
+    mtime = fs.statSync(WORKFLOWS_FILE).mtimeMs;
+  } catch {
+    return { workflows: [] };
+  }
+  if (cache?.mtime !== mtime) cache = { mtime, parsed: parseWorkflows(fs.readFileSync(WORKFLOWS_FILE, 'utf8')) };
+  return cache.parsed;
+};
+
+/** 時刻のトリガーの時刻のうち、from より後で to までに過ぎたものがあるか。時刻と曜日は、このマシンの時間帯で数える。 */
+export const scheduleDue = (t: Extract<WorkflowTrigger, { kind: 'schedule' }>, from: number, to: number): boolean => {
+  const [h = 0, m = 0] = t.at.split(':').map(Number);
+  const since = Math.max(from, to - LOOKBACK_MS);
+  const day = new Date(since);
+  day.setHours(0, 0, 0, 0);
+  for (let at = day.getTime(); at <= to; at += DAY_MS) {
+    const d = new Date(at);
+    d.setHours(h, m, 0, 0);
+    if (d.getTime() > since && d.getTime() <= to && (!t.days || t.days.includes(d.getDay()))) return true;
+  }
+  return false;
+};
+
+const runOf = (id: string): WorkflowRun => {
+  state.workflowRuns ??= {};
+  return (state.workflowRuns[id] ??= { queue: [] });
+};
+
+const promptFor = (w: WorkflowDef, event: string): string => `${MARK}「${w.name}」 ${event}\n\n${w.prompt}`;
+
+/** 起動を頼み、id をまだ受け取っていないセッションの数。ワークフローごとに数える。 */
+const launching = new Map<string, number>();
+
+const sessionsOf = (id: string) => Object.values(state.sessions).filter((m) => m.workflow === id && !m.archived && !m.movedTo);
+
+/** 動いているセッションの数。入力待ちのものは数えない。 */
+const runningCount = (id: string, live = readLiveSessions()): number =>
+  (launching.get(id) ?? 0) + sessionsOf(id).filter((m) => (live.get(m.id)?.status ?? 'idle') !== 'idle').length;
+
+const launch = (w: WorkflowDef, run: WorkflowRun, text: string): void => {
+  launching.set(w.id, (launching.get(w.id) ?? 0) + 1);
+  run.lastRunAt = Date.now();
+  startTrackedSession(w.cwd, text, w.model, w.effort)
+    .then((meta) => {
+      Object.assign(meta, { workflow: w.id, title: w.name });
+      if (w.mode === 'continue') run.sessionId = meta.id;
+      run.error = undefined;
+    })
+    .catch((e: Error) => {
+      run.error = `セッションを起動できません: ${e.message}`;
+    })
+    .finally(() => {
+      launching.set(w.id, (launching.get(w.id) ?? 1) - 1);
+      touch();
+    });
+};
+
+/** 引き継いでいるセッション。会話を引き継いだ複製へ移っていたら、複製をたどる。アーカイブしていたら無い。 */
+const continuedSession = (run: WorkflowRun): string | undefined => {
+  let id = run.sessionId;
+  for (let meta = id ? state.sessions[id] : undefined; meta?.movedTo; meta = state.sessions[meta.movedTo]) id = meta.movedTo;
+  const meta = id ? state.sessions[id] : undefined;
+  return meta && !meta.archived ? id : undefined;
+};
+
+const queueTo = (sessionId: string, texts: string[]): void => {
+  for (const text of texts) state.queue.push({ id: newId(), sessionId, text, createdAt: Date.now() });
+};
+
+/**
+ * 引き継いでいるセッションへイベントを送る。動いているセッションにはチャットのキューに積み、入力待ちになったら送らせる。
+ * 止まっているセッションには、まとめて送って再開させる。
+ * compact なら、前回までの会話を compact してから送る。止まっているセッションは compact で再開させ、イベントはその後ろのキューに積む。
+ */
+const deliverTo = (w: WorkflowDef, sessionId: string, texts: string[]): void => {
+  const live = readLiveSessions().has(sessionId);
+  if (live) return queueTo(sessionId, w.compact ? [COMPACT_COMMAND, ...texts] : texts);
+  if (!w.compact) return void sendMessage(sessionId, texts.join(SEPARATOR));
+  compactSession(sessionId, state.sessions[sessionId]?.cwd ?? w.cwd)
+    .then(() => queueTo(sessionId, texts))
+    // compact できなくても、イベントは落とさずに送る。
+    .catch((e: Error) => {
+      runOf(w.id).error = `セッションを compact できません: ${e.message}`;
+      sendMessage(sessionId, texts.join(SEPARATOR));
+    })
+    .finally(touch);
+};
+
+/** 待たせているイベントを、動かせるだけセッションに渡す。 */
+const dispatch = (w: WorkflowDef): void => {
+  const run = runOf(w.id);
+  if (!run.queue.length) return;
+  if (w.mode === 'new') {
+    const max = w.maxSessions ?? 1;
+    for (let n = runningCount(w.id); n < max && run.queue.length; n++) launch(w, run, run.queue.shift() as string);
+    return touch();
+  }
+  // 起動を待っている間は、次のイベントを同じセッションへ送るため、id が分かるまで待つ。
+  if (launching.get(w.id)) return;
+  const texts = run.queue.splice(0);
+  const sessionId = continuedSession(run);
+  if (sessionId) {
+    run.lastRunAt = Date.now();
+    deliverTo(w, sessionId, texts);
+  } else launch(w, run, texts.join(SEPARATOR));
+  touch();
+};
+
+const enqueue = (w: WorkflowDef, event: string): void => {
+  runOf(w.id).queue.push(promptFor(w, event));
+};
+
+/** レビュー依頼のトリガーを持つワークフローに、新しく届いた依頼を積む。初めて読んだときに届いていた依頼では動かない。 */
+const checkReviews = async (list: WorkflowDef[]): Promise<void> => {
+  if (!list.length) return;
+  const prs = (await githubInbox()).find((s) => s.title === DIRECT_SECTION)?.prs ?? [];
+  for (const w of list) {
+    const run = runOf(w.id);
+    const fresh = run.seenPrs ? prs.filter((pr) => !run.seenPrs?.includes(pr.url)) : [];
+    for (const pr of fresh) enqueue(w, `GitHub で自分へのレビュー依頼が届きました: ${pr.repo}#${pr.number} ${pr.title}\n${pr.url}`);
+    run.seenPrs = [...new Set([...prs.map((pr) => pr.url), ...(run.seenPrs ?? [])])].slice(0, SEEN_KEPT);
+  }
+};
+
+const tick = async (): Promise<void> => {
+  const now = Date.now();
+  const from = state.workflowCheckedAt ?? now;
+  state.workflowCheckedAt = now;
+  const active = readWorkflows().workflows.filter((w) => w.enabled);
+  for (const w of active) {
+    const due = w.triggers.find((t): t is Extract<WorkflowTrigger, { kind: 'schedule' }> => t.kind === 'schedule' && scheduleDue(t, from, now));
+    if (due) enqueue(w, `時刻のトリガー（${due.at}）で動きました。`);
+  }
+  try {
+    await checkReviews(active.filter((w) => w.triggers.some((t) => t.kind === 'github-review')));
+  } catch (e) {
+    for (const w of active) if (w.triggers.some((t) => t.kind === 'github-review')) runOf(w.id).error = `レビュー依頼を読めません: ${(e as Error).message}`;
+  }
+  for (const w of active) dispatch(w);
+  persist();
+};
+
+/** サーバーを起動したときに呼ぶ。止まっていた間に過ぎた時刻のトリガーも、丸 1 日前の分まで拾う。 */
+export const startWorkflows = (): void => {
+  void tick();
+  setInterval(() => void tick(), TICK_MS).unref();
+};
+
+const findDef = (id: string): WorkflowDef => {
+  const w = readWorkflows().workflows.find((d) => d.id === id);
+  if (!w) throw new Error(`ワークフロー ${id} がありません`);
+  return w;
+};
+
+/** 画面の「今すぐ実行」。OFF のワークフローも動かす。 */
+export const runWorkflow = (id: string): void => {
+  const w = findDef(id);
+  enqueue(w, '人間が「今すぐ実行」で動かしました。');
+  dispatch(w);
+};
+
+/** ON と OFF を切り替える。ほかの項目と書き方は、人間とエージェントが書いたまま残す。 */
+export const setWorkflowEnabled = (id: string, enabled: boolean): void => {
+  findDef(id);
+  const raw = JSON.parse(fs.readFileSync(WORKFLOWS_FILE, 'utf8')) as { workflows: Record<string, unknown>[] };
+  for (const w of raw.workflows) if (w.id === id) w.enabled = enabled;
+  fs.writeFileSync(WORKFLOWS_FILE, `${JSON.stringify(raw, null, 2)}\n`);
+  touch();
+};
+
+const consultPrompt = (target: WorkflowDef | undefined): string => `${MARK} 人間と相談して、${target ? `ワークフロー「${target.name}」（id: ${target.id}）を変えて` : '新しいワークフローを作って'}ください。
+ワークフローは、トリガーで Claude Code のセッションを動かす、手元で動くルーティンです。定義は ${WORKFLOWS_FILE} に JSON で書きます。ダッシュボードは書き換えを読み直して、すぐに使います。
+
+## 形
+{ "workflows": [ { ... }, ... ] }。ファイルが無ければ作ってください。ほかのワークフローは変えないでください。
+- id: 英数字とハイフン。ほかと重ならないもの
+- name: 画面とセッションのバッジに出す名前
+- enabled: true で動く。新しく作るときは、人間が良いと言うまで false にする
+- cwd: セッションを動かす作業ディレクトリ（絶対パス）
+- prompt: セッションへの依頼。イベントの内容は、ダッシュボードが依頼の前に書き足す
+- triggers: 次の配列
+  - { "kind": "schedule", "at": "09:00", "days": [1, 2, 3, 4, 5] }: 時刻で動く。days は 0 が日曜で、省くと毎日
+  - { "kind": "github-review" }: GitHub で自分へのレビュー依頼が新しく届いたときに動く
+- mode: "new" はイベントごとに新しいセッションを起動する。"continue" は 1 つのセッションを引き継いでイベントをチャットに送り、セッションが無いかアーカイブされていたら新しく起動する
+- compact: mode が "continue" のとき、true なら、イベントを送る前に毎回前回までの会話を compact する
+- maxSessions: mode が "new" のとき、同時に動かすセッションの上限（既定 1）。上限を超えたイベントは、空くまで待たせる
+- model（${MODELS.join(' / ')}）、effort（${EFFORT_LEVELS.join(' / ')}）: 省くと Claude Code の設定に従う
+
+## 進め方
+まず、何をいつ動かしたいかを人間に聞いてください。決まったらファイルを書き、書いた内容を短く伝えて止まってください。`;
+
+/** エージェントと相談してワークフローを作るか変えるセッションを起動し、その id を返す。id を渡すと、そのワークフローを変える相談にする。 */
+export const consultWorkflow = async (id?: string): Promise<{ sessionId: string }> => {
+  const target = id ? findDef(id) : undefined;
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  const meta = await startTrackedSession(DATA_DIR, consultPrompt(target));
+  meta.title = target ? `ワークフロー「${target.name}」の相談` : 'ワークフローの相談';
+  touch();
+  return { sessionId: meta.id };
+};
+
+const infoOf = (w: WorkflowDef, live: ReturnType<typeof readLiveSessions>): WorkflowInfo => {
+  const run = state.workflowRuns?.[w.id];
+  return { ...w, running: runningCount(w.id, live), queued: run?.queue.length ?? 0, sessionId: run && w.mode === 'continue' ? continuedSession(run) : undefined, lastRunAt: run?.lastRunAt, error: run?.error };
+};
+
+export const workflowState = (): WorkflowState => {
+  const { workflows, error } = readWorkflows();
+  const live = readLiveSessions();
+  return { file: WORKFLOWS_FILE, workflows: workflows.map((w) => infoOf(w, live)), error };
+};
+
+/** セッションのバッジに出す、起動したワークフローの名前。定義を消していたら id を出す。 */
+export const workflowNameOf = (id: string | undefined): string | undefined => (id ? (readWorkflows().workflows.find((w) => w.id === id)?.name ?? id) : undefined);

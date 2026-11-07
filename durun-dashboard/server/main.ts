@@ -28,6 +28,7 @@ import { handleHook, holdPermission, type HookInput } from './hooks.ts';
 import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
 import { applyAgentPriority, setAgentPriority } from './agentPriority.ts';
 import { learnNow, noteActivity, updateLearn } from './reflect.ts';
+import { consultWorkflow, runWorkflow, setWorkflowEnabled, startWorkflows } from './workflow.ts';
 import { harness, setHarnessToggle } from './harness.ts';
 import { fileCandidates, listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
@@ -98,6 +99,7 @@ const STATIC: Record<string, string> = {
   '/recycle-bin.svg': 'public/recycle-bin.svg',
   '/recycle-bin-full.svg': 'public/recycle-bin-full.svg',
   '/learn.svg': 'public/learn.svg',
+  '/workflow.svg': 'public/workflow.svg',
   '/vendor/marked.js': 'node_modules/marked/lib/marked.umd.js',
   '/vendor/mermaid.js': 'node_modules/mermaid/dist/mermaid.min.js',
   '/vendor/xterm.css': 'node_modules/@xterm/xterm/css/xterm.css',
@@ -1326,6 +1328,9 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/improve$/, (_, b) => updateImprove(improveSettings(b))],
   [/^\/api\/learn$/, (_, b) => updateLearn({ scheduled: field<boolean>(b, 'scheduled', 'boolean') })],
   [/^\/api\/learn\/run$/, () => learnNow()],
+  [/^\/api\/workflows\/consult$/, (_, b) => consultWorkflow(optionalString(b, 'id'))],
+  [/^\/api\/workflows\/([\w-]+)\/run$/, ([, id = '']) => runWorkflow(id)],
+  [/^\/api\/workflows\/([\w-]+)\/enabled$/, ([, id = ''], b) => setWorkflowEnabled(id, field<boolean>(b, 'enabled', 'boolean'))],
   [/^\/api\/learn\/toggle$/, (_, b) => setHarnessToggle(CLAUDE_DIR, harnessToggleOf(b), field<boolean>(b, 'on', 'boolean'))],
   [/^\/api\/auto-continue$/, (_, b) => setAutoContinue(field<boolean>(b, 'enabled', 'boolean'))],
   [/^\/api\/agent-priority$/, (_, b) => setAgentPriority((oneOf(b, 'priority', AGENT_PRIORITIES) || 'normal') as AgentPriority)],
@@ -1583,6 +1588,7 @@ watch(path.join(ROOT, 'public'), false, scheduleBroadcast);
 mergeClaudePrCache(path.join(CLAUDE_DIR, PR_CACHE_FILE));
 watch(CLAUDE_DIR, false, (file) => file === PR_CACHE_FILE && mergeClaudePrCache(path.join(CLAUDE_DIR, PR_CACHE_FILE)));
 ensureImprover();
+startWorkflows();
 // 作業の無いまま再起動しても、前の作業の振り返りを逃さない。
 noteActivity();
 redeliverInterrupted();
