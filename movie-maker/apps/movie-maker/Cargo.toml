@@ -9,6 +9,9 @@ publish.workspace = true
 [features]
 # FFmpeg の開発ファイルが要る（mm-decode-ffmpeg/README.md）。切ったときは素材をモックのデコーダーで読む。
 ffmpeg = ["mm-runtime/ffmpeg"]
+# 開発のときだけ。`dx serve --hotpatch` のパッチを受けて関数を差し替える（README.md の「Rust の関数の差し替え」）。
+# 既定と本番のビルドには入れない。build.rs はこの feature のとき Tauri の Windows のリソースをマニフェストだけにする。
+hotpatch = ["dep:dioxus-devtools"]
 
 [dependencies]
 mm-types = { workspace = true }
@@ -36,6 +39,7 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
+dioxus-devtools = { workspace = true, optional = true }
 tauri = { workspace = true }
 rfd = { workspace = true }
 wgpu = { workspace = true }

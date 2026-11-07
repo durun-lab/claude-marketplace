@@ -18,10 +18,6 @@
 6. CEF の 1280x720 で p95 が 26 ms に跳ねる件: 1920 幅固定のページを 1280x720 で描いたときに起きた。原因は未調査 [cef](spikes/cef.md#つまずいた所)
    - 案 1（60%）: 段階 4 の `mm-host-cef` で、ページの幅を大きさに合わせて取り直す。固定幅のページが原因なら消える
    - 案 2（40%）: 今、ページを変えて切り分ける
-7. Tauri のアプリで subsecond を使うときの Windows のリソースの二重: `tauri-build` と `dx` が別々に `resource.lib` を作る。試作は `tauri-build` をコピーして `[patch.crates-io]` で差し替え、リソースの二重を省いた [subsecond](spikes/subsecond.md#詰まった所)
-   - 案 1（55%）: 開発のときだけ手当て（環境変数で省く）を使い、本番のビルドには入れない。上流（`tauri-build` の切り替え、`dx` の `write_winres` を止める）へ報告する
-   - 案 2（35%）: subsecond を使わず、Rust は増分ビルドと再起動に絞る。差は 0.4〜1.3 秒で、状態を落とさないことだけが失われる
-   - その他（15%）: 実物の大きさで測り直してから決める
 
 # 決まったこと
 
@@ -29,6 +25,7 @@
 2. NVDEC の経路: `d3d12va` を既定にする。開いた直後の数フレームで失敗する素材（NVENC で作った 4K の HEVC など）は `cuvid` に切り替え、最後は CPU 経由（2026-11-06、ユーザー） [nvdec](spikes/nvdec.md#既定の経路の推奨)
 3. 色空間の名前 `bt709`: Rec.1886 の表示の式を指す。BT.709 の OETF は別の名前で持つ（2026-11-06、ユーザー） [ocio](spikes/ocio.md#詰まった所)
 4. wgpu をインターフェースに出さない形: インターフェースに wgpu の型を出さず、`GpuHelper` トレイトで囲う形を正式にする（2026-11-06、ユーザー）。RFC と `04-nodes.md` と `14-dev-structure.md` の直しは別の担当が進めている
+5. Tauri のアプリで subsecond を使うときの Windows のリソースの二重: 開発のときだけ手当てを使い、本番のビルドには入れない（2026-11-07、ユーザー）。`apps/movie-maker` の feature `hotpatch` のときだけ、`build.rs` が `tauri-build` のリソースをマニフェストだけの `.res` に置き換える（`tauri-build` のコピーは要らなくなった）。上流（`tauri-build` の切り替え、`dx` の `write_winres` を止める）へは報告の文案を置くだけにし、起票はしない [subsecond](spikes/subsecond.md#上流への報告の文案)
 
 
 ---

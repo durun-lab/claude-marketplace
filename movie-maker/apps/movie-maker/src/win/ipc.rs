@@ -14,6 +14,7 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, State};
 use tracing::Span;
 
+use crate::win::hotpatch;
 use crate::win::keys;
 use crate::win::playback::Command;
 use crate::win::state::{wall_us, OpenDoc, Shared};
@@ -274,22 +275,44 @@ pub async fn sync_ack(
     raf_us: u64,
     shown_t: f64,
 ) -> Result<(), String> {
+    let ack = Ack {
+        seq,
+        recv_us,
+        raf_us,
+        shown_t,
+    };
+    hotpatch::call(|| record_ack(&state, ack));
+    Ok(())
+}
+
+/// `sync_ack` の引数。
+#[derive(Clone, Copy)]
+struct Ack {
+    seq: u64,
+    recv_us: u64,
+    raf_us: u64,
+    shown_t: f64,
+}
+
+fn record_ack(state: &SyncState, ack: Ack) {
     let back = wall_us();
-    let Some(p) = state.pending.lock().expect("pending").remove(&seq) else {
-        return Ok(());
+    let Some(p) = state.pending.lock().expect("pending").remove(&ack.seq) else {
+        return;
     };
     let s = &state.shared;
     let ms = |a: u64, b: u64| b.saturating_sub(a) as f64 / 1000.0;
-    state.remember_lag(ms(p.sent_wall_us, raf_us));
-    s.record("sync_send_to_webview_recv_ms", ms(p.sent_wall_us, recv_us));
-    s.record("sync_send_to_raf_ms", ms(p.sent_wall_us, raf_us));
+    state.remember_lag(ms(p.sent_wall_us, ack.raf_us));
+    s.record(
+        "sync_send_to_webview_recv_ms",
+        ms(p.sent_wall_us, ack.recv_us),
+    );
+    s.record("sync_send_to_raf_ms", ms(p.sent_wall_us, ack.raf_us));
     s.record("sync_roundtrip_ms", ms(p.sent_wall_us, back));
     if p.playing && s.playing.load(Ordering::SeqCst) {
         // 本当の位置は、いまの位置から ack が戻るまでの時間を引いた rAF の時点の値。
-        let at_raf = s.playhead() - ms(raf_us, back) / 1000.0;
-        s.record("webview_clock_error_ms", (shown_t - at_raf) * 1000.0);
+        let at_raf = s.playhead() - ms(ack.raf_us, back) / 1000.0;
+        s.record("webview_clock_error_ms", (ack.shown_t - at_raf) * 1000.0);
     }
-    Ok(())
 }
 
 /// 再生の操作。`action` は play、pause、toggle、seek、step、home、end。
@@ -299,25 +322,29 @@ pub async fn transport(
     action: String,
     value: Option<f64>,
 ) -> Result<(), String> {
-    let command = match (action.as_str(), value) {
-        ("play", _) => Command::Play,
-        ("pause", _) => Command::Pause,
-        ("toggle", _) => Command::Toggle,
-        ("seek", Some(t)) => Command::Seek(t),
-        ("step", Some(n)) => Command::Step(n as i64),
-        ("home", _) => Command::Seek(0.0),
-        ("end", _) => Command::Seek(f64::MAX),
-        _ => return Err(format!("知らない再生の操作: {action}")),
-    };
-    state.shared.send(command);
-    Ok(())
+    hotpatch::call(|| {
+        let command = match (action.as_str(), value) {
+            ("play", _) => Command::Play,
+            ("pause", _) => Command::Pause,
+            ("toggle", _) => Command::Toggle,
+            ("seek", Some(t)) => Command::Seek(t),
+            ("step", Some(n)) => Command::Step(n as i64),
+            ("home", _) => Command::Seek(0.0),
+            ("end", _) => Command::Seek(f64::MAX),
+            _ => return Err(format!("知らない再生の操作: {action}")),
+        };
+        state.shared.send(command);
+        Ok(())
+    })
 }
 
 #[tauri::command]
 pub async fn project_info(state: State<'_, Arc<SyncState>>) -> Result<ProjectInfo, String> {
-    state
-        .current_info()
-        .ok_or_else(|| "プロジェクトを開いていない".to_owned())
+    hotpatch::call(|| {
+        state
+            .current_info()
+            .ok_or_else(|| "プロジェクトを開いていない".to_owned())
+    })
 }
 
 #[tauri::command]
@@ -326,6 +353,6 @@ pub async fn key_event(
     source: String,
     key: String,
 ) -> Result<(), String> {
-    keys::dispatch(&state.shared, &source, &key);
+    hotpatch::call(|| keys::dispatch(&state.shared, &source, &key));
     Ok(())
 }

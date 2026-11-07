@@ -14,11 +14,13 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, IsWindow, LoadCursorW, PostMessageW, RegisterClassW,
-    SetWindowPos, CS_HREDRAW, CS_VREDRAW, IDC_ARROW, SWP_NOACTIVATE, SWP_NOZORDER, WM_ERASEBKGND,
-    WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_SYSKEYDOWN,
-    WM_SYSKEYUP, WNDCLASSW, WS_CHILD, WS_CLIPSIBLINGS, WS_EX_NOPARENTNOTIFY, WS_VISIBLE,
+    SetWindowPos, CS_HREDRAW, CS_VREDRAW, IDC_ARROW, SWP_NOACTIVATE, SWP_NOZORDER,
+    WM_CAPTURECHANGED, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE,
+    WM_MOUSEWHEEL, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW, WS_CHILD, WS_CLIPSIBLINGS,
+    WS_EX_NOPARENTNOTIFY, WS_VISIBLE,
 };
 
+use crate::win::hotpatch;
 use crate::win::keys;
 use crate::win::state::Shared;
 
@@ -229,6 +231,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 let _ = SetFocus(Some(hwnd));
                 SetCapture(hwnd);
             }
+            hotpatch::set_input(true);
             let (x, y) = client_xy(lparam);
             push(PointerEvent::Down {
                 x,
@@ -242,6 +245,12 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
                 let _ = ReleaseCapture();
             }
             push(PointerEvent::Up);
+            hotpatch::set_input(false);
+            LRESULT(0)
+        }
+        // ボタンを離す前にキャプチャーを失ったとき（別のウィンドウが取ったなど）も、ドラッグの終わりとみなす。
+        WM_CAPTURECHANGED => {
+            hotpatch::set_input(false);
             LRESULT(0)
         }
         WM_MOUSEMOVE => {

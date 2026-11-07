@@ -9,6 +9,7 @@ mod deliver_ipc;
 mod edit;
 mod edit_actions;
 mod history;
+mod hotpatch;
 mod ipc;
 mod keys;
 mod media;
