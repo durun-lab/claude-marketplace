@@ -1,9 +1,11 @@
+import { errorMessage } from "./errors.ts";
+
 /** 人の待ち受けのパスの根。`GET /m/` の画面と API が同じオリジンで同じ根の下にある。 */
 export const MOBILE_ROOT = "/m";
 export const API_ROOT = `${MOBILE_ROOT}/api`;
 export const PAIR_PATH = `${MOBILE_ROOT}/pair`;
 
-/** 書き込みの要求に付ける見出し。別のオリジンのフォームからの送信を母艦が止める。 */
+/** 書き込みの要求に付ける見出し。別のオリジンのフォームからの送信を PC が止める。 */
 export const MOBILE_HEADER = "X-MM-Mobile";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
@@ -11,19 +13,22 @@ export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 const SERVER_ERROR = 500;
 const TOO_MANY_REQUESTS = 429;
 
-/** `status` が 0 のときは通信そのものの失敗（圏外、母艦が止まっている）。 */
+/**
+ * `status` が 0 のときは通信そのものの失敗（圏外、PC が止まっている）。
+ * `message` は `code` から引いた画面向けの英語で、PC の日本語の `message` は `detail` に残す。
+ */
 export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
-    message: string,
+    readonly detail = "",
   ) {
-    super(message);
+    super(errorMessage(code, status));
     this.name = "ApiError";
   }
 }
 
-/** 再送で解消し得る失敗。通信の失敗、混雑、母艦の内部の失敗。 */
+/** 再送で解消し得る失敗。通信の失敗、混雑、PC の内部の失敗。 */
 export const isRetryable = (e: unknown): boolean =>
   e instanceof ApiError && (e.status === 0 || e.status === TOO_MANY_REQUESTS || e.status >= SERVER_ERROR);
 
@@ -42,7 +47,7 @@ export interface Api {
 const failure = async (res: Response): Promise<ApiError> => {
   const body: unknown = await res.json().catch(() => null);
   const err = (body as { error?: { code?: string; message?: string } } | null)?.error;
-  return new ApiError(res.status, err?.code ?? "http", err?.message ?? (res.statusText || `HTTP ${res.status}`));
+  return new ApiError(res.status, err?.code ?? "http", err?.message ?? res.statusText);
 };
 
 const call = async <T>(fetcher: FetchLike, path: string, init: RequestInit): Promise<T> => {
