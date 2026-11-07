@@ -315,6 +315,7 @@ fn registry(render: Backend) -> Result<Registry> {
             mm_host_vst3::find_host(),
         )))?;
         r.register(crate::cef::web_cef())?;
+        r.register(Arc::new(mm_nodes_genai::GenAiKind))?;
         r.register(Arc::new(mm_nodes_hlsl::ShaderHlslKind::default()))?;
         r.register(Arc::new(mm_nodes_lottie::LottieKind::default()))?;
         crate::ofx::register(&mut r)?;

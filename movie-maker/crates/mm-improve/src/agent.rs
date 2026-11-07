@@ -21,6 +21,10 @@ use crate::time::now_ms;
 
 /// Stop フックが書くファイル。
 pub const STOP_FILE: &str = "stop.json";
+/// 回の印。`claude -p` とその子（`mm` など）に回の ID を渡し、費用のかかる操作（`gen.ai` の生成）は回の中では断る。
+pub const ROUND_ENV: &str = "MM_IMPROVE_RUN";
+/// 回のフォルダーの名前が読めないときの回の印の値。印そのものは必ず付ける。
+const UNKNOWN_ROUND: &str = "unknown";
 const OUT_FILE: &str = "agent-out.json";
 const LOG_FILE: &str = "agent.log";
 /// Bash のコマンドを 2 分でバックグラウンドへ移させる。人が見ていない回が、入力を待つコマンドで長く止まらないようにする。
@@ -145,6 +149,17 @@ pub fn run_settings(run_dir: &Path) -> String {
 }
 
 impl ClaudeCli {
+    /// 子に渡す環境変数。足す環境変数に回の印（[`ROUND_ENV`]。値は回のフォルダーの名前 = 回の ID）を重ねる。
+    pub fn child_env(&self, req: &AgentRequest<'_>) -> Vec<(String, String)> {
+        let round = req.run_dir.file_name().map_or_else(
+            || UNKNOWN_ROUND.to_owned(),
+            |n| n.to_string_lossy().into_owned(),
+        );
+        let mut env = self.env.clone();
+        env.push((ROUND_ENV.into(), round));
+        env
+    }
+
     /// `claude` に渡す引数。頼む文は標準入力で渡す。
     pub fn args(&self, req: &AgentRequest<'_>) -> Vec<String> {
         let s = req.settings;
@@ -185,7 +200,7 @@ impl ClaudeCli {
         let mut child = Command::new(&self.program)
             .args(self.args(req))
             .current_dir(req.cwd)
-            .envs(self.env.iter().map(|(k, v)| (k, v)))
+            .envs(self.child_env(req))
             .stdin(Stdio::piped())
             .stdout(out)
             .stderr(log)
@@ -371,5 +386,29 @@ mod tests {
         for rule in ["Bash(git push:*)", "Bash(git update-ref:*)", "Bash(gh:*)"] {
             assert!(deny.contains(&rule), "{rule}");
         }
+    }
+
+    #[test]
+    fn 回の_claude_には回の印を渡す() {
+        let cli = ClaudeCli {
+            env: vec![("CARGO_TARGET_DIR".into(), "t".into())],
+            ..ClaudeCli::default()
+        };
+        let settings = Settings::default();
+        let req = AgentRequest {
+            session_id: "s",
+            resume: false,
+            prompt: "",
+            cwd: Path::new("."),
+            run_dir: Path::new("runs/r42"),
+            read_dirs: &[],
+            settings: &settings,
+            wall: Duration::from_secs(1),
+            on_spawn: &|_| {},
+            on_cost: &|_| {},
+        };
+        let env = cli.child_env(&req);
+        assert!(env.contains(&("CARGO_TARGET_DIR".into(), "t".into())));
+        assert!(env.contains(&(ROUND_ENV.into(), "r42".into())), "{env:?}");
     }
 }
