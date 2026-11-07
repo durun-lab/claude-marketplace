@@ -26,6 +26,12 @@
 3. 色空間の名前 `bt709`: Rec.1886 の表示の式を指す。BT.709 の OETF は別の名前で持つ（2026-11-06、ユーザー） [ocio](spikes/ocio.md#詰まった所)
 4. wgpu をインターフェースに出さない形: インターフェースに wgpu の型を出さず、`GpuHelper` トレイトで囲う形を正式にする（2026-11-06、ユーザー）。RFC と `04-nodes.md` と `14-dev-structure.md` の直しは別の担当が進めている
 5. Tauri のアプリで subsecond を使うときの Windows のリソースの二重: 開発のときだけ手当てを使い、本番のビルドには入れない（2026-11-07、ユーザー）。`apps/movie-maker` の feature `hotpatch` のときだけ、`build.rs` が `tauri-build` のリソースをマニフェストだけの `.res` に置き換える（`tauri-build` のコピーは要らなくなった）。上流（`tauri-build` の切り替え、`dx` の `write_winres` を止める）へは報告の文案を置くだけにし、起票はしない [subsecond](spikes/subsecond.md#上流への報告の文案)
+6. モバイル版の形: `mm-serve` が配る PWA にする（2026-11-08、ユーザー）。対象のブラウザーは iOS の Safari と Android の Chrome の両方。durun-dashboard の中の画面と Tauri 2 のモバイルは採らない [モバイル版](12-mobile.md#形)
+7. 出先からのつなぎ方: `tailscale serve` の HTTPS から `mm-serve` の人の待ち受けへつなぐ（2026-11-08、ユーザー）。ダッシュボードの中継と公開の入口は採らない [モバイル版](12-mobile.md#つながり方)
+8. モバイルから即時に適用できる操作: Story の操作と目印だけ。ほかはコメントで Claude に頼み、返った提案を承認する（2026-11-08、ユーザー） [モバイル版](12-mobile.md#権限)
+9. PC のアプリが閉じているとき: durun-dashboard から movie-maker を起動する（2026-11-08、ユーザー）。画面なしの `mm serve` と Wake-on-LAN は段階 9 では作らない
+10. オフライン: 接続を前提にし、コメントだけ送信待ちの列に置く（2026-11-08、ユーザー） [モバイル版](12-mobile.md#画面)
+11. Claude が対応したときの通知: durun-dashboard の通知に任せる。PWA の Web Push は段階 9 では作らない（2026-11-08、ユーザー）
 
 
 ---

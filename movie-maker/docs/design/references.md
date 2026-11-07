@@ -84,3 +84,15 @@ Web で確かめたもの。〔推〕は確かめられなかった推測。
 79. `sqlx`（0.9.0。async/await 前提。`query!` のコンパイル時の検査にはビルド時に `DATABASE_URL` が要る。`sqlite` は同梱して静的にリンクし、`forbid(unsafe_code)` が外れる）: https://github.com/launchbadge/sqlx 、https://docs.rs/sqlx/latest/sqlx/
 80. SQLite「DB を壊す方法」（ロックの壊れたファイルシステム、NFS、トランザクション中のコピー、ジャーナルと本体の取り違え）: https://sqlite.org/howtocorrupt.html 。Zotero のデータディレクトリをクラウド同期のフォルダーに置かない理由（同期のツールがロックを守らず、別の機械からの更新で壊れる）: https://www.zotero.org/support/kb/data_directory_in_cloud_storage_folder
 81. 先行事例の DB。FCP の `.fcpbundle` の中の `CurrentVersion.flexolibrary`（ライブラリの DB。作業中 15 分ごとに `Backups/` へコピーする）: https://fileinfo.com/extension/flexolibrary 〔推。SQLite かは Apple の公式では未確認〕。Resolve の disk database（Mac と Windows は PostgreSQL か disk database。DR12 のマニュアル）: https://ltbits.github.io/davinci-resolve-manuals/DR12/DR12-RM-41.pdf 〔推。SQLite というのは復旧業者の二次情報〕。Lightroom の `.lrcat`（SQLite 3。WAL で `.lrcat-wal`・`.lrcat-shm` が横にできる）: https://petapixel.com/2019/05/08/how-to-search-multiple-lightroom-catalogs-at-once-with-sql-tools 、https://rust-digger.code-maven.com/src/lrcat-extractor-0.4.1/doc/lrcat_format.md
+82. Frame.io の変換（2160p、1080p、720p、540p、360p の H.264/H.265 の MP4。4K 約 14 Mbps、HD 約 4 Mbps、SD 約 2.2 Mbps。音は AAC 128 kbps）: https://support.frame.io/en/articles/13321-what-is-my-video-converted-to-when-it-s-uploaded 。API の 180p の配信用とコマのスプライト（WebP）: https://developer.frame.io/platform/docs/guides/media-links
+83. Frame.io の iOS のアプリのコメント（時刻つき、描き込み、返信。範囲のコメントと時刻の変更は iOS に無い）: https://help.frame.io/en/articles/9105536-commenting-and-the-player-page-on-the-ios-app
+84. DaVinci Resolve の Blackmagic Cloud（プロキシを優先して同期し、各自が手元に複製を持つ。ビンとタイムラインの自動のロック）: https://www.blackmagicdesign.com/products/davinciresolve/collaboration
+85. Premiere の iPhone 版（2025-09。端末の上で編集し、Frame.io を経由してデスクトップで続ける）: https://www.macrumors.com/2025/09/30/adobe-launches-premiere-for-iphone/
+86. LumaFusion のプロジェクトの書庫（素材ごと、切った分だけ、素材なしで端末の間を移す）: https://luma-touch.com/luma-touch-releases-version-1-3-of-lumafusion/
+87. CapCut のクラウドの容量（増やせるかはプランと地域による）: https://www.capcut.com/help/can-not-expand-space-storage 。端末の間の下書きの同期は二次情報だけ〔推〕
+88. Figma のモバイル（閲覧とコメント、Mirror。デザインのファイルは編集できない）: https://help.figma.com/hc/en-us/articles/1500007537281
+89. `tailscale serve` の本人の見出し（`Tailscale-User-Login`、`Tailscale-User-Name`。外から来た同じ見出しは消す。待ち受けは localhost に限る。タグの付いた端末と Funnel には付かない）: https://tailscale.com/kb/1312/serve
+90. Tauri 2 の前提（iOS は macOS と Xcode が要る）: https://v2.tauri.app/start/prerequisites/
+91. iOS と iPadOS 16.4 のホーム画面の Web アプリの Web Push: https://webkit.org/blog/13878/web-push-for-web-apps-on-ios-and-ipados/
+92. durun-dashboard の Tailscale 経由の開き方（127.0.0.1 で待ち、`tailscale serve` で中継し、tailnet での名前の `Host` だけ受ける）: `E:/git-repos/claude-marketplace/durun-dashboard/README.md` の「Tailscale 経由で開く」、`server/access.ts`
+93. `EventSource`（引数は URL と `withCredentials` だけで、見出しを足せない）: https://developer.mozilla.org/en-US/docs/Web/API/EventSource
