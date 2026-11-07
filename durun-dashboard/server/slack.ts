@@ -233,3 +233,37 @@ export const slackConversation = async (target: SlackTarget, fresh = false): Pro
   const team = domain && teamOf(domain);
   return { ...conv, channel, thread, channelName: conv.channelName ?? channelName, domain, team };
 };
+
+/** 自分へのメンション。url は発言のリンクで、どのメンションかを見分けるのに使う。 */
+export type SlackMention = { url: string; channel: string; text: string };
+
+const MENTIONS_MAX_AGE_MS = 60_000;
+const MENTION_LIMIT = 20;
+const MENTION_ITEM = /^\d+\. (#?\S*) - ([\s\S]*?)\n?<(https:\/\/[\w-]+\.slack\.com\/archives\/[^>]+)>/;
+
+/** 自分の Slack のユーザー ID。メンションは本文に <@ID> の形で残るので、検索に使う。 */
+const myUserId = (): Promise<string> =>
+  cached('slack-me-v1', { keep: true }, async () => {
+    const id = String((await callSlack('slack_read_user_profile', { response_format: 'detailed' })).result ?? '').match(/^User ID: (U[A-Z0-9]+)/m)?.[1];
+    if (!id) throw new Error('自分の Slack のユーザー ID を読めません');
+    return id;
+  });
+
+/**
+ * 検索の結果の行「<番号>. #<チャンネル> - <発言>\n<リンク> <日時>」から、userId へのメンションを含む発言を読む。
+ * 検索は本文にメンションの無い発言も返すことがあるので、<@ID> を含むものだけを残す。
+ */
+export const parseSlackMentions = (text: string, userId: string): SlackMention[] =>
+  text.split(/\n(?=\d+\. )/).flatMap((item) => {
+    const [, channel = '', body = '', url = ''] = MENTION_ITEM.exec(item.trim()) ?? [];
+    if (!url || !body.includes(`<@${userId}`)) return [];
+    return [{ url: decode(url), channel, text: toMarkdown(body).trim() }];
+  });
+
+/** 自分へのメンションを、新しい方から読む。 */
+export const slackMentions = (): Promise<SlackMention[]> =>
+  cached('slack-mentions-v1', { maxAge: MENTIONS_MAX_AGE_MS }, async () => {
+    const userId = await myUserId();
+    const found = await callSlack('slack_search_public_and_private', { keywords: [`<@${userId}>`], natural_language_query: '', sort: 'timestamp', limit: MENTION_LIMIT, response_format: 'concise' });
+    return parseSlackMentions(String(found.results ?? ''), userId);
+  });
