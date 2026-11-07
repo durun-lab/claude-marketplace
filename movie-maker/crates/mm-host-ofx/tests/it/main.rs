@@ -129,6 +129,7 @@ fn パラメータの一覧を型と既定値と範囲つきで取れる() {
             ("channel", ParamKind::Choice),
             ("delay_ms", ParamKind::Integer),
             ("crash", ParamKind::Boolean),
+            ("nonfinite", ParamKind::Boolean),
         ]
     );
     let gain = &p.params[0];
@@ -207,6 +208,52 @@ fn パラメータの値を渡して_float_の_1_フレームを描ける() {
     assert!(matches!(bad, Ok(HostResponse::Error { .. })), "{bad:?}");
     let empty = image_of(render(host.as_mut(), size, render_params(None, &[])).unwrap());
     assert_eq!(empty, RgbaImage::transparent(size), "入力が無ければ透明");
+}
+
+#[test]
+fn プラグインが書いた有限でない値は_0_にして返す() {
+    let mut host = start("MmTestGain");
+    let src = source();
+    let values = [("nonfinite", ParamValue::Bool(true))];
+    let out = image_of(
+        render(
+            host.as_mut(),
+            src.size(),
+            render_params(Some(&src), &values),
+        )
+        .expect("応答を読める"),
+    );
+    assert_eq!(out.pixel(1, 1), Rgba::new(0.0, 0.0, 0.0, 1.0));
+    assert!(host.is_alive());
+}
+
+#[test]
+fn 描けない大きさは誤りを返し_ホストは動き続ける() {
+    let mut host = start("MmTestGain");
+    for size in [Size::new(0, 0), Size::new(0, 3), Size::new(100_000, 1)] {
+        let res = render(host.as_mut(), size, render_params(None, &[]));
+        assert!(
+            matches!(res, Ok(HostResponse::Error { .. })),
+            "{size:?}: {res:?}"
+        );
+    }
+    let size = Size::new(2, 2);
+    let out = image_of(render(host.as_mut(), size, render_params(None, &[])).unwrap());
+    assert_eq!(out.size(), size);
+}
+
+#[test]
+fn 正でないフレームレートの_prepare_は誤り() {
+    let mut host = OfxLauncher.spawn(&spec()).expect("起動");
+    for frame_rate in [0.0, -30.0] {
+        let mut params = prepare_params("MmTestGain");
+        params["frame_rate"] = serde_json::json!(frame_rate);
+        let res = host.request(&HostRequest::Prepare { params }, TIMEOUT);
+        assert!(
+            matches!(res, Ok(HostResponse::Error { .. })),
+            "{frame_rate}: {res:?}"
+        );
+    }
 }
 
 #[test]

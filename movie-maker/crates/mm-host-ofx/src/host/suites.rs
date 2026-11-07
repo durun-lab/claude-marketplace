@@ -165,10 +165,18 @@ unsafe extern "C" fn memory_free(p: *mut c_void) -> OfxStatus {
 }
 
 thread_local! {
-    /// multiThread が起こしたスレッドの番号。起こしたスレッドでなければ `None`。
+    /// multiThread の関数を実行している番号。その外では `None`。
     static THREAD_INDEX: Cell<Option<c_uint>> = const { Cell::new(None) };
 }
 
+/// 使える CPU の数（1 以上）。
+fn cpu_count() -> c_uint {
+    std::thread::available_parallelism()
+        .map_or(1, |n| c_uint::try_from(n.get()).unwrap_or(c_uint::MAX))
+}
+
+/// プラグインが頼む数に依らず、CPU の数までのスレッドで `0..n` の番号を分け合う（OpenFX の multiThread は
+/// 各番号で `func` が 1 回呼ばれればよく、スレッドの数を CPU の数に絞ってよい）。
 unsafe extern "C" fn multi_thread(
     func: Option<ThreadFunction>,
     n: c_uint,
@@ -178,22 +186,35 @@ unsafe extern "C" fn multi_thread(
         return STAT_ERR_BAD_HANDLE;
     };
     let arg = arg as usize;
-    std::thread::scope(|s| {
-        for i in 0..n {
-            s.spawn(move || {
-                THREAD_INDEX.with(|c| c.set(Some(i)));
-                // SAFETY: プラグインの関数に、プラグインが渡した引数をそのまま返す。
-                unsafe { func(i, n, arg as *mut c_void) };
-            });
+    let next = &std::sync::atomic::AtomicU32::new(0);
+    let work = move || {
+        let saved = THREAD_INDEX.with(Cell::get);
+        loop {
+            let i = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if i >= n {
+                break;
+            }
+            THREAD_INDEX.with(|c| c.set(Some(i)));
+            // SAFETY: プラグインの関数に、プラグインが渡した引数をそのまま返す。
+            unsafe { func(i, n, arg as *mut c_void) };
         }
+        THREAD_INDEX.with(|c| c.set(saved));
+    };
+    std::thread::scope(|s| {
+        for _ in 1..n.min(cpu_count()) {
+            // 起こせなければ、残りの番号は呼んだスレッドが実行する。
+            if std::thread::Builder::new().spawn_scoped(s, work).is_err() {
+                break;
+            }
+        }
+        work();
     });
     STAT_OK
 }
 
 unsafe extern "C" fn num_cpus(out: *mut c_uint) -> OfxStatus {
-    let n = std::thread::available_parallelism().map_or(1, |n| n.get());
     if !out.is_null() {
-        unsafe { out.write(c_uint::try_from(n).unwrap_or(1)) };
+        unsafe { out.write(cpu_count()) };
     }
     STAT_OK
 }
@@ -324,6 +345,37 @@ mod tests {
         let st = unsafe { multi_thread(Some(count), 4, &hits as *const AtomicU32 as *mut c_void) };
         assert_eq!(st, STAT_OK);
         assert_eq!(hits.load(Ordering::SeqCst), 4);
+    }
+
+    /// 番号ごとの呼ばれた回数と、呼ばれたスレッド。
+    struct Calls {
+        hits: Vec<AtomicU32>,
+        threads: Mutex<std::collections::HashSet<ThreadId>>,
+    }
+
+    unsafe extern "C" fn record(i: c_uint, _n: c_uint, arg: *mut c_void) {
+        let calls = unsafe { &*(arg as *const Calls) };
+        calls.hits[i as usize].fetch_add(1, Ordering::SeqCst);
+        let mut threads = calls.threads.lock().unwrap();
+        threads.insert(std::thread::current().id());
+    }
+
+    #[test]
+    fn multi_thread_は多い番号を_cpu_の数までのスレッドで_1_回ずつ呼ぶ() {
+        const MANY: c_uint = 10_000;
+        let calls = Calls {
+            hits: (0..MANY).map(|_| AtomicU32::new(0)).collect(),
+            threads: Mutex::default(),
+        };
+        let arg = &calls as *const Calls as *mut c_void;
+        assert_eq!(unsafe { multi_thread(Some(record), MANY, arg) }, STAT_OK);
+        assert!(calls.hits.iter().all(|h| h.load(Ordering::SeqCst) == 1));
+        assert!(calls.threads.lock().unwrap().len() <= cpu_count() as usize);
+        assert_eq!(
+            unsafe { is_spawned_thread() },
+            0,
+            "呼んだスレッドの番号は元に戻す"
+        );
     }
 
     #[test]
