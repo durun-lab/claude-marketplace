@@ -1,0 +1,14 @@
+{
+  "name": "@mm/mobile",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc -p . --noEmit",
+    "screenshots": "node screenshots.mjs"
+  },
+  "dependencies": {
+    "@mm/sdk": "workspace:*",
+    "preact": "^10.27.0"
+  }
+}
