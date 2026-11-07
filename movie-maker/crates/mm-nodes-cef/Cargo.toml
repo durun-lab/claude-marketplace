@@ -18,7 +18,13 @@ tracing = { workspace = true }
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, features = ["Win32_Foundation", "Win32_Graphics_Direct3D12"] }
 
+[features]
+# PNG の素材と並べる色の検査に FFmpeg のデコーダーを使う。FFmpeg の開発ファイルと libclang が要る。
+ffmpeg = ["mm-decode-ffmpeg/ffmpeg"]
+
 [dev-dependencies]
+mm-decode-api = { workspace = true }
+mm-decode-ffmpeg = { workspace = true }
 mm-testkit = { workspace = true }
 mm-host-cef = { workspace = true }
 png = { workspace = true }

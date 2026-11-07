@@ -3249,6 +3249,8 @@ dependencies = [
 name = "mm-nodes-cef"
 version = "0.1.0"
 dependencies = [
+ "mm-decode-api",
+ "mm-decode-ffmpeg",
  "mm-gpu",
  "mm-host-api",
  "mm-host-cef",

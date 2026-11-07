@@ -1,9 +1,12 @@
-//! CEF の画素（BGRA8、premultiplied、sRGB の符号化）を中間の形式（`Rgba16Float`、premultiplied、線形）に直すパス。
-//! 半透明の画素は alpha で割ってから線形にし、掛け直す（mm-host-cef の `pixel` と同じ式で、CPU の経路と画素が合う）。
+//! CEF の画素（BGRA8、premultiplied、8 bit の符号化値）を中間の形式（`Rgba16Float`、premultiplied、線形）に直すパス。
+//! 符号化値は素材と同じ Rec.1886 の式で線形にする（[`crate::transfer`]）。半透明の画素は alpha で割ってから線形にし、
+//! 掛け直す（CPU の経路の `transfer::rec1886_from_srgb_linear` と同じ結果になる）。
 
 use std::sync::{Arc, Weak};
 
 use mm_gpu::{GpuContext, FRAME_FORMAT};
+
+use crate::transfer::GAMMA;
 
 const SHADER: &str = r"
 @group(0) @binding(0) var src: texture_2d<f32>;
@@ -15,9 +18,7 @@ fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
 }
 
 fn decode(c: vec3<f32>) -> vec3<f32> {
-    let lo = c / 12.92;
-    let hi = pow((c + vec3<f32>(0.055)) / 1.055, vec3<f32>(2.4));
-    return select(hi, lo, c <= vec3<f32>(0.04045));
+    return pow(c, vec3<f32>(GAMMA));
 }
 
 @fragment
@@ -44,7 +45,9 @@ impl Converter {
         let device = &ctx.device;
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("web.cef convert"),
-            source: wgpu::ShaderSource::Wgsl(SHADER.into()),
+            source: wgpu::ShaderSource::Wgsl(
+                format!("const GAMMA: f32 = {GAMMA:?};\n{SHADER}").into(),
+            ),
         });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("web.cef convert"),

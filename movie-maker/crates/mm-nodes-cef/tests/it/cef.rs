@@ -19,7 +19,7 @@ const FULL_HD: Size = Size::new(1920, 1080);
 /// f16 への丸めと、GPU と CPU の sRGB の復号の差を見込んだ許容。
 const TOLERANCE: f32 = 4e-3;
 
-fn host() -> Option<PathBuf> {
+pub(super) fn host() -> Option<PathBuf> {
     let found = std::env::var_os("CEF_PATH").and(std::env::var_os("MM_CEF_HOST"));
     if found.is_none() {
         assert!(
@@ -31,11 +31,11 @@ fn host() -> Option<PathBuf> {
     found.map(PathBuf::from)
 }
 
-fn kind(exe: &Path) -> WebCefKind {
+pub(super) fn kind(exe: &Path) -> WebCefKind {
     WebCefKind::with_host(Arc::new(CefLauncher), exe.to_path_buf())
 }
 
-fn gpu() -> WgpuGpu {
+pub(super) fn gpu() -> WgpuGpu {
     let ctx = GpuContext::shared(&GpuRequest {
         backends: wgpu::Backends::DX12,
         ..GpuRequest::default()
@@ -53,7 +53,7 @@ fn params(data: serde_json::Value, is_static: bool) -> Params {
 }
 
 /// GPU の経路で 1 フレーム描いて CPU にリードバックする。
-fn render_gpu(
+pub(super) fn render_gpu(
     kind: &WebCefKind,
     gpu: &mut WgpuGpu,
     p: &Params,
