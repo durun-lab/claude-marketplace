@@ -3,8 +3,8 @@
 use mm_types::{ParamValue, Rational, RationalTime};
 
 use mm_doc::{
-    Composition, Cut, Interpolation, Keyframe, Layer, Marker, Node, Project, RenderTarget,
-    Sequence, TimeKeyframe, TimeRemap, NESTED_KIND, NESTED_PARAM,
+    Composition, Cut, Interpolation, Keyframe, Layer, Marker, Mask, MaskRect, Node, Project,
+    RenderTarget, Sequence, TimeKeyframe, TimeRemap, NESTED_KIND, NESTED_PARAM,
 };
 use mm_types::{Id, MmError, Result};
 
@@ -114,6 +114,34 @@ fn in_が_out_以上なら拒否する() {
     let mut l = layer("l", Node::new("solid", 1));
     l.out_point = RationalTime::ZERO;
     assert!(is_invalid(project(vec![comp("a", vec![l])]).validate()));
+}
+
+#[test]
+fn 矩形のマスクの型を確かめる() {
+    let with_rect = |edit: &dyn Fn(&mut MaskRect)| {
+        let mut l = layer("l", Node::new("solid", 1));
+        let mut rect = MaskRect::new([0.0, 0.0], [10.0, 10.0], 0.0);
+        edit(&mut rect);
+        l.masks.push(Mask::rect("m", rect));
+        project(vec![comp("a", vec![l])]).validate()
+    };
+    assert!(with_rect(&|_| {}).is_ok());
+    assert!(is_invalid(with_rect(&|r| {
+        r.size.value = ParamValue::Number(10.0)
+    })));
+    assert!(is_invalid(with_rect(&|r| {
+        r.position.value = ParamValue::Number(1.0)
+    })));
+    assert!(is_invalid(with_rect(&|r| {
+        r.radius.value = ParamValue::Vec2([1.0, 1.0])
+    })));
+    assert!(is_invalid(with_rect(&|r| {
+        r.size.keyframes = vec![Keyframe::new(
+            RationalTime::ZERO,
+            ParamValue::Number(1.0),
+            Interpolation::Linear,
+        )]
+    })));
 }
 
 #[test]

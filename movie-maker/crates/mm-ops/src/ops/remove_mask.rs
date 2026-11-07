@@ -16,7 +16,7 @@ pub struct RemoveMask {
     pub mask: MaskId,
 }
 
-/// マスクの持ち主のレイヤーと、列の中の位置。
+/// マスクの持ち主のレイヤーと、並びの中の位置。
 fn locate(project: &Project, id: &MaskId) -> Result<(LayerId, usize)> {
     project
         .compositions

@@ -240,7 +240,7 @@ export type Marker = {
   "name": string;
   "time": RationalTime;
 };
-/** マスク。形は角丸の矩形（`rect`）か、ベジェの頂点の列（`path`。型だけで、レンダラーは描かない）。 座標はレイヤーの座標で、変形と一緒に動く（After Effects のレイヤーのマスクと同じ）。 */
+/** マスク。形は角丸の矩形（`rect`）か、ベジェの頂点の並び（`path`。型だけで、レンダラーは描かない）。 座標はレイヤーの座標で、変形と一緒に動く（After Effects のレイヤーのマスクと同じ）。 */
 export type Mask = {
   /** ぼかしの幅（画素）。縁を中心にこの幅で 0 から 1 へ移る。 */
   "feather"?: Param;
@@ -249,7 +249,7 @@ export type Mask = {
   "inverted"?: boolean;
   "mode"?: MaskMode;
   "opacity"?: Param;
-  /** 頂点の列。キーフレームで形を動かせる。`rect` があれば使わない。 */
+  /** 頂点の並び。キーフレームで形を動かせる。`rect` があれば使わない。 */
   "path"?: Param;
   /** 角丸の矩形。あれば形はこれで決まる。 */
   "rect"?: MaskRect | null;
@@ -658,7 +658,7 @@ export type SetMixerOp = {
   "mixer"?: CompMixer | null;
   "op": "setMixer";
 };
-/** カットの頭のトランジションを置く・差し替える・外す。 */
+/** カットの先頭のトランジションを置く・差し替える・外す。 */
 export type SetTransitionOp = {
   /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
   "cut": string;

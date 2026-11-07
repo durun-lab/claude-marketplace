@@ -193,6 +193,12 @@ impl WgpuRenderer {
             return Ok(None);
         };
         let opacity = evaluate_opacity(layer, cx.t) as f32;
+        let (clip, undrawn) = Clip::of(layer, cx.t, image.place);
+        self.errors.extend(
+            undrawn
+                .into_iter()
+                .map(|e| format!("layer {}: {e}", layer.id)),
+        );
         let out = (cx.size.width as f32, cx.size.height as f32);
         Ok(Some(Prepared {
             texture: image.texture,
@@ -205,7 +211,7 @@ impl WgpuRenderer {
             ),
             opacity,
             taps: minify_taps(&image, &transform, cx.comp_to_out()),
-            clip: Clip::of(layer, cx.t, image.place),
+            clip,
         }))
     }
 
