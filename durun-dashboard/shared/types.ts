@@ -427,8 +427,9 @@ export type Harness = { items: HarnessItem[]; kindToggles: Partial<Record<Harnes
 /**
  * ワークフローのトリガー。schedule は at（HH:MM）に動き、days（0 が日曜）があればその曜日だけ動く。
  * github-review は、自分へのレビュー依頼が新しく届いたときに動く。slack-mention は、Slack で自分へのメンションが新しく届いたときに動く。
+ * feedback は、ダッシュボードへの改善要望がたまっているときに、前のウェーブを終えてから、たまった要望を 1 つのウェーブとして渡す。
  */
-export type WorkflowTrigger = { kind: 'schedule'; at: string; days?: number[] } | { kind: 'github-review' } | { kind: 'slack-mention' };
+export type WorkflowTrigger = { kind: 'schedule'; at: string; days?: number[] } | { kind: 'github-review' } | { kind: 'slack-mention' } | { kind: 'feedback' };
 
 /**
  * ワークフローの定義。人間とエージェントが workflows.json に書く。
@@ -478,20 +479,14 @@ export type LearnState = LearnSettings & {
   error?: string;
 };
 
-export type ImproveSettings = { enabled: boolean; model?: string; effort?: string };
-
-export type ImproveState = ImproveSettings & {
-  /** 改善のセッションが動いている */
-  running: boolean;
-  sessionId?: string;
-  /** 対応中の要望の書き出し */
-  current?: string;
-  /** ウェーブが使用制限で止まっているときの、制限が明ける時刻（epoch ミリ秒）。明けたら同じセッションで続ける。 */
-  limitResetsAt?: number;
+/**
+ * 改善要望への対応の様子。workflow は改善要望のトリガーを持つワークフローで、無ければ要望はたまるだけになる。
+ * running はウェーブが動いていること、sessionId はそのセッション、current はその説明、error は待機している理由。
+ */
+export type ImproveState = {
   /** 対応中のものを除いた、未対応の要望の数 */
   pending: number;
-  /** 待機している理由。新しい要望が届くか、人間が続けると消える。 */
-  error?: string;
+  workflow?: { id: string; name: string; enabled: boolean; running: boolean; sessionId?: string; current?: string; error?: string };
 };
 
 /** Claude が authenticate で求め、人間に確かめている認証。command か url のどちらかを持つ。 */

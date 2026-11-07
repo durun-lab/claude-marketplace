@@ -502,8 +502,8 @@ const MemoryTray = () => {
 
 /** XP のスキンでだけ見せる、通知領域の改善要望。右下に浮かぶボタンの代わりに置く。電球のアイコンにし、改善中は右下に矢印が回るバッジを重ねる。 */
 const FeedbackTray = ({ improve, onClick }: { improve?: ImproveState; onClick: () => void }) =>
-  improve?.running ? (
-    <button class="fb-tray is-running" title={improve.current ? `改善中: ${improve.current}` : '改善中'} aria-label="改善中" onClick={onClick} />
+  improve?.workflow?.running ? (
+    <button class="fb-tray is-running" title={improve.workflow.current ? `改善中: ${improve.workflow.current}` : '改善中'} aria-label="改善中" onClick={onClick} />
   ) : (
     <button class="fb-tray" title="改善要望" aria-label="改善要望" onClick={onClick} />
   );
