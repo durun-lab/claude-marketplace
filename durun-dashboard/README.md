@@ -289,6 +289,7 @@ Claude Code の設定で `crossSessionInbound` を `accept` にすると、保�
 | `CHROME_PATH` | 資料を PDF と PNG に書き出す Chrome。既定は macOS と Windows の標準の場所 |
 | `TERMINAL_ATTACH_COMMAND` | アプリ「コマンドプロンプト」が、screen や tmux のセッションにアタッチするコマンド。シェル（Windows では cmd.exe）で動かす。例えば `tmux new-session -A -s "$(basename "$PWD")"` は、作業ディレクトリの名前のセッションにアタッチし、無ければ作る |
 | `GCLOUD_LOGIN_COMMAND`、`GCLOUD_CHECK_COMMAND` | Claude が Google Cloud の認証を求めたときに、OK で動かすコマンドと、認証済みかを確かめるコマンド。既定は `gcloud auth login` と `gcloud auth print-access-token`。確かめのコマンドが成功すれば、尋ねずに認証済みと返す |
+| `DURUN_DASHBOARD_ANTHROPIC_API_KEY` | 補助のうち、ツールを使わない問い合わせ（haiku、sonnet の判定、opus の書き直し）を Claude API で動かすときに設定する。API のクレジットで払い、サブスクリプションの使用制限を減らさない。コードを読む、Web を調べる、スキルを使う問い合わせは claude -p のまま。無ければすべて claude -p で動かす。claude -p とセッションが API のキーで動かないよう、`ANTHROPIC_API_KEY` ではなくこの名前で書く |
 | `TYPESAFE_AI_API_KEY` | 文章校正で、疑問が説明の区切りで解けたかと、文が主張を支えているかを、TypeSafe の Jev に確かめさせるときに設定する。入力待ちのセッションが何を待っているかも、Jev に分けさせる。無ければ haiku で代える |
 | `CDRIP_<ツール名>_PATH` | アプリ「CD取り込み」が使う `cyanrip`、`flac`、`metaflac`、`ffmpeg`、`ffprobe`、`yt-dlp` の場所（例: `CDRIP_CYANRIP_PATH`、`CDRIP_YT_DLP_PATH`）。既定は PATH と、winget や Homebrew の置き場所から探す |
 | `FL_USER_DATA` | アプリ「FL Connect」がスクリプトを置く、FL Studio のユーザーデータのフォルダー（FL の File settings の「User data folder」）。無ければ、ドキュメントの下と、Windows では各ドライブの直下の `Image-Line\FL Studio` から探す |
