@@ -6,7 +6,7 @@ use ff::format::context::Output;
 use ff::{codec, encoder, format, Packet, Rational};
 use ffmpeg_next as ff;
 use mm_audio_api::AudioBlock;
-use mm_decode_api::{EncodeReport, EncodeSettings, Encoder, ExtraTracks, Nv12Frame};
+use mm_decode_api::{EncodeReport, EncodeSettings, Encoder, ExtraTracks, Nv12Frame, StreamOutput};
 use mm_types::{MmError, Result, RgbaImage, Size};
 
 use crate::audio::AudioTrack;
@@ -16,7 +16,6 @@ use crate::video::{Pass, VideoTrack};
 
 /// コーデックの名前から指定を引く関数。扱えない名前は `None`。
 pub type SpecResolver = fn(&str) -> Option<CodecSpec>;
-
 /// FFmpeg を初期化し、ログをエラーだけにする。何度呼んでもよい。
 pub fn init() -> Result<()> {
     ff::init().map_err(|e| MmError::Internal(format!("FFmpeg の初期化: {e}")))?;
@@ -46,7 +45,7 @@ pub fn can_open(spec: &CodecSpec) -> bool {
         output_path: PathBuf::new(),
         audio: None,
     };
-    VideoTrack::open(None, &settings, spec, &Pass::Single, false).is_ok()
+    VideoTrack::open(None, &settings, spec, &Pass::Single, None, false).is_ok()
 }
 
 /// 書き出し 1 本。`begin` から `finish` まで。
@@ -57,6 +56,8 @@ pub struct FfmpegEncoder {
     passes: u32,
     /// `set_extras` で渡された字幕とチャプター。`begin` が使う。
     extras: ExtraTracks,
+    /// `set_stream_output` で渡された配信の区間の書き方。`begin` が使う。
+    stream: Option<StreamOutput>,
 }
 
 enum State {
@@ -123,6 +124,7 @@ impl FfmpegEncoder {
             state: State::Idle,
             passes: 1,
             extras: ExtraTracks::default(),
+            stream: None,
         }
     }
 
@@ -149,6 +151,7 @@ impl FfmpegEncoder {
         pass: &Pass,
         stats: Option<StatsFiles>,
         extras: &ExtraTracks,
+        stream: Option<&StreamOutput>,
     ) -> Result<Session> {
         let mut output = format::output_as(&settings.output_path, spec.container.muxer())
             .map_err(|e| MmError::Io(std::io::Error::other(format!("出力を開けない: {e}"))))?;
@@ -156,16 +159,36 @@ impl FfmpegEncoder {
             .format()
             .flags()
             .contains(format::Flags::GLOBAL_HEADER);
-        let video = VideoTrack::open(Some(&mut output), settings, spec, pass, global_header)?;
+        let video = VideoTrack::open(
+            Some(&mut output),
+            settings,
+            spec,
+            pass,
+            stream,
+            global_header,
+        )?;
         let audio = settings
             .audio
             .as_ref()
-            .map(|a| AudioTrack::open(&mut output, a, spec.audio, global_header))
+            .map(|a| {
+                AudioTrack::open(
+                    &mut output,
+                    a,
+                    spec.audio,
+                    stream.map(|s| s.audio_bit_rate),
+                    global_header,
+                )
+            })
             .transpose()?;
         let subtitles = extras::open(&mut output, extras)?;
         let mut options = ff::Dictionary::new();
         if spec.container == Container::Mp4 {
             options.set("movflags", "+faststart");
+        }
+        if let Some(stream) = stream {
+            // B フレームを使わず DTS が PTS と一致するので、offset がそのまま最初のフレームの時刻になる。
+            let offset = stream.start_offset.to_f64();
+            options.set("output_ts_offset", &format!("{offset:.6}"));
         }
         // B フレームの遅れと AAC の前置きは muxer の edit list が吸収する。時刻をずらす指定（avoid_negative_ts）を
         // 付けると、パケットだけがずれてヘッダーのチャプターが映像より早くなる。
@@ -198,12 +221,29 @@ impl Encoder for FfmpegEncoder {
         Ok(())
     }
 
+    fn set_stream_output(&mut self, stream: StreamOutput) -> Result<()> {
+        if !matches!(self.state, State::Idle) {
+            return Err(MmError::InvalidArgument(
+                "begin の後に set_stream_output".into(),
+            ));
+        }
+        self.stream = Some(stream);
+        Ok(())
+    }
+
     fn begin(&mut self, settings: &EncodeSettings) -> Result<()> {
         if !matches!(self.state, State::Idle) {
             return Err(MmError::InvalidArgument("begin を 2 回呼んだ".into()));
         }
         init()?;
         let spec = self.spec_of(settings)?;
+        let is_stream = spec.container == Container::MpegTs;
+        if is_stream != self.stream.is_some() {
+            return Err(MmError::InvalidArgument(format!(
+                "set_stream_output は配信の区間のコーデックだけに要る（コーデック {}）",
+                settings.codec
+            )));
+        }
         if !encoder_available(spec.encoder) {
             return Err(MmError::Unsupported(format!(
                 "{} が無い FFmpeg",
@@ -218,6 +258,7 @@ impl Encoder for FfmpegEncoder {
                 settings,
                 &spec,
                 &Pass::First(stats.path.clone()),
+                None,
                 false,
             )?;
             State::Analysis(Box::new(Analysis {
@@ -233,6 +274,7 @@ impl Encoder for FfmpegEncoder {
                 &Pass::Single,
                 None,
                 &self.extras,
+                self.stream.as_ref(),
             )?))
         };
         Ok(())
@@ -265,6 +307,7 @@ impl Encoder for FfmpegEncoder {
                     &pass,
                     Some(stats),
                     &self.extras,
+                    None,
                 )?));
                 Ok(())
             }

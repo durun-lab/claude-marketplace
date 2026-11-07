@@ -9,7 +9,7 @@ use ff::format::Pixel;
 use ff::software::scaling::{Context as Scaler, Flags};
 use ff::{codec, encoder, ffi, frame, Rational};
 use ffmpeg_next as ff;
-use mm_decode_api::{EncodeSettings, Nv12Frame};
+use mm_decode_api::{EncodeSettings, Nv12Frame, StreamOutput};
 use mm_types::{MmError, Result, RgbaImage, Size};
 
 use crate::fill::{Encoding, Prepared};
@@ -46,6 +46,7 @@ impl VideoTrack {
         settings: &EncodeSettings,
         spec: &CodecSpec,
         pass: &Pass,
+        stream: Option<&StreamOutput>,
         global_header: bool,
     ) -> Result<Self> {
         let size = settings.size;
@@ -67,7 +68,15 @@ impl VideoTrack {
         let codec = encoder::find_by_name(spec.encoder)
             .ok_or_else(|| MmError::Unsupported(format!("{} が無い FFmpeg", spec.encoder)))?;
         let encoder_tb = Rational::new(den, num);
-        let opened = open_encoder(codec, settings, spec, pass, encoder_tb, global_header)?;
+        let opened = open_encoder(
+            codec,
+            settings,
+            spec,
+            pass,
+            stream,
+            encoder_tb,
+            global_header,
+        )?;
         let mut stream_index = None;
         let mut stream_tb = encoder_tb;
         if let Some(output) = output {
@@ -261,6 +270,7 @@ fn open_encoder(
     settings: &EncodeSettings,
     spec: &CodecSpec,
     pass: &Pass,
+    stream: Option<&StreamOutput>,
     time_base: Rational,
     global_header: bool,
 ) -> Result<codec::encoder::video::Encoder> {
@@ -283,6 +293,14 @@ fn open_encoder(
         Rate::BitsPerPixel(bpp) => {
             enc.set_bit_rate(target_bit_rate(size, settings.fps.to_f64(), *bpp));
         }
+        Rate::Stream => {
+            let stream = stream.ok_or_else(|| {
+                MmError::InvalidArgument(
+                    "配信の区間のコーデックには set_stream_output が要る".into(),
+                )
+            })?;
+            stream_rate_options(&mut options, stream);
+        }
         Rate::Profile => {}
     }
     for (key, value) in &spec.options {
@@ -294,6 +312,24 @@ fn open_encoder(
     }
     enc.open_with(options)
         .map_err(|e| MmError::Unsupported(format!("{} を開けない: {e}", spec.encoder)))
+}
+
+/// VBV のバッファーの長さ（上限のビットレートの何秒分か）。
+const VBV_BUFFER_SECS: u32 = 2;
+
+/// 配信の区間の映像のオプション。キーフレームを固定の間隔で入れるのは、区間の先頭を IDR にそろえるため。
+fn stream_rate_options(options: &mut ff::Dictionary<'static>, stream: &StreamOutput) {
+    options.set("b", &stream.video_bit_rate.to_string());
+    if let Some(max) = stream.video_max_rate {
+        options.set("maxrate", &max.to_string());
+        options.set("bufsize", &max.saturating_mul(VBV_BUFFER_SECS).to_string());
+    }
+    let gop = stream.keyframe_interval_frames.max(1).to_string();
+    options.set("g", &gop);
+    options.set("keyint_min", &gop);
+    options.set("sc_threshold", "0");
+    // B フレームの並べ替えで DTS が PTS より前に出ると、区間の先頭（時刻 0）で TS の時刻が後ろへずれる。
+    options.set("bf", "0");
 }
 
 fn too_large(what: &str) -> MmError {

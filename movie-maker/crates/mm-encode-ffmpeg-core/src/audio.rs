@@ -10,7 +10,7 @@ use mm_types::{MmError, Result};
 
 use crate::spec::AudioCodec;
 
-/// AAC のビットレート（bit/s）。
+/// AAC の既定のビットレート（bit/s）。
 const BIT_RATE: usize = 192_000;
 /// フレームの大きさが決まっていない PCM を送る 1 回のサンプル数（チャンネルあたり）。
 const PCM_CHUNK: usize = 4096;
@@ -38,6 +38,7 @@ impl AudioTrack {
         output: &mut Output,
         info: &AudioStreamInfo,
         kind: AudioCodec,
+        bit_rate: Option<u32>,
         global_header: bool,
     ) -> Result<Self> {
         let (codec_id, label) = match kind {
@@ -59,7 +60,7 @@ impl AudioTrack {
         enc.set_channel_layout(ChannelLayout::default(i32::from(info.channels)));
         enc.set_format(sample_format(kind));
         if kind == AudioCodec::Aac {
-            enc.set_bit_rate(BIT_RATE);
+            enc.set_bit_rate(bit_rate.map_or(BIT_RATE, |r| r as usize));
         }
         enc.set_time_base(time_base);
         if global_header {
@@ -224,7 +225,7 @@ mod tests {
             sample_rate: 48_000,
             channels: 2,
         };
-        let track = AudioTrack::open(&mut output, &info, AudioCodec::Aac, true).unwrap();
+        let track = AudioTrack::open(&mut output, &info, AudioCodec::Aac, None, true).unwrap();
         assert_eq!(private_int(&track, c"aac_pns"), 0);
     }
 }

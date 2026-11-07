@@ -217,6 +217,23 @@ pub struct EncodeSettings {
     pub audio: Option<AudioStreamInfo>,
 }
 
+/// 配信の区間（MPEG-TS）の書き方。目標のビットレートで 1 回だけ符号化し、区間の始まりの秒から始まる時刻で書く。
+/// コーデック `h264_ts` に必要で、`Encoder::set_stream_output` で `begin` の前に渡す。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StreamOutput {
+    /// 映像の目標のビットレート（bit/s）。
+    pub video_bit_rate: u32,
+    /// 映像のビットレートの上限（bit/s、VBV の maxrate）。`None` は上限を付けない。バッファーは上限の 2 秒分。
+    pub video_max_rate: Option<u32>,
+    /// 音（AAC）のビットレート（bit/s）。
+    pub audio_bit_rate: u32,
+    /// キーフレームの間隔（フレーム数）。区間の長さのフレーム数にそろえると、区間の先頭が必ず IDR になる。
+    /// シーンチェンジでのキーフレームは入れず、B フレームも使わない（DTS と PTS が一致し、時刻が `start_offset` から正確に始まる）。
+    pub keyframe_interval_frames: u32,
+    /// 出力の最初のフレームの表示時刻。区間の始まりの秒を渡すと、TS の時刻がその秒から始まる。
+    pub start_offset: RationalTime,
+}
+
 /// 書き終えたときの報告。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EncodeReport {
@@ -297,6 +314,14 @@ pub trait Encoder: Send {
         let _ = extras;
         Err(mm_types::MmError::Unsupported(
             "このエンコーダーは字幕のトラックとチャプターを入れられない".into(),
+        ))
+    }
+    /// 配信の区間の書き方（目標のビットレート、キーフレームの間隔、時刻の始まり）を渡す。`begin` の前に呼ぶ。
+    /// 対応しない実装は `Err(Unsupported)`（既定）を返す。
+    fn set_stream_output(&mut self, stream: StreamOutput) -> Result<()> {
+        let _ = stream;
+        Err(mm_types::MmError::Unsupported(
+            "このエンコーダーは配信の区間（目標のビットレートの MPEG-TS）を書けない".into(),
         ))
     }
     /// 出力を開く。
