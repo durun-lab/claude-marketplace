@@ -21,6 +21,7 @@ use crate::win::cli::{self, Args};
 use crate::win::deliver::DeliverState;
 use crate::win::deliver_ipc;
 use crate::win::edit;
+use crate::win::hotpatch;
 use crate::win::ipc::{self, ProjectInfo, SyncState};
 use crate::win::media::{self, MediaState};
 use crate::win::media_ipc;
@@ -337,6 +338,7 @@ impl Boot {
             model.clone(),
         ));
         ipc::spawn(app.handle().clone(), self.state.clone());
+        hotpatch::start(app.handle());
         forward_changes(app.handle(), &self.shared);
         offer_drops(&webview, app.state::<Arc<MediaState>>().inner().clone());
         watch_window(
