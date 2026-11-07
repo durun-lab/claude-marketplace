@@ -5,27 +5,28 @@
 //! ホストが落ちるか期限を過ぎたら、その呼び出しは失敗を返してホストを捨て、次の呼び出しで起こし直す。
 
 use std::collections::BTreeMap;
+use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::time::Duration;
 
 use mm_audio_api::AudioBlock;
 use mm_host_api::{HostProcess, HostRequest, HostResponse, HostSpec};
-use mm_host_pipe::PipeHost;
 use mm_types::{MmError, Result};
 
-use crate::desc::{PluginDesc, PrepareParams};
-use crate::launcher::ClapLauncher;
-use crate::shm::{
-    self, Block, Command, Event, Mapping, ParamEvent, Process, Wake, CHANNELS, MAX_EVENTS,
-    MAX_FRAMES,
+use super::block::{
+    object_names, unique_link, Block, Command, Event, Mapping, ParamEvent, Process, Wake, CHANNELS,
+    MAX_EVENTS, MAX_FRAMES,
 };
+use super::desc::{PluginDesc, PrepareParams};
+use super::PluginStandard;
+use crate::PipeHost;
 
 /// 区間の中のある位置のパラメータの値。`offset` はブロックの先頭からのフレームの位置。
 /// 載っていないパラメータはプラグインの既定値にする。
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ParamPoint {
     pub offset: usize,
-    /// CLAP のパラメータの `id` と plain value。
+    /// パラメータの `id` と値（[`super::ParamDesc`] と同じ意味）。
     pub values: BTreeMap<u32, f64>,
 }
 
@@ -39,8 +40,8 @@ struct Conn {
     seq: u64,
 }
 
-/// 1 つのプラグインのインスタンス。
-pub struct ClapEffect {
+/// 1 つのプラグインのインスタンス。`S` は規格（CLAP、VST3）。
+pub struct AudioEffect<S: PluginStandard> {
     spec: HostSpec,
     path: PathBuf,
     plugin: Option<String>,
@@ -49,9 +50,10 @@ pub struct ClapEffect {
     desc: PluginDesc,
     /// プラグインが今持っているパラメータの値。
     sent: BTreeMap<u32, f64>,
+    standard: PhantomData<S>,
 }
 
-impl ClapEffect {
+impl<S: PluginStandard> AudioEffect<S> {
     /// ホストを起こし、`path` の `plugin`（`None` なら最初のもの）を読み込んで処理を始める。
     pub fn start(
         spec: HostSpec,
@@ -67,6 +69,7 @@ impl ClapEffect {
             conn: None,
             desc: PluginDesc::default(),
             sent: BTreeMap::new(),
+            standard: PhantomData,
         };
         effect.connect()?;
         Ok(effect)
@@ -101,11 +104,11 @@ impl ClapEffect {
     }
 
     fn connect(&mut self) -> Result<()> {
-        let link = shm::unique_link();
-        let [mem, req, done] = shm::object_names(&link);
+        let link = unique_link(S::LINK_PREFIX);
+        let [mem, req, done] = object_names(&link);
         let mut mapping = Mapping::create(&mem)?;
         let (request, done) = (Event::create(&req)?, Event::create(&done)?);
-        let mut host = ClapLauncher::start(self.spec.clone())?;
+        let mut host = PipeHost::start(S::PIPE, self.spec.clone())?;
         let params = PrepareParams {
             path: self.path.clone(),
             plugin: self.plugin.clone(),
@@ -118,11 +121,15 @@ impl ClapEffect {
         match host.request(&req, self.spec.default_timeout)? {
             HostResponse::Prepared => {}
             HostResponse::Error { message } => {
-                return Err(MmError::Internal(format!("CLAP の Prepare: {message}")))
+                return Err(MmError::Internal(format!(
+                    "{} の Prepare: {message}",
+                    S::NAME
+                )))
             }
             other => {
                 return Err(MmError::Internal(format!(
-                    "CLAP の Prepare に答えが合わない: {other:?}"
+                    "{} の Prepare に答えが合わない: {other:?}",
+                    S::NAME
                 )))
             }
         }
@@ -158,7 +165,7 @@ impl ClapEffect {
         let timeout = self.spec.default_timeout;
         let conn = self.live()?;
         conn.mapping.block().set_command(Command::Reset);
-        let result = roundtrip(conn, timeout);
+        let result = roundtrip::<S>(conn, timeout);
         self.drop_on_error(result)
     }
 
@@ -167,8 +174,11 @@ impl ClapEffect {
     pub fn process(&mut self, block: &mut AudioBlock, points: &[ParamPoint]) -> Result<()> {
         if block.sample_rate != self.sample_rate || block.channels as usize != CHANNELS {
             return Err(MmError::InvalidArgument(format!(
-                "CLAP の効果は {} Hz のステレオだけ（{} Hz、{} ch）",
-                self.sample_rate, block.sample_rate, block.channels
+                "{} の効果は {} Hz のステレオだけ（{} Hz、{} ch）",
+                S::NAME,
+                self.sample_rate,
+                block.sample_rate,
+                block.channels
             )));
         }
         let frames = block.frames();
@@ -231,7 +241,7 @@ impl ClapEffect {
                 .count();
             let chunk = &events[next_event..next_event + taken];
             write_chunk(conn.mapping.block(), &block.samples, start, end, chunk);
-            roundtrip(conn, timeout)?;
+            roundtrip::<S>(conn, timeout)?;
             read_chunk(conn.mapping.block(), &mut block.samples, start, end);
             next_event += taken;
             start = end;
@@ -296,20 +306,21 @@ fn read_chunk(block: &mut Block, samples: &mut [f32], start: usize, end: usize) 
 }
 
 /// 要求を送り、完了を待つ。ホストが終わったら `HostCrashed`、期限を過ぎたら `Timeout`。
-fn roundtrip(conn: &mut Conn, timeout: Duration) -> Result<()> {
+fn roundtrip<S: PluginStandard>(conn: &mut Conn, timeout: Duration) -> Result<()> {
     conn.seq += 1;
     conn.mapping.block().seq = conn.seq;
     conn.request.set()?;
     match conn.done.wait(Some(&conn.process), Some(timeout)) {
         Wake::Signaled => {}
         Wake::Exited => {
-            return Err(MmError::HostCrashed(
-                "CLAP のホストが処理の途中で終わった".into(),
-            ))
+            return Err(MmError::HostCrashed(format!(
+                "{} のホストが処理の途中で終わった",
+                S::NAME
+            )))
         }
         Wake::TimedOut => {
             return Err(MmError::Timeout {
-                what: "host_clap.process".into(),
+                what: format!("{}.process", S::PIPE.name),
                 limit: timeout,
             })
         }
@@ -317,12 +328,14 @@ fn roundtrip(conn: &mut Conn, timeout: Duration) -> Result<()> {
     let block = conn.mapping.block();
     if block.done_seq != conn.seq {
         return Err(MmError::Internal(format!(
-            "CLAP のホストの完了の番号が合わない（{} を待って {}）",
-            conn.seq, block.done_seq
+            "{} のホストの完了の番号が合わない（{} を待って {}）",
+            S::NAME,
+            conn.seq,
+            block.done_seq
         )));
     }
     match block.error() {
-        Some(e) => Err(MmError::Internal(format!("CLAP のプラグイン: {e}"))),
+        Some(e) => Err(MmError::Internal(format!("{} のプラグイン: {e}", S::NAME))),
         None => Ok(()),
     }
 }

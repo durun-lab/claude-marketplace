@@ -311,6 +311,9 @@ fn registry(render: Backend) -> Result<Registry> {
         r.register(Arc::new(mm_host_clap::ClapEffectKind::new(
             mm_host_clap::find_host(),
         )))?;
+        r.register(Arc::new(mm_host_vst3::Vst3EffectKind::new(
+            mm_host_vst3::find_host(),
+        )))?;
         r.register(crate::cef::web_cef())?;
         r.register(Arc::new(mm_nodes_genai::GenAiKind))?;
         r.register(Arc::new(mm_nodes_hlsl::ShaderHlslKind::default()))?;

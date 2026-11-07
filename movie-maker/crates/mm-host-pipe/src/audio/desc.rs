@@ -1,15 +1,16 @@
-//! ホストとアプリの間の JSON の形。`.clap` のファイルの記述（列挙）と、`Prepare` の `params`。
+//! ホストとアプリの間の JSON の形。プラグインのファイルの記述（列挙）と、`Prepare` の `params`。
+//! CLAP と VST3 で同じ形を使い、規格ごとの意味は各項目に書く。
 
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-/// 1 つの `.clap` のファイルの記述。`mm-host-clap describe <ファイル>` が 1 行で出す。
+/// 1 つのプラグインのファイル（`.clap` のファイル、`.vst3` のバンドル）の記述。`<ホスト> describe <ファイル>` が 1 行で出す。
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct BundleDesc {
-    /// `.clap` のファイル。
+    /// プラグインのファイル。
     pub path: PathBuf,
-    /// ファイルのプラグイン。インスタンスを作れたものはパラメータとポートも入る。
+    /// ファイルのプラグイン（VST3 は Audio Module Class のクラス）。インスタンスを作れたものはパラメータとポートも入る。
     pub plugins: Vec<PluginDesc>,
     /// インスタンスを作れなかったプラグインと理由。
     #[serde(default)]
@@ -23,10 +24,10 @@ pub struct Skipped {
     pub reason: String,
 }
 
-/// 1 つのプラグインの記述（CLAP の descriptor と、インスタンスから読んだパラメータとポート）。
+/// 1 つのプラグインの記述（規格の記述と、インスタンスから読んだパラメータとポート）。
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct PluginDesc {
-    /// CLAP の `id`（逆ドメイン名）。
+    /// CLAP の `id`（逆ドメイン名）、VST3 のクラスの ID（32 桁の 16 進）。
     pub id: String,
     pub name: String,
     #[serde(default)]
@@ -35,7 +36,7 @@ pub struct PluginDesc {
     pub version: String,
     #[serde(default)]
     pub description: String,
-    /// `audio-effect`、`stereo` など。
+    /// CLAP の features（`audio-effect`、`stereo` など）、VST3 のサブカテゴリー（`Fx`、`Delay` など）。
     #[serde(default)]
     pub features: Vec<String>,
     #[serde(default)]
@@ -55,19 +56,19 @@ impl PluginDesc {
     }
 }
 
-/// 1 つのパラメータ。値は CLAP の plain value（`min`..=`max`）。
+/// 1 つのパラメータ。値は CLAP の plain value、VST3 の正規化した値（`min`..=`max`）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ParamDesc {
-    /// CLAP のパラメータの `id`。プラグインの版が変わっても変わらない。
+    /// パラメータの `id`（CLAP の `clap_id`、VST3 の `ParamID`）。プラグインの版が変わっても変わらない。
     pub id: u32,
     pub name: String,
-    /// `/` で区切った置き場所。
+    /// `/` で区切った置き場所（VST3 は単位の ID）。
     #[serde(default)]
     pub module: String,
     pub min: f64,
     pub max: f64,
     pub default: f64,
-    /// 整数の値だけを取る。
+    /// 飛び飛びの値だけを取る。
     #[serde(default)]
     pub stepped: bool,
     /// 利用者に見せない。
@@ -81,14 +82,14 @@ pub struct ParamDesc {
 /// `HostRequest::Prepare` の `params`。プラグインを読み込み、共有メモリにつなぎ、処理を始める。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct PrepareParams {
-    /// `.clap` のファイル。
+    /// プラグインのファイル。
     pub path: PathBuf,
-    /// 使うプラグインの `id`。`None` ならファイルの最初のプラグイン。
+    /// 使うプラグインの `id`（[`PluginDesc::id`]）。`None` ならファイルの最初のプラグイン。
     #[serde(default)]
     pub plugin: Option<String>,
     /// サンプルレート。
     pub sample_rate: u32,
-    /// アプリが作った共有メモリとイベントの名前の元（[`crate::shm`]）。
+    /// アプリが作った共有メモリとイベントの名前の元（[`super::block`]）。
     pub link: String,
 }
 

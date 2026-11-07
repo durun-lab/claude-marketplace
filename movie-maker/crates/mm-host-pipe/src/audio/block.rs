@@ -3,7 +3,7 @@
 //! アプリが名前つきで作り、ホストが名前で開く。1 回の往復は、アプリが入力とパラメータのイベントを書いて
 //! 要求のイベントを立て、ホストが処理して出力を書き完了のイベントを立てる。番を持たない側は触らない。
 //! イベントの待ちと立てるのが両方のプロセスのメモリの順序をそろえる。
-//! 名前つきの区画とイベントは共通の実装（`mm_host_pipe::shm`）で、ここは区画の中の並び（[`Block`]）を持つ。
+//! 名前つきの区画とイベントは [`crate::shm`] で、ここは区画の中の並び（[`Block`]）を持つ。
 
 use mm_types::{MmError, Result};
 
@@ -18,7 +18,7 @@ const ERROR_BYTES: usize = 512;
 /// ホストが `Prepare` の後に書くプラグインの記述（JSON）の上限（バイト）。
 const INFO_BYTES: usize = 256 * 1024;
 /// 共有メモリの先頭の印。
-const MAGIC: u32 = u32::from_le_bytes(*b"MMCL");
+const MAGIC: u32 = u32::from_le_bytes(*b"MMAU");
 /// 共有メモリの並びの版。並びを変えたら上げる。
 const LAYOUT_VERSION: u32 = 1;
 
@@ -28,7 +28,7 @@ const LAYOUT_VERSION: u32 = 1;
 pub enum Command {
     /// `frames` フレームを処理する。
     Process = 0,
-    /// プラグインの内部の状態（遅延の中身など）を消す（CLAP の `reset`）。
+    /// プラグインの内部の状態（遅延の中身など）を消す（CLAP の `reset`、VST3 は活性を切って入れ直す）。
     Reset = 1,
 }
 
@@ -52,7 +52,7 @@ pub struct ParamEvent {
     pub value: f64,
 }
 
-/// 共有メモリの中身。音は CLAP と同じくチャンネルごとに分けて（planar）持つ。
+/// 共有メモリの中身。音は CLAP と VST3 の処理の入れ物と同じく、チャンネルごとに分けて（planar）持つ。
 #[repr(C)]
 pub struct Block {
     magic: u32,
@@ -154,20 +154,15 @@ fn truncate_utf8(s: &str, limit: usize) -> &[u8] {
     &s.as_bytes()[..end]
 }
 
-pub use mm_host_pipe::shm::{object_names, Event, Process, Wake};
+pub use crate::shm::{object_names, unique_link, Event, Process, Wake};
 
-/// このプロセスで重ならない元の名前（`Local\mm-clap-<pid>-<番号>`）。
-pub fn unique_link() -> String {
-    mm_host_pipe::shm::unique_link("mm-clap")
-}
-
-/// 音のブロックの共有メモリ。名前つきの区画（`mm_host_pipe::shm::Mapping`）を [`Block`] の大きさで写し、先頭を使う。
-pub struct Mapping(mm_host_pipe::shm::Mapping);
+/// 音のブロックの共有メモリ。名前つきの区画（[`crate::shm::Mapping`]）を [`Block`] の大きさで写し、先頭を使う。
+pub struct Mapping(crate::shm::Mapping);
 
 impl Mapping {
     /// 名前つきで作る（アプリ）。中身は 0 で埋まっている。
     pub fn create(name: &str) -> Result<Self> {
-        let mut mapping = Self(mm_host_pipe::shm::Mapping::create(
+        let mut mapping = Self(crate::shm::Mapping::create(
             name,
             std::mem::size_of::<Block>(),
         )?);
@@ -177,7 +172,7 @@ impl Mapping {
 
     /// 名前で開く（ホスト）。
     pub fn open(name: &str) -> Result<Self> {
-        let mut mapping = Self(mm_host_pipe::shm::Mapping::open(
+        let mut mapping = Self(crate::shm::Mapping::open(
             name,
             std::mem::size_of::<Block>(),
         )?);
@@ -205,9 +200,13 @@ mod tests {
         assert!(std::str::from_utf8(cut).is_ok());
     }
 
+    #[cfg(windows)]
     #[test]
-    fn 元の名前は_mm_clap_で始まり重ならない() {
-        assert!(unique_link().starts_with("Local\\mm-clap-"));
-        assert_ne!(unique_link(), unique_link());
+    fn 作った側の印と版を開いた側が確かめる() {
+        let name = unique_link("mm-audio-test");
+        let mut made = Mapping::create(&name).expect("作れる");
+        made.block().set_info(b"{}").expect("書ける");
+        let mut opened = Mapping::open(&name).expect("開ける");
+        assert_eq!(opened.block().info(), b"{}");
     }
 }
