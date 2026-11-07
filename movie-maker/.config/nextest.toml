@@ -26,3 +26,21 @@ slow-timeout = { period = "60s" }
 
 [profile.quarantine.junit]
 path = "junit-quarantine.xml"
+
+# CEF のホストは 1 つで数百 MB と複数のプロセスを使う。CPU が詰まると Prepare や起動の Ping が時間切れになるので、
+# CEF を起こすテストの同時の数を絞る（nextest の test-groups。profile を継ぐ設定の overrides は default のものが全部に効く）。
+[test-groups.cef-host]
+max-threads = 2
+
+[[profile.default.overrides]]
+filter = "package(mm-host-cef) | package(mm-nodes-cef) | package(mm-text-cef)"
+test-group = "cef-host"
+
+# GPU でデコードするテストは 4K の素材で VRAM と CUDA のコンテキストを使う。ワークスペース全体を回すと
+# 「CUDA のデバイスを開けない」「Not enough memory left」でデコーダーが作れないことがあるので、同時の数を絞る。
+[test-groups.gpu-decode]
+max-threads = 2
+
+[[profile.default.overrides]]
+filter = "package(mm-decode-cuvid) | package(mm-decode-d3d12va)"
+test-group = "gpu-decode"

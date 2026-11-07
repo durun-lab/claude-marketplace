@@ -17,7 +17,10 @@ use windows::Win32::Graphics::Direct3D12::ID3D12Resource;
 
 const PAGE: &str = include_str!("pages/golden.html");
 const BENCH_PAGE: &str = include_str!("../../assets/bench.html");
-pub(crate) const TIMEOUT: Duration = Duration::from_secs(3);
+/// 契約の時間切れの検査が使う、ホストの 1 要求の期限。
+const TIMEOUT: Duration = Duration::from_secs(3);
+/// 要求の結果を見るテストの期限。CPU が詰まると CEF の起動と Prepare が数秒かかるので、時間を見ないテストは長く待つ。
+pub(crate) const REQUEST_LIMIT: Duration = Duration::from_secs(60);
 /// 契約の時間切れに使う、レンダラーを止める長さ。`TIMEOUT` より長くする。
 const BUSY_MS: u64 = 8000;
 const REQUIRE_ENV: &str = "MM_REQUIRE_CEF";
@@ -58,7 +61,7 @@ pub(crate) fn prepare(host: &mut PipeHost, page: &str) {
     let req = HostRequest::Prepare {
         params: serde_json::json!({ "html": page }),
     };
-    let res = host.request(&req, TIMEOUT).expect("Prepare");
+    let res = host.request(&req, REQUEST_LIMIT).expect("Prepare");
     assert_eq!(res, HostResponse::Prepared);
 }
 
@@ -74,7 +77,7 @@ pub(crate) fn render(
         params,
     };
     match host
-        .request(&req, TIMEOUT)
+        .request(&req, REQUEST_LIMIT)
         .unwrap_or_else(|e| panic!("RenderFrame {t:?} {size:?}: {e}"))
     {
         HostResponse::Frame(frame) => frame,

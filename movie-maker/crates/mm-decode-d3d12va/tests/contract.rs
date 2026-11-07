@@ -206,13 +206,19 @@ fn フレームを持ち続けてもデコードが止まらない() {
     assert!(dec.pending_surfaces() <= 8, "保持するサーフェスは上限まで");
 }
 
+/// 変換の前に GPU を塞ぐ長さ。
+const BUSY: Duration = Duration::from_millis(600);
+/// 対照で GPU を塞ぐ長さを倍にしていく最大の回数。ほかのプロセスが GPU を使っていると、短い長さでは待ちを外しても
+/// 変換が間に合って混ざらないことがある。混ざるまで延ばして、対照が検査として成り立つことを確かめる。
+const CONTROL_ROUNDS: u32 = 4;
+
 /// 変換を GPU が遅れて実行しても、サーフェスが先に上書きされて別のフレームが混ざることがない。
-fn mixed_frames(wait_for_gpu: bool) -> usize {
+fn mixed_frames(wait_for_gpu: bool, busy: Duration) -> usize {
     let ctx = ctx();
     let path = fixtures(&FILES).join("cfr.mp4");
     let mut dec = D3d12vaDecoder::open(&path, &ctx).expect("開ける");
     dec.set_gpu_wait(wait_for_gpu);
-    busy_gpu(&ctx, Duration::from_millis(600));
+    busy_gpu(&ctx, busy);
     let mut frames = Vec::new();
     while let Some(f) = dec.next_frame().expect("デコード") {
         frames.push(f);
@@ -230,7 +236,7 @@ fn gpu_が遅れても別のフレームが混ざらない() {
         return;
     }
     for _ in 0..3 {
-        assert_eq!(mixed_frames(true), 0);
+        assert_eq!(mixed_frames(true, BUSY), 0);
     }
 }
 
@@ -359,9 +365,11 @@ fn 待ちを外すと別のフレームが混ざる_対照() {
     if !available() {
         return;
     }
-    let mixed = mixed_frames(false);
+    let mixed = (0..CONTROL_ROUNDS)
+        .map(|round| mixed_frames(false, BUSY * 2u32.pow(round)))
+        .find(|&mixed| mixed > 0);
     assert!(
-        mixed > 0,
-        "待ちを外しても混ざらないなら、この負荷では検査にならない"
+        mixed.is_some(),
+        "GPU を塞ぐ長さを延ばしても待ちを外して混ざらないなら、この検査は成り立たない"
     );
 }
