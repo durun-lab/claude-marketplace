@@ -9,7 +9,7 @@ CLAP の音のプラグイン（`.clap`）を別プロセスで読み込み、�
 |---|---|---|
 | 種類 `audio.clap`（`ClapEffectKind`） | `src/kind.rs` | 効果のインスタンスごとにホストを 1 つ持つ。続きでない区間ではプラグインを `reset` する |
 | 1 つのインスタンス（`ClapEffect`） | `src/effect.rs` | ホストを起こし、共有メモリで往復させる。パラメータは差だけをイベントにする |
-| 共有メモリとイベント | `src/shm.rs`、`src/shm/imp.rs` | 並び（`Block`）と、Windows の名前つきのファイルマッピングと自動で戻るイベント |
+| 共有メモリとイベント | `src/shm.rs` | 区画の中の並び（`Block`）。名前つきのファイルマッピングと自動で戻るイベントは共通の実装 `mm_host_pipe::shm` |
 | ランチャー（`ClapLauncher`、`describe_bundle`、`find_host`） | `src/launcher.rs` | `mm-host-clap serve` を `mm_host_pipe::PipeHost` で起こし、`describe` を 1 ファイル 1 プロセスで実行する |
 | 記述と要求の形（`BundleDesc`、`PluginDesc`、`ParamDesc`、`PrepareParams`） | `src/desc.rs` | ホストとアプリの間の JSON |
 | ホストの実行ファイル | `src/host/` | `clack-host` でプラグインを読み込み、音のスレッドで処理する |

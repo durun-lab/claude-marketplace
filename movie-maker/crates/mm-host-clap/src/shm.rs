@@ -3,6 +3,7 @@
 //! アプリが名前つきで作り、ホストが名前で開く。1 回の往復は、アプリが入力とパラメータのイベントを書いて
 //! 要求のイベントを立て、ホストが処理して出力を書き完了のイベントを立てる。番を持たない側は触らない。
 //! イベントの待ちと立てるのが両方のプロセスのメモリの順序をそろえる。
+//! 名前つきの区画とイベントは共通の実装（`mm_host_pipe::shm`）で、ここは区画の中の並び（[`Block`]）を持つ。
 
 use mm_types::{MmError, Result};
 
@@ -153,39 +154,44 @@ fn truncate_utf8(s: &str, limit: usize) -> &[u8] {
     &s.as_bytes()[..end]
 }
 
-/// 共有メモリと 2 つのイベントの名前。`link` はアプリが作る元の名前。
-pub fn object_names(link: &str) -> [String; 3] {
-    ["mem", "req", "done"].map(|suffix| format!("{link}-{suffix}"))
-}
+pub use mm_host_pipe::shm::{object_names, Event, Process, Wake};
 
-/// このプロセスで重ならない元の名前。`Local\` はログオンのセッションの中だけで見える名前空間。
+/// このプロセスで重ならない元の名前（`Local\mm-clap-<pid>-<番号>`）。
 pub fn unique_link() -> String {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    static NEXT: AtomicU64 = AtomicU64::new(0);
-    let n = NEXT.fetch_add(1, Ordering::Relaxed);
-    format!("Local\\mm-clap-{}-{n}", std::process::id())
+    mm_host_pipe::shm::unique_link("mm-clap")
 }
 
-/// 待った結果。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Wake {
-    /// イベントが立った。
-    Signaled,
-    /// 相手のプロセスが終わった。
-    Exited,
-    /// 期限を過ぎた。
-    TimedOut,
+/// 音のブロックの共有メモリ。名前つきの区画（`mm_host_pipe::shm::Mapping`）を [`Block`] の大きさで写し、先頭を使う。
+pub struct Mapping(mm_host_pipe::shm::Mapping);
+
+impl Mapping {
+    /// 名前つきで作る（アプリ）。中身は 0 で埋まっている。
+    pub fn create(name: &str) -> Result<Self> {
+        let mut mapping = Self(mm_host_pipe::shm::Mapping::create(
+            name,
+            std::mem::size_of::<Block>(),
+        )?);
+        mapping.block().init();
+        Ok(mapping)
+    }
+
+    /// 名前で開く（ホスト）。
+    pub fn open(name: &str) -> Result<Self> {
+        let mut mapping = Self(mm_host_pipe::shm::Mapping::open(
+            name,
+            std::mem::size_of::<Block>(),
+        )?);
+        mapping.block().check()?;
+        Ok(mapping)
+    }
+
+    /// 中身。番を持っている間だけ使う（相手は自分の番の間しか書かない）。
+    pub fn block(&mut self) -> &mut Block {
+        // SAFETY: Block は repr(C) で整数、浮動小数、その配列だけを持ち、どのビット列も正しい値。
+        // 大きさは Block で写し、並び（8 バイト）は写しの先頭の 4 KiB 境界が満たす。
+        unsafe { self.0.get_mut::<Block>() }
+    }
 }
-
-#[cfg(windows)]
-mod imp;
-#[cfg(not(windows))]
-mod stub;
-
-#[cfg(windows)]
-pub use imp::{Event, Mapping, Process};
-#[cfg(not(windows))]
-pub use stub::{Event, Mapping, Process};
 
 #[cfg(test)]
 mod tests {
@@ -200,12 +206,8 @@ mod tests {
     }
 
     #[test]
-    fn 名前は元の名前から_3_つ作る() {
-        let [mem, req, done] = object_names("Local\\x");
-        assert_eq!(
-            (mem.as_str(), req.as_str(), done.as_str()),
-            ("Local\\x-mem", "Local\\x-req", "Local\\x-done")
-        );
+    fn 元の名前は_mm_clap_で始まり重ならない() {
+        assert!(unique_link().starts_with("Local\\mm-clap-"));
         assert_ne!(unique_link(), unique_link());
     }
 }

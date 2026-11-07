@@ -266,6 +266,23 @@ pub trait NodeKind: Send + Sync {
     fn version(&self) -> u32;
     /// パラメータの定義。UI の入力フィールドと MCP の引数はここから作る。
     fn params(&self) -> ParamSchema;
+    /// このパラメータの組のときの定義。パラメータで一覧が変わる種類（`ofx` はバンドルとプラグインで変わる）が上書きし、
+    /// `params()` の後ろに選んだものの分を足して返す。既定は `params()`（RFC 0132）。
+    fn params_for(&self, params: &Params) -> ParamSchema {
+        let _ = params;
+        self.params()
+    }
+    /// 画素を変えうる、パラメータと素材の外の入力の指紋（`ofx` のプラグインの共有ライブラリの印など）。
+    /// レンダラーはフレームのキャッシュのキーに入れ、`None` ならそのフレームを覚えない。
+    /// `asset_path` は素材のパスを引く。既定は空の文字列（パラメータと素材だけで画素が決まる。RFC 0132）。
+    fn cache_fingerprint(
+        &self,
+        params: &Params,
+        asset_path: &dyn Fn(&AssetId) -> Option<PathBuf>,
+    ) -> Option<String> {
+        let _ = (params, asset_path);
+        Some(String::new())
+    }
     /// 受ける映像の定義。
     fn inputs(&self) -> InputSchema {
         InputSchema::default()

@@ -1,4 +1,4 @@
-//! 別プロセスのホスト（`mm-host-cef`、`mm-host-ofx`）のアプリ側の接続。
+//! 別プロセスのホスト（`mm-host-cef`、`mm-host-ofx`、`mm-host-clap`）のアプリ側の接続と、大きなデータを渡す共有メモリ（[`shm`]）。
 //!
 //! ホストの実行ファイルを `serve` のサブコマンドで子プロセスとして起こし、標準入出力で
 //! `HostRequest`/`HostResponse` の JSON を 1 行ずつやり取りする。ホストの実装ごとの違い
@@ -8,6 +8,7 @@
 
 mod job;
 mod pipe;
+pub mod shm;
 
 pub use job::{kill_tree, Job};
 pub use pipe::{remove_work_dir, PipeHost, PipeKind, StaleHandles, SERVE_COMMAND, SPEC_ENV};

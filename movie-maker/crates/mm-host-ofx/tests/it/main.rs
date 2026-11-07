@@ -52,6 +52,7 @@ fn render_params(source: Option<&RgbaImage>, values: &[(&str, ParamValue)]) -> s
     let p = RenderParams {
         source: source.map(SharedFrame::from_image),
         values: params,
+        shared: None,
     };
     serde_json::to_value(p).unwrap()
 }
@@ -208,6 +209,42 @@ fn パラメータの値を渡して_float_の_1_フレームを描ける() {
     assert!(matches!(bad, Ok(HostResponse::Error { .. })), "{bad:?}");
     let empty = image_of(render(host.as_mut(), size, render_params(None, &[])).unwrap());
     assert_eq!(empty, RgbaImage::transparent(size), "入力が無ければ透明");
+}
+
+#[cfg(windows)]
+#[test]
+fn 共有メモリで入力と結果を渡せる() {
+    use mm_host_ofx::{frame_bytes, SharedPixels};
+    use mm_host_pipe::shm::{self, Mapping};
+
+    let mut host = start("MmTestGain");
+    let src = source();
+    let one = frame_bytes(src.size());
+    let name = shm::unique_link("mm-ofx-test");
+    let mut mapping = Mapping::create(&name, 2 * one).expect("作れる");
+    shm::write_f32(mapping.bytes_mut(), 0, src.data()).unwrap();
+    let mut params = Params::new();
+    params.set("gain", ParamValue::Number(0.5));
+    let p = RenderParams {
+        source: None,
+        values: params,
+        shared: Some(SharedPixels {
+            name,
+            has_source: true,
+        }),
+    };
+    let res = render(host.as_mut(), src.size(), serde_json::to_value(p).unwrap()).unwrap();
+    assert_eq!(
+        res,
+        HostResponse::Frame(SharedFrame::Cpu {
+            size: src.size(),
+            data: Vec::new()
+        }),
+        "結果は共有メモリに書き、応答の data は空"
+    );
+    let data = shm::read_f32(mapping.bytes(), one, one / 4).unwrap();
+    let out = RgbaImage::from_raw(src.size(), data).unwrap();
+    assert_eq!(out.pixel(1, 1), Rgba::new(0.125, 0.125, 0.125, 1.0));
 }
 
 #[test]
