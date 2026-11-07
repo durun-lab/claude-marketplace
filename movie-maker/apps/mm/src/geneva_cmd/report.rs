@@ -23,9 +23,9 @@ pub enum Gap {
     Rotation,
     /// 直線でないイージング。
     Easing,
-    /// 映像と画像以外の source（`html`、`text`、`captions`、`color`、`composition`）。
+    /// 変換できない source（`text`、`captions`、`color`、`composition`、画面と違う大きさの `html`）。
     Source,
-    /// 字幕のトラック、入れ子のコンポジション、複数の出力。
+    /// 字幕のトラック、入れ子のコンポジション、映像でない出力。
     TopLevel,
     /// 音のクリップの速さ。
     AudioSpeed,
@@ -42,8 +42,14 @@ impl Gap {
             Self::FitCoverFill => ("fit", "cover と fill を contain にした"),
             Self::Rotation => ("rotation", "回転を除いた"),
             Self::Easing => ("ease", "直線でないイージングを直線で近似した"),
-            Self::Source => ("source", "映像と画像以外の source を除いた"),
-            Self::TopLevel => ("top-level", "字幕のトラック、入れ子、複数の出力を除いた"),
+            Self::Source => (
+                "source",
+                "映像、画像、画面の大きさの html 以外の source を除いた",
+            ),
+            Self::TopLevel => (
+                "top-level",
+                "字幕のトラック、入れ子、映像でない出力を除いた",
+            ),
             Self::AudioSpeed => ("audio.speed", "音のクリップの速さを 1 にした"),
         }
     }

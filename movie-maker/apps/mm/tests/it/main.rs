@@ -12,11 +12,15 @@ mod common;
 mod cut_words;
 #[cfg(feature = "ffmpeg")]
 mod ep03;
+#[cfg(feature = "ffmpeg")]
+mod ep04;
 mod lut_cache;
 #[cfg(feature = "ffmpeg")]
 mod preview_frame;
 #[cfg(feature = "ffmpeg")]
 mod render;
+#[cfg(feature = "ffmpeg")]
+mod replay;
 #[cfg(feature = "ffmpeg")]
 mod shorts;
 #[cfg(feature = "ffmpeg")]

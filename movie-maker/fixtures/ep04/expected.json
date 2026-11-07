@@ -1,0 +1,13 @@
+{
+  "note": "ep04（作曲Vlog #4。制作中の v4）の再現の入力と、前の書き出し（確認用の 720p）。素材は D:/dev/DTM_Vlog/ep04/ にあり、リポジトリに入れない。apps/mm/tests/it/ep04.rs が MM_EP04_DIR で読む。回の作業で timeline.json か書き出しが変わったら、ハッシュとフレーム数を測り直して書き換える。",
+  "timeline": {
+    "path": "timeline.json",
+    "sha256": "dd1643e028a219b8971e82e1cf0feece13fe4cd167164f1b68191cb830f2dfec"
+  },
+  "reference": {
+    "path": "render/ep04_draft.mp4",
+    "sha256": "a44c0449664e115ba8f41fd2560b1b6ad822acedd322d3d3e0ff3ab342acf8cb",
+    "frames": 47182,
+    "fps": 30
+  }
+}
