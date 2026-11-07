@@ -252,7 +252,7 @@ fn デコーダーの画素の作り方のバージョンが上がったら前�
         })
     };
     let (after, hit) = first_main(&mut renderer(&ctx, new(), Some(&store)), &p);
-    assert!(!hit, "開く前の素材のキーにバージョンの組が入る");
+    assert!(!hit, "まだ開いていない素材のキーにバージョンの組が入る");
     let truth = render_at(&mut renderer(&ctx, new(), None), &p, "main", t0(), SIZE);
     assert!(diff(&after, &truth) <= 1e-6, "新しい作り方の画素で描く");
     assert!(

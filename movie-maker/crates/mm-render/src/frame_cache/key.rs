@@ -4,7 +4,7 @@
 //! 画素を変えうる外の入力は全部キーに入れる: 評価済みのパラメータ、素材の `contentHash`（効果が参照する
 //! LUT などの素材も）、種類の指紋（`NodeKind::cache_fingerprint`。`ofx` のプラグインのスタンプ、素材のファイルを自分で読む
 //! 種類のファイルの中身のハッシュ）、色の変換の設定の指紋（`ColorTransform::config_fingerprint`）、素材ごとに選ばれた
-//! デコーダーの実装（`Decoder::backend_id`。開く前は [`unopened_decoder`]）。`contentHash` が空の素材（まだ取り込んでいない）に頼る画像はキャッシュしない。
+//! デコーダーの実装（`Decoder::backend_id`。まだ開いていない素材は [`unopened_decoder`]）。`contentHash` が空の素材（まだ取り込んでいない）に頼る画像はキャッシュしない。
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;

@@ -171,3 +171,28 @@ fn ホストの実行ファイルを差し替えると指紋が変わり_モッ�
         Some(String::new())
     );
 }
+
+#[test]
+fn 組み立てたホストは同じフォルダーの本体の_dll_と_libcef_を指紋に入れる() {
+    let dir = std::env::temp_dir().join(format!("mm-nodes-cef-bundle-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("一時フォルダー");
+    let exe = dir.join("mm-host-cef.exe");
+    std::fs::write(&exe, "boot").expect("書ける");
+    let kind = WebCefKind::with_host(Arc::new(SampleLauncher), exe.clone());
+    let fp = || kind.cache_fingerprint(&Params::new(), &|_| None);
+    let alone = fp().expect("指紋がある");
+    std::fs::write(dir.join("mm-host-cef.dll"), "body").expect("書ける");
+    let with_body = fp().expect("指紋がある");
+    assert_ne!(
+        with_body, alone,
+        "起動の実行ファイルが読む本体の DLL を見分ける"
+    );
+    std::fs::write(dir.join("libcef.dll"), "cef").expect("書ける");
+    let with_cef = fp().expect("指紋がある");
+    assert_ne!(
+        with_cef, with_body,
+        "実行ファイルの隣の libcef.dll を見分ける"
+    );
+    std::fs::write(dir.join("libcef.dll"), "cef2").expect("書ける");
+    assert_ne!(fp(), Some(with_cef), "差し替えた libcef.dll は別の指紋");
+}

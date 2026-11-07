@@ -74,6 +74,18 @@ fn relock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// ホストが読むファイルのスタンプ。`bundle.sh` で組み立てたホストは、起動の実行ファイル（CEF の `bootstrapc.exe`）が
+/// 同じ名前の DLL（本体）を読み、`libcef.dll` も同じフォルダーのものを読む（Windows の DLL の探索は実行ファイルの
+/// フォルダーが `PATH` より先）。隣に無ければ、ランチャーが `PATH` の先頭に足す `CEF_PATH` のものを読む。
+fn host_stamp(exe: &Path) -> String {
+    let beside = exe.parent().map(|d| d.join(LIBCEF)).filter(|p| p.is_file());
+    let libcef =
+        beside.or_else(|| std::env::var_os(CEF_PATH_ENV).map(|d| Path::new(&d).join(LIBCEF)));
+    let cef = libcef.map_or_else(|| "unset".to_owned(), |p| file_stamp(&p));
+    let body = file_stamp(&exe.with_extension("dll"));
+    format!("host={}|body={body}|cef={cef}", file_stamp(exe))
+}
+
 impl WebCefKind {
     fn with_hosts(hosts: Option<HostPages>, executable: Option<PathBuf>) -> Self {
         Self {
@@ -362,20 +374,18 @@ impl NodeKind for WebCefKind {
         }
     }
 
-    /// ホストの実行ファイルと CEF の配布物（`libcef.dll`）のスタンプ。Chromium が変われば同じページでも画素が変わりうる。
+    /// ホストの実行ファイル、本体の DLL、CEF の配布物（`libcef.dll`）のスタンプ（[`host_stamp`]）。
+    /// Chromium やホストが変われば同じページでも画素が変わりうる。
     fn cache_fingerprint(
         &self,
         _params: &Params,
         _asset_path: &dyn Fn(&AssetId) -> Option<PathBuf>,
     ) -> Option<String> {
-        let Some(exe) = &self.executable else {
-            return Some(String::new());
-        };
-        let cef = std::env::var_os(CEF_PATH_ENV).map_or_else(
-            || "unset".to_owned(),
-            |dir| file_stamp(&Path::new(&dir).join(LIBCEF)),
-        );
-        Some(format!("host={}|cef={cef}", file_stamp(exe)))
+        Some(
+            self.executable
+                .as_deref()
+                .map_or_else(String::new, host_stamp),
+        )
     }
 
     fn migrate(&self, old: serde_json::Value, from: u32) -> Result<Params> {

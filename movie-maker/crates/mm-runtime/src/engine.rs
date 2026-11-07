@@ -113,7 +113,7 @@ impl Engine {
         Some(gpu.context().clone())
     }
 
-    /// デコーダーが名乗りうる実装の名前の全部（`DecoderFactory::backend_ids`）。開く前の素材の画素に頼るキー
+    /// デコーダーが名乗りうる実装の名前の全部（`DecoderFactory::backend_ids`）。まだ開いていない素材の画素に頼るキー
     /// （配信の区間のキーなど）に入れ、画素の作り方のバージョンが上がったら前の結果を使わない。
     pub fn decoder_backend_ids(&self) -> Vec<&'static str> {
         self.parts.decoders.backend_ids()
