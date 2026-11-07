@@ -33,7 +33,7 @@ async fn project(State(st): State<Arc<MobileState>>) -> Result<Response, MobileE
     .into_response())
 }
 
-/// Claude の待ち受けの `GET /events` と同じ通知（`hello`、`change`、`resync`、`proposal`）。
+/// Claude の待ち受けの `GET /events` と同じ通知（`hello`、`change`、`resync`、`proposal`、`comment`）。
 async fn events(State(st): State<Arc<MobileState>>) -> Result<Response, MobileError> {
     Ok(event_stream(&st.core)?.into_response())
 }

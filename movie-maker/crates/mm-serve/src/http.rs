@@ -325,6 +325,7 @@ pub(crate) fn event_stream(
     let rx = core.subscribe();
     let version = core.version()?;
     let proposals_rx = core.subscribe_proposals();
+    let comments_rx = core.subscribe_comments();
     let core = core.clone();
     let hello = Event::default()
         .event("hello")
@@ -350,7 +351,7 @@ pub(crate) fn event_stream(
         })))
     });
     // コメントの通知も同じく、取りこぼしたら `GET /comments` で読み直す。
-    let comments = BroadcastStream::new(st.core.subscribe_comments()).filter_map(|item| {
+    let comments = BroadcastStream::new(comments_rx).filter_map(|item| {
         let event = Event::default().event("comment").json_data(item.ok()?);
         Some(Ok(event.unwrap_or_else(|e| {
             Event::default().event("error").data(e.to_string())

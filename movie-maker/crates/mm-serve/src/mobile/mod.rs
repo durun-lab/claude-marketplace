@@ -26,6 +26,7 @@ use serde_json::json;
 use tokio::runtime::{Builder, Runtime};
 
 use crate::core::{Caller, Core, ServeError};
+use crate::http::AppState;
 
 pub use devices::{
     DeviceInfo, Devices, PairingCode, CREDENTIAL_BYTES, PAIRING_CODE_LEN, PAIRING_MAX_FAILURES,
@@ -132,12 +133,19 @@ impl DeviceInfo {
 /// 守りは最後に全体へ掛けるので、`nest` した認証なしのルーター（Story の読み出しなど）も守りの内側に入る。
 pub(crate) fn router(state: Arc<MobileState>) -> Router {
     let core = state.core.clone();
+    // コメントのハンドラーは Claude の待ち受けと共有し、`core` だけを読む。トークンと `Host` は守り（guard）が確かめる。
+    let shared = Arc::new(AppState {
+        core: core.clone(),
+        token: String::new(),
+        hosts: Vec::new(),
+    });
     Router::new()
         .merge(ops::routes())
         .merge(pair::routes())
         .merge(proposals::routes())
         .merge(read::routes())
         .with_state(state.clone())
+        .nest("/m/api", crate::comments::routes().with_state(shared))
         .nest("/m/api", crate::story_http::story_routes(core))
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(middleware::from_fn_with_state(state, guard::guard))
