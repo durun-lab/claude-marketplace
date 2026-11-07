@@ -9,8 +9,8 @@
     "no": {"type": "number", "default": "1", "description": "今の行（1 から）"},
     "text": {"type": "text", "default": "", "description": "list が空のときに出す 1 行（plain の節の題）"},
     "tag": {"type": "text", "default": "", "description": "紙の札の文字。空なら「今日の ToDo」。サブトピックの小さな ToDo では親の題"},
-    "side": {"type": "text", "default": "right", "description": "置く側。right は右上（VR でアバターの頭を避ける）、left は左上（画面収録）"},
-    "plain": {"type": "text", "default": "false", "description": "true なら札と欄を出さず、節の題だけを同じ紙に出す"},
+    "side": {"type": "text", "choices": ["right", "left"], "default": "right", "description": "置く側。right は右上（VR でアバターの頭を避ける）、left は左上（画面収録）"},
+    "plain": {"type": "bool", "default": "false", "description": "true なら札と欄を出さず、節の題だけを同じ紙に出す"},
     "at": {"type": "time", "description": "出る時刻（コンポジションの秒）"},
     "dur": {"type": "time", "default": "4", "description": "出ている長さ（秒）"},
     "cut": {"type": "id", "optional": true, "description": "接続するカット"}

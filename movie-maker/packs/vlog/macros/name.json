@@ -9,8 +9,8 @@
     "sub": {"type": "text", "default": "社会人DTMer", "description": "肩書き（黄色の札）"},
     "x": {"type": "number", "default": "1104", "description": "札の左上の x（コンポジションの画素）"},
     "y": {"type": "number", "default": "520", "description": "札の左上の y（コンポジションの画素）"},
-    "side": {"type": "text", "default": "right", "description": "札を置く側。right は顔の右（矢印は左の顔を指す）、left は顔の左（矢印は右下の顔を指す）"},
-    "arrow": {"type": "text", "default": "true", "description": "false なら矢印を出さない（札を顔から離して置くとき）"},
+    "side": {"type": "text", "choices": ["right", "left"], "default": "right", "description": "札を置く側。right は顔の右（矢印は左の顔を指す）、left は顔の左（矢印は右下の顔を指す）"},
+    "arrow": {"type": "bool", "default": "true", "description": "false なら矢印を出さない（札を顔から離して置くとき）"},
     "at": {"type": "time", "description": "出る時刻（コンポジションの秒）"},
     "dur": {"type": "time", "default": "3", "description": "出ている長さ（秒）"},
     "cut": {"type": "id", "optional": true, "description": "接続するカット"}

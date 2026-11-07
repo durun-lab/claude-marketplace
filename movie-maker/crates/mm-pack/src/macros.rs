@@ -78,6 +78,34 @@ pub struct ParamDef {
     pub optional: bool,
     #[serde(default)]
     pub description: String,
+    /// 選べる値。空でなければ、値（`format` が `list` なら空白で区切った各語）はこのどれかにする。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub choices: Vec<String>,
+    /// 値の書式。展開の前に検査する。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<ParamFormat>,
+}
+
+/// 区切りのある文字の引数の書式。ページが読む約束と同じ形で、読めない値を展開の前に誤りにする。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ParamFormat {
+    /// 空白で区切った `choices` の語。
+    List,
+    /// 空白で区切った数（`1 2.5`）。
+    Numbers,
+    /// 空白で区切った点（`x,y x,y`）。
+    Points,
+    /// 矩形 `x,y,w,h`（空も可）。
+    Rect,
+    /// 空白で区切った `行の番号@始まり+長さ`（番号は 1 から）。
+    Cues,
+    /// 空白で区切った `音の高さ@始まり+長さ`。
+    Notes,
+    /// 「/」で行を分け、空白で区切った `言葉@始まり+長さ`。
+    Words,
+    /// 「|」で区切った `言葉@始まり+長さ`（空も可）。
+    Segs,
 }
 
 /// 引数の型。引数は全部文字で受け、この型で読む。
@@ -92,6 +120,8 @@ pub enum ParamType {
     Time,
     /// 数。
     Number,
+    /// 真偽（`true` か `false`）。
+    Bool,
 }
 
 /// 手順 1 つ。
