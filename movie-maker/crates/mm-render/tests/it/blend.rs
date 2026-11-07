@@ -16,7 +16,7 @@ const BASE: Rgba = Rgba::new(0.5, 0.25, 1.0, 1.0);
 /// 上の色（不透明）。
 const TOP: Rgba = Rgba::new(0.5, 0.5, 0.2, 1.0);
 
-/// `base` の上に `top` を `mode` と不透明度 `opacity` で重ねた中心の画素と、レンダラーの誤り。GPU が無ければ `None`。
+/// `base` の上に `top` を `mode` と不透明度 `opacity` で重ねた中心の画素と、レンダラーが記録したエラー。GPU が無ければ `None`。
 fn blended(base: Rgba, top: Rgba, mode: BlendMode, opacity: f64) -> Option<(Rgba, Vec<String>)> {
     let ctx = gpu()?;
     let mut over = layer("top", solid(top), 2);
@@ -85,7 +85,7 @@ fn 加算とスクリーンは明るくする() {
 }
 
 #[test]
-fn 描けない合成モードは_normal_で重ねて誤りに残す() {
+fn 描けない合成モードは_normal_で重ねてエラーを記録する() {
     let Some((px, errors)) = blended(BASE, TOP, BlendMode::Overlay, 1.0) else {
         return;
     };

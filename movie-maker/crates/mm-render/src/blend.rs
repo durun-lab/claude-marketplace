@@ -1,10 +1,12 @@
 //! 合成モード（`Layer.blend`）を GPU の固定の合成で描く。
 //!
-//! 画像は premultiplied で、式は W3C Compositing and Blending Level 1 の premultiplied の形
-//! `co = cs·(1 − αb) + cb·(1 − αs) + αs·αb·B(Cb, Cs)`。下の色を読まずに固定の合成で正しく描ける
-//! `add`（線形の加算）、`screen`、`multiply` を描く。`multiply` は `cs·cb + cb·(1 − αs)` と `cs·(1 − αb)` の 2 回に分け、
-//! 1 回目はアルファを書かずに下のアルファ（αb）を 2 回目まで残す。ほかのモードは下の色を読む別のパスが要るので
-//! `normal` で重ね、レンダラーの誤りに残す。
+//! 画像は作業色空間（線形の光）の premultiplied で、式は W3C Compositing and Blending Level 1 の premultiplied の形
+//! `co = cs·(1 − αb) + cb·(1 − αs) + αs·αb·B(Cb, Cs)`。下の色を読まずに固定の合成で描ける `screen`、`multiply` と、
+//! `add`（W3C の外。After Effects の linear dodge と同じく色を足し、アルファは source-over）を描く。
+//! `multiply` は `cs·cb + cb·(1 − αs)` と `cs·(1 − αb)` の 2 回に分け、1 回目はアルファを書かずに下のアルファ（αb）を
+//! 2 回目まで残す。`screen` の式は 0..1 の値の前提で、両方が 1 を超える所（HDR）では暗くなる（2 と 2 で 0）。
+//! Nuke はそこで `max(A, B)` に切り替えるが、下の色を読むパスが要る。ほかのモードも下の色を読むパスが要るので
+//! `normal` で重ね、エラーを記録する。
 
 use mm_doc::BlendMode;
 
@@ -67,7 +69,7 @@ fn component(src: wgpu::BlendFactor, dst: wgpu::BlendFactor) -> wgpu::BlendCompo
     }
 }
 
-/// 合成モードを描くパスの並び。描けないモードは `None`（呼んだ側が `normal` で重ねて誤りに残す）。
+/// 合成モードを描くパスの並び。描けないモードは `None`（呼んだ側が `normal` で重ねてエラーを記録する）。
 pub(crate) fn passes(mode: BlendMode) -> Option<&'static [BlendPass]> {
     match mode {
         BlendMode::Normal => Some(&[BlendPass::Over]),
