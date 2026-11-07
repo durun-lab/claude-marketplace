@@ -22,7 +22,7 @@ use mm_host_ofx::{DESCRIBE_COMMAND, SERVE_COMMAND};
 
 const USAGE: &str = "使い方: mm-host-ofx serve | mm-host-ofx describe <バンドル>";
 
-/// サブコマンドを走らせる。
+/// サブコマンドを実行する。
 pub fn run() -> ExitCode {
     // SAFETY: プロセスのエラーモードと標準出力の付け替えだけを行う C の関数。プラグインを読み込む前に呼ぶ。
     unsafe { ffi::mm_ofx_quiet_crash_dialogs() };

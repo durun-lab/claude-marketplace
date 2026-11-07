@@ -26,8 +26,7 @@ impl Bundle {
     pub fn open(path: &Path) -> Result<Self, String> {
         let binary =
             bundle_binary(path).ok_or_else(|| format!("{} はバンドルでない", path.display()))?;
-        // SAFETY: プラグインの共有ライブラリの初期化を走らせる。クラッシュしてもこのプロセスだけが落ちる。
-        let lib = unsafe { libloading::Library::new(&binary) }
+        let lib = load_library(&binary)
             .map_err(|e| format!("{} を読み込めない: {e}", binary.display()))?;
         Ok(Self {
             path: path.to_path_buf(),
@@ -38,7 +37,7 @@ impl Bundle {
 
     /// バンドルの中のプラグイン。`OfxSetHost`（1.5）があれば先に呼ぶ。
     pub fn plugins(&self) -> Result<Vec<Plugin>, String> {
-        // SAFETY: OpenFX の約束どおりの型で、ホストの構造体はプロセスの間ずっと生きている。
+        // SAFETY: OpenFX の規約どおりの型で、ホストの構造体はプロセスの間ずっと生きている。
         unsafe {
             if let Ok(set_host) = self
                 .lib
@@ -61,7 +60,30 @@ impl Bundle {
     }
 }
 
-/// 1 つのプラグイン（`OfxPlugin` の写し）。
+/// 共有ライブラリを読み込む。Windows では依存の DLL をバンドルのフォルダーとシステムのフォルダーから探し、
+/// カレントや `PATH` の同じ名前の DLL を読まない。
+#[cfg(windows)]
+fn load_library(binary: &Path) -> Result<libloading::Library, String> {
+    use libloading::os::windows::{
+        Library, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR,
+    };
+    // LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR は完全なパスでないと受けない。
+    let binary = std::path::absolute(binary).map_err(|e| e.to_string())?;
+    let flags = LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS;
+    // SAFETY: プラグインの共有ライブラリの初期化を実行する。クラッシュしてもこのプロセスだけが止まる。
+    unsafe { Library::load_with_flags(&binary, flags) }
+        .map(Into::into)
+        .map_err(|e| e.to_string())
+}
+
+/// 共有ライブラリを読み込む。
+#[cfg(not(windows))]
+fn load_library(binary: &Path) -> Result<libloading::Library, String> {
+    // SAFETY: プラグインの共有ライブラリの初期化を実行する。クラッシュしてもこのプロセスだけが止まる。
+    unsafe { libloading::Library::new(binary) }.map_err(|e| e.to_string())
+}
+
+/// 1 つのプラグイン（`OfxPlugin` のコピー）。
 #[derive(Debug, Clone)]
 pub struct Plugin {
     pub index: usize,
@@ -76,7 +98,7 @@ pub struct Plugin {
 
 impl Plugin {
     fn new(index: usize, p: *const OfxPlugin, bundle: &Path) -> Option<Self> {
-        // SAFETY: OfxGetPlugin が返した、ライブラリが生きている間有効な構造体（NULL は飛ばす）。
+        // SAFETY: OfxGetPlugin が返した、ライブラリが生きている間有効な構造体（NULL はスキップする）。
         let p = unsafe { p.as_ref()? };
         Some(Self {
             index,
@@ -214,7 +236,7 @@ impl Plugin {
     }
 }
 
-/// describe の結果の記述子。プラグインがハンドルを持ち続けてもよいよう、プロセスの間は捨てない。
+/// describe の結果の記述子。プラグインがハンドルを持ち続けてもよいよう、`Unload` を呼ぶまで捨てない。
 pub struct Described {
     pub base: Box<Effect>,
     /// このホストが使う文脈と、その文脈の記述子。

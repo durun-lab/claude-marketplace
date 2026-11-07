@@ -18,7 +18,7 @@ use windows::Win32::Graphics::Direct3D12::ID3D12Resource;
 const PAGE: &str = include_str!("pages/golden.html");
 const BENCH_PAGE: &str = include_str!("../../assets/bench.html");
 pub(crate) const TIMEOUT: Duration = Duration::from_secs(3);
-/// 契約の時間切れに使う、レンダラを止める長さ。`TIMEOUT` より長くする。
+/// 契約の時間切れに使う、レンダラーを止める長さ。`TIMEOUT` より長くする。
 const BUSY_MS: u64 = 8000;
 const REQUIRE_ENV: &str = "MM_REQUIRE_CEF";
 

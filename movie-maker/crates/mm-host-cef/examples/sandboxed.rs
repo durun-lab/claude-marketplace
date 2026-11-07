@@ -4,7 +4,7 @@
 //! Windows の CEF は、sandbox を Chromium と同じツールチェーンで作った起動の実行ファイルに持たせ、
 //! アプリの処理を DLL で受け取る形にしている。実行ファイルの `mm-host-cef` を直に起こすと sandbox なしで動く。
 
-/// `bootstrapc.exe` が呼ぶ入口。`sandbox_info` を CEF の `execute_process` と `initialize` に渡す。
+/// `bootstrapc.exe` が呼ぶエントリーポイント。`sandbox_info` を CEF の `execute_process` と `initialize` に渡す。
 ///
 /// # Safety
 /// `bootstrapc.exe` が渡す引数のまま呼ぶ。コマンドラインはプロセスのものを読むので `argc` と `argv` は使わない。

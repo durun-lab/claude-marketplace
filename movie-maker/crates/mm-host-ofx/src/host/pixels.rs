@@ -54,9 +54,17 @@ impl Depth {
         }
     }
 
+    /// プラグインが書いた有限でない値（NaN、Inf）は 0 にする。JSON は NaN を書けず、応答が読めなくなるため。
     fn decode(self, b: &[u8]) -> f32 {
         match self {
-            Self::Float => f32::from_ne_bytes([b[0], b[1], b[2], b[3]]),
+            Self::Float => {
+                let v = f32::from_ne_bytes([b[0], b[1], b[2], b[3]]);
+                if v.is_finite() {
+                    v
+                } else {
+                    0.0
+                }
+            }
             Self::Short => f32::from(u16::from_ne_bytes([b[0], b[1]])) / f32::from(u16::MAX),
             Self::Byte => f32::from(b[0]) / f32::from(u8::MAX),
         }
@@ -218,6 +226,16 @@ mod tests {
         // 上の行の左端（赤）は、OpenFX の並びでは最後の行の先頭。
         let last_row = px.row_bytes();
         assert_eq!(px.bytes()[last_row..last_row + 4], 1.0f32.to_ne_bytes());
+    }
+
+    #[test]
+    fn 有限でない値は_0_にして返す() {
+        let mut px = Pixels::new(Size::new(1, 1), Depth::Float).unwrap();
+        let written = [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 0.5];
+        for (v, out) in written.iter().zip(px.bytes_mut().chunks_exact_mut(4)) {
+            out.copy_from_slice(&v.to_ne_bytes());
+        }
+        assert_eq!(px.to_image().unwrap().data(), [0.0, 0.0, 0.0, 0.5]);
     }
 
     #[test]

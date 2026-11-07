@@ -28,7 +28,7 @@ enum Mode {
     Serve(HostSpec),
 }
 
-/// エントリーポイント。CEF はサブプロセス（GPU、レンダラ）にも同じ実行ファイルを使うので、最初に判定する。
+/// エントリーポイント。CEF はサブプロセス（GPU、レンダラー）にも同じ実行ファイルを使うので、最初に判定する。
 pub fn run(sandbox: *mut std::ffi::c_void) -> ExitCode {
     raise_timer_resolution();
     let _ = api_hash(sys::CEF_API_VERSION_LAST, 0);
@@ -62,7 +62,7 @@ pub fn run(sandbox: *mut std::ffi::c_void) -> ExitCode {
     }
 }
 
-/// CEF のプロセス（GPU とレンダラも同じ実行ファイル）が 1 ms のタイマーで動くようにする。
+/// CEF のプロセス（GPU とレンダラーも同じ実行ファイル）が 1 ms のタイマーで動くようにする。
 /// Windows 10 2004 以降はタイマーの粒度がプロセスごとで、既定の 15.6 ms のままだと
 /// BeginFrame からフレームが来るまでが 15 ms 前後に揃ってしまう。
 fn raise_timer_resolution() {

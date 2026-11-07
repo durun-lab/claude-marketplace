@@ -1,9 +1,9 @@
 //! OpenFX（OFX）のプラグインを別プロセスで読み込み、1 フレームを描いて返すホスト（`mm-host-api` の実装）。
 //!
 //! - アプリ側: [`OfxLauncher`] が実行ファイル `mm-host-ofx serve` を起こし、パイプで 1 行ずつ JSON をやり取りする。
-//!   プラグインの一覧とパラメータは [`describe_bundle`] が `mm-host-ofx describe <バンドル>` を別プロセスで走らせて受け取る。
+//!   プラグインの一覧とパラメータは [`describe_bundle`] が `mm-host-ofx describe <バンドル>` を別プロセスで実行して受け取る。
 //! - ホスト側（`src/host/`、実行ファイルだけ）: OpenFX の C API のホストを Rust で持ち、プラグインの DLL を読み込む。
-//!   プラグインのクラッシュはホストのプロセスだけを落とし、アプリには `HostCrashed` で返る。
+//!   プラグインのクラッシュはホストのプロセスだけを止め、アプリには `HostCrashed` で返る。
 //!
 //! 要求の `params` の形は [`PrepareParams`] と [`RenderParams`]。手順と先行事例は README。
 

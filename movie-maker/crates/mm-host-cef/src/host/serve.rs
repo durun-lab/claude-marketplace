@@ -1,6 +1,6 @@
 //! `mm-host-cef serve`: 標準入力の `HostRequest` に 1 行ずつ `HostResponse` で答える。
 //!
-//! ページの約束（`Prepare` の `html`）: `window.mmSetTime(t, params)` を定義し、時刻 `t`（秒）と
+//! ページの規約（`Prepare` の `html`）:`window.mmSetTime(t, params)` を定義し、時刻 `t`（秒）と
 //! `RenderFrame` の `params` の関数としてだけ画面を作る。定義が無いページは静止画として描く。
 //! ページはホストが一時フォルダーに書いたファイルとして開き、ほかのファイルとネットワークは読めない（`guard`）。
 //! ページはビューポート（`RenderFrame` の `size`）に収める。ぼかしなどのフィルタの付いた要素がビューポートの端を
@@ -10,7 +10,7 @@ use std::io::{BufRead, Write};
 use std::rc::Rc;
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use cef::*;
 use mm_gpu::GpuContext;
@@ -28,11 +28,14 @@ const METRICS_ENV: &str = "MM_HOST_METRICS";
 const IDLE_PUMP: Duration = Duration::from_millis(1);
 /// 最初のビューポートの大きさ（最初の `RenderFrame` で頼まれた大きさに変える）。
 const INITIAL_SIZE: (u32, u32) = (1280, 720);
-/// BeginFrame からフレームが来るまで待つ上限。過ぎたら前のフレームを返さずに誤りにする。
+/// 1 回の `RenderFrame`（時刻の反映、画像と書体の待ち、BeginFrame からフレームが来るまで）の時間の上限。
 /// アプリの 1 フレームの期限（`mm-nodes-cef` と `mm-text-cef` の 5 秒）より短くし、理由を応答で返せるようにする。
 const FRAME_LIMIT: Duration = Duration::from_secs(4);
 /// ページの読み込み後に足す、時刻の反映と反映済みの合図（タイトル）を行う関数。
 ///
+/// - 画像: 初めて出す `<img>` の画像（要素と `src` の組）は、組み直してから `decode()` が終わるまで待ち、
+///   デコード前の欠けた画像で描かない。待つものが無いフレームは、時刻の反映と同じタスクで合図を出す。
+///   `loading="lazy"` で読み込んでいない画像は待たない（ビューポートの外では読み込みが始まらない）。
 /// - 書体: 時刻の反映で初めて使う Web フォントは、組んだ時点で読み込みが始まる。組み直してから
 ///   `document.fonts` の読み込みが終わるまで待ち、読み込み中の代わりの書体で描かないようにする。
 /// - 毎フレームのダメージ: 画面が変わらないフレームは CEF がフレームを出さず、遅いページと区別できない。
@@ -45,8 +48,15 @@ width:8px!important;height:8px!important;margin:0!important;display:block!import
 visibility:visible!important;opacity:1!important;z-index:2147483647!important;pointer-events:none!important');\
   document.documentElement.appendChild(c);\
   const g = c.getContext('2d');\
+  const decoded = new WeakMap();\
+  const fresh = () => Array.from(document.images).filter((i) => i.src && decoded.get(i) !== i.src\
+    && (i.complete || i.loading !== 'lazy'));\
+  const decode = (i) => { const s = i.src; return i.decode().catch(() => {}).then(() => decoded.set(i, s)); };\
   const settle = (done) => { void document.documentElement.getBoundingClientRect();\
-    if (document.fonts.status === 'loaded') { done(); } else { document.fonts.ready.then(() => settle(done)); } };\
+    const images = fresh();\
+    if (images.length > 0) { Promise.all(images.map(decode)).then(() => settle(done)); }\
+    else if (document.fonts.status === 'loaded') { done(); }\
+    else { document.fonts.ready.then(() => settle(done)); } };\
   window.__mmFrame = (t, seq, params) => {\
     if (typeof window.mmSetTime === 'function') { window.mmSetTime(t, params); }\
     settle(() => { g.clearRect(0, 0, 1, 1); document.title = 'mm-ready:' + seq; }); };\
@@ -57,6 +67,8 @@ struct Server {
     browser: Option<Browser>,
     client: Option<Client>,
     page_dir: std::path::PathBuf,
+    /// 書いたページの数。ページごとにファイルの名前を変え、前のブラウザーのページと取り違えない。
+    pages: u64,
     seq: u64,
 }
 
@@ -71,6 +83,7 @@ pub fn run(spec: &HostSpec, gpu: Arc<GpuContext>) -> Result<(), String> {
         browser: None,
         client,
         page_dir: super::work_dir().0.join("pages"),
+        pages: 0,
         seq: 0,
     };
     let (tx, rx) = mpsc::channel();
@@ -162,35 +175,41 @@ impl Server {
         (result.unwrap_or_else(error), false)
     }
 
-    fn page_url(&self, params: &serde_json::Value) -> Result<String, String> {
+    /// `Prepare` の `html` をページのファイルに書き、そのパスを返す。
+    fn write_page(&mut self, params: &serde_json::Value) -> Result<std::path::PathBuf, String> {
         let html = params
             .get("html")
             .and_then(serde_json::Value::as_str)
             .ok_or("Prepare の params に html が要る")?;
         std::fs::create_dir_all(&self.page_dir).map_err(|e| e.to_string())?;
-        let path = self.page_dir.join(format!("page-{}.html", self.seq));
+        self.pages += 1;
+        let path = self.page_dir.join(format!("page-{}.html", self.pages));
         std::fs::write(&path, html).map_err(|e| e.to_string())?;
-        Ok(format!(
-            "file:///{}",
-            path.to_string_lossy().replace('\\', "/")
-        ))
+        Ok(path)
     }
 
     /// ページを読み込み、時刻を反映する関数を足す。前のページは閉じる。
     fn prepare(&mut self, params: &serde_json::Value) -> Result<(), String> {
-        let url = self.page_url(params)?;
+        let path = self.write_page(params)?;
         if let Some(old) = self.browser.take() {
             browser::close(&old);
         }
         *self.shared.frame.borrow_mut() = None;
         self.shared.loaded.set(false);
         self.shared.title.borrow_mut().clear();
-        guard::reset(&self.shared.page);
+        guard::reset(&self.shared.page, &path);
+        let url = mm_host_cef::policy::file_url(&path);
         let created = browser::create(&self.shared, true, DEFAULT_RATE, &url)?;
         browser::pump_until(&self.shared, "読み込み", browser::WAIT_LIMIT, |s| {
             s.loaded.get()
         })?;
-        browser::run_js(&created, &self.shared, RUNTIME_JS, "mm-init")?;
+        browser::run_js(
+            &created,
+            &self.shared,
+            RUNTIME_JS,
+            "mm-init",
+            browser::WAIT_LIMIT,
+        )?;
         self.browser = Some(created);
         Ok(())
     }
@@ -202,7 +221,7 @@ impl Server {
             self.shared.size.set(wanted);
             browser
                 .host()
-                .ok_or("ブラウザのホストが無い")?
+                .ok_or("ブラウザーのホストが無い")?
                 .was_resized();
         }
         Ok(())
@@ -215,16 +234,24 @@ impl Server {
         params: &serde_json::Value,
     ) -> Result<SharedFrame, String> {
         let _span = tracing::info_span!("host_cef.frame").entered();
+        let deadline = Instant::now() + FRAME_LIMIT;
         let browser = self.browser.clone().ok_or("Prepare の前に RenderFrame")?;
         self.resize(&browser, size)?;
         self.seq += 1;
         let seq = self.seq;
         let js = format!("window.__mmFrame({}, {seq}, {params})", time.to_f64());
-        browser::run_js(&browser, &self.shared, &js, &format!("mm-ready:{seq}"))?;
+        let want = format!("mm-ready:{seq}");
+        browser::run_js(
+            &browser,
+            &self.shared,
+            &js,
+            &want,
+            browser::remaining(deadline),
+        )?;
         let wanted = (size.width, size.height);
         let accept = |s: &Shared| s.frame_size() == Some(wanted);
-        let got =
-            browser::begin_frame(&browser, &self.shared, DEFAULT_RESEND, FRAME_LIMIT, accept)?;
+        let left = browser::remaining(deadline);
+        let got = browser::begin_frame(&browser, &self.shared, DEFAULT_RESEND, left, accept)?;
         if !got {
             return Err(format!(
                 "{}x{} のフレームが {FRAME_LIMIT:?} 以内に来ない（ページの描画が遅すぎる）",

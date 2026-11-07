@@ -1,15 +1,15 @@
 //! C の部品を作る。
 //! - `csrc/shim.c`: Rust の安定版では可変長引数の関数を定義できないので、OpenFX の可変長の関数
 //!   （`paramGetValue`、`message` など）を C で受けて Rust の固定長の関数へ渡す。
-//! - `tests/plugins/`: 試験に使う OpenFX のプラグインを、公式のヘッダーでバンドルの形に作る。
+//! - `tests/plugins/`: テストに使う OpenFX のプラグインを、公式のヘッダーでバンドルの形に作る。
 //!   ヘッダーで作ったプラグインと突き合わせることで、Rust 側の構造体の並びの誤りを捕まえる。
-//!   置き場所は環境変数 `MM_OFX_TEST_PLUGINS` で試験に渡す。
+//!   置き場所は環境変数 `MM_OFX_TEST_PLUGINS` でテストに渡す。
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const INCLUDE: &str = "vendor/openfx/include";
-/// 試験のプラグイン（ソース、バンドルの名前、C++ か）。
+/// テストのプラグイン（ソース、バンドルの名前、C++ か）。
 const TEST_PLUGINS: [(&str, &str, bool); 2] = [
     ("tests/plugins/invert.cpp", "Invert", true),
     ("tests/plugins/gain.c", "MmTestGain", false),

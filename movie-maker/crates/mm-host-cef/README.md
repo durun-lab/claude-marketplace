@@ -14,16 +14,17 @@ CEF のオフスクリーン描画を、共有テクスチャで別プロセス�
 
 既定のワークスペースのビルド、clippy、テストは CEF を取りに行かない。`--features cef` なしの実行ファイルは何もせず終了コード 2。
 
-## 受け渡しの約束
+## 受け渡しの規約
 
 - `CefLauncher::spawn` は `mm-host-cef serve` を起こし、環境変数 `MM_HOST_SPEC` に `HostSpec` の JSON を、`MM_HOST_WORK_DIR` に一時フォルダーを渡す。制御は標準入出力の JSON の 1 行ずつ。
-- 一時フォルダー（CEF のキャッシュとページ）はランチャーが作り、ホストを止めた後に消す。ホストはジョブオブジェクトに入れ、kill のときは CEF の子のプロセス（GPU、レンダラ）ごと止める。
+- 一時フォルダー（CEF のキャッシュとページ）はランチャーが作り、ホストを止めた後に消す。ホストはジョブオブジェクトに入れ、kill のときは CEF の子のプロセス（GPU、レンダラー）ごと止める。
 - GPU: ホストは `HostSpec::gpu`（無ければ高性能のアダプター）で wgpu を作り、その LUID を Chromium のスイッチ `use-adapter-luid=<HighPart>,<LowPart>` で CEF の GPU プロセスにも使わせる。
 - `client_pid` があると、フレームごとに D3D12 の共有ヒープのテクスチャを作ってコピーし、その NT ハンドルを相手のプロセスへ `DuplicateHandle` して `SharedFrame::SharedTexture` で返す。複製するハンドルは読み取りの権限（`DXGI_SHARED_RESOURCE_READ`）だけ（D3D12 の `CreateSharedHandle` は `GENERIC_ALL` しか受けないので、絞るのは複製のとき）。形式は `DXGI_FORMAT_B8G8R8A8_UNORM`（premultiplied、sRGB の符号化）、状態は COMMON、`fence` は `None`（ホストがコピーの完了を待ってから返す）。受け取った側がコピーしてハンドルを閉じる。
 - `client_pid` が無いと、CPU の画像（RGBA f32、premultiplied、線形）で返す。
 - `Prepare` の `params` は `{"html": "..."}`。ホストは一時フォルダーに書いたファイルとして開く。ページは `window.mmSetTime(t, params)` を定義し、時刻 `t`（秒）と `params` の関数としてだけ画面を作る。ビューポートは `RenderFrame` の `size`。
-- 読み込める資源はページそのものと `data:`、`blob:` だけ。ほかの要求（http、https、ほかのファイル）と、ページの遷移、ポップアップは `RequestHandler` と `LifeSpanHandler` で拒否する（`src/policy.rs`、`src/host/guard.rs`）。遷移を始めた時点の先読みの接続（preconnect）はその前に出るので、Chromium のネットワークを閉じたポートのプロキシ（`--proxy-server=http://127.0.0.1:9`、`--proxy-bypass-list=<-loopback>`）へ向け、行き先へは接続も名前解決も出さない。
-- 1 フレームの手順: `mmSetTime` を呼んだ後に組み直し、`document.fonts` の読み込みが終わるまで待つ（初めて使う Web フォントを代わりの書体で描かない）。左上の透明な 1 画素の canvas を消し直してダメージを作り、画面が変わらないフレームでも CEF にフレームを出させる。BeginFrame からフレームが来るまで 4 秒まで待ち、来なければ誤りを返す（前のフレームを黙って返さない）。
+- 読み込める資源はページそのものと `data:`、`blob:` だけ。ほかの要求（http、https、ほかのファイル）と、ページの遷移、ポップアップは `RequestHandler` と `LifeSpanHandler` で拒否する（`src/policy.rs`、`src/host/guard.rs`）。遷移を始めた時点の先読みの接続（preconnect）はその前に出るので、Chromium のネットワークを閉じたポートのプロキシ（`--proxy-server=http://127.0.0.1:9`、`--proxy-bypass-list=<-loopback>`）へ向け、行き先へは接続も名前解決も出さない。WebRTC の UDP（STUN、TURN）はプロキシを通らないので、`--force-webrtc-ip-handling-policy=disable_non_proxied_udp` で止める。
+- 通すページの URL は、ホストが書いたページのファイルを指すメインフレームの遷移の URL（Chromium が正規化した形）を覚える。ページを開き直すたびにファイルの名前を変え、閉じ切る前の前のブラウザーの遷移は覚えない。
+- 1 フレームの手順: `mmSetTime` を呼んだ後に組み直し、`<img>` の画像の `decode()` と `document.fonts` の読み込みが終わるまで待つ（デコード前の画像や、初めて使う Web フォントの代わりの書体で描かない。CSS の背景の画像は待たない）。左上の透明な 1 画素の canvas を消し直してダメージを作り、画面が変わらないフレームでも CEF にフレームを出させる。BeginFrame を送り、その時刻と大きさのフレームが来たものだけを返す。時刻の反映からフレームが来るまでを 1 回の `RenderFrame` で 4 秒までとし、過ぎたら理由を誤りで返す（アプリの 1 フレームの期限 5 秒より前に答える）。
 - アプリ側（`mm-runtime`）は `find_host()` でホストを探す。`CEF_PATH` が無ければ探さない。`MM_CEF_HOST` があればそれ、無ければ今の実行ファイルと同じフォルダー（テストの実行ファイルなら 1 つ上も）の `mm-host-cef`。見つけたら `mm-host-cef probe` で能力を問い合わせ、`cef` の feature 無しのもの（何も答えない）や `libcef.dll` が見つからないものは使わない（`None` を返し、`web.cef` はモックになる）。
 
 ## sandbox
@@ -36,7 +37,7 @@ export MM_CEF_HOST=D:/dev/mm-host-cef/mm-host-cef.exe
 ```
 
 - Windows の CEF（M138 以降）は、sandbox を Chromium と同じツールチェーンで作った起動の実行ファイル（配布物の `bootstrapc.exe`）に持たせ、アプリの処理は同じ名前の DLL の `RunConsoleMain` で受け取る。`bundle.sh` は `bootstrapc.exe` を `mm-host-cef.exe` の名前で、本体（`examples/sandboxed.rs` の DLL）を `mm-host-cef.dll` の名前で、CEF の実行時のファイルと並べ、LPAC の ACL を付ける（CEF の cmake の `SET_LPAC_ACLS` と同じ）。
-- 組み立てたホストの GPU、レンダラ、ユーティリティのプロセスには `--no-sandbox` が付かない。1 フレームの時間は sandbox なしと同じ（1080p で 4.97 ms/frame、`bench --frames 3000`）。
+- 組み立てたホストの GPU、レンダラー、ユーティリティのプロセスには `--no-sandbox` が付かない。1 フレームの時間は sandbox なしと同じ（1080p で 4.97 ms/frame、`bench --frames 3000`）。
 - `cargo build` が作る実行ファイルの `mm-host-cef` を直に起こすと sandbox なしで動く（`cargo test` の `CARGO_BIN_EXE_mm-host-cef` はこちら）。`probe` の答えに ` sandbox` が付くかで見分ける。
 - 使う側: `web.cef` のノード（[mm-nodes-cef](../mm-nodes-cef/README.md)）と、CSS で描く文字（[mm-text-cef](../mm-text-cef/README.md)）。
 
@@ -90,5 +91,5 @@ export MM_CEF_HOST=D:/dev/mm-host-cef/mm-host-cef.exe
 
 ## 速さに効く設定
 
-- タイマーの粒度: 実行ファイルの先頭で `timeBeginPeriod(1)` を呼ぶ。CEF の GPU とレンダラのプロセスも同じ実行ファイルなので全部に効く。呼ばないと、ほかのアプリが粒度を上げていない PC では 1 フレームが 15 ms 前後になる。
+- タイマーの粒度: 実行ファイルの先頭で `timeBeginPeriod(1)` を呼ぶ。CEF の GPU とレンダラーのプロセスも同じ実行ファイルなので全部に効く。呼ばないと、ほかのアプリが粒度を上げていない PC では 1 フレームが 15 ms 前後になる。
 - `windowless_frame_rate` は 1000。240 だと 4.2 ms より短い間隔で描けたフレームの受け取りが約 20 ms 遅れ、720p で p95 が 26 ms に跳ねる。
