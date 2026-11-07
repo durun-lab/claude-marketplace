@@ -46,13 +46,80 @@ impl WgpuRenderer {
         self.fonts = fingerprint;
     }
 
-    /// フレームのキャッシュのキーに入れる、色の変換の設定と書体の組の指紋。書体が無ければ色の指紋のまま。
+    /// フレームのキャッシュのキーに入れる、色の変換の設定、文字の実装、書体の組の指紋。書体が無ければ書体の分は付けない。
+    /// 文字の実装（glyphon と cef など）は同じパラメータで違う画素を描くので、切り替えた後にディスクの退避を引かないよう入れる。
     pub(crate) fn config_fingerprint(&self) -> String {
         let color = self.services.color.config_fingerprint();
+        let text = format!(
+            "{color}+text:{}/{}",
+            self.services.text_shaper.id(),
+            self.services.text_rasterizer.id()
+        );
         if self.fonts.is_empty() {
-            color
+            text
         } else {
-            format!("{color}+fonts:{:016x}", digest_bytes(self.fonts.as_bytes()))
+            format!("{text}+fonts:{:016x}", digest_bytes(self.fonts.as_bytes()))
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use mm_gpu::{GpuContext, GpuRequest};
+    use mm_node_api::Services;
+    use mm_testkit::audio::SampleMixerFactory;
+    use mm_testkit::decode::SampleDecoderFactory;
+    use mm_testkit::fixtures::sample_services;
+    use mm_text_api::{ShapedText, TextRasterizer, TextStyle};
+    use mm_types::{Result, RgbaImage};
+
+    use super::*;
+
+    /// モックと同じ画素を描くが、実装の名前だけが違うレンダラー。
+    struct Renamed(Arc<dyn TextRasterizer>);
+
+    impl TextRasterizer for Renamed {
+        fn id(&self) -> &'static str {
+            "renamed"
+        }
+        fn rasterize(
+            &self,
+            shaped: &ShapedText,
+            style: &TextStyle,
+            scale: f32,
+        ) -> Result<RgbaImage> {
+            self.0.rasterize(shaped, style, scale)
+        }
+    }
+
+    fn renderer(ctx: &Arc<GpuContext>, services: Services) -> WgpuRenderer {
+        WgpuRenderer::new(
+            ctx.clone(),
+            Arc::new(SampleDecoderFactory::default()),
+            Arc::new(SampleMixerFactory),
+            services,
+        )
+    }
+
+    #[test]
+    fn 文字のレンダラーが違えばキャッシュのキーの指紋が違う() {
+        let ctx = match GpuContext::shared(&GpuRequest::default()) {
+            Ok(ctx) => ctx,
+            Err(e) if std::env::var_os("MM_REQUIRE_GPU").is_none() => {
+                eprintln!("GPU が無いのでスキップする: {e}");
+                return;
+            }
+            Err(e) => panic!("MM_REQUIRE_GPU があるのに GPU が無い: {e}"),
+        };
+        let base = sample_services();
+        let renamed = Services {
+            text_rasterizer: Arc::new(Renamed(base.text_rasterizer.clone())),
+            ..base.clone()
+        };
+        let a = renderer(&ctx, base.clone()).config_fingerprint();
+        assert_eq!(a, renderer(&ctx, base).config_fingerprint());
+        assert_ne!(a, renderer(&ctx, renamed).config_fingerprint());
     }
 }
