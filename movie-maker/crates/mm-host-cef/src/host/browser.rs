@@ -1,4 +1,4 @@
-//! ブラウザの作成と、時刻を決めて 1 フレームを受け取る手順（bench と serve で共有）。
+//! ブラウザーの作成と、時刻を決めて 1 フレームを受け取る手順（bench と serve で共有）。
 //!
 //! 1 フレームの手順:
 //! 1. ページの JS で時刻を反映し、`document.title` で反映済みを知らせてもらう（JS と BeginFrame の順は IPC で
@@ -10,10 +10,16 @@ use std::time::{Duration, Instant};
 
 use cef::*;
 
+use super::guard;
 use super::handlers::{build_client, Shared};
 
 /// 読み込みや時刻の反映を待つ上限。
 pub const WAIT_LIMIT: Duration = Duration::from_secs(5);
+
+/// 期限 `deadline` までの残りの時間（過ぎていれば 0）。
+pub fn remaining(deadline: Instant) -> Duration {
+    deadline.saturating_duration_since(Instant::now())
+}
 
 /// 条件が成り立つまで CEF のメッセージを回す。待ちの間は寝ない（寝るとタイマーの粒度が測定に入る）。
 pub fn pump_until(
@@ -36,13 +42,15 @@ pub fn pump_until(
     Ok(())
 }
 
-/// 外部 BeginFrame で描くオフスクリーンのブラウザを作る。
+/// 外部 BeginFrame で描くオフスクリーンのブラウザーを作る。
 pub fn create(
     shared: &Rc<Shared>,
     accelerated: bool,
     rate: u32,
     url: &str,
 ) -> Result<Browser, String> {
+    // 設定の前に作ったブラウザーのページは WebRTC の UDP を送れるので、作る前に毎回設定する。
+    guard::block_webrtc_udp()?;
     let window_info = WindowInfo {
         windowless_rendering_enabled: true as _,
         shared_texture_enabled: accelerated as _,
@@ -61,15 +69,21 @@ pub fn create(
         None,
         None,
     )
-    .ok_or_else(|| "ブラウザを作れない".to_string())
+    .ok_or_else(|| "ブラウザーを作れない".to_string())
 }
 
-/// JS を実行し、タイトルが `want` になるまで待つ。
-pub fn run_js(browser: &Browser, shared: &Shared, code: &str, want: &str) -> Result<(), String> {
+/// JS を実行し、タイトルが `want` になるまで `limit` まで待つ。
+pub fn run_js(
+    browser: &Browser,
+    shared: &Shared,
+    code: &str,
+    want: &str,
+    limit: Duration,
+) -> Result<(), String> {
     let _span = tracing::info_span!("host_cef.set_time").entered();
     let main = browser.main_frame().ok_or("メインフレームが無い")?;
     main.execute_java_script(Some(&CefString::from(code)), None, 0);
-    pump_until(shared, "時刻の反映", WAIT_LIMIT, |s| {
+    pump_until(shared, "時刻の反映", limit, |s| {
         *s.title.borrow() == want
     })
 }
@@ -84,7 +98,7 @@ pub fn begin_frame(
     accept: impl Fn(&Shared) -> bool,
 ) -> Result<bool, String> {
     let _span = tracing::info_span!("host_cef.begin_frame").entered();
-    let host = browser.host().ok_or("ブラウザのホストが無い")?;
+    let host = browser.host().ok_or("ブラウザーのホストが無い")?;
     let start = Instant::now();
     let mut before = shared.painted.get();
     let mut attempts = 0u64;
@@ -112,7 +126,7 @@ pub fn begin_frame(
     Ok(false)
 }
 
-/// ブラウザを閉じて、閉じる処理が終わるまで少し回す。
+/// ブラウザーを閉じて、閉じる処理が終わるまで少し回す。
 pub fn close(browser: &Browser) {
     const DRAIN: Duration = Duration::from_millis(300);
     if let Some(host) = browser.host() {

@@ -11,7 +11,7 @@ use tracing_subscriber::layer::SubscriberExt;
 
 use super::handlers::Shared;
 use super::share::Client;
-use super::{browser, gpu, BenchOptions};
+use super::{browser, gpu, guard, BenchOptions};
 
 const PAGE: &str = include_str!("../../assets/bench.html");
 
@@ -29,7 +29,8 @@ impl Bench<'_> {
         let _frame = tracing::info_span!("host_cef.frame").entered();
         let (browser, shared) = (&self.browser, &*self.shared);
         let js = format!("mmSetTime({t},{seq})");
-        browser::run_js(browser, shared, &js, &format!("ready:{seq}"))?;
+        let want = format!("ready:{seq}");
+        browser::run_js(browser, shared, &js, &want, browser::WAIT_LIMIT)?;
         let got = browser::begin_frame(
             browser,
             shared,
@@ -75,16 +76,15 @@ fn marker_seq(rgba: &[u8], width: u32) -> u64 {
     u64::from(rgba[at]) | u64::from(rgba[at + 1]) << 8 | u64::from(rgba[at + 2]) << 16
 }
 
-fn page_url(opts: &BenchOptions) -> Result<String, String> {
+/// 測るページをファイルに書き、そのパスを返す。
+fn write_page(opts: &BenchOptions) -> Result<std::path::PathBuf, String> {
     let dir = std::env::temp_dir().join(format!("mm-host-cef-page-{}", std::process::id()));
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     // `--page-css` は原因の切り分け用。ページの先頭に CSS を足す。
     let page = PAGE.replace("<style>", &format!("<style>{}", opts.page_css));
-    std::fs::write(dir.join("bench.html"), page).map_err(|e| e.to_string())?;
-    Ok(format!(
-        "file:///{}",
-        dir.join("bench.html").to_string_lossy().replace('\\', "/")
-    ))
+    let path = dir.join("bench.html");
+    std::fs::write(&path, page).map_err(|e| e.to_string())?;
+    Ok(path)
 }
 
 /// 結果を表で出す。`--out` があれば `metrics-*.jsonl` も書く。
@@ -103,7 +103,10 @@ pub fn run(opts: &BenchOptions, gpu: Arc<GpuContext>) -> Result<(), String> {
     );
     let shared = Shared::new(gpu, opts.size);
     shared.share.set(opts.share);
-    let browser = browser::create(&shared, opts.accelerated, opts.rate, &page_url(opts)?)?;
+    let page = write_page(opts)?;
+    guard::reset(&shared.page, &page);
+    let url = mm_host_cef::policy::file_url(&page);
+    let browser = browser::create(&shared, opts.accelerated, opts.rate, &url)?;
     browser::pump_until(&shared, "読み込み", browser::WAIT_LIMIT, |s| {
         s.loaded.get() && !s.title.borrow().is_empty()
     })?;
