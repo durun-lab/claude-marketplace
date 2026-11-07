@@ -19,7 +19,7 @@ const MAIN: Size = Size::new(1920, 1080);
 const SHORT: Size = Size::new(1080, 1920);
 /// マットが次の場面を見せたとみなす差（線形の光、0..1）。
 const SHOWN: f32 = 0.5;
-/// liquid を 2 つの大きさで描いた絵の、画素ごとの差の平均の上限。
+/// liquid を 2 つの大きさで描いた画像の、画素ごとの差の平均の上限。
 const LIQUID_ALIASING: f32 = 0.00125;
 
 /// 画面 `canvas` のコンポジションに `name` を置き、進み具合 `progress` を大きさ `size` で描いたときの、画素ごとの
@@ -100,7 +100,7 @@ fn 大きさ_0_の形は縁のにじみで次の場面を漏らさない() {
     assert!(leak < 1e-4, "次の場面が {leak} だけ見えている");
 }
 
-/// 2 倍の大きさで描いた絵を 2x2 の平均で縮めた絵との、画素ごとの差の平均（線形の光の緑）。縁のアンチエイリアスが
+/// 2 倍の大きさで描いた画像を 2x2 の平均で縮めた画像との、画素ごとの差の平均（線形の光の緑）。縁のアンチエイリアスが
 /// 画素の格子に依らない見積もりなら、縁の位置と太さが解像度で変わらず、差は小さい。
 fn aliasing(stage: &mut Stage, project: &mm_doc::Project, progress: f64, size: Size) -> f32 {
     let small = stage.render(project, progress, size);

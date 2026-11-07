@@ -257,7 +257,7 @@ fn vlog_のトランジションの_1080p_の描く時間() {
 const OWN_FNS: [&str; 3] = ["matte", "overlay", "motion"];
 
 #[test]
-fn 同じ小道具の関数を複数のトランジションに写さない() {
+fn 同じ小道具の関数を複数のトランジションにコピーしない() {
     let dir = vlog_dir().join("transitions");
     let mut seen: BTreeMap<String, String> = BTreeMap::new();
     for entry in std::fs::read_dir(&dir).expect("transitions を読める") {
@@ -271,7 +271,7 @@ fn 同じ小道具の関数を複数のトランジションに写さない() {
             if OWN_FNS.contains(&name) || !rest.trim_end().ends_with('}') {
                 continue;
             }
-            // 1 行の関数で、名前を除いた引数と本体が同じなら、名前を変えて写したもの
+            // 1 行の関数で、名前を除いた引数と本体が同じなら、名前を変えてコピーしたもの
             if let Some(first) = seen.insert(rest.to_string(), format!("{file} の {name}")) {
                 panic!("{file} の {name} は {first} と同じ。_prelude.wgsl に 1 つ置く");
             }

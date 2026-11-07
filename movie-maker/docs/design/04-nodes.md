@@ -113,7 +113,7 @@ pub trait NodeKind: Send + Sync {
 - 利用者のコードは `fn mm_transition(uv: vec2<f32>) -> vec4<f32>` を定義し、線形の premultiplied の色を返す。`uv` は左上が (0, 0)（gl-transitions は左下。移植では `1.0 - uv.y` に読み替える）。
 - 使える名前: `mm_from(uv)`、`mm_to(uv)`（出ていくカットと入ってくるカットを双線形で引く。範囲の外は端の色）、`u.progress`（0..1）、`u.ratio`（幅 / 高さ）、`u.time`（トランジションの中の秒 = `progress * duration`）、`u.duration`（掛かる長さの秒）、`u.size`、`u.scale`、`u.p0`（`p0`..`p3`）、`u.p1`（`p4`..`p7`）。
 - パラメータ: `code`、`progress` と `duration`（レンダラーが書く）、`rewind`（レンダラーが読む）、`p0`..`p7`。コードはパラメータにコピーするので、パックのフォルダーが無くても同じに描ける。
-- `uv` は出力の画面の 0..1 で、縦横比の違う画面（ショート）でも縦横で同じ長さではない。形を伸ばさないコードは `u.size` か `u.ratio` で縦横の倍率を揃える（vlog のトランジションは、基準の 1920x1080 が画面を覆うように縦横同じ倍率で写す。CSS の `object-fit: cover`）。
+- `uv` は出力の画面の 0..1 で、縦横比の違う画面（ショート）でも縦横で同じ長さではない。形を伸ばさないコードは `u.size` か `u.ratio` で縦横の倍率を揃える（vlog のトランジションは、基準の 1920x1080 が画面を覆うように縦横同じ倍率で変換する。CSS の `object-fit: cover`）。
 - コンパイルの失敗は `shader.wgsl` と同じ扱い（エラーを記録し、その境は透明）。パックは共通のコードをトランジションのコードの前に連結して渡す（vlog の `transitions/_prelude.wgsl`）。
 
 ## gen.ai の作り
