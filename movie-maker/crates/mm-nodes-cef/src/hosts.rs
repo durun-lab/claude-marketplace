@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use mm_host_api::{HostLauncher, HostProcess, HostRequest, HostResponse, HostSpec, SharedFrame};
+use mm_text_api::{fonts_fingerprint, FontFile};
 use mm_types::{GpuAdapterId, MmError, Result};
 
 use crate::page::FrameRequest;
@@ -38,6 +39,8 @@ pub struct HostPages {
     executable: PathBuf,
     /// 新しく使った順。
     slots: Vec<Slot>,
+    /// プロジェクトの書体。ページを読み込むときに `Prepare` の `fonts` で渡す。
+    fonts: Vec<FontFile>,
 }
 
 impl HostPages {
@@ -47,6 +50,15 @@ impl HostPages {
             launcher,
             executable,
             slots: Vec::new(),
+            fonts: Vec::new(),
+        }
+    }
+
+    /// プロジェクトの書体の組を入れ替える。組が変わったら、読み込んだページを書体ごと読み直させるためにホストを止める。
+    pub fn set_fonts(&mut self, fonts: &[FontFile]) {
+        if fonts_fingerprint(fonts) != fonts_fingerprint(&self.fonts) {
+            self.fonts = fonts.to_vec();
+            self.slots.clear();
         }
     }
 
@@ -134,7 +146,7 @@ impl HostPages {
             }
         };
         let prepare = HostRequest::Prepare {
-            params: serde_json::json!({ "html": req.page.html }),
+            params: serde_json::json!({ "html": req.page.html, "fonts": self.fonts }),
         };
         match host.request(&prepare, PREPARE_TIMEOUT)? {
             HostResponse::Prepared => Ok(Slot {
@@ -174,10 +186,12 @@ mod tests {
     struct Counting {
         spawned: Mutex<Vec<Option<GpuAdapterId>>>,
         live: Arc<AtomicUsize>,
+        prepared: Arc<Mutex<Vec<serde_json::Value>>>,
     }
 
     struct Fake {
         live: Arc<AtomicUsize>,
+        prepared: Arc<Mutex<Vec<serde_json::Value>>>,
     }
 
     impl Drop for Fake {
@@ -195,7 +209,10 @@ mod tests {
         }
         fn request(&mut self, req: &HostRequest, _timeout: Duration) -> Result<HostResponse> {
             Ok(match req {
-                HostRequest::Prepare { .. } => HostResponse::Prepared,
+                HostRequest::Prepare { params } => {
+                    self.prepared.lock().unwrap().push(params.clone());
+                    HostResponse::Prepared
+                }
                 _ => HostResponse::Frame(SharedFrame::Cpu {
                     size: Size::new(1, 1),
                     data: vec![0.0; 4],
@@ -222,6 +239,7 @@ mod tests {
             self.live.fetch_add(1, Ordering::SeqCst);
             Ok(Box::new(Fake {
                 live: self.live.clone(),
+                prepared: self.prepared.clone(),
             }))
         }
     }
@@ -235,19 +253,46 @@ mod tests {
         }
     }
 
+    fn page() -> Page {
+        let mut params = Params::new();
+        params.set(HTML_PARAM, ParamValue::Text("<p>x</p>".into()));
+        Page::read_with(&params, false).unwrap()
+    }
+
+    fn request(page: &Page) -> FrameRequest<'_> {
+        FrameRequest {
+            page,
+            time: RationalTime::ZERO,
+            size: Size::new(1, 1),
+            scale: 1.0,
+        }
+    }
+
+    #[test]
+    fn 書体の組を_prepare_で渡し_組が変わったら読み直す() {
+        let launcher = Arc::new(Counting::default());
+        let mut hosts = HostPages::new(launcher.clone(), "fake".into());
+        let page = page();
+        let font = FontFile::from_asset("p/fonts/A B/a.ttf", "h1");
+        hosts.set_fonts(std::slice::from_ref(&font));
+        hosts.render(&request(&page), &Delivery::Cpu).unwrap();
+        hosts.set_fonts(std::slice::from_ref(&font));
+        hosts.render(&request(&page), &Delivery::Cpu).unwrap();
+        hosts.set_fonts(&[]);
+        hosts.render(&request(&page), &Delivery::Cpu).unwrap();
+        let prepared = launcher.prepared.lock().unwrap().clone();
+        assert_eq!(prepared.len(), 2, "同じ組なら読み直さない");
+        assert_eq!(prepared[0]["fonts"][0]["content_hash"], "h1");
+        assert_eq!(prepared[0]["fonts"][0]["family"], "A B");
+        assert_eq!(prepared[1]["fonts"], serde_json::json!([]));
+    }
+
     #[test]
     fn デバイスを作り直したらホストを新しいアダプターで起こし直す() {
         let launcher = Arc::new(Counting::default());
         let mut hosts = HostPages::new(launcher.clone(), "fake".into());
-        let mut params = Params::new();
-        params.set(HTML_PARAM, ParamValue::Text("<p>x</p>".into()));
-        let page = Page::read(&params).unwrap();
-        let req = FrameRequest {
-            page: &page,
-            time: RationalTime::ZERO,
-            size: Size::new(1, 1),
-            scale: 1.0,
-        };
+        let page = page();
+        let req = request(&page);
         let old = Delivery::Shared {
             adapter: adapter("old"),
             device: 1,

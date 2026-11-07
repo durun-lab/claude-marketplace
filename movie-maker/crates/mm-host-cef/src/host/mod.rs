@@ -3,6 +3,7 @@
 mod args;
 mod bench;
 mod browser;
+mod font_scheme;
 mod gpu;
 mod guard;
 mod handlers;
