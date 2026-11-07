@@ -123,7 +123,7 @@ impl WgpuRenderer {
         let mut temps = Vec::new();
         let mattes = matte::matte_layers(cx.comp);
         for layer in &cx.comp.layers {
-            // 無効のレイヤーは描かない。マットに使うレイヤーは matted_item が enabled に依らず引く。
+            // 無効のレイヤーは描かない。マットのレイヤーは matted_item が enabled に依らず引く。
             if !layer.enabled
                 || mattes.contains(layer.id.as_str())
                 || !layer.range()?.contains(cx.t)
@@ -454,7 +454,7 @@ fn has_vector(cx: &CompCx<'_>, comp: &Composition, depth: u32) -> bool {
     if depth > MAX_DEPTH {
         return false;
     }
-    comp.layers.iter().any(|layer| {
+    matte::effective_layers(comp).any(|layer| {
         let Ok((kind, params)) = evaluate(cx.nodes, layer, cx.t) else {
             return false;
         };

@@ -60,7 +60,7 @@ fn 無効のレイヤーは描かず_下のレイヤーが見える() {
 }
 
 #[test]
-fn 無効にした切り抜かれる側は描かない() {
+fn 無効にした切り抜くレイヤーは描かない() {
     let layers = vec![
         disabled(matted_by(layer("target", solid(RED), 2), "matte")),
         layer("matte", solid(WHITE), 2),
@@ -68,11 +68,15 @@ fn 無効にした切り抜かれる側は描かない() {
     let Some((img, _)) = render(&project(vec![comp("main", SIZE, 2, layers)], vec![])) else {
         return;
     };
-    assert_center(&img, Rgba::TRANSPARENT, "無効の対象もマットも描かない");
+    assert_center(
+        &img,
+        Rgba::TRANSPARENT,
+        "無効の切り抜くレイヤーもマットも描かない",
+    );
 }
 
 #[test]
-fn 無効にしたマットのレイヤーはマットとして効き_描かない() {
+fn 無効にしたマットのレイヤーもマットとして効き_描かない() {
     let layers = vec![
         matted_by(layer("target", solid(RED), 2), "matte"),
         disabled(layer("matte", solid(WHITE), 2)),

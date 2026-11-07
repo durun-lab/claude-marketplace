@@ -55,6 +55,15 @@ pub(crate) fn matte_layers(comp: &Composition) -> HashSet<&str> {
         .collect()
 }
 
+/// 画素に効きうるレイヤー。有効なレイヤーと、無効でもマットのレイヤーとして引かれるもの。
+/// キャッシュのキーと描く倍率の判定が、描かないレイヤーに引きずられないようにする。
+pub(crate) fn effective_layers(comp: &Composition) -> impl Iterator<Item = &Layer> {
+    let mattes = matte_layers(comp);
+    comp.layers
+        .iter()
+        .filter(move |l| l.enabled || mattes.contains(l.id.as_str()))
+}
+
 /// マットを掛ける全画面のパス。
 pub(crate) struct MattePass {
     pipeline: wgpu::RenderPipeline,

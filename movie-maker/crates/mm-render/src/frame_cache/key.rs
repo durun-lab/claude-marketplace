@@ -15,6 +15,7 @@ use mm_render_api::{digest_bytes, size_bucket, FrameCacheKey};
 use mm_types::{AssetId, CompositionId, Id, ParamValue, Params, RationalTime, Size};
 
 use crate::layers::{evaluate, MAX_DEPTH, NESTED_KIND, NESTED_PARAM};
+use crate::matte::effective_layers;
 use crate::renderer::WGPU_RENDERER_VERSION;
 
 /// キーと、その値が頼った ID。
@@ -169,7 +170,8 @@ impl Walk<'_> {
         self.deps.push(comp.id.as_str().to_owned());
         self.fingerprint
             .push_str(&serde_json::to_string(comp).ok()?);
-        for layer in &comp.layers {
+        // enabled の切り替えは上で入れたコンポジションの JSON で拾うので、描かないレイヤーの種類と素材はたどらない。
+        for layer in effective_layers(comp) {
             self.deps.push(layer.id.as_str().to_owned());
             let (kind, params) = evaluate(self.nodes, layer, t).ok()?;
             if !kind.traits().deterministic {
