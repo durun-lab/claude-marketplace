@@ -10,8 +10,8 @@
     "tag": {"type": "text", "default": "ちなみに", "description": "左上の札。空にすると札を出さない"},
     "x": {"type": "number", "default": "1742", "description": "しっぽが指す点の x（既定は右下のワイプの上の縁）"},
     "y": {"type": "number", "default": "695", "description": "しっぽが指す点の y"},
-    "side": {"type": "text", "default": "left", "description": "吹き出しを置く側。left は指す点の左、right は右（ワイプが左にあるとき）"},
-    "tail": {"type": "text", "default": "down", "description": "down は吹き出しが点の上、up は点の下（ワイプが上にあるとき）"},
+    "side": {"type": "text", "choices": ["left", "right"], "default": "left", "description": "吹き出しを置く側。left は指す点の左、right は右（ワイプが左にあるとき）"},
+    "tail": {"type": "text", "choices": ["down", "up"], "default": "down", "description": "down は吹き出しが点の上、up は点の下（ワイプが上にあるとき）"},
     "at": {"type": "time", "description": "出る時刻（コンポジションの秒）"},
     "dur": {"type": "time", "default": "4", "description": "出ている長さ（秒）"},
     "cut": {"type": "id", "optional": true, "description": "接続するカット"}

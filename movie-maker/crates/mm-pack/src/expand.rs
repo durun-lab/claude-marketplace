@@ -211,7 +211,8 @@ fn text_node(style: &TextStyleSpec, text: &str, color: mm_types::Rgba, spot: &Pl
         .with_param("align", ParamValue::Text("center".into()))
 }
 
-/// 出る・消える動き（秒）の不透明度。動きの長さの和が出ている長さを超えるときは動かさない。
+/// 出る・消える動き（秒）の不透明度。動きの長さの和が出ている長さを超えるときは、超えた秒数を添えて `InvalidArgument`
+/// にする（動きが黙って消えない）。
 pub(crate) fn fade(
     fade_in: f64,
     fade_out: f64,
@@ -224,8 +225,15 @@ pub(crate) fn fade(
     }
     let fade_in = millis(fade_in)?;
     let fade_out = millis(fade_out)?;
-    if fade_in.checked_add(fade_out)? > dur {
-        return Ok(constant);
+    let total = fade_in.checked_add(fade_out)?;
+    if total > dur {
+        return Err(MmError::InvalidArgument(format!(
+            "出る動き {}s と消える動き {}s の和が長さ {}s を {}s 超える",
+            fade_in.to_f64(),
+            fade_out.to_f64(),
+            dur.to_f64(),
+            total.checked_sub(dur)?.to_f64()
+        )));
     }
     let end = at.checked_add(dur)?;
     let key =
