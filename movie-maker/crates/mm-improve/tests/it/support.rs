@@ -62,9 +62,14 @@ impl Fixture {
         ImproveConfig::new(&self.data, &self.repo).with_subdir("mm")
     }
 
-    /// 本線のファイルの中身。
+    /// 取り込む先（既定の `local/movie-maker`）のファイルの中身。
     pub fn main_file(&self, path: &str) -> String {
-        git(&self.repo, &["show", &format!("main:mm/{path}")]).unwrap()
+        self.file_at(mm_improve::DEFAULT_MAINLINE, path)
+    }
+
+    /// ブランチ `rev` のファイルの中身。
+    pub fn file_at(&self, rev: &str, path: &str) -> String {
+        git(&self.repo, &["show", &format!("{rev}:mm/{path}")]).unwrap()
     }
 
     pub fn branch_exists(&self, branch: &str) -> bool {

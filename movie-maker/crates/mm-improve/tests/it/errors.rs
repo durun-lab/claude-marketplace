@@ -76,8 +76,13 @@ fn recurrence_after_done_is_filed_again_up_to_the_limit() {
             book.reset_item(&id);
         }
     }
-    let text = &store.all().unwrap()[0].text;
-    assert!(text.contains("前回の要望"), "{text}");
+    // 同じ秒の 2 件は ID の乱数の部分で並ぶので、順番に頼らず 2 件目の起票を探す。
+    let all = store.all().unwrap();
+    assert_eq!(all.len(), 2);
+    assert_eq!(
+        all.iter().filter(|i| i.text.contains("前回の要望")).count(),
+        1
+    );
 }
 
 #[test]

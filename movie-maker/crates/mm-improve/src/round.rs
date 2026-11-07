@@ -131,6 +131,7 @@ fn start(ctx: &Ctx, st: &mut ImproveState) -> Result<std::result::Result<RunStat
     let id = format!("{}-{}", stamp(now), short_hex());
     let branch = format!("fix/movie-maker-improve-{id}");
     let worktree = ctx.cfg.worktrees_dir.join(&id);
+    git::ensure_branch(&ctx.cfg.repo, &ctx.cfg.mainline, &ctx.cfg.upstream)?;
     let base_commit = git::git(&ctx.cfg.repo, &["rev-parse", &ctx.cfg.mainline])?;
     git::worktree_add(&ctx.cfg.repo, &worktree, &branch, &base_commit)?;
     let run = RunState {

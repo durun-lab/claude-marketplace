@@ -46,6 +46,11 @@ fn feedback_in_merge_area_lands_on_mainline_with_reply() {
     );
     assert_eq!(fx.main_file("src/greet.txt"), "Hello, world");
     assert_eq!(
+        fx.file_at("main", "src/greet.txt"),
+        "Helo, world",
+        "人の main は動かさない"
+    );
+    assert_eq!(
         *checks.seen.lock().unwrap(),
         vec!["src/greet.txt".to_owned()]
     );

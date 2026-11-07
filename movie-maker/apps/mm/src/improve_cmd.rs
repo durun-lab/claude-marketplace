@@ -21,9 +21,13 @@ pub enum Cmd {
         /// 要望と回の状態の置き場所。
         #[arg(long, global = true)]
         data_dir: Option<PathBuf>,
-        /// 取り込む先のブランチ。
-        #[arg(long, global = true, default_value = "main")]
+        /// 取り込む先のブランチ。人の main のチェックアウトの WIP を巻き込まないよう、既定は専用のブランチ。
+        /// 無ければ `--upstream` から切る。
+        #[arg(long, global = true, default_value = mm_improve::DEFAULT_MAINLINE)]
         mainline: String,
+        /// 取り込む先を切る元で、PR までで止めるときの PR の向き先。
+        #[arg(long, global = true, default_value = mm_improve::DEFAULT_UPSTREAM)]
+        upstream: String,
         #[command(subcommand)]
         command: ImproveCommand,
     },
@@ -107,14 +111,16 @@ impl Cmd {
         let Self::Improve {
             data_dir,
             mainline,
+            upstream,
             command,
         } = self;
         let data_dir = match data_dir {
             Some(d) => d,
             None => ImproveConfig::default_data_dir()?,
         };
-        let cfg =
-            ImproveConfig::discover(data_dir, &std::env::current_dir()?)?.with_mainline(mainline);
+        let cfg = ImproveConfig::discover(data_dir, &std::env::current_dir()?)?
+            .with_mainline(mainline)
+            .with_upstream(upstream);
         run(cfg, command)
     }
 }

@@ -142,7 +142,7 @@ fn open_pr(ctx: &Ctx, run: &RunState, g: &Gathered) -> RunOutcome {
     let pr = PullRequest {
         repo: &ctx.cfg.repo,
         branch: &run.branch,
-        base: &ctx.cfg.mainline,
+        base: &ctx.cfg.upstream,
         title: &title,
         body: &body,
     };

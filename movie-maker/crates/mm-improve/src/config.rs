@@ -23,11 +23,19 @@ pub struct ImproveConfig {
     pub repo: PathBuf,
     /// 根から movie-maker までの相対パス（`movie-maker`）。根そのものなら空。
     pub subdir: PathBuf,
-    /// 取り込む先のブランチ。
+    /// 取り込む先のブランチ。人の main のチェックアウトには並行の WIP があることが多いので、既定は専用の
+    /// `local/movie-maker`（durun-dashboard の `local/dashboard` と同じ型）。
     pub mainline: String,
+    /// 取り込む先のブランチが無いときに切る元で、PR までで止めるときの PR の向き先。
+    pub upstream: String,
     /// 回の worktree の置き場所。
     pub worktrees_dir: PathBuf,
 }
+
+/// 取り込む先のブランチの既定。
+pub const DEFAULT_MAINLINE: &str = "local/movie-maker";
+/// 切る元と PR の向き先の既定。
+pub const DEFAULT_UPSTREAM: &str = "main";
 
 impl ImproveConfig {
     /// `data_dir` と根を決めて作る。worktree は `data_dir/worktrees/` に置く。
@@ -38,7 +46,8 @@ impl ImproveConfig {
             data_dir,
             repo: repo.into(),
             subdir: PathBuf::new(),
-            mainline: "main".into(),
+            mainline: DEFAULT_MAINLINE.into(),
+            upstream: DEFAULT_UPSTREAM.into(),
         }
     }
 
@@ -51,6 +60,12 @@ impl ImproveConfig {
     /// 取り込む先のブランチを決める。
     pub fn with_mainline(mut self, mainline: impl Into<String>) -> Self {
         self.mainline = mainline.into();
+        self
+    }
+
+    /// 切る元と PR の向き先を決める。
+    pub fn with_upstream(mut self, upstream: impl Into<String>) -> Self {
+        self.upstream = upstream.into();
         self
     }
 

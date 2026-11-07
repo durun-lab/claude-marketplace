@@ -126,6 +126,15 @@ pub fn land(repo: &Path, mainline: &str, branch: &str) -> Result<String> {
     Ok(new)
 }
 
+/// `branch` が無ければ `from` から切る。チェックアウトはしない。
+pub fn ensure_branch(repo: &Path, branch: &str, from: &str) -> Result<()> {
+    let refname = format!("refs/heads/{branch}");
+    if !git_ok(repo, &["rev-parse", "--verify", "--quiet", &refname])? {
+        git(repo, &["branch", branch, from])?;
+    }
+    Ok(())
+}
+
 /// `rev` の `path` の中身。areas.toml を回の変更の前の版で読むのに使う。
 pub fn show(repo: &Path, rev: &str, path: &str) -> Result<String> {
     git(repo, &["show", &format!("{rev}:{path}")])

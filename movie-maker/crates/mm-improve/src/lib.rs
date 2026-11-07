@@ -39,8 +39,8 @@ pub use checks::{
     Verdict,
 };
 pub use config::{
-    ImproveConfig, Settings, SettingsPatch, DEFAULT_BUDGET_USD, DEFAULT_PERF_THRESHOLD,
-    DEFAULT_WALL_MINUTES,
+    ImproveConfig, Settings, SettingsPatch, DEFAULT_BUDGET_USD, DEFAULT_MAINLINE,
+    DEFAULT_PERF_THRESHOLD, DEFAULT_UPSTREAM, DEFAULT_WALL_MINUTES,
 };
 pub use errors::{
     key_of, ErrorBook, ErrorInput, ErrorRecord, ErrorSource, Load, RecentLanding, MAX_FILINGS,
