@@ -4,7 +4,7 @@
 //! GPU が無い環境ではスキップし、`MM_REQUIRE_GPU` があれば失敗にする。
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use mm_nodes_basic::all_kinds;
 use mm_render::{GpuContext, GpuRequest, WgpuRenderer};
@@ -16,6 +16,17 @@ use mm_testkit::node::MapRegistry;
 use mm_types::{RationalTime, RgbaImage};
 
 use mm_node_api::Quality;
+
+/// 消失させたコンテキストをプロセスの終わりまで持ち、破棄しない。NVIDIA の Vulkan ドライバーは破棄の後も
+/// 自分のスレッドが解放済みの領域に触れることがあり、プロセスの終了と重なると 0xc0000409 で落ちる。
+static RETIRED: Mutex<Vec<Arc<GpuContext>>> = Mutex::new(Vec::new());
+
+fn keep_until_exit(ctx: &Arc<GpuContext>) {
+    RETIRED
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push(ctx.clone());
+}
 
 fn gpu() -> Option<Arc<GpuContext>> {
     match GpuContext::shared(&GpuRequest::default()) {
@@ -63,6 +74,7 @@ fn デバイスを壊しても次のフレームから描き続ける() {
     assert_eq!(r.recoveries(), 0);
 
     // 実際の消失: wgpu がデバイスを失ったと通知する（NVIDIA の d3d12va の失敗と同じ経路）。
+    keep_until_exit(&ctx);
     ctx.device.destroy();
     let after = render(&mut r, &nodes);
     assert_eq!(r.recoveries(), 1, "消失を見つけて作り直す");
@@ -80,6 +92,7 @@ fn デバイスを壊しても次のフレームから描き続ける() {
     );
 
     // 通知だけの消失: デコーダーなど、先に気づいた側からの知らせ。
+    keep_until_exit(r.context());
     r.context().mark_lost();
     let again = render(&mut r, &nodes);
     assert_eq!(r.recoveries(), 2);

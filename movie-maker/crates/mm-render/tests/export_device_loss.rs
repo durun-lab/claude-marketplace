@@ -3,7 +3,7 @@
 //! GPU が無い環境ではスキップし、`MM_REQUIRE_GPU` があれば失敗にする。
 
 use std::sync::mpsc;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use mm_decode_api::{EncodeReport, EncodeSettings, Encoder, Nv12Frame};
@@ -22,6 +22,10 @@ const SIZE: Size = Size::new(64, 36);
 const FRAMES: i64 = 12;
 /// 待ち続けているとみなす秒数。
 const HANG_LIMIT: Duration = Duration::from_secs(30);
+
+/// 消失させるコンテキストをプロセスの終わりまで持ち、破棄しない。NVIDIA の Vulkan ドライバーは破棄の後も
+/// 自分のスレッドが解放済みの領域に触れることがあり、プロセスの終了と重なると 0xc0000409 で落ちる。
+static RETIRED: OnceLock<Arc<GpuContext>> = OnceLock::new();
 
 /// NV12 を受け、`lose_after` 枚目を受けた時点でデバイスの消失を知らせる。
 struct LosingEncoder {
@@ -94,8 +98,9 @@ fn 書き出しの途中のデバイス消失は待ち続けずエラーで返�
             return;
         }
     };
+    let ctx = RETIRED.get_or_init(|| ctx).clone();
     let (tx, rx) = mpsc::channel();
-    std::thread::spawn(move || {
+    let worker = std::thread::spawn(move || {
         let mut nodes = MapRegistry::default();
         for kind in all_kinds() {
             nodes.insert(kind);
@@ -138,6 +143,8 @@ fn 書き出しの途中のデバイス消失は待ち続けずエラーで返�
     let (is_err, recoveries) = rx
         .recv_timeout(HANG_LIMIT)
         .expect("古いデバイスのリードバックを待ち続けている");
+    // レンダラーの GPU の資源を片付け終えてから抜け、プロセスの終了と重ねない。
+    worker.join().expect("書き出しのスレッド");
     assert_eq!(recoveries, 1, "消失を見つけて作り直す");
     assert!(is_err, "先行していた古いリードバックは捨ててエラーで返す");
 }

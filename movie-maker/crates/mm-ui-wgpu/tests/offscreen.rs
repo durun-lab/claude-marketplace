@@ -1,5 +1,7 @@
 //! `Ui` をオフスクリーンのテクスチャに描いて、画素をリードバックする。GPU が無ければスキップする（`MM_REQUIRE_GPU` があれば失敗）。
 
+use std::sync::OnceLock;
+
 use mm_types::{Rgba, RgbaImage, Size};
 use mm_ui_layout::{palette, Item, ItemKind, TimelineModel};
 use mm_ui_wgpu::{Region, Ui};
@@ -8,18 +10,12 @@ const W: u32 = 640;
 const H: u32 = 400;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
+/// プロセスで 1 つのデバイスを static に置き、破棄しない。NVIDIA の Vulkan ドライバーは破棄の後も
+/// 自分のスレッドが解放済みの領域に触れることがあり、プロセスの終了と重なると 0xc0000409 で落ちる。
 fn gpu() -> Option<(wgpu::Device, wgpu::Queue)> {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::HighPerformance,
-        ..Default::default()
-    }));
-    let made = adapter.map_err(|e| e.to_string()).and_then(|a| {
-        pollster::block_on(a.request_device(&wgpu::DeviceDescriptor::default()))
-            .map_err(|e| e.to_string())
-    });
-    match made {
-        Ok(v) => Some(v),
+    static DEVICE: OnceLock<Result<(wgpu::Device, wgpu::Queue), String>> = OnceLock::new();
+    match DEVICE.get_or_init(make_device) {
+        Ok(v) => Some(v.clone()),
         Err(e) if std::env::var_os("MM_REQUIRE_GPU").is_some() => {
             panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")
         }
@@ -28,6 +24,18 @@ fn gpu() -> Option<(wgpu::Device, wgpu::Queue)> {
             None
         }
     }
+}
+
+fn make_device() -> Result<(wgpu::Device, wgpu::Queue), String> {
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::HighPerformance,
+        ..Default::default()
+    }));
+    adapter.map_err(|e| e.to_string()).and_then(|a| {
+        pollster::block_on(a.request_device(&wgpu::DeviceDescriptor::default()))
+            .map_err(|e| e.to_string())
+    })
 }
 
 fn model() -> TimelineModel {
