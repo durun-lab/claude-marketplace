@@ -1,7 +1,7 @@
 # mm-nodes-ofx
 
 `ofx` のノードの種類。OpenFX のプラグインで、入力のレイヤーの画像を描き直す（[04-nodes.md](../../docs/design/04-nodes.md) の `ofx`）。
-描くのは別プロセスのホスト（[mm-host-ofx](../mm-host-ofx/README.md)）で、画像は CPU の画像（RGBA f32、premultiplied、線形）で往復する。
+描くのは別プロセスのホスト（[mm-host-ofx](../mm-host-ofx/README.md)）で、画像は CPU の画像（RGBA f32、premultiplied、線形）を共有メモリで往復する。
 
 ## パラメータ
 
@@ -30,17 +30,19 @@
 - describe の失敗も覚える。壊れたプラグインを毎フレーム読み込み直さない。プラグインを差し替えると印が変わり、引き直す。
 - 実装は実装に依存しないので、種類は `mm-host-ofx` を直に呼ばない。ホストの実行ファイル、ランチャー、describe の関数（`Describe`）は組み立て（`mm-runtime` の `ofx.rs`）が渡す。実行ファイルが見つからなければ（`mm_host_ofx::find_host()`）種類を登録しない。
 - ホストはプラグインごとに 1 つ起こし、別のプラグインを同じホストに読み直させない。ホストは共有ライブラリを解放しないため。
+- 画像の受け渡し（`src/frames.rs`）。入力と結果を名前つきの共有メモリ（`mm_host_pipe::shm`、`mm-host-clap` と同じ実装）の `[入力 | 結果]` に置き、パイプの JSON には区画の名前だけを書く。区画は全部のホストで 1 つを使い回し、大きい画像が来たら作り直す。時間切れの後は作り直し、遅れて書かれた結果が次のフレームに入らないようにする。共有メモリを作れない環境（Windows のほか）では画像を JSON で渡す。
+- フレームのキャッシュのキー。`NodeKind::cache_fingerprint` でバンドルの実体のパス、中身の印、効果の識別子を返し、レンダラーがキーに入れる。共有ライブラリを差し替えると別のキーになり、前の画素を返さない。
 
 ## 速さ
 
-1920x1080、Gain（`gain.c`）、ホストの起動と読み込みの後の 1 フレーム（`tests/it/render.rs` の `フル_hd_の_1_フレームの時間を測る`）。
+1920x1080、Gain（`gain.c`）、ホストの起動と読み込みの後の 1 フレームの往復（入力を渡し、描き、結果を受け取るまで。`tests/it/render.rs` の `フル_hd_の_1_フレームの時間を測る`）。
 
-| ビルド | p50 |
-|---|---|
-| release | 1.6 s |
-| dev | 5.1 s |
+| ビルド | p50 | 画像を JSON で渡したとき |
+|---|---|---|
+| release | 26 ms | 1.6 s |
+| dev | 651 ms | 5.1 s |
 
-ほとんどは JSON の往復（`SharedFrame::Cpu` の 830 万個の f32）。release で、送る側の `Value` 化 0.24 s と文字列化 0.34 s、受ける側の読み 0.72 s を測った。プレビューには遅く、書き出しとキャッシュに向く。
+JSON のときは、ほとんどが 830 万個の f32 の文字列化と読みだった。共有メモリでは画像を写すのが両方のプロセスで 1 回ずつで、Float の深さのプラグインには行ごとの写しで渡す。
 
 ## 試す
 
@@ -54,12 +56,12 @@ cargo nextest run -p mm-host-ofx -p mm-nodes-ofx
 
 ## 残したもの
 
-- 画像の受け渡しの速さ。CPU の画像は共有メモリで渡す（07-standards の OpenFX の行）。応答の形（`SharedFrame`）に共有メモリの形が要るので、`mm-host-api` の RFC から。GPU の受け渡し（共有テクスチャ、GPU Rendering Suite）はその後。
+- GPU の受け渡し（共有テクスチャ、GPU Rendering Suite）。今はレンダラーの GPU のテクスチャを CPU に読み戻してから渡し、結果を GPU に上げ直す。
+- Windows のほかの環境の共有メモリ（今は JSON で渡し、1080p で 1 s 余りかかる）。
 - IsIdentity、GetRegionOfDefinition と GetRegionsOfInterest、GetClipPreferences をホストに問わない。今は出力の全面を毎回描く。
 - Transition と General の文脈、2 つ以上の入力、マスクの入力、時間方向のクリップの読み（今は入力 0 の今の時刻だけ）。
 - 描く倍率（`kOfxImageEffectPropRenderScale`）を渡さない。プレビューの縮小した大きさでは、半径のような画素の単位のパラメータの見え方が書き出しと違う。
 - フレームレート。種類はコンポジションのフレームレートを知らないので、時刻をフレームの番号に直すのは 30 fps の既定のまま。
 - describe の結果はプロセスの中だけで覚える（起動のたびに 1 回 describe する）。ディスクのキャッシュは `cache/` の担当と決める。
 - `params_for` は素材のバンドル（`asset`）を引けず、自前の 3 つだけを返す（`params_for` に素材のパスを引く手段が無い）。
-- レンダラーのフレームのキャッシュのキーにプラグインの印が入らない。プラグインを差し替えても、キャッシュに残った前の画素を返すことがある。
 - InstanceChanged、オーバーレイ（Interact）、描画の取り消し、色の管理（OpenFX 1.5）は mm-host-ofx の残り。
