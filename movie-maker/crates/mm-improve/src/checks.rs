@@ -1,5 +1,5 @@
-//! 囲いの検査。取り込みの前に、コンパイル、変えたクレートと依存の逆引きの試験、WebView の型、性能、書き出しの一致を確かめる。
-//! [`Checks`] を差し替えられる層にし、本物は [`CargoChecks`]（cargo、pnpm、`mm perf`、`mm export` を回の worktree で走らせる）。
+//! 囲いの検査。取り込みの前に、コンパイル、変えたクレートと依存の逆引きのテスト、WebView の型、性能、書き出しの一致を確かめる。
+//! [`Checks`] を差し替えられる層にし、実際の実装は [`CargoChecks`]（cargo、pnpm、`mm perf`、`mm export` を回の worktree で実行する）。
 //! 領域の検査（areas.toml）は差し替えず、回が必ず通す（round.rs）。
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -31,7 +31,7 @@ pub struct Baseline {
 pub enum Verdict {
     /// 通った。
     Pass,
-    /// 落ちた。取り込まず、要望は未対応に残る。
+    /// 失敗した。取り込まず、要望は未対応に残る。
     Fail,
     /// 人が見る。PR までで止める。
     Hold,
@@ -45,7 +45,7 @@ pub struct CheckOutcome {
     pub name: String,
     /// 判定。
     pub verdict: Verdict,
-    /// 返事に載せる中身（落ちた項目と数など）。
+    /// 返事に載せる中身（失敗した項目と数など）。
     pub detail: String,
 }
 
@@ -76,11 +76,11 @@ pub struct CheckCx<'a> {
 pub trait Checks: Send + Sync {
     /// 回の前に基準を取る（実装を任せる前の worktree で呼ぶ）。
     fn baseline(&self, cx: &CheckCx<'_>) -> Result<Baseline>;
-    /// 取り込みの前に検査する。落ちたら後の重い検査は省いてよい。
+    /// 取り込みの前に検査する。失敗したら後の重い検査は省いてよい。
     fn verify(&self, cx: &CheckCx<'_>, baseline: &Baseline) -> Vec<CheckOutcome>;
 }
 
-/// cargo と pnpm と `mm` で検査する本物。
+/// cargo と pnpm と `mm` で検査する実際の実装。
 #[derive(Clone, Debug)]
 pub struct CargoChecks {
     /// 回の `CARGO_TARGET_DIR`。
@@ -91,7 +91,7 @@ pub struct CargoChecks {
     pub perf_repeat: u32,
     /// `mm export` のハッシュを比べるフィクスチャのプロジェクト（`root` からの相対の JSON）。
     pub export_fixture: Option<PathBuf>,
-    /// `mm` を走らせる cargo の引数。
+    /// `mm` を実行する cargo の引数。
     pub mm: Vec<String>,
     /// WebView の型の検査のコマンド。
     pub webview: Vec<String>,
@@ -350,7 +350,7 @@ fn norm(p: &str) -> String {
     p.replace('\\', "/").trim_end_matches('/').to_owned()
 }
 
-/// 変えたファイルを持つクレートと、それに依存するクレート（逆引きの閉包）。`changed` は workspace の根からの相対。
+/// 変えたファイルを持つクレートと、それに依存するクレート（逆引きの閉包）。`changed` は workspace のルートからの相対。
 pub fn affected_packages(metadata: &Value, changed: &[String]) -> Vec<String> {
     let root = norm(metadata["workspace_root"].as_str().unwrap_or(""));
     let empty = Vec::new();

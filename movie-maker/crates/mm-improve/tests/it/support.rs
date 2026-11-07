@@ -1,4 +1,4 @@
-//! フィクスチャのリポジトリ（一時フォルダーの git）と、差し替えの偽物。
+//! フィクスチャのリポジトリ（一時フォルダーの git）と、差し替えのモック。
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
@@ -14,14 +14,14 @@ use mm_types::Result;
 /// フィクスチャの areas.toml。`src/` は取り込み、`core/` は人の承認、`src/golden/` は取り込みの中でも人が見る。
 const AREAS: &str = "[improve]\nmerge = [\"src/\"]\nhold = [\"src/golden/\"]\n";
 
-/// 一時フォルダーの git。根の下の `mm/` を movie-maker に見立てる。
+/// 一時フォルダーの git。ルートの下の `mm/` を movie-maker に見立てる。
 pub struct Fixture {
     _dir: tempfile::TempDir,
     pub repo: PathBuf,
     pub data: PathBuf,
 }
 
-fn run_git(dir: &Path, args: &[&str]) {
+pub fn run_git(dir: &Path, args: &[&str]) {
     let ok = Command::new("git")
         .arg("-C")
         .arg(dir)
@@ -73,7 +73,7 @@ impl Fixture {
         ImproveConfig::new(&self.data, &self.repo).with_subdir("mm")
     }
 
-    /// 取り込む先（既定の `local/movie-maker`）のファイルの中身。
+    /// 本線（既定の `local/movie-maker`）のファイルの中身。
     pub fn main_file(&self, path: &str) -> String {
         self.file_at(mm_improve::DEFAULT_MAINLINE, path)
     }
@@ -83,7 +83,7 @@ impl Fixture {
         git(&self.repo, &["show", &format!("{rev}:mm/{path}")]).unwrap()
     }
 
-    /// 取り込み先だけにあるコミット（main と origin/main には無い先行分）を作る。
+    /// 本線だけにあるコミット（main と origin/main には無い先行分）を作る。
     pub fn local_commit(&self, path: &str, body: &str) {
         let mainline = mm_improve::DEFAULT_MAINLINE;
         run_git(&self.repo, &["checkout", "-q", "-b", mainline]);
@@ -111,7 +111,7 @@ impl Fixture {
             .count()
     }
 
-    /// 偽物で組んで ON にする。
+    /// モックで組んで ON にする。
     pub fn improver(
         &self,
         agent: Arc<FakeAgent>,
@@ -128,29 +128,44 @@ impl Fixture {
     }
 }
 
-/// 偽物の 1 回の振る舞い。
+/// モックの 1 回の振る舞い。
 pub enum Script {
     /// ファイルを書いて、渡された要望の全部に返事をして終える。
     Write(Vec<(&'static str, &'static str)>),
-    /// 何も書かずに、文だけで終える（印なし）。
+    /// 何も書かずに、文だけで終える（完了のマーカーなし）。
     Say(&'static str),
     /// 使用制限で止まる。
     Limit(u64),
+    /// 任意の振る舞い。引数は呼び出しと 1 回目の頼む文（要望の ID が載っている）。
+    Run(fn(&AgentRequest<'_>, &str) -> AgentEnd),
 }
 
-/// 決まった差分を書く `claude -p` の偽物。
+/// 1 回目の頼む文に載った要望の全部に返事をした最後の発言。
+pub fn done_for(first_prompt: &str) -> AgentEnd {
+    let lines: Vec<String> = ids_in(first_prompt)
+        .iter()
+        .map(|id| format!("- {id}: 直しました"))
+        .collect();
+    AgentEnd::Finished {
+        last_message: format!("直した。\n\n対応した要望:\n{}", lines.join("\n")),
+    }
+}
+
+/// 決まった差分を書く `claude -p` のモック。
 #[derive(Default)]
 pub struct FakeAgent {
     script: Mutex<VecDeque<Script>>,
     /// 呼ばれたときの（続けたか、頼む文）。
     pub calls: Mutex<Vec<(bool, String)>>,
+    /// 呼ばれたときに渡された予算（回の残り）。
+    pub budgets: Mutex<Vec<Option<f64>>>,
 }
 
 impl FakeAgent {
     pub fn new(script: Vec<Script>) -> Arc<Self> {
         Arc::new(Self {
             script: Mutex::new(script.into()),
-            calls: Mutex::default(),
+            ..Default::default()
         })
     }
 
@@ -175,26 +190,23 @@ impl mm_improve::Agent for FakeAgent {
             .lock()
             .unwrap()
             .push((req.resume, req.prompt.to_owned()));
+        self.budgets.lock().unwrap().push(req.settings.budget_usd);
         let first = self.calls.lock().unwrap()[0].1.clone();
-        match self.script.lock().unwrap().pop_front() {
+        let next = self.script.lock().unwrap().pop_front();
+        match next {
             Some(Script::Write(files)) => {
                 for (path, body) in files {
                     let p = req.cwd.join(path);
                     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
                     std::fs::write(p, body).unwrap();
                 }
-                let lines: Vec<String> = ids_in(&first)
-                    .iter()
-                    .map(|id| format!("- {id}: 直しました"))
-                    .collect();
-                AgentEnd::Finished {
-                    last_message: format!("直した。\n\n対応した要望:\n{}", lines.join("\n")),
-                }
+                done_for(&first)
             }
             Some(Script::Say(m)) => AgentEnd::Finished {
                 last_message: m.to_owned(),
             },
             Some(Script::Limit(t)) => AgentEnd::UsageLimit { resets_at: t },
+            Some(Script::Run(f)) => f(req, &first),
             None => AgentEnd::Failed {
                 reason: "台本が尽きた".into(),
             },
@@ -202,12 +214,14 @@ impl mm_improve::Agent for FakeAgent {
     }
 }
 
-/// 決まった判定を返す検査の偽物。
+/// 決まった判定を返す検査のモック。
 #[derive(Default)]
 pub struct FakeChecks {
     pub outcomes: Vec<CheckOutcome>,
     /// verify に渡された変えたファイル。
     pub seen: Mutex<Vec<String>>,
+    /// verify の間に置く、すぐ止めるフラグのファイル（検査の最中に人が止めたことにする）。
+    pub stop_mark: Option<PathBuf>,
 }
 
 impl FakeChecks {
@@ -218,7 +232,15 @@ impl FakeChecks {
     pub fn with(outcomes: Vec<CheckOutcome>) -> Arc<Self> {
         Arc::new(Self {
             outcomes,
-            seen: Mutex::default(),
+            ..Default::default()
+        })
+    }
+
+    /// 検査の最中に止められる。
+    pub fn stopped_during_verify(data: &Path) -> Arc<Self> {
+        Arc::new(Self {
+            stop_mark: Some(data.join("stop")),
+            ..Default::default()
         })
     }
 }
@@ -230,14 +252,17 @@ impl Checks for FakeChecks {
 
     fn verify(&self, cx: &CheckCx<'_>, _baseline: &Baseline) -> Vec<CheckOutcome> {
         self.seen.lock().unwrap().extend(cx.changed.iter().cloned());
+        if let Some(mark) = &self.stop_mark {
+            std::fs::write(mark, "stop").unwrap();
+        }
         self.outcomes.clone()
     }
 }
 
-/// PR を記録するだけの偽物。
+/// PR を記録するだけのモック。
 #[derive(Default)]
 pub struct FakeForge {
-    /// （ブランチ、題、本文）。
+    /// （ブランチ、タイトル、本文）。
     pub prs: Mutex<Vec<(String, String, String)>>,
 }
 

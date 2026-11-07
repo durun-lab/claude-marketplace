@@ -2,7 +2,7 @@
 //! アプリ（Feedback パネルの IPC）と `mm improve` が同じ `data_dir` を指して使う。
 //!
 //! 起動の契機（要望を保存したとき、設定を変えたとき、アプリを起動したとき）に [`Improver::kick`] を呼ぶと、
-//! 裏の回し手が動いていなければスレッドを 1 本起こし、回を起こす条件が続く間だけ回す。使用制限で止まったら、
+//! バックグラウンドの実行が動いていなければスレッドを 1 本起こし、回を起こす条件が続く間だけ回す。使用制限で止まったら、
 //! 明ける時刻まで眠ってから続ける（時刻を知っているので、確かめ直しの繰り返しはしない）。
 
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
@@ -14,13 +14,15 @@ use serde::{Deserialize, Serialize};
 use crate::agent::Agent;
 use crate::checks::Checks;
 use crate::config::{ImproveConfig, Settings, SettingsPatch};
-use crate::errors::{ErrorBook, ErrorInput, RecentLanding};
+use crate::errors::{ErrorInput, RecentLanding};
 use crate::files::write_json;
 use crate::forge::Forge;
 use crate::proc::kill_tree;
-use crate::round::{
-    self, Ctx, Step, AFTER_RESET_MS, ERRORS_FILE, LOCK_FILE, SETTINGS_FILE, STOP_MARK,
-};
+use crate::round::{self, Ctx, Step, AFTER_RESET_MS, LOCK_FILE, SETTINGS_FILE, STOP_MARK};
+
+/// ロックが取れなかったときに取り直す回数と間隔。`status` がロックを確かめる一瞬と重なっただけなら、次で取れる。
+const BUSY_RETRIES: u32 = 3;
+const BUSY_WAIT_MS: u64 = 200;
 use crate::state::{Phase, RunLock, RunOutcome, RunReport, RunState};
 use crate::store::{FeedbackItem, FeedbackKind, FeedbackStatus, FeedbackStore, NewFeedback};
 use crate::time::now_ms;
@@ -35,7 +37,7 @@ pub struct RunView {
     pub items: Vec<String>,
     /// 始めた時刻（ミリ秒）。
     pub started_at: u64,
-    /// 段。
+    /// 工程。
     pub phase: Phase,
     /// 使用制限が明ける時刻（ミリ秒）。
     pub limit_resets_at: Option<u64>,
@@ -103,7 +105,7 @@ pub struct Improver {
 }
 
 impl Improver {
-    /// 部品を決めて作る。裏の回し手は [`Improver::with_background`] で有効にする。
+    /// 部品を決めて作る。バックグラウンドの実行は [`Improver::with_background`] で有効にする。
     pub fn new(
         cfg: ImproveConfig,
         agent: Arc<dyn Agent>,
@@ -117,6 +119,7 @@ impl Improver {
             checks,
             forge,
             store,
+            errors_lock: Mutex::new(()),
         };
         let inner = Inner {
             ctx,
@@ -128,7 +131,7 @@ impl Improver {
         }
     }
 
-    /// 起動の契機に裏で回を回す（アプリ）。CLI は `run_once` を前で回す。
+    /// 起動の契機にバックグラウンドで回を回す（アプリ）。CLI は `run_once` を前で回す。
     pub fn with_background(self) -> Self {
         self.bg().enabled = true;
         self
@@ -151,17 +154,17 @@ impl Improver {
     }
 
     /// エラーか遅い処理を記録し、条件を満たせば自動で起票する。起票した要望の ID を返す。
+    /// 記録の読み書きはプロセスの中で順に行うので、panic のフックとバックグラウンドのスレッドが同時に呼んでも同じものを 2 件にしない。
     pub fn record(&self, input: &ErrorInput) -> Result<Option<String>> {
         let ctx = self.ctx();
-        let path = ctx.cfg.file(ERRORS_FILE);
-        let mut book = ErrorBook::load(&path)?;
         let st = ctx.state()?;
         let landing = st.last_landed.as_ref().map(|(id, at)| RecentLanding {
             run_id: id,
             at: *at,
         });
-        let filed = book.record(input, &ctx.store, now_ms(), landing)?;
-        book.save(&path)?;
+        let filed = ctx
+            .with_errors(|book| book.record(input, &ctx.store, now_ms(), landing))?
+            .flatten();
         if filed.is_some() {
             self.clear_waiting()?;
             self.kick();
@@ -248,7 +251,7 @@ impl Improver {
         if let Some(pid) = st.run.as_ref().and_then(|r| r.agent_pid) {
             kill_tree(pid);
         }
-        // 使用制限で眠っている回は誰も錠を持っていないので、ここで終える。
+        // 使用制限で眠っている回は誰もロックを持っていないので、ここで終える。
         if let Some(_lock) = RunLock::try_acquire(&ctx.cfg.file(LOCK_FILE))? {
             let mut st = ctx.state()?;
             match st.run.clone() {
@@ -260,7 +263,7 @@ impl Improver {
         self.status()
     }
 
-    /// 1 歩をこの場で回す（CLI の `mm improve run`、試験）。回を起こしたら終えるまで返らない。
+    /// 1 歩をこの場で回す（CLI の `mm improve run`、テスト）。回を起こしたら終えるまで返らない。
     pub fn run_once(&self) -> Result<Step> {
         let ctx = self.ctx();
         let Some(_lock) = RunLock::try_acquire(&ctx.cfg.file(LOCK_FILE))? else {
@@ -269,7 +272,7 @@ impl Improver {
         round::step(ctx)
     }
 
-    /// 起動の契機。裏の回し手が有効で、動いていなければスレッドを起こす。
+    /// 起動の契機。バックグラウンドの実行が有効で、動いていなければスレッドを起こす。
     pub fn kick(&self) {
         {
             let mut bg = self.bg();
@@ -283,11 +286,19 @@ impl Improver {
     }
 
     fn background_loop(&self) {
+        let mut busy = 0;
         loop {
             match self.run_once() {
                 Ok(Step::Finished(_)) => continue,
                 Ok(Step::Limited { resets_at }) if self.sleep_until(resets_at + AFTER_RESET_MS) => {
                     continue
+                }
+                // `status` もロックを一瞬取って確かめるので、重なったら少し待って取り直す。
+                // 取り直しても取れなければ、ほかのプロセス（`mm improve run`）が回を動かしている。
+                Ok(Step::Busy)
+                    if busy < BUSY_RETRIES && self.sleep_until(now_ms() + BUSY_WAIT_MS) =>
+                {
+                    busy += 1;
                 }
                 _ => break,
             }
@@ -316,7 +327,7 @@ impl Improver {
         }
     }
 
-    /// 裏の回し手が止まるまで待つ（試験とアプリの終了）。
+    /// バックグラウンドの実行が止まるまで待つ（テストとアプリの終了）。
     pub fn wait_idle(&self) {
         let mut bg = self.bg();
         while bg.running {

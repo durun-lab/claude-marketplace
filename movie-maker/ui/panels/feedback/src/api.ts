@@ -64,7 +64,7 @@ export type SettingsPatch = Partial<Omit<Settings, "model" | "effort" | "budgetU
   budgetUsd?: number;
 };
 
-/** 回の段。`agent` は `claude -p` が実装中、`gate` は囲いの検査と取り込み。 */
+/** 回の工程。`agent` は `claude -p` が実装中、`gate` は囲いの検査と取り込み。 */
 export type Phase = "agent" | "gate";
 
 export interface RunView {

@@ -7,7 +7,7 @@ const CLASSES_PER_STEP = 2;
 /** 部品の名前に使う文字の上限。 */
 const LABEL_CHARS = 80;
 
-/** 1 段の名前。`tag.class` と、同じ形の兄弟がいれば `:nth-of-type`。 */
+/** 1 階層の名前。`tag.class` と、同じ形の兄弟がいれば `:nth-of-type`。 */
 const step = (el: Element): string => {
   const tag = el.tagName.toLowerCase();
   if (el.id) return `${tag}#${el.id}`;
@@ -18,7 +18,7 @@ const step = (el: Element): string => {
   return `${tag}${classes}${nth}`;
 };
 
-/** 部品を指す短い CSS セレクター。id を持つ祖先か `SELECTOR_DEPTH` 段で止める。 */
+/** 部品を指す短い CSS セレクター。id を持つ祖先か `SELECTOR_DEPTH` 階層で止める。 */
 export const selectorOf = (el: Element): string => {
   const parts: string[] = [];
   let cur: Element | null = el;
@@ -30,7 +30,7 @@ export const selectorOf = (el: Element): string => {
   return parts.join(" > ");
 };
 
-/** 部品の属するパネル。パネルの根は `aria-label` を持つ `section`。 */
+/** 部品の属するパネル。パネルのルートは `aria-label` を持つ `section`。 */
 const panelOf = (el: Element): string | null => el.closest("section[aria-label]")?.getAttribute("aria-label") ?? null;
 
 /** 人が読む部品の名前。`aria-label`、`title`、中の文字の順。 */
