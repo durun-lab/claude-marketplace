@@ -334,7 +334,8 @@ const deleteWorktree = async (dir: string): Promise<void> => {
   const [gitDir, commonDir] = stdout.trim().split('\n');
   // 作業ツリーの git-dir は、リポジトリの本体の git-dir（共通の git-dir）の下にある。
   if (!commonDir || gitDir === commonDir) throw new Error(`${dir} は git の作業ツリーではないので、消しません`);
-  await run('git', ['-C', dir, 'worktree', 'remove', '--force', '--force', dir]);
+  // 消す作業ツリーの中で git を動かすと、Windows では使用中のディレクトリを消せないので、共通の git-dir から消す。
+  await run('git', ['--git-dir', commonDir, 'worktree', 'remove', '--force', '--force', dir]);
   await run('git', ['--git-dir', commonDir, 'worktree', 'prune']);
 };
 

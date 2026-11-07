@@ -39,20 +39,33 @@ test('ウェーブを終えたら、最後の発言で対応したとされた�
 
   nextImprovement('other');
   assert.ok(state.improve.run);
-  nextImprovement('s1', `まとめて直しました。\n${second} は次に回します。\n対応した要望:\n${first}\n${third}`);
+  nextImprovement('s1', `まとめて直しました。\n${second} は次に回します。\n対応した要望:\n${first}\n${third.replace(/\.json$/, '')}`);
   assert.equal(state.improve.run, undefined);
   assert.deepEqual(pending(), [second]);
   assert.deepEqual(done(), [first, third]);
   assert.match(JSON.parse(fs.readFileSync(path.join(feedbackDir, 'done', first), 'utf8')).result, /まとめて直しました/);
 });
 
-test('対応した要望を書かずに止まったウェーブでは、同じ計画を繰り返さないよう、ON のまま待機する', () => {
+test('対応した要望を書かずに止まったセッションには、プロセスが終わってから続きを頼み、それでも書かなければ ON のまま待機する', async () => {
   state.improve.enabled = true;
-  fakeRun('s2', '直しました。');
+  const bin = tempDir('durun-dashboard-bin-');
+  const argsFile = path.join(bin, 'args');
+  useFakeClaude(bin, `fs.appendFileSync(${js(argsFile)}, lines(args) + '\\n---\\n');`);
+  fakeRun('s2', 'テストが通ったら、コミットします。');
+  const waiting = new Promise<void>((resolve) => onChange(() => state.improve.error?.includes('対応した要望') && resolve()));
+  // プロセスがまだ生きている間は、続きを頼まずに終わるのを待つ。
   nextImprovement('s2');
+  assert.equal(state.improve.run?.sessionId, 's2');
+  assert.equal(fs.existsSync(argsFile), false);
+  // サーバーが再起動して終了を受け取れなくても、プロセスが消えていれば続きを頼む。
+  if (state.improve.run) state.improve.run.pid = 0;
+  ensureImprover();
+  await waiting;
+  const launches = fs.readFileSync(argsFile, 'utf8').split('\n---\n').filter(Boolean);
+  assert.equal(launches.length, 2);
+  for (const args of launches) assert.match(args, /^--resume\ns2$/m);
   assert.equal(state.improve.enabled, true);
   assert.equal(state.improve.run, undefined);
-  assert.match(state.improve.error ?? '', /対応した要望/);
   assert.equal(pending().length, 1);
 });
 

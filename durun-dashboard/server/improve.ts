@@ -20,6 +20,8 @@ const LOG_FILE = path.join(DATA_DIR, 'improve.log');
 const SUMMARY_CHARS = 120;
 const DONE_MARK = '対応した要望:';
 const BASH_TIMEOUT_MS = 2 * 60 * 1000;
+const MAX_NUDGES = 2;
+const NUDGE_PROMPT = `ウェーブの途中でターンが終わりました。バックグラウンドに移したコマンドがあれば、その結果を読んで作業を続けてください。ターンを終えるとセッションも終わるので、テストなどの長いコマンドは終わるまで待ってください。ウェーブを終えたら、最後に「${DONE_MARK}」の行と、対応を終えた要望のファイル名を書いて止まってください。`;
 
 /** 未対応の要望。ファイル名が時刻から始まるので、名前順が古い順になる。 */
 export const pendingItems = (): string[] => listDir(FEEDBACK_DIR).filter((f) => f.endsWith('.json')).sort();
@@ -65,19 +67,20 @@ const limitOf = (run: ImproveRun): UsageLimit | undefined => {
   return transcript ? summarizeLog(transcript).limit : undefined;
 };
 
-/** 最後の発言の「対応した要望:」より後に名前がある要望を、対応を終えたものとみなす。 */
+/** 最後の発言の「対応した要望:」より後に名前がある要望を、対応を終えたものとみなす。拡張子を省いて書かれても拾う。 */
 const doneItems = (message: string | undefined, pending: string[]): string[] => {
   const at = message?.lastIndexOf(DONE_MARK) ?? -1;
-  return at < 0 ? [] : pending.filter((item) => message?.includes(item, at));
+  return at < 0 ? [] : pending.filter((item) => message?.includes(item.replace(/\.json$/, ''), at));
 };
 
-/**
- * 対応を終えた要望を済みにする。1 件も済まなかったときは、同じ計画を繰り返さないよう待機する。
- * 最後の発言を渡されなければ会話ログから読む。プロセスが終わった後なら、会話ログは書き終わっている。
- */
-const finishWave = (sessionId: string, lastMessage: string | undefined): void => {
+/** 最後の発言を渡されなければ会話ログから読む。プロセスが終わった後なら、会話ログは書き終わっている。 */
+const lastMessageOf = (sessionId: string, lastMessage: string | undefined): string | undefined => {
   const transcript = state.sessions[sessionId]?.transcriptPath;
-  const result = lastMessage || (transcript ? summarizeLog(transcript).lastMessage : undefined);
+  return lastMessage || (transcript ? summarizeLog(transcript).lastMessage : undefined);
+};
+
+/** 対応を終えた要望を済みにする。1 件も済まなかったときは、同じ計画を繰り返さないよう待機する。 */
+const finishWave = (sessionId: string, result: string | undefined): void => {
   const done = doneItems(result, pendingItems());
   for (const item of done) finishItem(item, sessionId, result);
   if (!done.length) state.improve.error = `改善のセッションが、対応を終えた要望を「${DONE_MARK}」に書かずに止まりました。`;
@@ -89,9 +92,17 @@ const endRun = (sessionId: string, failure?: string, lastMessage?: string): void
   if (run?.sessionId !== sessionId) return;
   // 使用制限で止まったウェーブは区切らない。制限が明けたら、limitResume.ts が resumeImprover で続けさせる。
   if (limitOf(run)) return;
+  const result = failure ? undefined : lastMessageOf(sessionId, lastMessage);
+  // -p はバックグラウンドのコマンドを待たずにターンを終えると終了する。印が無ければ、プロセスが終わってから同じセッションに続きを頼む。
+  if (!failure && !result?.includes(DONE_MARK) && (run.nudges ?? 0) < MAX_NUDGES) {
+    if (alive(run)) return;
+    run.nudges = (run.nudges ?? 0) + 1;
+    launch(run, ['--resume', run.sessionId], NUDGE_PROMPT);
+    return touch();
+  }
   state.improve.run = undefined;
   if (failure) state.improve.error = `改善のセッションが止まりました（${failure}）。${lastLogLine()}`;
-  else finishWave(sessionId, lastMessage);
+  else finishWave(sessionId, result);
   touch();
   ensureImprover();
 };
