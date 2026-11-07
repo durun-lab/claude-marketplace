@@ -22,7 +22,7 @@ use serde::Serialize;
 use crate::hls::Plan;
 
 /// 区間のバイトの作り方（コンテナ、符号化の設定）の印。作り方を変えたら上げ、前のキーを使わせない。
-const FORMAT: &str = "mm-stream/ts-1";
+const FORMAT: &str = "mm-stream/ts-2";
 /// 入れ子をたどる深さの上限。レンダラーと同じ。
 const MAX_DEPTH: u32 = 16;
 /// 区間のファイルの拡張子。

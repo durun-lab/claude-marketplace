@@ -11,6 +11,16 @@ const MAX_FPS: u32 = 30;
 /// MPEG-TS の PES とトランスポートのヘッダーが、符号化したストリームに足すバイトの割合（百分率）。
 const TS_OVERHEAD_PERCENT: u32 = 20;
 
+/// 映像の上限（maxrate）の、目標に対する割合（百分率）。
+const MAXRATE_PERCENT: u32 = 115;
+/// 4 秒の区間の最大が maxrate を超える割合（百分率）。VBV のバッファーが区間ごとに満タンから始まるため。
+const VBV_PEAK_PERCENT: u32 = 145;
+
+/// `value` の `percent` パーセント。
+fn scale(value: u32, percent: u32) -> u32 {
+    (u64::from(value) * u64::from(percent) / 100) as u32
+}
+
 /// HLS の画質。画面の切り替えで選ぶ（既定は 360p）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum HlsQuality {
@@ -22,6 +32,9 @@ pub enum HlsQuality {
 }
 
 impl HlsQuality {
+    /// 選べる画質。親のプレイリストが並べる順。
+    pub const ALL: [HlsQuality; 2] = [HlsQuality::P360, HlsQuality::P540];
+
     /// URL とキャッシュのパスに使う名前。
     pub fn as_str(self) -> &'static str {
         match self {
@@ -50,6 +63,21 @@ impl HlsQuality {
     /// 届くバイト数が全体の目標に収まるようにする。
     pub(crate) fn video_bits_per_second(self) -> u32 {
         self.total_bits_per_second() * 100 / (100 + TS_OVERHEAD_PERCENT) - AUDIO_BITS_PER_SECOND
+    }
+
+    /// 映像のビットレートの上限（VBV の maxrate、bit/s）。区間が短いので、目標からの上振れを小さく抑える。
+    pub(crate) fn video_max_bits_per_second(self) -> u32 {
+        scale(self.video_bits_per_second(), MAXRATE_PERCENT)
+    }
+
+    /// プレイリストの `BANDWIDTH`（bit/s）。区間のピークのビットレートで、VBV が区間ごとに満タンから始まるぶんの
+    /// 上振れ（上限の約 1.45 倍）と音と MPEG-TS のヘッダーを見込む。
+    pub fn peak_bits_per_second(self) -> u32 {
+        let video_peak = scale(self.video_max_bits_per_second(), VBV_PEAK_PERCENT);
+        scale(
+            video_peak + AUDIO_BITS_PER_SECOND,
+            100 + TS_OVERHEAD_PERCENT,
+        )
     }
 
     /// 元の大きさの縦横比を保ち、短い辺をこの画質にした大きさ（偶数）。
@@ -113,6 +141,14 @@ mod tests {
         assert_eq!(f(24, 1), Rational::integer(24));
         assert_eq!(f(30000, 1001), Rational::new(30000, 1001).unwrap());
         assert_eq!(f(120, 1), Rational::integer(30));
+    }
+
+    #[test]
+    fn bandwidth_は目標より大きく_vbv_の上振れを見込む() {
+        let total = HlsQuality::P360.total_bits_per_second();
+        let peak = HlsQuality::P360.peak_bits_per_second();
+        assert!(peak > total * 3 / 2 && peak < total * 2, "{peak}");
+        assert!(HlsQuality::P540.peak_bits_per_second() > HlsQuality::P360.peak_bits_per_second());
     }
 
     #[test]
