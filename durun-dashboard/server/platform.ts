@@ -153,6 +153,11 @@ export type Platform = {
    * Mac と Linux では、一般のユーザーは nice を上げられても下げられないので、通常へ戻すことはできない。
    */
   setProcessPriority: (pid: number, priority: AgentPriority, set?: SetPriority) => boolean;
+  /**
+   * roots とその子孫のプロセスを、優先度に合わせて抑える。前から動いていた子孫にも CPU の優先度を揃え、メモリ優先度と効率モードを掛ける。
+   * cacheDir には、一度だけ作る補助の DLL を置く。この OS で抑えられないものは何もしない。
+   */
+  throttleProcesses: (roots: number[], priority: AgentPriority, cacheDir: string, run?: Run) => Promise<void>;
   /** ドキュメントのフォルダー。Windows では、OneDrive に移したときも追えるよう、既知のフォルダーから引く。読めなければ undefined。 */
   documentsDir: (run?: Run) => Promise<string | undefined>;
   /**
@@ -229,6 +234,54 @@ const trySetPriority = (pid: number, priority: AgentPriority, set: SetPriority):
   }
 };
 
+// SetProcessInformation を呼ぶ補助。ProcessMemoryPriority（0）と ProcessPowerThrottling（4）を掛ける。0x0200 は PROCESS_SET_INFORMATION。
+const THROTTLE_SOURCE = `using System; using System.Runtime.InteropServices;
+public static class DurunThrottle {
+  [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, int pid);
+  [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr h);
+  [DllImport("kernel32.dll")] static extern bool SetProcessInformation(IntPtr h, int cls, ref uint info, int size);
+  [DllImport("kernel32.dll")] static extern bool SetProcessInformation(IntPtr h, int cls, uint[] info, int size);
+  public static void Apply(int pid, uint memoryPriority, uint powerControl, uint powerState) {
+    IntPtr h = OpenProcess(0x0200, false, pid);
+    if (h == IntPtr.Zero) return;
+    try {
+      SetProcessInformation(h, 0, ref memoryPriority, 4);
+      SetProcessInformation(h, 4, new uint[] { 1, powerControl, powerState }, 12);
+    } finally { CloseHandle(h); }
+  }
+}`;
+// 補助を作り直したら名前も変わるので、古い DLL を読まない。
+const THROTTLE_DLL = `durun-throttle-${createHash('sha256').update(THROTTLE_SOURCE).digest('hex').slice(0, 12)}.dll`;
+
+/**
+ * 優先度ごとの、CPU の優先度クラス、メモリ優先度（MEMORY_PRIORITY_*、5 が通常）、効率モード（制御するか、掛けるか）。
+ * 通常では効率モードを制御から外し、Windows の判断に戻す。
+ */
+const THROTTLE_VALUES: Record<AgentPriority, { cpu: string; memory: number; power: [number, number] }> = {
+  normal: { cpu: 'Normal', memory: 5, power: [0, 0] },
+  low: { cpu: 'BelowNormal', memory: 2, power: [1, 1] },
+  idle: { cpu: 'Idle', memory: 1, power: [1, 1] },
+};
+
+/**
+ * roots と子孫のプロセスを抑える PowerShell のスクリプト。
+ * 親の PID は親が終わると別のプロセスに使い回されるので、親より後に起動したプロセスだけを子とみなす。
+ */
+export const windowsThrottleScript = (roots: number[], priority: AgentPriority, dll: string): string => {
+  const { cpu, memory, power } = THROTTLE_VALUES[priority];
+  return [
+    `$ErrorActionPreference = 'SilentlyContinue'; $ProgressPreference = 'SilentlyContinue'`,
+    `$dll = '${dll.replaceAll("'", "''")}'`,
+    `if (-not (Test-Path $dll)) { Add-Type -OutputAssembly $dll -TypeDefinition @'\n${THROTTLE_SOURCE}\n'@ }`,
+    'Add-Type -Path $dll',
+    '$procs = @{}; foreach ($p in Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CreationDate) { $procs[[int]$p.ProcessId] = $p }',
+    '$ids = [Collections.Generic.HashSet[int]]::new()',
+    `foreach ($r in @(${roots.join(',')})) { if ($procs.ContainsKey($r)) { [void]$ids.Add($r) } }`,
+    'do { $n = $ids.Count; foreach ($p in $procs.Values) { $parent = [int]$p.ParentProcessId; if ($ids.Contains($parent) -and $p.CreationDate -ge $procs[$parent].CreationDate) { [void]$ids.Add([int]$p.ProcessId) } } } while ($ids.Count -ne $n)',
+    `foreach ($id in $ids) { [DurunThrottle]::Apply($id, ${memory}, ${power[0]}, ${power[1]}); try { (Get-Process -Id $id).PriorityClass = '${cpu}' } catch {} }`,
+  ].join('\n');
+};
+
 const FL_USER_DATA = path.join('Image-Line', 'FL Studio');
 const WIN_DEV_DIR = 'D:\\dev';
 
@@ -281,6 +334,8 @@ const posix = {
   killTree: (child: ChildProcess) => void child.kill(),
   loadAverage: () => os.loadavg()[0],
   setProcessPriority: (pid: number, priority: AgentPriority, set: SetPriority = os.setPriority) => priority !== 'normal' && trySetPriority(pid, priority, set),
+  // Mac と Linux には、Windows のメモリ優先度と効率モードに当たる、一般のユーザーが掛けられる仕組みが無い。
+  throttleProcesses: async () => undefined,
   documentsDir: async () => path.posix.join(os.homedir(), 'Documents'),
   flUserDataCandidates: (documents: string | undefined) => (documents ? [path.posix.join(documents, 'Image-Line', 'FL Studio')] : []),
   // FL の Mac 版は WebView2 を使わないので、デバッグのポートを開いて起動する道が無い。
@@ -432,6 +487,12 @@ const win32: Platform = {
   loadAverage: () => undefined,
   // Windows はプロセスの優先度クラスを、ユーザーの権限で上げ下げどちらにも変えられる。
   setProcessPriority: (pid, priority, set = os.setPriority) => trySetPriority(pid, priority, set),
+  throttleProcesses: async (roots, priority, cacheDir, run = realRun) => {
+    if (!roots.length) return;
+    const script = windowsThrottleScript(roots, priority, path.win32.join(cacheDir, THROTTLE_DLL));
+    // C# の引用符や改行をコマンドラインの引用で崩さないよう、スクリプトは UTF-16LE の Base64 で渡す。
+    await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')]).catch(() => undefined);
+  },
   // reg.exe はコンソールのコードページで書くので、日本語のパスが化ける。PowerShell に UTF-8 で書かせる。
   documentsDir: async (run = realRun) => {
     try {
