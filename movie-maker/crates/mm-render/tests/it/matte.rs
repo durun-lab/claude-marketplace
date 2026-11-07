@@ -202,7 +202,7 @@ fn マットの連鎖は段ごとに掛ける() {
     assert_px(&img, (54, 8), Rgba::TRANSPARENT, "右上はマットの外");
 }
 
-/// 入れ子 `inner` の中に赤を輝度のマットで切り抜いた絵を置き、親 `main` に並べたプロジェクト。
+/// 入れ子 `inner` の中に赤を輝度のマットで切り抜いた画像を置き、親 `main` に並べたプロジェクト。
 fn nested(matte_color: Rgba) -> Project {
     let mut matte = layer("matte", solid(matte_color), 2);
     matte.masks.clear();

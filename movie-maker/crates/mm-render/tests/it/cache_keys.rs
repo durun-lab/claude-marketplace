@@ -284,7 +284,7 @@ fn 効果の素材を触ると入れ子の画像を捨てる() {
 fn 入れ子の中のマットのレイヤーの素材の中身が変わったら入れ子を描き直す() {
     let Some(ctx) = gpu() else { return };
     let mut r = renderer(&ctx);
-    // LUT を掛けた単色を、隣の単色のトラックマットにする。マットのレイヤーは合成から外れ、中身だけが絵に効く。
+    // LUT を掛けた単色を、隣の単色のトラックマットにする。マットのレイヤーは合成から外れ、中身だけが画像に効く。
     let mut p = nested_with_effect(lut());
     let red =
         Node::new("solid", 1).with_param("color", ParamValue::Color(Rgba::new(1.0, 0.0, 0.0, 1.0)));
@@ -298,7 +298,7 @@ fn 入れ子の中のマットのレイヤーの素材の中身が変わった�
     render(&mut r, &p);
     assert_eq!(entries(&r), 3, "マットの単色、切り抜く単色、入れ子");
     render(&mut r, &p);
-    assert_eq!(entries(&r), 3, "同じ中身なら覚えた入れ子に当たる");
+    assert_eq!(entries(&r), 3, "同じ中身なら覚えた入れ子にヒットする");
     p.assets[0].content_hash = "invertcube000002".into();
     render(&mut r, &p);
     assert_eq!(
