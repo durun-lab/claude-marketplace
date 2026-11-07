@@ -14,7 +14,7 @@
 | `fit` | 選択 | `contain` | `contain` は縦横比を保って画布に収め、中央に置く。`none` はアニメーションの画素のまま左上に置く |
 
 - 時刻はレイヤーの素材の時間軸（`FrameCx::source_time`。レイヤーの先頭が 0 で、トリムと速さとタイムリマップはレンダラーが済ませてある）。フレームは `ip + start_frame + 秒 × fr × speed` で、端数のフレームもそのまま描く。
-- 素材は `addAsset` で足す（デコーダーで調べる取り込みは通さない）。種類は `decodes_asset` を偽にし、レンダラーは素材を開かずに `InputFrames::asset_path` でパスを渡す（RFC「素材のファイルを読む種類」）。
+- 素材は `addAsset` で足す（デコーダーで調べる取り込みは通さない）。種類は `decodes_asset` を偽にし、レンダラーは素材を開かずに `InputFrames::asset_path` でパスを渡す（[RFC 0134](../../docs/rfcs/0134-asset-file-kinds.md)）。
 - 大きさはレイヤーの画布（`cx.size`）。`vector` の種類なので、レイヤーを拡大すると拡大した大きさで描き直す。
 - 色: vello_cpu は Lottie の色を符号化値のまま 8 bit で塗る。その値を素材と同じ Rec.1886 の式で線形にする（半透明は alpha で割ってから線形にし、掛け直す）。
 
