@@ -4,23 +4,26 @@
 //! 素材は動かさず、タイムラインの `assets.*.src` を `--assets`（省くとタイムラインのフォルダー）からの絶対パスで指す。
 //! 変換できない要素は数えて、標準出力の JSON の `gaps` に出す。
 
+mod html;
 mod media;
 mod report;
 mod shape;
 mod sound;
 mod syntax;
+mod target;
 mod visual;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
-use mm_doc::{Asset, Composition, Project, RenderTarget};
+use mm_doc::{Asset, Composition, Project};
 use mm_types::{ColorSpace, Id, MmError, Rational, RationalTime, Result};
 use serde_json::{json, Value};
 
 use self::media::Media;
 use self::report::{Gap, Report};
+use self::target::MAIN_ID;
 use self::visual::Ctx;
 
 /// `mm geneva`。上の段の登録は `main.rs` の 1 行。
@@ -43,10 +46,6 @@ impl Cmd {
 const DEFAULT_WIDTH: u32 = 1920;
 const DEFAULT_HEIGHT: u32 = 1080;
 const DEFAULT_FPS: u32 = 30;
-/// 本編のコンポジションとレンダーターゲットの ID。
-const MAIN_ID: &str = "main";
-/// レンダーターゲットのコーデック。
-const CODEC: &str = "h264";
 
 /// `mm geneva` の引数。
 #[derive(clap::Args)]
@@ -139,9 +138,10 @@ pub fn convert(timeline: &Value, base: &Path, render_output: &Path) -> Result<(P
     project
         .compositions
         .push(Composition::new(Id::new(MAIN_ID), width, height, fps, duration).with_layers(layers));
-    project
-        .render_targets
-        .push(render_target(&out, [width, height], fps, render_output));
+    let main = target::main_target(&out, [width, height], fps, render_output);
+    let extra = target::extra_targets(timeline.get("outputs"), &main, &mut ctx.report);
+    project.render_targets.push(main);
+    project.render_targets.extend(extra);
     project.normalize();
     project.validate()?;
     Ok((project, ctx.report))
@@ -179,39 +179,11 @@ fn note_top_level(report: &mut Report, timeline: &Value) {
         Some(_) => true,
         None => false,
     };
-    for key in ["subtitles", "compositions", "outputs"] {
+    for key in ["subtitles", "compositions"] {
         if present(key) {
             report.add(Gap::TopLevel);
         }
     }
-}
-
-fn render_target(
-    out: &Value,
-    [width, height]: [u32; 2],
-    fps: Rational,
-    path: &Path,
-) -> RenderTarget {
-    let loudness = out.pointer("/audio/loudness");
-    let mut target = RenderTarget {
-        id: Id::new(MAIN_ID),
-        composition: Id::new(MAIN_ID),
-        width,
-        height,
-        fps,
-        codec: CODEC.into(),
-        output_path: path.to_string_lossy().into_owned(),
-        loudness_lufs: loudness
-            .and_then(|l| l.get("target_lufs"))
-            .and_then(Value::as_f64)
-            .map(|v| v as f32),
-        delivery: Default::default(),
-    };
-    target.delivery.true_peak_dbtp = loudness
-        .and_then(|l| l.get("true_peak_dbtp"))
-        .and_then(Value::as_f64)
-        .map(|v| v as f32);
-    target
 }
 
 /// タイムラインの素材を全部調べ、プロジェクトの素材と、ID ごとの性質にする。
