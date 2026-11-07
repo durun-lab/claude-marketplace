@@ -16,7 +16,7 @@ use mm_types::{ParamValue, Params, RationalTime, RgbaImage, Size};
 
 const PAGE: &str = include_str!("pages/probe.html");
 const FULL_HD: Size = Size::new(1920, 1080);
-/// f16 への丸めと、GPU と CPU の sRGB の復号の差を見込んだ許容。
+/// f16 への丸めと、GPU と CPU の符号化値の復号の差を見込んだ許容。
 const TOLERANCE: f32 = 4e-3;
 
 pub(super) fn host() -> Option<PathBuf> {

@@ -1,13 +1,11 @@
 //! YUV 4:2:0（NV12 と P010）から、線形の RGB への変換の係数と WGSL。
 //!
-//! CPU の経路（`mm-decode-ffmpeg`）と同じく、符号化値に Rec.1886 の式（べき 2.4）を当てて線形にする。
+//! CPU の経路（`mm-decode-ffmpeg`）と同じく、符号化値に Rec.1886 の式（`mm_types::transfer`）を当てて線形にする。
 //! 10 bit は符号語のまま f32 で扱い、8 bit に下げない。色差は左寄せ（MPEG-2 の配置）の位置から線形に補間する。
 
 use ffmpeg_next as ff;
 use mm_decode_ffmpeg_core::matrix::Matrix;
-
-/// 表示の式のべき（`mm-color-lut` の `bt1886_to_linear` と同じ）。
-const GAMMA: f32 = 2.4;
+use mm_types::transfer::bt1886_to_linear;
 
 /// 素材のビット深度。NV12 と P010 に載る 4:2:0 の 8 bit と 10 bit だけ。
 pub fn stream_bit_depth(stream: &ff::format::stream::Stream<'_>) -> mm_types::Result<u32> {
@@ -131,11 +129,11 @@ impl YuvParams {
             luma - self.gu * cb - self.gv * cr,
             luma + self.bu * cb,
         ];
-        rgb.map(|c| c.clamp(0.0, 1.0).powf(GAMMA))
+        rgb.map(|c| bt1886_to_linear(c.clamp(0.0, 1.0)))
     }
 }
 
-/// WGSL の共通部。呼ぶ側が `var<uniform> params: Params` を宣言する。
+/// WGSL の共通部。呼ぶ側が `var<uniform> params: Params` を宣言し、`mm_types::transfer::TRANSFER_WGSL` を前に連結する。
 ///
 /// `chroma_taps` は画素 (x, y) の色差の補間に使う 4 点と重みを返す。色差は横が輝度の左端、
 /// 縦が 2 行の中間にあるので、色差プレーンの座標は (x / 2, (y - 0.5) / 2)。端はプレーンの画のある範囲に留める。
@@ -193,7 +191,7 @@ fn yuv_to_linear(y: f32, u: f32, v: f32) -> vec4<f32> {
         vec3<f32>(0.0),
         vec3<f32>(1.0),
     );
-    return vec4<f32>(pow(rgb, vec3<f32>(2.4)), 1.0);
+    return vec4<f32>(mm_bt1886_to_linear3(rgb), 1.0);
 }
 ";
 

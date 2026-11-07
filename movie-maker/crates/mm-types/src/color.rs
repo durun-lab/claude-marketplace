@@ -30,6 +30,18 @@ impl Rgba {
         Self::new(r * a, g * a, b * a, a)
     }
 
+    /// straight の 8 bit の符号化値（`#RRGGBBAA` の 4 つの値）から線形の premultiplied にする。
+    /// 色は Rec.1886 の式で線形にする（[`crate::transfer`]）ので、書き出しで同じ符号化値に戻る。
+    pub fn from_code8([r, g, b, a]: [u8; 4]) -> Self {
+        use crate::transfer::code8_to_linear;
+        Self::from_straight(
+            code8_to_linear(r),
+            code8_to_linear(g),
+            code8_to_linear(b),
+            f32::from(a) / f32::from(u8::MAX),
+        )
+    }
+
     /// `src over self`（W3C Compositing and Blending の source-over）。
     pub fn over(self, src: Self) -> Self {
         let k = 1.0 - src.a;

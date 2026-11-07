@@ -8,6 +8,7 @@ use std::sync::Arc;
 use mm_decode_api::{Encoder, Nv12Frame};
 use mm_gpu::{GpuContext, Readback, WgpuGpu, FRAME_FORMAT};
 use mm_render_api::{export_range_rgba, RangeRequest, RenderRequest};
+use mm_types::transfer::TRANSFER_WGSL;
 use mm_types::{MmError, RationalTime, Result, Size};
 
 use crate::renderer::WgpuRenderer;
@@ -20,11 +21,9 @@ const Y_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
 const UV_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rg8Unorm;
 
 /// 線形の premultiplied の RGBA を、Rec.1886 の符号化値にしてから Rec.709・tv レンジの Y と CbCr にする。
-/// アルファは使わず、黒の上に置いた色として扱う（premultiplied なのでそのままの値）。
+/// アルファは使わず、黒の上に置いた色として扱う（premultiplied なのでそのままの値）。式は `TRANSFER_WGSL` を前に連結する。
 const YUV_OUT_WGSL: &str = r"
 @group(0) @binding(0) var frame: texture_2d<f32>;
-
-const GAMMA_INV: f32 = 1.0 / 2.4;
 
 @vertex
 fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
@@ -34,7 +33,7 @@ fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
 
 fn encoded(xy: vec2<u32>) -> vec3<f32> {
     let rgb = clamp(textureLoad(frame, xy, 0).rgb, vec3<f32>(0.0), vec3<f32>(1.0));
-    return pow(rgb, vec3<f32>(GAMMA_INV));
+    return mm_linear_to_bt1886_3(rgb);
 }
 
 fn luma(rgb: vec3<f32>) -> f32 {
@@ -97,7 +96,7 @@ impl ExportPipe {
         let device = &ctx.device;
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("mm-render yuv out"),
-            source: wgpu::ShaderSource::Wgsl(YUV_OUT_WGSL.into()),
+            source: wgpu::ShaderSource::Wgsl(format!("{TRANSFER_WGSL}{YUV_OUT_WGSL}").into()),
         });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("mm-render yuv out"),

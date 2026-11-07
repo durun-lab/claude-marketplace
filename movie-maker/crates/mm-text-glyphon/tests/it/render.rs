@@ -2,18 +2,8 @@
 
 use mm_text_api::{TextAlign, TextRasterizer, TextShaper, TextStyle};
 use mm_text_glyphon::{CpuRasterizer, TextEngine};
+use mm_types::transfer::linear_to_code8;
 use mm_types::{Rgba, RgbaImage};
-
-/// 線形の値を sRGB の 8 bit に。
-fn to_srgb8(v: f32) -> u8 {
-    let c = v.clamp(0.0, 1.0);
-    let s = if c <= 0.003_130_8 {
-        c * 12.92
-    } else {
-        1.055 * c.powf(1.0 / 2.4) - 0.055
-    };
-    (s * 255.0).round() as u8
-}
 
 fn crc32(data: &[u8]) -> u32 {
     let mut crc = 0xFFFF_FFFFu32;
@@ -46,7 +36,7 @@ fn encode_png(img: &RgbaImage, background: Rgba) -> Vec<u8> {
         raw.push(0);
         for x in 0..w {
             let p = background.over(img.pixel(x, y));
-            raw.extend_from_slice(&[to_srgb8(p.r), to_srgb8(p.g), to_srgb8(p.b)]);
+            raw.extend_from_slice(&[p.r, p.g, p.b].map(linear_to_code8));
         }
     }
     let mut z = vec![0x78, 0x01];

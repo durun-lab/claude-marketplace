@@ -17,6 +17,7 @@ pub mod gpu;
 pub mod host;
 pub mod ingest;
 pub mod node;
+pub mod patches;
 pub mod render;
 mod render_cases;
 pub mod text;

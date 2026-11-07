@@ -142,7 +142,12 @@ fn text_ops(pack: &Pack, input: &TextInput<'_>, shaper: &dyn TextShaper) -> Resu
         }
         layers.push(frame.layer(format!("{}{PLATE_SUFFIX}", input.id), node));
     }
-    let mut node = text_node(style, &input.text, color, &spot);
+    // `text` は画像の左上を `position` に `bounds` の位置を足して決めるので、字の塊の左上が `text_origin` に来るよう引いておく
+    let position = [
+        spot.text_origin[0] - f64::from(bounds.x),
+        spot.text_origin[1] - f64::from(bounds.y),
+    ];
+    let mut node = text_node(style, &input.text, color, position);
     if let Some(family) = font {
         node = node.with_param("font", ParamValue::Text(family.to_owned()));
     }
@@ -198,12 +203,12 @@ impl Frame {
     }
 }
 
-fn text_node(style: &TextStyleSpec, text: &str, color: mm_types::Rgba, spot: &Placement) -> Node {
+fn text_node(style: &TextStyleSpec, text: &str, color: mm_types::Rgba, position: [f64; 2]) -> Node {
     Node::new("text", KIND_VERSION)
         .with_param("text", ParamValue::Text(text.to_string()))
         .with_param("size", ParamValue::Number(style.size))
         .with_param("color", ParamValue::Color(color))
-        .with_param("position", ParamValue::Vec2(spot.text_origin))
+        .with_param("position", ParamValue::Vec2(position))
         .with_param(
             "max_width",
             ParamValue::Number(style.max_width.unwrap_or(0.0)),

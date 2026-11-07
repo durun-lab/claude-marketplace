@@ -9,6 +9,7 @@ use std::sync::Mutex;
 use mm_doc::Project;
 use mm_node_api::Quality;
 use mm_runtime::{assemble, Engine, RuntimeConfig};
+use mm_types::transfer::linear_to_code8;
 use mm_types::RgbaImage;
 use mm_types::{CompositionId, Id, MmError, RationalTime, Result, Rgba, Size};
 
@@ -185,7 +186,8 @@ const CHECKER_SIDE: u32 = 16;
 const CHECKER_DARK: f32 = 0.18;
 const CHECKER_LIGHT: f32 = 0.26;
 
-/// 線形の premultiplied の画像を、灰色の市松の上に重ねた sRGB の 8 bit の PNG にする。
+/// 線形の premultiplied の画像を、灰色の市松の上に重ねた 8 bit の PNG にする。
+/// 書き出しと同じ Rec.1886 の符号化値にするので、16 進の色は PNG でも同じ値になる。
 pub fn encode_png(image: &RgbaImage) -> Result<Vec<u8>> {
     let mut rgb = Vec::with_capacity(image.size().area() * 3);
     for y in 0..image.height() {
@@ -193,7 +195,7 @@ pub fn encode_png(image: &RgbaImage) -> Result<Vec<u8>> {
             let p: Rgba = image.pixel(x, y);
             let dark = (x / CHECKER_SIDE + y / CHECKER_SIDE).is_multiple_of(2);
             let back = if dark { CHECKER_DARK } else { CHECKER_LIGHT };
-            rgb.extend([p.r, p.g, p.b].map(|c| encode_srgb(c + back * (1.0 - p.a))));
+            rgb.extend([p.r, p.g, p.b].map(|c| linear_to_code8(c + back * (1.0 - p.a))));
         }
     }
     let mut out = Vec::new();
@@ -204,16 +206,6 @@ pub fn encode_png(image: &RgbaImage) -> Result<Vec<u8>> {
         .and_then(|mut w| w.write_image_data(&rgb))
         .map_err(|e| MmError::Internal(format!("PNG に書けない: {e}")))?;
     Ok(out)
-}
-
-fn encode_srgb(linear: f32) -> u8 {
-    let c = linear.clamp(0.0, 1.0);
-    let s = if c <= 0.003_130_8 {
-        c * 12.92
-    } else {
-        1.055 * c.powf(1.0 / 2.4) - 0.055
-    };
-    (s * 255.0).round() as u8
 }
 
 #[cfg(test)]

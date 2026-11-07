@@ -2,6 +2,7 @@
 //! d3d12va（2 プレーンのテクスチャ）と cuvid（共有バッファ）は、読む資源の束縛とフラグメントだけが違う。
 
 use mm_gpu::FRAME_FORMAT;
+use mm_types::transfer::TRANSFER_WGSL;
 
 use crate::yuv::{YuvParams, PARAMS_BYTES, YUV_WGSL};
 
@@ -58,7 +59,7 @@ impl YuvPass {
     ) -> Self {
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some(label),
-            source: wgpu::ShaderSource::Wgsl(format!("{YUV_WGSL}{fragment}").into()),
+            source: wgpu::ShaderSource::Wgsl(format!("{TRANSFER_WGSL}{YUV_WGSL}{fragment}").into()),
         });
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some(label),

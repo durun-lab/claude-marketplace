@@ -12,10 +12,9 @@ mod cube;
 #[cfg(feature = "gpu-eval")]
 pub mod gpu_eval;
 mod space;
-pub mod transfer;
 
 use mm_color_api::{ColorTransform, TransformProgram};
-use mm_types::{ColorSpace, Result};
+use mm_types::{transfer, ColorSpace, Result};
 
 pub use bake::{bake_lut3d, LUT3D_APPLY_WGSL};
 pub use cdl::{Cdl, MIN_POWER};

@@ -64,11 +64,10 @@ const SSIM_MEAN_MIN: f64 = 0.97;
 const SSIM_FRAME_MIN: f64 = 0.85;
 /// 区間ごとの平均の PSNR の下限（dB）。再現の区間は 34.5〜41.7 dB だった。
 const PSNR_MEAN_MIN: f64 = 33.0;
-/// 巻き戻しの区間（`web.cef` で描く）の平均の SSIM と PSNR の下限。`web.cef` は暗い色を明るく描き（地の #06090d が
-/// (16, 20, 24)。同じ色の PNG は (6, 7, 12)）、0.6 秒覆う暗い地の全面で差が出る。再現は 0.953 と 31.6 dB
-/// （マークアップを除くと 0.847 と 16.7 dB）。色が直ったら上の下限に寄せる。
-const SSIM_MEAN_MIN_CEF: f64 = 0.94;
-const PSNR_MEAN_MIN_CEF: f64 = 29.0;
+/// 巻き戻しの区間（`web.cef` で描く）の平均の SSIM と PSNR の下限。CSS の色は PNG と同じ符号化値に戻り、
+/// 再現は 0.974 と 33.1 dB で上の下限の際にあるので、1 段ゆるめた値で見る。
+const SSIM_MEAN_MIN_CEF: f64 = 0.96;
+const PSNR_MEAN_MIN_CEF: f64 = 32.0;
 /// 音の差の下限（dB）。考え方は ep03 と同じ。再現の区間は 19.6〜29.8 dB だった。
 const SNR_MIN_DB: f64 = 15.0;
 /// 50 ms ごとの大きさの差の平均の上限（dB）。再現の区間は 0.26 dB 以下。

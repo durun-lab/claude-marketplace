@@ -197,7 +197,7 @@ fn 色は各コーデックで線形に戻る() {
             .unwrap()
             .pixel(size.width / 2, size.height / 2);
         for (got, want) in [(p.r, color.r), (p.g, color.g), (p.b, color.b)] {
-            let code = |v: f32| v.max(0.0).powf(1.0 / 2.4) * 255.0;
+            let code = |v: f32| mm_types::transfer::linear_to_bt1886(v.max(0.0)) * 255.0;
             let diff = (code(got) - code(want)).abs();
             assert!(
                 diff <= CODE_TOLERANCE,

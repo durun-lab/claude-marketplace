@@ -3,34 +3,21 @@
 //! 注記はシェーパーと同じ [`mm_text_api::parse_ruby`] で読む。
 
 use mm_text_api::{parse_ruby, RubySpan, ShapedText, TextStyle, RUBY_SCALE};
+use mm_types::transfer::linear_to_bt1886;
 use mm_types::Rgba;
 use serde_json::{json, Value};
 
 /// 8 bit の最大値。CSS の色の成分の上限。
 const MAX8: f32 = 255.0;
-/// sRGB の区分の式（IEC 61966-2-1）の折れ目（線形の側）、直線部の傾き、曲線部の係数とべき。
-const SRGB_KNEE: f32 = 0.003_130_8;
-const SRGB_SLOPE: f32 = 12.92;
-const SRGB_SCALE: f32 = 1.055;
-const SRGB_OFFSET: f32 = 0.055;
-const SRGB_EXPONENT: f32 = 2.4;
 
-/// 線形の premultiplied の色を CSS の `rgb(r g b / a)`（sRGB、straight）にする。
-/// 文字の色は線形で来るので、CSS へ渡すためにここで sRGB の式で符号化し、ホストの CPU の経路が同じ式で線形に戻す。
-/// この往復で元の値に戻るので、web.cef がページの色に Rec.1886 の式を適用し直すのとは別の扱いにする。
+/// 線形の premultiplied の色を CSS の `rgb(r g b / a)`（8 bit の符号化値、straight）にする。
+/// ホストは描いた画素を素材と同じ Rec.1886 の式で線形に戻す（`mm_types::transfer`）ので、同じ式で符号化値にし、
+/// 16 進の色が web.cef や書き出しと同じ値に戻るようにする。
 pub fn css_color(c: Rgba) -> String {
     if c.a <= 0.0 {
         return "transparent".into();
     }
-    let encode = |v: f32| {
-        let v = (v / c.a).clamp(0.0, 1.0);
-        let s = if v <= SRGB_KNEE {
-            v * SRGB_SLOPE
-        } else {
-            SRGB_SCALE * v.powf(1.0 / SRGB_EXPONENT) - SRGB_OFFSET
-        };
-        s * MAX8
-    };
+    let encode = |v: f32| linear_to_bt1886((v / c.a).clamp(0.0, 1.0)) * MAX8;
     format!(
         "rgb({:.3} {:.3} {:.3} / {:.4})",
         encode(c.r),
@@ -117,7 +104,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn 色は_srgb_の_straight_にする() {
+    fn 色は符号化値の_straight_にする() {
+        assert_eq!(
+            css_color(Rgba::from_code8([6, 9, 13, 255])),
+            "rgb(6.000 9.000 13.000 / 1.0000)"
+        );
         assert_eq!(
             css_color(Rgba::WHITE),
             "rgb(255.000 255.000 255.000 / 1.0000)"

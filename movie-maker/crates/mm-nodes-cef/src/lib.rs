@@ -21,7 +21,6 @@ mod mock;
 mod page;
 #[cfg(windows)]
 mod shared;
-mod transfer;
 
 pub use kind::{Stats, WebCefKind};
 pub use page::{inject, DATA_PARAM, HTML_PARAM, STATIC_PARAM};
