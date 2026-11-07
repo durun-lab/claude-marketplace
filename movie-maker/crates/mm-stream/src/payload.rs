@@ -2,7 +2,7 @@
 
 use mm_types::{MmError, Result};
 
-/// 版が URL に入っていて、中身が変わらない応答の `Cache-Control`。
+/// キーが URL に入っていて、中身が変わらない応答の `Cache-Control`。
 pub(crate) const IMMUTABLE: &str = "public, max-age=31536000, immutable";
 /// 毎回確かめさせる応答の `Cache-Control`。
 pub(crate) const REVALIDATE: &str = "no-cache";

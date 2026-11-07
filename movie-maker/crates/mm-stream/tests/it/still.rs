@@ -2,10 +2,11 @@
 
 use std::time::Instant;
 
+use mm_node_api::Quality;
 use mm_stream::{StillRequest, STILL_MAX_WIDTH, STILL_MIN_WIDTH};
 use mm_testkit::decode::SampleMedia;
 use mm_testkit::fixtures::vertical_project;
-use mm_types::RationalTime;
+use mm_types::{RationalTime, Size};
 
 use crate::common::{gpu_config, streamer};
 
@@ -55,7 +56,7 @@ fn コマは_webp_で返り幅は範囲に丸められキャッシュされる()
 }
 
 #[test]
-fn 版が変わると_etag_が変わる() {
+fn バージョンが変わると_etag_が変わる() {
     let Some(config) = gpu_config() else { return };
     let dir = tempfile::tempdir().unwrap();
     let (project, _, _) = vertical_project(&SampleMedia::default(), &dir.path().join("o.json"));
@@ -76,4 +77,21 @@ fn 無いコンポジションはエラーになる() {
         ..request(400)
     };
     assert!(s.still(&project, 1, &req).is_err());
+}
+
+#[test]
+fn 配信の描画のスレッドの_engine_を借りて描ける() {
+    let Some(config) = gpu_config() else { return };
+    let dir = tempfile::tempdir().unwrap();
+    let (project, _, _) = vertical_project(&SampleMedia::default(), &dir.path().join("o.json"));
+    let s = streamer(config, dir.path());
+    let comp = project.compositions[0].id.clone();
+    let size = Size::new(64, 36);
+    let drawn = s
+        .with_engine(move |e| {
+            let image = e.render_frame(&project, &comp, RationalTime::ZERO, size, Quality::Full)?;
+            Ok(image.size())
+        })
+        .unwrap();
+    assert_eq!(drawn, size);
 }

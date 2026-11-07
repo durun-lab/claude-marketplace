@@ -1,7 +1,10 @@
 //! HLS の区間を 1 つ作る。レンダラーで描いて既存のエンコーダーで書き（`mm-export`）、配信のビットレートに
 //! 符号化し直して MPEG-TS にする。
 //!
+//! 符号化を 2 回するのは、`mm-encode-ffmpeg` が品質一定（crf）か画素あたりのビット数でしか書けず、目標の
+//! ビットレートと MPEG-TS の出力を持たないため。360p の 4 秒の中間は crf 18 で、画質の損はほぼ無い。
 //! 1 区間ずつ別に作るので、MPEG-TS の時刻は区間の始まりの秒から始め、プレーヤーの時間軸を途切れさせない。
+//! 区間ごとに PAT、PMT、SPS、PPS を持つ MPEG-TS なら、別の回に作った区間を並べ替えても 1 本として再生できる。
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -36,7 +39,7 @@ pub(crate) fn render_segment(
     index: u64,
     out: &Path,
 ) -> Result<()> {
-    let span = tracing::info_span!("stream.segment", sequence = %plan.sequence, index);
+    let span = tracing::info_span!("stream.segment", composition = %plan.composition, index);
     let _g = span.enter();
     if let Some(dir) = out.parent() {
         fs::create_dir_all(dir)?;
@@ -49,7 +52,6 @@ pub(crate) fn render_segment(
         output: Some(mid.clone()),
         target: Some(target),
         range: Some(range),
-        sequence: Some(Id::new(plan.sequence.as_str())),
         codec: Some(INTERMEDIATE_CODEC.into()),
         ..ExportOptions::default()
     };
@@ -82,7 +84,7 @@ fn with_stream_target(project: &Project, plan: &Plan) -> (Project, RenderTargetI
     (project, id)
 }
 
-/// `out` と同じ場所の、拡張子を足したパス（`v1-0.ts` → `v1-0.ts.mid.mp4`）。
+/// `out` と同じ場所の、拡張子を足したパス（`<キー>.ts` → `<キー>.ts.mid.mp4`）。
 fn sibling(out: &Path, ext: &str) -> PathBuf {
     let mut name = out
         .file_name()
@@ -143,7 +145,7 @@ mod tests {
 
     #[test]
     fn 補助のパスは元の名前に拡張子を足す() {
-        let p = sibling(Path::new("a/b/v1-0.ts"), "partial");
-        assert_eq!(p, Path::new("a/b/v1-0.ts.partial"));
+        let p = sibling(Path::new("a/b/k.ts"), "partial");
+        assert_eq!(p, Path::new("a/b/k.ts.partial"));
     }
 }

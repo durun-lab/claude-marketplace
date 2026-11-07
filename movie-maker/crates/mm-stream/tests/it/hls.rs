@@ -1,9 +1,12 @@
-//! 区間ごとに作る HLS。ffprobe が読めること、長さとビットレートが目標に近いこと、版が変わると作り直すこと。
+//! 区間ごとに作る HLS。ffprobe で読めること、長さとビットレートが目標に近いこと、
+//! 編集で変わらない区間は同じキーのまま作り直さないこと。
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
-use mm_stream::{HlsQuality, HlsRequest, Payload, SegmentName};
+use mm_doc::{Layer, Node};
+use mm_stream::{HlsQuality, HlsRequest, Payload, SegmentKey};
+use mm_types::{ParamValue, RationalTime, Rgba};
 
 use crate::common::{ffmpeg_config, make_media, number, probe, project, streamer};
 
@@ -14,13 +17,13 @@ const PREFETCH_WAIT: Duration = Duration::from_secs(120);
 
 fn req() -> HlsRequest {
     HlsRequest {
-        sequence: "s".into(),
+        composition: "main".into(),
         quality: HlsQuality::P360,
     }
 }
 
-fn segment_file(dir: &Path, version: u64, index: u64) -> PathBuf {
-    dir.join(format!("cache/mobile/hls/s/360p/v{version}-{index}.ts"))
+fn segment_file(dir: &Path, key: SegmentKey) -> PathBuf {
+    dir.join("cache/mobile/hls").join(key.file_name())
 }
 
 fn probe_segment(dir: &Path, body: &[u8], name: &str) -> serde_json::Value {
@@ -38,7 +41,7 @@ fn stream<'a>(info: &'a serde_json::Value, kind: &str) -> &'a serde_json::Value 
         .unwrap_or_else(|| panic!("{kind} のストリームが無い"))
 }
 
-fn names(playlist: &Payload) -> Vec<SegmentName> {
+fn keys(playlist: &Payload) -> Vec<SegmentKey> {
     String::from_utf8_lossy(&playlist.body)
         .lines()
         .filter(|l| !l.starts_with('#'))
@@ -47,7 +50,7 @@ fn names(playlist: &Payload) -> Vec<SegmentName> {
 }
 
 #[test]
-fn 目録と区間が返り_ffprobe_で読めて長さとビットレートが目標に近い() {
+fn プレイリストと区間が返り_ffprobe_で読めて長さとビットレートが目標に近い() {
     let Some(config) = ffmpeg_config() else {
         return;
     };
@@ -62,15 +65,15 @@ fn 目録と区間が返り_ffprobe_で読めて長さとビットレートが�
         playlist.header("Content-Type"),
         Some("application/vnd.apple.mpegurl")
     );
-    let list = names(&playlist);
+    let list = keys(&playlist);
     assert_eq!(list.len(), 3);
 
     let started = Instant::now();
-    let first = s.segment(&project, 1, &req(), list[0]).unwrap();
+    let first = s.segment(list[0]).unwrap();
     eprintln!("最初の区間（4 秒）を作る時間: {:?}", started.elapsed());
     assert_eq!(first.header("Content-Type"), Some("video/mp2t"));
     assert!(first.header("Cache-Control").unwrap().contains("immutable"));
-    let info = probe_segment(dir.path(), &first.body, "v1-0.ts");
+    let info = probe_segment(dir.path(), &first.body, "first.ts");
     let video = stream(&info, "video");
     assert_eq!(video["codec_name"], "h264");
     assert_eq!(
@@ -88,8 +91,8 @@ fn 目録と区間が返り_ffprobe_で読めて長さとビットレートが�
     );
 
     // 最後の区間は短く、時刻はプレーヤーの時間軸の続きから始まる。
-    let last = s.segment(&project, 1, &req(), list[2]).unwrap();
-    let info = probe_segment(dir.path(), &last.body, "v1-2.ts");
+    let last = s.segment(list[2]).unwrap();
+    let info = probe_segment(dir.path(), &last.body, "last.ts");
     let start = number(&info["format"]["start_time"]);
     let seconds = number(&info["format"]["duration"]);
     assert!((start - 8.0).abs() < 0.3, "始まり {start}");
@@ -106,21 +109,23 @@ fn 要求した区間の後ろを先読みし_作った区間は作り直さな�
     make_media(&media);
     let project = project(&media, 14);
     let s = streamer(config, dir.path());
-    let list = names(&s.playlist(&project, 1, &req(), "seg/").unwrap());
+    let list = keys(&s.playlist(&project, 1, &req(), "seg/").unwrap());
 
-    let first = s.segment(&project, 1, &req(), list[0]).unwrap();
+    let first = s.segment(list[0]).unwrap();
     let deadline = Instant::now() + PREFETCH_WAIT;
-    while !(segment_file(dir.path(), 1, 1).exists() && segment_file(dir.path(), 1, 2).exists()) {
+    while !(segment_file(dir.path(), list[1]).exists()
+        && segment_file(dir.path(), list[2]).exists())
+    {
         assert!(Instant::now() < deadline, "先読みの区間が現れない");
         std::thread::sleep(Duration::from_millis(100));
     }
     assert!(
-        !segment_file(dir.path(), 1, 3).exists(),
+        !segment_file(dir.path(), list[3]).exists(),
         "先読みは 2 区間まで"
     );
 
     let started = Instant::now();
-    let again = s.segment(&project, 1, &req(), list[0]).unwrap();
+    let again = s.segment(list[0]).unwrap();
     assert_eq!(again.body, first.body);
     assert!(
         started.elapsed() < Duration::from_secs(1),
@@ -129,53 +134,74 @@ fn 要求した区間の後ろを先読みし_作った区間は作り直さな�
 }
 
 #[test]
-fn プロジェクトが変わると区間を作り直し_古い版の区間は読めない() {
+fn 編集で変わらない区間は同じキーで作り直さず_変わった区間だけ作り直す() {
     let Some(config) = ffmpeg_config() else {
         return;
     };
     let dir = tempfile::tempdir().unwrap();
     let media = dir.path().join("media.mp4");
     make_media(&media);
-    let before = project(&media, 10);
+    let mut before = project(&media, 10);
+    let title = |red: f32| {
+        let node = Node::new("solid", 1).with_param(
+            "color",
+            ParamValue::Color(Rgba {
+                r: red,
+                g: 0.0,
+                b: 0.0,
+                a: 1.0,
+            }),
+        );
+        Layer::new(
+            "title",
+            node,
+            RationalTime::seconds(9),
+            RationalTime::ZERO,
+            RationalTime::seconds(1),
+        )
+    };
+    before.compositions[0].layers.push(title(1.0));
     let s = streamer(config, dir.path());
-    let old = names(&s.playlist(&before, 1, &req(), "seg/").unwrap());
-    let old_first = s.segment(&before, 1, &req(), old[0]).unwrap();
-    assert!(segment_file(dir.path(), 1, 0).exists());
+    let old = keys(&s.playlist(&before, 1, &req(), "seg/").unwrap());
+    let bodies: Vec<Payload> = old.iter().map(|k| s.segment(*k).unwrap()).collect();
 
-    // 2 秒に縮めると区間は 1 つになる。
+    // 9〜10 秒のレイヤーの色だけを変えると、8〜10 秒の区間だけキーが変わる。
     let mut after = before.clone();
-    after.sequences[0].cuts[0].out_point = mm_types::RationalTime::seconds(2);
-    let playlist = s.playlist(&after, 2, &req(), "seg/").unwrap();
-    let fresh = names(&playlist);
-    assert_eq!(fresh.len(), 1);
-    assert_eq!(fresh[0].version, 2);
-    let new_first = s.segment(&after, 2, &req(), fresh[0]).unwrap();
-    assert_ne!(new_first.body, old_first.body);
-    assert!(segment_file(dir.path(), 2, 0).exists());
-    assert!(!segment_file(dir.path(), 1, 0).exists(), "古い版は捨てる");
-    assert!(s.segment(&after, 2, &req(), old[0]).is_err());
-    let info = probe_segment(dir.path(), &new_first.body, "v2-0.ts");
+    after.compositions[0].layers[1] = title(0.0);
+    let fresh = keys(&s.playlist(&after, 2, &req(), "seg/").unwrap());
+    assert_eq!(fresh.len(), 3);
+    assert_eq!(&fresh[..2], &old[..2]);
+    assert_ne!(fresh[2], old[2]);
+    let started = Instant::now();
+    let reused = s.segment(fresh[0]).unwrap();
+    assert_eq!(reused.body, bodies[0].body);
+    assert!(
+        started.elapsed() < Duration::from_secs(1),
+        "作り直さずに返る"
+    );
+    let rebuilt = s.segment(fresh[2]).unwrap();
+    assert_ne!(rebuilt.body, bodies[2].body);
+    let info = probe_segment(dir.path(), &rebuilt.body, "rebuilt.ts");
     assert!((number(&info["format"]["duration"]) - 2.0).abs() < 0.3);
 }
 
 #[test]
-fn 範囲の外の区間と無い_sequence_は拒む() {
+fn プレイリストに無いキーと無いコンポジションは拒む() {
     let Some(config) = ffmpeg_config() else {
         return;
     };
     let dir = tempfile::tempdir().unwrap();
+    let s = streamer(config, dir.path());
+    let unknown: SegmentKey = "0123456789abcdef".parse().unwrap();
+    assert!(matches!(
+        s.segment(unknown),
+        Err(mm_types::MmError::NotFound(_))
+    ));
     let media = dir.path().join("media.mp4");
     make_media(&media);
-    let project = project(&media, 10);
-    let s = streamer(config, dir.path());
-    let beyond = SegmentName {
-        version: 1,
-        index: 3,
-    };
-    assert!(s.segment(&project, 1, &req(), beyond).is_err());
     let missing = HlsRequest {
-        sequence: "nope".into(),
+        composition: "nope".into(),
         quality: HlsQuality::P360,
     };
-    assert!(s.playlist(&project, 1, &missing, "").is_err());
+    assert!(s.playlist(&project(&media, 10), 1, &missing, "").is_err());
 }

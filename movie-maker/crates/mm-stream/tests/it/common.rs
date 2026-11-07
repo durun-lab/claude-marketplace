@@ -3,7 +3,10 @@
 use std::path::Path;
 use std::process::Command;
 
-use mm_doc::{Asset, Composition, Cut, Layer, LayerAudio, Node, Project, RenderTarget, Sequence};
+use mm_doc::{
+    Asset, Composition, Cut, Layer, LayerAudio, Node, Project, Sequence, SEQUENCE_KIND,
+    SEQUENCE_PARAM,
+};
 use mm_runtime::{assemble, Backend, RuntimeConfig};
 use mm_stream::{StreamConfig, Streamer};
 use mm_types::color::ColorSpace;
@@ -74,15 +77,15 @@ pub fn make_media(path: &Path) {
     assert!(status.success());
 }
 
-/// 素材 1 本を `seconds` 秒使う sequence `s` と、同じ素材を置いたコンポジション `main`（1280x720）を持つプロジェクト。
+/// 素材 1 本を `seconds` 秒使うシーケンス `s` を、音つきのレイヤーに置いたコンポジション `main`（1280x720）。
 pub fn project(media: &Path, seconds: i64) -> Project {
     let asset_id = Id::new("clip");
     let fps = Rational::integer(30);
     let footage =
-        || Node::new("footage", 1).with_param("asset", ParamValue::AssetRef(asset_id.clone()));
+        Node::new("footage", 1).with_param("asset", ParamValue::AssetRef(asset_id.clone()));
     let mut p = Project::new();
     p.assets.push(Asset {
-        id: asset_id.clone(),
+        id: asset_id,
         path: media.to_string_lossy().into_owned(),
         content_hash: "stream-test-clip".into(),
         color_space: ColorSpace::bt709(),
@@ -94,17 +97,19 @@ pub fn project(media: &Path, seconds: i64) -> Project {
         id: Id::new("s"),
         cuts: vec![Cut::new(
             "a",
-            footage(),
+            footage,
             RationalTime::ZERO,
             RationalTime::seconds(seconds),
         )],
         origin: None,
     });
+    let sequence =
+        Node::new(SEQUENCE_KIND, 1).with_param(SEQUENCE_PARAM, ParamValue::Text("s".into()));
     let layer = Layer {
         audio: Some(LayerAudio::new("voice")),
         ..Layer::new(
-            "l-footage",
-            footage(),
+            "l-sequence",
+            sequence,
             RationalTime::ZERO,
             RationalTime::ZERO,
             RationalTime::seconds(seconds),
@@ -120,17 +125,6 @@ pub fn project(media: &Path, seconds: i64) -> Project {
         )
         .with_layers(vec![layer]),
     );
-    p.render_targets.push(RenderTarget {
-        id: Id::new("mp4"),
-        composition: Id::new("main"),
-        width: 1280,
-        height: 720,
-        fps,
-        codec: "h264".into(),
-        output_path: "unused.mp4".into(),
-        loudness_lufs: None,
-        delivery: Default::default(),
-    });
     p
 }
 

@@ -1,9 +1,10 @@
 //! ディスクのキャッシュ（`cache/mobile/`）の置き場所。消しても作り直せる。
 
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+use std::time::SystemTime;
 
-use mm_types::Result;
+use crate::key::{SegmentKey, SEGMENT_EXT};
 
 const HLS_DIR: &str = "hls";
 const AUDIO_DIR: &str = "audio";
@@ -21,66 +22,68 @@ impl CacheDir {
         Self { root }
     }
 
-    /// 区間のファイルの置き場所。名前の先頭の `v<版>-` で版ごとに捨てる。
-    pub(crate) fn segment(
-        &self,
-        sequence: &str,
-        quality: &str,
-        version: u64,
-        index: u64,
-    ) -> PathBuf {
-        self.root
-            .join(HLS_DIR)
-            .join(sanitize(sequence))
-            .join(quality)
-            .join(format!("{}{index}.ts", version_prefix(version)))
+    /// 区間のファイルの置き場所。キーが中身で決まるので、プロジェクトを開き直しても使える。
+    pub(crate) fn segment(&self, key: SegmentKey) -> PathBuf {
+        self.root.join(HLS_DIR).join(key.file_name())
     }
 
-    /// 素材の音だけのファイルの置き場所。素材の内容のハッシュで決まるので版は要らない。
+    /// 素材の音だけのファイルの置き場所。素材の内容のハッシュで決まる。
     pub(crate) fn audio(&self, content_hash: &str) -> PathBuf {
         self.root
             .join(AUDIO_DIR)
             .join(format!("{}.m4a", sanitize(content_hash)))
     }
 
-    /// 区間のキャッシュを全部捨てる。
-    pub(crate) fn clear_hls(&self) -> Result<()> {
-        match fs::remove_dir_all(self.root.join(HLS_DIR)) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
-            _ => Ok(()),
+    /// 前の起動が残した書きかけ（区間で終わらない名前）を捨てる。
+    pub(crate) fn remove_partials(&self) {
+        for entry in fs::read_dir(self.root.join(HLS_DIR))
+            .into_iter()
+            .flatten()
+            .flatten()
+        {
+            if !is_segment(&entry.path()) {
+                let _ = fs::remove_file(entry.path());
+            }
         }
     }
 
-    /// `keep` 以外の版の区間と書きかけを捨てる。
-    pub(crate) fn prune_hls(&self, keep: u64) {
-        let prefix = version_prefix(keep);
-        for dir in leaf_dirs(&self.root.join(HLS_DIR)) {
-            for entry in fs::read_dir(dir).into_iter().flatten().flatten() {
-                let name = entry.file_name();
-                if !name.to_string_lossy().starts_with(&prefix) {
-                    let _ = fs::remove_file(entry.path());
-                }
+    /// 区間の合計が `limit` バイトを超えたら、使われた時刻の古いものから捨てる。
+    pub(crate) fn evict_segments(&self, limit: u64) {
+        let mut files: Vec<(SystemTime, u64, PathBuf)> = fs::read_dir(self.root.join(HLS_DIR))
+            .into_iter()
+            .flatten()
+            .flatten()
+            .filter(|e| is_segment(&e.path()))
+            .filter_map(|e| {
+                let meta = e.metadata().ok()?;
+                Some((meta.modified().ok()?, meta.len(), e.path()))
+            })
+            .collect();
+        let mut total: u64 = files.iter().map(|f| f.1).sum();
+        if total <= limit {
+            return;
+        }
+        files.sort();
+        for (_, len, path) in files {
+            if total <= limit {
+                break;
+            }
+            if fs::remove_file(&path).is_ok() {
+                total -= len;
             }
         }
     }
 }
 
-fn version_prefix(version: u64) -> String {
-    format!("v{version}-")
+/// 使った時刻を今にする。捨てる順は更新時刻で決めるので、読んだ区間を残す側に回す。
+pub(crate) fn touch(path: &std::path::Path) {
+    if let Ok(f) = fs::File::options().write(true).open(path) {
+        let _ = f.set_modified(SystemTime::now());
+    }
 }
 
-/// `hls/<列>/<画質>/` の 2 段下のディレクトリ。
-fn leaf_dirs(hls: &Path) -> Vec<PathBuf> {
-    let subdirs = |p: &Path| -> Vec<PathBuf> {
-        fs::read_dir(p)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .map(|e| e.path())
-            .filter(|p| p.is_dir())
-            .collect()
-    };
-    subdirs(hls).iter().flat_map(|s| subdirs(s)).collect()
+fn is_segment(path: &std::path::Path) -> bool {
+    path.extension().is_some_and(|e| e == SEGMENT_EXT)
 }
 
 /// ファイル名に使える文字だけにする。
@@ -105,22 +108,44 @@ pub(crate) fn sanitize(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
+
+    fn key(n: u64) -> SegmentKey {
+        format!("{n:016x}").parse().unwrap()
+    }
 
     #[test]
-    fn 版が違う区間だけを捨てる() {
+    fn 上限を超えたら使った時刻の古い区間から捨てる() {
         let dir = tempfile::tempdir().unwrap();
         let cache = CacheDir::new(dir.path().to_path_buf());
-        let keep = cache.segment("main", "360p", 2, 0);
-        let drop_old = cache.segment("main", "360p", 1, 0);
-        for p in [&keep, &drop_old] {
-            fs::create_dir_all(p.parent().unwrap()).unwrap();
-            fs::write(p, b"x").unwrap();
+        let paths: Vec<PathBuf> = (0..3).map(|n| cache.segment(key(n))).collect();
+        fs::create_dir_all(paths[0].parent().unwrap()).unwrap();
+        let base = SystemTime::now() - Duration::from_secs(60);
+        for (i, p) in paths.iter().enumerate() {
+            fs::write(p, [0u8; 10]).unwrap();
+            let f = fs::File::options().write(true).open(p).unwrap();
+            f.set_modified(base + Duration::from_secs(i as u64))
+                .unwrap();
         }
-        cache.prune_hls(2);
-        assert!(keep.exists());
-        assert!(!drop_old.exists());
-        cache.clear_hls().unwrap();
-        assert!(!keep.exists());
+        touch(&paths[0]);
+        cache.evict_segments(20);
+        assert!(paths[0].exists(), "読んだばかりの区間は残す");
+        assert!(!paths[1].exists());
+        assert!(paths[2].exists());
+    }
+
+    #[test]
+    fn 書きかけだけを捨てる() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache = CacheDir::new(dir.path().to_path_buf());
+        let done = cache.segment(key(1));
+        fs::create_dir_all(done.parent().unwrap()).unwrap();
+        let partial = done.with_extension("ts.partial");
+        fs::write(&done, b"x").unwrap();
+        fs::write(&partial, b"x").unwrap();
+        cache.remove_partials();
+        assert!(done.exists());
+        assert!(!partial.exists());
     }
 
     #[test]

@@ -35,7 +35,7 @@ impl StillRequest {
     }
 }
 
-/// コマのキャッシュのキー。版はキャッシュ全体を捨てる単位なので持たない。
+/// コマのキャッシュのキー。プロジェクトのバージョンはキャッシュ全体を捨てる単位なので持たない。
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct StillKey {
     composition: Option<String>,
@@ -93,10 +93,6 @@ impl StillCache {
                 self.bytes -= b.len();
             }
         }
-    }
-
-    pub(crate) fn clear(&mut self) {
-        *self = Self::default();
     }
 }
 
