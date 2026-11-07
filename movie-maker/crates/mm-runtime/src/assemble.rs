@@ -309,6 +309,7 @@ fn registry(render: Backend) -> Result<Registry> {
             r.register(kind)?;
         }
         r.register(crate::cef::web_cef())?;
+        r.register(Arc::new(mm_nodes_lottie::LottieKind::default()))?;
     } else {
         r.register(Arc::new(SolidKind))?;
         r.register(Arc::new(FootageKind))?;

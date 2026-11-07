@@ -256,6 +256,11 @@ pub trait NodeKind: Send + Sync {
     }
     /// 性質。
     fn traits(&self) -> Traits;
+    /// パラメータの `AssetRef` の素材を、レンダラーがデコーダーで開いて `FrameCx::footage` に渡すか。
+    /// 素材のファイルを自分で読む種類（`lottie`）は偽にし、`InputFrames::asset_path` でパスを引く。
+    fn decodes_asset(&self) -> bool {
+        true
+    }
     /// 自前の長さ（素材、音）。無ければ `None` で、レイヤーの in/out に従う。
     fn duration(&self, params: &Params) -> Option<RationalTime> {
         let _ = params;
