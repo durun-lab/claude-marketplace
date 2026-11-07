@@ -73,7 +73,7 @@ export const filterCounts = (comments: Comment[]): Record<CommentFilter, number>
   done: comments.filter((c) => inFilter(c, "done")).length,
 });
 
-/** 描き込みの印の文字。無ければ `null`。 */
+/** 描き込みがあることを示す文字。無ければ `null`。 */
 export const drawingLabel = (c: Comment): string | null => {
   const n = c.drawing.length;
   return n === 0 ? null : `Drawing · ${n} ${n === 1 ? "mark" : "marks"}`;

@@ -72,7 +72,7 @@ describe("一覧", () => {
   });
 });
 
-describe("描き込みの印", () => {
+describe("描き込みの表示", () => {
   it("無ければ null、あれば数を出す", () => {
     expect(drawingLabel(comment("a"))).toBeNull();
     const shape = { kind: "point" as const, points: [[0.5, 0.5]] as [number, number][] };

@@ -80,7 +80,7 @@ describe("コメントの一覧", () => {
     expect(ids()).toEqual(["b"]);
   });
 
-  it("描き込みがあるコメントに印を出す", async () => {
+  it("描き込みがあるコメントにその表示を出す", async () => {
     const drawing = [{ kind: "point" as const, points: [[0.5, 0.5]] as [number, number][] }];
     await mount(fakeApi([comment("a", { drawing })]));
     expect(host.querySelector(".mm-review-drawing")?.textContent).toBe("Drawing · 1 mark");

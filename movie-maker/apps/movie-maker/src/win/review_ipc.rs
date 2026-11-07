@@ -139,22 +139,10 @@ const COMMENTS_CHANGED_EVENT: &str = "mm:comments-changed";
 
 /// コメントの通知を WebView へ転送するスレッドを始める。モバイルや Claude が書いたものも同じ道で届く。
 pub fn forward_comments(app: &tauri::AppHandle, core: &Core) {
-    use tokio::sync::broadcast::error::RecvError;
     let handle = app.clone();
-    let mut rx = core.subscribe_comments();
-    let started = std::thread::Builder::new()
-        .name("serve-comments".into())
-        .spawn(move || loop {
-            match rx.blocking_recv() {
-                Ok(event) => {
-                    let _ = handle.emit(COMMENTS_CHANGED_EVENT, event);
-                }
-                Err(RecvError::Lagged(n)) => {
-                    tracing::warn!("コメントの通知を {n} 件取りこぼした");
-                }
-                Err(RecvError::Closed) => break,
-            }
-        });
+    let started = core.on_comment(move |event| {
+        let _ = handle.emit(COMMENTS_CHANGED_EVENT, event);
+    });
     if let Err(e) = started {
         tracing::warn!("コメントの通知を受けるスレッドを始められない: {e}");
     }
@@ -186,7 +174,7 @@ pub async fn review_comment_reply(
     .await
 }
 
-/// コメントの状態を `open`、`done`、`wontfix` に決める。`fresh` は Claude の対応でだけなるので、`Core` が断る。
+/// コメントの状態を `open`、`done`、`wontfix` に決める。`fresh` は Claude の対応でだけなるので、`Core` が拒否する。
 #[tauri::command]
 pub async fn review_comment_state(
     state: Review<'_>,
