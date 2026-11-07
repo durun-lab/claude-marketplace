@@ -22,6 +22,7 @@ import { SESSION_KEY } from './SessionPage.tsx';
 import { toast } from './toast.tsx';
 import { Chip, Empty, Ext, Loading, StatusBadge, onSubmitKey } from './ui.tsx';
 import { Translatable } from './TranslateTray.tsx';
+import { useTypewriter } from './typewriter.ts';
 import { XpContextMenu } from './XpMenu.tsx';
 
 const TASK_LABEL: Record<ObservedTask['status'], string> = { pending: '未着手', in_progress: '作業中', completed: '完了' };
@@ -455,11 +456,15 @@ const BookmarkButton = ({ sessionId, mark, on }: { sessionId: string; mark: Pick
   </button>
 );
 
-/** ブックマークから移れるのはセッションのチャットの発言だけなので、bookmarked を渡さないサブエージェントの会話には、ブックマークのボタンを出さない。 */
-type ChatBubbleProps = { sessionId: string; badges?: Badges; e: ChatEntry; codeLink: CodeLink; markText?: MarkText; focused: boolean; bookmarked?: boolean };
+/**
+ * ブックマークから移れるのはセッションのチャットの発言だけなので、bookmarked を渡さないサブエージェントの会話には、ブックマークのボタンを出さない。
+ * streaming は、開いている間に届いた Claude の返答の印。一文字ずつ書き出し、明かす量が増えるたびに onStep を呼ぶ。
+ */
+type ChatBubbleProps = { sessionId: string; badges?: Badges; e: ChatEntry; codeLink: CodeLink; markText?: MarkText; focused: boolean; bookmarked?: boolean; streaming?: boolean; onStep?: () => void };
 
-const ChatBubble = ({ sessionId, badges, e, codeLink, markText, focused, bookmarked }: ChatBubbleProps) => {
+const ChatBubble = ({ sessionId, badges, e, codeLink, markText, focused, bookmarked, streaming = false, onStep }: ChatBubbleProps) => {
   const [editing, setEditing] = useState(false);
+  const text = useTypewriter(e.text, streaming && e.kind === 'message', onStep);
   const now = useContext(NowContext);
   const time = e.at ? <time title={dateTime(e.at)}>{shortDateTime(e.at, now)}</time> : null;
   // ツールの呼び出しは数が多く発言を埋もれさせるので、名前と要点の 1 行だけ見せて入力は畳んでおく。
@@ -484,7 +489,10 @@ const ChatBubble = ({ sessionId, badges, e, codeLink, markText, focused, bookmar
   ) : (
     <div class="chat-row">
       <span class="chat-meta">{star}{time}</span>
-      <div class={`card chat-claude${focused ? ' is-focused' : ''}`}><Translatable text={e.text}>{(t) => <Markdown text={t} codeLink={codeLink} markText={markText} />}</Translatable></div>
+      <div class={`card chat-claude${focused ? ' is-focused' : ''}`}>
+        {/* 書き出している途中の文は翻訳しても途中で切れるので、書き終えてから翻訳できるようにする。 */}
+        {text === e.text ? <Translatable text={e.text}>{(t) => <Markdown text={t} codeLink={codeLink} markText={markText} />}</Translatable> : <Markdown text={text} codeLink={codeLink} markText={markText} />}
+      </div>
     </div>
   );
 };
@@ -524,6 +532,12 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
   useEffect(() => {
     if (start === undefined && list.length) setStart(first);
   }, [list.length]);
+  // 開いたときに読み込んだ発言の数。これより後ろの発言は開いている間に届いたものなので、一文字ずつ書き出す。
+  const arrived = useRef<{ id: string; count: number }>();
+  if (entries && arrived.current?.id !== s.id) arrived.current = { id: s.id, count: list.length };
+  const followBottom = () => {
+    if (box.current && stick.current) box.current.scrollTop = box.current.scrollHeight;
+  };
   useLayoutEffect(() => {
     if (box.current && stick.current) box.current.scrollTop = box.current.scrollHeight;
   }, [list.length, unread.length]);
@@ -596,7 +610,7 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
           : list.length + unread.length === 0 ? <Empty>まだやり取りがありません。</Empty> : (
           <>
             {first > 0 && <button class="btn btn-sm chat-more" onClick={() => loadBefore(first)}>前の {Math.min(CHAT_PAGE, first)} 件を表示</button>}
-            {list.slice(first).map((e, i) => <ChatBubble key={first + i} sessionId={s.id} badges={s} e={e} codeLink={codeLink} markText={markText} focused={first + i === jump?.index} bookmarked={marked.has(bookmarkKey(e))} />)}
+            {list.slice(first).map((e, i) => <ChatBubble key={first + i} sessionId={s.id} badges={s} e={e} codeLink={codeLink} markText={markText} focused={first + i === jump?.index} bookmarked={marked.has(bookmarkKey(e))} streaming={first + i >= (arrived.current?.count ?? Infinity)} onStep={followBottom} />)}
             {unread.map((m) => <UnreadBubble key={m.id} m={m} />)}
             <div class="chat-nav">
               <button class="btn btn-sm" title="前の依頼へ" aria-label="前の依頼へ" onClick={() => toPrompt(-1)}>↑</button>
