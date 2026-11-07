@@ -3572,6 +3572,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "mm-nodes-genai"
+version = "0.1.0"
+dependencies = [
+ "blake3",
+ "mm-audio-api",
+ "mm-decode-api",
+ "mm-doc",
+ "mm-improve",
+ "mm-node-api",
+ "mm-ops",
+ "mm-testkit",
+ "mm-types",
+ "png",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.21",
+]
+
+[[package]]
 name = "mm-nodes-hlsl"
 version = "0.1.0"
 dependencies = [
@@ -3729,6 +3749,7 @@ dependencies = [
  "mm-node-api",
  "mm-nodes-basic",
  "mm-nodes-cef",
+ "mm-nodes-genai",
  "mm-nodes-hlsl",
  "mm-nodes-lottie",
  "mm-nodes-ofx",
