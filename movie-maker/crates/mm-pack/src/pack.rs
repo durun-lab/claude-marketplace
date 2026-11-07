@@ -8,6 +8,7 @@ use mm_types::{MmError, Result};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
+use crate::fonts::{read_fonts, PackFont};
 use crate::macros::{MacroDef, MacroKind};
 use crate::style::TextStyleSpec;
 use crate::theme::Theme;
@@ -49,6 +50,9 @@ pub struct Pack {
     pub pages: BTreeMap<String, String>,
     /// `transitions/*.wgsl`。`transition` 手順が `transition.wgsl` のトランジションにする。
     pub transitions: Transitions,
+    /// `fonts/fonts.json` の書体の目録。キャッシュに取り（[`crate::FontCache`]）、適用するとプロジェクトの素材になる
+    /// （[`crate::font_asset_ops`]）。
+    pub fonts: Vec<PackFont>,
 }
 
 impl Pack {
@@ -72,6 +76,7 @@ impl Pack {
             macros,
             pages: read_pages(&dir.join("web"))?,
             transitions: Transitions::load(&dir.join("transitions"))?,
+            fonts: read_fonts(&dir.join(mm_text_api::FONTS_DIR))?,
         })
     }
 
@@ -103,7 +108,7 @@ fn read_json<T: DeserializeOwned>(path: &Path) -> Result<T> {
         .map_err(|e| MmError::InvalidArgument(format!("{}: {e}", path.display())))
 }
 
-fn read_optional<T: DeserializeOwned>(path: &Path) -> Result<Option<T>> {
+pub(crate) fn read_optional<T: DeserializeOwned>(path: &Path) -> Result<Option<T>> {
     if path.is_file() {
         read_json(path).map(Some)
     } else {

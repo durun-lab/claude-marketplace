@@ -9,6 +9,9 @@
 //! - `macros/*.json` と `templates/*.json`: 引数を受けて操作の列を作る手順（[`MacroDef`]）。テンプレートは
 //!   空のプロジェクトに適用するテンプレート（コンポジション、レンダーターゲット）で、形はマクロと同じ。
 //! - `web/*.html`: HTML と CSS の部品。`web` 手順（[`WebStep`]）が `web.cef` のレイヤーにする。
+//! - `fonts/fonts.json`: テーマが指す書体の目録（family、配布元の URL、BLAKE3）。本体はユーザーのキャッシュに取り
+//!   （[`FontCache`]）、適用するとプロジェクトの `fonts/<family>/` に写して素材にする（[`copy_fonts`]、
+//!   [`font_asset_ops`]）。`fonts/<family>/` にはライセンスの文を置く。
 //! - `transitions/*.wgsl`: WGSL のトランジション。`transition` 手順（[`TransitionStep`]）がカットの頭に
 //!   `transition.wgsl` のトランジションとして置く。`_` で始まるファイルは共通のコード（[`Transitions`]）。
 //!
@@ -18,6 +21,8 @@
 mod args;
 mod check;
 mod expand;
+mod font_cache;
+mod fonts;
 mod layout;
 mod macros;
 mod pack;
@@ -30,6 +35,8 @@ mod web;
 pub use args::{parse_time, ArgValue};
 pub use check::{check, Report};
 pub use expand::expand;
+pub use font_cache::{Curl, Fetch, FetchReport, FontCache, CACHE_ENV};
+pub use fonts::{copy_fonts, font_asset_ops, font_files, CachedFont, PackFont};
 pub use layout::EstimateShaper;
 pub use macros::{
     MacroDef, MacroKind, MacroSummary, ParamDef, ParamType, Step, TextStep, TransitionStep, WebStep,

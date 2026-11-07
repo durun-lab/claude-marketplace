@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use mm_audio_api::AudioBlock;
 use mm_color_api::ColorTransform;
 use mm_decode_api::{FrameSource, GpuFrameHandle};
-use mm_text_api::{TextRasterizer, TextShaper};
+use mm_text_api::{FontFile, TextRasterizer, TextShaper};
 use mm_types::{
     AssetId, ParamSchema, Params, RationalTime, Rect, Result, Rgba, RgbaImage, Size, TimeRange,
 };
@@ -287,6 +287,12 @@ pub trait NodeKind: Send + Sync {
     fn render_audio(&self, cx: &mut AudioCx<'_>) -> Result<AudioBlock> {
         let frames = audio_frames_in(cx.range, cx.sample_rate);
         Ok(AudioBlock::silence(cx.sample_rate, cx.channels, frames))
+    }
+    /// プロジェクトの書体の組（レンダラーが組の変わったときに渡す）。書体を自前で読み込む種類（`web.cef`）と、
+    /// 組んだ文字を覚える種類（`text`）が使う。ほかの種類は何もしない。
+    fn use_fonts(&self, fonts: &[FontFile]) -> Result<()> {
+        let _ = fonts;
+        Ok(())
     }
 }
 

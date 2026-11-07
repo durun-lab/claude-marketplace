@@ -23,6 +23,11 @@ use serde::{Deserialize, Serialize};
 
 use mm_types::{GpuAdapterId, RationalTime, Result, RgbaImage, Size};
 
+/// CEF のホストがプロジェクトの書体を配る URL の起点。`Prepare` の `params.fonts`（`mm_text_api::FontFile` の JSON の列）を
+/// 受けたホストは、ページに `@font-face` を差し込み、ファイルをこの起点の下の URL で返す。ページの CSP の `font-src` に入れる。
+/// `.invalid` は名前解決されない予約の名前で、ホストのほかに答える者がいない。
+pub const FONT_ORIGIN: &str = "https://mm-font.invalid";
+
 /// プロトコルのバージョン。要求と応答の形を変えたら上げる。
 /// - 2: `SharedFrame` のタグを `type` から `kind` に（`HostResponse::Frame` で重なっていた）。
 pub const PROTOCOL_VERSION: u32 = 2;
@@ -58,7 +63,7 @@ pub struct SharedFence {
 pub enum HostRequest {
     /// 生きているか。
     Ping,
-    /// 種類の準備（HTML の読み込み、プラグインの読み込み）。
+    /// 種類の準備（HTML の読み込み、プラグインの読み込み）。CEF は `html` か `url` と、任意で `fonts`（[`FONT_ORIGIN`]）。
     Prepare { params: serde_json::Value },
     /// 時刻 `time` のフレームを `size` で描く。
     RenderFrame {

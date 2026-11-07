@@ -26,6 +26,7 @@ pub fn host_main(sandbox: *mut std::ffi::c_void) -> std::process::ExitCode {
     host::run(sandbox)
 }
 
+pub mod fonts;
 mod job;
 mod launcher;
 mod locate;

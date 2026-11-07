@@ -5,6 +5,8 @@
 //! - CSS で付けるもの: 書体（`font-family`）、縁取り（`-webkit-text-stroke` を `paint-order: stroke fill` で外側だけ）、
 //!   ルビ（`<ruby>`。注記はシェーパーと同じ `mm_text_api::parse_ruby` で読む）。
 //! - 文字は `ShapedText::text` から取る。元の文字列を持たない行組みの結果は `Unsupported`。
+//! - 書体: プロジェクトの書体（`use_fonts`）を `Prepare` の `fonts` でホストに渡す。ホストが `@font-face` を差し込み、
+//!   `font-family` の名前でプロジェクトの書体を引く（無い名前は OS の書体）。
 //! - 画像は CPU の経路（RGBA f32、premultiplied、線形）で受ける。文字の画布は小さく、`text` の種類がキャッシュするので、
 //!   共有テクスチャの経路を使わない。
 //!
@@ -17,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use mm_host_api::{HostLauncher, HostProcess, HostRequest, HostResponse, HostSpec, SharedFrame};
-use mm_text_api::{ShapedText, TextRasterizer, TextStyle};
+use mm_text_api::{fonts_fingerprint, FontFile, ShapedText, TextRasterizer, TextStyle};
 use mm_types::{MmError, RationalTime, Result, RgbaImage, Size};
 
 pub use page::{css_color, page_params};
@@ -34,6 +36,8 @@ pub struct CefRasterizer {
     launcher: Arc<dyn HostLauncher>,
     executable: PathBuf,
     host: Mutex<Option<Box<dyn HostProcess>>>,
+    /// プロジェクトの書体。ホストを起こすときにページと一緒に渡す。
+    fonts: Mutex<Vec<FontFile>>,
 }
 
 impl CefRasterizer {
@@ -43,6 +47,7 @@ impl CefRasterizer {
             launcher,
             executable,
             host: Mutex::new(None),
+            fonts: Mutex::new(Vec::new()),
         }
     }
 
@@ -55,8 +60,13 @@ impl CefRasterizer {
             client_pid: None,
         };
         let mut host = self.launcher.spawn(&spec)?;
+        let fonts = self
+            .fonts
+            .lock()
+            .map_err(|_| MmError::Internal("文字の書体のロックが壊れた".into()))?
+            .clone();
         let prepare = HostRequest::Prepare {
-            params: serde_json::json!({ "html": PAGE }),
+            params: serde_json::json!({ "html": PAGE, "fonts": fonts }),
         };
         match host.request(&prepare, PREPARE_TIMEOUT)? {
             HostResponse::Prepared => Ok(host),
@@ -131,6 +141,18 @@ impl TextRasterizer for CefRasterizer {
                 other.size()
             ))),
         }
+    }
+
+    /// 組が変わったら、次の描画でページを書体ごと読み直すよう、ホストを止める。
+    fn use_fonts(&self, fonts: &[FontFile]) -> Result<()> {
+        let poisoned = || MmError::Internal("文字の書体のロックが壊れた".into());
+        let mut held = self.fonts.lock().map_err(|_| poisoned())?;
+        if fonts_fingerprint(fonts) == fonts_fingerprint(&held) {
+            return Ok(());
+        }
+        *held = fonts.to_vec();
+        *self.host.lock().map_err(|_| poisoned())? = None;
+        Ok(())
     }
 }
 

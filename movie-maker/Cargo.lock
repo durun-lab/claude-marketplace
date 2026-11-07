@@ -3170,9 +3170,11 @@ dependencies = [
  "mm-types",
  "png",
  "pollster",
+ "serde",
  "serde_json",
  "tracing",
  "tracing-subscriber",
+ "ttf-parser",
  "wgpu",
  "windows",
 ]
@@ -3256,6 +3258,7 @@ dependencies = [
  "mm-host-cef",
  "mm-node-api",
  "mm-testkit",
+ "mm-text-api",
  "mm-types",
  "png",
  "serde_json",
@@ -3281,6 +3284,7 @@ dependencies = [
 name = "mm-pack"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "mm-color-lut",
  "mm-doc",
  "mm-gpu",
@@ -3317,6 +3321,7 @@ dependencies = [
  "mm-nodes-basic",
  "mm-render-api",
  "mm-testkit",
+ "mm-text-api",
  "mm-text-glyphon",
  "mm-trace",
  "mm-types",
