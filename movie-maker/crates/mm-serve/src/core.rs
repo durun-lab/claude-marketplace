@@ -39,6 +39,17 @@ impl Caller {
         }
     }
 
+    /// モバイル版の登録した端末（人の操作）。名乗りは端末の名前で、ロックの付いた所には触れない。
+    pub fn mobile(device_name: &str) -> Self {
+        Self {
+            entry: Entry::Mobile,
+            actor: Actor {
+                kind: "mobile".into(),
+                name: device_name.into(),
+            },
+        }
+    }
+
     /// アプリの WebView（人の操作）。
     pub fn webview() -> Self {
         Self {

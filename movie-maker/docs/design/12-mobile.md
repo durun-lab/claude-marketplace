@@ -120,6 +120,20 @@ flowchart LR
 - 端末の資格をクッキーにする理由: SSE の `EventSource` は見出しを足せない [93]。クッキーは `HttpOnly`、`Secure`、`SameSite=Strict`、パスは `/m`。
 - 端末の登録: PC のアプリの設定の画面で「端末を足す」を押すと、5 分だけ使える 8 文字の登録の符号と、その符号を入れた URL の QR を出す。モバイルは符号を `POST /m/pair` に送り、端末の資格（32 バイトの乱数）をクッキーで受け取る。PC は資格の BLAKE3 のハッシュと端末の名前、`Tailscale-User-Login`、登録した時刻を持ち主専用のフォルダー（`%LOCALAPPDATA%\movie-maker\devices.json`）に置く。符号は 1 回で消え、5 回間違えたら無効にする。登録と取り消しは PC のアプリからだけで、モバイルからはできない。Claude が PC のファイルを読めても、ハッシュから資格は作れない。
 - 符号を手で入れる道も持つ: iOS ではホーム画面に置いた Web アプリと Safari でクッキーが分かれることがある〔推〕。QR を Safari で開いた後にホーム画面へ置いたときは、Web アプリの中で符号を入れ直す。
+- QR の URL は登録の画面 `https://<tailnet での名前>:8443/m/pair?code=<符号>`（`MobileServer::pairing_url`）。PWA の画面（`/m/api/` の外の読み出し）は資格の無い端末にも配り、`Host` と本人の見出しだけを確かめる。
+- 落ちた要求の応答の `code` とログの理由: `forbidden_host`、`forbidden_origin`（403）、`no_tailnet_login`、`no_device`、`unknown_device`、`login_mismatch`（401）、`missing_mobile_header`（403）。登録の失敗は `pairing_unavailable`（符号が無い、期限切れ、使い切った）、`pairing_wrong_code`（401）、`name_taken`（409）。
+
+#### 設定の手順
+
+PC で 1 回だけ行う。tailnet と Tailscale の HTTPS の証明書（管理画面の DNS で MagicDNS と HTTPS Certificates を有効）はある前提。
+
+1. movie-maker を起動する。人の待ち受けが 127.0.0.1:7338 で待つ（ポートが使われていると起動の画面に出る）。
+2. 管理者でないターミナルで `tailscale serve --bg --https=8443 http://127.0.0.1:7338` を実行する。`--bg` で PC を再起動しても残る。
+3. `tailscale serve status` で `https://<端末の名前>.<tailnet の名前>.ts.net:8443` が `http://127.0.0.1:7338` に向いていることを確かめる。ダッシュボードの 443 の行はそのまま残る。
+4. PC のアプリの設定の画面で「端末を足す」を押し、スマホのカメラで QR を読む（読めなければ `/m/pair` の画面で 8 文字の符号を入れる）。
+5. やめるときは `tailscale serve --https=8443 off`。登録した端末は PC のアプリで取り消す。
+
+`tailscale funnel` は使わない。Funnel を通った要求には `Tailscale-User-Login` が付かず、2 段目で 401 になる。タグの付いた端末からの要求も同じ。
 
 ### 権限
 
@@ -147,7 +161,7 @@ flowchart LR
 | 並べる | `insertTopics` |
 | 目印 | `addMarker`、`removeMarker` |
 
-ほかの操作（端の詰め、レイヤー、パラメータ、書き出し）は 403 `not_on_mobile` で断る。小さな画面で細かい編集を誤るより、コメントで Claude に頼み、提案の前後を見て決める方が確かなため。表に操作を足すときは、この表と `mm-serve` の `MOBILE_OPS` を同じ PR で変える。
+ほかの操作（端の詰め、レイヤー、パラメータ、書き出し）は 403 `not_on_mobile` で断る。小さな画面で細かい編集を誤るより、コメントで Claude に頼み、提案の前後を見て決める方が確かなため。表に操作を足すときは、この表と `mm-story` の `MOBILE_OPS` を同じ PR で変える。
 
 ## 映像の届け方
 
@@ -204,8 +218,8 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 | パス | 中身 |
 |---|---|
 | `GET /m/` | PWA の画面、マニフェスト、Service Worker。`ui/mobile` のビルドの出力 |
-| `POST /m/pair` | `{ code, device_name }` → 端末の資格のクッキー。資格を確かめる前に受ける唯一のパス |
-| `GET /m/api/project` | `{ version, compositions, sequences, open_composition }`（素材のパスは返さない） |
+| `POST /m/pair` | `{ code, device_name }` → `{ device_name, device: { id, name, login, paired_at_ms } }` と端末の資格のクッキー（資格は本文に入れない）。資格を確かめる前に受ける唯一の API |
+| `GET /m/api/project` | `{ version, compositions, sequences, open_composition }`（素材のパスは返さない）。`open_composition` は先頭のコンポジション |
 | `GET /m/api/story/overview`、`/transcript?asset=`、`/range?asset=&first=&last=`、`/search?q=` | `ui/panels/story/src/api.ts` の `StoryApi` と同じ形 |
 | `POST /m/api/ops` | `{ op }` か `{ txn }`、`base_version` は必須。即時に適用できる操作だけ |
 | `POST /m/api/undo` | この端末が出したトランザクションが全体の直前のときだけ |

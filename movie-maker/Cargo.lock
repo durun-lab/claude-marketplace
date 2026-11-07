@@ -3797,6 +3797,7 @@ name = "mm-serve"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "blake3",
  "getrandom 0.3.4",
  "mm-doc",
  "mm-node-api",

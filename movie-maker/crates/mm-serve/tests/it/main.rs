@@ -3,4 +3,5 @@
 mod guard;
 mod http;
 mod mcp;
+mod mobile;
 mod proposals;

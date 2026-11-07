@@ -5,6 +5,8 @@
 //! - [`Server`]: `Core` を HTTP（axum）で公開する。127.0.0.1 だけで待ち、`Host`・`Origin`・
 //!   起動ごとのトークン（プロジェクトの外の持ち主専用のフォルダー）を確かめる。
 //! - 提案: Claude の編集を適用せずに保留し、人が承認・却下する（[`Core::propose`]、[`Core::approve`]、`/proposals`）。
+//! - [`MobileServer`]: 人の待ち受け（モバイル版、`/m`）。`tailscale serve` の後ろで、登録した端末だけを
+//!   `Entry::Mobile` として受ける。端末の登録と取り消しは [`Devices`] を PC のアプリから呼ぶ。
 //! - [`Client`]: `mm` と結合テストが使うクライアント。
 //! - [`FrameSource`]: `GET /frame` の描画。[`EngineFrames`] が専用のスレッドの `Engine` で描く。
 
@@ -14,6 +16,7 @@ mod frames;
 mod http;
 mod mcp;
 mod mcp_tools;
+mod mobile;
 mod proposals_http;
 mod review;
 mod server;
@@ -22,5 +25,10 @@ mod transcripts;
 pub use client::{Client, EventStream, Response, SseEvent};
 pub use core::{now_ms, Caller, Change, ChangeOf, Core, ProjectView, ServeError};
 pub use frames::{encode_png, parse_time, render_png, EngineFrames, FrameRequest, FrameSource};
+pub use mobile::{
+    hosts_in_status, tailnet_hosts, DeviceInfo, Devices, MobileConfig, MobileServer, PairingCode,
+    COOKIE_NAME, CREDENTIAL_BYTES, DEVICES_FILE, LOGIN_HEADER, MOBILE_HEADER, MOBILE_HTTPS_PORT,
+    MOBILE_OPS, MOBILE_PORT, PAIRING_CODE_LEN, PAIRING_MAX_FAILURES, PAIRING_TTL, PAIR_PATH,
+};
 pub use review::{Approval, ProposalEvent, ProposalOpView, ProposalView};
 pub use server::Server;
