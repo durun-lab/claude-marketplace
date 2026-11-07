@@ -161,7 +161,7 @@ Transition パネル（`ui/panels/transition`）が使う Tauri のコマンド�
 
 | コマンド | 引数 | 成功 |
 |---|---|---|
-| `transition_cuts` | `{ dir }` | 開いているコンポジションの sequence の `{ sequence, cuts: [{ id, start, duration, transition }] }`（秒）。`transition` は `{ kind, duration }` か `null`。`kind` は `dir` のパックのコードと一致した名前で、一致しなければ `null` |
+| `transition_cuts` | `{ dir }` | 開いているコンポジションの sequence の `{ sequence, cuts: [{ id, start, duration, transition }] }`（秒）。`transition` は `{ kind, duration, params }` か `null`。`kind` は `dir` のパックのコードと一致した名前で、一致しなければ `null`。`params` はノードの数のパラメータ（`p0`..`p7`、`rewind`） |
 | `pack_transitions` | `{ dir }` | パックの `transitions/` の名前（名前の順） |
-| `pack_apply` | `{ dir, name: "transition", args: { cut, kind, dur } }` | 置く・差し替える。`setTransition` 1 回で、取り消し 1 回で戻る |
+| `pack_apply` | `{ dir, name: "transition", args: { cut, kind, dur, seed? } }`、巻き戻しは `{ dir, name: "rewind", args: { cut, dur, speed? } }` | 置く・差し替える。`setTransition` 1 回で、取り消し 1 回で戻る。パネルは今の `p0`（`seed`）と `rewind`（`speed`）を引き継ぐ |
 | `apply_op` | `{ op: { op: "setTransition", cut, transition: null } }` | 外す |

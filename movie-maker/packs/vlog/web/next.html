@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <!--
-  次回予告。サファイアのぎざぎざの爆発と紙吹雪の上に「次回予告！」、下に次の ToDo の紙（空の欄、回の番号、「つづく →」）。
-  data: kicker（既定「次回」。「次回予告！」になる）、text（次の ToDo）、no（回の番号。空なら出さない）、
+  次回予告。サファイアのぎざぎざの爆発と紙吹雪の上に「次回予告！」、下に次の ToDo の紙（空の欄、エピソードの番号、「つづく →」）。
+  data: kicker（既定「次回」。「次回予告！」になる）、text（次の ToDo）、no（エピソードの番号。空なら出さない）、
   aside（紙の右下に貼る小さな札。空なら出さない）、x と y（真ん中。コンポジションの画素）、theme。
 -->
 <style>
@@ -109,7 +109,7 @@
 
   window.mmSetTime = (t, data) => {
     applyTheme(data.theme || {});
-    const x = Number(data.x) || DEFAULT_X, y = Number(data.y) || DEFAULT_Y;
+    const x = Number(data.x ?? DEFAULT_X), y = Number(data.y ?? DEFAULT_Y);
     const kicker = data.kicker || '次回';
     const k = kicker === '次回' ? '次回予告！' : `${kicker}！`;
     const no = data.no ? `<span class="no">#${esc(data.no)}</span>` : '';
