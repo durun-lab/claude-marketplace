@@ -1,4 +1,4 @@
-//! 偽の提供元。通信せず、頼みから決まる単色の画像・動画と正弦波の音を返す。試験と、提供元を決める前の通しに使う。
+//! モックの提供元。通信せず、頼みから決まる単色の画像・動画と正弦波の音を返す。テストと、提供元を決める前の通しに使う。
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -8,9 +8,9 @@ use crate::encode::{png_solid, wav_sine, y4m_solid};
 use crate::provider::{Estimate, Generated, Provider};
 use crate::request::{GenRequest, Media};
 
-/// 偽の提供元の名前。`gen.ai` の `provider` の既定値。
+/// モックの提供元の名前。`gen.ai` の `provider` の既定値。
 pub const FAKE_PROVIDER: &str = "fake";
-/// 偽の動画のフレームレート。小さく保ち、試験のファイルを軽くする。
+/// モックの動画のフレームレート。小さく保ち、テストのファイルを軽くする。
 pub const FAKE_FPS: u32 = 10;
 const FAKE_REVISION: &str = "fake-1";
 const AMPLITUDE: f32 = 0.25;
@@ -19,7 +19,7 @@ const HZ_STEPS: u8 = 220;
 const MS_PER_SEC: f64 = 1000.0;
 const OPAQUE: u8 = u8::MAX;
 
-/// 偽の料金表。実際のサービスに近い桁にして、見積もりの表示と承認の上限を試せるようにする。
+/// モックの料金表。実際のサービスに近い桁にして、見積もりの表示と承認の上限を試せるようにする。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct FakePrices {
     /// 画像 1 枚の費用（米ドル）。
@@ -40,7 +40,7 @@ impl Default for FakePrices {
     }
 }
 
-/// 偽の提供元。`generate` を呼んだ回数を数え、使い回しで呼ばないことを試験で確かめられる。
+/// モックの提供元。`generate` を呼んだ回数を数え、使い回しで呼ばないことをテストで確かめられる。
 #[derive(Debug, Default)]
 pub struct FakeProvider {
     prices: FakePrices,
@@ -74,12 +74,12 @@ impl FakeProvider {
         [b[0], b[1], b[2]]
     }
 
-    /// 偽の動画のフレーム数。
+    /// モックの動画のフレーム数。
     pub fn video_frames(req: &GenRequest) -> u32 {
         (req.duration_ms as f64 * f64::from(FAKE_FPS) / MS_PER_SEC).ceil() as u32
     }
 
-    /// 偽の音の高さ（Hz）。
+    /// モックの音の高さ（Hz）。
     pub fn tone_hz(req: &GenRequest) -> f32 {
         BASE_HZ + f32::from(Self::tint(req)[0] % HZ_STEPS)
     }

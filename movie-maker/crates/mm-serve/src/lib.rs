@@ -15,6 +15,7 @@ mod comments;
 mod core;
 mod frames;
 mod http;
+mod kinds;
 mod mcp;
 mod mcp_tools;
 mod mobile;
@@ -28,6 +29,7 @@ pub use client::{Client, EventStream, Response, SseEvent};
 pub use comments::CommentEvent;
 pub use core::{now_ms, Caller, Change, ChangeOf, Core, ProjectView, ServeError};
 pub use frames::{encode_png, parse_time, render_png, EngineFrames, FrameRequest, FrameSource};
+pub use kinds::{describe_kinds, KindInfo, KindQuery};
 pub use mobile::{
     hosts_in_status, tailnet_hosts, DeviceInfo, Devices, MobileConfig, MobileServer, PairingCode,
     COOKIE_NAME, CREDENTIAL_BYTES, DEVICES_FILE, LOGIN_HEADER, MOBILE_HEADER, MOBILE_HTTPS_PORT,

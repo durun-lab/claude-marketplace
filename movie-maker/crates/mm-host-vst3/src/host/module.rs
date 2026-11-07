@@ -39,8 +39,7 @@ pub fn load(path: &Path) -> Result<Module, String> {
     // SAFETY: 共有ライブラリを読み込み、決まった名前の関数を呼ぶ。プラグインのコードはこのプロセスで動き、
     // クラッシュはこのプロセスだけを止める（モジュールの冒頭）。
     unsafe {
-        let lib = libloading::Library::new(&file)
-            .map_err(|e| format!("{} を読み込めない: {e}", file.display()))?;
+        let lib = mm_host_pipe::load_library(&file)?;
         if let Ok(init) = lib.get::<InitDll>(b"InitDll\0") {
             if !init() {
                 return Err(format!("{} の InitDll が失敗した", file.display()));
@@ -104,10 +103,10 @@ impl Module {
         })
     }
 
-    /// `cid` のクラスのインスタンスを `I` の口で作る。
+    /// `cid` のクラスのインスタンスを `I` のインターフェースで作る。
     pub fn create<I: Interface>(&self, cid: &TUID) -> Result<ComPtr<I>, String> {
         let mut obj: *mut c_void = std::ptr::null_mut();
-        // SAFETY: クラスの ID と口の ID は 16 バイトの列で、作られた口の参照を受け取る。
+        // SAFETY: クラスの ID とインターフェースの ID は 16 バイトの配列で、作られたインターフェースの参照を受け取る。
         unsafe {
             let result =
                 self.factory

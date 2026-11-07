@@ -6,17 +6,21 @@ use std::path::Path;
 use std::sync::Arc;
 
 use mm_doc::Project;
-use mm_serve::{Client, Core, FrameRequest, FrameSource, Server};
+use mm_runtime::Registry;
+use mm_serve::{
+    describe_kinds, Client, Core, FrameRequest, FrameSource, KindInfo, KindQuery, Server,
+};
 use mm_store::Store;
 use mm_types::Result;
 use serde_json::{json, Value};
 
 const NOW: i64 = 1_700_000_000_000;
 /// 操作でないツールの名前（名前の順）。操作のツールは mm-ops の一覧から取るので、操作を足しても書き直さない。
-const NON_OP_TOOLS: [&str; 9] = [
+const NON_OP_TOOLS: [&str; 10] = [
     "comment_reply",
     "comments",
     "frame",
+    "kinds",
     "project",
     "propose",
     "proposals",
@@ -30,6 +34,12 @@ struct StubFrames;
 impl FrameSource for StubFrames {
     fn frame_png(&self, _project: &Project, _request: &FrameRequest) -> Result<Vec<u8>> {
         Ok(b"\x89PNG\r\n\x1a\n".to_vec())
+    }
+
+    fn kinds(&self, query: &KindQuery) -> Result<Vec<KindInfo>> {
+        let mut registry = Registry::new();
+        registry.register(Arc::new(mm_testkit::node::SolidKind))?;
+        describe_kinds(&registry, query)
     }
 }
 
@@ -326,6 +336,23 @@ fn frame_は_png_を_base64_の画像で返す() {
     assert_eq!(image["type"], "image");
     assert_eq!(image["mimeType"], "image/png");
     assert_eq!(image["data"], "iVBORw0KGgo=");
+}
+
+#[test]
+fn kinds_は登録した種類とパラメータの定義を返す() {
+    let r = rig();
+    let all = text_json(&call(&r, "kinds", json!({})));
+    assert_eq!(all["kinds"][0]["id"], "solid");
+    assert_eq!(all["kinds"][0]["params"]["params"][0]["name"], "color");
+    let red = json!({"type": "color", "value": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}});
+    let one = text_json(&call(
+        &r,
+        "kinds",
+        json!({"kind": "solid", "params": {"color": red}}),
+    ));
+    assert_eq!(one["kinds"].as_array().unwrap().len(), 1);
+    let none = call(&r, "kinds", json!({"kind": "無い種類"}));
+    assert_eq!(none["isError"], true);
 }
 
 #[test]

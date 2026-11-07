@@ -1,7 +1,7 @@
 import type { ComponentChildren } from "preact";
 import type { ProjectInfo } from "../api/types.ts";
 
-/** 中身が 2 回目の担当で入るタブの枠。タブごとの役割の 1 行と、つながっている母艦の情報だけを出す。 */
+/** 中身が 2 回目の担当で入るタブの枠。タブごとの役割の 1 行と、つながっている PC の情報だけを出す。 */
 export const Frame = ({ title, role, project, children }: {
   title: string;
   role: string;

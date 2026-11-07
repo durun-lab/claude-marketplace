@@ -41,6 +41,16 @@ describe("KeyframePanels", () => {
     expect(seeks).toEqual([2]);
   });
 
+  it("Inspector で名前を押したパラメータを Graph に出す", () => {
+    act(() => render(<KeyframePanels layer={layer} onOp={vi.fn()} />, host));
+    expect(host.querySelector(".mm-graph")?.textContent).toContain("Select a parameter");
+    act(() => host.querySelector<HTMLButtonElement>(".mm-insp-pick")?.click());
+    expect(host.querySelector(".mm-graph-title")?.textContent).toBe("Graph: opacity");
+    expect(host.querySelectorAll(".mm-graph-key")).toHaveLength(2);
+  });
+});
+
+describe("KeyframePanels の入力中の入力欄", () => {
   it("止まっている間に同じ再生位置が届いても、入力中の入力欄を戻さない", () => {
     const playhead = () => {
       window.dispatchEvent(new CustomEvent(PLAYHEAD_EVENT, { detail: { time: 1, fps: 30 } }));
@@ -55,11 +65,23 @@ describe("KeyframePanels", () => {
     expect(input.value).toBe("0.75");
   });
 
-  it("Inspector で名前を押したパラメータを Graph に出す", () => {
-    act(() => render(<KeyframePanels layer={layer} onOp={vi.fn()} />, host));
-    expect(host.querySelector(".mm-graph")?.textContent).toContain("Select a parameter");
-    act(() => host.querySelector<HTMLButtonElement>(".mm-insp-pick")?.click());
-    expect(host.querySelector(".mm-graph-title")?.textContent).toBe("Graph: opacity");
-    expect(host.querySelectorAll(".mm-graph-key")).toHaveLength(2);
+  it("再生中に再生位置が進んでも、入力中の入力欄を戻さない", () => {
+    const at = (time: number) => () => {
+      window.dispatchEvent(new CustomEvent(PLAYHEAD_EVENT, { detail: { time, fps: 30 } }));
+    };
+    const fixedLayer = {
+      ...layer,
+      transform: { position: { value: { type: "vec2", value: [10, 20] } } },
+    } as unknown as Layer;
+    act(() => render(<KeyframePanels layer={fixedLayer} onOp={vi.fn()} />, host));
+    act(at(1));
+    const input = host.querySelector<HTMLInputElement>('input[aria-label="position x"]');
+    if (!input) throw new Error("position x の入力欄が無い");
+    act(() => void input.focus());
+    input.value = "123";
+    act(() => void input.dispatchEvent(new Event("input", { bubbles: true })));
+    act(at(1.1));
+    act(at(1.2));
+    expect(input.value).toBe("123");
   });
 });

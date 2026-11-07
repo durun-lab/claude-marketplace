@@ -1,6 +1,9 @@
 //! `packs/vlog` の `web.cef` の部品（`web/*.html` と、それを置くマクロ）。展開したレイヤーの形と、ページの約束を確かめる。
 
+use std::collections::BTreeSet;
+
 use mm_doc::Layer;
+use mm_pack::Step;
 use mm_types::{ParamValue, RationalTime};
 use serde_json::Value;
 
@@ -215,47 +218,26 @@ fn 小ネタとステッカーと吹き出しのしっぽの既定() {
     );
 }
 
-/// 実時間で進むもの（時計、乱数、タイマー、CSS の動き）と、外の資源の読み込み。
-const FORBIDDEN: [&str; 9] = [
-    "Date.now",
-    "performance.now",
-    "new Date",
-    "Math.random",
-    "setTimeout",
-    "requestAnimationFrame",
-    "@keyframes",
-    "animation:",
-    "transition:",
-];
-
+/// ページの約束（時計、乱数、CSS の動き、外の資源）は `mm pack check` が見る（`vlog_のパックは検査を通る`）。
+/// ここでは、ページと同じ名前のマクロがそのページを置き、置かれないページが無いことを見る。
 #[test]
-fn web_の部品はページの約束を守る() {
+fn web_の部品のページはどれも同じ名前のマクロが置く() {
     let pack = vlog();
-    assert!(
-        pack.pages.len() >= 7,
-        "部品のページが揃う: {:?}",
-        pack.pages.keys()
-    );
-    for (name, html) in &pack.pages {
+    let placed: BTreeSet<String> = pack
+        .macros
+        .iter()
+        .flat_map(|m| m.steps.iter())
+        .filter_map(|s| match s {
+            Step::Web(w) => Some(w.page.clone()),
+            _ => None,
+        })
+        .collect();
+    let pages: BTreeSet<String> = pack.pages.keys().cloned().collect();
+    assert_eq!(placed, pages, "置かれないページと、無いページを指す手順");
+    for page in &pages {
         assert!(
-            html.contains("window.mmSetTime"),
-            "{name}: mmSetTime で画面を作る"
+            pack.macros.iter().any(|m| &m.name == page),
+            "web/{page}.html を置く同じ名前のマクロ"
         );
-        for word in FORBIDDEN {
-            assert!(
-                !html.contains(word),
-                "{name}: {word} を使わない（同じ t で画素が変わる）"
-            );
-        }
-        for (i, _) in html.match_indices("src=\"") {
-            assert!(
-                html[i + 5..].starts_with("data:"),
-                "{name}: 資源は data: で埋め込む"
-            );
-        }
-        let external = html
-            .match_indices("http")
-            .filter(|(i, _)| !html[*i..].starts_with("http://www.w3.org/2000/svg"));
-        assert_eq!(external.count(), 0, "{name}: 外の URL を読まない");
     }
 }

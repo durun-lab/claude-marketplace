@@ -8,7 +8,7 @@ import path from 'node:path';
 import type { MmChange, MmLogEntry, MovieMakerView, MmLinkStatus } from '../shared/types.ts';
 import { appendLog, logFilePath } from './flLogFile.ts';
 import { type Installer, installedApp, installerFor, installPaths } from './movieMakerInstall.ts';
-import { CHANGE_FORMAT, changeLine, findLink, hookText, isHuman, MM_DIR, MmClient, projectSummary, STORE_FILE, type ToolInfo, type ToolResult } from './movieMakerLink.ts';
+import { CHANGE_FORMAT, changeLine, findLink, hookText, isHuman, MM_DIR, mobileUrl, MmClient, projectSummary, STORE_FILE, type ToolInfo, type ToolResult } from './movieMakerLink.ts';
 import { platform } from './platform.ts';
 import { DATA_DIR, newId, state, touch } from './store.ts';
 
@@ -64,6 +64,15 @@ const logFileOf = (sessionId: string | undefined): string | undefined => {
   return file && fs.existsSync(file) ? platform.displayPath(file) : undefined;
 };
 
+/** tailnet での名前から作ったモバイル版の URL。ウィンドウを開くたびに読み直す（Tailscale の起動や名前の変更に追従する）。 */
+let tailnetMobileUrl: string | undefined;
+const refreshMobileUrl = async (): Promise<void> => {
+  const next = mobileUrl(await platform.tailnetHosts().catch(() => []));
+  if (next === tailnetMobileUrl) return;
+  tailnetMobileUrl = next;
+  broadcast();
+};
+
 const hasStore = (): boolean => !!projectDir && fs.existsSync(path.join(projectDir, STORE_FILE));
 
 const view = (): MovieMakerView => ({
@@ -72,6 +81,7 @@ const view = (): MovieMakerView => ({
   project: projectDir,
   recent: state.mmRecentProjects ?? [],
   hasStore: hasStore(),
+  mobileUrl: tailnetMobileUrl,
   link: { status: linkStatus, message: linkMessage, port: client?.port, version, undoDepth },
   log,
   logFile: logFileOf(boundSession),
@@ -245,6 +255,7 @@ export const streamMovieMaker = (res: ServerResponse, sessionId: string | undefi
   if (sessionId) bind(sessionId);
   if (project && !projectDir) remember((projectDir = path.resolve(project)));
   if (windows.size === 1) start();
+  void refreshMobileUrl();
   sendView(win, JSON.stringify(view()));
   const keepalive = setInterval(() => res.write(': keepalive\n\n'), KEEPALIVE_MS);
   res.on('close', () => {

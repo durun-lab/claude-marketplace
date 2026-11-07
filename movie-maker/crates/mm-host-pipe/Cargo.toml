@@ -14,6 +14,9 @@ mm-trace = { workspace = true }
 mm-types = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+tracing = { workspace = true }
+# ホストの側でプラグインの共有ライブラリを読み込む（dll.rs）。
+libloading = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows = { workspace = true, features = [
@@ -28,7 +31,6 @@ windows = { workspace = true, features = [
 
 [dev-dependencies]
 # クラッシュのカウンタを MetricsLayer で受けて確かめる。
-tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
 [lints]

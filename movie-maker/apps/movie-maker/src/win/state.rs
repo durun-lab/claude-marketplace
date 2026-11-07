@@ -19,6 +19,9 @@ use crate::win::playback::Command;
 use crate::win::sequence_edit::EditState;
 use crate::win::source::SourceSlot;
 
+/// 保存した変更を WebView へ知らせる関数。
+type ChangeNotify = Box<dyn Fn(&mm_serve::Change) + Send + Sync>;
+
 /// 百分位つきの要約（単位は呼び出し側の決め。ここではミリ秒）。
 #[derive(Debug, Clone, Default, Serialize)]
 pub struct Summary {
@@ -137,6 +140,8 @@ pub struct Shared {
     pub edit_lane: Mutex<Option<Sender<EditJob>>>,
     /// 書き手として開いた `project.mmdb` の中心。操作はここで保存してから描き直す。JSON のプロジェクトでは空。
     pub core: OnceLock<Arc<mm_serve::Core>>,
+    /// JSON のプロジェクトで操作を適用したとき、WebView へ `mm:doc-changed` を送る関数。`core` があるときは使わない。
+    json_notify: OnceLock<ChangeNotify>,
     /// `core` の変更で触った ID のうち、再生スレッドがまだキャッシュを捨てていないもの。
     pub reload_touched: Mutex<Vec<String>>,
     /// Review パネルが Program に当てて見せている提案。
@@ -182,6 +187,7 @@ impl Shared {
             edits: Mutex::new(Vec::new()),
             edit_lane: Mutex::new(None),
             core: OnceLock::new(),
+            json_notify: OnceLock::new(),
             reload_touched: Mutex::new(Vec::new()),
             review_preview: crate::win::review::PreviewSlot::default(),
             history: HistoryMirror::default(),
@@ -227,6 +233,29 @@ impl Shared {
             version: None,
         });
         self.doc_serial.fetch_add(1, Ordering::SeqCst);
+    }
+
+    /// JSON のプロジェクトの編集を知らせる関数を置く。
+    pub fn on_json_edit(&self, notify: impl Fn(&mm_serve::Change) + Send + Sync + 'static) {
+        let _ = self.json_notify.set(Box::new(notify));
+    }
+
+    /// JSON のプロジェクトで適用・取り消し・やり直しをしたことを知らせる。`kind` は `apply`、`undo`、`redo`。
+    /// JSON には保存のバージョンが無いので、`doc_serial` をバージョンとトランザクションの ID の代わりにする。
+    pub fn announce_edit(&self, kind: &'static str, touched: Vec<String>) {
+        let Some(notify) = self.json_notify.get() else {
+            return;
+        };
+        let serial = self.doc_serial.load(Ordering::SeqCst) as i64;
+        notify(&mm_serve::Change {
+            version: serial,
+            txn_id: serial,
+            kind,
+            name: "WebView の操作".into(),
+            actor: "gui".into(),
+            touched,
+            of: None,
+        });
     }
 
     /// `project.mmdb` のバージョン `version` のデータを置く。置いてあるものより新しいときだけ置き直し、置いたら真。
@@ -335,6 +364,17 @@ mod tests {
             ),
             (None, 2)
         );
+    }
+
+    #[test]
+    fn json_の編集は登録した関数へ種類と触った_id_を知らせる() {
+        let s = Shared::new();
+        s.announce_edit("apply", vec!["x".into()]);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let sink = seen.clone();
+        s.on_json_edit(move |c| sink.lock().unwrap().push((c.kind, c.touched.clone())));
+        s.announce_edit("undo", vec!["l".into()]);
+        assert_eq!(*seen.lock().unwrap(), [("undo", vec!["l".to_owned()])]);
     }
 
     #[test]

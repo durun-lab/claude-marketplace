@@ -21,7 +21,7 @@ const PREPARE_TIMEOUT: Duration = Duration::from_secs(15);
 /// 続けてこの回数だけ時間切れになったホストは止めて捨てる。
 pub const MAX_TIMEOUTS: u32 = 2;
 
-/// ホストに読み込ませるプラグイン。`stamp` はバンドルの中身の印で、変わったら別のホストにする。
+/// ホストに読み込ませるプラグイン。`stamp` はバンドルの中身のスタンプで、変わったら別のホストにする。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Target {
     pub bundle: PathBuf,
