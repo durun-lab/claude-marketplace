@@ -242,6 +242,22 @@ pub struct AudioCx<'a> {
     pub footage: Option<&'a mut dyn FrameSource>,
 }
 
+/// 音の効果（レイヤーの `effects` の、`traits().audio` が真の種類）を 1 区間かけるコンテキスト。
+pub struct AudioEffectCx<'a> {
+    /// コンポジションの時間軸での区間。前の呼び出しの `range.end` から始まれば続きで、離れていればシーク。
+    pub range: TimeRange,
+    /// 効果のインスタンスを見分けるキー（コンポジション、レイヤー、効果の ID から作る）。状態はキーごとに持つ。
+    pub instance: &'a str,
+    /// 区間の中のパラメータの値。区間の先頭からのフレームの位置の昇順で、先頭（0）を必ず含む。
+    /// 位置は区間の分け方に依らない時刻の格子（[`AUDIO_PARAM_STEP`] フレームごと）に置く。
+    pub params: &'a [(usize, Params)],
+    pub sample_rate: u32,
+    pub channels: u16,
+}
+
+/// 音の効果のパラメータを評価する間隔（フレーム）。コンポジションの時間軸の 0 からこの間隔の格子で評価する。
+pub const AUDIO_PARAM_STEP: u64 = 64;
+
 /// ノードの種類。実装は `mm-nodes-*` に 1 種類ずつ置く。
 pub trait NodeKind: Send + Sync {
     /// ノードの種類の名前（`footage`、`text`、`web.cef`、`shader.wgsl`）。プロジェクトのデータの `Node.kind` に入る。
@@ -287,6 +303,12 @@ pub trait NodeKind: Send + Sync {
     fn render_audio(&self, cx: &mut AudioCx<'_>) -> Result<AudioBlock> {
         let frames = audio_frames_in(cx.range, cx.sample_rate);
         Ok(AudioBlock::silence(cx.sample_rate, cx.channels, frames))
+    }
+    /// 音の効果として `block` をその場で変える。レイヤーの `effects` に置かれ `traits().audio` が真の種類を、
+    /// レンダラーがレイヤーの音（音量とパンの前）に上から順にかける。既定は何もしない。
+    fn process_audio(&self, cx: &AudioEffectCx<'_>, block: &mut AudioBlock) -> Result<()> {
+        let _ = (cx, block);
+        Ok(())
     }
     /// プロジェクトの書体の組（レンダラーが組の変わったときに渡す）。書体を自前で読み込む種類（`web.cef`）と、
     /// 組んだ文字を覚える種類（`text`）が使う。ほかの種類は何もしない。
