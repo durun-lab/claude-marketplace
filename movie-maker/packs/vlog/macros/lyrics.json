@@ -5,9 +5,9 @@
   "params": {
     "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
     "id": {"type": "id", "description": "レイヤーの ID"},
-    "words": {"type": "text", "description": "「言葉@始まり+長さ」を空白で区切り、「/」で行を分ける（秒はレイヤーの始まりから）。例: 帰り道@0.2+0.6 イヤホン@0.8+0.7 から@1.5+0.4"},
-    "notes": {"type": "text", "optional": true, "description": "「音の高さ（MIDI の番号）@始まり+長さ」を空白で区切る。無ければ帯を出さず、歌詞の行だけ"},
-    "bars": {"type": "text", "optional": true, "description": "帯に線を引く小節の頭の秒を空白で区切る"},
+    "words": {"type": "text", "format": "words", "description": "「言葉@始まり+長さ」を空白で区切り、「/」で行を分ける（秒はレイヤーの始まりから）。例: 帰り道@0.2+0.6 イヤホン@0.8+0.7 から@1.5+0.4"},
+    "notes": {"type": "text", "format": "notes", "optional": true, "description": "「音の高さ（MIDI の番号）@始まり+長さ」を空白で区切る。無ければ帯を出さず、歌詞の行だけ"},
+    "bars": {"type": "text", "format": "numbers", "optional": true, "description": "帯に線を引く小節の頭の秒を空白で区切る"},
     "x": {"type": "number", "default": "72", "description": "帯の左上の x"},
     "y": {"type": "number", "default": "618", "description": "帯の左上の y（既定は字幕の帯より上で、帯と歌詞の下の端が下から 196）"},
     "at": {"type": "time", "description": "出る時刻（コンポジションの秒）"},

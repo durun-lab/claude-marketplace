@@ -9,7 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
-use mm_types::{RgbaImage, Size};
+use mm_types::{transfer, RgbaImage, Size};
 
 /// 期待画像の大きさ。
 pub const GOLDEN_SIZE: Size = Size::new(320, 180);
@@ -213,14 +213,9 @@ fn ssim(a: &[f64], b: &[f64], size: Size) -> f64 {
     }
 }
 
+/// 期待画像は描画を比べる指紋で書き出しの値は表さないので、暗部の差を見分けやすい sRGB の区分の式で 8 bit にする。
 fn encode_srgb(v: f32) -> u8 {
-    let v = v.clamp(0.0, 1.0);
-    let s = if v <= 0.003_130_8 {
-        v * 12.92
-    } else {
-        1.055 * v.powf(1.0 / 2.4) - 0.055
-    };
-    (s * 255.0).round() as u8
+    (transfer::linear_to_srgb(v.clamp(0.0, 1.0)) * f32::from(u8::MAX)).round() as u8
 }
 
 /// 線形の premultiplied を、灰色の市松の上に重ねて sRGB の 8 bit（RGB の並び）にする。

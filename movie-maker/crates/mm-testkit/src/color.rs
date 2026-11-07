@@ -5,54 +5,12 @@ use std::sync::Arc;
 use mm_color_api::{
     ColorTransform, TransformProgram, REC2020_TO_REC709, REC709_TO_REC2020, UNIT_WHITE_SPACES,
 };
-use mm_types::{ColorSpace, MmError, Result};
+use mm_types::{transfer, ColorSpace, MmError, Result};
 
 /// 往復の許容差。
 pub const ROUNDTRIP_TOLERANCE: f32 = 1e-3;
 /// 18% グレーの線形の値。
 pub const GREY_18_LINEAR: f32 = 0.18;
-
-fn srgb_to_linear(v: f32) -> f32 {
-    if v <= 0.040_45 {
-        v / 12.92
-    } else {
-        ((v + 0.055) / 1.055).powf(2.4)
-    }
-}
-
-fn linear_to_srgb(v: f32) -> f32 {
-    if v <= 0.003_130_8 {
-        v * 12.92
-    } else {
-        1.055 * v.powf(1.0 / 2.4) - 0.055
-    }
-}
-
-/// Rec.1886 の表示の式。符号を保つ。
-fn bt1886_to_linear(v: f32) -> f32 {
-    v.signum() * v.abs().powf(2.4)
-}
-
-fn linear_to_bt1886(v: f32) -> f32 {
-    v.signum() * v.abs().powf(1.0 / 2.4)
-}
-
-/// BT.709 のカメラの OETF の逆。
-fn bt709_oetf_to_linear(v: f32) -> f32 {
-    if v < 0.081 {
-        v / 4.5
-    } else {
-        ((v + 0.099) / 1.099).powf(1.0 / 0.45)
-    }
-}
-
-fn linear_to_bt709_oetf(v: f32) -> f32 {
-    if v < 0.018 {
-        v * 4.5
-    } else {
-        1.099 * v.powf(0.45) - 0.099
-    }
-}
 
 /// モックの色の変換。`lin_rec709`、`srgb`（sRGB）、`bt709`（Rec.1886）、`bt709_oetf`（カメラの OETF）を知る。
 #[derive(Debug, Clone, Default)]
@@ -62,9 +20,9 @@ impl SampleColor {
     fn to_linear(&self, from: &ColorSpace, v: f32) -> Result<f32> {
         match from.0.as_str() {
             "lin_rec709" => Ok(v),
-            "srgb" => Ok(srgb_to_linear(v)),
-            "bt709" | "bt601" | "bt2020" => Ok(bt1886_to_linear(v)),
-            "bt709_oetf" => Ok(bt709_oetf_to_linear(v)),
+            "srgb" => Ok(transfer::srgb_to_linear(v)),
+            "bt709" | "bt601" | "bt2020" => Ok(transfer::bt1886_to_linear(v)),
+            "bt709_oetf" => Ok(transfer::bt709_to_linear(v)),
             other => Err(MmError::Unsupported(format!("色空間 {other}"))),
         }
     }
@@ -72,9 +30,9 @@ impl SampleColor {
     fn encode(&self, to: &ColorSpace, v: f32) -> Result<f32> {
         match to.0.as_str() {
             "lin_rec709" => Ok(v),
-            "srgb" => Ok(linear_to_srgb(v)),
-            "bt709" | "bt601" | "bt2020" => Ok(linear_to_bt1886(v)),
-            "bt709_oetf" => Ok(linear_to_bt709_oetf(v)),
+            "srgb" => Ok(transfer::linear_to_srgb(v)),
+            "bt709" | "bt601" | "bt2020" => Ok(transfer::linear_to_bt1886(v)),
+            "bt709_oetf" => Ok(transfer::linear_to_bt709(v)),
             other => Err(MmError::Unsupported(format!("色空間 {other}"))),
         }
     }

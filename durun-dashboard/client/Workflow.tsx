@@ -22,7 +22,7 @@ const close = () => dock(WORKFLOW_KEY, '', WORKFLOW_KEY);
 export const WorkflowIcon = () => <DesktopIcon icon={WORKFLOW_ICON} title={WORKFLOW_TITLE} hint="時刻や GitHub のレビュー依頼をきっかけに、セッションを動かします。ダブルクリックで開きます" onLaunch={openWorkflow} />;
 
 const triggerText = (t: WorkflowTrigger): string =>
-  t.kind === 'github-review' ? 'レビュー依頼' : `${t.days ? `${t.days.map((d) => DAYS[d]).join('')} ` : '毎日 '}${t.at}`;
+  t.kind === 'github-review' ? 'レビュー依頼' : t.kind === 'slack-mention' ? 'Slack のメンション' : `${t.days ? `${t.days.map((d) => DAYS[d]).join('')} ` : '毎日 '}${t.at}`;
 
 const actionText = (w: WorkflowInfo): string => (w.mode === 'continue' ? `1 つのセッションを引き継ぐ${w.compact ? '（毎回 compact）' : ''}` : `新しいセッション（同時 ${w.maxSessions ?? 1} まで）`);
 

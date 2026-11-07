@@ -17,7 +17,7 @@ use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcess, PROCESS_
 
 type Dx12 = wgpu::hal::api::Dx12;
 
-/// フレームの形式。CEF の `OnAcceleratedPaint` は BGRA8（premultiplied、sRGB の符号化）。
+/// フレームの形式。CEF の `OnAcceleratedPaint` は BGRA8（premultiplied、8 bit の符号化値）。
 pub const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Bgra8Unorm;
 
 /// ホストが持つ 1 フレーム。

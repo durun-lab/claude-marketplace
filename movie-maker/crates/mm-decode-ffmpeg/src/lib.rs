@@ -13,7 +13,6 @@
 mod audio;
 mod convert;
 mod sound_only;
-mod transfer;
 #[cfg(feature = "gpu")]
 mod upload;
 mod video;

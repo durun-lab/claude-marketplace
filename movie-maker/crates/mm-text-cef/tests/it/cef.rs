@@ -11,7 +11,7 @@ use mm_text_cef::CefRasterizer;
 use mm_text_glyphon::TextEngine;
 use mm_types::{Rgba, RgbaImage};
 
-fn host() -> Option<PathBuf> {
+pub(crate) fn host() -> Option<PathBuf> {
     let found = std::env::var_os("CEF_PATH").and(std::env::var_os("MM_CEF_HOST"));
     if found.is_none() {
         assert!(

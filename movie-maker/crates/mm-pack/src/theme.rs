@@ -9,7 +9,7 @@ use serde::Deserialize;
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Theme {
-    /// 色の名前 → `#RRGGBB` か `#RRGGBBAA`（sRGB）。文字のスタイルとマクロはこの名前で色を指す。
+    /// 色の名前 → `#RRGGBB` か `#RRGGBBAA`（8 bit の符号化値。書き出しで同じ値に戻る）。文字のスタイルとマクロはこの名前で色を指す。
     pub colors: BTreeMap<String, String>,
     /// 書体の役割 → 書体の名前。
     #[serde(default)]
@@ -63,7 +63,8 @@ impl Theme {
     }
 }
 
-/// `#RRGGBB` か `#RRGGBBAA`（sRGB、straight のアルファ）を線形の premultiplied にする。
+/// `#RRGGBB` か `#RRGGBBAA`（8 bit の符号化値、straight のアルファ）を線形の premultiplied にする。
+/// 素材と同じ Rec.1886 の式で線形にするので、書き出しで同じ符号化値に戻る。
 pub(crate) fn parse_hex(hex: &str) -> Result<Rgba> {
     let bad = || MmError::InvalidArgument(format!("色は #RRGGBB か #RRGGBBAA: {hex}"));
     let digits = hex.strip_prefix('#').ok_or_else(bad)?;
@@ -72,23 +73,7 @@ pub(crate) fn parse_hex(hex: &str) -> Result<Rgba> {
     }
     let byte = |i: usize| u8::from_str_radix(&digits[i..i + 2], 16).map_err(|_| bad());
     let alpha = if digits.len() == 8 { byte(6)? } else { u8::MAX };
-    let unit = |b: u8| f32::from(b) / f32::from(u8::MAX);
-    Ok(Rgba::from_straight(
-        srgb_to_linear(unit(byte(0)?)),
-        srgb_to_linear(unit(byte(2)?)),
-        srgb_to_linear(unit(byte(4)?)),
-        unit(alpha),
-    ))
-}
-
-/// sRGB の符号化を外す（IEC 61966-2-1 の区分の式）。
-fn srgb_to_linear(v: f32) -> f32 {
-    const LINEAR_KNEE: f32 = 0.04045;
-    if v <= LINEAR_KNEE {
-        v / 12.92
-    } else {
-        ((v + 0.055) / 1.055).powf(2.4)
-    }
+    Ok(Rgba::from_code8([byte(0)?, byte(2)?, byte(4)?, alpha]))
 }
 
 #[cfg(test)]

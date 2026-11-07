@@ -11,6 +11,7 @@ use mm_render_api::{RangeRequest, RenderRequest, Renderer};
 use mm_testkit::audio::SampleMixerFactory;
 use mm_testkit::decode::{SampleDecoderFactory, SampleMedia};
 use mm_testkit::fixtures::{sample_services, vertical_project, SAMPLE_ASSET_PATH};
+use mm_testkit::golden::to_srgb8;
 use mm_testkit::node::MapRegistry;
 use mm_testkit::render::SampleRenderer;
 use mm_types::{
@@ -409,32 +410,6 @@ fn showcase() -> (Project, Size) {
         ],
     );
     (project(vec![badge, main]), size)
-}
-
-/// 線形の premultiplied を、灰色の市松の上に重ねて sRGB の 8 bit にする。
-fn to_srgb8(img: &RgbaImage) -> Vec<u8> {
-    let encode = |v: f32| {
-        let v = v.clamp(0.0, 1.0);
-        let s = if v <= 0.003_130_8 {
-            v * 12.92
-        } else {
-            1.055 * v.powf(1.0 / 2.4) - 0.055
-        };
-        (s * 255.0).round() as u8
-    };
-    let mut out = Vec::with_capacity(img.size().area() * 3);
-    for y in 0..img.height() {
-        for x in 0..img.width() {
-            let p = img.pixel(x, y);
-            let checker = if (x / 16 + y / 16) % 2 == 0 {
-                0.05
-            } else {
-                0.1
-            };
-            out.extend([p.r, p.g, p.b].map(|c| encode(c + checker * (1.0 - p.a))));
-        }
-    }
-    out
 }
 
 #[test]
