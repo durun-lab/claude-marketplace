@@ -57,6 +57,26 @@ pub struct Approval {
     pub change: Change,
 }
 
+/// 通知を受けるたびに `f` を呼ぶスレッドを始める。取りこぼしはログに出して続け、送り手が消えたら終える。
+pub(crate) fn listen<T: Clone + Send + 'static>(
+    thread: &str,
+    what: &'static str,
+    mut rx: broadcast::Receiver<T>,
+    mut f: impl FnMut(T) + Send + 'static,
+) -> std::io::Result<std::thread::JoinHandle<()>> {
+    std::thread::Builder::new()
+        .name(thread.into())
+        .spawn(move || loop {
+            match rx.blocking_recv() {
+                Ok(event) => f(event),
+                Err(broadcast::error::RecvError::Lagged(n)) => {
+                    tracing::warn!("{what}の通知を {n} 件取りこぼした");
+                }
+                Err(broadcast::error::RecvError::Closed) => break,
+            }
+        })
+}
+
 fn view(store: &Store, p: StoredProposal) -> Result<ProposalView, ServeError> {
     let project = store.project();
     let conflict = store.proposal_conflict(&p)?;
@@ -118,20 +138,9 @@ impl Core {
     /// 提案の通知のたびに `f` を呼ぶスレッドを始める。アプリが Review パネルへの通知に使う。
     pub fn on_proposal(
         &self,
-        mut f: impl FnMut(ProposalEvent) + Send + 'static,
+        f: impl FnMut(ProposalEvent) + Send + 'static,
     ) -> std::io::Result<std::thread::JoinHandle<()>> {
-        let mut rx = self.subscribe_proposals();
-        std::thread::Builder::new()
-            .name("serve-proposals".into())
-            .spawn(move || loop {
-                match rx.blocking_recv() {
-                    Ok(event) => f(event),
-                    Err(broadcast::error::RecvError::Lagged(n)) => {
-                        tracing::warn!("提案の通知を {n} 件取りこぼした");
-                    }
-                    Err(broadcast::error::RecvError::Closed) => break,
-                }
-            })
+        listen("serve-proposals", "提案", self.subscribe_proposals(), f)
     }
 
     fn announce(&self, view: &ProposalView) {

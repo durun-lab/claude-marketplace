@@ -43,6 +43,14 @@ impl Core {
         self.comments.subscribe()
     }
 
+    /// コメントの通知のたびに `f` を呼ぶスレッドを始める。アプリが Review パネルへの通知に使う（`on_proposal` と同じ形）。
+    pub fn on_comment(
+        &self,
+        f: impl FnMut(CommentEvent) + Send + 'static,
+    ) -> std::io::Result<std::thread::JoinHandle<()>> {
+        crate::review::listen("serve-comments", "コメント", self.subscribe_comments(), f)
+    }
+
     fn announce_comment(&self, c: &Comment) {
         // 購読者がいなければ送り先が無いだけなので、失敗は無視する。
         let _ = self.comments.send(CommentEvent {
@@ -420,5 +428,28 @@ mod tests {
             .comments(&CommentFilter::default())
             .unwrap()
             .is_empty());
+    }
+
+    #[test]
+    fn コメントの通知のたびに_on_comment_の関数が呼ばれる() {
+        const WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+        let p = phone();
+        let (tx, rx) = std::sync::mpsc::channel();
+        p.core
+            .on_comment(move |e| {
+                let _ = tx.send(e);
+            })
+            .unwrap();
+        let made = p
+            .client
+            .post(
+                "/m/api/comments",
+                &json!({"comp": "main", "at": {"num": 1, "den": 1}, "text": "x"}),
+            )
+            .unwrap();
+        assert_eq!(made.status, 200, "{}", made.error_message());
+        let event = rx.recv_timeout(WAIT).unwrap();
+        assert_eq!(event.id, "c-1");
+        assert_eq!(event.state, CommentState::Open);
     }
 }
