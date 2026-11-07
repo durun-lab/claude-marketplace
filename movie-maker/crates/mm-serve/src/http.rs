@@ -47,6 +47,7 @@ pub(crate) fn router(state: Arc<AppState>) -> Router {
         .route("/frame", get(get_frame))
         .route("/events", get(get_events))
         .route("/mcp", post(crate::mcp::post_mcp))
+        .merge(crate::comments::routes())
         .merge(crate::proposals_http::routes())
         .layer(DefaultBodyLimit::max(BODY_LIMIT))
         .layer(middleware::from_fn_with_state(state.clone(), guard))
@@ -348,7 +349,14 @@ pub(crate) fn event_stream(
             Event::default().event("error").data(e.to_string())
         })))
     });
-    let stream = tokio_stream::iter([Ok(hello?)]).chain(changes.merge(proposals));
+    // コメントの通知も同じく、取りこぼしたら `GET /comments` で読み直す。
+    let comments = BroadcastStream::new(st.core.subscribe_comments()).filter_map(|item| {
+        let event = Event::default().event("comment").json_data(item.ok()?);
+        Some(Ok(event.unwrap_or_else(|e| {
+            Event::default().event("error").data(e.to_string())
+        })))
+    });
+    let stream = tokio_stream::iter([Ok(hello?)]).chain(changes.merge(proposals).merge(comments));
     Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
 }
 

@@ -181,6 +181,7 @@ impl Core {
         require_decider(caller)?;
         let approval = self.with_store(|s| {
             let (p, stored) = s.approve_proposal(id, selection, &caller.actor, now_ms())?;
+            self.announce_response(s, p.responds_to.as_deref(), stored.id);
             let change = self.finish(s, &stored, None);
             Ok(Approval {
                 proposal: view(s, p)?,
