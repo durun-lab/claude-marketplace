@@ -24,18 +24,21 @@ pub(super) fn routes() -> Router<Arc<MobileState>> {
         .route("/m/api/project", get(project))
 }
 
-/// `{ version, compositions, sequences, open_composition }`。素材の一覧（パスを持つ）は返さない。
+/// `{ version, compositions, sequences, open_composition, cuts }`。素材の一覧（パスを持つ）は返さない。
 /// `open_composition` は PC で開いているものを `Core` が知らないので、先頭のコンポジション。
+/// `cuts` はその境の秒（スクラブの棒の目盛り）。
 async fn project(State(st): State<Arc<MobileState>>) -> Result<Response, MobileError> {
     let core = st.core.clone();
     let view = blocking(move || core.project()).await?;
     let p = &view.project;
-    let open = p.compositions.first().map(|c| c.id.clone());
+    let open = p.compositions.first();
+    let cuts = open.map_or_else(Vec::new, |c| super::cuts::boundaries(p, c));
     Ok(Json(json!({
         "version": view.version,
         "compositions": p.compositions,
         "sequences": p.sequences,
-        "open_composition": open,
+        "open_composition": open.map(|c| c.id.clone()),
+        "cuts": cuts,
     }))
     .into_response())
 }

@@ -4,8 +4,10 @@
 //! ルーターを分け、`/mcp` と `entry` の指定を持たない。ここから来た操作は全部 `Entry::Mobile`（人）で、
 //! 名乗りは登録した端末の名前。パスは全部 `/m` の下に置く。
 
+mod cuts;
 mod devices;
 mod guard;
+mod media;
 mod ops;
 mod pair;
 mod proposals;
@@ -140,6 +142,7 @@ pub(crate) fn router(state: Arc<MobileState>) -> Router {
         hosts: Vec::new(),
     });
     Router::new()
+        .merge(media::routes())
         .merge(ops::routes())
         .merge(pair::routes())
         .merge(proposals::routes())

@@ -221,13 +221,13 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 |---|---|
 | `GET /m/` | PWA の画面、マニフェスト、Service Worker。`ui/mobile` のビルドの出力 |
 | `POST /m/pair` | `{ code, device_name }` → `{ device_name, device: { id, name, login, paired_at_ms } }` と端末の資格のクッキー（資格は本文に入れない）。資格を確かめる前に受ける唯一の API |
-| `GET /m/api/project` | `{ version, compositions, sequences, open_composition }`（素材のパスは返さない）。`open_composition` は先頭のコンポジション |
+| `GET /m/api/project` | `{ version, compositions, sequences, open_composition, cuts }`（素材のパスは返さない）。`open_composition` は先頭のコンポジション、`cuts` はその中のカットの境の秒（スクラブの棒の目盛り） |
 | `GET /m/api/story/overview`、`/transcript?asset=`、`/range?asset=&first=&last=`、`/search?q=` | `ui/panels/story/src/api.ts` の `StoryApi` と同じ形 |
 | `POST /m/api/ops` | `{ op }` か `{ txn }`、`base_version` は必須。即時に適用できる操作だけ |
 | `POST /m/api/undo` | この端末が出したトランザクションが全体の直前のときだけ |
 | `GET /m/api/comments?state=`、`POST /m/api/comments`、`POST /m/api/comments/{id}/replies`、`POST /m/api/comments/{id}/state` | コメントの一覧、書く、返信、状態 |
 | `GET /m/api/proposals`、`GET /m/api/proposals/{id}`、`POST /m/api/proposals`、`POST /m/api/proposals/{id}/approve`、`/reject`、`/reopen` | 提案。形は Claude の待ち受けの `/proposals` と同じ |
-| `GET /m/api/frame?t=&width=&proposal=&ops=` | コマの WebP |
+| `GET /m/api/frame?t=&width=&proposal=&ops=` | コマ。保存したデータは WebP（`ETag` に `If-None-Match` で 304）、`proposal` つきは提案を適用した PNG |
 | `GET /m/api/stream/{comp}/{quality}.m3u8`、`GET /m/api/stream/seg/{key}.ts` | HLS のプレイリストと区間 |
 | `GET /m/api/audio/{asset}.m4a`、`GET /m/api/proposals/{id}/clip.mp4` | 素材の音だけ、提案の区間の短い動画 |
 | `GET /m/api/events` | SSE。`hello`、`change`、`resync`、`proposal` に加えて `comment`（`{ id, state }`） |
