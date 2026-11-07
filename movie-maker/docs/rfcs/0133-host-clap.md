@@ -1,4 +1,4 @@
-# RFC: CLAP のホストと、レイヤーの音の効果（mm-host-clap）
+# RFC 0133: CLAP のホストと、レイヤーの音の効果（mm-host-clap）
 
 状態: 提案
 
