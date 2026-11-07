@@ -167,7 +167,7 @@ export const api = {
   suggestions: (id: string) => postJson<Replies>(`${session(id)}/suggestions`),
   summary: (id: string) => postJson<SessionSummary>(`${session(id)}/summary`),
   glossary: (id: string) => postJson<Glossary>(`${session(id)}/glossary`),
-  compact: (id: string) => postJson<void>(`${session(id)}/compact`),
+  compact: (id: string) => postJson<{ queued: boolean }>(`${session(id)}/compact`),
   stop: (id: string) => postJson<void>(`${session(id)}/stop`),
   /** スリープや通信の途切れで止まったセッションを続けるか、確認のダイアログで答える。 */
   answerOffline: (id: string, resume: boolean) => postJson<void>(`${session(id)}/offline`, { resume }),

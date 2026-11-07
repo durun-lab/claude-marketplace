@@ -789,15 +789,24 @@ if (args[0] === '--bg') console.log('backgrounded · j12');`,
   assert.ok(sent?.deliveredAt);
 });
 
-test('compact は、入力待ちのバックグラウンドのセッションなら止めずに supervisor に返信を頼んで渡し、作業中のセッションはセッションの状態で断ったエラーにする', async () => {
+test('compact は、入力待ちのバックグラウンドのセッションなら止めずに supervisor に返信を頼んで渡し、作業中のセッションは保留して入力待ちになってから渡す', async () => {
   const callsFile = path.join(tmp, 'calls-compact');
   useFakeClaude(path.join(tmp, 'bin-compact'), `fs.appendFileSync(${js(callsFile)}, lines([...args, '']));`);
   const live = (status: string): void => fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 's13.json'), JSON.stringify({ pid: process.pid, sessionId: 's13', cwd: tmp, status, kind: 'bg', jobId: 'j13' }));
+  ensureSession('s13', tmp);
+  const held = (): string[] => state.queue.filter((m) => m.sessionId === 's13').map((m) => m.text);
   live('busy');
-  await assert.rejects(async () => compactSession('s13', tmp), SessionStateError);
+  assert.deepEqual(await compactSession('s13', tmp), { queued: true });
+  assert.deepEqual(held(), ['/compact']);
   live('idle');
+  const queued = await listenSupervisor({ ok: true, op: 'reply' });
+  flushQueue();
+  assert.deepEqual(held(), []);
+  assert.deepEqual(await queued.request, { proto: 1, op: 'reply', short: 'j13', text: '/compact', auth: 'control-key' });
+  await close(queued.server);
+  assert.equal(state.outbox.some((m) => m.sessionId === 's13'), false);
   const accepting = await listenSupervisor({ ok: true, op: 'reply' });
-  await compactSession('s13', tmp);
+  assert.deepEqual(await compactSession('s13', tmp), { queued: false });
   assert.deepEqual(await accepting.request, { proto: 1, op: 'reply', short: 'j13', text: '/compact', auth: 'control-key' });
   await close(accepting.server);
   removeSupervisorDir();

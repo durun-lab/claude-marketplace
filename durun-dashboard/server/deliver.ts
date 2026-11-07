@@ -578,7 +578,7 @@ export const flushQueue = (): void => {
     const head = state.queue.find((m) => m.sessionId === sessionId);
     if (!head || head.editing || !readyForQueue(sessionId, live.get(sessionId))) continue;
     // 送ってから外す。送る途中で状態が変わってここが呼ばれても、送っている間は readyForQueue が止める。
-    sendMessage(sessionId, head.text);
+    sendHeld(head, live.get(sessionId));
     state.queue = state.queue.filter((m) => m !== head);
     touch();
   }
@@ -589,9 +589,10 @@ export const flushQueue = (): void => {
  * 権限の確認待ちのバックグラウンドのセッションでは、送っても保留の最後に戻って順番だけが変わるので、そのまま残して queued を返す。
  */
 export const sendQueued = (message: QueuedMessage): Delivery => {
-  if (mustWait(readLiveSessions().get(message.sessionId))) return 'queued';
+  const live = readLiveSessions().get(message.sessionId);
+  if (mustWait(live)) return 'queued';
   // flushQueue と同じく、送ってから外す。
-  const { delivery } = sendMessage(message.sessionId, message.text);
+  const delivery = sendHeld(message, live);
   state.queue = state.queue.filter((m) => m !== message);
   touch();
   return delivery;
@@ -644,19 +645,44 @@ export const redeliverInterrupted = (): void => {
   }
 };
 
+/** 保留に積む /compact。flushQueue と sendQueued は、この本文を発言ではなく compact として渡す。 */
+export const COMPACT_COMMAND = '/compact';
+
 /**
  * /compact はスラッシュコマンドとして動かす。受信ソケットで送ると、Claude は発言として読むだけで compact しない。
  * 入力待ちのバックグラウンドのセッションは、止めずに supervisor に返信を頼む。人間が打った発言として届くので、スラッシュコマンドとして動く。止めて再開すると、混んだマシンでは数十秒かかる。
- * 動いていないセッションは、再開して渡す。
- * 質問や権限の確認で止まっているセッションは、返信がその答えとして読まれることがあるので断る。作業中のセッションも、この先で質問や権限の確認に止まると同じことが起こりうるので断る。端末のセッションには渡す経路が無い。
+ * 動いていないセッションは、再開して渡す。端末のセッションには渡す経路が無い。
  */
-export const compactSession = (sessionId: string, cwd: string): Promise<void> => {
+const runCompact = (sessionId: string, cwd: string, live: LiveSession | undefined): Promise<void> => {
+  if (!live) return resume(sessionId, cwd, COMPACT_COMMAND);
+  if (live.kind !== 'bg' || !live.jobId) throw new SessionStateError('端末で開いているセッションは compact できません');
+  return replyToJob(live.jobId, COMPACT_COMMAND);
+};
+
+/**
+ * 作業中のセッションと、質問や権限の確認を待つセッションは、保留に積み、入力待ちになってから flushQueue に compact させる。
+ * 質問や確認を待つ間に返信すると、その答えとして読まれることがある。作業中も、この先で質問や確認に止まると同じことが起こりうる。
+ */
+export const compactSession = async (sessionId: string, cwd: string): Promise<{ queued: boolean }> => {
   const live = readLiveSessions().get(sessionId);
-  if (!live) return resume(sessionId, cwd, '/compact');
-  if (live.kind !== 'bg' || live.status !== 'idle' || !live.jobId || awaitingAnswer(sessionId)) {
-    throw new SessionStateError('作業中のセッション、質問や権限の確認を待つセッション、端末で開いているセッションは compact できません');
+  if (live?.kind === 'bg' && (live.status !== 'idle' || awaitingAnswer(sessionId))) {
+    state.queue.push({ id: newId(), sessionId, text: COMPACT_COMMAND, createdAt: Date.now() });
+    touch();
+    return { queued: true };
   }
-  return replyToJob(live.jobId, '/compact');
+  await runCompact(sessionId, cwd, live);
+  return { queued: false };
+};
+
+/** 保留したものを渡す。/compact は compact として渡し、それ以外は送信と同じ経路で送る。 */
+const sendHeld = (message: QueuedMessage, live: LiveSession | undefined): Delivery => {
+  if (message.text !== COMPACT_COMMAND) return sendMessage(message.sessionId, message.text).delivery;
+  const cwd = state.sessions[message.sessionId]?.cwd ?? '';
+  // 失敗しても保留には戻さない。人間が押し直せば、そのときの状態で渡し直す。
+  void Promise.resolve()
+    .then(() => runCompact(message.sessionId, cwd, live))
+    .catch((e: Error) => console.error(`${message.sessionId} を compact できません: ${e.message}`));
+  return 'sent';
 };
 
 /** 使用制限が明けたときと、通信が戻ったときに渡す依頼。人間が続きを頼むときと同じ言い方にし、止まったことには触れない。 */

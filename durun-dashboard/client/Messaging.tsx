@@ -417,9 +417,9 @@ const MessageForm = ({ s }: { s: Session }) => {
     setConfirming(undefined);
     if (!ok) return;
     setBusy(true);
-    const done = await attempt('compact', () => api.compact(s.id).then(() => true));
+    const res = await attempt('compact', () => api.compact(s.id));
     setBusy(false);
-    if (done) toast('compact を始めました');
+    if (res) toast(res.queued ? '作業がひと段落したら compact します。キューから取り消せます' : 'compact を始めました');
   };
   // 止めると作業が途中で切れるので、押し間違いでないかを確かめる。
   const stop = async (ok: boolean) => {
@@ -449,7 +449,7 @@ const MessageForm = ({ s }: { s: Session }) => {
         <button class="btn" disabled={busy || !text.trim()} title={FORK_HELP} onClick={fork}>分岐</button>
         {choice.fields}
         <ContextPie usage={s.usage} />
-        <button class="btn" disabled={busy} title="会話を要約してコンテキストを空ける" onClick={() => setConfirming('compact')}>compact</button>
+        <button class="btn" disabled={busy} title="会話を要約してコンテキストを空ける。作業中なら、ひと段落してから compact します" onClick={() => setConfirming('compact')}>compact</button>
         {isLive(s) && (
           <button class="btn btn-danger" disabled={busy || !s.stoppable} title={s.stoppable ? STOP_HELP : NO_STOP_HELP} onClick={() => setConfirming('stop')}>
             停止
