@@ -175,14 +175,15 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 | 方法 | 使う所 | 量の見積もり〔推〕 | 判断 |
 |---|---|---|---|
 | 静止画のコマ（`GET /m/api/frame` の WebP、幅 360〜720） | コメントの時刻、カットの頭、提案の前後、スクラブのつまみの上 | 1 枚 20〜60 KB | 採る。最初に作る |
-| 区間ごとに作る HLS（fMP4、4 秒の区間、H.264。360p 約 0.5 Mbps と 540p 約 1.2 Mbps、AAC 64 kbps） | 編集した結果を通して見る | 360p で 1 時間約 250 MB | 採る |
+| 区間ごとに作る HLS（MPEG-TS、4 秒の区間、H.264。360p 約 0.5 Mbps と 540p 約 1.2 Mbps、AAC 64 kbps） | 編集した結果を通して見る | 360p で 1 時間約 250 MB | 採る |
 | 素材の音だけ（AAC 64 kbps の m4a、Range で読む） | Story で文字起こしの所を聞く | 1 時間約 29 MB | 採る |
 | 提案の区間の短い動画（範囲の前後 2 秒、MP4） | 提案を動きで確かめる | 1 本 数百 KB〜数 MB | 採る。HLS の後 |
 | WebRTC で Program を流す | 再生の操作をその場で返す | 見ている間ずっと 1〜3 Mbps、PC は常にエンコード | 採らない。レビューに 60 fps のスクラブは要らず、電池と回線を食う |
 | プレビュー動画をそのまま | | 1 時間 2.6 GB | 採らない |
 
-- HLS の区間は見られたときに作る。プレイリストは今のバージョンのコンポジションの全区間を並べ、区間の要求が来たら描いて NVENC で符号化して返し、次の 2 区間を先に作る。描くのは `GET /frame` と同じ専用のスレッドの `Engine` で、PC の再生を止めない。
-- 区間のキーは区間に掛かるノードのキャッシュのキー（[RFC 0013](../rfcs/0013-render-order-and-cache-keys.md) のフレームのキャッシュと同じ作り）と画質から作り、URL に入れる。編集で変わらない区間はキーが同じなので作り直さず、端末のブラウザーにも残る（`Cache-Control: immutable`）。区間は `cache/mobile/` に置き、消しても作り直せる。
+- HLS の区間は見られたときに作る。プレイリストは今のバージョンのコンポジションの全区間を並べ、区間の要求が来たら描いて符号化して返し、次の 2 区間を先に作る。符号化は `mm-export` で中間の MP4 を書き、ffmpeg の CLI で目標のビットレートの MPEG-TS にする（`mm-encode-ffmpeg` は目標のビットレートと MPEG-TS を持たない）。描くのは `mm-stream` の専用のスレッドの 1 つの `Engine` で、PC の再生を止めない。`GET /frame` も `Streamer::with_engine` で同じ `Engine` を使える。
+- 区間のキーは区間の時間の範囲に掛かるもの（レイヤーとカットの JSON、区間の中の相対の位置、ノードの種類のバージョンと `cache_fingerprint`、素材の `contentHash`。[RFC 0013](../rfcs/0013-render-order-and-cache-keys.md) のフレームのキャッシュと同じ考え方）と画質から作り、URL に入れる。編集で変わらない区間はキーが同じなので作り直さず、端末のブラウザーにも残る（`Cache-Control: immutable`）。区間は `cache/mobile/hls/` に置き、上限（既定 2 GiB）を超えたら使った時刻の古いものから捨てる。消しても作り直せる。
+- コンテナは fMP4 でなく MPEG-TS にする。区間を 1 つずつ別に符号化して、編集の前後で作った区間を 1 本のプレイリストに混ぜるので、区間ごとに PAT、PMT、SPS、PPS を持ち、共通の初期化の区間（`EXT-X-MAP`）が要らない形が合う。
 - iOS の Safari は HLS をそのまま再生する。Android の Chrome は直接の再生に頼らず、Media Source Extensions の上の hls.js で再生する。HEVC は端末ごとの差が大きいので使わない。
 - 画質は既定で 360p にし、画面の切り替えで 540p にする。iOS では回線の種類を画面から読めないので、自動では切り替えない。
 - 電池: 映像は端末のハードウェアのデコーダーが読む H.264 に限る。画面を隠したら（`visibilitychange`）SSE を閉じ、戻ったら開き直して `hello` のバージョンから読み直す。時間で読み直す処理は持たない。
@@ -227,7 +228,7 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 | `GET /m/api/comments?state=`、`POST /m/api/comments`、`POST /m/api/comments/{id}/replies`、`POST /m/api/comments/{id}/state` | コメントの一覧、書く、返信、状態 |
 | `GET /m/api/proposals`、`GET /m/api/proposals/{id}`、`POST /m/api/proposals`、`POST /m/api/proposals/{id}/approve`、`/reject`、`/reopen` | 提案。形は Claude の待ち受けの `/proposals` と同じ |
 | `GET /m/api/frame?t=&width=&proposal=&ops=` | コマの WebP |
-| `GET /m/api/stream/{comp}/{quality}.m3u8`、`GET /m/api/stream/seg/{key}.m4s` | HLS のプレイリストと区間 |
+| `GET /m/api/stream/{comp}/{quality}.m3u8`、`GET /m/api/stream/seg/{key}.ts` | HLS のプレイリストと区間 |
 | `GET /m/api/audio/{asset}.m4a`、`GET /m/api/proposals/{id}/clip.mp4` | 素材の音だけ、提案の区間の短い動画 |
 | `GET /m/api/events` | SSE。`hello`、`change`、`resync`、`proposal` に加えて `comment`（`{ id, state }`） |
 
