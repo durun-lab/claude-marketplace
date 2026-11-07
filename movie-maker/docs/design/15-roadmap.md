@@ -83,7 +83,7 @@
 | 6 `web.cef` | 実際のページ（動画、`<canvas>`、Web フォント）と透過の扱いで 1 フレームの時間を取り直す。CEF をクラッシュさせたときの再起動と複数ブラウザの同時描画を試す。 |
 | 6 ホスト | レンダラーがデバイスを作り直したとき、別プロセスのホストも新しいデバイスに持ち替える。段階 2 ではホストが再生の経路に入っていない（段階 2 のレビュー、[RFC 0012](../rfcs/0012-stage2-leftovers.md)）。 |
 | 7 subsecond | 差し替えは `subsecond::call` の中だけで効く。ポインタ 1 本分だけを捕まえるクロージャは差し替えを素通りして古いまま動く（エラーも出ない）。試作では捕まえる値に通し番号を足して 2 本分にしたら効いた。Tauri では `tauri-build` と `dx` の `resource.lib` が二重になる（試作は `tauri-build` をコピーして `[patch.crates-io]` で差し替え、`MM_SKIP_WINRES` で省いた）。差し替えが効くのは `dx` で起動したワークスペースのメンバーだけ。本体のアプリでは保存から反映まで 5〜31 秒（増分のコンパイルの有無と、作り直すクレートの数による）で、`apps/movie-maker` の feature `hotpatch` に入れた [subsecond](spikes/subsecond.md#本体のアプリでの実測段階-7) |
-| 8 HDR | 済（[RFC](../rfcs/hdr.md)）: `TransformProgram::Lut3d` に PQ のシェーパーを持たせ、線形の光をベイクした LUT でも 1 を超える値を切らない。`color.lut` は定義域の外の分を端の値に足して持ち越す。PQ と HLG の素材を読み（`bt2100_pq`、`bt2100_hlg`）、`hevc_pq`、`hevc_hlg` で書き出し、プレビューは BT.2390 の EETF で SDR に収める。残り: MaxCLL / MaxFALL を画素から測る、NVENC の HDR、HDR の表示、アプリから `Ui::set_hdr_peak` を呼ぶこと。元の問題: 線形の光で 1 を超える値が 3D LUT で切られた（段階 2 のレビュー）。 |
+| 8 HDR | 済（[RFC](../rfcs/0138-hdr.md)）: `TransformProgram::Lut3d` に PQ のシェーパーを持たせ、線形の光をベイクした LUT でも 1 を超える値を切らない。`color.lut` は定義域の外の分を端の値に足して持ち越す。PQ と HLG の素材を読み（`bt2100_pq`、`bt2100_hlg`）、`hevc_pq`、`hevc_hlg` で書き出し、プレビューは BT.2390 の EETF で SDR に収める。残り: MaxCLL / MaxFALL を画素から測る、NVENC の HDR、HDR の表示、アプリから `Ui::set_hdr_peak` を呼ぶこと。元の問題: 線形の光で 1 を超える値が 3D LUT で切られた（段階 2 のレビュー）。 |
 
 ---
 
