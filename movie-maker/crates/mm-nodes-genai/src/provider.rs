@@ -45,11 +45,11 @@ pub struct Generated {
 /// 契約:
 /// - `estimate` は外へ通信せず、費用のかかる呼び出しをしない（見積もりは何度でも呼ばれる）。
 /// - `generate` だけが費用のかかる呼び出しをする。呼ぶのは承認を確かめた [`crate::GenAi::generate`] だけ。
-/// - 同じ `revision` と頼みには同じ中身を返すよう努める（シードを渡す）。返せない提供元でも、鍵が同じなら素材を使い回す。
+/// - 同じ `revision` と頼みには同じ中身を返すよう努める（シードを渡す）。返せない提供元でも、キーが同じなら素材を使い回す。
 pub trait Provider: Send + Sync {
     /// 名前。`gen.ai` の `provider` のパラメータの値。
     fn id(&self) -> &'static str;
-    /// モデルの名前と版。頼みの鍵に混ぜる。
+    /// モデルの名前とバージョン。頼みのキーに混ぜる。
     fn revision(&self) -> &str;
     /// 作れる種類か。
     fn supports(&self, media: Media) -> bool;

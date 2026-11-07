@@ -9,7 +9,12 @@ use mm_types::{ParamValue, Params, Rational, RationalTime, TimeRange};
 use crate::{gain, plugin_path, signal, DELAY, EXE, GAIN, P_CRASH, P_GAIN, RATE, TIMEOUT};
 
 fn kind() -> Vst3EffectKind {
-    Vst3EffectKind::new(Some(EXE.into())).with_timeout(TIMEOUT)
+    Vst3EffectKind::new(Some(EXE.into()))
+        .with_timeout(TIMEOUT)
+        .with_roots(vec![plugin_path()
+            .parent()
+            .expect("テストのプラグインのフォルダー")
+            .to_path_buf()])
 }
 
 fn frame_time(frame: u64) -> RationalTime {
@@ -110,7 +115,10 @@ fn クラッシュの後も同じインスタンスで処理を続ける() {
     apply(&kind, GAIN, 0, &mut a, false).expect("処理");
     let first = kind.instance_pid("comp/layer/effect");
     let mut b = signal(64, 1);
-    assert!(apply(&kind, GAIN, 64, &mut b, true).is_err(), "落ちる");
+    assert!(
+        apply(&kind, GAIN, 64, &mut b, true).is_err(),
+        "クラッシュする"
+    );
     let mut c = signal(64, 2);
     apply(&kind, GAIN, 128, &mut c, false).expect("起こし直して処理");
     assert_ne!(kind.instance_pid("comp/layer/effect"), first);

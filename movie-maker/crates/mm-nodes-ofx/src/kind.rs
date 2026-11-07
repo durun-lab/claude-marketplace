@@ -205,6 +205,11 @@ impl NodeKind for OfxKind {
         }
     }
 
+    /// `asset` はバンドルのフォルダーかその中のファイルで、デコーダーでは開けない。パスを引いて自分で読む。
+    fn decodes_asset(&self) -> bool {
+        false
+    }
+
     /// プラグインは時刻を読めるので時間で変わると申告し、同じ入力なら同じ画素と見なす。
     fn traits(&self) -> Traits {
         Traits {
@@ -263,8 +268,8 @@ impl NodeKind for OfxKind {
         Ok(FrameRef::cpu(image))
     }
 
-    /// バンドルの実体のパス、中身の印、効果の識別子。プラグインを差し替えたら別のキーになり、前の画素を引かない。
-    /// バンドルを引けなければ `None`（描いても誤りになるので覚えない）。
+    /// バンドルの実体のパス、中身のスタンプ、効果の識別子。プラグインを差し替えたら別のキーになり、前の画素を引かない。
+    /// バンドルを引けなければ `None`（描いても誤りになるのでキャッシュしない）。
     fn cache_fingerprint(
         &self,
         params: &Params,

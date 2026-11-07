@@ -23,6 +23,7 @@ fn settings(path: PathBuf, codec: &str, size: Size) -> EncodeSettings {
         codec: codec.into(),
         output_path: path,
         audio: None,
+        stream: None,
     }
 }
 

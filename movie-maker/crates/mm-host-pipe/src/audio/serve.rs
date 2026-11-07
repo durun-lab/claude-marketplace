@@ -130,7 +130,7 @@ fn handle(
 
 /// ホストの実行ファイルのサブコマンド。
 pub struct HostMain {
-    /// 実行ファイルの名前（エラーの頭）。
+    /// 実行ファイルの名前（エラーの先頭）。
     pub name: &'static str,
     /// 引数が合わないときの文。
     pub usage: &'static str,
@@ -165,8 +165,8 @@ impl HostMain {
     }
 }
 
-/// 応答を書き終えたら、プラグインの終わりの処理（DLL の切り離し、atexit）を走らせずにプロセスを終える。
-/// 解放しなかったインスタンスの終わりの処理で落ちるプラグインがあり、書き終えた結果まで失敗に見えるため。
+/// 応答を書き終えたら、プラグインの終わりの処理（DLL の切り離し、atexit）を実行せずにプロセスを終える。
+/// 解放しなかったインスタンスの終わりの処理でクラッシュするプラグインがあり、書き終えた結果まで失敗に見えるため。
 #[cfg(windows)]
 fn end_without_teardown() -> ExitCode {
     use windows::Win32::System::Threading::{GetCurrentProcess, TerminateProcess};

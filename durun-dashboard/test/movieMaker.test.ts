@@ -7,7 +7,7 @@ import path from 'node:path';
 import { test } from 'node:test';
 import { describeMmChange, mmSteps } from '../client/mmSteps.ts';
 import { buildPlan, installModeOf } from '../server/movieMakerInstall.ts';
-import { findLink, hookText, isHuman, projectSummary, SseParser } from '../server/movieMakerLink.ts';
+import { findLink, hookText, isHuman, mobileUrl, projectSummary, SseParser } from '../server/movieMakerLink.ts';
 import { platform, platformFor } from '../server/platform.ts';
 import type { MmChange, MovieMakerView } from '../shared/types.ts';
 import { tempDir } from './tmp.ts';
@@ -52,6 +52,16 @@ test('人間の操作は actor が gui のものだけで、フックの文は�
   assert.match(lines[0] ?? '', /^ムービーメーカー: /);
   assert.deepEqual(lines.slice(1, 3).map((l) => (JSON.parse(l) as MmChange).txn_id), [2, 3]);
   assert.match(lines[3] ?? '', /ほかに 1 件/);
+});
+
+test('mobile も人間の操作で、フックの文に change の JSON のまま届き、URL は tailnet の完全な名前から作る', () => {
+  assert.equal(isHuman(change({ actor: 'mobile' })), true);
+  const lines = (hookText([change({ actor: 'gui', txn_id: 1 }), change({ actor: 'mobile', txn_id: 2 })], 5) ?? '').split('\n');
+  assert.equal((JSON.parse(lines[2] ?? '') as MmChange).actor, 'mobile');
+  assert.equal(describeMmChange(change({ actor: 'mobile' })), 'addMarker（1 か所）（モバイル）');
+  assert.equal(mobileUrl(['desk.tail1234.ts.net', 'desk', '100.1.2.3']), 'https://desk.tail1234.ts.net:8443/m/');
+  assert.equal(mobileUrl(['desk', '100.1.2.3']), undefined);
+  assert.equal(mobileUrl([]), undefined);
 });
 
 test('GET /project の中身を、コンポジション、レイヤー、sequence、素材の短い文にする', () => {

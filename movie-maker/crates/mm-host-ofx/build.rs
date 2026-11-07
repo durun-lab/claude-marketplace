@@ -10,7 +10,7 @@ use std::process::Command;
 
 const INCLUDE: &str = "vendor/openfx/include";
 /// テストのプラグイン（ソース、バンドルの名前、C++ か、マクロの定義）。
-/// `MmTestGainV2` は識別子が同じで gain を 2 倍にする版で、共有ライブラリを差し替えた試験に使う。
+/// `MmTestGainV2` は識別子が同じで gain を 2 倍にするバージョンで、共有ライブラリを差し替えたテストに使う。
 const TEST_PLUGINS: [(&str, &str, bool, Option<&str>); 3] = [
     ("tests/plugins/invert.cpp", "Invert", true, None),
     ("tests/plugins/gain.c", "MmTestGain", false, None),

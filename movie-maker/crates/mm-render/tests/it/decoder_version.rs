@@ -1,5 +1,5 @@
-//! デコーダーの実装の名前（`Decoder::backend_id`）がフレームのキャッシュのキーに入り、画素の作り方の版が上がった
-//! 素材の画像を描き直すこと。版は広い信号の素材を読む実装が名前に付ける（`mm_decode_ffmpeg_core::wide_backend_id`）。
+//! デコーダーの実装の名前（`Decoder::backend_id`）がフレームのキャッシュのキーに入り、画素の作り方のバージョンが上がった
+//! 素材の画像を描き直すこと。バージョンは広い信号の素材を読む実装が名前に付ける（`mm_decode_ffmpeg_core::wide_backend_id`）。
 //! GPU が無い環境ではスキップし、`MM_REQUIRE_GPU` があれば失敗にする。
 
 use std::path::Path;
@@ -20,11 +20,11 @@ use mm_testkit::node::MapRegistry;
 use mm_types::{ColorSpace, Id, ParamValue, Rational, RationalTime, Result, Size, TimeRange};
 
 const SIZE: Size = Size::new(32, 18);
-/// 実装の名前。版の付いた名前は、画素の作り方が変わった広い信号の素材を読むときの名前。
+/// 実装の名前。バージョンの付いた名前は、画素の作り方が変わった広い信号の素材を読むときの名前。
 const PLAIN: &str = "tagged";
 const VERSIONED: &str = "tagged+wide.1";
 
-/// [`Tagged`] が版の付いた名前を名乗るか。
+/// [`Tagged`] がバージョンの付いた名前を名乗るか。
 static VERSION_UP: AtomicBool = AtomicBool::new(false);
 
 fn gpu() -> Option<Arc<GpuContext>> {
@@ -136,7 +136,7 @@ fn render(r: &mut WgpuRenderer, p: &Project) {
 }
 
 #[test]
-fn デコーダーの画素の版が上がれば素材の画像を描き直す() {
+fn デコーダーの画素の作り方のバージョンが上がれば素材の画像を描き直す() {
     let Some(ctx) = gpu() else { return };
     let mut r = WgpuRenderer::new(
         ctx,
@@ -151,13 +151,13 @@ fn デコーダーの画素の版が上がれば素材の画像を描き直す()
     assert_eq!(
         r.frame_cache_stats().entries,
         1,
-        "同じ実装の名前なら覚えた画像に当たる"
+        "同じ実装の名前ならキャッシュした画像にヒットする"
     );
     VERSION_UP.store(true, Ordering::SeqCst);
     render(&mut r, &p);
     assert_eq!(
         r.frame_cache_stats().entries,
         2,
-        "版の上がった実装の画像は別のキーで描き直す"
+        "バージョンの上がった実装の画像は別のキーで描き直す"
     );
 }

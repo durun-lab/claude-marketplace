@@ -85,7 +85,7 @@ fn scan_into(dir: &Path, depth: usize, found: &mut Vec<PathBuf>) {
 }
 
 /// クラスの ID を 32 桁の 16 進にする。プラグインのソースの `FUID (a, b, c, d)` と同じ並び
-/// （Windows は COM の並びのバイト列から読み戻す）で、`moduleinfo.json` の `CID` と同じ文字になる。
+/// （Windows は COM の並びのバイト列から読み取る）で、`moduleinfo.json` の `CID` と同じ文字になる。
 pub fn class_id_hex(id: &TUID) -> String {
     let b = id.map(|x| x as u8);
     let words = if cfg!(windows) {

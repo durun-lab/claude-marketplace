@@ -8,7 +8,7 @@ OpenFX（OFX）のプラグイン（`.ofx` の DLL）を別プロセスで読み
 | 部分 | 場所 | 役目 |
 |---|---|---|
 | アプリ側のランチャー（`OfxLauncher`、`PipeHost`、`describe_bundle`） | `src/launcher.rs` | `mm-host-ofx serve` と `mm-host-ofx describe` を子プロセスで起こす |
-| 実行ファイルの探し方（`find_host`）と試験のプラグインの置き場所（`TEST_PLUGINS`） | `src/locate.rs` | 組み立てが種類を登録するかを決める。`MM_OFX_HOST` か、アプリの実行ファイルの隣か親のフォルダー |
+| 実行ファイルの探し方（`find_host`）とテストのプラグインの置き場所（`TEST_PLUGINS`） | `src/locate.rs` | 組み立てが種類を登録するかを決める。`MM_OFX_HOST` か、アプリの実行ファイルの隣か親のフォルダー |
 | 記述と要求の形（`BundleDesc`、`PluginDesc`、`ParamDesc`、`PrepareParams`、`RenderParams`） | `src/desc.rs`、`src/lib.rs` | ホストとアプリの間の JSON |
 | プラグインの置き場所とバンドルの形 | `src/scan.rs` | `OFX_PLUGIN_PATH` と OS の既定のフォルダー |
 | ホストの実行ファイル | `src/host/` | OpenFX の C API のホスト（Property、Image Effect、Parameter、Memory、MultiThread、Message の Suite） |
@@ -40,7 +40,7 @@ OpenFX（OFX）のプラグイン（`.ofx` の DLL）を別プロセスで読み
 - `OfxLauncher::spawn` は `mm-host-ofx serve` を起こし、環境変数 `MM_HOST_SPEC` に `HostSpec` の JSON を渡す。制御は標準入出力の JSON の 1 行ずつ。
 - `Prepare` の `params` は `PrepareParams`（`{"bundle": "<名前>.ofx.bundle", "plugin": "<id>", "frame_rate": 30}`。`plugin` と `frame_rate` は省ける）。プラグインを load、describe し、インスタンスを作る。`bundle` はここでは確かめない。任意のパスの DLL を読み込むので、アプリの側（mm-nodes-ofx）が OpenFX の置き場所とプロジェクトの素材のバンドルだけを渡す。
 - `RenderFrame` の `params` は `RenderParams`（`{"source": <SharedFrame の Cpu>, "values": <Params>}`。どちらも省ける）。`source` が無ければ透明を入力にする。時刻はフレームレートでフレームの番号に直す。
-- `RenderParams` に `shared`（`{"name": "Local\mm-ofx-<pid>-<番号>", "has_source": true}`）があれば、画像は JSON に入れない。アプリが作った名前つきの共有メモリ（`mm_host_pipe::shm`）の `[入力 | 結果]`（どちらも `frame_bytes` バイトの RGBA f32、リトルエンディアン、上の行から）から入力を読み、結果を書き、応答の `SharedFrame::Cpu` の `data` を空にする。開いた区画は名前ごとに覚え、フレームごとに開き直さない。
+- `RenderParams` に `shared`（`{"name": "Local\mm-ofx-<pid>-<番号>", "has_source": true}`）があれば、画像は JSON に入れない。アプリが作った名前つきの共有メモリ（`mm_host_pipe::shm`）の `[入力 | 結果]`（どちらも `frame_bytes` バイトの RGBA f32、リトルエンディアン、上の行から）から入力を読み、結果を書き、応答の `SharedFrame::Cpu` の `data` を空にする。開いた区画は名前ごとにキャッシュし、フレームごとに開き直さない。
 - `frame_rate` は正の有限の数だけを受ける。`RenderFrame` の `size` は幅と高さが 1 以上、1 辺 16384 以下、画素の数が 8K UHD 以下だけを受け、それ以外は `Error` を返す。
 - 応答は CPU の画像（`SharedFrame::Cpu`、RGBA f32、premultiplied、線形）。プラグインが書いた NaN と Inf は 0 にする（JSON に書けないため）。`client_pid` があっても共有テクスチャは返さない（段階 8）。
 - Windows ではプラグインの DLL を `LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS` で読み込み、依存の DLL をバンドルのフォルダーとシステムのフォルダーから探す。
@@ -61,7 +61,7 @@ cargo nextest run -p mm-host-ofx
 |---|---|---|
 | `Invert.ofx.bundle` | OpenFX の公式のサンプル `Examples/Invert/invert.cpp`（BSD-3-Clause、そのまま） | 列挙、8 ビットの 1 フレーム |
 | `MmTestGain.ofx.bundle` | `tests/plugins/gain.c` | パラメータの 4 つの型の一覧と値、float の 1 フレーム、可変長の `paramGetValueAtTime` と `message`、`printf`、時間切れ（`delay_ms`）、クラッシュ（`crash`）と再起動、有限でない値（`nonfinite`）、`mm-host-api` の契約、共有メモリの受け渡し |
-| `MmTestGainV2.ofx.bundle` | `tests/plugins/gain.c`（`MM_GAIN_SCALE=2.0`） | 識別子が同じで gain が 2 倍。共有ライブラリの差し替え（mm-nodes-ofx の試験） |
+| `MmTestGainV2.ofx.bundle` | `tests/plugins/gain.c`（`MM_GAIN_SCALE=2.0`） | 識別子が同じで gain が 2 倍。共有ライブラリの差し替え（mm-nodes-ofx のテスト） |
 
 手元のプラグインを列挙するには、`OFX_PLUGIN_PATH` か既定のフォルダー（Windows は `C:\Program Files\Common Files\OFX\Plugins`）に置き、`mm-host-ofx describe <バンドル>` を実行する。
 
