@@ -2,12 +2,11 @@
 //! アプリと同じ置き場所（`--data-dir`、既定は `%LOCALAPPDATA%/movie-maker/improve`）を読み書きする。
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use clap::Subcommand;
 use mm_improve::{
-    git, Areas, CargoChecks, ClaudeCli, FeedbackItem, GhForge, ImproveConfig, ImproveVerdict,
-    Improver, ListFilter, NewFeedback, SettingsPatch, Step,
+    changes, git, untracked, Areas, FeedbackItem, ImproveConfig, ImproveVerdict, Improver,
+    ListFilter, NewFeedback, SettingsPatch, Step,
 };
 use mm_types::Result;
 
@@ -73,7 +72,7 @@ pub enum ImproveCommand {
         model: Option<String>,
         #[arg(long)]
         effort: Option<String>,
-        /// 回の予算（ドル）。0 で上限なし。
+        /// 回の予算（ドル）。0 より大きい値だけ受け付ける。
         #[arg(long)]
         budget_usd: Option<f64>,
         /// 回の時間の上限（分）。
@@ -164,31 +163,13 @@ fn run(cfg: ImproveConfig, command: ImproveCommand) -> Result<()> {
     }
 }
 
-/// 回の `CARGO_TARGET_DIR`。呼んだ人の指定があればそれ、なければ置き場所の `target/`。
-fn target_dir(cfg: &ImproveConfig) -> PathBuf {
-    std::env::var_os("CARGO_TARGET_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| cfg.data_dir.join("target"))
-}
-
 fn improver(cfg: ImproveConfig, perf: &str, export: bool) -> Improver {
-    let target = target_dir(&cfg);
-    let mut checks = CargoChecks::new(&target);
-    checks.perf_scenario = (perf != "none").then(|| perf.to_owned());
-    if !export {
-        checks.export_fixture = None;
-    }
-    let agent = ClaudeCli {
-        env: vec![
-            (
-                "CARGO_TARGET_DIR".into(),
-                target.to_string_lossy().into_owned(),
-            ),
-            ("CARGO_INCREMENTAL".into(), "0".into()),
-        ],
-        ..ClaudeCli::default()
-    };
-    Improver::new(cfg, Arc::new(agent), Arc::new(checks), Arc::new(GhForge))
+    Improver::standard(cfg, |checks| {
+        checks.perf_scenario = (perf != "none").then(|| perf.to_owned());
+        if !export {
+            checks.export_fixture = None;
+        }
+    })
 }
 
 /// 整形した JSON を出す。serde に直接は依存しないので、値は `serde_json::to_value` で受け取る。
@@ -294,16 +275,14 @@ fn areas(cfg: &ImproveConfig, area: Option<&str>, base: &str) -> Result<()> {
     let root = cfg.repo.join(&cfg.subdir);
     let parsed = Areas::parse(&std::fs::read_to_string(root.join("docs/areas.toml"))?)?;
     // 元の側で進んだ変更を混ぜないよう、分かれた所（merge-base）から作業ツリーまでを比べる。
+    // 回の判定と同じく、名前の変更は前後の両方、movie-maker の外は `../` を付けて数える。
     let fork = git(&root, &["merge-base", base, "HEAD"])?;
-    let mut files: Vec<String> = git(&root, &["diff", "--name-only", "--relative", &fork])?
-        .lines()
-        .map(str::to_owned)
+    let mut paths: Vec<String> = changes(&root, &fork, None)?
+        .into_iter()
+        .map(|c| c.path)
         .collect();
-    files.extend(
-        git(&root, &["ls-files", "--others", "--exclude-standard"])?
-            .lines()
-            .map(str::to_owned),
-    );
+    paths.extend(untracked(&root)?);
+    let mut files = cfg.relative(paths);
     files.sort();
     files.dedup();
     println!(

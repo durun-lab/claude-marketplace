@@ -56,6 +56,18 @@ pub struct RunState {
     /// 最後の発言（区切った後の検査で使う）。
     #[serde(default)]
     pub last_message: Option<String>,
+    /// 回を起こしたときの予算（ドル）。回の途中で設定のファイルを書き換えても、この回の上限は変わらない。
+    #[serde(default)]
+    pub budget_usd: Option<f64>,
+    /// 回を起こしたときの時間の上限（ミリ秒）。
+    #[serde(default)]
+    pub wall_ms: Option<u64>,
+    /// `claude -p` のセッションの累計の費用（ドル）。続きの呼び出しには予算の残りだけを渡す。
+    #[serde(default)]
+    pub spent_usd: f64,
+    /// `claude -p` を動かした時間の累計（ミリ秒）。使用制限で待った時間は数えない。
+    #[serde(default)]
+    pub agent_ms: u64,
 }
 
 /// 回の結末。

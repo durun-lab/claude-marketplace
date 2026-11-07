@@ -15,8 +15,8 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, OnceLock};
 
 use mm_improve::{
-    CargoChecks, ClaudeCli, ErrorInput, ErrorSource, FeedbackItem, GhForge, ImproveConfig,
-    ImproveStatus, Improver, ListFilter, NewFeedback, SettingsPatch,
+    ErrorInput, ErrorSource, FeedbackItem, ImproveConfig, ImproveStatus, Improver, ListFilter,
+    NewFeedback, SettingsPatch,
 };
 use serde_json::{json, Value};
 
@@ -212,28 +212,14 @@ pub fn connect(app: tauri::AppHandle) {
     }
 }
 
-/// `mm improve` と同じ組み立て（`claude -p`、cargo の検査、`gh` の PR）で、裏の回し手を有効にする。
+/// `mm improve` と同じ組み立て（[`Improver::standard`]）で、裏の回し手を有効にする。
 fn standard_improver() -> mm_types::Result<Improver> {
     let data_dir = ImproveConfig::default_data_dir()?;
     let start = std::env::var_os(REPO_ENV)
         .map(PathBuf::from)
         .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../.."));
     let cfg = ImproveConfig::discover(data_dir, &start)?;
-    let target = std::env::var_os("CARGO_TARGET_DIR")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| cfg.data_dir.join("target"));
-    let agent = ClaudeCli {
-        env: vec![
-            (
-                "CARGO_TARGET_DIR".into(),
-                target.to_string_lossy().into_owned(),
-            ),
-            ("CARGO_INCREMENTAL".into(), "0".into()),
-        ],
-        ..ClaudeCli::default()
-    };
-    let checks = CargoChecks::new(&target);
-    Ok(Improver::new(cfg, Arc::new(agent), Arc::new(checks), Arc::new(GhForge)).with_background())
+    Ok(Improver::standard(cfg, |_| {}).with_background())
 }
 
 fn install_panic_hook(svc: Arc<Feedback>) {

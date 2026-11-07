@@ -5,12 +5,11 @@ use mm_types::Result;
 
 use crate::areas::ImproveVerdict;
 use crate::checks::{Baseline, CheckCx, CheckOutcome, Verdict};
-use crate::errors::ErrorBook;
 use crate::files::read_or_default;
 use crate::forge::PullRequest;
 use crate::git;
 use crate::prompt::{commit_message, parse_done};
-use crate::round::{fail, finish_run, Ctx, Step, BASELINE_FILE, ERRORS_FILE};
+use crate::round::{fail, finish_run, Ctx, Step, BASELINE_FILE};
 use crate::state::{ImproveState, RunOutcome, RunReport, RunState};
 use crate::store::{FeedbackStatus, Outcome, Reply};
 use crate::time::now_ms;
@@ -45,6 +44,7 @@ pub(crate) fn gate(ctx: &Ctx, mut st: ImproveState, run: RunState) -> Result<Ste
     if commit.is_none() {
         return conclude(ctx, &mut st, &run, empty, RunOutcome::NoChange);
     }
+    let tip = git::git(&ctx.cfg.repo, &["rev-parse", &ctx.cfg.mainline])?;
     if !git::rebase(&run.worktree, &ctx.cfg.mainline)? {
         let reason = format!(
             "{} の先端と衝突した（ブランチ {} に残した）",
@@ -52,7 +52,18 @@ pub(crate) fn gate(ctx: &Ctx, mut st: ImproveState, run: RunState) -> Result<Ste
         );
         return conclude(ctx, &mut st, &run, empty, RunOutcome::Rejected { reason });
     }
-    let g = gather(ctx, &run, empty.done)?;
+    let mut g = gather(ctx, &run, empty.done)?;
+    if tip != run.base_commit {
+        // 回のほかに取り込み先を動かすものは無いはずなので、回が参照を書き換えた恐れとして人に見せる。
+        g.held.push(format!(
+            "回の間に {} が動いた（{} → {}）",
+            ctx.cfg.mainline, run.base_commit, tip
+        ));
+    }
+    // 検査は長いので、その間に止められていたら取り込まない。
+    if ctx.stop_requested() {
+        return fail(ctx, &mut st, &run, RunOutcome::Stopped);
+    }
     let outcome = decide(ctx, &run, &g)?;
     conclude(ctx, &mut st, &run, g, outcome)
 }
@@ -76,19 +87,46 @@ fn decide(ctx: &Ctx, run: &RunState, g: &Gathered) -> Result<RunOutcome> {
     if !g.held.is_empty() {
         return Ok(open_pr(ctx, run, g));
     }
-    let commit = git::land(&ctx.cfg.repo, &ctx.cfg.mainline, &run.branch)?;
-    Ok(RunOutcome::Landed { commit })
+    // 取り込み先のチェックアウトに人の未コミットの変更があると早送りできない。回を検査の段に残すと
+    // 起こすたびに同じ所で落ちるので、ブランチを残して差し戻す。
+    Ok(
+        match git::land(&ctx.cfg.repo, &ctx.cfg.mainline, &run.branch) {
+            Ok(commit) => RunOutcome::Landed { commit },
+            Err(e) => RunOutcome::Rejected {
+                reason: format!(
+                    "{} へ取り込めない（ブランチ {} に残した）: {e}",
+                    ctx.cfg.mainline, run.branch
+                ),
+            },
+        },
+    )
 }
 
 /// 変えたファイル、領域の判定、検査を集める。
 fn gather(ctx: &Ctx, run: &RunState, done: Vec<(String, String)>) -> Result<Gathered> {
-    let changed = to_subdir(git::changed_files(&run.worktree, &ctx.cfg.mainline)?, ctx);
+    let changes = git::changes(&run.worktree, &ctx.cfg.mainline, Some("HEAD"))?;
+    let special = ctx.cfg.relative(
+        changes
+            .iter()
+            .filter(|c| c.special)
+            .map(|c| c.path.clone())
+            .collect(),
+    );
+    let changed = ctx
+        .cfg
+        .relative(changes.into_iter().map(|c| c.path).collect());
     let mut held = match ctx.areas()?.improve_verdict(&changed) {
         ImproveVerdict::Merge => Vec::new(),
         ImproveVerdict::Hold(files) => {
             vec![format!("人の承認が要る所に触れた: {}", files.join("、"))]
         }
     };
+    if !special.is_empty() {
+        held.push(format!(
+            "シンボリックリンクか submodule を変えた: {}",
+            special.join("、")
+        ));
+    }
     let run_dir = ctx.cfg.run_dir(&run.id);
     let baseline: Baseline = read_or_default(&run_dir.join(BASELINE_FILE))?;
     let root = ctx.root_of(run);
@@ -112,23 +150,6 @@ fn gather(ctx: &Ctx, run: &RunState, done: Vec<(String, String)>) -> Result<Gath
         checks,
         held,
     })
-}
-
-/// 根からの相対を movie-maker からの相対にする。movie-maker の外は `../` を付け、どの領域にも当たらないようにする。
-fn to_subdir(files: Vec<String>, ctx: &Ctx) -> Vec<String> {
-    let sub = ctx.cfg.subdir.to_string_lossy().replace('\\', "/");
-    if sub.is_empty() {
-        return files;
-    }
-    let prefix = format!("{sub}/");
-    files
-        .into_iter()
-        .map(|f| {
-            f.strip_prefix(&prefix)
-                .map(str::to_owned)
-                .unwrap_or_else(|| format!("../{f}"))
-        })
-        .collect()
 }
 
 /// 回のコミットを PR の土台（`origin/<upstream>`）へ cherry-pick してから PR を作る。衝突したら PR を作らずに差し戻す。
@@ -217,7 +238,13 @@ fn item_outcome(outcome: &RunOutcome) -> (FeedbackStatus, Outcome) {
                 reason: reason.clone(),
             },
         ),
-        RunOutcome::NoChange | RunOutcome::Stopped => (FeedbackStatus::Done, Outcome::NoChange),
+        RunOutcome::Stopped => (
+            FeedbackStatus::Pending,
+            Outcome::Rejected {
+                reason: "人が止めた".into(),
+            },
+        ),
+        RunOutcome::NoChange => (FeedbackStatus::Done, Outcome::NoChange),
     }
 }
 
@@ -230,8 +257,6 @@ fn reply_items(
     now: u64,
 ) -> Result<()> {
     let (status, item_outcome) = item_outcome(outcome);
-    let errors_path = ctx.cfg.file(ERRORS_FILE);
-    let mut errors = ErrorBook::load(&errors_path)?;
     for (id, text) in done {
         let mut item = ctx.store.get(id)?;
         item.replies.push(Reply {
@@ -242,11 +267,15 @@ fn reply_items(
         });
         item.status = status;
         ctx.store.put(&item)?;
-        if status != FeedbackStatus::Pending {
-            errors.reset_item(id);
-        }
     }
-    errors.save(&errors_path)
+    if status == FeedbackStatus::Pending {
+        return Ok(());
+    }
+    ctx.with_errors(|errors| {
+        done.iter().for_each(|(id, _)| errors.reset_item(id));
+        Ok(())
+    })
+    .map(drop)
 }
 
 /// 返事を書いて回を終える。

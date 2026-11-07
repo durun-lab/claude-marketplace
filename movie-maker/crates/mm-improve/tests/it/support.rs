@@ -21,7 +21,7 @@ pub struct Fixture {
     pub data: PathBuf,
 }
 
-fn run_git(dir: &Path, args: &[&str]) {
+pub fn run_git(dir: &Path, args: &[&str]) {
     let ok = Command::new("git")
         .arg("-C")
         .arg(dir)
@@ -136,6 +136,19 @@ pub enum Script {
     Say(&'static str),
     /// 使用制限で止まる。
     Limit(u64),
+    /// 任意の振る舞い。引数は呼び出しと 1 回目の頼む文（要望の ID が載っている）。
+    Run(fn(&AgentRequest<'_>, &str) -> AgentEnd),
+}
+
+/// 1 回目の頼む文に載った要望の全部に返事をした最後の発言。
+pub fn done_for(first_prompt: &str) -> AgentEnd {
+    let lines: Vec<String> = ids_in(first_prompt)
+        .iter()
+        .map(|id| format!("- {id}: 直しました"))
+        .collect();
+    AgentEnd::Finished {
+        last_message: format!("直した。\n\n対応した要望:\n{}", lines.join("\n")),
+    }
 }
 
 /// 決まった差分を書く `claude -p` の偽物。
@@ -144,13 +157,15 @@ pub struct FakeAgent {
     script: Mutex<VecDeque<Script>>,
     /// 呼ばれたときの（続けたか、頼む文）。
     pub calls: Mutex<Vec<(bool, String)>>,
+    /// 呼ばれたときに渡された予算（回の残り）。
+    pub budgets: Mutex<Vec<Option<f64>>>,
 }
 
 impl FakeAgent {
     pub fn new(script: Vec<Script>) -> Arc<Self> {
         Arc::new(Self {
             script: Mutex::new(script.into()),
-            calls: Mutex::default(),
+            ..Default::default()
         })
     }
 
@@ -175,26 +190,23 @@ impl mm_improve::Agent for FakeAgent {
             .lock()
             .unwrap()
             .push((req.resume, req.prompt.to_owned()));
+        self.budgets.lock().unwrap().push(req.settings.budget_usd);
         let first = self.calls.lock().unwrap()[0].1.clone();
-        match self.script.lock().unwrap().pop_front() {
+        let next = self.script.lock().unwrap().pop_front();
+        match next {
             Some(Script::Write(files)) => {
                 for (path, body) in files {
                     let p = req.cwd.join(path);
                     std::fs::create_dir_all(p.parent().unwrap()).unwrap();
                     std::fs::write(p, body).unwrap();
                 }
-                let lines: Vec<String> = ids_in(&first)
-                    .iter()
-                    .map(|id| format!("- {id}: 直しました"))
-                    .collect();
-                AgentEnd::Finished {
-                    last_message: format!("直した。\n\n対応した要望:\n{}", lines.join("\n")),
-                }
+                done_for(&first)
             }
             Some(Script::Say(m)) => AgentEnd::Finished {
                 last_message: m.to_owned(),
             },
             Some(Script::Limit(t)) => AgentEnd::UsageLimit { resets_at: t },
+            Some(Script::Run(f)) => f(req, &first),
             None => AgentEnd::Failed {
                 reason: "台本が尽きた".into(),
             },
@@ -208,6 +220,8 @@ pub struct FakeChecks {
     pub outcomes: Vec<CheckOutcome>,
     /// verify に渡された変えたファイル。
     pub seen: Mutex<Vec<String>>,
+    /// verify の間に置く、すぐ止める印のファイル（検査の最中に人が止めたことにする）。
+    pub stop_mark: Option<PathBuf>,
 }
 
 impl FakeChecks {
@@ -218,7 +232,15 @@ impl FakeChecks {
     pub fn with(outcomes: Vec<CheckOutcome>) -> Arc<Self> {
         Arc::new(Self {
             outcomes,
-            seen: Mutex::default(),
+            ..Default::default()
+        })
+    }
+
+    /// 検査の最中に止められる。
+    pub fn stopped_during_verify(data: &Path) -> Arc<Self> {
+        Arc::new(Self {
+            stop_mark: Some(data.join("stop")),
+            ..Default::default()
         })
     }
 }
@@ -230,6 +252,9 @@ impl Checks for FakeChecks {
 
     fn verify(&self, cx: &CheckCx<'_>, _baseline: &Baseline) -> Vec<CheckOutcome> {
         self.seen.lock().unwrap().extend(cx.changed.iter().cloned());
+        if let Some(mark) = &self.stop_mark {
+            std::fs::write(mark, "stop").unwrap();
+        }
         self.outcomes.clone()
     }
 }

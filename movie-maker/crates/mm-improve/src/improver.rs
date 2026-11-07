@@ -14,13 +14,15 @@ use serde::{Deserialize, Serialize};
 use crate::agent::Agent;
 use crate::checks::Checks;
 use crate::config::{ImproveConfig, Settings, SettingsPatch};
-use crate::errors::{ErrorBook, ErrorInput, RecentLanding};
+use crate::errors::{ErrorInput, RecentLanding};
 use crate::files::write_json;
 use crate::forge::Forge;
 use crate::proc::kill_tree;
-use crate::round::{
-    self, Ctx, Step, AFTER_RESET_MS, ERRORS_FILE, LOCK_FILE, SETTINGS_FILE, STOP_MARK,
-};
+use crate::round::{self, Ctx, Step, AFTER_RESET_MS, LOCK_FILE, SETTINGS_FILE, STOP_MARK};
+
+/// 錠が取れなかったときに取り直す回数と間隔。`status` が錠を確かめる一瞬と重なっただけなら、次で取れる。
+const BUSY_RETRIES: u32 = 3;
+const BUSY_WAIT_MS: u64 = 200;
 use crate::state::{Phase, RunLock, RunOutcome, RunReport, RunState};
 use crate::store::{FeedbackItem, FeedbackKind, FeedbackStatus, FeedbackStore, NewFeedback};
 use crate::time::now_ms;
@@ -117,6 +119,7 @@ impl Improver {
             checks,
             forge,
             store,
+            errors_lock: Mutex::new(()),
         };
         let inner = Inner {
             ctx,
@@ -151,17 +154,17 @@ impl Improver {
     }
 
     /// エラーか遅い処理を記録し、条件を満たせば自動で起票する。起票した要望の ID を返す。
+    /// 記録の読み書きはプロセスの中で順に行うので、panic のフックと裏のスレッドが同時に呼んでも同じものを 2 件にしない。
     pub fn record(&self, input: &ErrorInput) -> Result<Option<String>> {
         let ctx = self.ctx();
-        let path = ctx.cfg.file(ERRORS_FILE);
-        let mut book = ErrorBook::load(&path)?;
         let st = ctx.state()?;
         let landing = st.last_landed.as_ref().map(|(id, at)| RecentLanding {
             run_id: id,
             at: *at,
         });
-        let filed = book.record(input, &ctx.store, now_ms(), landing)?;
-        book.save(&path)?;
+        let filed = ctx
+            .with_errors(|book| book.record(input, &ctx.store, now_ms(), landing))?
+            .flatten();
         if filed.is_some() {
             self.clear_waiting()?;
             self.kick();
@@ -283,11 +286,19 @@ impl Improver {
     }
 
     fn background_loop(&self) {
+        let mut busy = 0;
         loop {
             match self.run_once() {
                 Ok(Step::Finished(_)) => continue,
                 Ok(Step::Limited { resets_at }) if self.sleep_until(resets_at + AFTER_RESET_MS) => {
                     continue
+                }
+                // `status` も錠を一瞬取って確かめるので、重なったら少し待って取り直す。
+                // 取り直しても取れなければ、ほかのプロセス（`mm improve run`）が回を動かしている。
+                Ok(Step::Busy)
+                    if busy < BUSY_RETRIES && self.sleep_until(now_ms() + BUSY_WAIT_MS) =>
+                {
+                    busy += 1;
                 }
                 _ => break,
             }

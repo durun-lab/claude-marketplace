@@ -25,13 +25,14 @@ mod improver;
 mod proc;
 mod prompt;
 mod round;
+mod standard;
 mod state;
 mod store;
 mod time;
 
 pub use agent::{
-    find_transcript, stop_hook_settings, usage_limit, Agent, AgentEnd, AgentRequest, ClaudeCli,
-    STOP_FILE,
+    find_transcript, run_settings, usage_limit, Agent, AgentEnd, AgentRequest, ClaudeCli,
+    DENIED_COMMANDS, STOP_FILE,
 };
 pub use areas::{matches, Area, AreaReport, Areas, ImproveAreas, ImproveVerdict, Shared};
 pub use checks::{
@@ -47,10 +48,11 @@ pub use errors::{
     MAX_FILINGS_PER_HOUR, MAX_PENDING,
 };
 pub use forge::{Forge, GhForge, PullRequest};
-pub use git::{changed_files, git};
+pub use git::{changed_files, changes, git, untracked, Change};
 pub use improver::{ImproveStatus, Improver, ListFilter, RunView};
 pub use prompt::{parse_done, prompt_for, PromptContext, DONE_MARK};
-pub use round::Step;
+pub use round::{Step, MAX_CALLS};
+pub use standard::run_target_dir;
 pub use state::{ImproveState, Phase, RunOutcome, RunReport, RunState};
 pub use store::{
     FeedbackItem, FeedbackKind, FeedbackStatus, FeedbackStore, NewFeedback, Outcome, Reply,

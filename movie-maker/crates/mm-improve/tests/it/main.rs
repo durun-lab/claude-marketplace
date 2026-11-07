@@ -3,5 +3,6 @@
 mod areas;
 mod errors;
 mod flow;
+mod guard;
 mod real_claude;
 mod support;

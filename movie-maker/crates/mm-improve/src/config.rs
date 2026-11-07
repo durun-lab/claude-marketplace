@@ -102,6 +102,23 @@ impl ImproveConfig {
     pub(crate) fn file(&self, name: &str) -> PathBuf {
         self.data_dir.join(name)
     }
+
+    /// 根からの相対を movie-maker からの相対にする。movie-maker の外は `../` を付け、どの領域にも当たらないようにする。
+    pub fn relative(&self, files: Vec<String>) -> Vec<String> {
+        let sub = self.subdir.to_string_lossy().replace('\\', "/");
+        if sub.is_empty() {
+            return files;
+        }
+        let prefix = format!("{sub}/");
+        files
+            .into_iter()
+            .map(|f| {
+                f.strip_prefix(&prefix)
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| format!("../{f}"))
+            })
+            .collect()
+    }
 }
 
 /// 人が変える設定。`settings.json` に置く。
@@ -114,7 +131,7 @@ pub struct Settings {
     pub model: Option<String>,
     /// `claude -p --effort`。
     pub effort: Option<String>,
-    /// 回の予算（ドル）。
+    /// 回の予算（ドル）。読むときは [`Settings::budget`] を使う。
     pub budget_usd: Option<f64>,
     /// 回の時間の上限（分）。
     pub wall_minutes: u32,
@@ -145,7 +162,7 @@ pub struct SettingsPatch {
     pub model: Option<String>,
     /// effort。空の文字列で既定に戻す。
     pub effort: Option<String>,
-    /// 予算（ドル）。0 以下で上限なし。
+    /// 予算（ドル）。0 以下と数でない値は受け付けない（回の予算は外さない）。
     pub budget_usd: Option<f64>,
     /// 時間の上限（分）。
     pub wall_minutes: Option<u32>,
@@ -166,14 +183,40 @@ impl Settings {
         if patch.effort.is_some() {
             self.effort = text(&patch.effort);
         }
-        if let Some(b) = patch.budget_usd {
-            self.budget_usd = (b > 0.0).then_some(b);
+        if let Some(b) = patch.budget_usd.filter(|b| b.is_finite() && *b > 0.0) {
+            self.budget_usd = Some(b);
         }
         if let Some(w) = patch.wall_minutes {
             self.wall_minutes = w.max(1);
         }
-        if let Some(t) = patch.perf_threshold {
+        if let Some(t) = patch.perf_threshold.filter(|t| t.is_finite()) {
             self.perf_threshold = t.max(0.0);
         }
+    }
+
+    /// 回の予算（ドル）。設定のファイルに上限が無いか不正なら既定の予算にする。
+    pub fn budget(&self) -> f64 {
+        self.budget_usd
+            .filter(|b| b.is_finite() && *b > 0.0)
+            .unwrap_or(DEFAULT_BUDGET_USD)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn budget_cannot_be_removed() {
+        let mut s = Settings::default();
+        for b in [0.0, -1.0, f64::NAN, f64::INFINITY] {
+            s.apply(&SettingsPatch {
+                budget_usd: Some(b),
+                ..Default::default()
+            });
+            assert_eq!(s.budget_usd, Some(DEFAULT_BUDGET_USD), "{b}");
+        }
+        s.budget_usd = None;
+        assert_eq!(s.budget(), DEFAULT_BUDGET_USD);
     }
 }
