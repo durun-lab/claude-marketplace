@@ -63,9 +63,6 @@ const HUMAN_ACTORS = new Set(['gui', 'mobile']);
 /** change を送ったのが人間か。 */
 export const isHuman = (change: MmChange): boolean => HUMAN_ACTORS.has(change.actor);
 
-/** モバイル版（スマホの PWA）からの操作か。 */
-export const isMobile = (actor: string): boolean => actor === 'mobile';
-
 /** モバイル版の待ち受けの tailnet 上の HTTPS のポート。movie-maker の MOBILE_HTTPS_PORT と同じ。 */
 const MOBILE_HTTPS_PORT = 8443;
 
@@ -78,21 +75,17 @@ export const mobileUrl = (tailnetHosts: string[]): string | undefined => {
   return host ? `https://${host}:${MOBILE_HTTPS_PORT}/m/` : undefined;
 };
 
-/** フックと mm_changes の 1 件の頭に付ける印。モバイル版の操作だけ「モバイルから」と分かるようにする。 */
-const MOBILE_MARK = 'モバイルから: ';
-export const lineOf = (change: MmChange): string => (isMobile(change.actor) ? MOBILE_MARK : '') + changeLine(change);
-
 /** フックとツールで返す、1 件の生の値。 */
 export const changeLine = (change: MmChange): string => JSON.stringify(change);
 
-export const CHANGE_FORMAT = '1 行に 1 件、movie-maker の GET /events の change のまま。kind は apply、undo、redo で、undo と redo の of は戻した元のトランザクション。actor の gui と mobile は人間（mobile は行頭に「モバイルから: 」が付く）、mcp と cli はエージェント';
+export const CHANGE_FORMAT = '1 行に 1 件、movie-maker の GET /events の change のまま。kind は apply、undo、redo で、undo と redo の of は戻した元のトランザクション。actor の gui と mobile は人間（mobile はスマホから）、mcp と cli はエージェント';
 
 /** 人間の操作を、フックの additionalContext の文にする。limit を超えた分は数だけ添える。 */
 export const hookText = (changes: MmChange[], limit: number): string | undefined => {
   if (!changes.length) return undefined;
   const shown = changes.slice(-limit);
   const rest = changes.length > shown.length ? [`ほかに ${changes.length - shown.length} 件あった。mm_changes に all: true を渡すと読める。`] : [];
-  return [`ムービーメーカー: 前に知らせてから、人間が movie-maker で次の操作をした（${CHANGE_FORMAT}）。`, ...shown.map(lineOf), ...rest].join('\n');
+  return [`ムービーメーカー: 前に知らせてから、人間が movie-maker で次の操作をした（${CHANGE_FORMAT}）。`, ...shown.map(changeLine), ...rest].join('\n');
 };
 
 type Rational = { num: number; den: number };

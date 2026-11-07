@@ -8,7 +8,7 @@ import path from 'node:path';
 import type { MmChange, MmLogEntry, MovieMakerView, MmLinkStatus } from '../shared/types.ts';
 import { appendLog, logFilePath } from './flLogFile.ts';
 import { type Installer, installedApp, installerFor, installPaths } from './movieMakerInstall.ts';
-import { CHANGE_FORMAT, changeLine, lineOf, findLink, hookText, isHuman, MM_DIR, mobileUrl, MmClient, projectSummary, STORE_FILE, type ToolInfo, type ToolResult } from './movieMakerLink.ts';
+import { CHANGE_FORMAT, changeLine, findLink, hookText, isHuman, MM_DIR, mobileUrl, MmClient, projectSummary, STORE_FILE, type ToolInfo, type ToolResult } from './movieMakerLink.ts';
 import { platform } from './platform.ts';
 import { DATA_DIR, newId, state, touch } from './store.ts';
 
@@ -357,7 +357,7 @@ const mmChanges = (sessionId: string, all: boolean): MmToolResult => {
   cursors.set(sessionId, seq);
   const list = records.filter((r) => r.seq > since).slice(all ? -CHANGES_ALL : undefined);
   if (!list.length) return text('前に読んでから、変わったものはありません。');
-  return text([`${CHANGE_FORMAT}。`, ...list.map((r) => `${isHuman(r.change) ? 'human' : 'agent'} ${lineOf(r.change)}`)].join('\n'));
+  return text([`${CHANGE_FORMAT}。`, ...list.map((r) => `${isHuman(r.change) ? 'human' : 'agent'} ${changeLine(r.change)}`)].join('\n'));
 };
 
 export const MM_TOOL_NAMES = new Set(['mm_state', 'mm_tool', 'mm_changes']);

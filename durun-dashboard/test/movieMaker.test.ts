@@ -54,11 +54,10 @@ test('人間の操作は actor が gui のものだけで、フックの文は�
   assert.match(lines[3] ?? '', /ほかに 1 件/);
 });
 
-test('mobile も人間の操作で、フックの文では行頭に「モバイルから」が付き、URL は tailnet の完全な名前から作る', () => {
+test('mobile も人間の操作で、フックの文に change の JSON のまま届き、URL は tailnet の完全な名前から作る', () => {
   assert.equal(isHuman(change({ actor: 'mobile' })), true);
   const lines = (hookText([change({ actor: 'gui', txn_id: 1 }), change({ actor: 'mobile', txn_id: 2 })], 5) ?? '').split('\n');
-  assert.doesNotMatch(lines[1] ?? '', /^モバイルから/);
-  assert.match(lines[2] ?? '', /^モバイルから: \{.*"actor":"mobile"/);
+  assert.equal((JSON.parse(lines[2] ?? '') as MmChange).actor, 'mobile');
   assert.equal(describeMmChange(change({ actor: 'mobile' })), 'addMarker（1 か所）（モバイル）');
   assert.equal(mobileUrl(['desk.tail1234.ts.net', 'desk', '100.1.2.3']), 'https://desk.tail1234.ts.net:8443/m/');
   assert.equal(mobileUrl(['desk', '100.1.2.3']), undefined);
