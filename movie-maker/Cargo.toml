@@ -36,6 +36,7 @@ mm-gpu = { path = "crates/mm-gpu" }
 mm-host-api = { path = "crates/mm-host-api" }
 mm-host-cef = { path = "crates/mm-host-cef" }
 mm-host-pipe = { path = "crates/mm-host-pipe" }
+mm-improve = { path = "crates/mm-improve" }
 mm-ingest = { path = "crates/mm-ingest" }
 mm-ingest-api = { path = "crates/mm-ingest-api" }
 mm-node-api = { path = "crates/mm-node-api" }
@@ -59,6 +60,8 @@ mm-ui-wgpu = { path = "crates/mm-ui-wgpu" }
 
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+# mm-improve が docs/areas.toml を読む。
+toml = "1"
 # FFmpeg のバインディング。ビルドには FFmpeg の開発ファイルと libclang が要る（crates/mm-decode-ffmpeg/README.md）。
 ffmpeg-next = { version = "9.0", default-features = false, features = ["codec", "format", "software-scaling", "software-resampling"] }
 thiserror = "2.0"

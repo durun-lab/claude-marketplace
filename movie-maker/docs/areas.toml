@@ -128,7 +128,7 @@ note = "apps/mm/src/<領域>_cmd.rs はその領域が書く（ingest_cmd は in
 [[area]]
 name = "improve"
 title = "自動の改善"
-write = ["crates/mm-improve/", "docs/design/10-review-improve.md"]
+write = ["crates/mm-improve/", "apps/mm/src/improve_cmd.rs", "docs/design/10-review-improve.md"]
 avoid = []
 
 [[area]]
@@ -327,3 +327,31 @@ reshape = "integration"
 path = "docs/rfcs/"
 rule = "<題>.md で書き始め、PR を作ったら <PR の番号 4 桁>-<題>.md に改める"
 reshape = "integration"
+
+# ---- 自動の改善の回の取り込み ----
+# 14-dev-structure.md の「自動の改善の領域」の表。回が変えたファイルが全部 `merge` に収まり、`hold` に当たらなければ取り込む。
+# それ以外は PR までで止めて人の承認を待つ。mm-improve が本線の版のこのファイルで判定する（`mm improve areas` で試せる）。
+[improve]
+merge = [
+  "ui/panels/*/",
+  "ui/theme/",
+  "crates/mm-ops/",
+  "crates/mm-eval/",
+  "crates/mm-store/",
+  "crates/mm-nodes-*/",
+  "crates/mm-text-*/",
+  "crates/mm-color-lut/",
+  "crates/mm-audio-dsp/",
+  "crates/mm-testkit/",
+  "crates/mm-bench/",
+  "crates/mm-pack/",
+  "fixtures/",
+  "fuzz/",
+  "packs/",
+  "tools/",
+]
+# `merge` の中でも人が見るもの。インターフェース（mm-text-api など）と期待画像。
+hold = [
+  "crates/mm-*-api/",
+  "fixtures/golden/",
+]

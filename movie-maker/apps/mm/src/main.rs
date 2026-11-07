@@ -18,6 +18,7 @@ mod commands;
 mod compare;
 mod describe;
 mod geneva_cmd;
+mod improve_cmd;
 mod ingest_cmd;
 mod opargs;
 mod otio_cmd;
@@ -74,6 +75,8 @@ enum Command {
     #[command(flatten)]
     Perf(perf::Cmd),
     #[command(flatten)]
+    Improve(improve_cmd::Cmd),
+    #[command(flatten)]
     ProbeStartup(scenes::Cmd),
 }
 
@@ -101,6 +104,7 @@ fn run(cli: Cli) -> Result<()> {
         Command::Otio(c) => c.run(),
         Command::Pack(c) => c.run(),
         Command::Perf(c) => c.run(),
+        Command::Improve(c) => c.run(),
         Command::ProbeStartup(c) => c.run(),
     }
 }
