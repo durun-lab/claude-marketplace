@@ -5,7 +5,9 @@
 //! 変換できない要素は数えて、標準出力の JSON の `gaps` に出す。
 
 mod html;
+mod look;
 mod media;
+mod nested;
 mod report;
 mod shape;
 mod sound;
@@ -113,13 +115,15 @@ pub fn convert(timeline: &Value, base: &Path, render_output: &Path) -> Result<(P
     let height = dimension(&out, "height", DEFAULT_HEIGHT);
     let fps = output_fps(&out)?;
     let (assets, media) = probe_assets(timeline, base, fps)?;
-    let mut ctx = Ctx {
-        fps,
-        frame: [f64::from(width), f64::from(height)],
-        media: &media,
-        report: Report::default(),
-    };
+    let mut ctx = Ctx::new(fps, [f64::from(width), f64::from(height)], &media);
+    let defs = timeline
+        .get("compositions")
+        .and_then(Value::as_object)
+        .cloned()
+        .unwrap_or_default();
+    ctx.comps = nested::sizes(&defs)?;
     note_top_level(&mut ctx.report, timeline);
+    let nested = nested::compositions(&mut ctx, &defs)?;
     let list = |k: &str| {
         timeline
             .get(k)
@@ -138,6 +142,7 @@ pub fn convert(timeline: &Value, base: &Path, render_output: &Path) -> Result<(P
     project
         .compositions
         .push(Composition::new(Id::new(MAIN_ID), width, height, fps, duration).with_layers(layers));
+    project.compositions.extend(nested);
     let main = target::main_target(&out, [width, height], fps, render_output);
     let extra = target::extra_targets(timeline.get("outputs"), &main, &mut ctx.report);
     project.render_targets.push(main);
@@ -179,10 +184,8 @@ fn note_top_level(report: &mut Report, timeline: &Value) {
         Some(_) => true,
         None => false,
     };
-    for key in ["subtitles", "compositions"] {
-        if present(key) {
-            report.add(Gap::TopLevel);
-        }
+    if present("subtitles") {
+        report.add(Gap::TopLevel);
     }
 }
 

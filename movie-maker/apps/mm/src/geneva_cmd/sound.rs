@@ -121,20 +121,13 @@ mod tests {
     use serde_json::json;
     use std::collections::HashMap;
 
-    use super::super::report::Report;
-
     fn secs(n: i128, d: u32) -> RationalTime {
         RationalTime::new(n, d).unwrap()
     }
 
     fn convert(clip: Value) -> Layer {
         let media = HashMap::new();
-        let mut ctx = Ctx {
-            fps: Rational::integer(30),
-            frame: [1920.0, 1080.0],
-            media: &media,
-            report: Report::default(),
-        };
+        let mut ctx = Ctx::new(Rational::integer(30), [1920.0, 1080.0], &media);
         audio_clip(&mut ctx, "bgm", "bgm-0", &clip, RationalTime::ZERO).unwrap()
     }
 
