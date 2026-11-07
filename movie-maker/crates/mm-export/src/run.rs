@@ -246,6 +246,7 @@ fn encode_settings(target: &RenderTarget) -> EncodeSettings {
             sample_rate: DEFAULT_SAMPLE_RATE,
             channels: DEFAULT_CHANNELS,
         }),
+        stream: None,
     }
 }
 

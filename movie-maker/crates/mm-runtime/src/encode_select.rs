@@ -294,6 +294,7 @@ mod tests {
             codec: codec.into(),
             output_path: "out.mp4".into(),
             audio: None,
+            stream: None,
         }
     }
 

@@ -9,11 +9,15 @@ const DEFAULT_WIDTH = 640;
 const DEFAULT_HEIGHT = 360;
 const DEFAULT_RADIUS = 24;
 
-/** 既存のマスクの ID と重ならない `mask-N`。 */
-export const nextMaskId = (masks: readonly Mask[]): string => {
+/**
+ * レイヤーのマスクと重ならない `<レイヤー>-mask-N`。マスクの ID はプロジェクト全体で重ならない決まりなので、
+ * プロジェクトで一意のレイヤーの ID を頭に付け、ほかのレイヤーのマスクとも重ならないようにする。
+ */
+export const nextMaskId = (layerId: string, masks: readonly Mask[]): string => {
   const used = new Set(masks.map((m) => m.id));
   for (let n = masks.length + 1; ; n += 1) {
-    if (!used.has(`mask-${n}`)) return `mask-${n}`;
+    const id = `${layerId}-mask-${n}`;
+    if (!used.has(id)) return id;
   }
 };
 
@@ -22,7 +26,7 @@ export const addRectMaskOp = (layer: Layer): Op => ({
   op: "addMask",
   layer: layer.id,
   mask: {
-    id: nextMaskId(layer.masks ?? []),
+    id: nextMaskId(layer.id, layer.masks ?? []),
     rect: {
       position: vec2(...DEFAULT_POSITION),
       size: vec2(DEFAULT_WIDTH, DEFAULT_HEIGHT),
@@ -52,11 +56,10 @@ export type FadeEdge = "fade_in" | "fade_out";
 export const fadeSeconds = (fade: Fade | null | undefined): number =>
   fade ? fade.duration.num / fade.duration.den : 0;
 
-const defaultAudio = (): LayerAudio => ({ role: "voice", gain_db: num(0), pan: num(0) });
-
-/** フェードの長さを変える操作。0 以下ならフェードを外す。曲線は今のものを保つ。 */
-export const setFadeDurationOp = (layer: Layer, edge: FadeEdge, seconds: number): Op => {
-  const audio = layer.audio ?? defaultAudio();
+/** フェードの長さを変える操作。0 以下ならフェードを外す。曲線は今のものを保つ。音の設定が無ければ null。 */
+export const setFadeDurationOp = (layer: Layer, edge: FadeEdge, seconds: number): Op | null => {
+  const audio = layer.audio;
+  if (!audio) return null;
   const ticks = Math.round(seconds * FADE_DEN);
   const { [edge]: current, ...rest } = audio;
   const next: LayerAudio = ticks > 0 ? { ...rest, [edge]: { ...current, duration: { num: ticks, den: FADE_DEN } } } : rest;

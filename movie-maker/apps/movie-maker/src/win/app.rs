@@ -191,6 +191,7 @@ fn forward_changes(app: &tauri::AppHandle, shared: &Arc<Shared>) {
     if let Err(e) = started {
         tracing::warn!("提案の通知を受けるスレッドを始められない: {e}");
     }
+    review_ipc::forward_comments(app, core);
 }
 
 fn fail(message: &str) -> ! {
@@ -451,6 +452,8 @@ mod tests {
             ("media_list", Panel::Media),
             ("mixer_state", Panel::Mixer),
             ("pack_apply", Panel::Pack),
+            ("review_comment_reply", Panel::Review),
+            ("review_comments", Panel::Review),
             ("review_undo", Panel::Review),
             ("source_open", Panel::Source),
             ("edit_action", Panel::Source),

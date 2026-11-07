@@ -4,7 +4,7 @@ import { act } from "preact/test-utils";
 import type { Layer, Op } from "@mm/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InspectorPanel } from "./InspectorPanel.tsx";
-import { nextMaskId } from "./maskOps.ts";
+import { nextMaskId, setFadeDurationOp } from "./maskOps.ts";
 import { describeLayer, setParamOp } from "./model.ts";
 
 const host = document.createElement("div");
@@ -87,15 +87,27 @@ describe("マスク", () => {
     expect(onOp).toHaveBeenCalledWith(setParamOp("l1", "masks.mask-1.rect.radius", { type: "number", value: 20 }));
   });
 
-  it("追加は addMask を 1 回、ID は重ならない", () => {
+  it("追加は addMask を 1 回、ID はレイヤーの ID を頭に付けて重ならない", () => {
     const onOp = vi.fn();
     mount(onOp);
     act(() => el("add rect mask")?.click());
     expect(onOp).toHaveBeenCalledTimes(1);
     const op = onOp.mock.calls[0]?.[0] as Extract<Op, { op: "addMask" }>;
-    expect(op).toMatchObject({ op: "addMask", layer: "l1", mask: { id: "mask-2" } });
+    expect(op).toMatchObject({ op: "addMask", layer: "l1", mask: { id: "l1-mask-2" } });
     expect(op.mask.rect?.radius?.value).toEqual({ type: "number", value: 24 });
-    expect(nextMaskId([{ id: "mask-2" }, { id: "mask-1" }] as Layer["masks"] & object)).toBe("mask-3");
+    const masks = [{ id: "l1-mask-2" }, { id: "mask-1" }] as Layer["masks"] & object;
+    expect(nextMaskId("l1", masks)).toBe("l1-mask-3");
+  });
+
+  it("別のレイヤーに足すマスクは、ID がプロジェクトの中で重ならない", () => {
+    const other = { ...layer, id: "l2" } as Layer;
+    expect(nextMaskId("l2", other.masks ?? [])).not.toBe(nextMaskId("l1", layer.masks ?? []));
+  });
+
+  it("マスクの区画は最後に並び、追加のボタンの区画が続く", () => {
+    mount(vi.fn());
+    const titles = [...host.querySelectorAll(".mm-insp-title")].map((e) => e.firstChild?.textContent);
+    expect(titles.slice(-2)).toEqual(["Mask: mask-1", "Masks"]);
   });
 
   it("削除は removeMask を 1 回", () => {
@@ -133,6 +145,11 @@ describe("音のフェード", () => {
     change("fade in seconds", (e) => (e.value = "0"));
     const op = onOp.mock.calls[0]?.[0] as Extract<Op, { op: "setLayerAudio" }>;
     expect(op.audio && "fade_in" in op.audio).toBe(false);
+  });
+
+  it("音の設定の無いレイヤーには、フェードのために音の設定を作らない", () => {
+    const silent = { ...layer, audio: undefined } as Layer;
+    expect(setFadeDurationOp(silent, "fade_in", 1)).toBeNull();
   });
 
   it("曲線を選ぶと setLayerAudio を 1 回送る", () => {

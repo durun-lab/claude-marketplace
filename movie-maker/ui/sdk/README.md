@@ -150,10 +150,13 @@ Review パネル（`ui/panels/review`）が使う Tauri のコマンド。型は
 | `review_reopen` | `{ id }` | `Proposal`。却下したものを保留に戻す |
 | `review_undo` | `{ id }` | `Proposal`。承認で適用したトランザクションが取り消しのスタックの一番上のときだけ取り消す |
 | `review_preview` | `{ id, ops }` | `null`。Program に提案を適用したフレームを出す。`id: null` で元のフレームに戻す |
+| `review_comments` | なし | `Comment[]`（書いた順。モバイルが書いたものも入る。型は `ui/sdk/src/comments.ts`） |
+| `review_comment_reply` | `{ id, text }` | `Comment`。人の操作経路（`gui`）の返信 |
+| `review_comment_state` | `{ id, value }`（`open`、`done`、`wontfix`） | `Comment`。`fresh` は決められず `Err` |
 
 `Proposal` の `applied` は適用したトランザクションが今も取り消されていないこと、`undoable` はそれが取り消しのスタックの一番上にあること、`conflict` は保留中で提案の後の編集と触る所が重なる ID（あれば承認できない）。
 
-Tauri のイベント `mm:proposals-changed`（`{ id, state }`）が提案の追加・決定のたびに届く。取り消しで `applied` と `undoable` が変わるので、`mm:doc-changed` でも一覧を読み直す。
+Tauri のイベント `mm:proposals-changed`（`{ id, state }`）が提案の追加・決定のたびに届く。取り消しで `applied` と `undoable` が変わるので、`mm:doc-changed` でも一覧を読み直す。コメントの追加・返信・状態の変化（モバイルや Claude が書いたものも）は `mm:comments-changed`（`{ id, state }`）で届く。コメントの時刻を押したときの再生位置の移動は `transport`（`{ action: "seek", value: 秒 }`）。
 
 ## Transition のコマンド
 
@@ -161,9 +164,9 @@ Transition パネル（`ui/panels/transition`）が使う Tauri のコマンド�
 
 | コマンド | 引数 | 成功 |
 |---|---|---|
-| `transition_cuts` | `{ dir }` | 開いているコンポジションの sequence の `{ sequence, cuts: [{ id, start, duration, transition }] }`（秒）。`transition` は `{ kind, duration }` か `null`。`kind` は `dir` のパックのコードと一致した名前で、一致しなければ `null` |
+| `transition_cuts` | `{ dir }` | 開いているコンポジションの sequence の `{ sequence, cuts: [{ id, start, duration, transition }] }`（秒）。`transition` は `{ kind, duration, params }` か `null`。`kind` は `dir` のパックのコードと一致した名前で、一致しなければ `null`。`params` はノードの数のパラメータ（`p0`..`p7`、`rewind`） |
 | `pack_transitions` | `{ dir }` | パックの `transitions/` の名前（名前の順） |
-| `pack_apply` | `{ dir, name: "transition", args: { cut, kind, dur } }` | 置く・差し替える。`setTransition` 1 回で、取り消し 1 回で戻る |
+| `pack_apply` | `{ dir, name: "transition", args: { cut, kind, dur, seed? } }`、巻き戻しは `{ dir, name: "rewind", args: { cut, dur, speed? } }` | 置く・差し替える。`setTransition` 1 回で、取り消し 1 回で戻る。パネルは今の `p0`（`seed`）と `rewind`（`speed`）を引き継ぐ |
 | `apply_op` | `{ op: { op: "setTransition", cut, transition: null } }` | 外す |
 
 ## Inspector のコマンド

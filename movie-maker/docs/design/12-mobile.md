@@ -161,14 +161,15 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 | 方法 | 使う所 | 量の見積もり〔推〕 | 判断 |
 |---|---|---|---|
 | 静止画のコマ（`GET /m/api/frame` の WebP、幅 360〜720） | コメントの時刻、カットの頭、提案の前後、スクラブのつまみの上 | 1 枚 20〜60 KB | 採る。最初に作る |
-| 区間ごとに作る HLS（fMP4、4 秒の区間、H.264。360p 約 0.5 Mbps と 540p 約 1.2 Mbps、AAC 64 kbps） | 編集した結果を通して見る | 360p で 1 時間約 250 MB | 採る |
+| 区間ごとに作る HLS（MPEG-TS、4 秒の区間、H.264。360p 約 0.5 Mbps と 540p 約 1.2 Mbps、AAC 64 kbps） | 編集した結果を通して見る | 360p で 1 時間約 250 MB | 採る |
 | 素材の音だけ（AAC 64 kbps の m4a、Range で読む） | Story で文字起こしの所を聞く | 1 時間約 29 MB | 採る |
 | 提案の区間の短い動画（範囲の前後 2 秒、MP4） | 提案を動きで確かめる | 1 本 数百 KB〜数 MB | 採る。HLS の後 |
 | WebRTC で Program を流す | 再生の操作をその場で返す | 見ている間ずっと 1〜3 Mbps、PC は常にエンコード | 採らない。レビューに 60 fps のスクラブは要らず、電池と回線を食う |
 | プレビュー動画をそのまま | | 1 時間 2.6 GB | 採らない |
 
-- HLS の区間は見られたときに作る。プレイリストは今のバージョンのコンポジションの全区間を並べ、区間の要求が来たら描いて NVENC で符号化して返し、次の 2 区間を先に作る。描くのは `GET /frame` と同じ専用のスレッドの `Engine` で、PC の再生を止めない。
-- 区間のキーは区間に掛かるノードのキャッシュのキー（[RFC 0013](../rfcs/0013-render-order-and-cache-keys.md) のフレームのキャッシュと同じ作り）と画質から作り、URL に入れる。編集で変わらない区間はキーが同じなので作り直さず、端末のブラウザーにも残る（`Cache-Control: immutable`）。区間は `cache/mobile/` に置き、消しても作り直せる。
+- HLS の区間は見られたときに作る。プレイリストは今のバージョンのコンポジションの全区間を並べ、区間の要求が来たら描いて符号化して返し、次の 2 区間を先に作る。符号化は `mm-export` で中間の MP4 を書き、ffmpeg の CLI で目標のビットレートの MPEG-TS にする（`mm-encode-ffmpeg` は目標のビットレートと MPEG-TS を持たない）。描くのは `mm-stream` の専用のスレッドの 1 つの `Engine` で、PC の再生を止めない。`GET /frame` も `Streamer::with_engine` で同じ `Engine` を使える。
+- 区間のキーは区間の時間の範囲に掛かるもの（レイヤーとカットの JSON、区間の中の相対の位置、ノードの種類のバージョンと `cache_fingerprint`、素材の `contentHash`。[RFC 0013](../rfcs/0013-render-order-and-cache-keys.md) のフレームのキャッシュと同じ考え方）と画質から作り、URL に入れる。編集で変わらない区間はキーが同じなので作り直さず、端末のブラウザーにも残る（`Cache-Control: immutable`）。区間は `cache/mobile/hls/` に置き、上限（既定 2 GiB）を超えたら使った時刻の古いものから捨てる。消しても作り直せる。
+- コンテナは fMP4 でなく MPEG-TS にする。区間を 1 つずつ別に符号化して、編集の前後で作った区間を 1 本のプレイリストに混ぜるので、区間ごとに PAT、PMT、SPS、PPS を持ち、共通の初期化の区間（`EXT-X-MAP`）が要らない形が合う。
 - iOS の Safari は HLS をそのまま再生する。Android の Chrome は直接の再生に頼らず、Media Source Extensions の上の hls.js で再生する。HEVC は端末ごとの差が大きいので使わない。
 - 画質は既定で 360p にし、画面の切り替えで 540p にする。iOS では回線の種類を画面から読めないので、自動では切り替えない。
 - 電池: 映像は端末のハードウェアのデコーダーが読む H.264 に限る。画面を隠したら（`visibilitychange`）SSE を閉じ、戻ったら開き直して `hello` のバージョンから読み直す。時間で読み直す処理は持たない。
@@ -179,18 +180,18 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 
 | タブ | 中身 |
 |---|---|
-| `Watch` | 上に映像（16:9、上に固定）。その下にカットの境とコメントの印の付いたスクラブの棒。その下にコメントの一覧（`Open`、`Fresh`、`Done` で絞る。`Fresh` を先頭に） |
+| `Watch` | 上に映像（16:9、上に固定）。その下にカットの境とコメントのマーカーの付いたスクラブの棒。その下にコメントの一覧（`Open`、`Fresh`、`Done` で絞る。`Fresh` を先頭に） |
 | `Story` | 素材の一覧から文字起こしを開く。話題ごとの段落。使っている・使っていないの色分けはデスクトップの Story と同じ |
 | `Proposals` | 提案の一覧（新しい順）。だれが、名前、操作の要約、触る範囲、後の編集と重なるか |
 
-- コメント: 下の大きな `Comment` を押すと再生を止め、その時刻のコマを止めた絵の上に書く欄を出す。文字は OS の音声入力でも入る。`Range` で今の時刻を始めにし、再生して止めた所を終わりにする。`Draw` で止めた絵に指で線と矩形を描く（座標は 0〜1 に正規化し、デスクトップは Program の上に wgpu で描く。[UI](08-ui.md)）。スレッドの画面で返信し、下のボタンで `Done`、`Won't fix`、`Reopen` を決める。
+- コメント: 下の大きな `Comment` を押すと再生を止め、その時刻のフレームの上に書く欄を出す。文字は OS の音声入力でも入る。`Range` で今の時刻を始めにし、再生して止めた所を終わりにする。`Draw` で止めたフレームに指で線と矩形を描く（座標は 0〜1 に正規化し、デスクトップは Program の上に wgpu で描く。[UI](08-ui.md)）。スレッドの画面で返信し、下のボタンで `Done`、`Won't fix`、`Reopen` を決める。
 - コメントの形（`comments` の表の `json`。[保存の形](09-ingest-storage.md#表)。型は `ui/sdk/src/comments.ts`）: `{ id, comp, at | range: {in, out}, text, drawing: [{ kind: "stroke" | "rect" | "point", points }], author: { kind, name }, replies: [{ id, author, text, created_ms }], state, created_ms, client_id?, responded_txn? }`。`at` は時刻のコメントの時刻で、範囲のコメントでは `null`（`range` を持つ）。`author` は文字列でなくオブジェクト（端末は `kind: "mobile"`、`name` が端末の名前）。状態は人が書いて `open`、Claude の対応（`responds_to` を持つトランザクションの適用か提案の承認）で `fresh`（`responded_txn` がそのトランザクション）、人が確かめて `done` か `wontfix`。`fresh` は人からは決められず（400）、済みのコメントは対応で動かない。
 - コメントの API: `POST /comments` は `{ comp, at | range, text?, drawing?, client_id? }`。本文か描き込みが要り、座標は 0〜1。`client_id` が同じ再送は書かずに先のコメントを返す（送信待ちの列の再送用）。`GET /comments?state=&comp=&from=&to=` は `{ comments }`（書いた順）で、`from` と `to`（秒）は両方渡すとその区間と重なる時刻と範囲のコメントだけ。`POST /comments/{id}/replies` は `{ text }`、`POST /comments/{id}/state` は `{ state }`。どれも成功は `Comment` を返し、失敗は `{ error: { code, message } }`。書く、状態、描き込みは人の操作経路だけで、Claude の待ち受けは 403。変更は SSE の `comment`（`{ id, state }`）で流れる。
-- 提案: カードを開くと前後のコマを並べ、押すと切り替える（デスクトップの Program の切り替えと同じ）。`Play` で区間の短い動画。下の `Approve`（操作を選べば一部だけ）と `Reject`。決めた後の 5 秒は `Undo` を出す（全体の直前のときだけ効く）。
+- 提案: カードを開くと前後のフレームを並べ、押すと切り替える（デスクトップの Program の切り替えと同じ）。`Play` で区間の短い動画。下の `Approve`（操作を選べば一部だけ）と `Reject`。決めた後の 5 秒は `Undo` を出す（全体の直前のときだけ効く）。
 - Story: 単語を 1 回押すと始め、別の単語を押すと終わりになり、間を範囲にする（ドラッグはスクロールとぶつかるので使わない）。下の棒に `Keep`、`Reject`、`Hold`（`rate`）、`Topic`（範囲から話題）、`Delete`（`deleteWords`）、`Play`（その単語から素材の音）。話題の一覧は長押しで並べ替え、離すと開いているシーケンスへ `insertTopics`。上に検索。
 - 「PC で決める」: 操作の前に切り替えると、即時に適用せず提案（`entry` は `mobile`）として出す。PC の Review かモバイルの `Proposals` で決める。
 - 片手で使う要点: 決める操作は画面の下の 3 分の 1 に置く。押す所は 44 pt 以上。スワイプの操作には同じことをするボタンも置く。確認の画面は出さず、`Undo` で戻せるようにする。横にすると映像だけを全画面にする。
-- オフライン: 段階 9 では接続を前提にする。コメントだけは送信待ちの列（IndexedDB）に置き、つながったら送る。操作は `base_version` を付けて送り、`Conflict` なら画面に出して読み直す。
+- オフライン: 段階 9 では接続を前提にする。コメントだけは送信待ちのキュー（IndexedDB）に置き、つながったら送る。localStorage は 5 MB 前後で上限に当たると書けず、書くたびに全体を書き直すので、描き込みつきのコメントが溜まる送信待ちには使わない。Safari の 7 日の消去（ITP）は IndexedDB と localStorage に同じく効き、ホーム画面に置いた Web アプリは Safari と別に数えるので、ホーム画面から使う前提にし、`navigator.storage.persist()` で容量が足りないときの消去も避けるよう頼む。操作は `base_version` を付けて送り、`Conflict` なら画面に出して読み直す。
 
 ### durun-dashboard とのつなぎ
 
@@ -213,7 +214,7 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 | `GET /m/api/comments?state=`、`POST /m/api/comments`、`POST /m/api/comments/{id}/replies`、`POST /m/api/comments/{id}/state` | コメントの一覧、書く、返信、状態 |
 | `GET /m/api/proposals`、`GET /m/api/proposals/{id}`、`POST /m/api/proposals`、`POST /m/api/proposals/{id}/approve`、`/reject`、`/reopen` | 提案。形は Claude の待ち受けの `/proposals` と同じ |
 | `GET /m/api/frame?t=&width=&proposal=&ops=` | コマの WebP |
-| `GET /m/api/stream/{comp}/{quality}.m3u8`、`GET /m/api/stream/seg/{key}.m4s` | HLS のプレイリストと区間 |
+| `GET /m/api/stream/{comp}/{quality}.m3u8`、`GET /m/api/stream/seg/{key}.ts` | HLS のプレイリストと区間 |
 | `GET /m/api/audio/{asset}.m4a`、`GET /m/api/proposals/{id}/clip.mp4` | 素材の音だけ、提案の区間の短い動画 |
 | `GET /m/api/events` | SSE。`hello`、`change`、`resync`、`proposal` に加えて `comment`（`{ id, state }`） |
 

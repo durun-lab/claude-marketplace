@@ -19,7 +19,7 @@ use crate::win::playback::Command;
 use crate::win::sequence_edit::EditState;
 use crate::win::source::SourceSlot;
 
-/// 保存した変更を WebView へ知らせる口。
+/// 保存した変更を WebView へ知らせる関数。
 type ChangeNotify = Box<dyn Fn(&mm_serve::Change) + Send + Sync>;
 
 /// 百分位つきの要約（単位は呼び出し側の決め。ここではミリ秒）。
@@ -140,7 +140,7 @@ pub struct Shared {
     pub edit_lane: Mutex<Option<Sender<EditJob>>>,
     /// 書き手として開いた `project.mmdb` の中心。操作はここで保存してから描き直す。JSON のプロジェクトでは空。
     pub core: OnceLock<Arc<mm_serve::Core>>,
-    /// JSON のプロジェクトで操作を適用したとき、WebView へ `mm:doc-changed` を送る口。`core` があるときは使わない。
+    /// JSON のプロジェクトで操作を適用したとき、WebView へ `mm:doc-changed` を送る関数。`core` があるときは使わない。
     json_notify: OnceLock<ChangeNotify>,
     /// `core` の変更で触った ID のうち、再生スレッドがまだキャッシュを捨てていないもの。
     pub reload_touched: Mutex<Vec<String>>,
@@ -235,13 +235,13 @@ impl Shared {
         self.doc_serial.fetch_add(1, Ordering::SeqCst);
     }
 
-    /// JSON のプロジェクトの編集を知らせる口を置く。
+    /// JSON のプロジェクトの編集を知らせる関数を置く。
     pub fn on_json_edit(&self, notify: impl Fn(&mm_serve::Change) + Send + Sync + 'static) {
         let _ = self.json_notify.set(Box::new(notify));
     }
 
     /// JSON のプロジェクトで適用・取り消し・やり直しをしたことを知らせる。`kind` は `apply`、`undo`、`redo`。
-    /// JSON には保存のバージョンが無いので、`doc_serial` を版と ID の代わりにする。
+    /// JSON には保存のバージョンが無いので、`doc_serial` をバージョンとトランザクションの ID の代わりにする。
     pub fn announce_edit(&self, kind: &'static str, touched: Vec<String>) {
         let Some(notify) = self.json_notify.get() else {
             return;
@@ -367,7 +367,7 @@ mod tests {
     }
 
     #[test]
-    fn json_の編集は登録した口へ種類と触った_id_を知らせる() {
+    fn json_の編集は登録した関数へ種類と触った_id_を知らせる() {
         let s = Shared::new();
         s.announce_edit("apply", vec!["x".into()]);
         let seen = Arc::new(Mutex::new(Vec::new()));

@@ -6,7 +6,7 @@
     "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
     "id": {"type": "id", "description": "レイヤーの ID"},
     "text": {"type": "text", "default": "作曲Vlog", "description": "題"},
-    "kicker": {"type": "text", "description": "バッジの文（回の番号。#4）"},
+    "kicker": {"type": "text", "description": "バッジの文（エピソードの番号。#4）"},
     "sub": {"type": "text", "description": "リボンの文（初音ミク × J-core）"},
     "x": {"type": "number", "default": "1390", "description": "題字の真ん中の x（コンポジションの画素）。顔の反対側に置く"},
     "y": {"type": "number", "default": "548", "description": "題字の真ん中の y（コンポジションの画素）"},

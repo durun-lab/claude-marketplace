@@ -1,6 +1,6 @@
 //! `mm geneva`: geneva のタイムライン（JSON。DTM_Vlog の `timeline.json`）を movie-maker のプロジェクトの JSON にする。
 //!
-//! 終わった回を movie-maker で書き出し直し、前の書き出しと比べる（`docs/design/11-testing.md` の「実データ」）ための取り込み。
+//! 終わったエピソードを movie-maker で書き出し直し、前の書き出しと比べる（`docs/design/11-testing.md` の「実データ」）ための取り込み。
 //! 素材は動かさず、タイムラインの `assets.*.src` を `--assets`（省くとタイムラインのフォルダー）からの絶対パスで指す。
 //! 変換できない要素は数えて、標準出力の JSON の `gaps` に出す。
 
