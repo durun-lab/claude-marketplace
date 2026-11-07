@@ -22,13 +22,16 @@ mod forge;
 mod gate;
 mod git;
 mod improver;
+mod job;
 mod proc;
 mod prompt;
 mod round;
 mod standard;
 mod state;
 mod store;
+mod sweep;
 mod time;
+mod write_guard;
 
 pub use agent::{
     find_transcript, run_settings, usage_limit, Agent, AgentEnd, AgentRequest, ClaudeCli,
@@ -58,3 +61,4 @@ pub use store::{
     FeedbackItem, FeedbackKind, FeedbackStatus, FeedbackStore, NewFeedback, Outcome, Reply,
     MAX_TEXT_CHARS,
 };
+pub use write_guard::{rule_path, WriteGuard};
