@@ -12,7 +12,7 @@ use mm_eval::{node_params_at, place_cuts, reframe_at, source_time, PlacedCut};
 use mm_node_api::{GpuTexture, NodeKind};
 use mm_types::{Id, MmError, ParamValue, Params, RationalTime, Rect, Result};
 
-use crate::crossfade::{crossfade_at, handles_in, rewind_rate, Crossfade};
+use crate::crossfade::{crossfade_at, handles_in, params_time, rewind_rate, Crossfade};
 use crate::effects::NodeRun;
 use crate::layers::{CompCx, LayerImage, Prepared, MAX_DEPTH};
 use crate::renderer::WgpuRenderer;
@@ -130,7 +130,8 @@ impl WgpuRenderer {
             return Ok(None);
         };
         let schema = kind.params();
-        let mut params = node_params_at(&tr.node, cx.t).with_defaults(&schema);
+        let at = params_time(&placed[fade.to]);
+        let mut params = node_params_at(&tr.node, at).with_defaults(&schema);
         params.set(PROGRESS_PARAM, ParamValue::Number(f64::from(fade.progress)));
         if schema.get(DURATION_PARAM).is_some() {
             params.set(DURATION_PARAM, ParamValue::Number(fade.length));
@@ -139,7 +140,7 @@ impl WgpuRenderer {
             fade,
             kind,
             params,
-            rewind: rewind_rate(tr),
+            rewind: rewind_rate(tr, at),
         }))
     }
 

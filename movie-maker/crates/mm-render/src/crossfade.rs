@@ -84,14 +84,20 @@ fn crossfade(from: usize, to: usize, t: f64, boundary: f64, half: f64) -> Crossf
     }
 }
 
+/// トランジションのパラメータを評価する時刻。余白の決定（掛かりの長さ）、逆向きの倍率、シェーダーに渡す値が
+/// 食い違わないよう、どれも境（入ってくるカットの先頭）の値を読む。
+pub(crate) fn params_time(placed: &PlacedCut) -> RationalTime {
+    placed.range.start
+}
+
 /// トランジションが出ていくカットを逆向きに描くか（種類のパラメータ `rewind` が正）。逆向きなら出の後ろの余白は使わない。
-pub(crate) fn rewinds(tr: &Transition) -> bool {
-    rewind_rate(tr) > 0.0
+pub(crate) fn rewinds(tr: &Transition, at: RationalTime) -> bool {
+    rewind_rate(tr, at) > 0.0
 }
 
 /// 出ていくカットを逆向きに描く倍率。0 なら普通に描く。
-pub(crate) fn rewind_rate(tr: &Transition) -> f64 {
-    node_params_at(&tr.node, RationalTime::ZERO)
+pub(crate) fn rewind_rate(tr: &Transition, at: RationalTime) -> f64 {
+    node_params_at(&tr.node, at)
         .number_or(REWIND_PARAM, 0.0)
         .max(0.0)
 }
@@ -118,7 +124,7 @@ fn half_at(
         let len = p.range.duration()?.to_f64();
         Ok(if shared { len / 2.0 } else { len })
     };
-    let tail = if rewinds(tr) {
+    let tail = if rewinds(tr, params_time(after)) {
         f64::INFINITY
     } else {
         handles(&seq.cuts[before.index]).tail

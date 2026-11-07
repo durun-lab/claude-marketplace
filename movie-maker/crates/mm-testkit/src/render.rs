@@ -7,7 +7,10 @@ use std::sync::Arc;
 use mm_audio_api::{AudioBlock, MixInput, MixerFactory};
 use mm_decode_api::{DecoderFactory, FrameSource};
 use mm_doc::{Composition, Layer, Project};
-use mm_eval::{any_solo, audible, evaluate_audio, evaluate_opacity, node_params_at, source_time};
+use mm_eval::{
+    any_solo, audible, evaluate_audio, evaluate_opacity, fade_gain, has_fades, node_params_at,
+    source_time,
+};
 use mm_node_api::{
     audio_frames_in, AudioCx, FrameCx, FrameRef, GpuHelper, NoInputs, NodeKind, NodeRegistry,
     Quality, Services,
@@ -169,7 +172,8 @@ impl SampleRenderer {
             channels: req.channels,
             footage,
         };
-        let block = kind.render_audio(&mut cx)?;
+        let mut block = kind.render_audio(&mut cx)?;
+        apply_fades(&mut block, layer, overlap.start)?;
         let offset = audio_frames_in(
             TimeRange::new(req.range.start, overlap.start)?,
             req.sample_rate,
@@ -183,6 +187,22 @@ impl SampleRenderer {
             pan,
         }))
     }
+}
+
+/// `start`（コンポジションの時刻）から並ぶ `block` に、音のフェードをサンプルごとに掛ける。
+/// 実レンダラーと同じ `fade_gain` を読み、フェードの端が無音になることを契約に含める。
+fn apply_fades(block: &mut AudioBlock, layer: &Layer, start: RationalTime) -> Result<()> {
+    if !has_fades(layer) {
+        return Ok(());
+    }
+    let channels = usize::from(block.channels);
+    let rate = block.sample_rate;
+    for (i, frame) in block.samples.chunks_exact_mut(channels).enumerate() {
+        let t = start.checked_add(RationalTime::new(i as i128, rate)?)?;
+        let gain = fade_gain(layer, t) as f32;
+        frame.iter_mut().for_each(|s| *s *= gain);
+    }
+    Ok(())
 }
 
 /// レイヤーの音の設定（役割、dB、パン）を時刻 `t` で評価する。音の設定が無ければパススルー。
