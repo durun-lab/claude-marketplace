@@ -191,6 +191,7 @@ impl Store {
         set_meta(&tx, "doc_version", &stored.doc_version.to_string())?;
         set_meta(&tx, "undo_pos", &pos.to_string())?;
         extra(&tx, &stored)?;
+        crate::comments::link_response(&tx, &stored)?;
         tx.commit().sql()?;
         self.adopt(project, rows, stored.doc_version, pos);
         Ok(stored)
