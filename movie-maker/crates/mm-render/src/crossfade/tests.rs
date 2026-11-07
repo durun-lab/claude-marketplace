@@ -43,28 +43,28 @@ fn fade(seq: &Sequence, t: RationalTime) -> Option<Crossfade> {
 }
 
 #[test]
-fn 境から離れた時刻は掛からない() {
+fn 編集点から離れた時刻は掛からない() {
     let seq = three_cuts(1);
     assert_eq!(fade(&seq, secs(1)), None);
     assert_eq!(fade(&seq, at(11, 8)), None);
 }
 
 #[test]
-fn 境の前は前のカットから次のカットへ進む() {
+fn 編集点の前は前のカットから次のカットへ進む() {
     let f = fade(&three_cuts(1), at(7, 4)).unwrap();
     assert_eq!((f.from, f.to), (0, 1));
     assert!((f.progress - 0.25).abs() < 1e-6, "{f:?}");
 }
 
 #[test]
-fn 境ちょうどは半分で混ざる() {
+fn 編集点ちょうどは半分で混ざる() {
     let f = fade(&three_cuts(1), secs(2)).unwrap();
     assert_eq!((f.from, f.to), (0, 1));
     assert!((f.progress - 0.5).abs() < 1e-6, "{f:?}");
 }
 
 #[test]
-fn 境の後は次のカットの先頭で終わる() {
+fn 編集点の後は次のカットの先頭で終わる() {
     let f = fade(&three_cuts(1), at(9, 4)).unwrap();
     assert_eq!((f.from, f.to), (0, 1));
     assert!((f.progress - 0.75).abs() < 1e-6, "{f:?}");
@@ -80,7 +80,7 @@ fn 最初のカットの先頭にはトランジションが掛からない() {
 
 #[test]
 fn トランジションの半分は片側だけのカットの長さを超えない() {
-    // 最初のカットは先頭にトランジションが無いので、境の前の 2 秒の全部まで延びる。
+    // 最初のカットは先頭にトランジションが無いので、編集点の前の 2 秒の全部まで延びる。
     let mut seq = three_cuts(10);
     seq.cuts[2].transition_in = None;
     let f = fade(&seq, secs(1)).unwrap();
@@ -125,7 +125,7 @@ fn 半分の長さは延ばす側の素材の余白で切る() {
     assert_eq!(
         fade_with(&seq, at(3, 2), &handles),
         None,
-        "境の 0.25 秒より前"
+        "編集点の 0.25 秒より前"
     );
     let f = fade_with(&seq, secs(2), &handles).unwrap();
     assert!((f.progress - 0.5).abs() < 1e-6, "{f:?}");
@@ -136,7 +136,7 @@ fn 半分の長さは延ばす側の素材の余白で切る() {
     assert_eq!(
         fade_with(&seq, secs(2), &none),
         None,
-        "余白が無ければ掛けない"
+        "素材の余白が無ければ掛けない"
     );
 }
 

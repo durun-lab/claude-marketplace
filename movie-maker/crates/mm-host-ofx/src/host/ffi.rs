@@ -1,5 +1,5 @@
 //! OpenFX 1.5 の C API のうち、このホストが使う部分。構造体の並びは `vendor/openfx/include` の公式のヘッダーに合わせ、
-//! 大きさは C の側（`csrc/shim.c` の `mm_ofx_layout`）と試験で突き合わせる。
+//! 大きさは C の側（`csrc/shim.c` の `mm_ofx_layout`）とテストで突き合わせる。
 //! ハンドルは全部 `*mut c_void` で受け、中身はホストの Rust の構造体（`props::PropSet` など）を指す。
 
 use std::ffi::{c_char, c_int, c_uint, c_void};

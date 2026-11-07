@@ -654,7 +654,7 @@ if (args[0] === 'stop') later(300, ${js(dropWorkers(roster))});`,
   assert.deepEqual(queued(), ['保留']);
 });
 
-test('モデルと effort を変えるときは、止めてからフラグを付けて再開し、複製ができたら設定とやり取りを複製へ移して元をアーカイブする', async () => {
+test('モデルと effort と権限モードを変えるときは、止めてからフラグを付けて再開し、複製ができたら設定とやり取りを複製へ移して元をアーカイブする', async () => {
   // 偽の claude は呼ばれた引数を書き足す。フラグ付きの再開は、本物と同じく複製のジョブ j9 を起動したと書く。agents は、元の j8 と複製の j9 を返す。
   const bin = path.join(tmp, 'bin-switch');
   const callsFile = path.join(tmp, 'calls-switch');
@@ -676,11 +676,11 @@ if (args[0] === '--bg') console.log('note: the flags you passed started a copy a
   state.docs.push({ id: 'd8', sessionId: 's8', title: '資料', format: 'markdown', content: '', createdAt: 0, seen: true });
   state.sessionOrder = ['s8'];
 
-  assert.equal(await switchSession('s8', '続けて', 'opus', 'high'), 's9');
+  assert.equal(await switchSession('s8', '続けて', 'opus', 'high', 'acceptEdits'), 's9');
   const calls = fs.readFileSync(callsFile, 'utf8').split('\n\n').slice(0, -1).map((c) => c.split('\n'));
   assert.deepEqual(calls, [
     ['stop', 'j8'],
-    ['--bg', '--resume', 's8', '--model', 'opus', '--effort', 'high', '--', '続けて'],
+    ['--bg', '--resume', 's8', '--model', 'opus', '--effort', 'high', '--permission-mode', 'acceptEdits', '--', '続けて'],
     ['agents', '--json', '--all'],
     ['agents', '--json', '--all'],
     ['rm', 'j8'],
@@ -789,15 +789,24 @@ if (args[0] === '--bg') console.log('backgrounded · j12');`,
   assert.ok(sent?.deliveredAt);
 });
 
-test('compact は、入力待ちのバックグラウンドのセッションなら止めずに supervisor に返信を頼んで渡し、作業中のセッションはセッションの状態で断ったエラーにする', async () => {
+test('compact は、入力待ちのバックグラウンドのセッションなら止めずに supervisor に返信を頼んで渡し、作業中のセッションは保留して入力待ちになってから渡す', async () => {
   const callsFile = path.join(tmp, 'calls-compact');
   useFakeClaude(path.join(tmp, 'bin-compact'), `fs.appendFileSync(${js(callsFile)}, lines([...args, '']));`);
   const live = (status: string): void => fs.writeFileSync(path.join(tmp, 'claude', 'sessions', 's13.json'), JSON.stringify({ pid: process.pid, sessionId: 's13', cwd: tmp, status, kind: 'bg', jobId: 'j13' }));
+  ensureSession('s13', tmp);
+  const held = (): string[] => state.queue.filter((m) => m.sessionId === 's13').map((m) => m.text);
   live('busy');
-  await assert.rejects(async () => compactSession('s13', tmp), SessionStateError);
+  assert.deepEqual(await compactSession('s13', tmp), { queued: true });
+  assert.deepEqual(held(), ['/compact']);
   live('idle');
+  const queued = await listenSupervisor({ ok: true, op: 'reply' });
+  flushQueue();
+  assert.deepEqual(held(), []);
+  assert.deepEqual(await queued.request, { proto: 1, op: 'reply', short: 'j13', text: '/compact', auth: 'control-key' });
+  await close(queued.server);
+  assert.equal(state.outbox.some((m) => m.sessionId === 's13'), false);
   const accepting = await listenSupervisor({ ok: true, op: 'reply' });
-  await compactSession('s13', tmp);
+  assert.deepEqual(await compactSession('s13', tmp), { queued: false });
   assert.deepEqual(await accepting.request, { proto: 1, op: 'reply', short: 'j13', text: '/compact', auth: 'control-key' });
   await close(accepting.server);
   removeSupervisorDir();

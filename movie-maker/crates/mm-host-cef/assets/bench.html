@@ -22,7 +22,7 @@
     document.getElementById('bg').style.filter = `hue-rotate(${(t * 30) % 360}deg)`;
     document.getElementById('frame').textContent = 't=' + t.toFixed(3);
     document.getElementById("mark").style.background = `rgb(${seq & 255},${(seq >> 8) & 255},${(seq >> 16) & 255})`;
-    // 反映済みの合図。タイトルの変更はブラウザ側へ届くので、ホストはこれを待ってから描かせる。
+    // 反映済みの合図。タイトルの変更はブラウザー側へ届くので、ホストはこれを待ってから描かせる。
     document.title = "ready:" + seq;
   };
 </script>

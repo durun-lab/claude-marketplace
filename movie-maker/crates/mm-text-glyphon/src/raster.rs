@@ -95,9 +95,11 @@ fn blend_glyph(
     }
 }
 
-/// 描く縁。太さが 0 以下か透明なら縁なし。
+/// 描く縁。太さは `clamped_width` に丸め、0 か透明なら縁なし。
 pub(crate) fn visible_stroke(style: &TextStyle) -> Option<TextStroke> {
-    style.stroke.filter(|s| s.width_px > 0.0 && s.color.a > 0.0)
+    let stroke = style.stroke?;
+    let width_px = stroke.clamped_width();
+    (width_px > 0.0 && stroke.color.a > 0.0).then_some(TextStroke { width_px, ..stroke })
 }
 
 /// `shaped` のグリフを `scale` 倍で描く。画像の原点は `shaped.bounds` の左上。

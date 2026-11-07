@@ -739,6 +739,12 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .learn-harness .learn-leaf { padding-left: 22px; }
 .learn-switch { margin: 0 4px 0 0; vertical-align: -2px; }
 .learn-harness tr.is-off td { color: #8c8c8c; }
+.workflow-table th:nth-child(1) { width: 22%; }
+.workflow-table th:nth-child(2) { width: 18%; }
+.workflow-table th:nth-child(3) { width: 22%; }
+.workflow-table th:nth-child(4) { width: 22%; }
+.workflow-table tr.is-off td { color: #8c8c8c; }
+.workflow-actions { display: flex; gap: 8px; }
 /* メモ帳と Internet Explorer の、XP のメニュー。 */
 .xp-menu { padding: 2px 7px; border: 0; background: none; font: inherit; }
 .xp-menu:hover, .xp-menu:has(+ :popover-open) { background: #316ac5; color: #fff; }

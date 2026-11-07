@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import type { ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import type { IncomingMessage } from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fillCallerPid } from '../server/callerPid.ts';
@@ -463,4 +464,44 @@ test('翻訳アプリの llama-server は、どの OS でも llama.cpp のパッ
   const base = 'C:\\Users\\me\\AppData\\Local\\Microsoft\\WinGet\\Packages';
   const exe = `${base}\\ggml.llamacpp_Microsoft.Winget.Source_8wekyb3d8bbwe\\llama-server.exe`;
   assert.deepEqual(platformFor('win32').toolCandidates('llama-server', { LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local' }, wingetDirs([exe])), [exe]);
+});
+
+test('setProcessPriority は、Windows では通常へも戻し、Mac と Linux では下げるだけにする', () => {
+  const calls: [number, number][] = [];
+  const set = (pid: number, priority: number) => void calls.push([pid, priority]);
+  assert.equal(platformFor('win32').setProcessPriority(10, 'low', set), true);
+  assert.equal(platformFor('win32').setProcessPriority(10, 'normal', set), true);
+  assert.equal(platformFor('darwin').setProcessPriority(11, 'idle', set), true);
+  assert.equal(platformFor('other').setProcessPriority(12, 'normal', set), false);
+  assert.deepEqual(calls, [[10, os.constants.priority.PRIORITY_BELOW_NORMAL], [10, os.constants.priority.PRIORITY_NORMAL], [11, os.constants.priority.PRIORITY_LOW]]);
+});
+
+test('setProcessPriority は、終わったプロセスに掛けられなかったら false を返す', () => {
+  const set = () => {
+    throw new Error('ESRCH');
+  };
+  assert.equal(platformFor('win32').setProcessPriority(10, 'idle', set), false);
+});
+
+test('throttleProcesses は、Windows では PowerShell に Base64 のスクリプトで渡し、子孫まで優先度とメモリ優先度と効率モードを掛ける', async () => {
+  const calls: string[][] = [];
+  const run: Run = async (file, args) => (calls.push([file, ...args]), '');
+  await platformFor('win32').throttleProcesses([10, 20], 'idle', 'C:\\data', run);
+  const [file, ...args] = calls[0] ?? [];
+  assert.equal(file, 'powershell.exe');
+  const script = Buffer.from(args.at(-1) ?? '', 'base64').toString('utf16le');
+  assert.match(script, /@\(10,20\)/);
+  assert.match(script, /\[DurunThrottle\]::Apply\(\$id, 1, 1, 1\)/);
+  assert.match(script, /PriorityClass = 'Idle'/);
+  assert.match(script, /C:\\data\\durun-throttle-[0-9a-f]{12}\.dll/);
+});
+
+test('throttleProcesses は、通常では効率モードを Windows の判断に戻し、PID が無ければ PowerShell を起動しない', async () => {
+  const scripts: string[] = [];
+  const run: Run = async (_file, args) => (scripts.push(Buffer.from(args.at(-1) ?? '', 'base64').toString('utf16le')), '');
+  await platformFor('win32').throttleProcesses([10], 'normal', 'C:\\data', run);
+  await platformFor('win32').throttleProcesses([], 'low', 'C:\\data', run);
+  await platformFor('darwin').throttleProcesses([10], 'low', '/data', run);
+  assert.equal(scripts.length, 1);
+  assert.match(scripts[0] ?? '', /Apply\(\$id, 5, 0, 0\)/);
 });

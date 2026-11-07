@@ -9,7 +9,7 @@ use crate::op::{Apply, Op};
 use crate::ops::{invalid, RemoveMask};
 use crate::touches::Touches;
 
-/// レイヤー `layer` のマスクの列の `index` の位置（省くと末尾）に `mask` を差し込む。
+/// レイヤー `layer` のマスクの並びの `index` の位置（省くと末尾）に `mask` を差し込む。
 /// マスクは上から順に組み合わせるので、位置で結果が変わる。`removeMask` の逆操作が元の位置に戻す。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]

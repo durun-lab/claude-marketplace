@@ -13,9 +13,9 @@ use crate::util::migrate_same_version;
 const DEFAULT_FONT: &str = "sans-serif";
 use crate::KIND_VERSION;
 
-/// 覚えておくシェーピングの結果の数。字幕の入れ替わりと、アニメーションの数値が数通り行き来する程度。
+/// キャッシュするシェーピングの結果の数。字幕の入れ替わりと、アニメーションの数値が数通り行き来する程度。
 const KEPT_SHAPES: usize = 8;
-/// 覚えておく描いた画布の数。倍率や領域が変わるたび（ズームの途中）に増えるので小さく保つ。
+/// キャッシュする描いた画布の数。倍率や領域が変わるたび（ズームの途中）に増えるので小さく保つ。
 const KEPT_CANVASES: usize = 8;
 
 /// `line_break` の選択肢。`none` は `max_width` を無視して折り返さず、残りは `LineBreak` の値に対応する。
@@ -59,7 +59,7 @@ fn remember<K: PartialEq, V: Clone>(entries: &mut Vec<(K, V)>, key: &K, limit: u
 /// 倍率 `cx.scale` で描くので拡大してもぼやけない（`vector`）。
 ///
 /// `time_varying: false` なので同じパラメータが毎フレーム来る。シェーピングの結果（`region_of_definition` と `render` で共有）と
-/// 描いた画布を覚え、2 回目からはシェーピングも描画も画布の確保もしない。
+/// 描いた画布をキャッシュし、2 回目からはシェーピングも描画も画布の確保もしない。
 #[derive(Debug, Default)]
 pub struct TextKind {
     cache: Mutex<TextCache>,
@@ -73,7 +73,7 @@ impl TextKind {
             .and_then(ParamValue::as_text)
             .unwrap_or(LINE_BREAK_ANYWHERE);
         let max_width = params.number_or("max_width", 0.0);
-        let stroke_width = params.number_or("stroke_width", 0.0);
+        let stroke_width = params.number_or("stroke_width", 0.0) as f32;
         TextStyle {
             font_family: params
                 .get("font")
@@ -89,12 +89,13 @@ impl TextKind {
             // 折り返しなしは幅を無視する（幅を残したまま切り替えられる）。
             max_width: (max_width > 0.0 && line_break != LINE_BREAK_NONE)
                 .then_some(max_width as f32),
-            stroke: (stroke_width > 0.0).then(|| TextStroke {
+            // 太さは上限までに丸め、有限でなければ縁なしにする（大きすぎる太さは確保できない画像になる）。
+            stroke: (stroke_width.is_finite() && stroke_width > 0.0).then(|| TextStroke {
                 color: params
                     .get("stroke_color")
                     .and_then(ParamValue::as_color)
                     .unwrap_or(Rgba::BLACK),
-                width_px: stroke_width as f32,
+                width_px: stroke_width.min(TextStroke::MAX_WIDTH_PX),
             }),
             line_break: if line_break == LINE_BREAK_PHRASE {
                 LineBreak::Phrase
@@ -118,16 +119,16 @@ impl TextKind {
             .unwrap_or("")
     }
 
-    /// 倍率をかけた左上の画素。縁は字の外側に出るので、縁の分だけ左上へ寄せ、縁の有無で字の位置が動かないようにする。
-    fn origin(params: &Params, scale: f32) -> (f32, f32) {
+    /// 倍率をかけた画像の左上の画素。画像の原点は `bounds` の左上なので、`position` に `bounds` の位置を足す。
+    /// 縁とふりがなとインクの張り出しはシェーパーが `bounds` を広げて表すので、付けても字の位置は動かない。
+    fn origin(params: &Params, shaped: &ShapedText, scale: f32) -> (f32, f32) {
         let [x, y] = params
             .get("position")
             .and_then(ParamValue::as_vec2)
             .unwrap_or([0.0, 0.0]);
-        let stroke = Self::style(params).stroke.map_or(0.0, |s| s.width_px);
         (
-            ((x as f32 - stroke) * scale).floor(),
-            ((y as f32 - stroke) * scale).floor(),
+            ((x as f32 + shaped.bounds.x) * scale).floor(),
+            ((y as f32 + shaped.bounds.y) * scale).floor(),
         )
     }
 
@@ -188,7 +189,14 @@ impl NodeKind for TextKind {
                 ParamType::Color,
                 ParamValue::Color(Rgba::BLACK),
             ),
-            ParamSpec::new("stroke_width", number(0.0), ParamValue::Number(0.0)),
+            ParamSpec::new(
+                "stroke_width",
+                ParamType::Number {
+                    min: Some(0.0),
+                    max: Some(f64::from(TextStroke::MAX_WIDTH_PX)),
+                },
+                ParamValue::Number(0.0),
+            ),
             ParamSpec::new(
                 "line_break",
                 ParamType::Choice {
@@ -219,7 +227,7 @@ impl NodeKind for TextKind {
         let Ok(shaped) = self.shaped(cx, &Self::shape_key(cx.params)) else {
             return Rect::EMPTY;
         };
-        let (x, y) = Self::origin(cx.params, cx.scale);
+        let (x, y) = Self::origin(cx.params, &shaped, cx.scale);
         Rect::new(
             x,
             y,
@@ -230,7 +238,8 @@ impl NodeKind for TextKind {
 
     fn render(&self, cx: &mut FrameCx<'_>) -> Result<FrameRef> {
         let shape = Self::shape_key(cx.params);
-        let (x, y) = Self::origin(cx.params, cx.scale);
+        let shaped = self.shaped(cx, &shape)?;
+        let (x, y) = Self::origin(cx.params, &shaped, cx.scale);
         // 画布は頼まれた領域の分だけにし、領域の原点を引いた位置に置く（領域が画布の全体なら元のまま）。
         let region = cx.region;
         let canvas_size = Size::new(
@@ -249,7 +258,6 @@ impl NodeKind for TextKind {
         if let Some(hit) = remember(&mut self.cache()?.canvases, &key, KEPT_CANVASES) {
             return Ok(FrameRef::Cpu(hit));
         }
-        let shaped = self.shaped(cx, &key.shape)?;
         let glyphs = cx
             .services
             .text_rasterizer
@@ -263,7 +271,7 @@ impl NodeKind for TextKind {
         Ok(FrameRef::Cpu(canvas))
     }
 
-    /// 書体の組が変わると同じパラメータでも組み方と画素が変わるので、覚えた結果を捨てる。
+    /// 書体の組が変わると同じパラメータでも組み方と画素が変わるので、キャッシュした結果を捨てる。
     fn use_fonts(&self, _fonts: &[FontFile]) -> Result<()> {
         *self.cache()? = TextCache::default();
         Ok(())

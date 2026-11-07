@@ -100,7 +100,7 @@ impl Effect {
         props
     }
 
-    /// 文脈ごとの記述子（describe の記述子のプロパティを写し、クリップとパラメータは空）。
+    /// 文脈ごとの記述子（describe の記述子のプロパティをコピーし、クリップとパラメータは空）。
     pub fn for_context(&self) -> Self {
         Self {
             props: self.props.duplicate(),

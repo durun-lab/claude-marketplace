@@ -2,4 +2,5 @@
 
 mod cef;
 mod contract;
+mod host;
 mod patches;

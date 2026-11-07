@@ -227,9 +227,8 @@ fn text(
     match backend {
         Backend::Sample => Ok((Arc::new(SampleShaper), Arc::new(SampleRasterizer))),
         Backend::Cef => {
-            let exe = mm_host_cef::find_host().ok_or_else(|| unsupported("text", backend))?;
-            let raster = mm_text_cef::CefRasterizer::new(Arc::new(mm_host_cef::CefLauncher), exe);
-            Ok((TextEngine::new().shaper(), Arc::new(raster)))
+            let raster = crate::cef::text_cef().ok_or_else(|| unsupported("text", backend))?;
+            Ok((TextEngine::new().shaper(), raster))
         }
         Backend::Cpu => {
             let engine = TextEngine::new();
@@ -309,24 +308,13 @@ fn registry(render: Backend) -> Result<Registry> {
         for kind in mm_nodes_basic::all_kinds() {
             r.register(kind)?;
         }
-        r.register(Arc::new(web_cef()))?;
+        r.register(crate::cef::web_cef())?;
     } else {
         r.register(Arc::new(SolidKind))?;
         r.register(Arc::new(FootageKind))?;
         r.register(Arc::new(TextKind))?;
     }
     Ok(r)
-}
-
-/// `web.cef` の種類。CEF の配布物とホストの実行ファイルがあればそれで描き、無ければモックの矩形。
-fn web_cef() -> mm_nodes_cef::WebCefKind {
-    match mm_host_cef::find_host() {
-        Some(exe) => mm_nodes_cef::WebCefKind::with_host(Arc::new(mm_host_cef::CefLauncher), exe),
-        None => {
-            tracing::info!("CEF のホストが無いので web.cef はモックの矩形で描く");
-            mm_nodes_cef::WebCefKind::mock()
-        }
-    }
 }
 
 #[cfg(test)]

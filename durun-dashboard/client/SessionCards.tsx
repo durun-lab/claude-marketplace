@@ -121,8 +121,9 @@ const SessionCard = ({ s, sel, dragging, drag }: { s: Session; sel: Selection; d
       <div class="card-mid-main">
         <p class="card-sub mono">{s.repo}{s.branch && <> · {s.branch}</>}</p>
         {/* 前に開いていたときのデータには、PR の一覧が無いことがある。 */}
-        {(s.prs?.length || s.jira.length > 0 || !!s.issues?.length) && (
+        {(s.prs?.length || s.jira.length > 0 || !!s.issues?.length || !!s.workflow) && (
           <div class="chips">
+            {s.workflow && <Chip tone="info" title="このセッションを起動したワークフロー">{s.workflow}</Chip>}
             {/* 一覧のまま PR や課題を見られるよう、session を渡さず、セッションの画面へ移らずにウィンドウに浮かべて開く。 */}
             {s.prs?.map((pr) => <PrChips key={pr.url} pr={pr} />)}
             <JiraChips issues={s.jira} />

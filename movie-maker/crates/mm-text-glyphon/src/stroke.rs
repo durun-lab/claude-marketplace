@@ -3,7 +3,7 @@
 use cosmic_text::SwashContent;
 use mm_types::{Rgba, RgbaImage};
 
-/// 縁の端の半透明の幅（画素）。小数の太さでも縁が段にならない。
+/// 縁の端の半透明の幅（画素）。小数の太さでも縁が階段状にならない。
 const EDGE_SOFTNESS: f32 = 0.5;
 
 /// 被覆率の画像。`Mask` のグリフだけが寄与する（絵文字には縁を付けない）。

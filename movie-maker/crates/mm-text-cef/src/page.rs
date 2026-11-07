@@ -2,7 +2,7 @@
 //! 行の文字はグリフが指す元の文字列の範囲から取り、ルビの注記を親文字とふりがなに分ける。
 //! 注記はシェーパーと同じ [`mm_text_api::parse_ruby`] で読む。
 
-use mm_text_api::{parse_ruby, RubySpan, ShapedText, TextStyle};
+use mm_text_api::{parse_ruby, RubySpan, ShapedText, TextStyle, RUBY_SCALE};
 use mm_types::transfer::linear_to_bt1886;
 use mm_types::Rgba;
 use serde_json::{json, Value};
@@ -11,7 +11,8 @@ use serde_json::{json, Value};
 const MAX8: f32 = 255.0;
 
 /// 線形の premultiplied の色を CSS の `rgb(r g b / a)`（8 bit の符号化値、straight）にする。
-/// ホストは描いた画素を Rec.1886 の式で線形に戻す（`mm_types::transfer`）ので、同じ式で符号化値にする。
+/// ホストは描いた画素を素材と同じ Rec.1886 の式で線形に戻す（`mm_types::transfer`）ので、同じ式で符号化値にし、
+/// 16 進の色が web.cef や書き出しと同じ値に戻るようにする。
 pub fn css_color(c: Rgba) -> String {
     if c.a <= 0.0 {
         return "transparent".into();
@@ -55,7 +56,8 @@ fn line_segments(text: &str, all: &[RubySpan], lo: usize, hi: usize) -> Vec<Valu
     out
 }
 
-/// ページの `mmSetTime(t, params)` に渡す値。座標は `bounds` の左上を原点にした 1 倍の画素。
+/// ページの `mmSetTime(t, params)` に渡す値。座標は `bounds` の左上を原点にした 1 倍の画素で、`width` は `bounds` の幅
+/// （ふりがなを左右の端の内側に寄せる）。
 pub fn page_params(shaped: &ShapedText, style: &TextStyle, scale: f32) -> Value {
     let text = &shaped.text;
     let all = parse_ruby(text);
@@ -80,14 +82,17 @@ pub fn page_params(shaped: &ShapedText, style: &TextStyle, scale: f32) -> Value 
         .collect();
     let stroke = style
         .stroke
-        .filter(|s| s.width_px > 0.0)
-        .map(|s| json!({ "width": s.width_px, "color": css_color(s.color) }));
+        .map(|s| (s.clamped_width(), s.color))
+        .filter(|(width, _)| *width > 0.0)
+        .map(|(width, color)| json!({ "width": width, "color": css_color(color) }));
     json!({
         "scale": scale,
+        "width": shaped.bounds.width,
         "lines": lines,
         "style": {
             "font": font_family(&style.font_family),
             "size": style.size_px,
+            "ruby": style.size_px * RUBY_SCALE,
             "color": css_color(style.color),
             "stroke": stroke,
         },
