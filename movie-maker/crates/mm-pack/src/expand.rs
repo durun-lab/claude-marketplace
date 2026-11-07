@@ -20,6 +20,9 @@ use crate::style::{PlateSpec, TextStyleSpec};
 const KIND_VERSION: u32 = 1;
 /// プレートのレイヤーの ID に足す後ろの部分。
 const PLATE_SUFFIX: &str = ".plate";
+/// 部品を置くコンポジションの引数の名前と、それを引く式。縁の固定のある既定はこのコンポジションの画面へ変換する。
+pub(crate) const COMP_PARAM: &str = "comp";
+const COMP_REF: &str = "{{comp}}";
 
 /// マクロ `name` を引数 `args`（名前 → 文字の値）で展開する。記録の名前は「<マクロの表示名>（<パック>）」。
 /// プレートの大きさは `shaper` で文字を組んで決める（描くときと同じシェーパーを渡すと、プレートが文字にぴったり合う）。
@@ -36,7 +39,7 @@ pub fn expand(
 }
 
 /// [`expand`] と同じく展開し、部品を置くコンポジションの画面の大きさを `project` から引く。本編と大きさの違う
-/// コンポジション（ショート）では、文字のスタイルの位置を基準点に近い画面の縁からの距離を保って写し、web の部品に
+/// コンポジション（ショート）では、文字のスタイルの位置を基準点に近い画面の縁からの距離を保って変換し、web の部品に
 /// その画面の大きさを渡す。
 pub fn expand_for(
     pack: &Pack,
@@ -62,7 +65,11 @@ fn expand_on(
     screens: Screens<'_>,
 ) -> Result<Transaction> {
     let def = pack.find(name)?;
-    let env = Env::new(def, &pack.theme, args)?;
+    let mut env = Env::new(def, &pack.theme, args)?;
+    if def.params.contains_key(COMP_PARAM) {
+        let screen = screens.of(&env.fill_text(COMP_REF)?);
+        env.pin_defaults(def, args, screens.canvas(), screen);
+    }
     let mut ops = Vec::new();
     for (i, step) in def.steps.iter().enumerate() {
         let values = match step {

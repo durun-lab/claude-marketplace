@@ -6,7 +6,7 @@
     "comp": {"type": "id", "default": "main", "description": "置くコンポジション"},
     "id": {"type": "id", "description": "レイヤーの ID"},
     "text": {"type": "text", "description": "吹き出しの文（ですます調で一言多い AI の口ぶり）。\\n で行を折る"},
-    "x": {"type": "number", "default": "1830", "description": "ロゴの札の外側の端の x（side が right なら右の端、left なら左の端）"},
+    "x": {"type": "number", "default": "1830", "pin": {"axis": "x", "anchor": 1}, "description": "ロゴの札の外側の端の x（side が right なら右の端、left なら左の端）。省くと置く画面の右の縁から 90"},
     "y": {"type": "number", "default": "260", "description": "ロゴの札の上の端の y"},
     "side": {"type": "text", "choices": ["right", "left"], "default": "right", "description": "ロゴを置く側。顔の反対側にする"},
     "layout": {"type": "text", "choices": ["stack", "row"], "default": "stack", "description": "stack はロゴの下に吹き出し、row はロゴの横に吹き出し"},

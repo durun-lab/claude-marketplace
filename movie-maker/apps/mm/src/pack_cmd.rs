@@ -52,6 +52,10 @@ pub enum PackCommand {
         /// 引数（`--var text=こんにちは`）。
         #[arg(long = "var", value_parser = parse_var)]
         vars: Vec<(String, String)>,
+        /// 適用する先のプロジェクト。渡すと、部品を置くコンポジションの画面の大きさ（ショートなど）をここから引く。
+        /// 省くと本編の画面の大きさで置く。
+        #[arg(long)]
+        project: Option<PathBuf>,
     },
     /// パックの書体の目録（`fonts/fonts.json`）の書体を配布元から取り、ハッシュを照らしてユーザーのキャッシュに置く。
     /// `apply` も足りない書体を取るので、先に取っておきたいとき（オフラインで作業する前など）に使う。
@@ -77,11 +81,23 @@ pub fn run(command: PackCommand) -> Result<()> {
         PackCommand::Check { pack } => run_check(&pack),
         PackCommand::List { pack, json } => list(&pack, json),
         PackCommand::FetchFonts { pack } => fetch_fonts(&pack),
-        PackCommand::Expand { pack, name, vars } => {
+        PackCommand::Expand {
+            pack,
+            name,
+            vars,
+            project,
+        } => {
             let pack = Pack::load(&pack)?;
             let engine = text_engine(&ensure_fonts(&pack))?;
+            let shaper = &*engine.services().text_shaper;
             let args = vars.into_iter().collect();
-            let txn = expand(&pack, &name, &args, &*engine.services().text_shaper)?;
+            let txn = match project {
+                Some(dir) => {
+                    let project = open_reader(&dir)?.project().clone();
+                    expand_for(&pack, &name, &args, shaper, &project)?
+                }
+                None => expand(&pack, &name, &args, shaper)?,
+            };
             println!("{}", serde_json::to_string_pretty(&txn)?);
             Ok(())
         }

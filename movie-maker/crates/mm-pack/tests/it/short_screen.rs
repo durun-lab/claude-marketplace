@@ -118,13 +118,44 @@ fn web_の部品にはショートの画面の大きさを渡す() {
             ("at", "0"),
         ],
     );
-    let ParamValue::Json(data) = &layers[0].source.params["data"].value else {
-        panic!("data が JSON でない");
-    };
+    let data = page_data(&layers[0]);
     let canvas = &data["theme"]["canvas"];
     assert_eq!(
         (canvas["width"].as_f64(), canvas["height"].as_f64()),
         (Some(SHORT[0]), Some(SHORT[1])),
         "side=right の部品は画面の幅から右の距離を決める"
     );
+    assert_eq!(data["x"].as_f64(), Some(1000.0), "渡した x は変換しない");
+}
+
+fn page_data(layer: &Layer) -> &serde_json::Value {
+    let ParamValue::Json(data) = &layer.source.params["data"].value else {
+        panic!("data が JSON でない");
+    };
+    data
+}
+
+#[test]
+fn 右に寄せる部品の既定の位置はショートでも右の縁から同じ距離() {
+    let pack = vlog();
+    let canvas = f64::from(pack.theme.canvas.width);
+    let parts = [
+        ("claude", vec![("id", "cl1"), ("text", "ここを直す")]),
+        (
+            "figure",
+            vec![("id", "fg1"), ("head", "見出し"), ("labels", "a|b")],
+        ),
+    ];
+    for (name, mut pairs) in parts {
+        let default: f64 = pack.find(name).unwrap().params["x"]
+            .default
+            .as_deref()
+            .and_then(|d| d.parse().ok())
+            .expect("x の既定");
+        pairs.push(("at", "0"));
+        let x = page_data(&on_short(&pack, name, &pairs)[0])["x"]
+            .as_f64()
+            .expect("x");
+        assert_eq!(SHORT[0] - x, canvas - default, "{name} の右の縁からの距離");
+    }
 }

@@ -2,7 +2,8 @@
 //!
 //! パックの位置と幅はテーマの本編の画面（`canvas`）の画素で書く。大きさの違うコンポジション（ショート）に置くときは、
 //! CSS の `right`・`bottom` や Premiere の Essential Graphics の「レスポンシブデザイン（位置）」と同じく、
-//! 基準点に近い画面の縁からの距離を保って写す。字の大きさと余白は画素のまま変えない。
+//! 基準点に近い画面の縁からの距離を保って変換する。字の大きさと余白は画素のまま変えない（ショートは短い辺が
+//! 本編と同じ 1080 なので、短い辺に対する字の大きさの割合も変わらない）。
 
 use mm_doc::Project;
 use mm_types::Id;
@@ -41,10 +42,15 @@ impl<'a> Screens<'a> {
     }
 }
 
-/// 画面 `from` の画素で書いた位置を画面 `to` へ写す。基準点 `anchor`（0..1）と同じ割合の画面の点からのずれを保つ
+/// 画面 `from` の画素で書いた位置を画面 `to` へ変換する。基準点 `anchor`（0..1）と同じ割合の画面の点からのずれを保つ
 /// （1 なら右・下の縁から、0.5 なら中央から、0 なら左・上の縁からの距離）。
 pub(crate) fn pin(position: [f64; 2], anchor: [f64; 2], from: [f64; 2], to: [f64; 2]) -> [f64; 2] {
-    std::array::from_fn(|i| position[i] + anchor[i] * (to[i] - from[i]))
+    std::array::from_fn(|i| pin_axis(position[i], anchor[i], from[i], to[i]))
+}
+
+/// [`pin`] の 1 つの軸。`from` と `to` はその軸の画面の長さ。
+pub(crate) fn pin_axis(position: f64, anchor: f64, from: f64, to: f64) -> f64 {
+    position + anchor * (to - from)
 }
 
 /// 折り返す幅。狭い画面では画面の幅に対する割合を保つ（CSS の `min(幅, 割合%)`）。広い画面では画素のまま。

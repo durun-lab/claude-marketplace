@@ -28,7 +28,7 @@ mm pack expand packs/vlog note --var id=n1 --var text=OTTって？ --var at=3 > 
 mm pack apply ep04 packs/vlog callout --var id=co1 --var text=このつまみで空気感が変わる --var x=1180 --var y=640 --var at=2
 ```
 
-`--var comp=short` でショートに置くと、`apply` は文字のスタイルを画面の縁からの距離を保って写し、web の部品にショートの画面の大きさを渡す。`expand` はプロジェクトを読まないので、本編の画面のまま置く（[設計書の「ショートに置く」](../../docs/design/13-vlog-pack.md#ショートに置く)）。
+`--var comp=short` でショートに置くと、`apply` は文字のスタイルを画面の縁からの距離を保って変換し、web の部品にショートの画面の大きさを渡す。`pin` のある引数（`claude`、`figure` の `x`）の既定も右の縁からの距離を保つ。`expand` は `--project ep04` を渡したときだけプロジェクトを読み、省くと本編の画面に置く（[設計書の「ショートに置く」](../../docs/design/13-vlog-pack.md#ショートに置く)）。
 
 `callout` などの web の部品は `web.cef` で描く。CEF の配布物とホストが無い環境（`CEF_PATH` か `MM_CEF_HOST` が無い）では、モックの矩形で描く（[mm-nodes-cef](../../crates/mm-nodes-cef/README.md)）。
 
@@ -72,8 +72,8 @@ mm pack apply ep04 packs/vlog rewind --var cut=c20 --var speed=3
 ```
 
 - 種類は `transitions/<名前>.wgsl`。DTM_Vlog の WebGL2 のトランジション 19 種（boot、dip、dissolve、filter、flash、glitch、hex、leak、liquid、pianoroll、punch、slice、spectrum、stars、stepseq、vinyl、warp、waveform、whip）と、巻き戻し（rewind）。
-- `_prelude.wgsl` は全部の前に付く共通のコードで、元の `engine.js` の GLSL の小道具と、`index.html` の合成（マット、重ねる絵、映像の動き、シャッターの間のモーションブラー）を移したもの。合成は元と同じく 8 bit の符号化値（書き出しと同じ Rec.1886 の式）の空間で行い、シャッターの間は元と同じ 16 回描いて平均する。小道具の `fmod`（GLSL の `mod`）、`fill_sized`（大きさ 0 の形を漏らさない被覆）もここに置き、トランジションのファイルに写さない。
-- 縦横比の違う画面（ショート）では、基準の 1920x1080 の中央を画面を覆うように縦横同じ倍率で写す（左右が切れる。[設計書の「ショートに置く」](../../docs/design/13-vlog-pack.md#ショートに置く)）。
+- `_prelude.wgsl` は全部の前に付く共通のコードで、元の `engine.js` の GLSL の小道具と、`index.html` の合成（マット、重ねる絵、映像の動き、シャッターの間のモーションブラー）を移したもの。合成は元と同じく 8 bit の符号化値（書き出しと同じ Rec.1886 の式）の空間で行い、シャッターの間は元と同じ 16 回描いて平均する（RTX 5090 の 1080p では 8 回との差が計測のばらつきに収まる）。小道具の `fmod`（GLSL の `mod`）、`fill_sized`（形が画素を覆う割合。大きさ 0 の形を漏らさない）もここに置き、トランジションのファイルにコピーしない。
+- 縦横比の違う画面（ショート）では、基準の 1920x1080 の中央を画面を覆うように縦横同じ倍率で変換する（左右が切れる。[設計書の「ショートに置く」](../../docs/design/13-vlog-pack.md#ショートに置く)）。
 - パラメータは `transition.wgsl` の `p0` が乱数の種（マクロ `transition` の `seed`）、`rewind` が巻き戻しの逆再生の倍率（マクロ `rewind` の `speed`、正）。`p1`..`p7` は使わない。地は元と同じ不透明の黒で、境の両端（進み具合 0 と 1）ではシャッターを閉じ、前と次の場面そのものになる。
 - 元と違う所: 乱数の表（`data`）はセルの番号のハッシュで作るので並びが変わる。効果音（`sfx`）は移さない。前後の場面のぼかしはミップではなく円盤のタップの平均。巻き戻しの時刻の表示（t0 → t7）は文字が要るので描かない。進み具合はコマの中心ではなく連続の時刻から取る。シャッターの長さはコマの速さ 30 fps で数える。
 - 置き直すと差し替わる。外すのは操作 `setTransition`（`transition: null`）。
