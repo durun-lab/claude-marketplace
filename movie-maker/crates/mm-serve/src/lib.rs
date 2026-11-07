@@ -20,6 +20,7 @@ mod mobile;
 mod proposals_http;
 mod review;
 mod server;
+mod story_http;
 mod transcripts;
 
 pub use client::{Client, EventStream, Response, SseEvent};
@@ -32,3 +33,4 @@ pub use mobile::{
 };
 pub use review::{Approval, ProposalEvent, ProposalOpView, ProposalView};
 pub use server::Server;
+pub use story_http::{story_routes, OverviewQuery, RangeQuery, SearchQuery, TranscriptQuery};

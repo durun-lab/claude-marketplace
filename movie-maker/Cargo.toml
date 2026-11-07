@@ -56,6 +56,7 @@ mm-render-api = { path = "crates/mm-render-api" }
 mm-runtime = { path = "crates/mm-runtime" }
 mm-serve = { path = "crates/mm-serve" }
 mm-store = { path = "crates/mm-store" }
+mm-story = { path = "crates/mm-story" }
 mm-testkit = { path = "crates/mm-testkit" }
 mm-text-api = { path = "crates/mm-text-api" }
 mm-text-cef = { path = "crates/mm-text-cef" }

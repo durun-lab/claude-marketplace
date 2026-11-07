@@ -5,3 +5,4 @@ mod http;
 mod mcp;
 mod mobile;
 mod proposals;
+mod story;
