@@ -52,11 +52,16 @@ pub fn describe(exe: PathBuf) -> Describe {
 
 /// 試験のプラグインの置き場所を OpenFX の置き場所にした種類。
 pub fn kind(exe: &Path) -> OfxKind {
+    kind_in(exe, PathBuf::from(TEST_PLUGINS))
+}
+
+/// `root` を OpenFX の置き場所にした種類。
+pub fn kind_in(exe: &Path, root: PathBuf) -> OfxKind {
     OfxKind::new(
         Arc::new(OfxLauncher),
         exe.to_path_buf(),
         describe(exe.to_path_buf()),
-        vec![PathBuf::from(TEST_PLUGINS)],
+        vec![root],
     )
 }
 

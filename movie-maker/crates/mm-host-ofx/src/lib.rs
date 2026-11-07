@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use mm_host_api::SharedFrame;
-use mm_types::Params;
+use mm_types::{Params, Size};
 
 pub use launcher::{describe_bundle, OfxLauncher, DESCRIBE_COMMAND};
 pub use locate::{find_host, HOST_ENV, TEST_PLUGINS};
@@ -52,6 +52,26 @@ pub struct RenderParams {
     /// 時刻で評価済みのパラメータの値。無い名前は既定値のまま。
     #[serde(default)]
     pub values: Params,
+    /// 画像を JSON に入れずに渡す共有メモリ。あれば `source` は使わず、結果も共有メモリに書く。
+    #[serde(default)]
+    pub shared: Option<SharedPixels>,
+}
+
+/// 入力と結果の画像を置く共有メモリ（Windows の名前つきのファイルマッピング）。アプリが作り、ホストが名前で開く。
+/// 中身は `[入力 | 結果]` の 2 枚で、どちらも [`frame_bytes`] バイトの RGBA f32（リトルエンディアン、上の行から、
+/// premultiplied、線形）。結果を共有メモリに書いた応答は、`SharedFrame::Cpu` の `data` が空になる。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SharedPixels {
+    /// ファイルマッピングの名前（`Local\mm-ofx-<pid>-<番号>`）。
+    pub name: String,
+    /// 先頭に入力の画像を置いたか。偽なら透明を入力にする。
+    #[serde(default)]
+    pub has_source: bool,
+}
+
+/// 1 枚の画像の共有メモリの上の大きさ（RGBA f32）。共有メモリの全体はこの 2 倍。
+pub fn frame_bytes(size: Size) -> usize {
+    size.width as usize * size.height as usize * 4 * std::mem::size_of::<f32>()
 }
 
 #[cfg(test)]

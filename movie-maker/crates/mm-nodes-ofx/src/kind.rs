@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use mm_host_api::{HostLauncher, HostRequest, SharedFrame};
+use mm_host_api::HostLauncher;
 use mm_node_api::{
     Cost, FrameCx, FrameRef, InputFrames, InputSchema, InputSpec, Isolation, NodeKind, Traits,
 };
@@ -12,6 +12,7 @@ use mm_types::{
 };
 
 use crate::catalog::{Catalog, Describe, OfxPlugin};
+use crate::frames::FrameJob;
 use crate::hosts::{Hosts, Target};
 use crate::locate::{resolve_asset, resolve_named};
 use crate::{ASSET_PARAM, BUNDLE_PARAM, KIND_ID, KIND_VERSION, PLUGIN_PARAM};
@@ -23,6 +24,9 @@ pub struct OfxKind {
     /// バンドルを探してよい置き場所。
     roots: Vec<PathBuf>,
 }
+
+/// 素材の ID からファイルのパスを引く関数。
+type AssetPaths<'a> = &'a dyn Fn(&AssetId) -> Option<PathBuf>;
 
 /// パラメータが指すバンドルの指し方。
 enum BundleRef<'a> {
@@ -57,17 +61,17 @@ impl OfxKind {
         })
     }
 
-    /// パラメータが指すバンドルの実体のパス。素材を引けない呼び出し（`params_for`）では `inputs` が `None`。
+    /// パラメータが指すバンドルの実体のパス。素材を引けない呼び出し（`params_for`）では `assets` が `None`。
     fn bundle_path(
         &self,
         params: &Params,
-        inputs: Option<&dyn InputFrames>,
+        assets: Option<AssetPaths<'_>>,
     ) -> Result<Option<PathBuf>> {
         let path = match bundle_ref(params)? {
             None => return Ok(None),
             Some(BundleRef::Named(name)) => resolve_named(&self.roots, name)?,
             Some(BundleRef::Asset(id)) => {
-                let path = inputs.and_then(|i| i.asset_path(id)).ok_or_else(|| {
+                let path = assets.and_then(|a| a(id)).ok_or_else(|| {
                     MmError::NotFound(format!("素材 {} のパスを引けない", id.as_str()))
                 })?;
                 resolve_asset(&path)?
@@ -80,9 +84,9 @@ impl OfxKind {
     fn target(
         &self,
         params: &Params,
-        inputs: Option<&dyn InputFrames>,
+        assets: Option<AssetPaths<'_>>,
     ) -> Result<Option<(Target, OfxPlugin)>> {
-        let Some(bundle) = self.bundle_path(params, inputs)? else {
+        let Some(bundle) = self.bundle_path(params, assets)? else {
             return Ok(None);
         };
         let id = text(params, PLUGIN_PARAM);
@@ -151,26 +155,6 @@ fn source_image(cx: &mut FrameCx<'_>) -> Result<Option<Arc<RgbaImage>>> {
         )));
     }
     Ok(Some(image))
-}
-
-/// ホストの応答を画像にする。CPU の画像だけを頼むので、ほかは誤り。
-fn response_image(frame: SharedFrame, cx: &FrameCx<'_>) -> Result<RgbaImage> {
-    let image = match frame {
-        SharedFrame::Cpu { size, data } => RgbaImage::from_raw(size, data)?,
-        SharedFrame::SharedTexture { .. } => {
-            return Err(MmError::Internal(
-                "CPU の画像を頼んだのに共有テクスチャが来た".into(),
-            ))
-        }
-    };
-    if image.size() != cx.size {
-        return Err(MmError::Internal(format!(
-            "ofx のフレームの大きさ {:?} が頼んだ {:?} と違う",
-            image.size(),
-            cx.size
-        )));
-    }
-    Ok(image)
 }
 
 impl NodeKind for OfxKind {
@@ -257,7 +241,8 @@ impl NodeKind for OfxKind {
 
     fn render(&self, cx: &mut FrameCx<'_>) -> Result<FrameRef> {
         let _span = tracing::info_span!("nodes_ofx.render").entered();
-        let target = self.target(cx.params, Some(&*cx.inputs))?;
+        let inputs: &dyn InputFrames = &*cx.inputs;
+        let target = self.target(cx.params, Some(&|id: &AssetId| inputs.asset_path(id)))?;
         let Some((target, plugin)) = target else {
             if cx.inputs.is_empty() {
                 return Ok(FrameRef::Transparent { size: cx.size });
@@ -268,16 +253,33 @@ impl NodeKind for OfxKind {
             return Ok(FrameRef::Transparent { size: cx.size });
         }
         let source = source_image(cx)?;
-        let request = HostRequest::RenderFrame {
+        let job = FrameJob {
             time: cx.time,
             size: cx.size,
-            params: serde_json::json!({
-                "source": source.map(|image| SharedFrame::from_image(&image)),
-                "values": plugin_values(cx.params, &plugin),
-            }),
+            source: source.as_deref(),
+            values: plugin_values(cx.params, &plugin),
         };
-        let frame = self.hosts().render(&target, &request)?;
-        Ok(FrameRef::cpu(response_image(frame, cx)?))
+        let image = self.hosts().render_image(&target, &job)?;
+        Ok(FrameRef::cpu(image))
+    }
+
+    /// バンドルの実体のパス、中身の印、効果の識別子。プラグインを差し替えたら別のキーになり、前の画素を引かない。
+    /// バンドルを引けなければ `None`（描いても誤りになるので覚えない）。
+    fn cache_fingerprint(
+        &self,
+        params: &Params,
+        asset_path: &dyn Fn(&AssetId) -> Option<PathBuf>,
+    ) -> Option<String> {
+        match self.target(params, Some(asset_path)) {
+            Ok(Some((t, _))) => Some(format!(
+                "{}|{:016x}|{}",
+                t.bundle.display(),
+                t.stamp,
+                t.plugin
+            )),
+            Ok(None) => Some(String::new()),
+            Err(_) => None,
+        }
     }
 }
 

@@ -2,8 +2,11 @@
 //! フレームごとに届くこと、プラグインのクラッシュがそのレイヤーだけの誤りで済むこと、1080p の 1 フレームの時間。
 //! GPU が無ければスキップし、`MM_REQUIRE_GPU` があれば失敗にする。
 
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
+
+use mm_host_ofx::TEST_PLUGINS;
 
 use mm_doc::{Composition, Effect, Interpolation, Keyframe, Layer, Node, Param, Project};
 use mm_node_api::{NodeKind, Quality};
@@ -17,7 +20,7 @@ use mm_testkit::fixtures::sample_services;
 use mm_testkit::node::{ConstInputs, Harness, MapRegistry};
 use mm_types::{Id, ParamValue, Rational, RationalTime, Rgba, RgbaImage, Size, TimeRange};
 
-use crate::support::{host, kind, params, GAIN, GAIN_ID};
+use crate::support::{host, kind, kind_in, params, GAIN, GAIN_ID};
 
 const SIZE: Size = Size::new(32, 18);
 const FPS: Rational = Rational::integer(30);
@@ -26,7 +29,7 @@ const TOLERANCE: f32 = 3e-3;
 const GREY: Rgba = Rgba::new(0.5, 0.5, 0.5, 1.0);
 const RED: Rgba = Rgba::new(1.0, 0.0, 0.0, 1.0);
 /// 1080p の時間を測るフレームの数（最初の 1 回は起動と読み込みを含むので数えない）。
-const TIMED_FRAMES: usize = 3;
+const TIMED_FRAMES: usize = 10;
 
 fn gpu() -> Option<Arc<GpuContext>> {
     match GpuContext::shared(&GpuRequest::default()) {
@@ -87,17 +90,20 @@ fn gain_node(values: &[(&str, ParamValue)]) -> Node {
     node
 }
 
-fn project(layers: Vec<Layer>) -> Project {
-    let comp = Composition::new(
-        Id::new("main"),
+fn comp(id: &str, layers: Vec<Layer>) -> Composition {
+    Composition::new(
+        Id::new(id),
         SIZE.width,
         SIZE.height,
         FPS,
         RationalTime::seconds(2),
     )
-    .with_layers(layers);
+    .with_layers(layers)
+}
+
+fn project(layers: Vec<Layer>) -> Project {
     let mut p = Project::new();
-    p.compositions = vec![comp];
+    p.compositions = vec![comp("main", layers)];
     p
 }
 
@@ -211,6 +217,65 @@ fn プラグインのクラッシュはそのレイヤーだけの誤りにな�
     let img = preview(&mut r, &p, &nodes, RationalTime::ZERO);
     assert_near(img.pixel(3, 3), Rgba::new(0.25, 0.25, 0.25, 1.0));
     assert!(r.take_errors().is_empty(), "ホストを起こし直して描ける");
+}
+
+/// 試験の Gain のバンドルを `root` の下に写す。
+fn copy_gain(root: &Path) -> PathBuf {
+    let arch = Path::new("Contents").join(mm_host_ofx::scan::arch_dir());
+    let dst = root.join(GAIN).join(&arch);
+    std::fs::create_dir_all(&dst).unwrap();
+    let binary = dst.join("MmTestGain.ofx");
+    std::fs::copy(
+        Path::new(TEST_PLUGINS)
+            .join(GAIN)
+            .join(&arch)
+            .join("MmTestGain.ofx"),
+        &binary,
+    )
+    .unwrap();
+    binary
+}
+
+/// 共有ライブラリを gain が 2 倍の版に差し替える。読み込んだままのホストがいても、名前を変えれば置ける。
+fn swap_to_v2(binary: &Path) {
+    let arch = Path::new("Contents").join(mm_host_ofx::scan::arch_dir());
+    let v2 = Path::new(TEST_PLUGINS)
+        .join("MmTestGainV2.ofx.bundle")
+        .join(arch)
+        .join("MmTestGainV2.ofx");
+    std::fs::rename(binary, binary.with_extension("old")).unwrap();
+    std::fs::copy(v2, binary).unwrap();
+    // 写しても更新時刻が元のままのことがあるので、差し替えた時刻にする。
+    let file = std::fs::File::options().write(true).open(binary).unwrap();
+    file.set_modified(std::time::SystemTime::now()).unwrap();
+}
+
+#[test]
+fn プラグインを差し替えたらキャッシュの前の画素を返さない() {
+    let (Some(ctx), Some(exe)) = (gpu(), host()) else {
+        return;
+    };
+    let root = std::env::temp_dir().join(format!("mm-nodes-ofx-swap-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let binary = copy_gain(&root);
+    let nodes = registry(Arc::new(kind_in(&exe, root.clone())));
+    // 入れ子の画像はフレームのキャッシュに入るので、中の効果の差し替えがキーに出ないと前の画素を返す。
+    let inner = comp("inner", vec![layer("a", GREY, Some(gain_node(&[])))]);
+    let nested =
+        Node::new("composition", 1).with_param("composition", ParamValue::Text("inner".into()));
+    let mut outer = layer("outer", GREY, None);
+    outer.source = nested;
+    let mut p = project(vec![outer]);
+    p.compositions.push(inner);
+    let mut r = renderer(&ctx);
+    let before = preview(&mut r, &p, &nodes, RationalTime::ZERO);
+    assert_near(before.pixel(3, 3), GREY);
+    swap_to_v2(&binary);
+    let after = preview(&mut r, &p, &nodes, RationalTime::ZERO);
+    assert_near(after.pixel(3, 3), Rgba::new(1.0, 1.0, 1.0, 1.0));
+    assert!(r.take_errors().is_empty());
+    drop((r, nodes));
+    let _ = std::fs::remove_dir_all(&root);
 }
 
 #[test]

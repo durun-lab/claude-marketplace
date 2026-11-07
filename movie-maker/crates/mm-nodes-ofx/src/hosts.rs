@@ -7,12 +7,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use mm_host_api::{HostLauncher, HostProcess, HostRequest, HostResponse, HostSpec, SharedFrame};
-use mm_types::{MmError, Result};
+use mm_types::{MmError, Result, RgbaImage};
+
+use crate::frames::{FrameJob, Transport};
 
 /// 同時に起こしておくホストの数。1 つのレイヤーに効果を重ねる数（2〜4）に合わせる。
 const MAX_HOSTS: usize = 4;
-/// 1 フレームの期限。CPU の画像の JSON の往復だけで 1080p は release で 1.6 s、dev のビルドで 5 s かかり、
-/// 4K はその 4 倍になるので、それに収まる長さにする。
+/// 1 フレームの期限。共有メモリの無い環境では画像を JSON で往復し、4K の dev のビルドで 20 s かかるので、
+/// それに収まる長さにする。
 const RENDER_TIMEOUT: Duration = Duration::from_secs(30);
 /// プラグインの読み込みとインスタンスの作成の期限。
 const PREPARE_TIMEOUT: Duration = Duration::from_secs(15);
@@ -40,6 +42,8 @@ pub struct Hosts {
     executable: PathBuf,
     /// 新しく使った順。
     slots: Vec<Slot>,
+    /// 画像を置く共有メモリ。描くのはロックの中で 1 つずつなので、全部のホストで 1 つを使い回す。
+    transport: Transport,
 }
 
 impl Hosts {
@@ -49,6 +53,7 @@ impl Hosts {
             launcher,
             executable,
             slots: Vec::new(),
+            transport: Transport::default(),
         }
     }
 
@@ -57,8 +62,18 @@ impl Hosts {
         self.slots.clear();
     }
 
+    /// 1 フレームを描いて画像にする。画像は共有メモリで受け渡す（`frames.rs`）。
+    pub fn render_image(&mut self, target: &Target, job: &FrameJob<'_>) -> Result<RgbaImage> {
+        let request = self.transport.request(job)?;
+        let frame = self.render(target, &request);
+        if matches!(frame, Err(MmError::Timeout { .. })) {
+            self.transport.reset();
+        }
+        self.transport.image(frame?, job.size)
+    }
+
     /// 1 フレームを描く。ホストがクラッシュしていたら 1 回だけ起こし直してやり直す。
-    pub fn render(&mut self, target: &Target, request: &HostRequest) -> Result<SharedFrame> {
+    fn render(&mut self, target: &Target, request: &HostRequest) -> Result<SharedFrame> {
         let _span = tracing::info_span!("nodes_ofx.host_frame").entered();
         match self.try_render(target, request) {
             Err(MmError::HostCrashed(why)) => {

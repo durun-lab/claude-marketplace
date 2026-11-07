@@ -3484,6 +3484,7 @@ dependencies = [
  "mm-doc",
  "mm-host-api",
  "mm-host-ofx",
+ "mm-host-pipe",
  "mm-node-api",
  "mm-nodes-basic",
  "mm-render",

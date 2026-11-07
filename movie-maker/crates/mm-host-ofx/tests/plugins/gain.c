@@ -12,6 +12,11 @@
 #include "ofxMessage.h"
 #include "ofxPixels.h"
 
+/* gain に掛ける倍率。同じ識別子で画素だけが違う版（MmTestGainV2）を作り、共有ライブラリの差し替えを試す。 */
+#ifndef MM_GAIN_SCALE
+#define MM_GAIN_SCALE 1.0
+#endif
+
 #ifdef _WIN32
 #include <windows.h>
 static void sleep_ms(int ms) { Sleep((DWORD)ms); }
@@ -104,6 +109,7 @@ static Settings read_settings(OfxImageEffectHandle instance, OfxTime time) {
   gEffect->getParamSet(instance, &params);
   gParam->paramGetHandle(params, "gain", &h, NULL);
   gParam->paramGetValueAtTime(h, time, &s.gain);
+  s.gain *= MM_GAIN_SCALE;
   gParam->paramGetHandle(params, "channel", &h, NULL);
   gParam->paramGetValueAtTime(h, time, &s.channel);
   gParam->paramGetHandle(params, "delay_ms", &h, NULL);
