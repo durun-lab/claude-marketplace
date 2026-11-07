@@ -217,7 +217,7 @@ fn launch(kind: &PipeKind, spec: &HostSpec) -> Result<Connection> {
             return Err(e);
         }
     };
-    // ジョブに入れておくと、アプリが落ちてジョブのハンドルが閉じたときにホストの木も止まる。
+    // ジョブに入れておくと、アプリがクラッシュしてジョブのハンドルが閉じたときにホストの木も止まる。
     let job = Job::attach(&child);
     let (Some(stdin), Some(stdout)) = (child.stdin.take(), child.stdout.take()) else {
         // 接続にならない子を残さない。止めた失敗より、パイプが無いことを返す。
