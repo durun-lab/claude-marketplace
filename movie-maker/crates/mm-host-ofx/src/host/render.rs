@@ -4,9 +4,7 @@
 
 use std::sync::Arc;
 
-use mm_host_api::SharedFrame;
-use mm_host_ofx::RenderParams;
-use mm_types::{RationalTime, RgbaImage, Size};
+use mm_types::{Params, RationalTime, Size};
 
 use super::effect::{Clip, Effect};
 use super::ffi::STAT_OK;
@@ -93,34 +91,9 @@ impl Instance {
         p.set_int(CLIP_CONTINUOUS_SAMPLES, &[0]);
     }
 
-    /// 入力の画像。無ければ透明。
-    fn source_image(source: Option<&SharedFrame>, size: Size) -> Result<RgbaImage, String> {
-        match source {
-            None => Ok(RgbaImage::transparent(size)),
-            Some(SharedFrame::Cpu { size: s, data }) if *s == size => {
-                RgbaImage::from_raw(*s, data.clone()).map_err(|e| e.to_string())
-            }
-            Some(SharedFrame::Cpu { size: s, .. }) => Err(format!(
-                "入力の大きさ {}x{} が描く大きさ {}x{} と違う",
-                s.width, s.height, size.width, size.height
-            )),
-            Some(SharedFrame::SharedTexture { .. }) => {
-                Err("共有テクスチャの入力はまだ受けない（CPU の画像で渡す）".into())
-            }
-        }
-    }
-
     /// クリップに画素を置く。出力は透明で用意し、入力は `source`、ほかの入力（マスクなど）は未接続の透明。
-    fn attach_clips(
-        &self,
-        size: Size,
-        frame: f64,
-        params: &RenderParams,
-    ) -> Result<Arc<Pixels>, String> {
-        let source = Arc::new(Pixels::from_image(
-            &Self::source_image(params.source.as_ref(), size)?,
-            self.depth,
-        )?);
+    fn attach_clips(&self, size: Size, frame: f64, source: Pixels) -> Result<Arc<Pixels>, String> {
+        let source = Arc::new(source);
         let mut output = None;
         for name in self.effect.clip_names() {
             let clip = self.effect.clip(&name).ok_or("クリップが消えた")?;
@@ -142,8 +115,8 @@ impl Instance {
         output.ok_or_else(|| format!("{} に Output のクリップが無い", self.plugin.id))
     }
 
-    fn apply_values(&self, params: &RenderParams) -> Result<(), String> {
-        for (name, value) in &params.values.0 {
+    fn apply_values(&self, values: &Params) -> Result<(), String> {
+        for (name, value) in &values.0 {
             let param = self
                 .effect
                 .params
@@ -181,17 +154,24 @@ impl Instance {
         args
     }
 
-    /// 時刻 `time` の 1 フレームを `size` で描く。
+    /// クリップの画素の深さ。入力の画素はこの深さで作る。
+    pub fn depth(&self) -> Depth {
+        self.depth
+    }
+
+    /// 時刻 `time` の 1 フレームを `size` で描き、出力のクリップの画素を返す。
+    /// `source` は入力のクリップの画素（大きさは `size`、深さは [`Instance::depth`]）。
     pub fn render(
         &self,
         time: RationalTime,
         size: Size,
-        params: &RenderParams,
-    ) -> Result<RgbaImage, String> {
+        source: Pixels,
+        values: &Params,
+    ) -> Result<Arc<Pixels>, String> {
         let frame = time.to_f64() * self.frame_rate;
         self.set_project(size);
-        let output = self.attach_clips(size, frame, params)?;
-        self.apply_values(params)?;
+        let output = self.attach_clips(size, frame, source)?;
+        self.apply_values(values)?;
         let handle = self.effect.handle();
         let seq = Self::sequence_args(frame);
         self.plugin
@@ -208,7 +188,7 @@ impl Instance {
         self.plugin
             .expect(ACTION_END_SEQUENCE_RENDER, handle, Some(&seq))?;
         rendered?;
-        output.to_image().map_err(|e| e.to_string())
+        Ok(output)
     }
 }
 

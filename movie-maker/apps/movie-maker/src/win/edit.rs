@@ -80,7 +80,7 @@ pub fn submit(shared: &Shared, ops: Vec<Op>) -> Result<EditOutcome, String> {
 
 /// 操作を、計画に使ったバージョン `base` を元にしたトランザクションとして適用する。
 /// その後に別の発行元（CLI など）が同じ所を触っていたら、衝突として拒否する。JSON のプロジェクトでは `base` を見ない。
-/// WebView、キー、ドラッグの編集はみなここを通るので、`mm-ops` の操作の差し替えの入口をここに置く。
+/// WebView、キー、ドラッグの編集はみなここを通るので、`mm-ops` の操作のホットパッチの呼び出し箇所をここに置く。
 pub fn submit_based(
     shared: &Shared,
     ops: Vec<Op>,

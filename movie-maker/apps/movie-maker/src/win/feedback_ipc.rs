@@ -76,7 +76,7 @@ pub async fn feedback_stop() -> Result<ImproveStatus, String> {
     blocking(|s| s.stop()).await
 }
 
-/// 画面の例外（`window.onerror` と `unhandledrejection`）を自動の起票に回す。記録は裏で行う。
+/// 画面の例外（`window.onerror` と `unhandledrejection`）を自動の起票に回す。記録はバックグラウンドで行う。
 #[tauri::command]
 pub fn feedback_report_error(error: ErrorInput) {
     feedback::report_webview(error);

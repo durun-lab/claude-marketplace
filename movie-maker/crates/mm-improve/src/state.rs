@@ -1,5 +1,5 @@
-//! 回の状態（`state.json`）と、回を 1 つに限る錠（`run.lock`）。
-//! 錠は OS のファイルの錠なので、回を動かしていたプロセスが落ちれば外れる。状態は残るので、次に起きたプロセスが続きから回す。
+//! 回の状態（`state.json`）と、回を 1 つに限るロック（`run.lock`）。
+//! ロックは OS のファイルのロックなので、回を動かしていたプロセスがクラッシュすれば外れる。状態は残るので、次に起きたプロセスが続きから回す。
 
 use std::fs::{File, OpenOptions, TryLockError};
 use std::path::{Path, PathBuf};
@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::checks::CheckOutcome;
 
-/// 回の段。
+/// 回の工程。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Phase {
@@ -30,7 +30,7 @@ pub struct RunState {
     pub session_id: String,
     /// 回のブランチ。
     pub branch: String,
-    /// 回の worktree の根。
+    /// 回の worktree のルート。
     pub worktree: PathBuf,
     /// 回を切った本線のコミット。
     pub base_commit: String,
@@ -38,13 +38,13 @@ pub struct RunState {
     pub items: Vec<String>,
     /// 始めた時刻（ミリ秒）。
     pub started_at: u64,
-    /// 段。
+    /// 工程。
     #[serde(default)]
     pub phase: Phase,
     /// `claude -p` を呼んだ回数。1 回目は新しいセッション、2 回目からは同じセッションを続ける。
     #[serde(default)]
     pub calls: u32,
-    /// 印を書かずに止まったときに続きを頼んだ回数。
+    /// 完了のマーカーを書かずに止まったときに続きを頼んだ回数。
     #[serde(default)]
     pub nudges: u32,
     /// `claude -p` の pid（すぐ止める手段が使う）。
@@ -56,6 +56,18 @@ pub struct RunState {
     /// 最後の発言（区切った後の検査で使う）。
     #[serde(default)]
     pub last_message: Option<String>,
+    /// 回を起こしたときの予算（ドル）。回の途中で設定のファイルを書き換えても、この回の上限は変わらない。
+    #[serde(default)]
+    pub budget_usd: Option<f64>,
+    /// 回を起こしたときの時間の上限（ミリ秒）。
+    #[serde(default)]
+    pub wall_ms: Option<u64>,
+    /// `claude -p` のセッションの累計の費用（ドル）。続きの呼び出しには予算の残りだけを渡す。
+    #[serde(default)]
+    pub spent_usd: f64,
+    /// `claude -p` を動かした時間の累計（ミリ秒）。使用制限で待った時間は数えない。
+    #[serde(default)]
+    pub agent_ms: u64,
 }
 
 /// 回の結末。
@@ -76,9 +88,9 @@ pub enum RunOutcome {
         /// 止めた理由。
         reason: String,
     },
-    /// 囲いの検査で落ちた。
+    /// 囲いの検査に通らなかった。
     Rejected {
-        /// 落ちた理由。
+        /// 通らなかった理由。
         reason: String,
     },
     /// 済んだ要望を書かずに止まったか、失敗した。
@@ -124,7 +136,7 @@ pub struct ImproveState {
     pub last: Option<RunReport>,
 }
 
-/// 回の錠。持っている間だけ回を動かせる。落とすと外れる。
+/// 回のロック。持っている間だけ回を動かせる。破棄すると外れる。
 pub struct RunLock {
     _file: File,
 }

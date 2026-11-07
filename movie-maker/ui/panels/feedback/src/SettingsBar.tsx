@@ -10,7 +10,7 @@ interface SettingsBarProps {
   onStop: () => void;
 }
 
-/** 数の入力欄。確定（change）したときだけ送り、空や負の値は送らない。 */
+/** 数の入力欄。確定（change）したときだけ送り、空と 0 以下の値は送らない（予算は外せない）。 */
 const NumberField = ({ label, value, step, onCommit }: { label: string; value: number | null; step: string; onCommit: (v: number) => void }) => {
   const [text, setText] = useState(value === null ? "" : String(value));
   useEffect(() => setText(value === null ? "" : String(value)), [value]);
@@ -25,7 +25,7 @@ const NumberField = ({ label, value, step, onCommit }: { label: string; value: n
         onInput={(e) => setText(e.currentTarget.value)}
         onChange={(e) => {
           const v = Number(e.currentTarget.value);
-          if (e.currentTarget.value !== "" && Number.isFinite(v) && v >= 0) onCommit(v);
+          if (e.currentTarget.value !== "" && Number.isFinite(v) && v > 0) onCommit(v);
         }}
       />
     </label>

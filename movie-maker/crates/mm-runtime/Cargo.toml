@@ -23,8 +23,13 @@ mm-gpu = { workspace = true }
 mm-render = { workspace = true }
 mm-nodes-basic = { workspace = true }
 mm-nodes-cef = { workspace = true }
+mm-nodes-genai = { workspace = true }
 mm-nodes-hlsl = { workspace = true }
+mm-nodes-lottie = { workspace = true }
+mm-nodes-ofx = { workspace = true }
 mm-host-cef = { workspace = true }
+mm-host-clap = { workspace = true }
+mm-host-ofx = { workspace = true }
 mm-text-cef = { workspace = true }
 mm-text-glyphon = { workspace = true }
 mm-color-lut = { workspace = true }

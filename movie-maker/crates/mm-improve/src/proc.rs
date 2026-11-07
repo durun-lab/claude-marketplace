@@ -17,7 +17,7 @@ pub fn kill_tree(pid: u32) {
     drop(status);
 }
 
-/// 走らせた結果。
+/// 実行した結果。
 #[derive(Clone, Debug)]
 pub struct Ran {
     /// 0 で終わったか。
@@ -37,7 +37,7 @@ impl Ran {
     }
 }
 
-/// 走らせて、終わるまで待つ。
+/// 実行して、終わるまで待つ。
 pub fn run(cmd: &mut Command) -> Result<Ran> {
     let out = cmd.output()?;
     Ok(Ran {

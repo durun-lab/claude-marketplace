@@ -9,6 +9,7 @@ mod config;
 mod decode_select;
 mod encode_select;
 mod engine;
+mod ofx;
 mod registry;
 
 pub use assemble::assemble;

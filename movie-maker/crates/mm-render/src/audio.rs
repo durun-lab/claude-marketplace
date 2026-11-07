@@ -8,6 +8,7 @@ use mm_node_api::{audio_frames_in, AudioCx, NodeKind};
 use mm_render_api::{mixer_config, AudioRequest, TrackLevel};
 use mm_types::{CompositionId, Id, LayerId, Params, RationalTime, Result, TimeRange};
 
+use crate::audio_effects::EffectScope;
 use crate::audio_gain::apply_gain_envelope;
 use crate::layers::{evaluate, MAX_DEPTH, NESTED_KIND, NESTED_PARAM};
 use crate::renderer::WgpuRenderer;
@@ -143,6 +144,14 @@ impl WgpuRenderer {
         let Some(mut block) = block else {
             return Ok(None);
         };
+        let effects = EffectScope {
+            nodes: req.nodes,
+            composition: &scope.comp.id,
+            layer,
+            range: overlap,
+            sample_rate: req.sample_rate,
+        };
+        self.apply_audio_effects(&effects, &mut block);
         let offset = audio_frames_in(
             TimeRange::new(scope.range.start, overlap.start)?,
             req.sample_rate,

@@ -9,11 +9,12 @@ use std::sync::Arc;
 
 use mm_doc::{Composition, Layer, Project, SEQUENCE_KIND};
 use mm_eval::{evaluate_opacity, node_params_at, source_time};
-use mm_node_api::{FrameCx, NoInputs, NodeKind, NodeRegistry, Quality};
+use mm_node_api::{FrameCx, NodeKind, NodeRegistry, Quality};
 use mm_types::{AssetId, CompositionId, Id, MmError, Params, RationalTime, Rect, Result, Size};
 
 use crate::clip::Clip;
 use crate::compose::DrawItem;
+use crate::effects::FrameList;
 use crate::frame_cache::{self, CachedImage, KeyEnv, Keyed, NestedKeyInput};
 use crate::kind_cache::{render_cached, Placement};
 
@@ -234,18 +235,22 @@ impl WgpuRenderer {
             ..
         } = self;
         let at = source_time(layer, cx.t)?;
-        let opened = sources.footage_with_backend(
-            decoders.as_ref(),
-            gpu.context().as_ref(),
-            cx.project,
-            params,
-            at,
-        )?;
+        let opened = if kind.decodes_asset() {
+            sources.footage_with_backend(
+                decoders.as_ref(),
+                gpu.context().as_ref(),
+                cx.project,
+                params,
+                at,
+            )?
+        } else {
+            None
+        };
         let (footage, backend) = match opened {
             Some((source, backend)) => (Some(source), backend),
             None => (None, decoders.id()),
         };
-        let mut inputs = NoInputs;
+        let mut inputs = FrameList::assets(cx.project);
         let mut frame_cx = FrameCx {
             time: cx.t,
             params,

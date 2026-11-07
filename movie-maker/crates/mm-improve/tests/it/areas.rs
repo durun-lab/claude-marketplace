@@ -34,7 +34,7 @@ fn panel_placeholder_matches_any_one_panel() {
 #[test]
 fn auto_writable_areas_are_merged() {
     let changed = files(&[
-        "crates/mm-ops/src/ops/trim.rs",
+        "crates/mm-eval/src/lib.rs",
         "ui/panels/review/src/a.ts",
         "packs/vlog/pack.toml",
     ]);
@@ -45,6 +45,8 @@ fn auto_writable_areas_are_merged() {
 fn approval_areas_are_held() {
     for f in [
         "crates/mm-render/src/lib.rs",
+        "crates/mm-ops/src/ops/trim.rs",
+        "crates/mm-ops/schema/ops.json",
         "crates/mm-text-api/src/lib.rs",
         "crates/mm-doc/src/migrations/20261107_x.rs",
         "fixtures/golden/a.png",
