@@ -7,7 +7,7 @@ import { tempDir } from './tmp.ts';
 // 要約を書き出すファイルは、実際の状態に触れないよう一時ディレクトリに置いてから読み込む。
 const tmp = tempDir('durun-dashboard-log-summaries-');
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
-const { saveLogSummaries, summarizeLog, warmLog } = await import('../server/claude.ts');
+const { forgetStat, peekLog, saveLogSummaries, summarizeLog, trustWatchedDir, warmLog } = await import('../server/claude.ts');
 
 const prompt = (text: string): string => `${JSON.stringify({ type: 'user', origin: { kind: 'human' }, timestamp: new Date().toISOString(), message: { content: text } })}\n`;
 
@@ -64,4 +64,32 @@ test('権限モードは、最後の user エントリが持つものを読む',
   const entry = (permissionMode?: string): string => `${JSON.stringify({ type: 'user', origin: { kind: 'human' }, timestamp: new Date().toISOString(), permissionMode, message: { content: '依頼' } })}\n`;
   fs.writeFileSync(file, entry('auto') + entry('acceptEdits') + entry());
   assert.equal(summarizeLog(file).permissionMode, 'acceptEdits');
+});
+
+test('読み残しの多い会話ログは、その場で読まずに裏で読み、読み終えたら知らせる。少なければその場で読む', async () => {
+  const file = path.join(tmp, 'peek.jsonl');
+  fs.writeFileSync(file, prompt('短い'));
+  assert.deepEqual(peekLog(file, false, () => assert.fail('その場で読んだ')), { summary: summarizeLog(file), ready: true });
+  // 1 MB を超える読み残しを作る。
+  fs.appendFileSync(file, prompt('長い'.repeat(600_000)) + prompt('最後'));
+  const warmed = new Promise<void>((resolve) => {
+    const peeked = peekLog(file, false, resolve);
+    assert.equal(peeked.ready, false);
+    assert.deepEqual(peeked.summary.texts.map((t) => t.text), ['短い']);
+  });
+  await warmed;
+  assert.equal(summarizeLog(file).lastPrompt, '最後');
+});
+
+test('見張っているフォルダーの会話ログは、変わった知らせが来てから読み直す', () => {
+  const dir = path.join(tmp, 'watched');
+  fs.mkdirSync(path.join(dir, 'sub'), { recursive: true });
+  const file = path.join(dir, 'sub', 'log.jsonl');
+  fs.writeFileSync(file, prompt('一つ目'));
+  trustWatchedDir(dir, true);
+  assert.equal(summarizeLog(file).lastPrompt, '一つ目');
+  fs.appendFileSync(file, prompt('二つ目'));
+  assert.equal(summarizeLog(file).lastPrompt, '一つ目');
+  forgetStat(dir, path.join('sub', 'log.jsonl'));
+  assert.equal(summarizeLog(file).lastPrompt, '二つ目');
 });

@@ -200,6 +200,7 @@ impl WgpuRenderer {
             params: &plan.params,
             inputs: &[from, to].map(|id| GpuTexture { id, size: cx.size }),
             size: cx.size,
+            scale: cx.comp_to_out(),
         };
         let mixed = self.run_node(encoder, cx, &run);
         // 恒等の種類は入力をそのまま返すので、返ってきた画布は解放しない。

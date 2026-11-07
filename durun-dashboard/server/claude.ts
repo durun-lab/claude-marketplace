@@ -22,6 +22,51 @@ const TOOL_HINT_CHARS = 120;
 const TOOL_HINT_KEYS = ['description', 'command', 'file_path', 'notebook_path', 'pattern', 'url', 'query', 'skill', 'prompt', 'question'];
 const TOTAL_KEYS = ['input', 'output', 'cacheRead', 'cacheCreation'] as const;
 
+// 見張っているフォルダーの中のファイルは、変更の知らせが来るまで stat を覚えておく。
+// スナップショットを配るたびに数百のファイルを stat すると、混んだマシンでは数秒かかる。
+// 知らせは取りこぼすことがあるので、覚えた stat もこの時間がたてば取り直す。
+const STAT_TRUST_MS = 10_000;
+const watchedDirs = new Map<string, boolean>();
+const statCache = new Map<string, { stat: fs.Stats | undefined; at: number }>();
+
+const isWatched = (file: string): boolean => {
+  for (let dir = path.dirname(file), direct = true; dir !== path.dirname(dir); dir = path.dirname(dir), direct = false) {
+    const recursive = watchedDirs.get(dir);
+    if (recursive !== undefined) return recursive || direct;
+  }
+  return false;
+};
+
+/** fs.watch で見張り始めたフォルダーを知らせる。中のファイルの stat を、変更の知らせが来るまで覚えるようになる。 */
+export const trustWatchedDir = (dir: string, recursive: boolean): void => {
+  watchedDirs.set(path.resolve(dir), recursive);
+};
+
+/** 見張っているフォルダーの中で変わったファイルを知らせる。file は fs.watch が渡す相対パスで、分からなければ null。 */
+export const forgetStat = (dir: string, file: string | null): void => {
+  if (!file) return statCache.clear();
+  const abs = path.resolve(dir, file);
+  statCache.delete(abs);
+  // ファイルを足したり消したりすると、入っているフォルダーの更新時刻も変わる。
+  statCache.delete(path.dirname(abs));
+};
+
+/** stat を返す。無ければ undefined。見張っているフォルダーの中は、覚えた stat を返す。 */
+export const statOf = (file: string): fs.Stats | undefined => {
+  const abs = path.resolve(file);
+  const watched = isWatched(abs);
+  const hit = watched ? statCache.get(abs) : undefined;
+  if (hit && Date.now() - hit.at < STAT_TRUST_MS) return hit.stat;
+  let stat: fs.Stats | undefined;
+  try {
+    stat = fs.statSync(abs);
+  } catch {
+    stat = undefined;
+  }
+  if (watched) statCache.set(abs, { stat, at: Date.now() });
+  return stat;
+};
+
 export const readJson = <T>(file: string): Partial<T> | undefined => {
   try {
     return JSON.parse(fs.readFileSync(file, 'utf8')) as Partial<T>;
@@ -31,13 +76,7 @@ export const readJson = <T>(file: string): Partial<T> | undefined => {
   }
 };
 
-const mtimeOf = (file: string): number | undefined => {
-  try {
-    return fs.statSync(file).mtimeMs;
-  } catch {
-    return undefined;
-  }
-};
+const mtimeOf = (file: string): number | undefined => statOf(file)?.mtimeMs;
 
 const jsonCache = new Map<string, { mtimeMs: number; size: number; value: unknown }>();
 // 更新時刻の刻みが粗いファイルシステムでは、続けて書き直しても更新時刻が変わらないことがある。書かれたばかりのファイルは覚えず、次も読み直す。
@@ -48,10 +87,8 @@ const SETTLED_MS = 2000;
  * ファイルを開くのは stat より桁違いに遅いことがあるので、更新時刻と大きさが変わっていなければ前に読んだ値を返す。返した値は共有するので書き換えない。
  */
 const readJsonCached = <T>(file: string): Partial<T> | undefined => {
-  let stat: fs.Stats;
-  try {
-    stat = fs.statSync(file);
-  } catch {
+  const stat = statOf(file);
+  if (!stat) {
     jsonCache.delete(file);
     return undefined;
   }
@@ -71,7 +108,11 @@ const dirCache = new Map<string, { mtimeMs: number; names: string[] }>();
  */
 export const listDir = (dir: string): string[] => {
   try {
-    const { mtimeMs } = fs.statSync(dir);
+    const mtimeMs = statOf(dir)?.mtimeMs;
+    if (mtimeMs === undefined) {
+      dirCache.delete(dir);
+      return [];
+    }
     const hit = dirCache.get(dir);
     if (hit?.mtimeMs === mtimeMs) return hit.names;
     const names = fs.readdirSync(dir);
@@ -571,12 +612,8 @@ const WARM_CHUNK_BYTES = 16 * 1024 * 1024;
 /** 会話ログの続きを、多くても limit バイトまで読んで要約に足す。done は、読み終えたか（残りが書きかけの最終行だけか）。 */
 const readMore = (file: string, includeSidechain: boolean, limit: number): { summary: LogSummary; done: boolean } => {
   let s = summaries.get(file);
-  let size: number;
-  try {
-    size = fs.statSync(file).size;
-  } catch {
-    return { summary: s ?? emptySummary(), done: true };
-  }
+  const size = statOf(file)?.size;
+  if (size === undefined) return { summary: s ?? emptySummary(), done: true };
   if (!s || size < s.offset) {
     s = emptySummary();
     summaries.set(file, s);
@@ -584,11 +621,16 @@ const readMore = (file: string, includeSidechain: boolean, limit: number): { sum
   if (size === s.offset) return { summary: s, done: true };
   const length = Math.min(size - s.offset, limit);
   const buf = Buffer.alloc(length);
-  const fd = fs.openSync(file, 'r');
   try {
-    fs.readSync(fd, buf, 0, buf.length, s.offset);
-  } finally {
-    fs.closeSync(fd);
+    const fd = fs.openSync(file, 'r');
+    try {
+      fs.readSync(fd, buf, 0, buf.length, s.offset);
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    // 覚えた stat の後に消えた会話ログは、消えた知らせで stat を取り直してから読む。
+    return { summary: s, done: true };
   }
   // 書きかけの最終行は次回に回す。区切った量より長い行は、残りをまとめて読む。
   const end = buf.lastIndexOf(0x0a);
@@ -609,6 +651,34 @@ const yieldToRequests = (): Promise<void> => new Promise((resolve) => setImmedia
 /** 会話ログを裏で読んでおく。summarizeLog と同じ要約を作るが、区切って読み、読むたびにほかの要求に応える。 */
 export const warmLog = async (file: string, includeSidechain = false, chunkBytes = WARM_CHUNK_BYTES): Promise<void> => {
   for (let done = false; !done; await yieldToRequests()) done = readMore(file, includeSidechain, chunkBytes).done;
+};
+
+// スナップショットを組み立てるときにその場で読む量の上限。数十 MB の会話ログを一度に読むと、組み立て終えるまで数秒サーバーが止まる。
+const PEEK_LIMIT_BYTES = 1024 * 1024;
+const peeking = new Set<string>();
+
+/**
+ * 読み残しが少なければ、summarizeLog と同じく読み終えた要約を返す。
+ * 多ければ、読まずに今の要約を返して ready を偽にし、裏で区切って読む。読み終えたら onReady を呼ぶ。
+ */
+export const peekLog = (file: string, includeSidechain: boolean, onReady: () => void): { summary: LogSummary; ready: boolean } => {
+  const size = statOf(file)?.size;
+  if (size === undefined) return { summary: summarizeLog(file, includeSidechain), ready: true };
+  const s = summaries.get(file);
+  const current = s && size >= s.offset ? s : undefined;
+  if (size - (current?.offset ?? 0) <= PEEK_LIMIT_BYTES) return { summary: summarizeLog(file, includeSidechain), ready: true };
+  if (!peeking.has(file)) {
+    peeking.add(file);
+    // warmLog は最初の区切りを呼んだその場で読むので、スナップショットを返してから読み始める。
+    void yieldToRequests()
+      .then(() => warmLog(file, includeSidechain))
+      .catch((e: unknown) => console.error(`会話ログを要約できません: ${(e as Error).message}`))
+      .finally(() => {
+        peeking.delete(file);
+        onReady();
+      });
+  }
+  return { summary: current ?? emptySummary(), ready: false };
 };
 
 export const findTranscript = (sessionId: string): string | undefined => {
@@ -669,7 +739,7 @@ export const backgroundOf = (logs: LogSummary[], now = Date.now()): BgTaskLog[] 
   });
 };
 
-export const readSubagents = (transcript: string): SubagentLog[] =>
+export const readSubagents = (transcript: string, summarize = (file: string): LogSummary => summarizeLog(file, true)): SubagentLog[] =>
   subagentLogs(transcript).map((file) => {
     const meta = readJsonCached<{ agentType: string; description: string; model: string }>(file.replace(/\.jsonl$/, '.meta.json'));
     return {
@@ -677,7 +747,7 @@ export const readSubagents = (transcript: string): SubagentLog[] =>
       type: meta?.agentType ?? 'agent',
       description: meta?.description ?? '',
       model: meta?.model,
-      log: summarizeLog(file, true),
+      log: summarize(file),
     };
   });
 

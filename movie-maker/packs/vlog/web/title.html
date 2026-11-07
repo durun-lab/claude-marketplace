@@ -100,7 +100,7 @@
 
   const applyTheme = (theme) => {
     const s = document.documentElement.style;
-    for (const [k, v] of Object.entries(theme.colors || {})) s.setProperty(`--${k}`, v);
+    mmThemeColors(theme);
     const f = theme.fonts || {};
     const stack = (name) => `"${name}", "Yu Gothic UI", "Meiryo", sans-serif`;
     s.setProperty('--body', stack(f.body));
@@ -114,7 +114,7 @@
 
   window.mmSetTime = (t, data) => {
     applyTheme(data.theme || {});
-    const x = Number(data.x) || DEFAULT_X, y = Number(data.y) || DEFAULT_Y;
+    const x = Number(data.x ?? DEFAULT_X), y = Number(data.y ?? DEFAULT_Y);
     const sparks = SPARKS.map((s) => spark(t, s)).join('') + DOTS.map((s) => dot(t, s)).join('');
     document.getElementById('root').innerHTML = `<div class="title" style="left:${x}px;top:${y}px"><div class="tilt">`
       + `<p class="main">${esc(data.text)}</p>`

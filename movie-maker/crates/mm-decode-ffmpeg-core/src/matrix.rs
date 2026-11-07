@@ -141,8 +141,8 @@ pub fn is_wide(bits: u32, transfer: Transfer, rec2020: bool) -> bool {
     bits > 8 || transfer.is_hdr() || rec2020
 }
 
-/// 広い信号の素材を読むデコーダーの実装の名前（`Decoder::backend_id`）に、画素の作り方の版を付ける。
-/// 名前はフレームのキャッシュのキーに入るので、版を上げると広い信号の素材の画像だけが描き直され、
+/// 広い信号の素材を読むデコーダーの実装の名前（`Decoder::backend_id`）に、画素の作り方のバージョンを付ける。
+/// 名前はフレームのキャッシュのキーに入るので、バージョンを上げると広い信号の素材の画像だけが描き直され、
 /// 8 bit の Rec.709 の素材の画像は残る。
 #[macro_export]
 macro_rules! wide_backend_id {

@@ -7,7 +7,8 @@ use mm_color_lut::LutColor;
 use mm_gpu::{GpuContext, GpuRequest, WgpuGpu};
 use mm_node_api::{FrameCx, FrameRef, GpuHelper, NodeKind, Quality, Services};
 use mm_nodes_basic::{
-    ColorAdjustKind, ColorCdlKind, ColorConvertKind, ColorLutKind, DissolveKind, ShaderWgslKind,
+    ColorAdjustKind, ColorCdlKind, ColorConvertKind, ColorLutKind, DissolveKind, GaussianBlurKind,
+    ShaderWgslKind, BLUR_RADIUS_PARAM,
 };
 use mm_testkit::fixtures::sample_services;
 use mm_testkit::gpu::CpuGpu;
@@ -17,6 +18,8 @@ use mm_types::{MmError, ParamValue, Params, RationalTime, Rgba, RgbaImage, Size}
 const SIZE: Size = Size::new(48, 27);
 /// 入力の f16 への丸めと、式の f32 と f16 の差を見込んだ許容。
 const TOLERANCE: f32 = 5e-3;
+/// 大きいぼかしを縮めた画像で掛ける GPU の経路と、縮めない CPU の経路の差の許容。
+const SHRUNK_TOLERANCE: f32 = 2e-2;
 
 fn gpu() -> Option<Arc<GpuContext>> {
     match GpuContext::shared(&GpuRequest::default()) {
@@ -103,6 +106,55 @@ fn check(kind: &dyn NodeKind, set: &[(&str, ParamValue)]) {
     let Some(ctx) = gpu() else { return };
     let diff = gpu_cpu_diff(&ctx, kind, &params_of(kind, set));
     assert!(diff <= TOLERANCE, "{} の GPU と CPU の差 {diff}", kind.id());
+}
+
+#[test]
+fn blur_gaussian_は_gpu_と_cpu_で一致する() {
+    check(
+        &GaussianBlurKind::default(),
+        &[(BLUR_RADIUS_PARAM, ParamValue::Number(2.5))],
+    );
+}
+
+#[test]
+fn blur_gaussian_は大きい半径を縮めて掛けても_cpu_の経路に近い() {
+    let Some(ctx) = gpu() else { return };
+    let kind = GaussianBlurKind::default();
+    let params = params_of(&kind, &[(BLUR_RADIUS_PARAM, ParamValue::Number(12.0))]);
+    let diff = gpu_cpu_diff(&ctx, &kind, &params);
+    assert!(
+        diff <= SHRUNK_TOLERANCE,
+        "縮めて掛けた GPU と CPU の差 {diff}"
+    );
+}
+
+#[test]
+fn blur_gaussian_は全体の量を保って広げ_縁は透明へ薄くなる() {
+    let kind = GaussianBlurKind::default();
+    let params = params_of(&kind, &[(BLUR_RADIUS_PARAM, ParamValue::Number(2.0))]);
+    let mut dot = RgbaImage::transparent(SIZE);
+    let (cx, cy) = (SIZE.width / 2, SIZE.height / 2);
+    dot.set_pixel(cx, cy, Rgba::WHITE);
+    let mut cpu = CpuGpu::new();
+    let frame = render_with(&kind, &params, &mut cpu, vec![Arc::new(dot)]).expect("CPU で描ける");
+    let out = cpu.download(&frame).expect("CPU の画像");
+    let total: f32 = (0..SIZE.height)
+        .flat_map(|y| (0..SIZE.width).map(move |x| (x, y)))
+        .map(|(x, y)| out.pixel(x, y).a)
+        .sum();
+    assert!((total - 1.0).abs() < 1e-3, "量を保つ: {total}");
+    assert!(out.pixel(cx, cy).a < 0.1, "中心が薄くなる");
+    assert!(out.pixel(cx + 2, cy).a > 0.0, "隣へ広がる");
+    let mut full = RgbaImage::transparent(SIZE);
+    for y in 0..SIZE.height {
+        for x in 0..SIZE.width {
+            full.set_pixel(x, y, Rgba::WHITE);
+        }
+    }
+    let frame = render_with(&kind, &params, &mut cpu, vec![Arc::new(full)]).expect("CPU で描ける");
+    let out = cpu.download(&frame).expect("CPU の画像");
+    assert!(out.pixel(0, cy).a < 0.75, "縁は外の透明と混ざる");
+    assert!((out.pixel(cx, cy).a - 1.0).abs() < 1e-4, "中は変わらない");
 }
 
 #[test]

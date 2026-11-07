@@ -40,10 +40,10 @@ pub trait NodeKind: Send + Sync {
 | `color.cdl`、`color.lut`、`color.ocio` | ASC CDL、`.cube`、OCIO の変換 | 最初 |
 | `web.cef` | HTML と CSS のテンプレート、Three.js のシーンを、埋め込みの Chromium で描いて共有テクスチャで受ける。`out_of_process`、`cost: heavy` | 次 |
 | `shader.glsl` | naga で WGSL に変換（GLSL 440+、Vulkan の流儀 [4]）。DTM_Vlog のトランジション（WebGL2 の GLSL ES 3.0）は書き換えが要る | 次 |
-| `ofx` | OpenFX のプラグイン。別プロセスのホストが描き、共有テクスチャで受ける | 次 |
-| `shader.hlsl` | DXC で SPIR-V にしてから naga で WGSL に。naga は HLSL を直接読めない [4] | 後 |
-| `lottie` | Lottie（rlottie か pure Rust の実装）で CPU に描いてアップロード | 後 |
-| `gen.ai` | 生成 AI。`offline`。費用のかかる API は操作の側で見積もりを強制し、自動の改善の回からは呼べない（下の「gen.ai の作り」） | 後 |
+| `ofx` | OpenFX のプラグイン。別プロセスのホストが描き、CPU の画像を名前つきの共有メモリで受ける（`mm-nodes-ofx`、RFC 0132） | 済（段階 8。GPU Rendering Suite の共有テクスチャは残り） |
+| `shader.hlsl` | DXC で SPIR-V にしてから naga で WGSL に。naga は HLSL を直接読めない [4]。`#include` は拒否する | 済（段階 8） |
+| `lottie` | Lottie（rlottie か pure Rust の実装）で CPU に描いてアップロード | 済（段階 8） |
+| `gen.ai` | 生成 AI。`offline`。費用のかかる API は操作の側で見積もりを強制し、自動の改善の回からは呼べない（下の「gen.ai の作り」） | 済（段階 8 は枠組み。実際の提供元と操作経路への接続は残り） |
 
 ## 入れ子
 
@@ -90,11 +90,12 @@ pub trait NodeKind: Send + Sync {
 
 ## 効果
 
-- `Layer.effects` を上から順に、レイヤーの画像（変形の前）を入力 0 にして掛ける。種類は自前のコマンドを作ってすぐ提出するので、レンダラーは呼ぶ前に積んだコマンドを提出する（入れ子とシーケンスの画像が揃ってから読ませるため）。`enabled` が偽の効果と `is_identity` が真の効果は掛けない。
+- `Layer.effects` を上から順に、レイヤーの画像（変形の前）を入力 0 にして掛ける。種類は自前のコマンドを作ってすぐ提出するので、レンダラーは呼ぶ前に積んだコマンドを提出する（入れ子とシーケンスの画像が揃ってから読ませるため）。`enabled` が偽の効果と `is_identity` が真の効果は掛けない。効果の `FrameCx::scale` は、入力の画像の画素がレイヤーの座標の 1 画素あたり何画素か（撮影素材の GPU のフレームは素材の大きさのままなので、描く先の倍率と違うことがある）。
 - 色の種類は線形の premultiplied を straight にしてから処理し、作業色空間（線形の光）の上で掛ける。GPU は `WgpuGpu` の全画面パス、`GpuHelper` が別の実装ならモックの CPU の経路（同じ式。試験で GPU と突き合わせる）。
 
 | 種類 | パラメータ | 内容 |
 |---|---|---|
+| `blur.gaussian` | `radius`（標準偏差。レイヤーの座標の画素、既定 0） | ガウスぼかし。CSS の `blur()` と同じく画像の外は透明として数え、縁は透明へ薄くなる（画像の外へは広げない）。重みは標準偏差の 3 倍まで。描く画素で 8 を超える標準偏差は、縮めた画像に掛けて広げ戻す（geneva、Skia と同じ。費用は半径によらない）。上限は描く画素で 4096 |
 | `color.adjust` | `brightness`（露出の段数、既定 0）、`contrast`（18% グレーを支点にしたべき、既定 1）、`saturation`（Rec.709 の輝度係数からの距離の倍率、既定 1） | 明るさ、コントラスト、彩度 |
 | `color.cdl` | `slope`、`offset`、`power`（Vec3）、`saturation` | ASC CDL。`clamp(in * slope + offset) ^ power` の後に彩度。作業色空間の上で掛ける |
 | `color.lut` | `lut`（`.cube` の素材の `AssetRef`。中身の `contentHash` がキャッシュのキーに入る）、`intensity`（0..1）、`input_space`（`lin_rec709`、`srgb`、`bt709`） | 3D LUT。LUT の入力の色空間に符号化して引き、線形に戻して `intensity` で混ぜる |
@@ -121,11 +122,11 @@ pub trait NodeKind: Send + Sync {
 
 - パラメータはプロンプトと設定（`media` が `image`・`video`・`audio`、`width`、`height`、`duration`、`seed`、`provider`）と、生成した素材の参照 `asset`。描くのは `asset` の素材だけで、毎フレーム生成しない。素材は `AssetRef` なので、レンダラーは撮影素材と同じくデコーダーで開いて `FrameCx::footage` に渡し、種類は `footage` と同じ形（CPU の画像は画布に収める、GPU のフレームは借用する、音は `audio_in`）で返す。`asset` が空の間は透明で無音。
 - `offline` は「生成は待つのが前提」の意味で、生成は `prepare` でも `render` でもなく操作経路の側で済ませる。生成は費用とファイルの副作用を持つので操作（`Op`）にせず、結果を普通の操作（`addAsset` と `setParam`）の 1 つのトランザクションで返す。取り消しとやり直しはそのまま効く。
-- 生成は `GenAi` の 3 段でしか起きない。`quote`（提供元の料金表から費用と時間。通信しない）→ `approve`（人の承認の印。頼みの鍵と費用の上限を持つ）→ `generate`（見積もりを出し直し、承認の後にパラメータが変わっていれば `NotApproved`、上限を超えれば `OverBudget` で断る）。
-- 承認の印は MCP の経路（`Entry::Mcp`）からは作れない。提案と同じく、頼んだ Claude 自身が承認すると確認の意味が無いため（[RFC 0078](../rfcs/0078-review-proposals.md)）。
-- 自動の改善の回の中では `approve` と `generate` を `Forbidden` で断る。`mm-improve` が回の `claude -p` に環境変数 `MM_IMPROVE_RUN`（回の ID）を渡し、子の `mm` が受け継ぐ。`GenAi` は作るときと呼ぶたびにこれを読み、印は足せるだけで外せない。
-- 同じ頼みは使い回す。頼みの鍵はパラメータ（`asset` と種類に関係しない値を除く）と提供元の版の BLAKE3。素材は `<project>/media/genai/<鍵>.<拡張子>` と素材の JSON（`<鍵>.json`）に置き、取り消してもファイルは残すので、同じ鍵はもう一度提供元を呼ばずに置き直せる。見積もりは 0 になる。
-- 提供元は `Provider`（`estimate`、`generate`、`revision`）で差し替える。今は偽の提供元（`fake`。単色の PNG と Y4M、正弦波の WAV）だけで、実際のサービスは人が決めてから足す。
+- 生成は `GenAi` の 3 工程でしか起きない。`quote`（提供元の料金表から費用と時間。通信しない）→ `approve`（人の承認。頼みのキーと費用の上限を持つ）→ `generate`（見積もりを出し直し、承認の後にパラメータが変わっていれば `NotApproved`、上限を超えれば `OverBudget` で拒否する）。
+- 承認は Claude の経路（`Entry::Mcp` と `Entry::Cli`、`Entry::is_claude`）からは作れず、人がアプリ（`Surface`、`WebView`）で作る。提案と同じく、頼んだ Claude 自身が承認すると確認の意味が無いため（[RFC 0078](../rfcs/0078-review-proposals.md)）。
+- 自動の改善の回の中では `approve` と `generate` を `Forbidden` で拒否する。`mm-improve` が回の `claude -p` に環境変数 `MM_IMPROVE_RUN`（回の ID）を渡し、子の `mm` が受け継ぐ。`GenAi` は作るときと呼ぶたびにこれを読み、環境変数は足せるだけで外せない。
+- 同じ頼みは使い回す。頼みのキーはパラメータ（`asset` と種類に関係しない値を除く）と提供元のバージョンの BLAKE3。素材は `<project>/media/genai/<キー>.<拡張子>` と素材の JSON（`<キー>.json`）に置き、取り消してもファイルは残すので、同じキーはもう一度提供元を呼ばずに置き直せる。見積もりは 0 になる。
+- 提供元は `Provider`（`estimate`、`generate`、`revision`）で差し替える。今はモックの提供元（`fake`。単色の PNG と Y4M、正弦波の WAV）だけで、実際のサービスは人が決めてから足す。
 
 
 ---

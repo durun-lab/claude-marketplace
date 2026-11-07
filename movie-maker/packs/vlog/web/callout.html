@@ -79,23 +79,15 @@
     el.style.fontFamily = `"${fonts.body || 'M PLUS Rounded 1c'}", "Yu Gothic UI", "Meiryo", sans-serif`;
   };
 
-  // テーマの色を CSS 変数にして、var(--名前) の参照を返す。色は theme.json だけが持ち、ページは名前で引く。
-  const themeColors = (theme) => {
-    const out = {};
-    for (const [k, v] of Object.entries(theme.colors || {})) {
-      document.documentElement.style.setProperty(`--${k}`, v);
-      out[k] = `var(--${k})`;
-    }
-    return out;
-  };
-
   window.mmSetTime = (t, data) => {
     const theme = data.theme || {};
-    const colors = themeColors(theme);
+    const colors = mmThemeColors(theme);
     const fonts = theme.fonts || {};
     const tail = ['up', 'side'].includes(data.tail) ? data.tail : 'down';
     const text = document.getElementById('text');
     fill(text, colors, fonts, data, tail);
+    // 折り返しの幅は使える幅（画面の幅 - left）で変わるので、前の呼び出しの置き場所を戻してから測る。
+    text.style.left = text.style.top = '0px';
     const w = text.offsetWidth, h = text.offsetHeight;
     const tx = Number(data.x) || 0, ty = Number(data.y) || 0;
     const right = (data.side || 'right') !== 'left';

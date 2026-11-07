@@ -15,7 +15,7 @@ const state = (): TransitionState => ({
   sequence: "s1",
   cuts: [
     { id: "k1", start: 0, duration: 4, transition: null },
-    { id: "k2", start: 4, duration: 3, transition: { kind: "whip", duration: 0.7 } },
+    { id: "k2", start: 4, duration: 3, transition: { kind: "whip", duration: 0.7, params: { p0: 3 } } },
     { id: "k3", start: 7, duration: 2, transition: null },
   ],
 });
@@ -79,7 +79,7 @@ describe("TransitionPanel の操作", () => {
     act(() => cutButton("k3").click());
     await change(kind(), "dip");
     expect(api.set).toHaveBeenCalledTimes(1);
-    expect(api.set).toHaveBeenCalledWith("k3", "dip", DEFAULT_DURATION);
+    expect(api.set).toHaveBeenCalledWith("k3", "dip", DEFAULT_DURATION, undefined);
     expect(api.cuts).toHaveBeenCalledTimes(2);
   });
 
@@ -87,7 +87,7 @@ describe("TransitionPanel の操作", () => {
     const api = await mount();
     act(() => cutButton("k2").click());
     await change(kind(), "dissolve");
-    expect(api.set).toHaveBeenCalledWith("k2", "dissolve", 0.7);
+    expect(api.set).toHaveBeenCalledWith("k2", "dissolve", 0.7, { p0: 3 });
   });
 
   it("長さを変えると、いまの種類のまま 1 回送る", async () => {
@@ -95,13 +95,14 @@ describe("TransitionPanel の操作", () => {
     act(() => cutButton("k2").click());
     await change(length(), "1.2");
     expect(api.set).toHaveBeenCalledTimes(1);
-    expect(api.set).toHaveBeenCalledWith("k2", "whip", 1.2);
+    expect(api.set).toHaveBeenCalledWith("k2", "whip", 1.2, { p0: 3 });
   });
 
-  it("長さが 0 以下なら送らない", async () => {
+  it("長さが下限より短いなら送らない", async () => {
     const api = await mount();
     act(() => cutButton("k2").click());
     await change(length(), "0");
+    await change(length(), "0.05");
     expect(api.set).not.toHaveBeenCalled();
   });
 
@@ -124,13 +125,23 @@ describe("TransitionPanel の失敗と例外", () => {
     expect(host.querySelector(".mm-tr-error")?.textContent).toBe("長さは正にする");
   });
 
+  it("読み込みの失敗は、次に読めたら消す", async () => {
+    const api = await mount({
+      cuts: vi.fn().mockRejectedValueOnce(new Error("プロジェクトを開いていない")).mockResolvedValue(state()),
+    });
+    expect(host.querySelector(".mm-tr-error")?.textContent).toBe("プロジェクトを開いていない");
+    act(() => render(<TransitionPanel api={api} refreshKey={1} />, host));
+    await settle();
+    expect(host.querySelector(".mm-tr-error")).toBeNull();
+  });
+
   it("パックに無いトランジションは custom と出す", async () => {
     await mount({
       cuts: vi.fn().mockResolvedValue({
         sequence: "s1",
         cuts: [
           { id: "k1", start: 0, duration: 4, transition: null },
-          { id: "k2", start: 4, duration: 3, transition: { kind: null, duration: 1 } },
+          { id: "k2", start: 4, duration: 3, transition: { kind: null, duration: 1, params: {} } },
         ],
       }),
     });
@@ -158,6 +169,19 @@ describe("createIpcTransitionApi", () => {
       ["pack_transitions", { dir: "pk" }],
       ["pack_apply", { dir: "pk", name: "transition", args: { cut: "k2", kind: "whip", dur: "0.7" } }],
       ["apply_op", { op: { op: "setTransition", cut: "k2", transition: null } }],
+    ]);
+  });
+
+  it("乱数の種を引き継ぎ、巻き戻しは倍率つきで専用のマクロに送る", async () => {
+    const call = vi.fn().mockResolvedValue(undefined);
+    const api = createIpcTransitionApi(call, "pk");
+    await api.set("k2", "dip", 1, { p0: 3 });
+    await api.set("k2", "rewind", 1.6, { rewind: 2 });
+    await api.set("k2", "rewind", 1.6, { p0: 3 });
+    expect(call.mock.calls).toEqual([
+      ["pack_apply", { dir: "pk", name: "transition", args: { cut: "k2", kind: "dip", dur: "1", seed: "3" } }],
+      ["pack_apply", { dir: "pk", name: "rewind", args: { cut: "k2", dur: "1.6", speed: "2" } }],
+      ["pack_apply", { dir: "pk", name: "rewind", args: { cut: "k2", dur: "1.6" } }],
     ]);
   });
 
