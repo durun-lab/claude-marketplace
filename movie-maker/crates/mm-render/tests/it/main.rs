@@ -12,6 +12,7 @@ mod frame_cache;
 mod golden;
 mod gpu_footage;
 mod mask;
+mod matte;
 mod nested;
 mod node_kinds;
 mod scene;
