@@ -110,6 +110,25 @@ fn マスクの位置が数を超えると拒否する() {
 }
 
 #[test]
+fn 矩形の大きさを数にすると拒否してレイヤーを変えない() {
+    let mut p = project();
+    p.compositions[0].layers[0].masks.push(Mask::rect(
+        "m1",
+        MaskRect::new([0.0, 0.0], [10.0, 10.0], 0.0),
+    ));
+    let mut ed = Editor::new(p.clone());
+    let set: Op = SetParam {
+        target: ParamRef::layer(&Id::new("l1"), "masks.m1.rect.size"),
+        value: ParamValue::Number(10.0),
+        keyframes: None,
+    }
+    .into();
+    let r = ed.apply(Transaction::new("bad", vec![set]), &OpContext::human());
+    assert!(r.is_err(), "型の違う矩形の大きさは拒否する");
+    assert_eq!(canon(ed.project()), canon(&p));
+}
+
+#[test]
 fn 切り抜きの辺を置くと作られ_取り消すと切り抜きの無い元に戻る() {
     let before = project();
     let set: Op = SetParam {
