@@ -118,6 +118,12 @@ describe("FeedbackPanel の設定", () => {
     });
     await flush();
     expect(api.settings).toHaveBeenLastCalledWith({ budgetUsd: 1 });
+    act(() => {
+      budget.value = "0";
+      budget.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await flush();
+    expect(api.settings).toHaveBeenCalledTimes(1);
     click(byText("Stop now"));
     await flush();
     expect(api.stop).toHaveBeenCalled();

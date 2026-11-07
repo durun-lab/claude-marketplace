@@ -316,15 +316,16 @@ movie-maker/
 | 領域 | 自動の回 | 中身 |
 |---|---|---|
 | `ui/panels/*`、`ui/theme` | 書いて取り込む（検査が通れば） | 画面の直し。esbuild のバンドルし直しとリロードだけで反映 |
-| `crates/mm-ops`、`mm-eval`、`mm-store` | 書いて取り込む | 操作の追加と直し、配置の計算。性質テストが守る |
+| `crates/mm-eval`、`mm-store` | 書いて取り込む | 配置の計算と保存。性質テストが守る |
 | `crates/mm-nodes-*`、`mm-text-*`、`mm-color-lut`、`mm-audio-dsp` | 書いて取り込む | ノードの種類の追加、文字と色と音の実装。契約テストと期待画像が守る |
 | `crates/mm-testkit`、`mm-bench`、`mm-pack`、`fixtures/`、`fuzz/`、`packs/`、`tools/` | 書いて取り込む | フィクスチャとベンチとパックと外のツール。期待画像（`fixtures/golden/`）の更新だけは PR までで止める（人が見る） |
+| `crates/mm-ops` | PR までで止める | 操作の層。性質テストが守っても、プロジェクトのデータを壊す変更を人の目なしに本線へ入れない |
 | `crates/mm-trace` | PR までで止める | 計装の決まりと出力の形。変えると比較の相手が変わる |
 | `crates/mm-*-api`、`mm-types`、`mm-doc`（スキーマの移行）、`mm-runtime` | PR までで止める | インターフェースの変更、プロジェクトのデータの形、組み立て。RFC が要る |
 | `crates/mm-render`、`mm-decode-*`、`mm-encode-*`、`mm-host-*`、`mm-color-ocio`、`mm-export` | PR までで止める | GPU と unsafe なバックエンド、別プロセス、書き出しの一致。期待画像で機械が検査しても人が見る |
 | `crates/mm-improve`、`mm-serve`、`apps/` | PR までで止める | 自分自身と操作経路の変更 |
 
-- 回の worktree では、書いてよい領域の外のファイルを変えた PR は検査で落とす（`git diff --name-only` を `areas.toml` と突き合わせる）。
+- 回の worktree で、書いてよい領域の外のファイルを変えた回は取り込まずに PR までで止める（`git diff --raw -z --no-renames` を `areas.toml` の `[improve]` と突き合わせる。名前の変更は前後の両方、シンボリックリンクと submodule は外と同じに扱う）。
 - 費用のかかる操作（`gen.ai`）と実際のプロジェクトは、回からは触れない（[自動の改善](10-review-improve.md#自動の改善)の囲い）。
 
 

@@ -1,15 +1,18 @@
 //! 回の起動と区切り。別の worktree を作って基準を取り、`claude -p` にたまった要望をまとめて実装させ、
 //! Stop で区切ったら囲いの検査（gate.rs）へ渡す。使用制限で止まったら状態に明ける時刻を残し、明けたら同じセッションで続ける。
 
+use std::cell::Cell;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use mm_types::Result;
 
 use crate::agent::{stop_message, Agent, AgentEnd, AgentRequest};
 use crate::areas::Areas;
 use crate::checks::{CheckCx, Checks};
-use crate::config::{ImproveConfig, Settings};
+use crate::config::{ImproveConfig, Settings, DEFAULT_BUDGET_USD};
+use crate::errors::ErrorBook;
 use crate::files::{read_or_default, write_json};
 use crate::forge::Forge;
 use crate::git;
@@ -18,9 +21,12 @@ use crate::state::{ImproveState, Phase, RunOutcome, RunReport, RunState};
 use crate::store::FeedbackStore;
 use crate::time::{now_ms, short_hex, stamp, uuid_v4};
 
-/// 印を書かずに止まったときに続きを頼む上限。
+/// 完了のマーカーを書かずに止まったときに続きを頼む上限。
 const MAX_NUDGES: u32 = 2;
-/// 明ける時刻ちょうどに頼むとまだ断られることがあるので、少し待ってから続ける。
+/// 1 つの回で `claude -p` を呼ぶ上限。会話ログに古い使用制限が残っているなど、すぐ終わる呼び出しを繰り返さない。
+pub const MAX_CALLS: u32 = 12;
+const MS_PER_MIN: u64 = 60_000;
+/// 明ける時刻ちょうどに頼むとまだ拒否されることがあるので、少し待ってから続ける。
 pub const AFTER_RESET_MS: u64 = 60_000;
 pub(crate) const STATE_FILE: &str = "state.json";
 pub(crate) const SETTINGS_FILE: &str = "settings.json";
@@ -53,9 +59,40 @@ pub(crate) struct Ctx {
     pub checks: Arc<dyn Checks>,
     pub forge: Arc<dyn Forge>,
     pub store: FeedbackStore,
+    /// `errors.json` の読み書きを順にする。
+    pub errors_lock: Mutex<()>,
+}
+
+thread_local! {
+    /// このスレッドが `errors.json` のロックを持っているか。持っている間の panic を panic のフックが記録しようとして、
+    /// 同じロックを待って止まらないようにする。
+    static HOLDING_ERRORS: Cell<bool> = const { Cell::new(false) };
+}
+
+/// 抜けるとき（panic で巻き戻るときも）にフラグを戻す。
+struct ReleaseErrors;
+
+impl Drop for ReleaseErrors {
+    fn drop(&mut self) {
+        HOLDING_ERRORS.set(false);
+    }
 }
 
 impl Ctx {
+    /// `errors.json` をロックの中で読み、`f` で変えて書く。このスレッドが既に持っていれば何もせず `None`。
+    pub fn with_errors<R>(&self, f: impl FnOnce(&mut ErrorBook) -> Result<R>) -> Result<Option<R>> {
+        if HOLDING_ERRORS.replace(true) {
+            return Ok(None);
+        }
+        let _release = ReleaseErrors;
+        let _lock = self.errors_lock.lock().unwrap_or_else(|e| e.into_inner());
+        let path = self.cfg.file(ERRORS_FILE);
+        let mut book = ErrorBook::load(&path)?;
+        let out = f(&mut book)?;
+        book.save(&path)?;
+        Ok(Some(out))
+    }
+
     pub fn state(&self) -> Result<ImproveState> {
         read_or_default(&self.cfg.file(STATE_FILE))
     }
@@ -85,7 +122,7 @@ impl Ctx {
         run.worktree.join(&self.cfg.subdir)
     }
 
-    /// 本線の areas.toml。回が書き換えても、取り込む先の版で判定する。無ければ全部を人の承認に回す。
+    /// 本線の areas.toml。回が書き換えても、本線のコミットで判定する。無ければ全部を人の承認に回す。
     pub fn areas(&self) -> Result<Areas> {
         let path = self.cfg.subdir.join("docs").join("areas.toml");
         let path = path.to_string_lossy().replace('\\', "/");
@@ -96,7 +133,7 @@ impl Ctx {
     }
 }
 
-/// 1 歩進める。錠は呼ぶ側が持つ。
+/// 1 歩進める。ロックは呼ぶ側が持つ。
 pub(crate) fn step(ctx: &Ctx) -> Result<Step> {
     let mut st = ctx.state()?;
     let run = match st.run.clone() {
@@ -134,6 +171,7 @@ fn start(ctx: &Ctx, st: &mut ImproveState) -> Result<std::result::Result<RunStat
     git::ensure_branch(&ctx.cfg.repo, &ctx.cfg.mainline, &ctx.cfg.upstream)?;
     let base_commit = git::git(&ctx.cfg.repo, &["rev-parse", &ctx.cfg.mainline])?;
     git::worktree_add(&ctx.cfg.repo, &worktree, &branch, &base_commit)?;
+    let settings = ctx.settings()?;
     let run = RunState {
         id,
         session_id: uuid_v4(),
@@ -148,6 +186,10 @@ fn start(ctx: &Ctx, st: &mut ImproveState) -> Result<std::result::Result<RunStat
         agent_pid: None,
         limit_resets_at: None,
         last_message: None,
+        budget_usd: Some(settings.budget()),
+        wall_ms: Some(u64::from(settings.wall_minutes) * MS_PER_MIN),
+        spent_usd: 0.0,
+        agent_ms: 0,
     };
     st.run = Some(run.clone());
     ctx.save_state(st)?;
@@ -185,15 +227,24 @@ fn persist(ctx: &Ctx, st: &mut ImproveState, run: &RunState) -> Result<()> {
 
 /// 実装を任せる。Stop で区切ったら検査へ渡す。
 fn drive(ctx: &Ctx, mut st: ImproveState, mut run: RunState) -> Result<Step> {
+    // 前のプロセスが起こした `claude -p` の pid は番号が使い回されうるので、このプロセスでは使わない。
+    run.agent_pid = None;
+    fill_limits(ctx, &mut run)?;
     recover_stop(ctx, &mut run);
     let mut prompt = first_prompt(ctx, &run)?;
     while run.phase == Phase::Agent {
         if ctx.stop_requested() {
             return fail(ctx, &mut st, &run, RunOutcome::Stopped);
         }
-        let end = call_agent(ctx, &run, &prompt)?;
+        if let Some(reason) = exhausted(&run) {
+            return fail(ctx, &mut st, &run, RunOutcome::Failed { reason });
+        }
+        // 呼ぶ前に回数を書く。呼んでいる間にプロセスがクラッシュしても、次は同じセッションを続ける。
+        let resume = run.calls > 0;
         run.calls += 1;
         run.limit_resets_at = None;
+        persist(ctx, &mut st, &run)?;
+        let end = call_agent(ctx, &mut run, &prompt, resume)?;
         match end {
             AgentEnd::UsageLimit { resets_at } => {
                 run.limit_resets_at = Some(resets_at);
@@ -208,23 +259,56 @@ fn drive(ctx: &Ctx, mut st: ImproveState, mut run: RunState) -> Result<Step> {
                 };
                 return fail(ctx, &mut st, &run, outcome);
             }
-            AgentEnd::Finished { last_message }
-                if !last_message.contains(DONE_MARK) && run.nudges < MAX_NUDGES =>
-            {
-                run.nudges += 1;
-                prompt = NUDGE_PROMPT.to_owned();
-            }
-            AgentEnd::Finished { last_message } => {
-                run.last_message = Some(last_message);
-                run.phase = Phase::Gate;
-            }
+            AgentEnd::Finished { last_message } => after_turn(&mut run, last_message, &mut prompt),
         }
         persist(ctx, &mut st, &run)?;
     }
     crate::gate::gate(ctx, st, run)
 }
 
-/// 回を動かしていたプロセスが、Stop の後で検査の前に落ちていたら、フックが残した最後の発言で区切る。
+/// ターンの終わり。完了のマーカーがあれば検査へ、無ければ続きを頼む（上限まで。超えたら完了のマーカーの無いまま検査で失敗にする）。
+fn after_turn(run: &mut RunState, last_message: String, prompt: &mut String) {
+    if !last_message.contains(DONE_MARK) && run.nudges < MAX_NUDGES {
+        run.nudges += 1;
+        *prompt = NUDGE_PROMPT.to_owned();
+        return;
+    }
+    run.last_message = Some(last_message);
+    run.phase = Phase::Gate;
+}
+
+/// 予算と時間の上限を持たない回（回の途中でアプリのバージョンが変わった状態のファイル）に、いまの設定の値を入れる。
+fn fill_limits(ctx: &Ctx, run: &mut RunState) -> Result<()> {
+    if run.budget_usd.is_some() && run.wall_ms.is_some() {
+        return Ok(());
+    }
+    let s = ctx.settings()?;
+    run.budget_usd.get_or_insert(s.budget());
+    run.wall_ms
+        .get_or_insert(u64::from(s.wall_minutes) * MS_PER_MIN);
+    Ok(())
+}
+
+/// 回の予算、時間、呼び出しの回数を使い切っていれば理由。使用制限の後の続きと催促も同じ上限に数える。
+fn exhausted(run: &RunState) -> Option<String> {
+    let budget = run.budget_usd.unwrap_or(DEFAULT_BUDGET_USD);
+    let wall = run.wall_ms.unwrap_or(0);
+    if run.spent_usd >= budget {
+        return Some(format!(
+            "回の予算 {budget} ドルを使い切った（{:.2} ドル）",
+            run.spent_usd
+        ));
+    }
+    if run.agent_ms >= wall {
+        return Some(format!(
+            "回の時間の上限 {} 分を使い切った",
+            wall / MS_PER_MIN
+        ));
+    }
+    (run.calls >= MAX_CALLS).then(|| format!("claude -p を {MAX_CALLS} 回呼んでも回が終わらない"))
+}
+
+/// 回を動かしていたプロセスが、Stop の後で検査の前にクラッシュしていたら、フックが残した最後の発言で区切る。
 fn recover_stop(ctx: &Ctx, run: &mut RunState) {
     if run.phase != Phase::Agent || run.calls == 0 || run.limit_resets_at.is_some() {
         return;
@@ -254,8 +338,11 @@ fn first_prompt(ctx: &Ctx, run: &RunState) -> Result<String> {
     ))
 }
 
-fn call_agent(ctx: &Ctx, run: &RunState, prompt: &str) -> Result<AgentEnd> {
-    let settings = ctx.settings()?;
+/// 1 回呼ぶ。予算と時間は回の残りだけを渡し、使った分を回に足す。
+fn call_agent(ctx: &Ctx, run: &mut RunState, prompt: &str, resume: bool) -> Result<AgentEnd> {
+    let mut settings = ctx.settings()?;
+    settings.budget_usd = Some(run.budget_usd.unwrap_or(DEFAULT_BUDGET_USD) - run.spent_usd);
+    let wall = Duration::from_millis(run.wall_ms.unwrap_or(0).saturating_sub(run.agent_ms));
     let run_dir = ctx.cfg.run_dir(&run.id);
     let root = ctx.root_of(run);
     let read_dirs = [ctx.store.dir().to_path_buf()];
@@ -268,17 +355,27 @@ fn call_agent(ctx: &Ctx, run: &RunState, prompt: &str) -> Result<AgentEnd> {
             }
         }
     };
+    let cost = Mutex::new(None::<f64>);
+    let record_cost = |usd: f64| *cost.lock().unwrap_or_else(|e| e.into_inner()) = Some(usd);
     let req = AgentRequest {
         session_id: &run.session_id,
-        resume: run.calls > 0,
+        resume,
         prompt,
         cwd: &root,
         run_dir: &run_dir,
         read_dirs: &read_dirs,
         settings: &settings,
+        wall,
         on_spawn: &record_pid,
+        on_cost: &record_cost,
     };
-    Ok(ctx.agent.run(&req))
+    let started = Instant::now();
+    let end = ctx.agent.run(&req);
+    run.agent_ms += u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX);
+    if let Some(total) = cost.into_inner().unwrap_or_else(|e| e.into_inner()) {
+        run.spent_usd = run.spent_usd.max(total);
+    }
+    Ok(end)
 }
 
 /// 回を終える（失敗、止めた）。worktree とブランチを消し、要望は未対応に残して待機する。

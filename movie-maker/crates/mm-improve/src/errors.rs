@@ -74,7 +74,7 @@ pub struct Load {
 pub struct ErrorInput {
     /// 起きた所。
     pub source: ErrorSource,
-    /// メッセージ。数字と ID は同じものをまとめる鍵では伏せる。
+    /// メッセージ。数字と ID は同じものをまとめるキーでは伏せる。
     pub message: String,
     /// スタック。
     #[serde(default)]
@@ -175,7 +175,7 @@ impl ErrorRecord {
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ErrorBook {
-    /// 鍵ごとの記録。
+    /// キーごとの記録。
     pub records: BTreeMap<String, ErrorRecord>,
     /// 自動の起票の時刻（直近 1 時間）。
     pub filed_at: Vec<u64>,
@@ -190,7 +190,7 @@ pub struct RecentLanding<'a> {
     pub at: u64,
 }
 
-/// 同じものをまとめる鍵。場所 + スパンの名前 + メッセージから数字と ID を伏せたもの。
+/// 同じものをまとめるキー。場所 + スパンの名前 + メッセージから数字と ID を伏せたもの。
 pub fn key_of(input: &ErrorInput) -> String {
     let src = serde_json::to_value(input.source)
         .ok()
