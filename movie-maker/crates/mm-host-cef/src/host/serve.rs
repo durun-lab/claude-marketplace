@@ -38,6 +38,8 @@ const FRAME_LIMIT: Duration = Duration::from_secs(4);
 /// - 画像: 初めて出す `<img>` の画像（要素と `src` の組）は、組み直してから `decode()` が終わるまで待ち、
 ///   デコード前の欠けた画像で描かない。待つものが無いフレームは、時刻の反映と同じタスクで合図を出す。
 ///   `loading="lazy"` で読み込んでいない画像は待たない（ビューポートの外では読み込みが始まらない）。
+/// - 背景画像: CSS の `background-image` の `url()` も、初めて出すものは `Image` の `decode()` まで待つ
+///   （同じ URL は画像のキャッシュを共有する）。
 /// - 書体: 時刻の反映で初めて使う Web フォントは、組んだ時点で読み込みが始まる。組み直してから
 ///   `document.fonts` の読み込みが終わるまで待ち、読み込み中の代わりの書体で描かないようにする。
 ///   待ったときは時刻をもう一度反映する。文字の幅を測って枠を組むページ（吹き出し）が、代わりの書体で
@@ -56,9 +58,19 @@ visibility:visible!important;opacity:1!important;z-index:2147483647!important;po
   const fresh = () => Array.from(document.images).filter((i) => i.src && decoded.get(i) !== i.src\
     && (i.complete || i.loading !== 'lazy'));\
   const decode = (i) => { const s = i.src; return i.decode().catch(() => {}).then(() => decoded.set(i, s)); };\
+  const decodedBg = new Set();\
+  const freshBg = () => { const out = new Set();\
+    for (const el of document.querySelectorAll('*')) {\
+      const bg = getComputedStyle(el).backgroundImage;\
+      if (bg === 'none') { continue; }\
+      for (const m of bg.matchAll(/url\\(\"?([^\")]+)\"?\\)/g)) { if (!decodedBg.has(m[1])) { out.add(m[1]); } }\
+    }\
+    return Array.from(out); };\
+  const decodeBg = (u) => { const i = new Image(); i.src = u;\
+    return i.decode().catch(() => {}).then(() => decodedBg.add(u)); };\
   const settle = (run, done) => { void document.documentElement.getBoundingClientRect();\
-    const images = fresh();\
-    if (images.length > 0) { Promise.all(images.map(decode)).then(() => settle(run, done)); }\
+    const pending = [...fresh().map(decode), ...freshBg().map(decodeBg)];\
+    if (pending.length > 0) { Promise.all(pending).then(() => settle(run, done)); }\
     else if (document.fonts.status === 'loaded') { done(); }\
     else { document.fonts.ready.then(() => { run(); settle(run, done); }); } };\
   window.__mmFrame = (t, seq, params) => {\

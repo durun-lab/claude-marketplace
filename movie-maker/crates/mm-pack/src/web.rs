@@ -14,6 +14,24 @@ use crate::pack::Pack;
 const WEB_KIND: &str = "web.cef";
 const WEB_KIND_VERSION: u32 = 1;
 
+/// 全ページが使う、テーマの色を CSS 変数（`--名前`）にして `var(--名前)` の参照の表を返す関数。
+/// 色の当て方を 1 か所に置き、ページごとの写しを持たない。
+const THEME_SCRIPT: &str = "<script>const mmThemeColors = (theme) => {
+  const out = {};
+  for (const [k, v] of Object.entries(theme.colors || {})) {
+    document.documentElement.style.setProperty(`--${k}`, v);
+    out[k] = `var(--${k})`;
+  }
+  return out;
+};</script>
+";
+
+/// 最初の `<script` の前に [`THEME_SCRIPT`] を差し込む。ページの script より前に定義が要る。
+fn with_theme_script(html: &str) -> String {
+    let at = html.find("<script").unwrap_or(0);
+    format!("{}{THEME_SCRIPT}{}", &html[..at], &html[at..])
+}
+
 /// `web` 手順を `addLayer` 1 つにする。
 pub(crate) fn web_op(pack: &Pack, env: &Env, step: &WebStep) -> Result<Value> {
     let page = env.fill_text(&step.page)?;
@@ -30,7 +48,7 @@ pub(crate) fn web_op(pack: &Pack, env: &Env, step: &WebStep) -> Result<Value> {
         return Err(MmError::InvalidArgument(format!("{id}: 長さは正にする")));
     }
     let node = Node::new(WEB_KIND, WEB_KIND_VERSION)
-        .with_param("html", ParamValue::Text(html.clone()))
+        .with_param("html", ParamValue::Text(with_theme_script(html)))
         .with_param("data", ParamValue::Json(page_data(pack, env, step)?))
         .with_param("static", ParamValue::Bool(!step.animated));
     let mut layer = Layer::new(id, node, at, RationalTime::ZERO, dur);
