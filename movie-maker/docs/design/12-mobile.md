@@ -231,6 +231,8 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 | `GET /m/api/audio/{asset}.m4a`、`GET /m/api/proposals/{id}/clip.mp4` | 素材の音だけ、提案の区間の短い動画 |
 | `GET /m/api/events` | SSE。`hello`、`change`、`resync`、`proposal` に加えて `comment`（`{ id, state }`） |
 
+人の待ち受けのルーターは `crates/mm-serve/src/mobile/mod.rs` の `router` で、ほかのモジュールの `/m/api/` は名前の順に `merge` か `nest` で 1 行ずつ載せる。守りは全体に掛かり、通った要求に `Extension<DeviceInfo>`（登録した端末）と `Extension<Caller>`（`Entry::Mobile`、名乗りは端末の名前）を入れる。
+
 Claude の待ち受けにはコメントの `GET /comments`、`POST /comments/{id}/replies` と、MCP のツール `comments`、`comment_reply` を足す（操作でないツール。`mcp_tools.rs` に名前の順で 1 つずつ）。
 
 ## 段階 9 の実装の分け方
