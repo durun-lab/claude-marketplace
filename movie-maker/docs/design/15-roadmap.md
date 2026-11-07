@@ -82,7 +82,7 @@
 | 4 `mm-host-cef`（段階 6 の準備） | CEF と wgpu を同じ GPU に揃える（既定は内蔵の AMD を選び、`OpenSharedHandle` が `E_INVALIDARG` で失敗する）。`windowless_frame_rate` は 240 以上にする（既定の 60 だと BeginFrame からフレームが来るまで p50 35 ms）。BeginFrame は捨てられることがあるので、フレームが来るまで送り直し、`seq` のシーケンス番号で古いフレームを検出する。別プロセスのアプリへは、`DuplicateHandle` で複製するか、ホストが自前の D3D12 共有テクスチャへコピーして渡す。1280x720 で p95 が 26 ms に跳ねた原因を調べる。[cef](spikes/cef.md#つまずいた所) 済（段階 4）: `timeBeginPeriod(1)`、`windowless_frame_rate` 1000（720p の p95 26 ms の原因）、`use-adapter-luid` で GPU を揃え、自前の共有テクスチャへコピーして `DuplicateHandle` で渡す。[cef](spikes/cef.md#段階-4-の追加mm-host-cef) |
 | 6 `web.cef` | 実際のページ（動画、`<canvas>`、Web フォント）と透過の扱いで 1 フレームの時間を取り直す。CEF をクラッシュさせたときの再起動と複数ブラウザの同時描画を試す。 |
 | 6 ホスト | レンダラーがデバイスを作り直したとき、別プロセスのホストも新しいデバイスに持ち替える。段階 2 ではホストが再生の経路に入っていない（段階 2 のレビュー、[RFC 0012](../rfcs/0012-stage2-leftovers.md)）。 |
-| 7 subsecond | 差し替えは `subsecond::call` の中だけで効く。ポインタ 1 本分だけを捕まえるクロージャは差し替えを素通りして古いまま動く（エラーも出ない）。試作では捕まえる値に通し番号を足して 2 本分にしたら効いた。Tauri では `tauri-build` と `dx` の `resource.lib` が二重になる（試作は `tauri-build` をコピーして `[patch.crates-io]` で差し替え、`MM_SKIP_WINRES` で省いた）。差し替えが効くのは `dx` で起動したワークスペースのメンバーだけ。実物の大きさで測り直す。[subsecond](spikes/subsecond.md#詰まった所) |
+| 7 subsecond | 差し替えは `subsecond::call` の中だけで効く。ポインタ 1 本分だけを捕まえるクロージャは差し替えを素通りして古いまま動く（エラーも出ない）。試作では捕まえる値に通し番号を足して 2 本分にしたら効いた。Tauri では `tauri-build` と `dx` の `resource.lib` が二重になる（試作は `tauri-build` をコピーして `[patch.crates-io]` で差し替え、`MM_SKIP_WINRES` で省いた）。差し替えが効くのは `dx` で起動したワークスペースのメンバーだけ。本体のアプリでは保存から反映まで 5〜31 秒（増分のコンパイルの有無と、作り直すクレートの数による）で、`apps/movie-maker` の feature `hotpatch` に入れた [subsecond](spikes/subsecond.md#本体のアプリでの実測段階-7) |
 | 8 HDR | 線形の光で 1 を超える値が 3D LUT で切られる（`color.lut` と、3D LUT にベイクした色の変換）。`TransformProgram::Lut3d` に shaper か定義域を持たせる（段階 2 のレビュー）。 |
 
 ---

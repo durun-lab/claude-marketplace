@@ -23,6 +23,7 @@ use crate::win::deliver_ipc;
 use crate::win::edit;
 use crate::win::feedback;
 use crate::win::feedback_ipc;
+use crate::win::hotpatch;
 use crate::win::ipc::{self, ProjectInfo, SyncState};
 use crate::win::media::{self, MediaState};
 use crate::win::media_ipc;
@@ -344,6 +345,7 @@ impl Boot {
             model.clone(),
         ));
         ipc::spawn(app.handle().clone(), self.state.clone());
+        hotpatch::start(app.handle());
         forward_changes(app.handle(), &self.shared);
         feedback::connect(app.handle().clone());
         offer_drops(&webview, app.state::<Arc<MediaState>>().inner().clone());

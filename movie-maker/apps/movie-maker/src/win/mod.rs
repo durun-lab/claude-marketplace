@@ -11,6 +11,7 @@ mod edit_actions;
 mod feedback;
 mod feedback_ipc;
 mod history;
+mod hotpatch;
 mod ipc;
 mod keys;
 mod media;
