@@ -40,10 +40,10 @@ pub trait NodeKind: Send + Sync {
 | `color.cdl`、`color.lut`、`color.ocio` | ASC CDL、`.cube`、OCIO の変換 | 最初 |
 | `web.cef` | HTML と CSS のテンプレート、Three.js のシーンを、埋め込みの Chromium で描いて共有テクスチャで受ける。`out_of_process`、`cost: heavy` | 次 |
 | `shader.glsl` | naga で WGSL に変換（GLSL 440+、Vulkan の流儀 [4]）。DTM_Vlog のトランジション（WebGL2 の GLSL ES 3.0）は書き換えが要る | 次 |
-| `ofx` | OpenFX のプラグイン。別プロセスのホストが描き、共有テクスチャで受ける | 次 |
-| `shader.hlsl` | DXC で SPIR-V にしてから naga で WGSL に。naga は HLSL を直接読めない [4] | 後 |
-| `lottie` | Lottie（rlottie か pure Rust の実装）で CPU に描いてアップロード | 後 |
-| `gen.ai` | 生成 AI。`offline`。費用のかかる API は操作の側で見積もりを強制し、自動の改善の回からは呼べない（下の「gen.ai の作り」） | 後 |
+| `ofx` | OpenFX のプラグイン。別プロセスのホストが描き、CPU の画像を名前つきの共有メモリで受ける（`mm-nodes-ofx`、RFC 0132） | 済（段階 8。GPU Rendering Suite の共有テクスチャは残り） |
+| `shader.hlsl` | DXC で SPIR-V にしてから naga で WGSL に。naga は HLSL を直接読めない [4]。`#include` は断る | 済（段階 8） |
+| `lottie` | Lottie（rlottie か pure Rust の実装）で CPU に描いてアップロード | 済（段階 8） |
+| `gen.ai` | 生成 AI。`offline`。費用のかかる API は操作の側で見積もりを強制し、自動の改善の回からは呼べない（下の「gen.ai の作り」） | 済（段階 8 は枠組み。実際の提供元と操作経路への接続は残り） |
 
 ## 入れ子
 
