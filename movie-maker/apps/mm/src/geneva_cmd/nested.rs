@@ -71,6 +71,9 @@ fn inner_layers(ctx: &mut Ctx<'_>, name: &str, def: &Value) -> Result<Vec<Layer>
         for e in &mut l.effects {
             e.id = scoped(name, &e.id);
         }
+        if let Some(matte) = &mut l.track_matte {
+            matte.layer = scoped(name, &matte.layer);
+        }
     }
     Ok(layers)
 }
@@ -158,6 +161,27 @@ mod tests {
         let rect = l.masks[0].rect.as_ref().unwrap();
         assert_eq!(rect.size.value.as_vec2().unwrap(), [566.0, 318.0]);
         assert_eq!(ctx.report.to_json(), json!([]));
+    }
+
+    #[test]
+    fn 入れ子の中の画像のマスクはマットのレイヤーの_id_も区切る() {
+        let media = media();
+        let mut ctx = Ctx::new(Rational::integer(30), [1920.0, 1080.0], &media);
+        let defs = json!({"pip": {"width": 566, "height": 318, "layers": [{"id": "v", "clips": [
+            {"source": {"kind": "image", "asset": "png"}, "start": "0f", "duration": "54f",
+             "mask": {"asset": "png"}}
+        ]}]}});
+        let defs = defs.as_object().unwrap();
+        ctx.comps = sizes(defs).unwrap();
+        let comps = compositions(&mut ctx, defs).unwrap();
+        let ids: Vec<&str> = comps[0].layers.iter().map(|l| l.id.as_str()).collect();
+        assert_eq!(ids, ["pip/v-0", "pip/v-0-matte"]);
+        let matte = comps[0].layers[0].track_matte.as_ref().unwrap();
+        assert_eq!(
+            matte.layer.as_str(),
+            "pip/v-0-matte",
+            "同じ入れ子のマットを指す"
+        );
     }
 
     #[test]

@@ -27,8 +27,6 @@ enum Look {
     Plain,
     /// `web.cef` で描くマークアップを含む。
     Web,
-    /// 画像のマスク（輝度で切り抜くトランジション）を含む。
-    ImageMask,
 }
 
 /// 比べる区間の始まり（秒）と、そこに出る ep02 の特徴。
@@ -59,13 +57,9 @@ const WINDOWS: [(f64, &str, Look); 10] = [
     (
         499.6,
         "レコードのトランジション（画像のマスク）とワイプの入れ子",
-        Look::ImageMask,
+        Look::Plain,
     ),
-    (
-        539.0,
-        "光漏れのトランジション（画像のマスク）",
-        Look::ImageMask,
-    ),
+    (539.0, "光漏れのトランジション（画像のマスク）", Look::Plain),
     (852.7, "締めのワイプの入れ子と加算の光", Look::Plain),
 ];
 
@@ -78,9 +72,6 @@ const PSNR_MEAN_MIN: f64 = 33.0;
 /// マークアップの区間の平均の SSIM と PSNR の下限。ep04 と同じ（CSS の色は PNG と同じ符号化値に戻るが、際にある）。
 const SSIM_MEAN_MIN_WEB: f64 = 0.96;
 const PSNR_MEAN_MIN_WEB: f64 = 32.0;
-/// 画像のマスクの区間の 1 フレームの SSIM の下限。movie-maker は画像の輝度のマスク（トラックマット）をまだ描かないので、
-/// トランジションの 0.7 秒は次の場面がマスク無しで出る。平均の下限は上と同じに保ち、1 フレームの下限だけゆるめる。
-const SSIM_FRAME_MIN_IMAGE_MASK: f64 = 0.6;
 /// 音の差の下限（dB）。考え方は ep03 と同じ。
 const SNR_MIN_DB: f64 = 15.0;
 /// 50 ms ごとの大きさの差の平均の上限（dB）。ep03、ep04 と同じ。
@@ -93,14 +84,7 @@ const GAIN_MAX_DB: f64 = 1.0;
 const PEAK_MAX_DBFS: f64 = 0.0;
 
 /// 変換できない要素として認める一覧（種類、数）。増えたら変換か movie-maker の機能を見直す。
-/// 画像のマスクはトランジションの 85 クリップ（トラックマットの描画が無い）。
-const KNOWN_GAPS: [(&str, u64); 1] = [("mask", 85)];
-
-/// 画像のマスクを変換できない要素として認めているか。`check_gaps` が一覧の一致を確かめるので、マスクを描けるように
-/// なって `KNOWN_GAPS` から外せば、画像のマスクの区間も 1 フレームの下限が元に戻る。
-fn image_mask_undrawn() -> bool {
-    KNOWN_GAPS.iter().any(|(what, _)| *what == "mask")
-}
+const KNOWN_GAPS: [(&str, u64); 0] = [];
 
 /// 閾値。全体の書き出しは全部を含むので、いちばんゆるい組を使う。
 fn limits(look: Look) -> Limits {
@@ -111,11 +95,7 @@ fn limits(look: Look) -> Limits {
         } else {
             SSIM_MEAN_MIN
         },
-        ssim_frame_min: if look == Look::ImageMask && image_mask_undrawn() {
-            SSIM_FRAME_MIN_IMAGE_MASK
-        } else {
-            SSIM_FRAME_MIN
-        },
+        ssim_frame_min: SSIM_FRAME_MIN,
         psnr_mean_min: if web {
             PSNR_MEAN_MIN_WEB
         } else {
@@ -132,7 +112,7 @@ fn limits(look: Look) -> Limits {
 /// 区間（秒）と、その区間の描くもの。`full` なら全体 1 つ。CEF が無ければ CEF の要る区間をスキップする。
 fn windows(duration: f64, full: bool, cef: bool) -> Vec<((f64, f64), Look)> {
     if full {
-        return vec![((0.0, duration), Look::ImageMask)];
+        return vec![((0.0, duration), Look::Web)];
     }
     WINDOWS
         .iter()
