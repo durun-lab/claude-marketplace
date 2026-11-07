@@ -67,7 +67,7 @@ describe("App", () => {
     await type(must(host.querySelector<HTMLInputElement>('input[aria-label="Pairing code"]')), "zzzzzzzz");
     await submit("form.pair");
     await settle();
-    expect(host.querySelector(".error")?.textContent).toContain("wrong or has expired");
+    expect(host.querySelector(".error")?.textContent).toContain("That code is wrong");
     expect(host.querySelector("[role=tab]")).toBeNull();
   });
 

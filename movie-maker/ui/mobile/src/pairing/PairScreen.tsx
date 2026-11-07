@@ -1,5 +1,4 @@
 import { useState } from "preact/hooks";
-import { ApiError } from "../api/http.ts";
 import type { Controller } from "../controller.ts";
 
 /** 登録の符号の文字数。PC のアプリが出す符号と同じ。 */
@@ -20,10 +19,7 @@ export const guessDeviceName = (ua: string): string => {
   return "Mobile";
 };
 
-const message = (e: unknown): string => {
-  if (e instanceof ApiError && e.status === 0) return "Cannot reach the PC. Check Tailscale and try again.";
-  return e instanceof Error ? e.message : String(e);
-};
+const message = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 export interface PairScreenProps {
   controller: Controller;

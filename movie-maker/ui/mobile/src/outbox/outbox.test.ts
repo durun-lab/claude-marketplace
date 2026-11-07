@@ -67,8 +67,8 @@ describe("outbox の本文", () => {
     await outbox.flush(async (d) => {
       if (d.text === "bad") throw new ApiError(400, "invalid", "too long");
     });
-    expect(outbox.list().map((c) => [c.text, c.error])).toEqual([["bad", "too long"]]);
-    expect([...store.items.values()].map((c) => c.error)).toEqual(["too long"]);
+    expect(outbox.list().map((c) => [c.text, c.error])).toEqual([["bad", "The PC could not apply this change."]]);
+    expect([...store.items.values()].map((c) => c.error)).toEqual(["The PC could not apply this change."]);
     await outbox.flush(async () => {
       throw new Error("not called for rejected");
     });
