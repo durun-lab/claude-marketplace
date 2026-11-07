@@ -27,12 +27,15 @@ fn wgpu_と_glyphon_と_dsp_を選べる() {
     let names: Vec<_> = engine.backend_names();
     assert!(names.contains(&("render", "wgpu")), "{names:?}");
     assert!(names.contains(&("audio", "dsp")), "{names:?}");
+    // ofx は mm-host-ofx の実行ファイルがあるとき（ワークスペースを作った後）だけ登録する。
+    let ofx = mm_host_ofx::find_host().is_some();
     assert_eq!(
         engine.registry().len(),
-        mm_nodes_basic::all_kinds().len() + 1,
-        "mm-nodes-basic の種類と web.cef"
+        mm_nodes_basic::all_kinds().len() + 1 + usize::from(ofx),
+        "mm-nodes-basic の種類と web.cef と ofx"
     );
     assert!(engine.registry().get("web.cef").is_some());
+    assert_eq!(engine.registry().get("ofx").is_some(), ofx);
 }
 
 #[test]

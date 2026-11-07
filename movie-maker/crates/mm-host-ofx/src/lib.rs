@@ -9,6 +9,7 @@
 
 pub mod desc;
 mod launcher;
+mod locate;
 pub mod scan;
 
 use std::path::PathBuf;
@@ -19,6 +20,7 @@ use mm_host_api::SharedFrame;
 use mm_types::Params;
 
 pub use launcher::{describe_bundle, OfxLauncher, DESCRIBE_COMMAND};
+pub use locate::{find_host, HOST_ENV, TEST_PLUGINS};
 pub use mm_host_pipe::{PipeHost, SERVE_COMMAND, SPEC_ENV};
 
 /// 時刻（秒）を OpenFX のフレームの番号に直すときの既定のフレームレート。

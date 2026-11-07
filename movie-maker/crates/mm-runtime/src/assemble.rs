@@ -309,6 +309,7 @@ fn registry(render: Backend) -> Result<Registry> {
             r.register(kind)?;
         }
         r.register(crate::cef::web_cef())?;
+        crate::ofx::register(&mut r)?;
     } else {
         r.register(Arc::new(SolidKind))?;
         r.register(Arc::new(FootageKind))?;

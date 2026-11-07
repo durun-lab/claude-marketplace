@@ -250,6 +250,12 @@ pub trait NodeKind: Send + Sync {
     fn version(&self) -> u32;
     /// パラメータの定義。UI の入力フィールドと MCP の引数はここから作る。
     fn params(&self) -> ParamSchema;
+    /// このパラメータの組のときの定義。パラメータで一覧が変わる種類（`ofx` はバンドルとプラグインで変わる）が上書きし、
+    /// `params()` の後ろに選んだものの分を足して返す。既定は `params()`。
+    fn params_for(&self, params: &Params) -> ParamSchema {
+        let _ = params;
+        self.params()
+    }
     /// 受ける映像の定義。
     fn inputs(&self) -> InputSchema {
         InputSchema::default()

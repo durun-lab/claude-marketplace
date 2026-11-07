@@ -1,13 +1,14 @@
 # mm-host-ofx
 
 OpenFX（OFX）のプラグイン（`.ofx` の DLL）を別プロセスで読み込み、1 フレームを描いて返すホスト（`mm-host-api` の実装）。
-段階 6 では骨組みと 1 本の通し（列挙、パラメータの一覧、CPU の画像での 1 フレーム）までを持つ。
+段階 6 で骨組みと 1 本の通し（列挙、パラメータの一覧、CPU の画像での 1 フレーム）を持ち、段階 8 でノードの種類 `ofx`（[mm-nodes-ofx](../mm-nodes-ofx/README.md)）から使う。
 
 ## 分け方
 
 | 部分 | 場所 | 役目 |
 |---|---|---|
 | アプリ側のランチャー（`OfxLauncher`、`PipeHost`、`describe_bundle`） | `src/launcher.rs` | `mm-host-ofx serve` と `mm-host-ofx describe` を子プロセスで起こす |
+| 実行ファイルの探し方（`find_host`）と試験のプラグインの置き場所（`TEST_PLUGINS`） | `src/locate.rs` | 組み立てが種類を登録するかを決める。`MM_OFX_HOST` か、アプリの実行ファイルの隣か親のフォルダー |
 | 記述と要求の形（`BundleDesc`、`PluginDesc`、`ParamDesc`、`PrepareParams`、`RenderParams`） | `src/desc.rs`、`src/lib.rs` | ホストとアプリの間の JSON |
 | プラグインの置き場所とバンドルの形 | `src/scan.rs` | `OFX_PLUGIN_PATH` と OS の既定のフォルダー |
 | ホストの実行ファイル | `src/host/` | OpenFX の C API のホスト（Property、Image Effect、Parameter、Memory、MultiThread、Message の Suite） |
@@ -19,7 +20,7 @@ OpenFX（OFX）のプラグイン（`.ofx` の DLL）を別プロセスで読み
 
 | 先行事例 | 形 | 採ったもの |
 |---|---|---|
-| OpenFX の公式の HostSupport（C++） | 同じプロセス。describe の結果をキャッシュのファイルに書き、次の起動で DLL を読まない | describe の結果を JSON の記述（`BundleDesc`）にする。キャッシュは段階 8 |
+| OpenFX の公式の HostSupport（C++） | 同じプロセス。describe の結果をキャッシュのファイルに書き、次の起動で DLL を読まない | describe の結果を JSON の記述（`BundleDesc`）にする。キャッシュは種類の側（mm-nodes-ofx） |
 | Natron（GPLv2、HostSupport を使う） | 同じプロセス。プラグインのクラッシュで Natron ごとクラッシュする | 何も流用しない（GPL が及ぶ） |
 | Nuke、DaVinci Resolve | 描画は本体のプロセス〔推〕。Resolve はインストール先に `OFXLoader.exe` を持ち、プラグインの読み込みを本体の外で行う〔推〕 | 読み込みを本体の外に置く |
 | 音のプラグインのホスト（REAPER、Bitwig、Ardour の `ardour-vst-scanner`） | 走査を 1 プラグインずつ別プロセスで行い、走査中のクラッシュでホストを巻き込まない | `describe` を 1 バンドル 1 プロセスにする |
@@ -37,7 +38,7 @@ OpenFX（OFX）のプラグイン（`.ofx` の DLL）を別プロセスで読み
 ## 受け渡しの規約
 
 - `OfxLauncher::spawn` は `mm-host-ofx serve` を起こし、環境変数 `MM_HOST_SPEC` に `HostSpec` の JSON を渡す。制御は標準入出力の JSON の 1 行ずつ。
-- `Prepare` の `params` は `PrepareParams`（`{"bundle": "<名前>.ofx.bundle", "plugin": "<id>", "frame_rate": 30}`。`plugin` と `frame_rate` は省ける）。プラグインを load、describe し、インスタンスを作る。
+- `Prepare` の `params` は `PrepareParams`（`{"bundle": "<名前>.ofx.bundle", "plugin": "<id>", "frame_rate": 30}`。`plugin` と `frame_rate` は省ける）。プラグインを load、describe し、インスタンスを作る。`bundle` はここでは確かめない。任意のパスの DLL を読み込むので、アプリの側（mm-nodes-ofx）が OpenFX の置き場所とプロジェクトの素材のバンドルだけを渡す。
 - `RenderFrame` の `params` は `RenderParams`（`{"source": <SharedFrame の Cpu>, "values": <Params>}`。どちらも省ける）。`source` が無ければ透明を入力にする。時刻はフレームレートでフレームの番号に直す。
 - `frame_rate` は正の有限の数だけを受ける。`RenderFrame` の `size` は幅と高さが 1 以上、1 辺 16384 以下、画素の数が 8K UHD 以下だけを受け、それ以外は `Error` を返す。
 - 応答は CPU の画像（`SharedFrame::Cpu`、RGBA f32、premultiplied、線形）。プラグインが書いた NaN と Inf は 0 にする（JSON に書けないため）。`client_pid` があっても共有テクスチャは返さない（段階 8）。
@@ -64,9 +65,7 @@ cargo nextest run -p mm-host-ofx
 
 ## 段階 8 に回すもの
 
-- `ofx` のノードの種類（`mm-nodes-ofx`）と `assemble` への登録。
-- GPU の受け渡し（共有テクスチャ、OpenFX の GPU Rendering Suite）。今は CPU の画像を JSON で往復するので遅い。
-- describe の結果のキャッシュ（HostSupport と同じく、バンドルの更新時刻で無効にする）。
+- CPU の画像の共有メモリと GPU の受け渡し（共有テクスチャ、OpenFX の GPU Rendering Suite）。今は CPU の画像を JSON で往復するので、1080p で 1 フレーム 1.6 s かかる（mm-nodes-ofx の「速さ」）。
 - GetClipPreferences、IsIdentity、GetRegionOfDefinition と GetRegionsOfInterest、時間方向のクリップの読み、General と Transition の文脈、マスクの入力。
 - InstanceChanged（パラメータを変えたときの通知）、オーバーレイ（Interact）、描画の取り消し（`abort`）。
 - 色の管理（OpenFX 1.5 の Colour Management）、Half の深さ、RGB と Alpha だけの成分。
