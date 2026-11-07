@@ -8,9 +8,12 @@ use mm_types::{RationalTime, RgbaImage, Size};
 
 use crate::page::FrameRequest;
 
-/// キャッシュするフレームの大きさの合計の上限。1080p の `Rgba16Float` は 1 枚 16 MB なので、1080p なら 24 枚、
-/// 4K でも 6 枚持つ。1 つの画面に並ぶ静止のレイヤー（吹き出しや札など数枚から 10 枚ほど）が毎フレーム描き直しに
+/// キャッシュするフレームの大きさの合計の上限。1080p の `Rgba16Float` は 1 枚約 16 MiB なので、1080p なら 24 枚、
+/// 4K でも 6 枚持つ。1 つの画面に並ぶ静止のレイヤー（吹き出しやステッカーなど数枚から 10 枚ほど）が毎フレーム描き直しに
 /// ならない広さで、VRAM を GB 単位では取らない値にする。動くページの全フレームはレンダラーのキャッシュが持つ。
+/// `web.cef` の種類はプロセスで 1 つ（`mm-runtime` が組み立ての間で共有する）なので、この上限もプロセスで 1 つで、
+/// レンダラーのフレームのキャッシュ（既定 1 GiB、並行の書き出しのワーカーは 1 本 256 MiB）に足して使う。
+/// CPU の画像も同じ上限で数える（VRAM を使わないが、RAM を際限なく取らない）。
 const KEPT_BYTES: usize = 384 << 20;
 /// GPU のテクスチャ（`Rgba16Float`）の 1 画素の大きさ。
 const GPU_PIXEL_BYTES: usize = 8;
@@ -157,21 +160,26 @@ mod tests {
         let mut cache = FrameCache::default();
         // 1080p の CPU の画像は 1 枚 32 MiB なので、12 枚で上限に届く。
         let full_hd = Size::new(1920, 1080);
-        for n in 0..13 {
+        for n in 0..12 {
             cache.put(key_at(n, full_hd), Cached::Cpu(image.clone()));
         }
+        assert!(cache.get(&key_at(0, full_hd)).is_some(), "12 枚は入る");
+        cache.put(key_at(12, full_hd), Cached::Cpu(image.clone()));
         assert!(
-            cache.get(&key_at(0, full_hd)).is_none(),
-            "最も古い 1 枚が出る"
+            cache.get(&key_at(1, full_hd)).is_none(),
+            "最後に使ったのが最も古い 1 枚が出る"
         );
-        assert!(cache.get(&key_at(1, full_hd)).is_some());
+        assert!(
+            cache.get(&key_at(0, full_hd)).is_some(),
+            "引いた 1 枚は新しい側へ動いて残る"
+        );
         let huge = Size::new(16384, 16384);
         cache.put(key_at(99, huge), Cached::Cpu(image));
         assert!(
             cache.get(&key_at(99, huge)).is_some(),
             "上限より大きい 1 枚も残す"
         );
-        assert!(cache.get(&key_at(1, full_hd)).is_none());
+        assert!(cache.get(&key_at(0, full_hd)).is_none(), "ほかは全部出る");
     }
 
     #[test]
