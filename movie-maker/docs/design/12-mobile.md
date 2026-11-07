@@ -2,15 +2,18 @@
 
 段階 9 の終わりの条件は「出先で Story とコメントと操作の発行ができる」。
 この章は、その形、つながり方、映像の届け方、画面、実装の分け方を決める。
-決めきれない点は [決めてほしいこと](16-open-questions.md) の 7〜12 に置いた。
+形、つながり方、即時の操作の範囲、PC が閉じているとき、オフライン、通知は 2026-11-08 にユーザーが決めた（[決まったこと](16-open-questions.md#決まったこと) の 6〜11）。
 
-| 項目 | 決めたこと（推奨） | 自信度 |
-|---|---|---|
-| 形 | 自宅の PC の `mm-serve` が配る PWA（`ui/mobile/`、Preact）。durun-dashboard からは URL を開く | 70% |
-| つながり方 | Tailscale の `tailscale serve`（HTTPS、tailnet の中だけ）から、`mm-serve` の人の待ち受け（127.0.0.1 の決まったポート）へ。端末は PC のアプリで登録する | 80% |
-| 権限 | 人の待ち受けは人の操作経路（`Entry::Mobile`）。提案の承認と却下を受ける。MCP は置かない | 85% |
-| 映像 | 静止画のコマ、区間ごとに作る HLS（360p 約 0.5 Mbps）、素材の音だけ。WebRTC は採らない | 70% |
-| 操作の発行 | Story の操作は即時（取り消しつき）。それ以外は、コメントで Claude に頼み、返った提案をモバイルで承認する | 65% |
+| 項目 | 決めたこと |
+|---|---|
+| 形 | 自宅の PC の `mm-serve` が配る PWA（`ui/mobile/`、Preact）。対象は iOS の Safari と Android の Chrome。durun-dashboard からは URL を開く |
+| つながり方 | Tailscale の `tailscale serve`（HTTPS、tailnet の中だけ）から、`mm-serve` の人の待ち受け（127.0.0.1 の決まったポート）へ。端末は PC のアプリで登録する |
+| 権限 | 人の待ち受けは人の操作経路（`Entry::Mobile`）。提案の承認と却下を受ける。MCP は置かない |
+| 映像 | 静止画のコマ、区間ごとに作る HLS（360p 約 0.5 Mbps）、素材の音だけ。WebRTC は採らない |
+| 操作の発行 | Story の操作と目印は即時（取り消しつき）。それ以外は、コメントで Claude に頼み、返った提案をモバイルで承認する |
+| PC のアプリが閉じているとき | durun-dashboard から movie-maker を起動する |
+| オフライン | 接続を前提にし、コメントだけ送信待ちの列に置く |
+| 通知 | durun-dashboard の通知に任せる。Web Push は作らない |
 
 ## 前提
 
@@ -69,11 +72,11 @@ movie-maker は素材を外に出さない（通信量と容量）ので、レ�
 | 誰の操作かの区別 | 人の待ち受けを分けるので、MCP と混ざらない | ダッシュボードは人の画面と Claude の `mm_tool` の両方を中継するので、ダッシュボードの中で分ける必要がある | A と同じ |
 | movie-maker の単独で動くか | 動く | ダッシュボードが要る | 動く |
 
-推奨は A（70%）。
+A を採る（2026-11-08、ユーザー）。対象は iOS の Safari と Android の Chrome の両方。
 ビルドも配布も PC の中で済み、iOS のために macOS を用意しなくてよい。
 画面は `ui/` の Preact とパネルのモデルを流用できる。
-B（20%）は、ユーザーがすでにスマホでダッシュボードを開いている点で入口が 1 つになる利点がある。ただし movie-maker が単独で動かなくなり、ダッシュボードの中で人の操作と Claude の操作を分ける仕事が増える。A の画面をダッシュボードのムービーメーカーのウィンドウから URL で開けば、入口の利点の大半は A でも得られる（[ダッシュボードとのつなぎ](#durun-dashboard-とのつなぎ)）。
-C（15%）は、オフラインで長く作業する要望が出たときに改めて考える。
+B は、ユーザーがすでにスマホでダッシュボードを開いている点で入口が 1 つになる利点がある。ただし movie-maker が単独で動かなくなり、ダッシュボードの中で人の操作と Claude の操作を分ける仕事が増える。A の画面をダッシュボードのムービーメーカーのウィンドウから URL で開けば、入口の利点の大半は A でも得られる（[ダッシュボードとのつなぎ](#durun-dashboard-とのつなぎ)）。
+C は、オフラインで長く作業する要望が出たときに改めて考える。
 
 ブラウザで動かす点は[README の決まったこと](README.md#決まったこと2026-11-05ユーザー)の「ブラウザで動く前提を外す」とぶつからない。外したのは編集ソフトの本体をブラウザで動かすことで、PWA は描画もデータも持たない表示の窓にとどまる。
 
@@ -166,7 +169,7 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 
 - HLS の区間は見られたときに作る。プレイリストは今のバージョンのコンポジションの全区間を並べ、区間の要求が来たら描いて NVENC で符号化して返し、次の 2 区間を先に作る。描くのは `GET /frame` と同じ専用のスレッドの `Engine` で、PC の再生を止めない。
 - 区間のキーは区間に掛かるノードのキャッシュのキー（[RFC 0013](../rfcs/0013-render-order-and-cache-keys.md) のフレームのキャッシュと同じ作り）と画質から作り、URL に入れる。編集で変わらない区間はキーが同じなので作り直さず、端末のブラウザーにも残る（`Cache-Control: immutable`）。区間は `cache/mobile/` に置き、消しても作り直せる。
-- iOS の Safari は HLS をそのまま再生する。ほかのブラウザーは Media Source Extensions の上の hls.js で再生する〔推。Android の Chrome の直接の再生は確かめていない〕。HEVC は端末ごとの差が大きいので使わない。
+- iOS の Safari は HLS をそのまま再生する。Android の Chrome は直接の再生に頼らず、Media Source Extensions の上の hls.js で再生する。HEVC は端末ごとの差が大きいので使わない。
 - 画質は既定で 360p にし、画面の切り替えで 540p にする。iOS では回線の種類を画面から読めないので、自動では切り替えない。
 - 電池: 映像は端末のハードウェアのデコーダーが読む H.264 に限る。画面を隠したら（`visibilitychange`）SSE を閉じ、戻ったら開き直して `hello` のバージョンから読み直す。時間で読み直す処理は持たない。
 
@@ -191,6 +194,7 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 ### durun-dashboard とのつなぎ
 
 - ダッシュボードのムービーメーカーのウィンドウに、モバイル版の URL（`https://<端末の名前>.<tailnet の名前>.ts.net:8443/m/`）を出す。画面は埋め込まず URL を開く（[レビューと Claude の対応](10-review-improve.md#レビューと-claude-の対応)の方針と同じ）。
+- PC の movie-maker が閉じているときは、ダッシュボードのムービーメーカーのウィンドウから起動する（ダッシュボードはすでに起動できる）。人の待ち受けは movie-maker と一緒に始まる。
 - ダッシュボードは `GET /events` の `change` の `actor` で人とエージェントを分け、人の操作をフックでセッションに届ける（`docs/movie-maker-connect-design.md`）。今は `gui` を人とみなしているので、`mobile` も人に数える。
 
 ## HTTP の形
@@ -228,11 +232,11 @@ Claude の待ち受けにはコメントの `GET /comments`、`POST /comments/{i
 | 2 | アプリの端末の登録の画面と人の待ち受けの起動 | app-shell | `apps/movie-maker/` | QR、端末の一覧と取り消し、待ち受けのポートが使われていたときの文言 |
 | 2 | デスクトップの Review のコメント | ui-panels（review） | `ui/panels/review/` | コメントの一覧、返信、状態。モバイルで書いたコメントが出る |
 | 2 | durun-dashboard のつなぎ | durun-dashboard | `durun-dashboard/server/movieMaker.ts` など | `mobile` を人に数える。モバイル版の URL を出す |
-| 3 | 通しの確認 | testkit-and-bench | `fixtures/`、e2e | Playwright のモバイルの画面の大きさで、コメント → MCP の `propose` → 承認を通す。人が実機で Tailscale 越しに確かめる |
+| 3 | 通しの確認 | testkit-and-bench | `fixtures/`、e2e | Playwright の WebKit（iPhone）と Chromium（Android）の端末の設定で、コメント → MCP の `propose` → 承認を通す。人が実機で Tailscale 越しに確かめる |
 
-`15-roadmap.md` の段階 9 の「並行に進められる領域」に書く文の案は次のとおり。
+`15-roadmap.md` の段階 9 の「並行に進められる領域」には次の文を書いた。
 
-> 人の待ち受けと端末の登録（`mm-serve`、`Entry::Mobile`） ‖ コメントの API と MCP のツール ‖ Story の読み出しを `mm-story` に ‖ 映像の配信（`mm-stream`） ‖ `ui/mobile` の骨組み。続けて `ui/mobile` の Watch と Proposals ‖ `ui/mobile` の Story ‖ アプリの端末の登録 ‖ デスクトップの Review のコメント ‖ durun-dashboard のつなぎ。最後に通しの確認（モバイルの画面の大きさと実機）
+> 人の待ち受けと端末の登録（`mm-serve`、`Entry::Mobile`） ‖ コメントの API と MCP のツール ‖ Story の読み出しを `mm-story` に ‖ 映像の配信（`mm-stream`） ‖ `ui/mobile` の骨組み。続けて `ui/mobile` の Watch と Proposals ‖ `ui/mobile` の Story ‖ アプリの端末の登録 ‖ デスクトップの Review のコメント ‖ durun-dashboard のつなぎ。最後に通しの確認（iOS の Safari と Android の Chrome、実機）
 
 1 の 2 つの担当は同じ `mm-serve` を書く。ファイルは分かれ、重なるのは `lib.rs` の `mod` と `http.rs` のルーターの 1 行ずつなので、名前の順の位置に足す。
 
