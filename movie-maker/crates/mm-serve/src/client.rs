@@ -20,9 +20,19 @@ const IO_TIMEOUT: Duration = Duration::from_secs(60);
 pub struct Response {
     pub status: u16,
     pub body: Vec<u8>,
+    /// 応答の見出し（名前は小文字）。
+    pub headers: Vec<(String, String)>,
 }
 
 impl Response {
+    /// 名前の見出しの最初の値。
+    pub fn header(&self, name: &str) -> Option<&str> {
+        self.headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case(name))
+            .map(|(_, v)| v.as_str())
+    }
+
     /// 本体を JSON として読む。
     pub fn json(&self) -> Result<Value> {
         Ok(serde_json::from_slice(&self.body)?)
@@ -104,10 +114,14 @@ impl Client {
         write_request(&mut stream, method, path, headers, body)?;
         let mut reader = BufReader::new(stream);
         let status = read_status(&mut reader)?;
-        skip_headers(&mut reader)?;
+        let headers = read_headers(&mut reader)?;
         let mut body = Vec::new();
         reader.read_to_end(&mut body)?;
-        Ok(Response { status, body })
+        Ok(Response {
+            status,
+            body,
+            headers,
+        })
     }
 
     /// `GET /events` を開く。
@@ -121,7 +135,7 @@ impl Client {
                 "/events が {status} を返した"
             )));
         }
-        skip_headers(&mut reader)?;
+        read_headers(&mut reader)?;
         Ok(EventStream { reader })
     }
 
@@ -168,11 +182,15 @@ fn read_status(reader: &mut impl BufRead) -> Result<u16> {
         .ok_or_else(|| MmError::Internal(format!("応答の先頭が読めない: {line:?}")))
 }
 
-fn skip_headers(reader: &mut impl BufRead) -> Result<()> {
+fn read_headers(reader: &mut impl BufRead) -> Result<Vec<(String, String)>> {
+    let mut headers = Vec::new();
     loop {
         let mut line = String::new();
         if reader.read_line(&mut line)? == 0 || line == "\r\n" || line == "\n" {
-            return Ok(());
+            return Ok(headers);
+        }
+        if let Some((k, v)) = line.trim_end().split_once(':') {
+            headers.push((k.to_ascii_lowercase(), v.trim().to_owned()));
         }
     }
 }

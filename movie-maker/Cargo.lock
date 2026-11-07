@@ -3838,13 +3838,16 @@ name = "mm-serve"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "blake3",
  "getrandom 0.3.4",
  "mm-doc",
+ "mm-eval",
  "mm-node-api",
  "mm-ops",
  "mm-runtime",
  "mm-store",
  "mm-story",
+ "mm-stream",
  "mm-testkit",
  "mm-types",
  "png",
