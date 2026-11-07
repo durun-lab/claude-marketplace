@@ -1033,6 +1033,8 @@ export type MovieMakerView = {
   install: MmInstallView;
   /** 開くプロジェクトのフォルダー（project.mmdb のあるところ）。 */
   project?: string;
+  /** 最近開いたプロジェクトのフォルダー。新しい順。 */
+  recent: string[];
   hasStore: boolean;
   link: { status: MmLinkStatus; message?: string; port?: number; version?: number; undoDepth?: number };
   log: MmLogEntry[];
