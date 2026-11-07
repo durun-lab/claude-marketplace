@@ -1,13 +1,16 @@
 use std::sync::{Arc, Mutex};
 
 use mm_node_api::{FrameCx, FrameRef, NodeKind, Traits};
-use mm_text_api::{LineBreak, ShapedText, TextAlign, TextStroke, TextStyle};
+use mm_text_api::{FontFile, LineBreak, ShapedText, TextAlign, TextStroke, TextStyle};
 use mm_types::{
     MmError, ParamSchema, ParamSpec, ParamType, ParamValue, Params, Rect, Result, Rgba, RgbaImage,
     Size,
 };
 
 use crate::util::migrate_same_version;
+
+/// 書体の既定。family の名前で、プロジェクトの書体（`fonts/<family>/`）か OS の書体を引く。
+const DEFAULT_FONT: &str = "sans-serif";
 use crate::KIND_VERSION;
 
 /// 覚えておくシェーピングの結果の数。字幕の入れ替わりと、アニメーションの数値が数通り行き来する程度。
@@ -72,6 +75,12 @@ impl TextKind {
         let max_width = params.number_or("max_width", 0.0);
         let stroke_width = params.number_or("stroke_width", 0.0);
         TextStyle {
+            font_family: params
+                .get("font")
+                .and_then(ParamValue::as_text)
+                .filter(|f| !f.trim().is_empty())
+                .unwrap_or(DEFAULT_FONT)
+                .to_owned(),
             size_px: params.number_or("size", 32.0) as f32,
             color: params
                 .get("color")
@@ -164,6 +173,11 @@ impl NodeKind for TextKind {
         };
         ParamSchema::new(vec![
             ParamSpec::new("text", ParamType::Text, ParamValue::Text("Text".into())),
+            ParamSpec::new(
+                "font",
+                ParamType::Text,
+                ParamValue::Text(DEFAULT_FONT.into()),
+            ),
             ParamSpec::new("size", number(1.0), ParamValue::Number(32.0)),
             ParamSpec::new("color", ParamType::Color, ParamValue::Color(Rgba::WHITE)),
             ParamSpec::new("position", ParamType::Vec2, ParamValue::Vec2([0.0, 0.0])),
@@ -247,6 +261,12 @@ impl NodeKind for TextKind {
         cache.canvases.insert(0, (key, canvas.clone()));
         cache.canvases.truncate(KEPT_CANVASES);
         Ok(FrameRef::Cpu(canvas))
+    }
+
+    /// 書体の組が変わると同じパラメータでも組み方と画素が変わるので、覚えた結果を捨てる。
+    fn use_fonts(&self, _fonts: &[FontFile]) -> Result<()> {
+        *self.cache()? = TextCache::default();
+        Ok(())
     }
 }
 
@@ -397,5 +417,18 @@ mod tests {
             1,
             "領域の原点からの差が同じ"
         );
+    }
+
+    #[test]
+    fn 書体の組が変わったら組み直して描き直す() {
+        let counting = counting();
+        let services = counting.services();
+        let kind = TextKind::default();
+        let params = kind.params().defaults();
+        draw_frame(&kind, &services, &params);
+        kind.use_fonts(&[]).unwrap();
+        draw_frame(&kind, &services, &params);
+        assert_eq!(counting.shapes.load(Ordering::SeqCst), 2);
+        assert_eq!(counting.rasters.load(Ordering::SeqCst), 2);
     }
 }

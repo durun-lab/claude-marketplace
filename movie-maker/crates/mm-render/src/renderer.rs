@@ -42,6 +42,8 @@ pub struct WgpuRenderer {
     recoveries: u32,
     /// 書き出しの NV12 への変換。最初の書き出しで作る。
     pub(crate) export: Option<ExportPipe>,
+    /// 文字の実装とノードの種類に渡した、プロジェクトの書体の組の指紋（`crate::fonts`）。
+    pub(crate) fonts: String,
 }
 
 impl WgpuRenderer {
@@ -68,6 +70,7 @@ impl WgpuRenderer {
             outputs: VecDeque::new(),
             recoveries: 0,
             export: None,
+            fonts: String::new(),
         }
     }
 
@@ -172,6 +175,7 @@ impl WgpuRenderer {
 
     pub(crate) fn draw_frame(&mut self, req: &RenderRequest<'_>) -> Result<u64> {
         self.ensure_device()?;
+        self.sync_fonts(req.project, req.nodes);
         self.cache.flush(&mut self.gpu);
         self.sources.begin_frame();
         self.report_gpu_time();

@@ -17,6 +17,7 @@ mm-decode-api = { workspace = true }
 mm-audio-api = { workspace = true }
 mm-gpu = { workspace = true }
 mm-cache-api = { workspace = true }
+mm-text-api = { workspace = true }
 serde_json = { workspace = true }
 half = { workspace = true }
 wgpu = { workspace = true }
