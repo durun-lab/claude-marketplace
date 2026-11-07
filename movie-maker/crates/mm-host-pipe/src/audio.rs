@@ -16,12 +16,15 @@ mod kind;
 mod launch;
 pub mod serve;
 
+use std::path::{Path, PathBuf};
+
 use crate::PipeKind;
 
+pub use crate::DESCRIBE_COMMAND;
 pub use desc::{BundleDesc, ParamDesc, PluginDesc, PrepareParams, Skipped};
 pub use effect::{AudioEffect, ParamPoint};
 pub use kind::{param_key, PluginEffectKind, PARAM_PREFIX, PLUGIN_ID_PARAM, PLUGIN_PARAM};
-pub use launch::{describe_bundle, find_host, DESCRIBE_COMMAND};
+pub use launch::{describe_bundle, find_host};
 
 /// 音のプラグインの規格（CLAP、VST3）ごとの名前。各ホストのクレートが 1 つの型に実装する。
 pub trait PluginStandard: Send + Sync + 'static {
@@ -37,4 +40,15 @@ pub trait PluginStandard: Send + Sync + 'static {
     const HOST_ENV: &'static str;
     /// 共有メモリとイベントの名前の頭（`mm-clap`）。
     const LINK_PREFIX: &'static str;
+    /// プラグインのファイルかバンドルの拡張子（`clap`）。
+    const EXTENSION: &'static str;
+
+    /// プラグインの規格の置き場所。種類 [`PluginEffectKind`] はこの中のプラグインだけを読む。
+    fn plugin_dirs() -> Vec<PathBuf>;
+
+    /// 名前の拡張子がこの規格のものか。
+    fn is_plugin_name(path: &Path) -> bool {
+        path.extension()
+            .is_some_and(|e| e.eq_ignore_ascii_case(Self::EXTENSION))
+    }
 }

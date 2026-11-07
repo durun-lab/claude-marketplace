@@ -14,16 +14,5 @@ pub const TEST_PLUGINS: &str = env!("MM_OFX_TEST_PLUGINS");
 /// `MM_OFX_HOST` か、このプロセスの実行ファイルと同じフォルダー、その親のフォルダーの `mm-host-ofx`。
 /// 親も見るのは、試験の実行ファイル（`target/<profile>/deps/`）から `target/<profile>/` のホストを引くため。
 pub fn find_host() -> Option<PathBuf> {
-    if let Some(path) = std::env::var_os(HOST_ENV) {
-        return Some(PathBuf::from(path)).filter(|p| p.is_file());
-    }
-    let exe = std::env::current_exe().ok()?;
-    let dir = exe.parent()?;
-    let name = format!("{HOST_STEM}{}", std::env::consts::EXE_SUFFIX);
-    let found = [Some(dir), dir.parent()]
-        .into_iter()
-        .flatten()
-        .map(|d| d.join(&name))
-        .find(|p| p.is_file());
-    found
+    mm_host_pipe::find_executable(HOST_ENV, HOST_STEM)
 }

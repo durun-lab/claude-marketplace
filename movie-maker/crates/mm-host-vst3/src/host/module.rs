@@ -39,8 +39,7 @@ pub fn load(path: &Path) -> Result<Module, String> {
     // SAFETY: 共有ライブラリを読み込み、決まった名前の関数を呼ぶ。プラグインのコードはこのプロセスで動き、
     // クラッシュはこのプロセスだけを止める（モジュールの冒頭）。
     unsafe {
-        let lib = libloading::Library::new(&file)
-            .map_err(|e| format!("{} を読み込めない: {e}", file.display()))?;
+        let lib = mm_host_pipe::load_library(&file)?;
         if let Ok(init) = lib.get::<InitDll>(b"InitDll\0") {
             if !init() {
                 return Err(format!("{} の InitDll が失敗した", file.display()));
