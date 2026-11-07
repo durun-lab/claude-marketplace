@@ -228,7 +228,7 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 | `GET /m/api/comments?state=`、`POST /m/api/comments`、`POST /m/api/comments/{id}/replies`、`POST /m/api/comments/{id}/state` | コメントの一覧、書く、返信、状態 |
 | `GET /m/api/proposals`、`GET /m/api/proposals/{id}`、`POST /m/api/proposals`、`POST /m/api/proposals/{id}/approve`、`/reject`、`/reopen` | 提案。形は Claude の待ち受けの `/proposals` と同じ |
 | `GET /m/api/frame?t=&width=&proposal=&ops=` | コマ。保存したデータは WebP（`ETag` に `If-None-Match` で 304）、`proposal` つきは提案を適用した PNG |
-| `GET /m/api/stream/{comp}/{quality}.m3u8`、`GET /m/api/stream/seg/{key}.ts` | HLS のプレイリストと区間 |
+| `GET /m/api/stream/{comp}/{quality}.m3u8`、`GET /m/api/stream/{comp}/seg/{key}.ts` | HLS のプレイリストと区間。区間の URI はプレイリストからの相対パス `seg/{key}.ts`（どの名前のコンポジションともパスがぶつからない） |
 | `GET /m/api/audio/{asset}.m4a`、`GET /m/api/proposals/{id}/clip.mp4` | 素材の音だけ、提案の区間の短い動画 |
 | `GET /m/api/events` | SSE。`hello`、`change`、`resync`、`proposal` に加えて `comment`（`{ id, state }`） |
 

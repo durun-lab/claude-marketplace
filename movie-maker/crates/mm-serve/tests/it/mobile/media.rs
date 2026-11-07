@@ -20,7 +20,9 @@ use super::{code, rig, Req, Rig, HOST, NOW};
 /// 素材の長さと、コンポジションに使う長さ（秒）。10 秒は 4 秒の区間で 3 本になる。
 const MEDIA_SECONDS: i64 = 14;
 const USED_SECONDS: i64 = 10;
-const SEGMENT_PREFIX: &str = "/m/api/stream/seg/";
+/// プレイリストの区間の URI（相対パス）の前置きと、それを `main` のプレイリストから解いたパス。
+const SEGMENT_URI_PREFIX: &str = "seg/";
+const SEGMENTS: &str = "/m/api/stream/main/seg/";
 
 /// 組めない理由が FFmpeg の無い設定なら `None`（`MM_REQUIRE_GPU` があれば GPU の無い失敗は落とす）。
 fn usable(config: RuntimeConfig) -> Option<RuntimeConfig> {
@@ -176,8 +178,8 @@ fn keys(playlist: &Response) -> Vec<String> {
         .lines()
         .filter(|l| !l.starts_with('#') && !l.is_empty())
         .map(|l| {
-            l.strip_prefix(SEGMENT_PREFIX)
-                .unwrap_or_else(|| panic!("区間の URI は絶対パス: {l}"))
+            l.strip_prefix(SEGMENT_URI_PREFIX)
+                .unwrap_or_else(|| panic!("区間の URI はプレイリストからの相対パス: {l}"))
                 .to_owned()
         })
         .collect()
@@ -194,7 +196,7 @@ fn opacity_of_title(value: f64, base_version: i64) -> Value {
 const MEDIA_PATHS: [&str; 4] = [
     "/m/api/frame?t=0",
     "/m/api/stream/main/360p.m3u8",
-    "/m/api/stream/seg/0123456789abcdef.ts",
+    "/m/api/stream/main/seg/0123456789abcdef.ts",
     "/m/api/audio/clip.m4a",
 ];
 
@@ -221,7 +223,7 @@ fn 配信を持たない待ち受けと誤った指定は状態で区別して�
         (400, "bad_request".into())
     );
     assert_eq!(get(&r, &cookie, "/m/api/stream/main/360p.txt").status, 404);
-    assert_eq!(get(&r, &cookie, "/m/api/stream/seg/zz.ts").status, 400);
+    assert_eq!(get(&r, &cookie, "/m/api/stream/main/seg/zz.ts").status, 400);
     assert_eq!(get(&r, &cookie, "/m/api/audio/clip.mp3").status, 404);
     assert_eq!(get(&r, &cookie, "/m/api/frame?t=abc").status, 400);
 }
@@ -233,6 +235,25 @@ fn project_はカットの境の秒を返す() {
     let res = get(&r, &cookie, "/m/api/project");
     assert_eq!(res.status, 200);
     assert!(res.json().unwrap()["cuts"].is_array());
+}
+
+#[test]
+fn seg_という名のコンポジションもプレイリストを読め_区間は相対パスで指す() {
+    let Some(config) = gpu_config() else { return };
+    let tmp = tempfile::tempdir().unwrap();
+    let mut p = project(&tmp.path().join("media.mp4"));
+    p.compositions[0].layers.remove(0);
+    p.compositions[0].layers[0].start = RationalTime::ZERO;
+    p.compositions[0].id = Id::new("seg");
+    let r = stream_rig(&p, config);
+    let cookie = r.pair("phone");
+
+    let list = get(&r, &cookie, "/m/api/stream/seg/360p.m3u8");
+    assert_eq!(list.status, 200, "{}", list.error_message());
+    assert_eq!(keys(&list).len(), 3);
+    // 今のプレイリストに無いキーは、コンポジションの名前に依らず区間の道で 404。
+    let unknown = get(&r, &cookie, "/m/api/stream/seg/seg/0123456789abcdef.ts");
+    assert_eq!((unknown.status, code(&unknown)), (404, "not_found".into()));
 }
 
 #[test]
@@ -326,7 +347,7 @@ fn プレイリストと区間が往復し_音は_range_に答え_編集で変�
 
     let bodies: Vec<Response> = old
         .iter()
-        .map(|k| get(&r, &cookie, &format!("{SEGMENT_PREFIX}{k}")))
+        .map(|k| get(&r, &cookie, &format!("{SEGMENTS}{k}")))
         .collect();
     for seg in &bodies {
         assert_eq!(seg.status, 200, "{}", seg.error_message());
@@ -334,7 +355,7 @@ fn プレイリストと区間が往復し_音は_range_に答え_編集で変�
         assert!(seg.header("cache-control").unwrap().contains("immutable"));
         assert_eq!(seg.body[0], 0x47, "MPEG-TS の同期バイト");
     }
-    let unknown = get(&r, &cookie, &format!("{SEGMENT_PREFIX}0123456789abcdef.ts"));
+    let unknown = get(&r, &cookie, &format!("{SEGMENTS}0123456789abcdef.ts"));
     assert_eq!((unknown.status, code(&unknown)), (404, "not_found".into()));
     let no_comp = get(&r, &cookie, "/m/api/stream/nothing/360p.m3u8");
     assert_eq!(no_comp.status, 404);
@@ -369,9 +390,9 @@ fn プレイリストと区間が往復し_音は_range_に答え_編集で変�
     assert_eq!(fresh.len(), 3);
     assert_eq!(&fresh[..2], &old[..2]);
     assert_ne!(fresh[2], old[2]);
-    let reused = get(&r, &cookie, &format!("{SEGMENT_PREFIX}{}", fresh[0]));
+    let reused = get(&r, &cookie, &format!("{SEGMENTS}{}", fresh[0]));
     assert_eq!(reused.body, bodies[0].body);
-    let rebuilt = get(&r, &cookie, &format!("{SEGMENT_PREFIX}{}", fresh[2]));
+    let rebuilt = get(&r, &cookie, &format!("{SEGMENTS}{}", fresh[2]));
     assert_eq!(rebuilt.status, 200, "{}", rebuilt.error_message());
     assert_ne!(rebuilt.body, bodies[2].body);
 }

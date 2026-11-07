@@ -27,8 +27,9 @@ use crate::proposals_http::parse_indices;
 
 /// 幅を省いたときのコマの幅。スクラブのつまみから提案の比べまで足りる中間。
 const DEFAULT_STILL_WIDTH: u32 = 480;
-/// プレイリストの区間の URI の前置き。プレイリストの URL と同じオリジンの絶対パス。
-const SEGMENT_BASE: &str = "/m/api/stream/seg/";
+/// プレイリストの区間の URI の前置き。プレイリストからの相対パスで `/m/api/stream/{comp}/seg/` を指すので、
+/// どんな名前のコンポジション（`seg` も）ともパスの形がぶつからない。
+const SEGMENT_BASE: &str = "seg/";
 const PLAYLIST_EXT: &str = ".m3u8";
 const AUDIO_EXT: &str = ".m4a";
 
@@ -36,8 +37,8 @@ pub(super) fn routes() -> Router<Arc<MobileState>> {
     Router::new()
         .route("/m/api/audio/{file}", get(audio))
         .route("/m/api/frame", get(frame))
-        .route("/m/api/stream/seg/{file}", get(segment))
         .route("/m/api/stream/{comp}/{file}", get(playlist))
+        .route("/m/api/stream/{comp}/seg/{file}", get(segment))
 }
 
 #[derive(Debug, Deserialize)]
@@ -99,7 +100,7 @@ async fn frame(
     Ok(respond(payload))
 }
 
-/// `GET /m/api/stream/{comp}/{quality}.m3u8`。区間の URI は絶対パスで、`/m/api/stream/seg/` の下を指す。
+/// `GET /m/api/stream/{comp}/{quality}.m3u8`。区間の URI はプレイリストからの相対パス `seg/{key}.ts`。
 async fn playlist(
     State(st): State<Arc<MobileState>>,
     Path((comp, file)): Path<(String, String)>,
@@ -123,10 +124,11 @@ async fn playlist(
     Ok(respond(payload))
 }
 
-/// `GET /m/api/stream/seg/{key}.ts`。キーが今のプレイリストに無ければ 404（端末はプレイリストを読み直す）。
+/// `GET /m/api/stream/{comp}/seg/{key}.ts`。キーが今のプレイリストに無ければ 404（端末はプレイリストを読み直す）。
+/// 区間はキーだけで決まり、コンポジションの間でも共有するので `{comp}` は読まない。
 async fn segment(
     State(st): State<Arc<MobileState>>,
-    Path(file): Path<String>,
+    Path((_comp, file)): Path<(String, String)>,
 ) -> Result<Response, MobileError> {
     let key: SegmentKey = file.parse().map_err(mm_error)?;
     let streamer = streamer(&st)?;
