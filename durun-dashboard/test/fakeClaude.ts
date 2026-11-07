@@ -1,7 +1,6 @@
 // 本物の claude の代わりに動かす偽物を、node のスクリプトで置く。sh のスクリプトにすると、Windows では実行できない。
 import fs from 'node:fs';
 import path from 'node:path';
-import { API_KEY_ENV } from '../server/claudeApi.ts';
 
 // 偽物の本体から使える道具。args は claude に渡された引数、stdin() は標準入力の全文。
 // later は、偽物が終わった後に別のプロセスでコードを動かす。claude stop がすぐに戻り、後から名簿が書き換わる様子を再現する。
@@ -28,6 +27,4 @@ export const useFakeClaude = (dir: string, body: string): void => {
   const file = path.join(dir, `fake-claude-${count++}.mjs`);
   fs.writeFileSync(file, `${PREAMBLE}\n${body}\n`);
   process.env.DURUN_DASHBOARD_FAKE_CLAUDE = file;
-  // API のキーがあると、補助の問い合わせは偽物を通らずに Claude API へ行く。キーを持つセッションからテストを動かしても、偽物に答えさせる。
-  delete process.env[API_KEY_ENV];
 };
