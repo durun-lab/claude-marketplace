@@ -35,7 +35,7 @@ export const isRetryable = (e: unknown): boolean =>
 const UNAUTHORIZED = 401;
 const FORBIDDEN = 403;
 
-/** 資格が無い、または取り消された（401）か、待ち受けに拒まれた（403）。登録の画面へ送る。 */
+/** 資格が無い、または登録を外された（401）か、待ち受けに拒まれた（403）。登録の画面へ送る。 */
 export const isUnauthorized = (e: unknown): boolean =>
   e instanceof ApiError && (e.status === UNAUTHORIZED || e.status === FORBIDDEN);
 
