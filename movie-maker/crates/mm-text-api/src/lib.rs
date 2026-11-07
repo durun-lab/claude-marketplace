@@ -206,7 +206,7 @@ pub trait TextShaper: Send + Sync {
     /// 文字列を行に組む。
     fn shape(&self, text: &str, style: &TextStyle) -> Result<ShapedText>;
     /// プロジェクトの書体の組を使う（前の組と入れ替える）。同じ名前の OS の書体より優先する。
-    /// 読めないファイルは飛ばして OS の書体に任せる。書体を読み込まない実装は何もしない。
+    /// 読めないファイルはスキップして OS の書体に任せる。書体を読み込まない実装は何もしない。
     fn use_fonts(&self, _fonts: &[FontFile]) -> Result<()> {
         Ok(())
     }

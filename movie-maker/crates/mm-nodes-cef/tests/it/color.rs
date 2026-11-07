@@ -1,6 +1,6 @@
-//! web.cef と PNG の素材が、同じ 8 bit の色を書き出しの符号化値（Rec.1886）で同じ値にするかの検査。
+//! web.cef と PNG の素材が、同じ 8 bit の色を書き出しの符号化値（Rec.1886）で同じ値にするかのテスト。
 //! 素材のデコーダーと書き出しは 8 bit の値を Rec.1886 の符号化値として扱うので、CSS の色も同じ値に戻る必要がある。
-//! CEF の検査と同じく `CEF_PATH` と `MM_CEF_HOST` が要る。PNG の側は feature `ffmpeg` のときだけ比べる。
+//! CEF のテストと同じく `CEF_PATH` と `MM_CEF_HOST` が要る。PNG の側は feature `ffmpeg` のときだけ比べる。
 #![cfg(windows)]
 
 use mm_node_api::NoInputs;

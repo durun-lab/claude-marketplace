@@ -1,4 +1,4 @@
-//! 実際の CEF で文字を描く検査。`CEF_PATH` と `MM_CEF_HOST` が無ければスキップする（`MM_REQUIRE_CEF` があれば失敗）。
+//! 実際の CEF で文字を描くテスト。`CEF_PATH` と `MM_CEF_HOST` が無ければスキップする（`MM_REQUIRE_CEF` があれば失敗）。
 //! `MM_CEF_OUT` があればそこへ PNG を書く（目で確かめる）。
 
 use std::path::PathBuf;
@@ -18,7 +18,7 @@ fn host() -> Option<PathBuf> {
             std::env::var_os("MM_REQUIRE_CEF").is_none(),
             "MM_REQUIRE_CEF があるのに CEF_PATH か MM_CEF_HOST が無い"
         );
-        eprintln!("CEF_PATH か MM_CEF_HOST が無いので CEF の検査をスキップする");
+        eprintln!("CEF_PATH か MM_CEF_HOST が無いので CEF のテストをスキップする");
     }
     found.map(PathBuf::from)
 }

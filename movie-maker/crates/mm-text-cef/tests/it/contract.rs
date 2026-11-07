@@ -94,7 +94,7 @@ fn 二行目のルビの行はふりがなの分だけ下がった位置を渡�
     assert_eq!(ruby["lines"][1]["segments"][0]["ruby"], "にぎょうめ");
 }
 
-/// モックのホストに任せ、`Prepare` の `params` を覚えるランチャー。
+/// モックのホストに任せ、`Prepare` の `params` を記録するランチャー。
 #[derive(Default)]
 struct Recording {
     prepared: Arc<Mutex<Vec<serde_json::Value>>>,

@@ -17,7 +17,7 @@ const SRGB_EXPONENT: f32 = 2.4;
 
 /// 線形の premultiplied の色を CSS の `rgb(r g b / a)`（sRGB、straight）にする。
 /// 文字の色は線形で来るので、CSS へ渡すためにここで sRGB の式で符号化し、ホストの CPU の経路が同じ式で線形に戻す。
-/// この往復で元の値に戻るので、web.cef がページの色を Rec.1886 の式で当て直すのとは別の扱いにする。
+/// この往復で元の値に戻るので、web.cef がページの色に Rec.1886 の式を適用し直すのとは別の扱いにする。
 pub fn css_color(c: Rgba) -> String {
     if c.a <= 0.0 {
         return "transparent".into();

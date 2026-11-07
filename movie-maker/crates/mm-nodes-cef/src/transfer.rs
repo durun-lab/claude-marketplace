@@ -25,7 +25,7 @@ fn linear_to_srgb(v: f32) -> f32 {
 }
 
 /// ホストの CPU の画像（RGBA f32、premultiplied、sRGB の区分の式で線形にした値）を、Rec.1886 の式の線形に直す。
-/// ホストの式は文字（`mm-text-cef`）と共有するので、web.cef の側で符号化値に戻してから当て直す。
+/// ホストの式は文字（`mm-text-cef`）と共有するので、web.cef の側で符号化値に戻してから Rec.1886 の式を適用し直す。
 pub fn rec1886_from_srgb_linear(data: &mut [f32]) {
     for px in data.chunks_exact_mut(4) {
         let a = px[3];
