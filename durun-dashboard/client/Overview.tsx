@@ -410,7 +410,8 @@ const explainLink = (e: MouseEvent) => {
   else if (JIRA_ISSUE_KEY.test(jira)) explain({ jira, at: a });
 };
 
-const CHAT_PAGE = 100;
+// 開いたときに描く発言の数。発言ごとに Markdown を組むので、長いセッションでも描画が 0.5 秒に収まる数にとどめ、残りは上へさかのぼったときに読み込む。
+const CHAT_PAGE = 50;
 // 一番下からこの距離までなら、一番下を見ているとみなす。
 const STICK_PX = 40;
 

@@ -1,7 +1,9 @@
 // ダッシュボードが画面の補助に使う Claude を、claude -p として動かす。ふだんは軽い haiku を使い、コードを読んで確かめるときと、文章校正で文章を読むときは sonnet を使う。文章校正の修正版は opus に書かせる。
+// ツールを使わない問い合わせは、API のキーがあれば Claude API で動かす。
 // 使用制限は、モデルを呼ばずに、SDK の get_usage で読む。
 import { randomUUID } from 'node:crypto';
 import type { RateLimit, RateLimits, TokenTotals } from '../shared/types.ts';
+import { type ApiModel, apiClient, askApi } from './claudeApi.ts';
 import { claudeCommand } from './platform.ts';
 import { run, type RunError, type RunOptions } from './run.ts';
 
@@ -18,22 +20,25 @@ const COMMON_ARGS = ['-p', '--no-session-persistence', '--output-format', 'json'
 // フック、MCP、CLAUDE.md を外す。フックが動くと、このセッションもダッシュボードに記録される。
 const SAFE_MODE = '--safe-mode';
 
+const HAIKU_SYSTEM = '人間が複数の Claude Code のセッションを見渡すダッシュボード（durun-dashboard）の中で、頼まれた文を作る。';
 // 数秒で返るよう、ツールと思考も外す。
 const HAIKU_ARGS = [
   SAFE_MODE, '--model', 'haiku', '--tools', '',
   '--settings', JSON.stringify({ alwaysThinkingEnabled: false }),
-  '--system-prompt', '人間が複数の Claude Code のセッションを見渡すダッシュボード（durun-dashboard）の中で、頼まれた文を作る。',
+  '--system-prompt', HAIKU_SYSTEM,
 ];
 
 // 文章を読んで判定させる。haiku より確かな sonnet を、ツールを持たせずに動かす。前提知識を持たない読み手にするため、ダッシュボードの説明も渡さない。
+const SONNET_SYSTEM = '頼まれた文章を読み、求められた形で判定する。';
 const SONNET_ARGS = [
   SAFE_MODE, '--model', 'sonnet', '--tools', '',
   '--settings', JSON.stringify({ alwaysThinkingEnabled: false }),
-  '--system-prompt', '頼まれた文章を読み、求められた形で判定する。',
+  '--system-prompt', SONNET_SYSTEM,
 ];
 
 // 指摘に沿って文章を書き直させる。直し方を考えさせるため、sonnet より確かな opus を、思考を外さずに動かす。時間と消費を抑えるよう、effort は medium にする。
-const OPUS_ARGS = ['--model', 'opus', '--effort', 'medium', '--system-prompt', '頼まれた文章を、求められた形で書き直す。'];
+const OPUS_SYSTEM = '頼まれた文章を、求められた形で書き直す。';
+const OPUS_ARGS = ['--model', 'opus', '--effort', 'medium', '--system-prompt', OPUS_SYSTEM];
 
 // safe mode はプラグインのスキルも外す。スキルを使わせるときは、代わりに設定ファイルと MCP を読まずに、そのプラグインだけを足す。設定ファイルを読まなければ、フックも CLAUDE.md も外れる。
 // スキルが参照するファイルを読めるよう、Read だけを渡し、プラグインの場所で動かす。ほかの場所のファイルを読むなど、確認の要る操作は断る。
@@ -110,17 +115,45 @@ const askClaude = (prompt: string, schema: object, args: string[], timeout: numb
     });
   });
 
+/** API の答えの文を、claude -p の structured_output と同じ形に読む。 */
+export const structuredOf = (text: string, stopReason: string | null): Record<string, unknown> => {
+  if (stopReason === 'refusal') throw new UpstreamError('安全の判定で断られました');
+  if (stopReason === 'max_tokens') throw new UpstreamError('答えが長すぎて途中で切れました');
+  try {
+    const out: unknown = JSON.parse(text);
+    if (out && typeof out === 'object' && !Array.isArray(out)) return out as Record<string, unknown>;
+  } catch {
+    // 下で、求めた形でない答えとして扱う。
+  }
+  throw new UpstreamError(text.trim() || '答えが返りませんでした');
+};
+
+/** API のキーがあれば Claude API に、無ければ claude -p に問い合わせる。 */
+const askEither = async (model: ApiModel, system: string, prompt: string, schema: object, args: string[], timeout: number, onUsage?: OnUsage): Promise<Record<string, unknown>> => {
+  const api = apiClient();
+  if (!api) return askClaude(prompt, schema, args, timeout, undefined, onUsage);
+  try {
+    const { text, stopReason, usage } = await askApi(api, model, system, prompt, schema, timeout);
+    // 求めた形で答えなくても、トークンは使っている。
+    onUsage?.(usage);
+    return structuredOf(text, stopReason);
+  } catch (e) {
+    // API の失敗や時間切れは、claude -p の失敗と同じく、ダッシュボードの不具合ではない。
+    throw e instanceof UpstreamError ? e : new UpstreamError(e instanceof Error ? e.message : String(e));
+  }
+};
+
 export const askHaiku = (prompt: string, schema: object, onUsage?: OnUsage): Promise<Record<string, unknown>> =>
-  askClaude(prompt, schema, HAIKU_ARGS, HAIKU_TIMEOUT_MS, undefined, onUsage);
+  askEither('haiku', HAIKU_SYSTEM, prompt, schema, HAIKU_ARGS, HAIKU_TIMEOUT_MS, onUsage);
 
 export const askSonnet = (prompt: string, schema: object, onUsage?: OnUsage): Promise<Record<string, unknown>> =>
-  askClaude(prompt, schema, SONNET_ARGS, SONNET_TIMEOUT_MS, undefined, onUsage);
+  askEither('sonnet', SONNET_SYSTEM, prompt, schema, SONNET_ARGS, SONNET_TIMEOUT_MS, onUsage);
 
-/** plugin にプラグインの場所を渡すと、そのプラグインのスキルを使えるようにする。 */
+/** plugin にプラグインの場所を渡すと、そのプラグインのスキルを使えるようにする。スキルはファイルを読むので、claude -p で動かす。 */
 export const askOpus = (prompt: string, schema: object, plugin?: string): Promise<Record<string, unknown>> =>
   plugin
     ? askClaude(prompt, schema, [...pluginArgs(plugin), ...OPUS_ARGS], OPUS_TIMEOUT_MS, plugin)
-    : askClaude(prompt, schema, [SAFE_MODE, '--tools', '', ...OPUS_ARGS], OPUS_TIMEOUT_MS);
+    : askEither('opus', OPUS_SYSTEM, prompt, schema, [SAFE_MODE, '--tools', '', ...OPUS_ARGS], OPUS_TIMEOUT_MS);
 
 /** cwd のコードを読んで答えさせる。 */
 export const askReader = (cwd: string, prompt: string, schema: object): Promise<Record<string, unknown>> =>
