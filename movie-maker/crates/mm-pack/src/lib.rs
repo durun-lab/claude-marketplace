@@ -26,6 +26,7 @@ mod fonts;
 mod layout;
 mod macros;
 mod pack;
+mod page;
 mod param_format;
 mod sticker;
 mod style;

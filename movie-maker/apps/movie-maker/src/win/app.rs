@@ -20,6 +20,8 @@ use windows::Win32::Media::timeBeginPeriod;
 use crate::win::cli::{self, Args};
 use crate::win::deliver::DeliverState;
 use crate::win::deliver_ipc;
+use crate::win::devices::DevicesState;
+use crate::win::devices_ipc;
 use crate::win::edit;
 use crate::win::feedback;
 use crate::win::feedback_ipc;
@@ -143,13 +145,17 @@ fn project_info(
 
 /// 書き手として開いた `project.mmdb` を `Core` に渡し、HTTP サーバーを起動する。サーバーを起動できなくても、
 /// IPC の操作は `Core` を通して保存する。
-fn start_serve(shared: &Shared, store: Option<mm_store::Store>) -> Option<Server> {
+fn start_serve(
+    shared: &Shared,
+    store: Option<mm_store::Store>,
+    mobile_cache: std::path::PathBuf,
+) -> Option<Server> {
     let store = store?;
     let config = mm_runtime::RuntimeConfig {
         present: false,
         ..crate::win::playback::runtime_config()
     };
-    let frames = match EngineFrames::spawn(config) {
+    let frames = match EngineFrames::spawn(config, mobile_cache) {
         Ok(f) => Some(Arc::new(f) as Arc<dyn FrameSource>),
         Err(e) => {
             tracing::warn!("フレームの描画を始められない（GET /frame は使えない）: {e}");
@@ -190,6 +196,7 @@ fn forward_changes(app: &tauri::AppHandle, shared: &Arc<Shared>) {
     if let Err(e) = started {
         tracing::warn!("提案の通知を受けるスレッドを始められない: {e}");
     }
+    review_ipc::forward_comments(app, core);
 }
 
 fn fail(message: &str) -> ! {
@@ -210,7 +217,8 @@ pub fn run() {
         .unwrap_or_else(|e| fail(&e.to_string()));
 
     let shared = Arc::new(Shared::new());
-    let server = start_serve(&shared, opened.store.take());
+    let mobile_cache = media::project_cache_dir(&args.project).join("mobile");
+    let server = start_serve(&shared, opened.store.take(), mobile_cache);
     if args.play_test.is_some() {
         shared.collect_series();
     }
@@ -271,9 +279,11 @@ fn build_and_run(boot: Boot) {
     ));
     let deliver_state = Arc::new(DeliverState::new(boot.shared.clone(), &boot.args.project));
     let review_state = Arc::new(ReviewState::new(boot.shared.clone()));
+    let devices_state = Arc::new(DevicesState::new(boot.shared.clone()));
     tauri::Builder::default()
         .manage(managed)
         .manage(deliver_state)
+        .manage(devices_state)
         .manage(media_state)
         .manage(story_state)
         .manage(review_state)
@@ -288,6 +298,7 @@ fn build_and_run(boot: Boot) {
 enum Panel {
     Common,
     Deliver,
+    Devices,
     Feedback,
     Media,
     Mixer,
@@ -302,6 +313,7 @@ enum Panel {
 fn route(command: &str) -> Panel {
     match command {
         "edit_action" => Panel::Source,
+        c if c.starts_with("devices_") => Panel::Devices,
         c if c.starts_with("export_") => Panel::Deliver,
         c if c.starts_with("feedback_") => Panel::Feedback,
         c if c.starts_with("media_") => Panel::Media,
@@ -320,6 +332,7 @@ fn dispatch(invoke: tauri::ipc::Invoke) -> bool {
     let handler: fn(tauri::ipc::Invoke) -> bool = match route(invoke.message.command()) {
         Panel::Common => ipc::handler,
         Panel::Deliver => deliver_ipc::handler,
+        Panel::Devices => devices_ipc::handler,
         Panel::Feedback => feedback_ipc::handler,
         Panel::Media => media_ipc::handler,
         Panel::Mixer => mixer_ipc::handler,
@@ -347,6 +360,7 @@ impl Boot {
         ipc::spawn(app.handle().clone(), self.state.clone());
         hotpatch::start(app.handle());
         forward_changes(app.handle(), &self.shared);
+        app.state::<Arc<DevicesState>>().start(app.handle().clone());
         feedback::connect(app.handle().clone());
         offer_drops(&webview, app.state::<Arc<MediaState>>().inner().clone());
         watch_window(
@@ -441,11 +455,14 @@ mod tests {
         let cases = [
             ("subscribe", Panel::Common),
             ("apply_ops", Panel::Common),
+            ("devices_status", Panel::Devices),
             ("export_start", Panel::Deliver),
             ("feedback_submit", Panel::Feedback),
             ("media_list", Panel::Media),
             ("mixer_state", Panel::Mixer),
             ("pack_apply", Panel::Pack),
+            ("review_comment_reply", Panel::Review),
+            ("review_comments", Panel::Review),
             ("review_undo", Panel::Review),
             ("source_open", Panel::Source),
             ("edit_action", Panel::Source),

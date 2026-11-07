@@ -3,7 +3,7 @@
 //! 適用は `Mutex` で順に並べ、書けたら変わった所を購読者（SSE、アプリの描画、WebView）に送る。
 
 use std::collections::BTreeSet;
-use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::thread::JoinHandle;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -37,6 +37,17 @@ impl Caller {
             actor: Actor {
                 kind: "mcp".into(),
                 name: "claude".into(),
+            },
+        }
+    }
+
+    /// モバイル版の登録した端末（人の操作）。名乗りは端末の名前で、ロックの付いた所には触れない。
+    pub fn mobile(device_name: &str) -> Self {
+        Self {
+            entry: Entry::Mobile,
+            actor: Actor {
+                kind: "mobile".into(),
+                name: device_name.into(),
             },
         }
     }
@@ -176,6 +187,8 @@ pub struct Core {
     /// コメントの追加と状態の変化の通知。
     pub(crate) comments: broadcast::Sender<crate::comments::CommentEvent>,
     pub(crate) frames: Option<Arc<dyn FrameSource>>,
+    /// 文字起こしを入れ直した回数。単語はプロジェクトのデータの外にあり変更の通知も出ないので、使い回す側がこれで見分ける。
+    transcripts: AtomicU64,
 }
 
 impl Core {
@@ -184,6 +197,10 @@ impl Core {
         let (events, _) = broadcast::channel(EVENT_BACKLOG);
         let (proposals, _) = broadcast::channel(EVENT_BACKLOG);
         let (comments, _) = broadcast::channel(EVENT_BACKLOG);
+        // 新しい `Core` は開き直したプロジェクトなので、バージョンで分けた配信のキャッシュを持ち越さない。
+        if let Some(f) = &frames {
+            f.reset();
+        }
         Arc::new(Self {
             version: AtomicI64::new(store.doc_version()),
             store: Mutex::new(Some(store)),
@@ -192,6 +209,7 @@ impl Core {
             proposals,
             comments,
             frames,
+            transcripts: AtomicU64::new(0),
         })
     }
 
@@ -318,8 +336,16 @@ impl Core {
             if !known {
                 return Err(ServeError::BadRequest(format!("素材 {asset} が無い")));
             }
-            Ok(s.put_transcript(asset, content_hash, input)?)
+            let words = s.put_transcript(asset, content_hash, input)?;
+            self.transcripts.fetch_add(1, Ordering::SeqCst);
+            Ok(words)
         })
+    }
+
+    /// 文字起こしのバージョン。`put_transcript` のたびに 1 進む（起動ごとに 0 から）。
+    /// 字幕の焼き込みのように単語から作るものを、プロジェクトのデータと合わせて使い回すときのキーにする。
+    pub fn transcript_version(&self) -> u64 {
+        self.transcripts.load(Ordering::SeqCst)
     }
 
     /// 前のバックアップが終わっていなければ、新しいのは始めない（次の書き込みで間隔を見直す）。
@@ -378,6 +404,11 @@ impl Core {
         frames
             .frame_png(&project, request)
             .map_err(ServeError::from)
+    }
+
+    /// モバイルの映像の配信（コマ、HLS、素材の音だけ）。描画が `Streamer` でなければ `None`。
+    pub fn streamer(&self) -> Option<Arc<mm_stream::Streamer>> {
+        self.frames.as_ref().and_then(|f| f.streamer())
     }
 
     /// 描画に使うノードの種類の定義（MCP の `kinds`）。

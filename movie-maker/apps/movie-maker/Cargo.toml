@@ -44,6 +44,7 @@ tracing-subscriber = { workspace = true }
 dioxus-devtools = { workspace = true, optional = true }
 tauri = { workspace = true }
 rfd = { workspace = true }
+qrcode = { workspace = true }
 wgpu = { workspace = true }
 pollster = { workspace = true }
 windows = { workspace = true, features = [

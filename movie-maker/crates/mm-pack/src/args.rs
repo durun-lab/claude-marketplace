@@ -27,10 +27,13 @@ impl ArgValue {
         Ok(match ty {
             ParamType::Text | ParamType::Id | ParamType::Bool => Self::Text(raw.to_string()),
             ParamType::Time => Self::Time(parse_time(raw)?),
+            // NaN と無限大は JSON で null になり、ページとシェーダーで黙って 0 や NaN に化けるので弾く。
             ParamType::Number => Self::Number(
                 raw.trim()
-                    .parse()
-                    .map_err(|_| MmError::InvalidArgument(format!("数として読めない: {raw}")))?,
+                    .parse::<f64>()
+                    .ok()
+                    .filter(|v| v.is_finite())
+                    .ok_or_else(|| MmError::InvalidArgument(format!("数として読めない: {raw}")))?,
             ),
         })
     }

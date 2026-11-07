@@ -93,7 +93,7 @@ fn header_in(headers: &HeaderMap, name: header::HeaderName, allowed: &[String]) 
 }
 
 /// トークンの比較は、どこで違ったかを時間に出さない。
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+pub(crate) fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
     a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
 }
 
@@ -315,9 +315,24 @@ async fn get_frame(
 async fn get_events(
     State(st): State<Arc<AppState>>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ServeError> {
-    let rx = st.core.subscribe();
-    let version = st.core.version()?;
-    let core = st.core.clone();
+    event_stream(&st.core)
+}
+
+fn event_stream(
+    core: &Arc<Core>,
+) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ServeError> {
+    Ok(Sse::new(event_items(core)?).keep_alive(KeepAlive::default()))
+}
+
+/// `GET /events` と人の待ち受けの `GET /m/api/events` が送る同じ通知の列。
+pub(crate) fn event_items(
+    core: &Arc<Core>,
+) -> Result<impl tokio_stream::Stream<Item = Result<Event, Infallible>>, ServeError> {
+    let rx = core.subscribe();
+    let version = core.version()?;
+    let proposals_rx = core.subscribe_proposals();
+    let comments_rx = core.subscribe_comments();
+    let core = core.clone();
     let hello = Event::default()
         .event("hello")
         .json_data(json!({ "version": version }))
@@ -335,21 +350,20 @@ async fn get_events(
         Ok(event.unwrap_or_else(|e| Event::default().event("error").data(e.to_string())))
     });
     // 提案の通知は取りこぼしても `GET /proposals` で読み直せるので、取りこぼしは送らない。
-    let proposals = BroadcastStream::new(st.core.subscribe_proposals()).filter_map(|item| {
+    let proposals = BroadcastStream::new(proposals_rx).filter_map(|item| {
         let event = Event::default().event("proposal").json_data(item.ok()?);
         Some(Ok(event.unwrap_or_else(|e| {
             Event::default().event("error").data(e.to_string())
         })))
     });
     // コメントの通知も同じく、取りこぼしたら `GET /comments` で読み直す。
-    let comments = BroadcastStream::new(st.core.subscribe_comments()).filter_map(|item| {
+    let comments = BroadcastStream::new(comments_rx).filter_map(|item| {
         let event = Event::default().event("comment").json_data(item.ok()?);
         Some(Ok(event.unwrap_or_else(|e| {
             Event::default().event("error").data(e.to_string())
         })))
     });
-    let stream = tokio_stream::iter([Ok(hello?)]).chain(changes.merge(proposals).merge(comments));
-    Ok(Sse::new(stream).keep_alive(KeepAlive::default()))
+    Ok(tokio_stream::iter([Ok(hello?)]).chain(changes.merge(proposals).merge(comments)))
 }
 
 /// SQLite と描画は同期の処理なので、非同期の実行環境を止めない別のスレッドで行う。

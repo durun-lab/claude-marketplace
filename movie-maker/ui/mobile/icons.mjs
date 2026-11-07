@@ -1,4 +1,4 @@
-// アイコンの PNG を依存なしで作る。背景に再生記号を置く単純な絵で、iOS のホーム画面と Android の両方が読める。
+// アイコンの PNG を依存なしで作る。背景に再生記号を置く単純な図形で、iOS のホーム画面と Android の両方が読める。
 import { Buffer } from "node:buffer";
 import { deflateSync } from "node:zlib";
 
@@ -25,7 +25,7 @@ const chunk = (type, data) => {
   return out;
 };
 
-/** 点が右向きの三角（再生記号）の中にあるか。size は一辺、scale は絵の大きさの割合。 */
+/** 点が右向きの三角（再生記号）の中にあるか。size は一辺、scale は記号の大きさの割合。 */
 const inTriangle = (x, y, size, scale) => {
   const h = size * scale;
   const left = size / 2 - h * 0.35;

@@ -5,7 +5,7 @@ use crate::common;
 use common::{canon, cut, layer, project, quarters};
 use mm_doc::Project;
 use mm_ops::{
-    AddLayer, Disable, Edge, Editor, Insert, LockLayer, Op, OpContext, OpError, Precompose,
+    AddLayer, Disable, Edge, Editor, Entry, Insert, LockLayer, Op, OpContext, OpError, Precompose,
     RemoveLayer, Ripple, SetParam, Slip, Transaction, TxnKind,
 };
 use mm_types::{Id, ParamValue};
@@ -143,6 +143,31 @@ fn ロックの付いたレイヤーは_claude_の操作経路から触れない
         pre.apply(&mut p, &claude),
         Err(OpError::Locked(_))
     ));
+}
+
+#[test]
+fn ロックはアプリの画面からは触れ_アプリの外の経路からは触れない() {
+    let mut locked = project();
+    LockLayer {
+        layer: Id::new("l1"),
+        lock: true,
+    }
+    .apply_op(&mut locked, &OpContext::human());
+    for (entry, allowed) in [
+        (Entry::Surface, true),
+        (Entry::WebView, true),
+        (Entry::Cli, false),
+        (Entry::Mcp, false),
+        (Entry::Mobile, false),
+    ] {
+        let mut p = locked.clone();
+        let res = set_opacity("l1", 0.5).apply(&mut p, &OpContext::new(entry));
+        assert_eq!(res.is_ok(), allowed, "{entry:?}");
+        if !allowed {
+            assert!(matches!(res, Err(OpError::Locked(_))), "{entry:?}");
+            assert_eq!(p, locked, "{entry:?} で断った操作はデータを変えない");
+        }
+    }
 }
 
 trait ApplyOp {

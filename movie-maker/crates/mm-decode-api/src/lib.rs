@@ -221,6 +221,26 @@ pub struct EncodeSettings {
     pub codec: String,
     pub output_path: PathBuf,
     pub audio: Option<AudioStreamInfo>,
+    /// 配信の区間の書き方。コーデック `h264_ts` に要り、ほかのコーデックでは `None`。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stream: Option<StreamOutput>,
+}
+
+/// 配信の区間（MPEG-TS）の書き方。目標のビットレートで 1 回だけ符号化し、区間の始まりの秒から始まる時刻で書く。
+/// コーデックと同じく `begin` で決まる設定なので `EncodeSettings::stream` に入れ、包むエンコーダーもそのまま渡せる。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StreamOutput {
+    /// 映像の目標のビットレート（bit/s）。
+    pub video_bit_rate: u32,
+    /// 映像のビットレートの上限（bit/s、VBV の maxrate）。`None` は上限を付けない。バッファーは上限の 2 秒分。
+    pub video_max_rate: Option<u32>,
+    /// 音（AAC）のビットレート（bit/s）。
+    pub audio_bit_rate: u32,
+    /// キーフレームの間隔（フレーム数）。区間の長さのフレーム数にそろえると、区間の先頭が必ず IDR になる。
+    /// シーンチェンジでのキーフレームは入れず、B フレームも使わない（DTS と PTS が一致し、時刻が `start_offset` から正確に始まる）。
+    pub keyframe_interval_frames: u32,
+    /// 出力の最初のフレームの表示時刻。区間の始まりの秒を渡すと、TS の時刻が映像も音もその秒から始まる。
+    pub start_offset: RationalTime,
 }
 
 /// 書き終えたときの報告。

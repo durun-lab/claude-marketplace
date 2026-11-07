@@ -8,7 +8,13 @@
     "screenshots": "node screenshots.mjs"
   },
   "dependencies": {
+    "@mm/review": "workspace:*",
     "@mm/sdk": "workspace:*",
+    "@mm/story": "workspace:*",
+    "hls.js": "1.6.15",
     "preact": "^10.27.0"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "6.2.6"
   }
 }

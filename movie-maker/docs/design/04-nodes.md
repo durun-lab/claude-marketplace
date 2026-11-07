@@ -90,11 +90,12 @@ pub trait NodeKind: Send + Sync {
 
 ## 効果
 
-- `Layer.effects` を上から順に、レイヤーの画像（変形の前）を入力 0 にして掛ける。種類は自前のコマンドを作ってすぐ提出するので、レンダラーは呼ぶ前に積んだコマンドを提出する（入れ子とシーケンスの画像が揃ってから読ませるため）。`enabled` が偽の効果と `is_identity` が真の効果は掛けない。
+- `Layer.effects` を上から順に、レイヤーの画像（変形の前）を入力 0 にして掛ける。種類は自前のコマンドを作ってすぐ提出するので、レンダラーは呼ぶ前に積んだコマンドを提出する（入れ子とシーケンスの画像が揃ってから読ませるため）。`enabled` が偽の効果と `is_identity` が真の効果は掛けない。効果の `FrameCx::scale` は、入力の画像の画素がレイヤーの座標の 1 画素あたり何画素か（撮影素材の GPU のフレームは素材の大きさのままなので、描く先の倍率と違うことがある）。
 - 色の種類は線形の premultiplied を straight にしてから処理し、作業色空間（線形の光）の上で掛ける。GPU は `WgpuGpu` の全画面パス、`GpuHelper` が別の実装ならモックの CPU の経路（同じ式。試験で GPU と突き合わせる）。
 
 | 種類 | パラメータ | 内容 |
 |---|---|---|
+| `blur.gaussian` | `radius`（標準偏差。レイヤーの座標の画素、既定 0） | ガウスぼかし。CSS の `blur()` と同じく画像の外は透明として数え、縁は透明へ薄くなる（画像の外へは広げない）。重みは標準偏差の 3 倍まで。描く画素で 8 を超える標準偏差は、縮めた画像に掛けて広げ戻す（geneva、Skia と同じ。費用は半径によらない）。上限は描く画素で 4096 |
 | `color.adjust` | `brightness`（露出の段数、既定 0）、`contrast`（18% グレーを支点にしたべき、既定 1）、`saturation`（Rec.709 の輝度係数からの距離の倍率、既定 1） | 明るさ、コントラスト、彩度 |
 | `color.cdl` | `slope`、`offset`、`power`（Vec3）、`saturation` | ASC CDL。`clamp(in * slope + offset) ^ power` の後に彩度。作業色空間の上で掛ける |
 | `color.lut` | `lut`（`.cube` の素材の `AssetRef`。中身の `contentHash` がキャッシュのキーに入る）、`intensity`（0..1）、`input_space`（`lin_rec709`、`srgb`、`bt709`） | 3D LUT。LUT の入力の色空間に符号化して引き、線形に戻して `intensity` で混ぜる |

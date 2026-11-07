@@ -59,6 +59,37 @@ pub(crate) fn remove_token(id: &str) {
     }
 }
 
+/// 持ち主の、消えないアプリのフォルダーにあるファイルのパス（Windows は `%LOCALAPPDATA%\movie-maker\<name>`、
+/// Unix は `~/.local/state/movie-maker/<name>`）。モバイルの端末の登録（`devices.json`）が使う。
+pub fn private_app_file(name: &str) -> Result<PathBuf> {
+    #[cfg(windows)]
+    let base = PathBuf::from(std::env::var_os("LOCALAPPDATA").ok_or_else(no_home)?);
+    #[cfg(not(windows))]
+    let base = PathBuf::from(std::env::var_os("HOME").ok_or_else(no_home)?)
+        .join(".local")
+        .join("state");
+    Ok(base.join(APP_DIR).join(name))
+}
+
+/// ファイルを持ち主だけが読める権限で書き換える。同じフォルダーの一時ファイルを絞ってから中身を書き、
+/// 置き換えるので、途中で落ちても前の中身が残る。
+pub fn write_private_file(path: &Path, bytes: &[u8]) -> Result<()> {
+    let dir = path
+        .parent()
+        .ok_or_else(|| MmError::InvalidArgument(format!("親のフォルダーが無い: {path:?}")))?;
+    fs::create_dir_all(dir)?;
+    let mut tmp_name = path.file_name().unwrap_or_default().to_os_string();
+    tmp_name.push(".tmp");
+    let tmp = dir.join(tmp_name);
+    let mut file = create_private_file(&tmp)?;
+    restrict_file(&tmp)?;
+    file.write_all(bytes)?;
+    file.sync_all()?;
+    drop(file);
+    fs::rename(&tmp, path)?;
+    Ok(())
+}
+
 fn no_home() -> MmError {
     MmError::Internal(
         "トークンの置き場所（LOCALAPPDATA か XDG_RUNTIME_DIR か HOME）が分からない".into(),

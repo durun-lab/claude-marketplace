@@ -1,6 +1,7 @@
 //! `mm-render` の結合テスト。リンクを 1 回にするため、1 つの実行ファイルにまとめる（docs/ci.md）。
 
 mod audio_effects;
+mod blend;
 mod cache_carry;
 mod cache_keys;
 mod common;

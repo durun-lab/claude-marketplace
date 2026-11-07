@@ -5,8 +5,11 @@
 //! - [`Server`]: `Core` を HTTP（axum）で公開する。127.0.0.1 だけで待ち、`Host`・`Origin`・
 //!   起動ごとのトークン（プロジェクトの外の持ち主専用のフォルダー）を確かめる。
 //! - 提案: Claude の編集を適用せずに保留し、人が承認・却下する（[`Core::propose`]、[`Core::approve`]、`/proposals`）。
+//! - [`MobileServer`]: 人の待ち受け（モバイル版、`/m`）。`tailscale serve` の後ろで、登録した端末だけを
+//!   `Entry::Mobile` として受ける。端末の登録と登録を外すのは [`Devices`] を PC のアプリから呼ぶ。
 //! - [`Client`]: `mm` と結合テストが使うクライアント。
-//! - [`FrameSource`]: `GET /frame` の描画。[`EngineFrames`] が専用のスレッドの `Engine` で描く。
+//! - [`FrameSource`]: `GET /frame` の描画。[`EngineFrames`] が `mm-stream` の `Streamer` の `Engine`
+//!   （モバイルの映像の配信と共有する 1 つ）で描く。
 
 mod client;
 mod comments;
@@ -16,6 +19,7 @@ mod http;
 mod kinds;
 mod mcp;
 mod mcp_tools;
+mod mobile;
 mod proposals_http;
 mod review;
 mod server;
@@ -27,6 +31,12 @@ pub use comments::CommentEvent;
 pub use core::{now_ms, Caller, Change, ChangeOf, Core, ProjectView, ServeError};
 pub use frames::{encode_png, parse_time, render_png, EngineFrames, FrameRequest, FrameSource};
 pub use kinds::{describe_kinds, KindInfo, KindQuery};
+pub use mobile::{
+    hosts_in_status, mime_for, serve_is_configured, serve_proxies, tailnet_hosts, DeviceInfo,
+    Devices, DirAssets, MobileAsset, MobileAssets, MobileConfig, MobileServer, PairingCode,
+    COOKIE_NAME, CREDENTIAL_BYTES, DEVICES_FILE, LOGIN_HEADER, MOBILE_HEADER, MOBILE_HTTPS_PORT,
+    MOBILE_PORT, PAIRING_CODE_LEN, PAIRING_MAX_FAILURES, PAIRING_TTL, PAIR_PATH,
+};
 pub use review::{Approval, ProposalEvent, ProposalOpView, ProposalView};
 pub use server::Server;
 pub use story_http::{story_routes, OverviewQuery, RangeQuery, SearchQuery, TranscriptQuery};

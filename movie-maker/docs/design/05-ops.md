@@ -23,12 +23,12 @@
   - `overrideCut { cut, in?, out? }`。参照のショートのカットの in/out の上書きを置く。値のある所は上書きし（`Cut.overrides` のフラグが立つ）、省いた所は上書きを外して元のカットに従う。逆操作は前の上書きを置く `overrideCut`。`resetCut { cut }` は全部外す（逆操作は `overrideCut`）。例 `{"op":"overrideCut","cut":"r1","in":{"num":7,"den":2}}`。
   - 参照のショートのカットの、元に従う所（上書きしていない in/out、素材、速さ、有効）を直接変える操作（`ripple`、`split`、`disable` など）は拒否する。上書きした in/out はショートの中で `ripple` などで動かせる。
   - 操作を 1 つ適用するたびに、適用した後・`validate` の前に `Project::sync_references` が参照のショートのカットへ元の値を反映する。逆操作で元が戻れば、反映した値も戻る。反映すると上書きした側を元が越えて `in < out` を満たさなくなる本編の操作（上書きした in 以下へ本編の out をリップルするなど）は、上書きを外さずに断り、エラーに本編のカット、ショートのカット、上書きした所を出す。元のカットが消えたカットは最後の値のまま残し、`mm shorts` が「消えた」と出す。
-  - `setReframe { layer, cut, transform }`。sequence のレイヤーで、カットの画像に掛ける変形（`transform: null` で外す）。置くときも外すときも、カットがそのレイヤーの sequence に在ることを確かめる（消えたカットの項目を外すと、逆操作が置き直せないため）。`setCaption { layer, caption }`。字幕の置き場所（`null` で既定）。`delivery.burn_in_captions` が真のレンダーターゲットとプレビューが、字幕を絵に描くときにこの置き場所を使う（既定は下部中央。`position` は帯の下端の中央、`width` は折り返しの幅）。どちらも逆操作は前の値を置く同じ操作。例 `{"op":"setReframe","layer":"vert-seq","cut":"r0","transform":{"position":{"value":{"type":"vec2","value":[-30.0,0.0]}},"scale":{"value":{"type":"number","value":3.3}},"rotation":{"value":{"type":"number","value":0.0}},"anchor":null}}`。
+  - `setReframe { layer, cut, transform }`。sequence のレイヤーで、カットの画像に掛ける変形（`transform: null` で外す）。置くときも外すときも、カットがそのレイヤーの sequence に在ることを確かめる（消えたカットの項目を外すと、逆操作が置き直せないため）。`setCaption { layer, caption }`。字幕の置き場所（`null` で既定）。`delivery.burn_in_captions` が真のレンダーターゲットとプレビューが、字幕をフレームに描くときにこの置き場所を使う（既定は下部中央。`position` は帯の下端の中央、`width` は折り返しの幅）。どちらも逆操作は前の値を置く同じ操作。例 `{"op":"setReframe","layer":"vert-seq","cut":"r0","transform":{"position":{"value":{"type":"vec2","value":[-30.0,0.0]}},"scale":{"value":{"type":"number","value":3.3}},"rotation":{"value":{"type":"number","value":0.0}},"anchor":null}}`。
   - `touches` は、参照のショートのカットと元のカットの片方に触れば両方（ショートのショートもたどる）と、参照のショートのそれより後ろのカットに接続したレイヤー。
 - パラメータは `ParamRef`（`layer` か `cut` の ID と、`.` 区切りのパラメータのパス）で指す。パスは `opacity`、`transform.position|scale|rotation|anchor`、`crop.left|top|right|bottom`（無い辺は `setParam` で作り、`removeParam` で外す）、`source.<名前>`、`effects.<ID>.<名前>`、`masks.<ID>.path|feather|opacity|rect.position|rect.size|rect.radius`、`audio.gain_db|pan`、`reframe.<カットの ID>.position|scale|rotation|anchor`、`caption.position|width`。
 - 適用した後は必ず `Project::validate` を通す。通らなければ操作は失敗で、プロジェクトのデータは変わらない。
 - 逆操作が元のプロジェクトのデータをバイトで戻せるよう、操作は形を絞る。`precompose` は重なりの上で続いた範囲だけ、`unprecompose` は `precompose` が作った形だけ、`join` は `split` が作った続きだけ、`addMarker` は同じ時刻が無いときだけ受ける。
-- 操作経路は 4 つで、どれも同じ操作を呼ぶ。wgpu のサーフェス（Rust から直接）、WebView の画面（Tauri の IPC）、Claude の CLI（`mm op <project> ripple --cut k1 --edge out --by -0.4`。動いていなければ `project.mmdb` を直接開く。別のプロセス（アプリ）が書き手で HTTP サーバーがあれば、[HTTP サーバー](#http-サーバー)で転送する。HTTP サーバーが無ければ「別のプロセスが書いている」と拒否して読み取りだけにする）、Claude の MCP（操作ごとのツール。引数の型はスキーマから作る）。
+- 操作経路は 5 つで、どれも同じ操作を呼ぶ。wgpu のサーフェス（Rust から直接）、WebView の画面（Tauri の IPC）、Claude の CLI（`mm op <project> ripple --cut k1 --edge out --by -0.4`。動いていなければ `project.mmdb` を直接開く。別のプロセス（アプリ）が書き手で HTTP サーバーがあれば、[HTTP サーバー](#http-サーバー)で転送する。HTTP サーバーが無ければ「別のプロセスが書いている」と拒否して読み取りだけにする）、Claude の MCP（操作ごとのツール。引数の型はスキーマから作る）、モバイル版（`mm-serve` の人の待ち受け `/m`。即時に適用できる操作は [モバイル版の権限](12-mobile.md#権限) の表だけ）。
 - 全部の操作の JSON Schema は `mm_ops::ops_schema()` が出し、`crates/mm-ops/schema/ops.json` に凍結する（テストが最新かを確かめる。`MM_UPDATE_SCHEMA=1 cargo test -p mm-ops --test it` で書き直す）。`mm op --schema`、MCP、`ui/sdk` の型の生成の元。
 - CLI の引数は、このスキーマのフィールドの名前から作る（`--cut c12 --edge out --by -0.4`）。時刻のフィールドは `-0.4` と `3/2` を受け（省ける時刻は `null` も）、列のフィールドは JSON の配列（`--topics '["t1","t2"]'`）、パラメータの指し方は `layer:<ID>:<パス>` と略せ、複雑なフィールドは `--json '{...}'` で渡す。元にしたバージョンは `--base <バージョン>`、複数の操作は `--txn <file.json>`（`Transaction` の JSON）で 1 つのトランザクションにする。CLI の操作経路は `Entry::Cli` で、ロックの付いた所に触る操作（ロックを外す取り消しも）は拒否する。
 - 操作を適用して書くのは `mm_store::Store::apply_txn`（取り消しとやり直しは `undo_last`、`redo_last`）。古いバージョンを元にした操作の判定は、保存した記録の `touches` で行う（別のプロセスが書いた操作も、取り消しとやり直しの記録も含む）。`mm-store` は `mm-ops` の `OpRecord` と `TxnRecord` の形をそのまま表に書く。
@@ -76,7 +76,7 @@ Claude の対応 1 回を、適用せずに保留して人が決める単位（[
 
 - 待つ場所は 127.0.0.1 の空きポートだけ。ポートとトークンの置き場所の識別子（`token_id`）は `.mm/lock.info` に書く。起動ごとのトークン（32 バイトの乱数の 16 進）はプロジェクトの外の持ち主専用のフォルダーに置く（Windows は `%LOCALAPPDATA%movie-maker	okens<識別子>`、フォルダーごと現在のユーザーだけの ACL。Unix は `$XDG_RUNTIME_DIR` か `~/.local/state` の同じ構成で 0700/0600）。同期のフォルダーや別アカウントの読み取りに出ない。書き手が終了するとポートとトークンが消え、クラッシュで残っても、次に書き手になったプロセスが消す。クライアントは書き手のロックが生きていることを確かめてから、残った情報を信じる。
 - 全部の要求で `Host`（`127.0.0.1:<port>`、`localhost:<port>`）を確かめる（DNS の再束縛を止める）。`Origin` があれば同じ待ち受けのオリジンだけを通す（別のページからの要求を止める）。トークンは `Authorization: Bearer <トークン>`。順に 403、403、401。CORS のヘッダーは返さない。
-- HTTP から名乗れる操作経路は `cli`（既定）と `mcp` だけで、ロックの付いた所に触る操作は拒否する。`webview` と `surface` は名乗れない。`actor.kind` は操作経路で決まり、名乗れるのは `actor.name` だけ（`kind` を渡すと 400）。
+- Claude の待ち受けの HTTP から名乗れる操作経路は `cli`（既定）と `mcp` だけで、ロックの付いた所に触る操作は拒否する。`webview` と `surface` は名乗れない。`actor.kind` は操作経路で決まり、名乗れるのは `actor.name` だけ（`kind` を渡すと 400）。
 
 | パス | 中身 |
 |---|---|
@@ -98,7 +98,7 @@ CLI は `Store::open` で書き手になれなければ、`.mm/` のポートと
 
 ## ロック
 
-- `Layer.lock` の付いたレイヤー（とその効果・マスク）に `touches` が触る操作は、Claude の操作経路（`Entry::Cli`、`Entry::Mcp`）からは `Locked` で拒否する。ロックを外すのも拒否する。操作経路の種類は `OpContext` で渡す。
+- `Layer.lock` の付いたレイヤー（とその効果・マスク）に `touches` が触る操作は、PC のアプリの外の操作経路（`Entry::Cli`、`Entry::Mcp`、`Entry::Mobile`。判定は `Entry::locks_apply`）からは `Locked` で拒否する。ロックを外すのも拒否する。操作経路の種類は `OpContext` で渡す。
 
 ## 記録と差分
 
