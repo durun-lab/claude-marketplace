@@ -14,6 +14,15 @@ toml = { workspace = true }
 # 回の ID と claude -p のセッションの UUID。
 getrandom = { workspace = true }
 
+# claude -p の木をジョブオブジェクトに入れ、アプリが落ちても木を残さない。
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+] }
+
 [dev-dependencies]
 tempfile = { workspace = true }
 

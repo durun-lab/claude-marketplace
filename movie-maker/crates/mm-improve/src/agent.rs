@@ -16,8 +16,10 @@ use serde_json::Value;
 
 use crate::config::Settings;
 use crate::files::read_json;
+use crate::job::Job;
 use crate::proc::kill_tree;
 use crate::time::now_ms;
+use crate::write_guard::WriteGuard;
 
 /// Stop フックが書くファイル。
 pub const STOP_FILE: &str = "stop.json";
@@ -41,8 +43,8 @@ pub struct AgentRequest<'a> {
     pub cwd: &'a Path,
     /// 回のフォルダー（`stop.json` とログ）。
     pub run_dir: &'a Path,
-    /// 読ませるフォルダー（要望のファイル）。
-    pub read_dirs: &'a [PathBuf],
+    /// 書き込みの囲い（読むだけの要望のファイルと、書かせない所）。
+    pub guard: &'a WriteGuard,
     /// モデル、effort、予算（回の残り）。
     pub settings: &'a Settings,
     /// この呼び出しの時間の上限（回の残り）。過ぎたら木ごと止める。
@@ -129,17 +131,29 @@ pub const DENIED_COMMANDS: &[&str] = &[
 ];
 
 /// 回の `claude -p` の設定。Stop フックは標準入力の JSON をそのまま `stop.json` に書く
-/// （Windows でも Claude Code はフックを Git Bash で実行する）。[`DENIED_COMMANDS`] を拒否させる。
-pub fn run_settings(run_dir: &Path) -> String {
+/// （Windows でも Claude Code はフックを Git Bash で実行する）。[`DENIED_COMMANDS`] と `guard` の書かせない所を拒否させ、
+/// 作業フォルダーを worktree だけにして、Write と Edit が外を書くのをどのモードでも拒否させる（[`WriteGuard`]）。
+pub fn run_settings(run_dir: &Path, guard: &WriteGuard) -> String {
     let file = run_dir
         .join(STOP_FILE)
         .to_string_lossy()
         .replace('\\', "/")
         .replace('\'', "'\\''");
+    let (allow, no_write) = guard.rules();
+    let deny: Vec<String> = DENIED_COMMANDS
+        .iter()
+        .map(|r| (*r).to_owned())
+        .chain(no_write)
+        .collect();
     serde_json::json!({
         "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": format!("cat > '{file}'") }] }] },
         "env": { "BASH_DEFAULT_TIMEOUT_MS": BASH_TIMEOUT_MS.to_string() },
-        "permissions": { "deny": DENIED_COMMANDS },
+        "permissions": {
+            "allow": allow,
+            "deny": deny,
+            "additionalDirectories": [],
+            "blockWritesOutsideWorkingDirectories": true,
+        },
     })
     .to_string()
 }
@@ -159,10 +173,10 @@ impl ClaudeCli {
         args.extend(["--permission-mode".into(), self.permission_mode.clone()]);
         // 確認の要る操作は誰も答えないので拒否する。
         args.extend(["--permission-prompts".into(), "none".into()]);
-        args.extend(["--settings".into(), run_settings(req.run_dir)]);
-        for d in req.read_dirs {
-            args.extend(["--add-dir".into(), d.to_string_lossy().into_owned()]);
-        }
+        args.extend(["--settings".into(), run_settings(req.run_dir, req.guard)]);
+        // 人の設定（ほかのリポジトリの additionalDirectories、広い allow、プラグイン）と MCP のサーバーを読ませない。
+        // 設定の一覧は層をまたいで足し合わされ、--settings では消せないため、読む元から外す。
+        args.extend(["--setting-sources", "project", "--strict-mcp-config"].map(str::to_owned));
         let opt = |flag: &str, v: Option<String>| v.map(|v| [flag.to_owned(), v]);
         args.extend(opt("--model", s.model.clone()).into_iter().flatten());
         args.extend(opt("--effort", s.effort.clone()).into_iter().flatten());
@@ -175,7 +189,8 @@ impl ClaudeCli {
         args
     }
 
-    fn spawn(&self, req: &AgentRequest<'_>) -> Result<Child> {
+    /// 起こしてすぐジョブに入れる。頼む文を書く前に入れ、claude が子を起こす前に木をジョブに収める。
+    fn spawn(&self, req: &AgentRequest<'_>) -> Result<(Child, Option<Job>)> {
         std::fs::create_dir_all(req.run_dir)?;
         let log = OpenOptions::new()
             .create(true)
@@ -190,11 +205,12 @@ impl ClaudeCli {
             .stdout(out)
             .stderr(log)
             .spawn()?;
+        let job = Job::attach(&child);
         (req.on_spawn)(child.id());
         if let Some(mut stdin) = child.stdin.take() {
             stdin.write_all(req.prompt.as_bytes())?;
         }
-        Ok(child)
+        Ok((child, job))
     }
 
     fn try_run(&self, req: &AgentRequest<'_>) -> Result<AgentEnd> {
@@ -203,8 +219,10 @@ impl ClaudeCli {
             std::fs::remove_file(&stop_path)?;
         }
         let started = now_ms();
-        let mut child = self.spawn(req)?;
-        let (status, timed_out) = wait_with_deadline(&mut child, req.wall)?;
+        let (mut child, job) = self.spawn(req)?;
+        let (status, timed_out) = wait_with_deadline(&mut child, job.as_ref(), req.wall)?;
+        // claude が後ろに回したコマンドが残っていれば、ジョブを閉じて止める。
+        drop(job);
         let out: Value = read_json(&req.run_dir.join(OUT_FILE))
             .ok()
             .flatten()
@@ -278,21 +296,31 @@ fn finish(
     }
 }
 
-/// 終わるまで待つ。`limit` を過ぎたら木ごと止める。見張りはタイマー 1 つで、終わったら起こして片付ける。
-fn wait_with_deadline(child: &mut Child, limit: Duration) -> Result<(ExitStatus, bool)> {
+/// 終わるまで待つ。`limit` を過ぎたら木ごと止める（ジョブがあればジョブで、無ければ taskkill で）。
+/// 見張りはタイマー 1 つで、終わったら起こして片付ける。
+fn wait_with_deadline(
+    child: &mut Child,
+    job: Option<&Job>,
+    limit: Duration,
+) -> Result<(ExitStatus, bool)> {
     let (tx, rx) = mpsc::channel::<()>();
     let pid = child.id();
-    let guard = std::thread::spawn(move || match rx.recv_timeout(limit) {
-        Err(RecvTimeoutError::Timeout) => {
-            kill_tree(pid);
-            true
-        }
-        _ => false,
-    });
-    let status = child.wait();
-    drop(tx);
-    let timed_out = guard.join().unwrap_or(false);
-    Ok((status?, timed_out))
+    std::thread::scope(|s| {
+        let guard = s.spawn(move || match rx.recv_timeout(limit) {
+            Err(RecvTimeoutError::Timeout) => {
+                match job {
+                    Some(job) => job.terminate(),
+                    None => kill_tree(pid),
+                }
+                true
+            }
+            _ => false,
+        });
+        let status = child.wait();
+        drop(tx);
+        let timed_out = guard.join().unwrap_or(false);
+        Ok((status?, timed_out))
+    })
 }
 
 /// Stop フックが残した最後の発言。回を動かしていたプロセスがクラッシュした後に、回を区切れるかを見るのに使う。
@@ -355,21 +383,71 @@ mod tests {
 
     #[test]
     fn stop_hook_writes_to_run_dir_with_forward_slashes() {
-        let s = run_settings(Path::new(r"C:\data\runs\r1"));
+        let s = run_settings(Path::new(r"C:\data\runs\r1"), &WriteGuard::default());
         assert!(s.contains("cat > 'C:/data/runs/r1/stop.json'"), "{s}");
+    }
+
+    fn strings(v: &Value) -> Vec<&str> {
+        v.as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect()
     }
 
     #[test]
     fn run_settings_deny_moving_other_refs() {
-        let v: Value = serde_json::from_str(&run_settings(Path::new("/r"))).unwrap();
-        let deny: Vec<&str> = v["permissions"]["deny"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter_map(Value::as_str)
-            .collect();
+        let v: Value =
+            serde_json::from_str(&run_settings(Path::new("/r"), &WriteGuard::default())).unwrap();
+        let deny = strings(&v["permissions"]["deny"]);
         for rule in ["Bash(git push:*)", "Bash(git update-ref:*)", "Bash(gh:*)"] {
             assert!(deny.contains(&rule), "{rule}");
         }
+    }
+
+    #[test]
+    fn run_settings_block_writes_outside_the_worktree() {
+        let guard = WriteGuard::for_run(
+            Path::new(r"C:\mm"),
+            Path::new(r"C:\mm\feedback"),
+            Path::new(r"E:\repo"),
+            Path::new(r"C:\mm\worktrees\1"),
+        );
+        let v: Value = serde_json::from_str(&run_settings(Path::new("/r"), &guard)).unwrap();
+        let p = &v["permissions"];
+        assert_eq!(p["blockWritesOutsideWorkingDirectories"], true);
+        assert_eq!(p["additionalDirectories"], serde_json::json!([]));
+        assert!(strings(&p["allow"]).contains(&"Read(//c/mm/feedback/**)"));
+        let deny = strings(&p["deny"]);
+        for rule in [
+            "Edit(//c/mm/feedback/**)",
+            "Edit(//e/repo/**)",
+            "Edit(//c/mm/*.json)",
+        ] {
+            assert!(deny.contains(&rule), "{rule}: {deny:?}");
+        }
+    }
+
+    #[test]
+    fn args_leave_out_add_dir_and_human_settings() {
+        let settings = Settings::default();
+        let guard = WriteGuard::default();
+        let req = AgentRequest {
+            session_id: "s",
+            resume: false,
+            prompt: "",
+            cwd: Path::new("/w"),
+            run_dir: Path::new("/r"),
+            guard: &guard,
+            settings: &settings,
+            wall: Duration::ZERO,
+            on_spawn: &|_| {},
+            on_cost: &|_| {},
+        };
+        let args = ClaudeCli::default().args(&req);
+        assert!(!args.iter().any(|a| a == "--add-dir"), "{args:?}");
+        let at = args.iter().position(|a| a == "--setting-sources").unwrap();
+        assert_eq!(args[at + 1], "project");
+        assert!(args.iter().any(|a| a == "--strict-mcp-config"));
     }
 }

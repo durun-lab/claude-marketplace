@@ -6,3 +6,6 @@ mod flow;
 mod guard;
 mod real_claude;
 mod support;
+mod sweep;
+#[cfg(windows)]
+mod tree;
