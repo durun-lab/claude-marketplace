@@ -35,6 +35,7 @@ mm-export = { path = "crates/mm-export" }
 mm-gpu = { path = "crates/mm-gpu" }
 mm-host-api = { path = "crates/mm-host-api" }
 mm-host-cef = { path = "crates/mm-host-cef" }
+mm-host-clap = { path = "crates/mm-host-clap" }
 mm-host-pipe = { path = "crates/mm-host-pipe" }
 mm-improve = { path = "crates/mm-improve" }
 mm-ingest = { path = "crates/mm-ingest" }
@@ -110,6 +111,9 @@ bindgen = "0.73"
 cc = "1.2"
 # mm-host-ofx が OpenFX のプラグイン（.ofx の DLL）を読み込む。
 libloading = "0.8"
+# mm-host-clap が CLAP のプラグイン（.clap）を読み込むホストのライブラリ。
+clack-host = "0.2"
+clack-extensions = { version = "0.2", features = ["audio-ports", "clack-host", "params"] }
 # apps/movie-maker（ウィンドウの試作）が使う。
 tauri = { version = "2", features = ["unstable"] }
 tauri-build = "2"
