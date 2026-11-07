@@ -4,15 +4,14 @@ const SHUTTER: f32 = 0.5;
 
 const DIAG: f32 = 1102.0;
 
-fn fmodg(x: f32, y: f32) -> f32 { return x - y * floor(x / y); }
-
 fn rDisc(p: f32) -> f32 { return DIAG * 1.08 * out5(win(p, 0.0, 0.4)); }
 fn rLabel(p: f32) -> f32 { return mix(rDisc(p) * 0.34, DIAG + 20.0, io3(win(p, 0.36, 0.86))); }
 fn spin(p: f32) -> f32 { return TAU * (0.4 * p + 1.2 * in2(p)); }
 
 fn matte(uv: vec2<f32>, p: f32) -> f32 {
     if (p > 0.9) { return 1.0; }
-    return fill(length(P - vec2<f32>(960.0, 540.0)) - rLabel(p));
+    let rl = rLabel(p);
+    return fill_sized(length(P - vec2<f32>(960.0, 540.0)) - rl, rl);
 }
 
 fn overlay(uv: vec2<f32>, p: f32) -> vec4<f32> {
@@ -24,10 +23,10 @@ fn overlay(uv: vec2<f32>, p: f32) -> vec4<f32> {
     // 盤の影
     var c = paint(vec3<f32>(0.0), 0.5 * glow(r - rd, 40.0) * step(rd, r) * (1.0 - win(p, 0.8, 0.95)));
     // 盤（ラベルと縁の間）: 黒、溝、回る光
-    let disc = fill(r - rd) * (1.0 - fill(r - rl));
+    let disc = fill_sized(r - rd, rd) * (1.0 - fill(r - rl));
     let grooves = 0.5 + 0.5 * sin(r * 1.6);
     // 曲間の無音の溝
-    let track = fill(abs(fmodg(r - rl, 110.0) - 55.0) - 52.0);
+    let track = fill(abs(fmod(r - rl, 110.0) - 55.0) - 52.0);
     let sp = spin(p);
     let sheen = pow(abs(cos(ang - sp)), 14.0) + 0.6 * pow(abs(cos(ang - sp + 1.2)), 30.0);
     var vc = vec3<f32>(0.035, 0.04, 0.05) + vec3<f32>(0.03) * grooves - vec3<f32>(0.02) * track;

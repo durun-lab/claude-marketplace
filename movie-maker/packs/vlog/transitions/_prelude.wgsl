@@ -2,6 +2,7 @@
 // index.html（COMP、前後の場面と重ねる絵の合成）を WGSL に移したもの。パックの展開がトランジションごとのコードの前に付ける。
 //
 // トランジションのファイルは次を定義する。座標は 1920x1080 を基準にした画素（P、上が 0）と、その 0..1（uv）。
+// 縦横比の違う画面（ショート）では基準の画面の中央を縦横同じ倍率で写すので、トランジションのファイルは画面の大きさを知らなくてよい。
 //   const SHUTTER: f32               シャッターの開いている長さ（コマの割合）。重ねる絵とマットのモーションブラー
 //   fn matte(uv, p) -> f32           次の場面（B）を見せる所。1 = B、0 = 前の場面（A）
 //   fn overlay(uv, p) -> vec4<f32>   A と B の上に重ねる絵。乗算済みアルファ
@@ -13,8 +14,9 @@ const PI: f32 = 3.14159265359;
 const TAU: f32 = 6.28318530718;
 // 元の書き出しのコマの速さ。シャッターの長さ（コマの割合）を進み具合に直すのに使う。
 const FPS: f32 = 30.0;
-// 1 コマのうちに重ねる絵とマットを描く回数（時刻と画素の中の位置をずらして平均する）。
-const MM_SAMPLES: i32 = 8;
+// 1 コマのうちに重ねる絵とマットを描く回数（時刻と画素の中の位置をずらして平均する）。元の書き出しと同じ 16 回にする。
+// 8 回では、シャッターの間に速く動く細い線（liquid の縁の帯）が飛び飛びの写しになって縞に見える。
+const MM_SAMPLES: i32 = 16;
 // 前後の場面のぼかしのタップの数。
 const BLUR_TAPS: i32 = 12;
 // ぼかしの半径を ぼかしの値（基準の画素）に掛ける比。元はミップのレベル log2(blur * 0.6) で引いていた。
@@ -32,6 +34,9 @@ const uStar: vec3<f32> = vec3<f32>(1.0, 0.90588, 0.65882);
 // 描いている画素の位置（基準の画素）と、出力の 1 画素が基準の何画素か。
 var<private> P: vec2<f32>;
 var<private> PX: f32;
+// 出力の画面が写す基準の画素の範囲（幅、高さ。中心は基準の中心）。縦横比の違う画面（ショート）でも基準の画素を
+// 縦横同じ倍率で写し、基準の 1920x1080 が画面を覆うように広げて外を切る（CSS の object-fit: cover）。
+var<private> VIEW: vec2<f32>;
 // トランジションの中の秒、長さの秒、乱数の種（p0）。
 var<private> uT: f32;
 var<private> uDur: f32;
@@ -55,6 +60,12 @@ fn bump(p: f32, a: f32, m: f32, b: f32) -> f32 { return select(1.0 - win(p, m, b
 // 端をなめらかにする（w は基準の画素）。
 fn edge(d: f32, w: f32) -> f32 { return sat(0.5 - d / max(w, 1e-4)); }
 fn fill(d: f32) -> f32 { return edge(d, PX * 1.2); }
+// 大きさ s（半径や高さ、基準の画素）の形の被覆。1 画素より小さい形は被覆を大きさの割合までに抑え、
+// 大きさ 0 の形が縁のにじみで半画素ぶん漏れないようにする。
+fn fill_sized(d: f32, s: f32) -> f32 { return min(fill(d), sat(s / PX)); }
+// GLSL の mod（床関数の剰余）。画素の位置が負でも周期が崩れない。WGSL の % は 0 に向けて切り捨てる。
+fn fmod(x: f32, y: f32) -> f32 { return x - y * floor(x / y); }
+fn fmod2(x: vec2<f32>, y: vec2<f32>) -> vec2<f32> { return x - y * floor(x / y); }
 
 fn hash11(p0: f32) -> f32 { var p = fract(p0 * 0.1031); p *= p + 33.33; p *= p + p; return fract(p); }
 fn hash21(p: vec2<f32>) -> f32 {
@@ -136,6 +147,8 @@ fn box_uv(p0: vec2<f32>, m: Motion) -> vec2<f32> {
 fn inside(uv: vec2<f32>) -> f32 {
     return step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
 }
+// 基準の uv（box_uv の値）を、場面の画像の uv（出力の画面の 0..1）に直す。
+fn view_uv(ref_uv: vec2<f32>) -> vec2<f32> { return (ref_uv - 0.5) * REF / VIEW + 0.5; }
 
 // 符号化値と線形の光の間は、素材と書き出しと同じ Rec.1886 の式（べき 2.4、mm_types::transfer）にする。
 // 元の 16 進の色（uA など）が書き出しで同じ値に戻る。
@@ -157,7 +170,7 @@ fn scene(which_b: bool, uv: vec2<f32>, blur: f32) -> vec4<f32> {
     if (blur * BLUR_RADIUS < 1.0) {
         c = scene_tap(which_b, uv);
     } else {
-        let r = blur * BLUR_RADIUS / REF;
+        let r = blur * BLUR_RADIUS / VIEW;
         for (var i = 0; i < BLUR_TAPS; i++) {
             let k = f32(i) + 0.5;
             let a = k * GOLDEN_ANGLE;
@@ -183,11 +196,12 @@ fn halton(i0: i32, b: i32) -> f32 {
 
 fn mm_transition(uv: vec2<f32>) -> vec4<f32> {
     let p = u.progress;
-    PX = REF.x / u.size.x;
+    PX = min(REF.x / u.size.x, REF.y / u.size.y);
+    VIEW = u.size * PX;
     uDur = u.duration;
     uSeed = u.p0.x;
     let m = motion(p);
-    let screen = uv * REF;
+    let screen = REF * 0.5 + (uv - 0.5) * VIEW;
     let ua = box_uv(screen, m.a);
     let ub = box_uv(screen, m.b);
     // 重ねる絵とマットは、コマの中心を挟んでシャッターの開いている間の時刻と、画素の中の位置をずらして平均する。
@@ -212,8 +226,10 @@ fn mm_transition(uv: vec2<f32>) -> vec4<f32> {
     o /= f32(MM_SAMPLES);
     mk /= f32(MM_SAMPLES);
     var col = vec4<f32>(0.0);
-    col = mix(col, scene(false, ua, m.a.blur), inside(ua) * m.a.op);
-    col = mix(col, scene(true, ub, m.b.blur), inside(ub) * m.b.op * mk);
+    let va = view_uv(ua);
+    let vb = view_uv(ub);
+    col = mix(col, scene(false, va, m.a.blur), inside(va) * m.a.op);
+    col = mix(col, scene(true, vb, m.b.blur), inside(vb) * m.b.op * mk);
     col = o + col * (1.0 - o.a);
     return vec4<f32>(to_linear(col.rgb), col.a);
 }

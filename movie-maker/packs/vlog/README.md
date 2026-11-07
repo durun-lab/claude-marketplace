@@ -28,6 +28,8 @@ mm pack expand packs/vlog note --var id=n1 --var text=OTTって？ --var at=3 > 
 mm pack apply ep04 packs/vlog callout --var id=co1 --var text=このつまみで空気感が変わる --var x=1180 --var y=640 --var at=2
 ```
 
+`--var comp=short` でショートに置くと、`apply` は文字のスタイルを画面の縁からの距離を保って写し、web の部品にショートの画面の大きさを渡す。`expand` はプロジェクトを読まないので、本編の画面のまま置く（[設計書の「ショートに置く」](../../docs/design/13-vlog-pack.md#ショートに置く)）。
+
 `callout` などの web の部品は `web.cef` で描く。CEF の配布物とホストが無い環境（`CEF_PATH` か `MM_CEF_HOST` が無い）では、モックの矩形で描く（[mm-nodes-cef](../../crates/mm-nodes-cef/README.md)）。
 
 ### web の部品
@@ -53,7 +55,7 @@ mm pack apply ep04 packs/vlog callout --var id=co1 --var text=このつまみで
 
 ### web の部品の書き方
 
-- `web/<名前>.html` に置き、`window.mmSetTime(t, data)` で画面を作る。`data` はマクロの `web` 手順の `data`（引数を埋めたもの）に `theme`（`colors`、`fonts`、`canvas`）を足したもの。
+- `web/<名前>.html` に置き、`window.mmSetTime(t, data)` で画面を作る。`data` はマクロの `web` 手順の `data`（引数を埋めたもの）に `theme`（`colors`、`fonts`、`canvas`）を足したもの。`canvas` は置くコンポジションの画面の大きさ（ショートなら 1080x1920）で、右や下の縁からの位置はこれで決める。
 - 1 倍の画素（コンポジションの画素）で組み、背景は透明のままにする。色と書体は `data.theme` から引き、HTML に色を直に書かない。
 - 出る・消える動きは手順の `fade_in`、`fade_out`（レイヤーの不透明度）で付け、ページは時刻で動かさない（`animated: false`。パラメータの組ごとに 1 回だけ描く）。出た後も動く決まりの部品（題字のきらめき、名乗りの帯の速度線）と、時刻で中身が変わる部品（歌詞の色の進み、図解の `cues`、読む窓の下線と送り、Claude の 1 文字ずつ）だけ `animated: true` にして、`t` から形を決める。時計、タイマー、CSS のアニメーションとトランジションは使わない（同じ `t` でも画素が変わる。`tests/it/vlog_web.rs` が確かめる）。
 - 乱数の要る形（爆発のぎざぎざ、紙吹雪、速度線）は、種から決まる乱数（mulberry32）で毎回同じに作る。
@@ -70,7 +72,8 @@ mm pack apply ep04 packs/vlog rewind --var cut=c20 --var speed=3
 ```
 
 - 種類は `transitions/<名前>.wgsl`。DTM_Vlog の WebGL2 のトランジション 19 種（boot、dip、dissolve、filter、flash、glitch、hex、leak、liquid、pianoroll、punch、slice、spectrum、stars、stepseq、vinyl、warp、waveform、whip）と、巻き戻し（rewind）。
-- `_prelude.wgsl` は全部の前に付く共通のコードで、元の `engine.js` の GLSL の小道具と、`index.html` の合成（マット、重ねる絵、映像の動き、シャッターの間のモーションブラー）を移したもの。合成は元と同じく 8 bit の符号化値（書き出しと同じ Rec.1886 の式）の空間で行う。
+- `_prelude.wgsl` は全部の前に付く共通のコードで、元の `engine.js` の GLSL の小道具と、`index.html` の合成（マット、重ねる絵、映像の動き、シャッターの間のモーションブラー）を移したもの。合成は元と同じく 8 bit の符号化値（書き出しと同じ Rec.1886 の式）の空間で行い、シャッターの間は元と同じ 16 回描いて平均する。小道具の `fmod`（GLSL の `mod`）、`fill_sized`（大きさ 0 の形を漏らさない被覆）もここに置き、トランジションのファイルに写さない。
+- 縦横比の違う画面（ショート）では、基準の 1920x1080 の中央を画面を覆うように縦横同じ倍率で写す（左右が切れる。[設計書の「ショートに置く」](../../docs/design/13-vlog-pack.md#ショートに置く)）。
 - 元と違う所: 乱数の表（`data`）はセルの番号のハッシュで作るので並びが変わる。効果音（`sfx`）は移さない。前後の場面のぼかしはミップではなく円盤のタップの平均。巻き戻しの時刻の表示（t0 → t7）は文字が要るので描かない。
 - 置き直すと差し替わる。外すのは操作 `setTransition`（`transition: null`）。
 - 元のコードは DTM_Vlog の自作で、gl-transitions のコードは含まない。小道具のうち `hash11`、`hash21`、`hash22` は Dave Hoskins の Hash without Sine（MIT）、`sdBox`、`sdSeg`、`sdHex` は Inigo Quilez の 2D の距離関数（MIT）と同じ形。
