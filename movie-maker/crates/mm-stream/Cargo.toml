@@ -1,0 +1,25 @@
+[package]
+name = "mm-stream"
+description = "モバイル版への映像の配信。静止画のコマ（WebP）、区間ごとに作る HLS、素材の音だけ。HTTP の道は持たず、mm-serve のハンドラーが呼ぶ関数と型を出す"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-types = { workspace = true }
+mm-doc = { workspace = true }
+mm-eval = { workspace = true }
+mm-node-api = { workspace = true }
+mm-export = { workspace = true }
+mm-runtime = { workspace = true }
+tracing = { workspace = true }
+webp = { workspace = true }
+
+[dev-dependencies]
+mm-testkit = { workspace = true }
+serde_json = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true
