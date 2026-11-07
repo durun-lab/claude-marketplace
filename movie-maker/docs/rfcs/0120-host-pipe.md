@@ -1,4 +1,4 @@
-# RFC: ホストの接続の共通実装（mm-host-pipe）
+# RFC 0120: ホストの接続の共通実装（mm-host-pipe）
 
 状態: 採用
 

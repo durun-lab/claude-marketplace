@@ -82,7 +82,7 @@ flowchart BT
 
 1. 基礎は GPU と FFmpeg に依存しない。`cargo test` が数秒で回る。`mm-trace` も基礎で、`tracing` と出力の `Layer` だけを持つ。実装と組み立てはこれを使ってスパンを置き、API クレートは置かない（[計装](17-instrumentation.md#スパンの決まり)）。wgpu のタイムスタンプを読む所は `mm-render` に置き、`mm-trace` には wgpu を入れない。
 2. API クレートは基礎だけに依存する。API クレート同士の間では、上の図に書いた型の共有（`FrameCx` が `mm-decode-api` の `FrameSource` を持つ、など）だけを認め、実装には依存しない。
-3. 実装は API クレートと基礎に依存し、ほかの実装には依存しない。`mm-nodes-basic` が素材を読むときは `mm-decode-api` のトレイトを `FrameCx` 経由で受け取る。`mm-render` が色を変えるときも `mm-color-api` 経由。例外は「共通実装」で、`mm-gpu`、`mm-decode-ffmpeg-core`、`mm-decode-hw`、`mm-encode-ffmpeg-core`、`mm-host-pipe` の 5 つ。GPU を触る実装は `mm-gpu`（wgpu のコンテキストとアダプターの選び方、`GpuHelper` の wgpu 実装、GPU のフレームの中身の型）に依存してよい（RFC 0001）。API クレートは wgpu を出さないので、wgpu の型を合わせる場所がここになる。FFmpeg のデコーダー（`mm-decode-ffmpeg`、`-d3d12va`、`-cuvid`）は `mm-decode-ffmpeg-core`（映像の時間軸、シーク、YUV の行列。FFmpeg の CPU の部分だけ）に、GPU でデコードする 2 つはさらに `mm-decode-hw`（D3D12 のアダプター、キューの待ち、YUV の変換と描画パス）に依存してよい（RFC 0007）。FFmpeg のエンコーダー（`mm-encode-ffmpeg`、`mm-encode-nvenc`）は `mm-encode-ffmpeg-core`（コーデックの指定から MP4 と MOV に書く部分）に依存してよい（RFC 0015）。別プロセスのホスト（`mm-host-cef`、`mm-host-ofx`）は `mm-host-pipe`（子プロセスの起動と、`mm-host-api` のプロトコルの 1 行ずつの往復）に依存してよい（RFC host-pipe）。共通実装は API クレートと基礎、`mm-gpu` にだけ依存し、ほかの実装には依存しない。ソースを `#[path]` で取り込む形は使わない。
+3. 実装は API クレートと基礎に依存し、ほかの実装には依存しない。`mm-nodes-basic` が素材を読むときは `mm-decode-api` のトレイトを `FrameCx` 経由で受け取る。`mm-render` が色を変えるときも `mm-color-api` 経由。例外は「共通実装」で、`mm-gpu`、`mm-decode-ffmpeg-core`、`mm-decode-hw`、`mm-encode-ffmpeg-core`、`mm-host-pipe` の 5 つ。GPU を触る実装は `mm-gpu`（wgpu のコンテキストとアダプターの選び方、`GpuHelper` の wgpu 実装、GPU のフレームの中身の型）に依存してよい（RFC 0001）。API クレートは wgpu を出さないので、wgpu の型を合わせる場所がここになる。FFmpeg のデコーダー（`mm-decode-ffmpeg`、`-d3d12va`、`-cuvid`）は `mm-decode-ffmpeg-core`（映像の時間軸、シーク、YUV の行列。FFmpeg の CPU の部分だけ）に、GPU でデコードする 2 つはさらに `mm-decode-hw`（D3D12 のアダプター、キューの待ち、YUV の変換と描画パス）に依存してよい（RFC 0007）。FFmpeg のエンコーダー（`mm-encode-ffmpeg`、`mm-encode-nvenc`）は `mm-encode-ffmpeg-core`（コーデックの指定から MP4 と MOV に書く部分）に依存してよい（RFC 0015）。別プロセスのホスト（`mm-host-cef`、`mm-host-ofx`）は `mm-host-pipe`（子プロセスの起動と、`mm-host-api` のプロトコルの 1 行ずつの往復）に依存してよい（RFC 0120）。共通実装は API クレートと基礎、`mm-gpu` にだけ依存し、ほかの実装には依存しない。ソースを `#[path]` で取り込む形は使わない。
 4. 実装を選ぶのは `mm-runtime` だけ。操作経路（アプリ、CLI、サーバー、自動の改善）は `mm-runtime` の組み立てた `Engine` を受け取る。
 
 `mm-pack` は操作経路（アプリと CLI）が使う部品で、`mm-ops` と API クレートの型（`mm-text-api`、`mm-audio-api`）だけに依存し、実装を選ばない。実装のクレートは試験（dev-dependencies）でだけ使う。
@@ -133,7 +133,7 @@ movie-maker/
     mm-text-cef/        HTML のテンプレートを mm-host-cef で描く
     mm-host-cef/        実行ファイル。CEF のオフスクリーン描画 → 共有テクスチャ
     mm-host-ofx/        実行ファイル。OpenFX のホスト
-    mm-host-pipe/       共通実装。ホストを子プロセスで起こし、プロトコルを 1 行ずつ往復する（RFC host-pipe）
+    mm-host-pipe/       共通実装。ホストを子プロセスで起こし、プロトコルを 1 行ずつ往復する（RFC 0120）
     mm-host-audio/      実行ファイル。VST3 と CLAP のホスト
     mm-cache-fs/        <project>/cache/ の実装（contentHash で引く、大きさ、消す）
     mm-ingest/          取り込みの流れ（ハッシュ、プレビュー動画、波形、サムネイル、外のツールの起動、付属ファイルの取り込み）
