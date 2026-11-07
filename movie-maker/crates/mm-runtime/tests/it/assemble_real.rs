@@ -27,12 +27,12 @@ fn wgpu_と_glyphon_と_dsp_を選べる() {
     let names: Vec<_> = engine.backend_names();
     assert!(names.contains(&("render", "wgpu")), "{names:?}");
     assert!(names.contains(&("audio", "dsp")), "{names:?}");
-    assert_eq!(
-        engine.registry().len(),
-        mm_nodes_basic::all_kinds().len() + 2,
-        "mm-nodes-basic の種類と web.cef、audio.clap"
-    );
+    // 種類の数は並行に足す実装のクレートで変わるので、名前で確かめる。
+    for kind in mm_nodes_basic::all_kinds() {
+        assert!(engine.registry().get(kind.id()).is_some(), "{}", kind.id());
+    }
     assert!(engine.registry().get("web.cef").is_some());
+    assert!(engine.registry().get("shader.hlsl").is_some());
     assert!(engine.registry().get(mm_host_clap::KIND_ID).is_some());
 }
 
