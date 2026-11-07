@@ -3700,6 +3700,7 @@ dependencies = [
  "mm-doc",
  "mm-eval",
  "mm-export",
+ "mm-improve",
  "mm-ingest",
  "mm-ingest-api",
  "mm-node-api",

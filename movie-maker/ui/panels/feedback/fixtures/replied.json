@@ -1,0 +1,26 @@
+{
+  "id": "20261107-120000-a1b2c3",
+  "createdAt": 1793966400000,
+  "kind": "feedback",
+  "text": "The send button in Feedback is hard to see in dark mode.",
+  "targets": [
+    {
+      "selector": "section.mm-feedback > form > button.mm-feedback-send",
+      "panel": "Feedback",
+      "label": "Send",
+      "rect": { "x": 240, "y": 188, "width": 64, "height": 28 },
+      "dpr": 2,
+      "screenshot": "C:/Users/me/AppData/Local/movie-maker/improve/attachments/1793966399000.png"
+    }
+  ],
+  "status": "done",
+  "replies": [
+    {
+      "at": 1793967000000,
+      "runId": "r20261107-1205-d4e5",
+      "text": "Raised the contrast of the send button border in dark mode.",
+      "outcome": { "kind": "landed", "commit": "3f9c2a1e7b" }
+    }
+  ],
+  "context": { "app": { "project": "D:/films/ep03" } }
+}
