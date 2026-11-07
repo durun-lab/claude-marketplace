@@ -24,7 +24,7 @@ export interface InspectorPanelProps {
   /** `asset_ref` の選択肢。 */
   assets?: readonly Asset[];
   hints?: ParamHints;
-  /** 種類の定義。渡すと、プロジェクトに値の無いパラメータも既定値で出す。 */
+  /** ソースとエフェクトのパラメータの定義。渡すと、プロジェクトに値の無いパラメータも既定値で出す。 */
   kinds?: LayerKinds;
   /** 値を変えたときに操作を渡す。送るのは呼び出し側（sdk の client）。 */
   onOp: (op: Op) => void;

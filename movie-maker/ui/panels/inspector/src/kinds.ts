@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import type { Layer, Param, ParamValue } from "@mm/sdk";
 import type { ParamHint } from "./model.ts";
 
@@ -8,23 +8,23 @@ export type KindParamType =
   | { type: "choice"; options: string[] }
   | { type: "vec2" | "vec3" | "color" | "bool" | "text" | "asset_ref" | "json" };
 
-/** 種類が持つ 1 つのパラメータの定義（Rust の `ParamSpec`）。 */
+/** ノードの種類が持つ 1 つのパラメータの定義（Rust の `ParamSpec`）。 */
 export interface KindParamSpec {
   name: string;
   ty: KindParamType;
   default: ParamValue;
 }
 
-/** 種類の定義。Inspector が読むのはパラメータの一覧だけ。アプリの `inspector_kind` の戻り値。 */
+/** 種類の一覧の 1 件（Rust の `KindInfo`）。アプリの `inspector_kind` の戻り値で、Inspector が読むのはパラメータの定義だけ。 */
 export interface KindInfo {
   id: string;
   params: { params: KindParamSpec[] };
 }
 
-/** 種類の名前と、レイヤーにある今の値から、その種類のパラメータの定義を引く。引けなければ reject。 */
+/** 種類の名前と、レイヤーにある今の値（パラメータの組）から、パラメータの組ごとの定義を引く。引けなければ reject。 */
 export type KindLookup = (kind: string, params: Record<string, ParamValue>) => Promise<KindParamSpec[]>;
 
-/** レイヤーのソースとエフェクトごとの、種類のパラメータの定義。 */
+/** レイヤーのソースとエフェクトごとの、パラメータの定義。 */
 export interface LayerKinds {
   source?: readonly KindParamSpec[];
   /** エフェクトの ID から。 */
@@ -66,30 +66,47 @@ interface Resolved {
   specs: readonly KindParamSpec[];
 }
 
+/** 値が変わってから引き直すまでの待ち（ミリ秒）。ドラッグの途中の値ごとに引かず、止まってから 1 回だけ引く。 */
+export const LOOKUP_DEBOUNCE_MS = 250;
+
+/** 引き直すかを決める、種類と値の組の文字列。 */
+const queryKey = (t: Target): string => JSON.stringify([t.kind, t.params]);
+
 /**
- * レイヤーのソースとエフェクトの種類の定義を `lookup` で引く。引けた種類だけ入力欄を広げ、
- * 引けなかった種類（`composition` など登録の無いもの）は、プロジェクトにある値だけで出す。
- * 値が変わって引き直す間は、前に引けた定義を使い続ける（入力欄が点滅しない）。
+ * レイヤーのソースとエフェクトのパラメータの定義を `lookup` で引く。引けた種類だけ入力欄を広げ、
+ * 引けなかった種類（`composition` など登録の無いもの、書き手として開いていないプロジェクト）は、プロジェクトにある値だけで出す。
+ * 引くのは種類か値が変わったソースとエフェクトだけ。まだ定義の無い種類はすぐ引き、定義のある種類の値の変更は
+ * `LOOKUP_DEBOUNCE_MS` 止まってから引く。引き直す間は前の定義を使い続け（入力欄が点滅しない）、古い応答は捨てる。
  */
 export const useLayerKinds = (layer: Layer | null, lookup: KindLookup | undefined): LayerKinds => {
   const [resolved, setResolved] = useState<Record<string, Resolved>>({});
+  const latest = useRef(resolved);
+  latest.current = resolved;
+  /** ソースかエフェクトごとの、最後に送った問い合わせ。応答がこれと違えば古い。 */
+  const sent = useRef<Record<string, string>>({});
   const targets = layer && lookup ? targetsOf(layer) : [];
-  const signature = JSON.stringify([layer?.id, targets]);
+  const signature = JSON.stringify(targets);
   useEffect(() => {
     if (!lookup) return;
-    let cancelled = false;
-    const [, queries] = JSON.parse(signature) as [string, Target[]];
-    for (const t of queries) {
-      lookup(t.kind, t.params).then(
-        (specs) => {
-          if (!cancelled) setResolved((prev) => ({ ...prev, [t.key]: { kind: t.kind, specs } }));
-        },
-        () => undefined,
-      );
-    }
-    return () => {
-      cancelled = true;
-    };
+    const pending = (JSON.parse(signature) as Target[]).filter((t) => sent.current[t.key] !== queryKey(t));
+    if (pending.length === 0) return;
+    const known = pending.every((t) => latest.current[t.key]?.kind === t.kind);
+    const timer = setTimeout(
+      () => {
+        for (const t of pending) {
+          const key = queryKey(t);
+          sent.current[t.key] = key;
+          lookup(t.kind, t.params).then(
+            (specs) => {
+              if (sent.current[t.key] === key) setResolved((prev) => ({ ...prev, [t.key]: { kind: t.kind, specs } }));
+            },
+            () => undefined,
+          );
+        }
+      },
+      known ? LOOKUP_DEBOUNCE_MS : 0,
+    );
+    return () => clearTimeout(timer);
   }, [signature, lookup]);
   if (!layer) return NO_KINDS;
   const live = (t: Target): readonly KindParamSpec[] | undefined => {

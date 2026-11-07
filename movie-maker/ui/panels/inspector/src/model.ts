@@ -108,7 +108,7 @@ const maskSection = (m: Mask, hints: ParamHints): Section => {
 };
 
 /**
- * ノードのパラメータの行。種類の定義があれば定義の順に並べ、値の無いものは既定値で出す（触ると値を書く）。
+ * ノードのパラメータの行。パラメータの定義があれば定義の順に並べ、値の無いものは既定値で出す（触ると値を書く）。
  * 定義に無い値がプロジェクトにあれば、名前の順で後ろに残す。定義が無ければプロジェクトの値だけ。
  */
 const paramRows = (
@@ -138,7 +138,7 @@ const effectSection = (e: Effect, hints: ParamHints, kinds: LayerKinds): Section
   rows: paramRows(`effects.${e.id}`, e.node.params, hints, kinds.effects[e.id]),
 });
 
-/** 選んだレイヤーを、Inspector に出す区画の並びにする。`kinds` を渡すと種類の定義でパラメータの入力欄を広げる。 */
+/** 選んだレイヤーを、Inspector に出す区画の並びにする。`kinds` を渡すとパラメータの定義で入力欄を広げる。 */
 export const describeLayer = (
   layer: Layer,
   hints: ParamHints = DEFAULT_HINTS,

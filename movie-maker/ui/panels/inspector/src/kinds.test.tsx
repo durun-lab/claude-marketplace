@@ -5,7 +5,7 @@ import type { Layer, Op } from "@mm/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { InspectorPanel } from "./InspectorPanel.tsx";
 import { KeyframePanels } from "./KeyframePanels.tsx";
-import { hintOf, type KindLookup, type KindParamSpec, type LayerKinds } from "./kinds.ts";
+import { hintOf, LOOKUP_DEBOUNCE_MS, type KindLookup, type KindParamSpec, type LayerKinds } from "./kinds.ts";
 import { createIpcKindLookup } from "./kindsApi.ts";
 import { describeLayer } from "./model.ts";
 
@@ -40,7 +40,7 @@ const kinds: LayerKinds = { source: specs, effects: { fx1: [specs[1] as KindPara
 
 const input = (label: string) => host.querySelector<HTMLInputElement | HTMLSelectElement>(`[aria-label="${label}"]`);
 
-describe("describeLayer と種類の定義", () => {
+describe("describeLayer とパラメータの定義", () => {
   const source = (k: LayerKinds) => describeLayer(layer, {}, k).find((s) => s.id === "source")?.rows ?? [];
 
   it("値の無いパラメータを既定値の行にし、定義の順に並べ、定義に無い値は後ろに残す", () => {
@@ -120,6 +120,67 @@ describe("KeyframePanels の種類の引き", () => {
     expect(lookup).toHaveBeenCalledWith("ofx", {});
     expect(input("loop")).not.toBeNull();
     expect(input("speed")).not.toBeNull();
+  });
+});
+
+const withSpeed = (value: number) =>
+  ({
+    ...layer,
+    source: { ...layer.source, params: { speed: { value: { type: "number", value } } } },
+  }) as unknown as Layer;
+const flush = () => act(async () => await Promise.resolve());
+const tick = (ms: number) =>
+  act(async () => {
+    await vi.advanceTimersByTimeAsync(ms);
+  });
+const showWith = (lookup: KindLookup) => (l: Layer) =>
+  act(() => render(<KeyframePanels layer={l} onOp={() => undefined} lookup={lookup} />, host));
+
+describe("KeyframePanels の引き直し", () => {
+
+  it("値の変更は止まってから 1 回だけ引き、変わっていないエフェクトは引き直さない", async () => {
+    vi.useFakeTimers();
+    try {
+      const lookup = vi.fn<KindLookup>(async () => specs);
+      const show = showWith(lookup);
+      show(withSpeed(1));
+      await tick(0);
+      expect(lookup).toHaveBeenCalledTimes(2);
+      for (const v of [2, 3, 4]) {
+        show(withSpeed(v));
+        await tick(LOOKUP_DEBOUNCE_MS / 2);
+      }
+      expect(lookup).toHaveBeenCalledTimes(2);
+      await tick(LOOKUP_DEBOUNCE_MS);
+      expect(lookup).toHaveBeenCalledTimes(3);
+      expect(lookup).toHaveBeenLastCalledWith("lottie", { speed: { type: "number", value: 4 } });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("後から送った問い合わせより遅く届いた古い応答は捨てる", async () => {
+    vi.useFakeTimers();
+    try {
+      const replies: Array<(s: KindParamSpec[]) => void> = [];
+      const lookup = vi.fn<KindLookup>((kind) =>
+        kind === "lottie" ? new Promise((resolve) => replies.push(resolve)) : Promise.reject(new Error("無い")),
+      );
+      const show = showWith(lookup);
+      show(withSpeed(1));
+      await tick(0);
+      show(withSpeed(2));
+      await tick(0);
+      expect(replies).toHaveLength(2);
+      replies[1]?.([specs[1] as KindParamSpec]);
+      await flush();
+      replies[0]?.([specs[2] as KindParamSpec]);
+      await flush();
+      expect(input("loop")).not.toBeNull();
+      expect(input("mode")).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

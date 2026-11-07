@@ -1,5 +1,6 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { GraphPanel } from "@mm/graph";
+import { useFitToColumn } from "./fit.ts";
 import { InspectorPanel } from "./InspectorPanel.tsx";
 import { useLayerKinds, type KindLookup } from "./kinds.ts";
 import { describeLayer } from "./model.ts";
@@ -38,12 +39,17 @@ export interface KeyframePanelsProps {
   layer: Layer | null;
   assets?: readonly Asset[];
   onOp: (op: Op) => void;
-  /** 種類の定義を引く。渡さなければプロジェクトにある値だけで入力欄を作る。 */
+  /** パラメータの定義を引く。渡さなければプロジェクトにある値だけで入力欄を作る。 */
   lookup?: KindLookup;
 }
 
-/** 右の列の Inspector と、その下の Graph。Inspector で名前を押したパラメータを Graph に出す。 */
+/**
+ * 右の列の Inspector と、その下の Graph。Inspector で名前を押したパラメータを Graph に出す。
+ * 列の見えている高さに収め、Inspector の行はその中でスクロールして、Graph は下に残す。
+ */
 export const KeyframePanels = ({ layer, assets, onOp, lookup }: KeyframePanelsProps) => {
+  const box = useRef<HTMLDivElement>(null);
+  useFitToColumn(box);
   const kinds = useLayerKinds(layer, lookup);
   const playhead = usePlayhead();
   const [path, setPath] = useState<string | null>(null);
@@ -52,18 +58,20 @@ export const KeyframePanels = ({ layer, assets, onOp, lookup }: KeyframePanelsPr
       ? describeLayer(layer, undefined, kinds).flatMap((s) => s.rows).find((r) => r.path === path)
       : undefined;
   return (
-    <>
-      <InspectorPanel
-        layer={layer}
-        assets={assets}
-        kinds={kinds}
-        onOp={onOp}
-        time={playhead?.time}
-        fps={playhead?.fps}
-        onSeek={seek}
-        selectedPath={path}
-        onSelectParam={setPath}
-      />
+    <div class="mm-insp-panels" ref={box}>
+      <div class="mm-insp-scroll">
+        <InspectorPanel
+          layer={layer}
+          assets={assets}
+          kinds={kinds}
+          onOp={onOp}
+          time={playhead?.time}
+          fps={playhead?.fps}
+          onSeek={seek}
+          selectedPath={path}
+          onSelectParam={setPath}
+        />
+      </div>
       {layer && (
         <GraphPanel
           target={row ? { layer: layer.id, path: row.path } : null}
@@ -74,6 +82,6 @@ export const KeyframePanels = ({ layer, assets, onOp, lookup }: KeyframePanelsPr
           onOp={onOp}
         />
       )}
-    </>
+    </div>
   );
 };

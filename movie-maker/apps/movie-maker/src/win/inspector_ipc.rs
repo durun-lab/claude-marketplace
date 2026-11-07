@@ -1,4 +1,4 @@
-//! Inspector の Tauri のコマンド。レイヤーの種類の定義（パラメータの名前、型、既定値、範囲、選択肢）を引く。
+//! Inspector の Tauri のコマンド。種類の一覧の 1 件（パラメータの名前、型、既定値、範囲、選択肢）を引く。
 //! MCP の `kinds` と同じ `Core::kinds` を通るので、組み立てに種類を登録すると Inspector の入力欄にも出る。
 
 use std::sync::Arc;
@@ -14,8 +14,8 @@ pub fn handler(invoke: tauri::ipc::Invoke) -> bool {
     h(invoke)
 }
 
-/// 種類 `kind` の定義。`params` は `params_for` に渡すレイヤーの今の値（選んだもので一覧が変わる種類のため）。
-/// 登録の無い種類（`composition` など）と、描画を持たない起動（HTTP サーバー無し）は失敗を返す。
+/// 種類 `kind` の、種類の一覧の 1 件。`params` は `params_for` に渡すレイヤーの今の値（選んだもので一覧が変わる種類のため）。
+/// 登録の無い種類（`composition` など）と、書き手として開いていないプロジェクト（JSON、HTTP サーバー無し）は失敗を返す。
 #[tauri::command]
 pub async fn inspector_kind(
     state: tauri::State<'_, Arc<SyncState>>,
@@ -35,7 +35,7 @@ pub async fn inspector_kind(
         let mut found = core.kinds(&query).map_err(|e| e.to_string())?;
         found
             .pop()
-            .ok_or_else(|| "種類の定義が返らなかった".to_string())
+            .ok_or_else(|| "種類の一覧が空で返った".to_string())
     })
     .await
     .map_err(|e| e.to_string())?
