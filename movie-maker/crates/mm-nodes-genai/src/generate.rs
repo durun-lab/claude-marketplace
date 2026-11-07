@@ -86,6 +86,14 @@ impl GenAi {
             Reuse::None => provider.estimate(&req)?,
             _ => Estimate::FREE,
         };
+        // NaN と負の費用は上限との比べ方を素通りするので、見積もりの段で断る。
+        if !estimate.cost_usd.is_finite() || estimate.cost_usd < 0.0 {
+            return Err(MmError::Internal(format!(
+                "提供元 {} の見積もりの費用 {} が正の有限の値でない",
+                req.provider, estimate.cost_usd
+            ))
+            .into());
+        }
         Ok(Quote {
             layer: layer.clone(),
             key,

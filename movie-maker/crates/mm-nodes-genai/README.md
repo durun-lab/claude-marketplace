@@ -21,7 +21,7 @@
 
 ```mermaid
 sequenceDiagram
-  participant P as 人（アプリ / CLI）
+  participant P as 人（アプリ）
   participant G as GenAi
   participant V as Provider
   participant E as 操作の層（Editor / Store）
@@ -38,7 +38,7 @@ sequenceDiagram
 ```
 
 - 頼みの鍵は、パラメータ（`asset` と種類に関係しない値を除く）と提供元の版（`Provider::revision`）の BLAKE3。同じ鍵の素材は `<project>/media/genai/<鍵>.<拡張子>` と素材の JSON（`<鍵>.json`）に残り、取り消した後も提供元を呼ばずに置き直せる。
-- 承認（`Approval`）は `GenAi::approve` だけが作る。MCP の経路（`Entry::Mcp`）からは作れない（提案の承認と同じ。[RFC 0078](../../docs/rfcs/0078-review-proposals.md)）。
+- 承認（`Approval`）は `GenAi::approve` だけが作る。Claude の経路（`Entry::Mcp`、`Entry::Cli`）からは作れない（提案の承認と同じ。[RFC 0078](../../docs/rfcs/0078-review-proposals.md)）。
 - `generate` は見積もりを出し直し、承認の後にパラメータが変わっていれば `NotApproved`、費用が承認した上限を超えれば `OverBudget` で断る。
 - 自動の改善の回の中（環境変数 `MM_IMPROVE_RUN` がある。`mm-improve` が回の `claude -p` に渡し、子の `mm` が受け継ぐ）では、`approve` と `generate` を `Forbidden` で断る。`GenAi::in_round` は印を足せるだけで外せない。
 

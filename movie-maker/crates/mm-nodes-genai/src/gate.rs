@@ -44,10 +44,9 @@ impl From<std::io::Error> for GenError {
 }
 
 /// 今のプロセスが自動の改善の回の中なら、その回の ID。
+/// 空の値も回の中と見なす。回の Claude が `MM_IMPROVE_RUN=` で上書きして印を外せないようにするため。
 pub fn current_round() -> Option<String> {
-    std::env::var(IMPROVE_ROUND_ENV)
-        .ok()
-        .filter(|v| !v.is_empty())
+    std::env::var_os(IMPROVE_ROUND_ENV).map(|v| v.to_string_lossy().into_owned())
 }
 
 /// 作ってある素材の使い回し。使い回すときは提供元を呼ばない。
@@ -145,11 +144,11 @@ impl Approval {
     }
 }
 
-/// 承認してよい経路か。提案（RFC 0078）と同じく、MCP の経路は自分の頼みを自分で承認できない。
+/// 承認してよい経路か。提案（RFC 0078）と同じく、Claude の経路（MCP と CLI）は自分の頼みを自分で承認できない。
 pub(crate) fn check_approver(entry: Entry) -> Result<(), GenError> {
-    if entry == Entry::Mcp {
+    if entry.is_claude() {
         return Err(GenError::Forbidden(
-            "MCP の経路からは承認できない。人がアプリか CLI で承認する".into(),
+            "Claude の経路（MCP、CLI）からは承認できない。人がアプリで承認する".into(),
         ));
     }
     Ok(())

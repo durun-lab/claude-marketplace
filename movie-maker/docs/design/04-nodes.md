@@ -122,7 +122,7 @@ pub trait NodeKind: Send + Sync {
 - パラメータはプロンプトと設定（`media` が `image`・`video`・`audio`、`width`、`height`、`duration`、`seed`、`provider`）と、生成した素材の参照 `asset`。描くのは `asset` の素材だけで、毎フレーム生成しない。素材は `AssetRef` なので、レンダラーは撮影素材と同じくデコーダーで開いて `FrameCx::footage` に渡し、種類は `footage` と同じ形（CPU の画像は画布に収める、GPU のフレームは借用する、音は `audio_in`）で返す。`asset` が空の間は透明で無音。
 - `offline` は「生成は待つのが前提」の意味で、生成は `prepare` でも `render` でもなく操作経路の側で済ませる。生成は費用とファイルの副作用を持つので操作（`Op`）にせず、結果を普通の操作（`addAsset` と `setParam`）の 1 つのトランザクションで返す。取り消しとやり直しはそのまま効く。
 - 生成は `GenAi` の 3 段でしか起きない。`quote`（提供元の料金表から費用と時間。通信しない）→ `approve`（人の承認の印。頼みの鍵と費用の上限を持つ）→ `generate`（見積もりを出し直し、承認の後にパラメータが変わっていれば `NotApproved`、上限を超えれば `OverBudget` で断る）。
-- 承認の印は MCP の経路（`Entry::Mcp`）からは作れない。提案と同じく、頼んだ Claude 自身が承認すると確認の意味が無いため（[RFC 0078](../rfcs/0078-review-proposals.md)）。
+- 承認の印は Claude の経路（`Entry::Mcp` と `Entry::Cli`、`Entry::is_claude`）からは作れず、人がアプリ（`Surface`、`WebView`）で作る。提案と同じく、頼んだ Claude 自身が承認すると確認の意味が無いため（[RFC 0078](../rfcs/0078-review-proposals.md)）。
 - 自動の改善の回の中では `approve` と `generate` を `Forbidden` で断る。`mm-improve` が回の `claude -p` に環境変数 `MM_IMPROVE_RUN`（回の ID）を渡し、子の `mm` が受け継ぐ。`GenAi` は作るときと呼ぶたびにこれを読み、印は足せるだけで外せない。
 - 同じ頼みは使い回す。頼みの鍵はパラメータ（`asset` と種類に関係しない値を除く）と提供元の版の BLAKE3。素材は `<project>/media/genai/<鍵>.<拡張子>` と素材の JSON（`<鍵>.json`）に置き、取り消してもファイルは残すので、同じ鍵はもう一度提供元を呼ばずに置き直せる。見積もりは 0 になる。
 - 提供元は `Provider`（`estimate`、`generate`、`revision`）で差し替える。今は偽の提供元（`fake`。単色の PNG と Y4M、正弦波の WAV）だけで、実際のサービスは人が決めてから足す。
