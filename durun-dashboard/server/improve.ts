@@ -21,8 +21,10 @@ const SUMMARY_CHARS = 120;
 const DONE_MARK = '対応した要望:';
 const BASH_TIMEOUT_MS = 2 * 60 * 1000;
 const MAX_NUDGES = 2;
-// main はマージキューを通さないと変えられないので、手元ではこのブランチにコミットしてダッシュボードにすぐ反映する。
+// main はマージキューを通さないと変えられないので、手元ではこのブランチにマージしてダッシュボードにすぐ反映する。
 const LOCAL_BRANCH = 'local/dashboard';
+// 手元のチェックアウトには並行するセッションの書きかけがあるので、実装はリポジトリの外から切り離した worktree で進める。
+const WORKTREES = path.join(ROOT, '..', '.worktrees');
 const NUDGE_PROMPT = `ウェーブの途中でターンが終わりました。バックグラウンドに移したコマンドがあれば、その結果を読んで作業を続けてください。ターンを終えるとセッションも終わるので、テストなどの長いコマンドは終わるまで待ってください。ウェーブを終えたら、最後に「${DONE_MARK}」の行と、対応を終えた要望のファイル名を書いて止まってください。`;
 
 /** 未対応の要望。ファイル名が時刻から始まるので、名前順が古い順になる。 */
@@ -35,10 +37,12 @@ const promptFor = (items: string[]): string => `[durun-dashboard] 人間がダ�
 - 要望は次のファイルです（古い順）。text が要望で、targets は人間が画面上で指した要素です。selector のクラス名から、描画しているコンポーネントを探せます。context は送ったときの画面の状態です。context.snapshot は大きいので、必要なところだけ読んでください。
 ${items.map((item) => `  - ${path.relative(ROOT, path.join(FEEDBACK_DIR, item))}: ${summaryOf(item)}`).join('\n')}
 - まず全体を読み、似た作業や同じ場所を触る要望をまとめて、このウェーブで対応する要望と順番を決めてください。一度に仕上げられる量にとどめ、残りは次のウェーブに回してください。
-- ダッシュボードは起動済みで、コードを変えると画面とサーバーに自動で反映されます。pnpm start は実行しないでください。
-- ダッシュボードは手元専用のブランチ ${LOCAL_BRANCH} で動いています。実装を始める前に、${LOCAL_BRANCH} にいることを確かめ、git pull origin main で main を取り込んでください。
-- まとまりごとに pnpm check と pnpm test を通し、自分が変更したファイルだけを 1 つのコミットにして ${LOCAL_BRANCH} にコミットしてください。コードレビューは依頼せず、そのまま次のまとまりへ進んでください。
-- main は直接 push できません。すべてのまとまりを終えたら、origin/main から fix/dashboard-improve-<日時> のブランチを作り、このウェーブのコミットを cherry-pick して push し、PR を作って gh pr merge --auto でマージキューに載せてください。${LOCAL_BRANCH} は push しないでください。
+- ダッシュボードは起動済みで、${LOCAL_BRANCH} のコードが変わると画面とサーバーに自動で反映されます。pnpm start は実行しないでください。
+- ダッシュボードは手元専用のブランチ ${LOCAL_BRANCH} のチェックアウト（${ROOT}）で動いています。ここには並行するセッションの書きかけがあるので、このチェックアウトでは実装せず、書きかけにも触らないでください。
+- 実装を始める前に git fetch origin main を実行し、git worktree add ${WORKTREES}/improve-<日時> -b fix/dashboard-improve-<日時> origin/main で worktree を作ってください。worktree の durun-dashboard で pnpm install を実行してから、そこで実装します。Bash の作業ディレクトリはコールをまたいで保たれないので、毎回 cd <絶対パス> && を付けるか git -C を使ってください。
+- まとまりごとに worktree で pnpm check と pnpm test を通し、1 つのコミットにしてください。コードレビューは依頼せず、そのまま次のまとまりへ進んでください。
+- main は直接 push できません。すべてのまとまりを終えたら、ブランチを push -u し、PR を作って gh pr merge --auto でマージキューに載せてください。
+- 続けて、${ROOT} で ${LOCAL_BRANCH} にいることを確かめ、git merge --no-edit fix/dashboard-improve-<日時> でこのウェーブを取り込んでください。ダッシュボードの画面とサーバーに反映されます。衝突したら両方の意図を残して解消してください。${LOCAL_BRANCH} は push しないでください。取り込んだら git worktree remove で worktree を片付けてください。
 - 判断に迷う点は ask_human で人間に聞いてください。
 - 終えたら、まとまりごとに何をどう変えたかを 2、3 行で書いてください。最後に「${DONE_MARK}」の行を置き、続けて対応を終えた要望のファイル名を 1 行に 1 つずつ書いて止まってください。残りの要望は、次のウェーブで計画し直します。`;
 
