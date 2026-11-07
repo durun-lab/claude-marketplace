@@ -1,4 +1,4 @@
-# RFC encode-abr-ts: 目標のビットレートの H.264 と MPEG-TS の出力
+# RFC 0156 encode-abr-ts: 目標のビットレートの H.264 と MPEG-TS の出力
 
 `mm-stream` は HLS の区間を、中間の MP4 に書いてから ffmpeg の CLI で符号化し直している。符号化を 1 回にするため、`mm-decode-api` の `Encoder` に配信の区間の書き方を渡す口を足す。足すだけの変更（既定の実装つきのメソッドと型の追加）で、既存の実装と呼び出しは変わらない。
 
