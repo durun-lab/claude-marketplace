@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-/// 操作経路。4 つの操作経路は同じ操作を呼び、違いはロックの扱いだけ。
+/// 操作経路。どの操作経路も同じ操作を呼び、違いはロックの扱いだけ。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Entry {
@@ -14,12 +14,19 @@ pub enum Entry {
     Cli,
     /// Claude の MCP。
     Mcp,
+    /// モバイル版（`mm-serve` の人の待ち受け）。人の操作。
+    Mobile,
 }
 
 impl Entry {
-    /// Claude の操作経路か。ロックの付いた所に触る操作を拒否する。
+    /// Claude の操作経路か。
     pub fn is_claude(self) -> bool {
         matches!(self, Self::Cli | Self::Mcp)
+    }
+
+    /// ロックの付いた所に触る操作を拒否する操作経路か。ロックは PC のアプリの外の経路に効かせる。
+    pub fn locks_apply(self) -> bool {
+        matches!(self, Self::Cli | Self::Mcp | Self::Mobile)
     }
 }
 
@@ -43,5 +50,26 @@ impl OpContext {
     /// Claude の操作（ロックの付いた所を拒否する）。
     pub fn claude() -> Self {
         Self::new(Entry::Mcp)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ロックはアプリの外の経路にだけ効く() {
+        let applied: Vec<Entry> = [
+            Entry::Surface,
+            Entry::WebView,
+            Entry::Cli,
+            Entry::Mcp,
+            Entry::Mobile,
+        ]
+        .into_iter()
+        .filter(|e| e.locks_apply())
+        .collect();
+        assert_eq!(applied, [Entry::Cli, Entry::Mcp, Entry::Mobile]);
+        assert!(!Entry::Mobile.is_claude());
     }
 }
