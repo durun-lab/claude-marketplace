@@ -79,7 +79,7 @@ pub fn visual_layers(ctx: &mut Ctx<'_>, layers: &[Value]) -> Result<Vec<Layer>> 
             let timing = timing(ctx, clip, prev_end)?;
             prev_end = timing.start.checked_add(timing.duration)?;
             if let Some(l) = convert_clip(ctx, &format!("{name}-{ci}"), clip, &timing)? {
-                out.push(l);
+                out.extend(matte::split(ctx.media, &mut ctx.report, clip, l)?);
             }
         }
     }
@@ -127,6 +127,7 @@ fn convert_clip(
     if let Some(m) = clip.get("mask").filter(|m| !m.is_null()) {
         match shape::layer_mask(geo.crop, geo.k, &format!("{id}-mask"), m)? {
             Some(mask) => layer.masks.push(mask),
+            None if matte::image_mask(m) => {}
             None => ctx.report.add(Gap::Mask),
         }
     }
@@ -357,5 +358,6 @@ fn scale_time(t: RationalTime, by: RationalTime) -> Result<RationalTime> {
     t.scale(r)
 }
 
+mod matte;
 #[cfg(test)]
 mod tests;

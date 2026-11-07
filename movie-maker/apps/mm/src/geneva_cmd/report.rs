@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 /// 変換できない・近似した要素の種類。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Gap {
-    /// クリップのマスク（角丸、楕円、画像の輝度）。
+    /// クリップのマスクのうち描けないもの（楕円、大きさの分からない画像）。
     Mask,
     /// クリップの効果（ぼかし）。
     Effects,
@@ -34,7 +34,10 @@ pub enum Gap {
 impl Gap {
     fn describe(self) -> (&'static str, &'static str) {
         match self {
-            Self::Mask => ("mask", "楕円と画像のマスクを除いた（角丸の矩形だけ描く）"),
+            Self::Mask => (
+                "mask",
+                "楕円と、大きさの分からない画像のマスクを除いた（角丸の矩形と画像の輝度を描く）",
+            ),
             Self::Effects => ("effects", "クリップの効果を除いた"),
             Self::Blend => ("blend", "重ね方を normal にした"),
             Self::Transition => ("transition", "トランジションを除いた"),
