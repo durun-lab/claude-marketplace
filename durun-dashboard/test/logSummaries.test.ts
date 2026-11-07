@@ -58,3 +58,10 @@ test('裏で区切って読んだ会話ログも、一度に読んだときと�
   await warmLog(file, false, 64);
   assert.deepEqual(summarizeLog(file).texts.map((t) => t.text), [...texts, '足した']);
 });
+
+test('権限モードは、最後の user エントリが持つものを読む', () => {
+  const file = path.join(tmp, 'mode.jsonl');
+  const entry = (permissionMode?: string): string => `${JSON.stringify({ type: 'user', origin: { kind: 'human' }, timestamp: new Date().toISOString(), permissionMode, message: { content: '依頼' } })}\n`;
+  fs.writeFileSync(file, entry('auto') + entry('acceptEdits') + entry());
+  assert.equal(summarizeLog(file).permissionMode, 'acceptEdits');
+});

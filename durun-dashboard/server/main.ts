@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
-import { type AssistantMessage, type BranchView, PR_REVIEW_EVENTS, type PrReviewEvent, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, GITHUB_LIST_MAX, type Glossary, type GithubSearch, type HarnessToggle, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_LIST_MAX, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type SlackConversation, type TextSaveResult } from '../shared/types.ts';
+import { type AssistantMessage, type BranchView, PR_REVIEW_EVENTS, type PrReviewEvent, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, GITHUB_LIST_MAX, type Glossary, type GithubSearch, type HarnessToggle, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PERMISSION_MODES, PR_URL, type ImproveSettings, JIRA_LIST_MAX, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type SlackConversation, type TextSaveResult } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
@@ -1111,27 +1111,27 @@ const flag = (body: unknown, key: string): boolean | undefined => {
 // 選び直さなかったほうは、画面が今のモデルの正式な名前を送る。
 const MODEL_ID = /^claude-[a-z0-9-]+$/;
 
-/** 依頼と、起動に渡すモデルと effort。 */
-const launchOf = (body: unknown): { text: string; model: string; effort?: string } => {
+/** 依頼と、起動に渡すモデルと effort と権限モード。 */
+const launchOf = (body: unknown): { text: string; model: string; effort?: string; permissionMode?: string } => {
   const text = field<string>(body, 'text', 'string');
   if (!text.trim()) throw new HttpError(400, 'text is required');
   const model = field<string>(body, 'model', 'string');
   if (model && !(MODELS as readonly string[]).includes(model) && !MODEL_ID.test(model)) throw new HttpError(400, 'model must be alias or model id');
-  return { text, model, effort: oneOf(body, 'effort', EFFORT_LEVELS) };
+  return { text, model, effort: oneOf(body, 'effort', EFFORT_LEVELS), permissionMode: oneOf(body, 'permissionMode', PERMISSION_MODES) };
 };
 
-/** モデルと effort を変えて依頼を渡す。 */
+/** モデルと effort と権限モードを変えて依頼を渡す。 */
 const switchModel = async (id: string, body: unknown): Promise<{ sessionId: string }> => {
-  const { text, model, effort } = launchOf(body);
-  return { sessionId: await switchSession(sessionMeta(id).id, text, model, effort) };
+  const { text, model, effort, permissionMode } = launchOf(body);
+  return { sessionId: await switchSession(sessionMeta(id).id, text, model, effort, permissionMode) };
 };
 
 /** 会話を引き継いだ別のセッションを起動して依頼を渡し、元のセッションは残す。起動できないのは claude の失敗なので 502 にする。 */
 const fork = async (id: string, body: unknown): Promise<{ sessionId: string }> => {
-  const { text, model, effort } = launchOf(body);
+  const { text, model, effort, permissionMode } = launchOf(body);
   const sessionId = sessionMeta(id).id;
   try {
-    return { sessionId: await forkSession(sessionId, text, model, effort) };
+    return { sessionId: await forkSession(sessionId, text, model, effort, permissionMode) };
   } catch (e) {
     throw new HttpError(502, (e as Error).message);
   }

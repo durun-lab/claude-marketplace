@@ -12,18 +12,20 @@ const SRGB_SLOPE: f32 = 12.92;
 /// sRGB の区分の式の曲線部の係数。
 const SRGB_SCALE: f32 = 1.055;
 const SRGB_OFFSET: f32 = 0.055;
+/// sRGB の区分の式の曲線部のべき。値は Rec.1886 の [`GAMMA`] と同じ 2.4 だが、別の式の定数として分ける。
+const SRGB_EXPONENT: f32 = 2.4;
 
 /// 線形から sRGB の符号化値へ（IEC 61966-2-1）。ホストの CPU の経路が当てた式の逆。
 fn linear_to_srgb(v: f32) -> f32 {
     if v <= SRGB_KNEE {
         v * SRGB_SLOPE
     } else {
-        SRGB_SCALE * v.powf(1.0 / GAMMA) - SRGB_OFFSET
+        SRGB_SCALE * v.powf(1.0 / SRGB_EXPONENT) - SRGB_OFFSET
     }
 }
 
 /// ホストの CPU の画像（RGBA f32、premultiplied、sRGB の区分の式で線形にした値）を、Rec.1886 の式の線形に直す。
-/// ホストの式は文字（`mm-text-cef`）と共有するので、web.cef の側で符号化値に戻してから当て直す。
+/// ホストの式は文字（`mm-text-cef`）と共有するので、web.cef の側で符号化値に戻してから Rec.1886 の式を適用し直す。
 pub fn rec1886_from_srgb_linear(data: &mut [f32]) {
     for px in data.chunks_exact_mut(4) {
         let a = px[3];
@@ -46,7 +48,7 @@ mod tests {
         if s <= 0.040_45 {
             s / SRGB_SLOPE
         } else {
-            ((s + SRGB_OFFSET) / SRGB_SCALE).powf(GAMMA)
+            ((s + SRGB_OFFSET) / SRGB_SCALE).powf(SRGB_EXPONENT)
         }
     }
 

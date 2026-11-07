@@ -5,6 +5,7 @@ use std::collections::BTreeSet;
 
 use mm_doc::{Cut, Node, Project, Sequence};
 use mm_ops::{AddSequence, Editor, OpContext, Transaction};
+use mm_text_api::FONTS_DIR;
 use mm_types::{Id, RationalTime};
 
 use crate::args::{referenced_names, Env};
@@ -13,6 +14,9 @@ use crate::layout::EstimateShaper;
 use crate::macros::{MacroDef, MacroKind, Step, WebStep};
 use crate::pack::{Pack, FORMAT};
 use crate::style::TextStyleSpec;
+
+/// 書体の配布元の URL の頭。取るときも HTTPS だけを許す（[`crate::Curl`]）。
+const HTTPS: &str = "https://";
 
 /// 検査の結果。`errors` が空なら通った。
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -38,6 +42,7 @@ pub fn check(pack: &Pack) -> Report {
     let mut report = Report::default();
     check_manifest(pack, &mut report);
     check_theme(pack, &mut report);
+    check_fonts(pack, &mut report);
     for (name, style) in &pack.styles {
         check_style(pack, name, style, &mut report);
     }
@@ -86,6 +91,40 @@ fn check_theme(pack: &Pack, report: &mut Report) {
     }
 }
 
+/// テーマの書体が目録にあり、URL が HTTPS で、family ごとに `fonts/<family>/` にライセンスの文があるか。
+/// 本体は取らずに目録だけを見る（オフラインでも検査が通る）。目録が無いパックは OS の書体で描くので見ない。
+fn check_fonts(pack: &Pack, report: &mut Report) {
+    if pack.fonts.is_empty() {
+        return;
+    }
+    let at = format!("{FONTS_DIR}/{}", crate::fonts::MANIFEST);
+    for (role, family) in &pack.theme.fonts {
+        if !pack.fonts.iter().any(|f| f.family == *family) {
+            report.push(format!("theme.json: 書体 {role}（{family}）が {at} に無い"));
+        }
+    }
+    for font in &pack.fonts {
+        if !font.url.starts_with(HTTPS) {
+            report.push(format!("{at}: {} の URL は HTTPS にする", font.file));
+        }
+        if !mm_text_api::is_font_path(std::path::Path::new(&font.file)) {
+            report.push(format!(
+                "{at}: {} は書体のファイルの拡張子でない",
+                font.file
+            ));
+        }
+    }
+    let mut families: Vec<&str> = pack.fonts.iter().map(|f| f.family.as_str()).collect();
+    families.dedup();
+    for family in families {
+        if !crate::fonts::has_license(&pack.dir.join(FONTS_DIR).join(family)) {
+            report.push(format!(
+                "{FONTS_DIR}/{family}/: ライセンスの文（OFL.txt など）が無い"
+            ));
+        }
+    }
+}
+
 fn check_style(pack: &Pack, name: &str, s: &TextStyleSpec, report: &mut Report) {
     let at = |what: &str| format!("styles.json の {name}: {what}");
     let mut colors = vec![s.color.as_str()];
@@ -106,6 +145,9 @@ fn check_style(pack: &Pack, name: &str, s: &TextStyleSpec, report: &mut Report) 
     }
     if s.size <= 0.0 {
         report.push(at("size は正にする"));
+    }
+    if let Some(Err(e)) = s.font.as_deref().map(|r| pack.theme.font(r)) {
+        report.push(at(&e.to_string()));
     }
     if s.anchor.iter().any(|a| !(0.0..=1.0).contains(a)) {
         report.push(at("anchor は 0..1"));

@@ -224,6 +224,7 @@ impl WgpuRenderer {
         params: &Params,
         transform: &LayerTransform,
     ) -> Result<Option<LayerImage>> {
+        let color = self.config_fingerprint();
         let Self {
             sources,
             decoders,
@@ -232,7 +233,6 @@ impl WgpuRenderer {
             cache,
             ..
         } = self;
-        let color = services.color.config_fingerprint();
         let at = source_time(layer, cx.t)?;
         let opened = sources.footage_with_backend(
             decoders.as_ref(),
@@ -354,7 +354,7 @@ impl WgpuRenderer {
         if !self.cache.enabled() {
             return None;
         }
-        let color = self.services.color.config_fingerprint();
+        let color = self.config_fingerprint();
         let factory = self.decoders.id();
         let decoder = |id: &AssetId| self.sources.backend(id).unwrap_or(factory).to_owned();
         let env = KeyEnv {

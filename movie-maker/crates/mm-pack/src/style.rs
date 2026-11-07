@@ -10,6 +10,9 @@ pub struct TextStyleSpec {
     pub size: f64,
     /// 字の色（theme の色の名前か 16 進）。
     pub color: String,
+    /// 書体の役（theme の `fonts` の名前。`body` など）。無ければ実装の既定の書体。
+    #[serde(default)]
+    pub font: Option<String>,
     /// プレートを置く位置。
     pub position: [f64; 2],
     /// プレートの中の基準点。`[0.5, 1.0]` は下の中央。

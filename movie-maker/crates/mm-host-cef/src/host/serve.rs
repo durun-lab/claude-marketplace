@@ -3,6 +3,7 @@
 //! ページの規約（`Prepare` の `html`）:`window.mmSetTime(t, params)` を定義し、時刻 `t`（秒）と
 //! `RenderFrame` の `params` の関数としてだけ画面を作る。定義が無いページは静止画として描く。
 //! ページはホストが一時フォルダーに書いたファイルとして開き、ほかのファイルとネットワークは読めない（`guard`）。
+//! `Prepare` の `fonts` の書体は、`@font-face` をページに差し込み、`FONT_ORIGIN` の URL で配る（`font_scheme`）。
 //! ページはビューポート（`RenderFrame` の `size`）に収める。ぼかしなどのフィルタの付いた要素がビューポートの端を
 //! またぐと、1 フレームが 20 ms ほど遅れる（`docs/design/spikes/cef.md`）。
 
@@ -20,7 +21,8 @@ use mm_types::{RationalTime, Size};
 use super::args::{DEFAULT_RATE, DEFAULT_RESEND};
 use super::handlers::Shared;
 use super::share::Client;
-use super::{browser, gpu, guard};
+use super::{browser, font_scheme, gpu, guard};
+use mm_host_cef::fonts::{inject_style, FontTable, PageFont};
 
 /// 終わるときにスパンの分布（`metrics.jsonl` の 1 行）を書くファイル。
 const METRICS_ENV: &str = "MM_HOST_METRICS";
@@ -38,6 +40,8 @@ const FRAME_LIMIT: Duration = Duration::from_secs(4);
 ///   `loading="lazy"` で読み込んでいない画像は待たない（ビューポートの外では読み込みが始まらない）。
 /// - 書体: 時刻の反映で初めて使う Web フォントは、組んだ時点で読み込みが始まる。組み直してから
 ///   `document.fonts` の読み込みが終わるまで待ち、読み込み中の代わりの書体で描かないようにする。
+///   待ったときは時刻をもう一度反映する。文字の幅を測って枠を組むページ（吹き出し）が、代わりの書体で
+///   測った幅のまま描かないようにするため（ページは `t` と `data` の関数なので、何度呼んでも同じ画面）。
 /// - 毎フレームのダメージ: 画面が変わらないフレームは CEF がフレームを出さず、遅いページと区別できない。
 ///   左上の透明な 1 画素の canvas を毎回消し直してダメージを作り、どのフレームも必ず届くようにする
 ///   （透明の画素は合成しても画素を変えない）。
@@ -52,14 +56,15 @@ visibility:visible!important;opacity:1!important;z-index:2147483647!important;po
   const fresh = () => Array.from(document.images).filter((i) => i.src && decoded.get(i) !== i.src\
     && (i.complete || i.loading !== 'lazy'));\
   const decode = (i) => { const s = i.src; return i.decode().catch(() => {}).then(() => decoded.set(i, s)); };\
-  const settle = (done) => { void document.documentElement.getBoundingClientRect();\
+  const settle = (run, done) => { void document.documentElement.getBoundingClientRect();\
     const images = fresh();\
-    if (images.length > 0) { Promise.all(images.map(decode)).then(() => settle(done)); }\
+    if (images.length > 0) { Promise.all(images.map(decode)).then(() => settle(run, done)); }\
     else if (document.fonts.status === 'loaded') { done(); }\
-    else { document.fonts.ready.then(() => settle(done)); } };\
+    else { document.fonts.ready.then(() => { run(); settle(run, done); }); } };\
   window.__mmFrame = (t, seq, params) => {\
-    if (typeof window.mmSetTime === 'function') { window.mmSetTime(t, params); }\
-    settle(() => { g.clearRect(0, 0, 1, 1); document.title = 'mm-ready:' + seq; }); };\
+    const run = () => { if (typeof window.mmSetTime === 'function') { window.mmSetTime(t, params); } };\
+    run();\
+    settle(run, () => { g.clearRect(0, 0, 1, 1); document.title = 'mm-ready:' + seq; }); };\
   document.title = 'mm-init'; })();";
 
 struct Server {
@@ -70,6 +75,8 @@ struct Server {
     /// 書いたページの数。ページごとにファイルの名前を変え、前のブラウザーのページと取り違えない。
     pages: u64,
     seq: u64,
+    /// `Prepare` の `fonts`。書体のスキームハンドラー（`font_scheme`）と共有する。
+    fonts: FontTable,
 }
 
 /// 標準入力が閉じるか `Shutdown` が来るまで答え続ける。
@@ -85,7 +92,9 @@ pub fn run(spec: &HostSpec, gpu: Arc<GpuContext>) -> Result<(), String> {
         page_dir: super::work_dir().0.join("pages"),
         pages: 0,
         seq: 0,
+        fonts: FontTable::default(),
     };
+    font_scheme::register(&server.fonts)?;
     let (tx, rx) = mpsc::channel();
     // 標準入力は別スレッドで読む。CEF のメッセージは本体のスレッドで回し続ける必要がある。
     std::thread::spawn(move || {
@@ -181,6 +190,11 @@ impl Server {
             .get("html")
             .and_then(serde_json::Value::as_str)
             .ok_or("Prepare の params に html が要る")?;
+        let fonts: Vec<PageFont> = match params.get("fonts") {
+            Some(v) => serde_json::from_value(v.clone()).map_err(|e| format!("fonts: {e}"))?,
+            None => Vec::new(),
+        };
+        let html = inject_style(html, &self.fonts.replace(&fonts));
         std::fs::create_dir_all(&self.page_dir).map_err(|e| e.to_string())?;
         self.pages += 1;
         let path = self.page_dir.join(format!("page-{}.html", self.pages));

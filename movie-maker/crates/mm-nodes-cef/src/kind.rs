@@ -1,26 +1,24 @@
 //! `web.cef` の種類。
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, Weak};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 
 use mm_gpu::{GpuContext, WgpuGpu};
 use mm_host_api::{HostLauncher, SharedFrame};
 use mm_node_api::{Cost, FrameCx, FrameRef, GpuTexture, Isolation, NodeKind, Traits};
+use mm_text_api::FontFile;
 use mm_types::{MmError, ParamSchema, ParamSpec, ParamType, ParamValue, Params, Result, RgbaImage};
 
 use crate::cache::{Cached, FrameCache, FrameKey};
 use crate::gpu::{copy_into, Converter};
-use crate::hosts::{Delivery, HostPages};
+use crate::hosts::{FrameTransport, HostPages};
 use crate::page::{FrameRequest, Page, DATA_PARAM, HTML_PARAM, STATIC_PARAM};
 use crate::transfer::rec1886_from_srgb_linear;
 use crate::{mock, KIND_ID, KIND_VERSION};
 
-/// 描き手。
-enum Source {
-    Host(HostPages),
-    Mock,
-}
+/// 移行できる最も古いバージョン。パラメータの形は 1 から変わっていない（上げたのは画素が変わったため）。
+const OLDEST_VERSION: u32 = 1;
 
 /// 描いた数と、キャッシュから返した数。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -35,10 +33,13 @@ pub struct Stats {
 /// レンダラーが `WgpuGpu`（D3D12）なら共有テクスチャで受けて GPU のまま変換し、それ以外は CPU の画像で受ける。
 /// CEF が無い環境ではモック（[`WebCefKind::mock`]）が矩形を描く。
 pub struct WebCefKind {
-    source: Mutex<Source>,
+    /// ホストの組。`None` ならモック。作るときに決まるので、ホストの有無はロックを取らずに分かる。
+    hosts: Option<Mutex<HostPages>>,
     cache: Mutex<FrameCache>,
     converter: Mutex<Option<Converter>>,
     device: Mutex<DeviceGeneration>,
+    /// プロジェクトに書体があるか。ページの CSP で書体の起点を許すかを決める。
+    has_fonts: AtomicBool,
     drawn: AtomicU64,
     hits: AtomicU64,
 }
@@ -61,13 +62,19 @@ impl DeviceGeneration {
     }
 }
 
+/// ロックを取る。キャッシュ、変換、世代は 1 回の代入で書き換えるだけなので、パニックの後も中身はそのまま使える。
+fn relock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 impl WebCefKind {
-    fn with_source(source: Source) -> Self {
+    fn with_hosts(hosts: Option<HostPages>) -> Self {
         Self {
-            source: Mutex::new(source),
+            hosts: hosts.map(Mutex::new),
             cache: Mutex::new(FrameCache::default()),
             converter: Mutex::new(None),
             device: Mutex::new(DeviceGeneration::default()),
+            has_fonts: AtomicBool::new(false),
             drawn: AtomicU64::new(0),
             hits: AtomicU64::new(0),
         }
@@ -75,17 +82,17 @@ impl WebCefKind {
 
     /// `executable`（`mm-host-cef`）を `launcher` で起こして描く。
     pub fn with_host(launcher: Arc<dyn HostLauncher>, executable: PathBuf) -> Self {
-        Self::with_source(Source::Host(HostPages::new(launcher, executable)))
+        Self::with_hosts(Some(HostPages::new(launcher, executable)))
     }
 
     /// CEF の代わりに矩形を描く。
     pub fn mock() -> Self {
-        Self::with_source(Source::Mock)
+        Self::with_hosts(None)
     }
 
     /// ホストで描くか（偽ならモック）。
     pub fn uses_host(&self) -> bool {
-        self.source().is_ok_and(|s| matches!(*s, Source::Host(_)))
+        self.hosts.is_some()
     }
 
     /// 描いた数とキャッシュから返した数。
@@ -96,16 +103,20 @@ impl WebCefKind {
         }
     }
 
-    fn source(&self) -> Result<MutexGuard<'_, Source>> {
-        self.source
-            .lock()
-            .map_err(|_| MmError::Internal("web.cef のホストのロックが壊れた".into()))
+    /// ホストの組のロック。モックなら `None`。描画の途中でパニックしたホストは応答の途中にいるかもしれないので、
+    /// 毒の入ったロックは全部のホストを捨ててから使う。
+    fn hosts(&self) -> Option<MutexGuard<'_, HostPages>> {
+        let m = self.hosts.as_ref()?;
+        Some(m.lock().unwrap_or_else(|poisoned| {
+            let mut hosts = poisoned.into_inner();
+            hosts.clear();
+            m.clear_poison();
+            hosts
+        }))
     }
 
-    fn cache(&self) -> Result<MutexGuard<'_, FrameCache>> {
-        self.cache
-            .lock()
-            .map_err(|_| MmError::Internal("web.cef のキャッシュが壊れた".into()))
+    fn cache(&self) -> MutexGuard<'_, FrameCache> {
+        relock(&self.cache)
     }
 
     fn hit(&self) {
@@ -121,6 +132,29 @@ impl WebCefKind {
         cfg!(windows) && ctx.backend() == wgpu::Backend::Dx12 && self.uses_host()
     }
 
+    /// `ctx` の上で作ったキャッシュのテクスチャ。
+    fn gpu_hit(&self, key: &FrameKey, ctx: &Arc<GpuContext>) -> Option<wgpu::Texture> {
+        match self.cache().get(key)? {
+            Cached::Gpu { texture, ctx: made }
+                if made.upgrade().is_some_and(|c| Arc::ptr_eq(&c, ctx)) =>
+            {
+                self.hit();
+                Some(texture)
+            }
+            _ => None,
+        }
+    }
+
+    fn cpu_hit(&self, key: &FrameKey) -> Option<Arc<RgbaImage>> {
+        match self.cache().get(key)? {
+            Cached::Cpu(image) => {
+                self.hit();
+                Some(image)
+            }
+            Cached::Gpu { .. } => None,
+        }
+    }
+
     /// GPU の経路。共有テクスチャを使えなければ `None`。
     fn render_gpu(
         &self,
@@ -132,23 +166,10 @@ impl WebCefKind {
         if !self.can_share(&ctx) {
             return Ok(None);
         }
-        let cached = self.cache()?.get(key);
-        let texture = match cached {
-            Some(Cached::Gpu { texture, ctx: made })
-                if made.upgrade().is_some_and(|c| Arc::ptr_eq(&c, &ctx)) =>
-            {
-                self.hit();
-                texture
-            }
-            _ => {
-                let texture = self.draw_shared(&ctx, req)?;
-                let value = Cached::Gpu {
-                    texture: texture.clone(),
-                    ctx: Arc::downgrade(&ctx),
-                };
-                self.cache()?.put(key.clone(), value);
-                texture
-            }
+        self.cache().drop_other_devices(&ctx);
+        let texture = match self.gpu_hit(key, &ctx) {
+            Some(texture) => texture,
+            None => self.draw_and_keep(&ctx, req, key)?,
         };
         let id = gpu.create(req.size)?;
         let dst = gpu
@@ -158,29 +179,44 @@ impl WebCefKind {
         Ok(Some(FrameRef::Gpu(GpuTexture { id, size: req.size })))
     }
 
+    /// 共有テクスチャで描いてキャッシュする。ホストのロックを待つ間に別のスレッドが同じフレームを描いたかもしれないので、
+    /// 取った後にもう一度引く。
+    fn draw_and_keep(
+        &self,
+        ctx: &Arc<GpuContext>,
+        req: &FrameRequest<'_>,
+        key: &FrameKey,
+    ) -> Result<wgpu::Texture> {
+        let mut hosts = self
+            .hosts()
+            .ok_or_else(|| MmError::Internal("モックは共有テクスチャを出さない".into()))?;
+        if let Some(texture) = self.gpu_hit(key, ctx) {
+            return Ok(texture);
+        }
+        let texture = self.draw_shared(&mut hosts, ctx, req)?;
+        let value = Cached::Gpu {
+            texture: texture.clone(),
+            ctx: Arc::downgrade(ctx),
+        };
+        self.cache().put(key.clone(), value);
+        Ok(texture)
+    }
+
     /// ホストに共有テクスチャで描かせ、中間の形式のテクスチャにする。
-    fn draw_shared(&self, ctx: &Arc<GpuContext>, req: &FrameRequest<'_>) -> Result<wgpu::Texture> {
-        let device = self
-            .device
-            .lock()
-            .map_err(|_| MmError::Internal("web.cef のデバイスの世代のロックが壊れた".into()))?
-            .of(ctx);
-        let delivery = Delivery::Shared {
+    fn draw_shared(
+        &self,
+        hosts: &mut HostPages,
+        ctx: &Arc<GpuContext>,
+        req: &FrameRequest<'_>,
+    ) -> Result<wgpu::Texture> {
+        let transport = FrameTransport::Shared {
             adapter: ctx.adapter.clone(),
-            device,
+            device: relock(&self.device).of(ctx),
         };
-        let frame = match &mut *self.source()? {
-            Source::Host(hosts) => hosts.render(req, &delivery)?,
-            Source::Mock => {
-                return Err(MmError::Internal("モックは共有テクスチャを出さない".into()))
-            }
-        };
+        let frame = hosts.render(req, &transport)?;
         self.drew();
         let shared = open_shared(ctx, frame, req)?;
-        let mut converter = self
-            .converter
-            .lock()
-            .map_err(|_| MmError::Internal("web.cef の変換のロックが壊れた".into()))?;
+        let mut converter = relock(&self.converter);
         let converter = match converter.take() {
             Some(c) if c.is_for(ctx) => converter.insert(c),
             _ => converter.insert(Converter::new(ctx)),
@@ -190,14 +226,27 @@ impl WebCefKind {
 
     /// CPU の経路。モックか、ホストの CPU の画像。
     fn render_cpu(&self, req: &FrameRequest<'_>, key: FrameKey) -> Result<FrameRef> {
-        if let Some(Cached::Cpu(image)) = self.cache()?.get(&key) {
-            self.hit();
+        if let Some(image) = self.cpu_hit(&key) {
             return Ok(FrameRef::Cpu(image));
         }
-        let image = match &mut *self.source()? {
-            Source::Mock => mock::render(req),
-            Source::Host(hosts) => cpu_image(hosts.render(req, &Delivery::Cpu)?)?,
+        let Some(mut hosts) = self.hosts() else {
+            return self.keep_cpu(req, key, mock::render(req));
         };
+        // draw_and_keep と同じく、ロックを取った後にもう一度引く。
+        if let Some(image) = self.cpu_hit(&key) {
+            return Ok(FrameRef::Cpu(image));
+        }
+        let image = cpu_image(hosts.render(req, &FrameTransport::Cpu)?)?;
+        self.keep_cpu(req, key, image)
+    }
+
+    /// 描いた CPU の画像を確かめてキャッシュする。
+    fn keep_cpu(
+        &self,
+        req: &FrameRequest<'_>,
+        key: FrameKey,
+        image: RgbaImage,
+    ) -> Result<FrameRef> {
         self.drew();
         if image.size() != req.size {
             return Err(MmError::Internal(format!(
@@ -207,7 +256,7 @@ impl WebCefKind {
             )));
         }
         let image = Arc::new(image);
-        self.cache()?.put(key, Cached::Cpu(image.clone()));
+        self.cache().put(key, Cached::Cpu(image.clone()));
         Ok(FrameRef::Cpu(image))
     }
 }
@@ -293,17 +342,20 @@ impl NodeKind for WebCefKind {
         ])
     }
 
+    /// モックは決定的と申告しない。申告するとレンダラーがモックの矩形をディスクに退避し、
+    /// CEF のある次の起動で同じキーのページの代わりに引いてしまう。
     fn traits(&self) -> Traits {
         Traits {
             realtime: false,
             cost: Cost::Heavy,
             isolation: Isolation::OutOfProcess,
+            deterministic: self.uses_host(),
             ..Traits::PIXEL
         }
     }
 
     fn migrate(&self, old: serde_json::Value, from: u32) -> Result<Params> {
-        if from != KIND_VERSION {
+        if !(OLDEST_VERSION..=KIND_VERSION).contains(&from) {
             return Err(MmError::Unsupported(format!(
                 "{KIND_ID} のバージョン {from} からの移行が無い"
             )));
@@ -315,7 +367,9 @@ impl NodeKind for WebCefKind {
 
     fn render(&self, cx: &mut FrameCx<'_>) -> Result<FrameRef> {
         let _span = tracing::info_span!("nodes_cef.render").entered();
-        let Some(page) = Page::read(cx.params) else {
+        let page = Page::read_with(cx.params, self.has_fonts.load(Ordering::Relaxed))
+            .filter(|_| cx.size.area() > 0);
+        let Some(page) = page else {
             return Ok(FrameRef::Transparent { size: cx.size });
         };
         let req = FrameRequest {
@@ -331,6 +385,16 @@ impl NodeKind for WebCefKind {
             }
         }
         self.render_cpu(&req, key)
+    }
+
+    /// ホストに渡す書体を入れ替え、前の書体で描いたフレームを捨てる。
+    fn use_fonts(&self, fonts: &[FontFile]) -> Result<()> {
+        if let Some(mut hosts) = self.hosts() {
+            hosts.set_fonts(fonts);
+        }
+        self.has_fonts.store(!fonts.is_empty(), Ordering::Relaxed);
+        *self.cache() = FrameCache::default();
+        Ok(())
     }
 }
 

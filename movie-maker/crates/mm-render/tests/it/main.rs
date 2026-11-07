@@ -3,6 +3,7 @@
 mod cache_keys;
 mod common;
 mod contract;
+mod fonts;
 mod footage_reuse;
 mod frame_cache;
 mod golden;

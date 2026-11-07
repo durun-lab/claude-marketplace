@@ -4,11 +4,15 @@
 
 use std::ops::Range;
 
-/// 親文字の始まりの記号。
+/// 親文字の始まりを示す縦線。
 const BASE_MARK: char = '｜';
 /// ふりがなの始まりと終わり。
 const RUBY_OPEN: char = '《';
 const RUBY_CLOSE: char = '》';
+
+/// ふりがなの大きさの、親文字に対する割合（CSS の `ruby` の既定の 50%）。シェーパーがルビを含む行の上に空ける高さと、
+/// 描く実装のふりがなの字の大きさは、どちらも字の大きさにこれを掛けた値にする。
+pub const RUBY_SCALE: f32 = 0.5;
 
 /// 注記を読んだ文字列の 1 区切り。範囲は元の文字列のバイト範囲。
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,9 +32,20 @@ impl RubySpan {
     }
 }
 
-/// `｜` が無いときに親文字にしてよい文字（漢字と繰り返しの記号）。
+/// `｜` が無いときに親文字にしてよい文字。CJK 統合漢字（拡張 A から H まで、拡張 B 以降は 4 バイト）、
+/// 互換漢字（補助を含む）と、青空文庫が漢字の並びに数える 々、〆、〇、ヶ。
 fn is_kanji(c: char) -> bool {
-    matches!(c, '\u{4E00}'..='\u{9FFF}' | '\u{3400}'..='\u{4DBF}' | '々' | '〆' | 'ヶ')
+    matches!(
+        c,
+        '\u{4E00}'..='\u{9FFF}'
+            | '\u{3400}'..='\u{4DBF}'
+            | '\u{F900}'..='\u{FAFF}'
+            | '\u{20000}'..='\u{323AF}'
+            | '々'
+            | '〆'
+            | '〇'
+            | 'ヶ'
+    )
 }
 
 /// `《` の直後 `open_end` から、同じ行の中の `》` までのふりがなの範囲。空か閉じていなければ `None`。
@@ -77,6 +92,8 @@ pub fn parse_ruby(text: &str) -> Vec<RubySpan> {
                 mark = None;
                 continue;
             }
+            // ルビにならなかった `《` で縦線の親文字は終わる。残すと後の `《…》` が縦線から親文字を取る。
+            mark = None;
         }
         if c == BASE_MARK {
             mark = Some(out.len());
@@ -136,6 +153,41 @@ mod tests {
         assert_eq!(pieces("A｜B"), plain("A｜B"));
         assert_eq!(pieces("《まだ"), plain("《まだ"));
         assert_eq!(pieces("漢字《》"), plain("漢字《》"));
+    }
+
+    #[test]
+    fn ルビにならなかった括弧の後は縦線の位置を使わない() {
+        let text = "｜東京《》は《x》";
+        assert_eq!(pieces(text), plain(text));
+        assert_eq!(
+            pieces("｜東京《》都《と》"),
+            [plain("｜東京《》"), vec![("都", Some("と"))]].concat(),
+            "後の注記は直前の漢字の並びだけを親文字にする"
+        );
+    }
+
+    #[test]
+    fn 入れ子の括弧は最初の閉じ括弧までをふりがなにする() {
+        let p = pieces("漢《字《じ》》");
+        assert_eq!(p, vec![("漢", Some("字《じ")), ("》", None)]);
+    }
+
+    #[test]
+    fn 拡張漢字と互換漢字と記号も漢字の並びに数える() {
+        assert_eq!(
+            pieces("𠮷野家《よしのや》"),
+            vec![("𠮷野家", Some("よしのや"))]
+        );
+        assert_eq!(pieces("〇〇《まるまる》"), vec![("〇〇", Some("まるまる"))]);
+        assert_eq!(
+            pieces("\u{FA19}《かみ》"),
+            vec![("\u{FA19}", Some("かみ"))],
+            "互換漢字"
+        );
+        let text = "𠀋《じょう》";
+        let spans = parse_ruby(text);
+        assert_eq!(spans[0].base, 0..4, "4 バイトの文字の範囲");
+        assert_eq!(&text[spans[0].ruby.clone().unwrap()], "じょう");
     }
 
     #[test]

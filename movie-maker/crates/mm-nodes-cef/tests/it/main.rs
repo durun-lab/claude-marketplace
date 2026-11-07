@@ -3,3 +3,4 @@
 mod cef;
 mod color;
 mod contract;
+mod recover;
