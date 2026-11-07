@@ -10,7 +10,7 @@ import { DATA_DIR, state, touch } from './store.ts';
 const ROSTER = path.join(CLAUDE_DIR, 'daemon', 'roster.json');
 
 // 子孫まで抑えるには PowerShell を起動してプロセスの一覧を読むので、セッションの状態が変わるたびには走らせず、この間隔を空ける。
-const THROTTLE_GAP_MS = 15_000;
+const THROTTLE_GAP_MS = 60_000;
 
 /** 子孫まで抑える処理の状態。走っている間に頼まれたら、終わってから間隔を空けて一度だけ走らせ直す。 */
 const throttle = { running: false, again: false, lastAt: 0, touched: false };
