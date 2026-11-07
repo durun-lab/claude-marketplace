@@ -49,10 +49,23 @@
     return div;
   };
 
+  // 親文字より長いふりがなが画像の左右の端で切れないよう、はみ出る分だけ内側へ寄せる。
+  const fitRuby = (div, line, width) => {
+    for (const rt of div.querySelectorAll('.rt')) {
+      const rb = rt.parentElement;
+      const left = line.x + rb.offsetLeft + (rb.offsetWidth - rt.offsetWidth) / 2;
+      const right = left + rt.offsetWidth;
+      const shift = left < 0 ? -left : Math.min(0, width - right);
+      rt.style.transform = `translateX(calc(-50% + ${shift}px))`;
+    }
+  };
+
   window.mmSetTime = (t, p) => {
     document.documentElement.style.zoom = String(p.scale || 1);
     const root = document.getElementById('root');
-    root.replaceChildren(...p.lines.map((line) => lineOf(line, p.style)));
+    const divs = p.lines.map((line) => lineOf(line, p.style));
+    root.replaceChildren(...divs);
+    divs.forEach((div, i) => fitRuby(div, p.lines[i], p.width));
   };
 </script>
 </body>

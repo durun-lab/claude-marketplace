@@ -149,6 +149,34 @@ fn 長いふりがなでも親文字の行の幅と位置は変わらない() {
     assert!(inked(&b, 0, room) > 50, "ふりがなを上に描く");
 }
 
+/// 左右の端の列で、不透明度が半分以上の画素の数（`0..rows` の行）。
+fn edge_ink(image: &RgbaImage, rows: u32) -> usize {
+    let last = image.width() - 1;
+    (0..rows)
+        .flat_map(|y| [(0, y), (last, y)])
+        .filter(|&(x, y)| image.pixel(x, y).a > 0.5)
+        .count()
+}
+
+#[test]
+fn 行の端の長いふりがなは画像の内側に寄せる() {
+    let Some(exe) = host() else { return };
+    let shaper = TextEngine::new().shaper();
+    let raster = CefRasterizer::new(Arc::new(CefLauncher), exe);
+    let style = ruby_style();
+    let ruby = shaper
+        .shape("志《こころざし》を持つ", &style)
+        .expect("組める");
+    let room = style.size_px * mm_text_api::RUBY_SCALE;
+    for scale in [1.0, 2.0] {
+        let image = raster.rasterize(&ruby, &style, scale).expect("描ける");
+        save(&format!("text-cef-ruby-edge-{scale}x"), &image);
+        let rows = (room * scale) as u32;
+        assert!(inked(&image, 0, rows) > 50, "{scale} 倍: ふりがながある");
+        assert_eq!(edge_ink(&image, rows), 0, "{scale} 倍: 端で切れない");
+    }
+}
+
 #[test]
 fn 二行目のルビは前の行に重ならない() {
     let Some(exe) = host() else { return };

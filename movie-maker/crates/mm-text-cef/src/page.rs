@@ -69,7 +69,8 @@ fn line_segments(text: &str, all: &[RubySpan], lo: usize, hi: usize) -> Vec<Valu
     out
 }
 
-/// ページの `mmSetTime(t, params)` に渡す値。座標は `bounds` の左上を原点にした 1 倍の画素。
+/// ページの `mmSetTime(t, params)` に渡す値。座標は `bounds` の左上を原点にした 1 倍の画素で、`width` は `bounds` の幅
+/// （ふりがなを左右の端の内側に寄せる）。
 pub fn page_params(shaped: &ShapedText, style: &TextStyle, scale: f32) -> Value {
     let text = &shaped.text;
     let all = parse_ruby(text);
@@ -99,6 +100,7 @@ pub fn page_params(shaped: &ShapedText, style: &TextStyle, scale: f32) -> Value 
         .map(|(width, color)| json!({ "width": width, "color": css_color(color) }));
     json!({
         "scale": scale,
+        "width": shaped.bounds.width,
         "lines": lines,
         "style": {
             "font": font_family(&style.font_family),
