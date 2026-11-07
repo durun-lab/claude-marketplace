@@ -1,0 +1,147 @@
+/* 値は全部 theme の変数から取り、ここでは色や寸法を持たない。影は使わず border と角丸で区切る。 */
+.mm-devices {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-md);
+  min-height: 0;
+  font-family: var(--mm-font-family);
+  font-size: var(--mm-font-size-base);
+  color: var(--mm-color-text);
+}
+
+.mm-devices-pairing,
+.mm-devices-notices,
+.mm-devices-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-sm);
+  padding: var(--mm-space-md);
+  border: var(--mm-border-width) solid var(--mm-color-border);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-color-surface);
+}
+
+.mm-devices-pairing {
+  align-items: center;
+  text-align: center;
+}
+
+.mm-devices-qr {
+  line-height: 0;
+  padding: var(--mm-space-sm);
+  border-radius: var(--mm-radius-md);
+  background: #fff;
+}
+
+.mm-devices-qr svg {
+  width: 100%;
+  max-width: 220px;
+  height: auto;
+}
+
+.mm-devices-code {
+  margin: 0;
+  font-family: var(--mm-font-mono);
+  font-size: 1.6em;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.mm-devices-expired {
+  color: var(--mm-color-text-muted);
+  text-decoration: line-through;
+}
+
+.mm-devices-heading {
+  margin: 0;
+  font-size: var(--mm-font-size-base);
+}
+
+.mm-devices-hint,
+.mm-devices-meta {
+  margin: 0;
+  color: var(--mm-color-text-muted);
+  font-size: var(--mm-font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.mm-devices-notice,
+.mm-devices-error,
+.mm-devices-success {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.mm-devices-error {
+  color: var(--mm-color-danger);
+  font-weight: 700;
+}
+
+.mm-devices-command {
+  display: block;
+  padding: var(--mm-space-sm);
+  border: var(--mm-border-width) solid var(--mm-color-border);
+  border-radius: var(--mm-radius-md);
+  font-size: var(--mm-font-size-sm);
+  user-select: all;
+  overflow-wrap: anywhere;
+}
+
+.mm-devices-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mm-devices-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.mm-devices-name {
+  flex: 1 1 8em;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.mm-devices-actions,
+.mm-devices-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--mm-space-sm);
+}
+
+.mm-devices-button {
+  padding: var(--mm-space-xs) var(--mm-space-md);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-gradient-button);
+  color: var(--mm-color-text);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mm-devices-button:disabled {
+  color: var(--mm-color-task-link-disabled);
+  cursor: default;
+}
+
+.mm-devices-primary:not(:disabled) {
+  border-color: var(--mm-color-accent);
+  font-weight: 700;
+}
+
+.mm-devices-danger {
+  border-color: var(--mm-color-accent);
+  font-weight: 700;
+}
+
+.mm-devices-button:focus-visible {
+  outline: var(--mm-stroke-focus) solid var(--mm-color-focus);
+  outline-offset: var(--mm-size-focus-offset);
+}

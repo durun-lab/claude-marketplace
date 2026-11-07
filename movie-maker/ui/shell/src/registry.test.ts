@@ -8,8 +8,8 @@ describe("パネルの登録", () => {
     expect(idsOf("left")).toEqual(["tasks", "media", "story", "transition", "mixer", "deliver"]);
   });
 
-  it("右の列は Inspector、Review、Feedback の順", () => {
-    expect(idsOf("right")).toEqual(["inspector", "review", "feedback"]);
+  it("右の列は Inspector、Review、Devices、Feedback の順", () => {
+    expect(idsOf("right")).toEqual(["inspector", "review", "devices", "feedback"]);
   });
 
   it("id は重ならず、同じ列の order も重ならない", () => {

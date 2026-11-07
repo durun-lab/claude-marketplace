@@ -4,6 +4,7 @@
 //! ルーターを分け、`/mcp` と `entry` の指定を持たない。ここから来た操作は全部 `Entry::Mobile`（人）で、
 //! 名乗りは登録した端末の名前。パスは全部 `/m` の下に置く。
 
+mod assets;
 mod devices;
 mod guard;
 mod ops;
@@ -28,12 +29,13 @@ use tokio::runtime::{Builder, Runtime};
 use crate::core::{Caller, Core, ServeError};
 use crate::http::AppState;
 
+pub use assets::{mime_for, DirAssets, MobileAsset, MobileAssets};
 pub use devices::{
     DeviceInfo, Devices, PairingCode, CREDENTIAL_BYTES, PAIRING_CODE_LEN, PAIRING_MAX_FAILURES,
     PAIRING_TTL,
 };
 pub use guard::{COOKIE_NAME, LOGIN_HEADER, MOBILE_HEADER, PAIR_PATH};
-pub use tailnet::{hosts_in_status, tailnet_hosts};
+pub use tailnet::{hosts_in_status, serve_is_configured, serve_proxies, tailnet_hosts};
 
 /// 人の待ち受けの既定のポート。
 pub const MOBILE_PORT: u16 = 7338;
@@ -59,6 +61,8 @@ pub struct MobileConfig {
     pub devices_file: PathBuf,
     /// 登録の符号の期限。
     pub pairing_ttl: Duration,
+    /// PWA のファイルの置き場。無ければ `GET /m/` は 404。
+    pub assets: Option<Arc<dyn MobileAssets>>,
 }
 
 impl MobileConfig {
@@ -70,6 +74,7 @@ impl MobileConfig {
             https_port: MOBILE_HTTPS_PORT,
             devices_file,
             pairing_ttl: PAIRING_TTL,
+            assets: None,
         }
     }
 
@@ -85,6 +90,7 @@ pub(crate) struct MobileState {
     pub core: Arc<Core>,
     pub hosts: Vec<String>,
     pub devices: Arc<Devices>,
+    pub assets: Option<Arc<dyn MobileAssets>>,
 }
 
 /// 人の待ち受けの失敗。`ServeError` と同じ `{"error": {"code","message", ...}}` で返す。
@@ -140,6 +146,7 @@ pub(crate) fn router(state: Arc<MobileState>) -> Router {
         hosts: Vec::new(),
     });
     Router::new()
+        .merge(assets::routes())
         .merge(ops::routes())
         .merge(pair::routes())
         .merge(proposals::routes())
@@ -186,6 +193,7 @@ impl MobileServer {
         let state = Arc::new(MobileState {
             core,
             hosts: config.hosts.clone(),
+            assets: config.assets.clone(),
             devices: devices.clone(),
         });
         let listener = {

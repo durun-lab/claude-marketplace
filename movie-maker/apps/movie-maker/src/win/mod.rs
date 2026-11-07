@@ -6,6 +6,8 @@ mod cli;
 mod clock;
 mod deliver;
 mod deliver_ipc;
+mod devices;
+mod devices_ipc;
 mod edit;
 mod edit_actions;
 mod feedback;

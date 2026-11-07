@@ -29,7 +29,8 @@ pub use comments::CommentEvent;
 pub use core::{now_ms, Caller, Change, ChangeOf, Core, ProjectView, ServeError};
 pub use frames::{encode_png, parse_time, render_png, EngineFrames, FrameRequest, FrameSource};
 pub use mobile::{
-    hosts_in_status, tailnet_hosts, DeviceInfo, Devices, MobileConfig, MobileServer, PairingCode,
+    hosts_in_status, mime_for, serve_is_configured, serve_proxies, tailnet_hosts, DeviceInfo,
+    Devices, DirAssets, MobileAsset, MobileAssets, MobileConfig, MobileServer, PairingCode,
     COOKIE_NAME, CREDENTIAL_BYTES, DEVICES_FILE, LOGIN_HEADER, MOBILE_HEADER, MOBILE_HTTPS_PORT,
     MOBILE_PORT, PAIRING_CODE_LEN, PAIRING_MAX_FAILURES, PAIRING_TTL, PAIR_PATH,
 };

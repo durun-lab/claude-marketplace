@@ -20,6 +20,8 @@ use windows::Win32::Media::timeBeginPeriod;
 use crate::win::cli::{self, Args};
 use crate::win::deliver::DeliverState;
 use crate::win::deliver_ipc;
+use crate::win::devices::DevicesState;
+use crate::win::devices_ipc;
 use crate::win::edit;
 use crate::win::feedback;
 use crate::win::feedback_ipc;
@@ -271,9 +273,11 @@ fn build_and_run(boot: Boot) {
     ));
     let deliver_state = Arc::new(DeliverState::new(boot.shared.clone(), &boot.args.project));
     let review_state = Arc::new(ReviewState::new(boot.shared.clone()));
+    let devices_state = Arc::new(DevicesState::new(boot.shared.clone()));
     tauri::Builder::default()
         .manage(managed)
         .manage(deliver_state)
+        .manage(devices_state)
         .manage(media_state)
         .manage(story_state)
         .manage(review_state)
@@ -288,6 +292,7 @@ fn build_and_run(boot: Boot) {
 enum Panel {
     Common,
     Deliver,
+    Devices,
     Feedback,
     Media,
     Mixer,
@@ -302,6 +307,7 @@ enum Panel {
 fn route(command: &str) -> Panel {
     match command {
         "edit_action" => Panel::Source,
+        c if c.starts_with("devices_") => Panel::Devices,
         c if c.starts_with("export_") => Panel::Deliver,
         c if c.starts_with("feedback_") => Panel::Feedback,
         c if c.starts_with("media_") => Panel::Media,
@@ -320,6 +326,7 @@ fn dispatch(invoke: tauri::ipc::Invoke) -> bool {
     let handler: fn(tauri::ipc::Invoke) -> bool = match route(invoke.message.command()) {
         Panel::Common => ipc::handler,
         Panel::Deliver => deliver_ipc::handler,
+        Panel::Devices => devices_ipc::handler,
         Panel::Feedback => feedback_ipc::handler,
         Panel::Media => media_ipc::handler,
         Panel::Mixer => mixer_ipc::handler,
@@ -347,6 +354,7 @@ impl Boot {
         ipc::spawn(app.handle().clone(), self.state.clone());
         hotpatch::start(app.handle());
         forward_changes(app.handle(), &self.shared);
+        app.state::<Arc<DevicesState>>().start(app.handle().clone());
         feedback::connect(app.handle().clone());
         offer_drops(&webview, app.state::<Arc<MediaState>>().inner().clone());
         watch_window(
@@ -441,6 +449,7 @@ mod tests {
         let cases = [
             ("subscribe", Panel::Common),
             ("apply_ops", Panel::Common),
+            ("devices_status", Panel::Devices),
             ("export_start", Panel::Deliver),
             ("feedback_submit", Panel::Feedback),
             ("media_list", Panel::Media),

@@ -1,4 +1,4 @@
-import { mkdir, readdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { generateCss } from "../theme/src/index.ts";
@@ -6,6 +6,10 @@ import { generateCss } from "../theme/src/index.ts";
 const DIST = fileURLToPath(new URL("../dist/", import.meta.url));
 const ENTRY = fileURLToPath(new URL("../shell/src/main.tsx", import.meta.url));
 const PANELS = fileURLToPath(new URL("../panels/", import.meta.url));
+const MOBILE_DIST = fileURLToPath(new URL("../mobile/dist/", import.meta.url));
+const MOBILE_DEST = `${DIST}m/`;
+// 型の無い .mjs なので、URL の文字列で読み込む（静的な specifier だと型の宣言を求められる）。
+const MOBILE_BUILD = new URL("../mobile/build.mjs", import.meta.url).href;
 
 interface Demo {
   /** dist/ に出す名前。`panels/<panel>/demo/main.tsx` は `<panel>-demo`、`<name>.tsx` は `<name>-demo`。 */
@@ -63,3 +67,9 @@ await build({
 await writeFile(`${DIST}theme.css`, generateCss());
 await writeFile(`${DIST}index.html`, page("Movie Maker", "shell"));
 for (const d of demos) await writeFile(`${DIST}${d.name}.html`, page(d.title, d.name));
+
+// モバイル版の PWA を `dist/m/` に置く。アプリ（Tauri）は dist/ を実行ファイルに埋め込み、`mm-serve` の
+// `GET /m/` がそこから返す。デモのページ（demo.*）はアプリに載せない。ビルドは import した時点で走る。
+await import(MOBILE_BUILD);
+await rm(MOBILE_DEST, { recursive: true, force: true });
+await cp(MOBILE_DIST, MOBILE_DEST, { recursive: true, filter: (src) => !/[\\/]demo\.[^\\/]+$/.test(src) });
