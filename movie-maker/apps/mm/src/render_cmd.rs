@@ -60,7 +60,8 @@ pub struct RenderArgs {
     #[arg(long, value_parser = parse_range)]
     pub range: Option<TimeRange>,
     /// レンダーターゲットのコーデックを上書きする（`h264`、`h264_2pass`、`h264_nvenc`、`hevc_nvenc`、
-    /// `prores_422hq`、`prores_4444`、`dnxhr_hq` など）。NVIDIA の GPU が無いと `h264_nvenc` は libx264 で書く。
+    /// `hevc_pq`、`hevc_hlg`（HDR）、`prores_422hq`、`prores_4444`、`dnxhr_hq` など）。NVIDIA の GPU が無いと
+    /// `h264_nvenc` は libx264 で書く。
     #[arg(long)]
     pub codec: Option<String>,
     /// 並行に描くレンダラーの数。1 は並行にしない。

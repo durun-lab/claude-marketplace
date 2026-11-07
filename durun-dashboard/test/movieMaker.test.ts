@@ -97,7 +97,7 @@ test('開発用のビルドは、専用の作業ツリーを origin/main に合�
   assert.equal(installModeOf({ DURUN_DASHBOARD_DISTRIBUTION: '1' }), 'release');
 });
 
-const baseView = (fields: Partial<MovieMakerView>): MovieMakerView => ({ install: { mode: 'build', busy: false, output: [] }, hasStore: false, link: { status: 'no-project' }, log: [], ...fields });
+const baseView = (fields: Partial<MovieMakerView>): MovieMakerView => ({ install: { mode: 'build', busy: false, output: [] }, recent: [], hasStore: false, link: { status: 'no-project' }, log: [], ...fields });
 
 test('次にすることは、入れる、プロジェクトを選ぶ、起動する、の順で、済んだら空になる', () => {
   assert.deepEqual(mmSteps(baseView({})).map((s) => s.action?.label ?? s.key), ['ビルドして入れる', 'project']);

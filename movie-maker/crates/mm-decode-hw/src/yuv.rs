@@ -1,13 +1,12 @@
 //! YUV 4:2:0（NV12 と P010）から、線形の RGB への変換の係数と WGSL。
 //!
-//! CPU の経路（`mm-decode-ffmpeg`）と同じく、符号化値に Rec.1886 の式（べき 2.4）を当てて線形にする。
+//! CPU の経路（`mm-decode-ffmpeg`）と同じく、符号化値に伝達特性の式（SDR は Rec.1886、HDR は PQ と HLG。
+//! `mm_types::transfer`）を当てて線形にし、Rec.2020 の原色なら作業色空間（Rec.709）の原色に直す。
 //! 10 bit は符号語のまま f32 で扱い、8 bit に下げない。色差は左寄せ（MPEG-2 の配置）の位置から線形に補間する。
 
 use ffmpeg_next as ff;
-use mm_decode_ffmpeg_core::matrix::Matrix;
-
-/// 表示の式のべき（`mm-color-lut` の `bt1886_to_linear` と同じ）。
-const GAMMA: f32 = 2.4;
+use mm_decode_ffmpeg_core::matrix::{is_rec2020, range_codes, Matrix, Transfer};
+use mm_types::transfer::{mul3, REC2020_TO_REC709};
 
 /// 素材のビット深度。NV12 と P010 に載る 4:2:0 の 8 bit と 10 bit だけ。
 pub fn stream_bit_depth(stream: &ff::format::stream::Stream<'_>) -> mm_types::Result<u32> {
@@ -47,10 +46,14 @@ pub struct YuvParams {
     /// 色差プレーンの画のある幅と高さ（画素）。プレーンの余白を補間に混ぜないための端。
     pub chroma_w: f32,
     pub chroma_h: f32,
+    /// 符号化値を線形にする式。
+    pub transfer: Transfer,
+    /// 線形にした後で Rec.2020 の原色から Rec.709 へ行列を掛けるか。
+    pub rec2020: bool,
 }
 
-/// 一様バッファに置くときのバイト数（`vec4` 3 つ分）。
-pub const PARAMS_BYTES: usize = 48;
+/// 一様バッファに置くときのバイト数（`vec4` 4 つ分）。
+pub const PARAMS_BYTES: usize = 64;
 
 impl YuvParams {
     /// 行列、レンジ、ビット深度、輝度の大きさから。`code_scale` は呼び出し側が入れる。
@@ -61,32 +64,37 @@ impl YuvParams {
         code_scale: f32,
         size: (u32, u32),
     ) -> Self {
-        let (kr, kb) = matrix.coefficients();
-        let kg = 1.0 - kr - kb;
-        let shift = (bits - 8) as f32;
-        let unit = 2f32.powf(shift);
-        let max_code = (1u32 << bits) as f32 - 1.0;
-        let (y_off, y_range, c_range) = if full_range {
-            (0.0, max_code, max_code)
-        } else {
-            (16.0 * unit, 219.0 * unit, 224.0 * unit)
-        };
-        let rv = 2.0 * (1.0 - kr);
-        let bu = 2.0 * (1.0 - kb);
+        let [y_off, y_range, c_mid, c_range] = range_codes(full_range, bits);
+        let [rv, gu, gv, bu] = matrix.rgb_coefficients();
         let (chroma_w, chroma_h) = chroma_size(size.0, size.1);
         Self {
             code_scale,
             y_off,
             y_range,
-            c_mid: 128.0 * unit,
+            c_mid,
             c_range,
             rv,
-            gu: bu * kb / kg,
-            gv: rv * kr / kg,
+            gu,
+            gv,
             bu,
             chroma_w: chroma_w as f32,
             chroma_h: chroma_h as f32,
+            transfer: Transfer::Bt1886,
+            rec2020: false,
         }
+    }
+
+    /// 伝達特性と原色を決める。既定は SDR の Rec.1886、Rec.709 の原色。
+    pub fn with_signal(mut self, transfer: Transfer, rec2020: bool) -> Self {
+        self.transfer = transfer;
+        self.rec2020 = rec2020;
+        self
+    }
+
+    /// フレームの宣言（伝達特性と原色）から [`Self::with_signal`] を決める。GPU のフレームも宣言を持つ。
+    pub fn with_frame_signal(self, frame: &ff::frame::Video) -> Self {
+        let transfer = Transfer::from_characteristic(frame.color_transfer_characteristic());
+        self.with_signal(transfer, is_rec2020(frame.color_primaries(), transfer))
     }
 
     /// 16 bit のテクスチャ（P010 は上位 10 bit に詰める）の値 → 符号語の倍率。
@@ -112,6 +120,10 @@ impl YuvParams {
             self.bu,
             self.chroma_w,
             self.chroma_h,
+            self.transfer.code(),
+            f32::from(u8::from(self.rec2020)),
+            0.0,
+            0.0,
             0.0,
         ];
         let mut out = [0u8; PARAMS_BYTES];
@@ -131,11 +143,16 @@ impl YuvParams {
             luma - self.gu * cb - self.gv * cr,
             luma + self.bu * cb,
         ];
-        rgb.map(|c| c.clamp(0.0, 1.0).powf(GAMMA))
+        let linear = rgb.map(|c| self.transfer.to_linear(c.clamp(0.0, 1.0)));
+        if self.rec2020 {
+            mul3(&REC2020_TO_REC709, linear)
+        } else {
+            linear
+        }
     }
 }
 
-/// WGSL の共通部。呼ぶ側が `var<uniform> params: Params` を宣言する。
+/// WGSL の共通部。呼ぶ側が `var<uniform> params: Params` を宣言し、`mm_types::transfer::TRANSFER_WGSL` を前に連結する。
 ///
 /// `chroma_taps` は画素 (x, y) の色差の補間に使う 4 点と重みを返す。色差は横が輝度の左端、
 /// 縦が 2 行の中間にあるので、色差プレーンの座標は (x / 2, (y - 0.5) / 2)。端はプレーンの画のある範囲に留める。
@@ -152,7 +169,11 @@ struct Params {
     bu: f32,
     chroma_w: f32,
     chroma_h: f32,
-    pad: f32,
+    transfer: f32,
+    rec2020: f32,
+    pad0: f32,
+    pad1: f32,
+    pad2: f32,
 }
 
 struct Taps { x0: u32, x1: u32, y0: u32, y1: u32, fx: f32, fy: f32 }
@@ -193,7 +214,16 @@ fn yuv_to_linear(y: f32, u: f32, v: f32) -> vec4<f32> {
         vec3<f32>(0.0),
         vec3<f32>(1.0),
     );
-    return vec4<f32>(pow(rgb, vec3<f32>(2.4)), 1.0);
+    var lin = mm_bt1886_to_linear3(rgb);
+    if params.transfer == 1.0 {
+        lin = mm_pq_to_linear3(rgb);
+    } else if params.transfer == 2.0 {
+        lin = mm_hlg_to_linear3(rgb);
+    }
+    if params.rec2020 == 1.0 {
+        lin = mm_rec2020_to_rec709(lin);
+    }
+    return vec4<f32>(lin, 1.0);
 }
 ";
 
@@ -251,6 +281,30 @@ mod tests {
             (rgb[0] - 1.0).abs() < 1e-3 && rgb[1] < 1e-3 && rgb[2] < 1e-3,
             "{rgb:?}"
         );
+    }
+
+    #[test]
+    fn pq_の十ビットは_1_を超える線形の光になる() {
+        let p = YuvParams::new(
+            Matrix::Bt2020,
+            false,
+            10,
+            YuvParams::texture_code_scale(10),
+            SIZE,
+        )
+        .with_signal(Transfer::Pq, true);
+        // tv レンジの 10 bit: 符号化値 e は 64 + 876 * e。PQ の 0.5807 が 203 cd/m²（線形の 1.0）
+        let code = |e: f32| 64.0 + 876.0 * e;
+        let white = p.to_linear(code(0.580_7), 512.0, 512.0);
+        assert!(white.iter().all(|c| (c - 1.0).abs() < 5e-3), "{white:?}");
+        let peak = p.to_linear(code(0.751_8), 512.0, 512.0);
+        assert!(
+            peak.iter().all(|c| (c - 1000.0 / 203.0).abs() < 0.05),
+            "1000 cd/m²: {peak:?}"
+        );
+        let bytes = p.to_bytes();
+        let field = |i: usize| f32::from_le_bytes(bytes[i * 4..i * 4 + 4].try_into().unwrap());
+        assert_eq!((field(11), field(12)), (1.0, 1.0), "伝達特性と原色の番号");
     }
 
     #[test]

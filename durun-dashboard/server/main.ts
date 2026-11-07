@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
-import { type AssistantMessage, type BranchView, PR_REVIEW_EVENTS, type PrReviewEvent, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, GITHUB_LIST_MAX, type Glossary, type GithubSearch, type HarnessToggle, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PR_URL, type ImproveSettings, JIRA_LIST_MAX, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type SlackConversation, type TextSaveResult } from '../shared/types.ts';
+import { AGENT_PRIORITIES, type AgentPriority, type AssistantMessage, type BranchView, PR_REVIEW_EVENTS, type PrReviewEvent, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, GITHUB_LIST_MAX, type Glossary, type GithubSearch, type HarnessToggle, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PERMISSION_MODES, PR_URL, JIRA_LIST_MAX, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type SlackConversation, type TextSaveResult } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
@@ -25,8 +25,10 @@ import { recordError, recordSlow } from './errors.ts';
 import { faviconOf } from './favicon.ts';
 import { UpstreamError } from './haiku.ts';
 import { handleHook, holdPermission, type HookInput } from './hooks.ts';
-import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
+import { saveFeedback } from './improve.ts';
+import { applyAgentPriority, setAgentPriority } from './agentPriority.ts';
 import { learnNow, noteActivity, updateLearn } from './reflect.ts';
+import { consultWorkflow, runWorkflow, setWorkflowEnabled, startWorkflows } from './workflow.ts';
 import { harness, setHarnessToggle } from './harness.ts';
 import { fileCandidates, listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
@@ -97,6 +99,7 @@ const STATIC: Record<string, string> = {
   '/recycle-bin.svg': 'public/recycle-bin.svg',
   '/recycle-bin-full.svg': 'public/recycle-bin-full.svg',
   '/learn.svg': 'public/learn.svg',
+  '/workflow.svg': 'public/workflow.svg',
   '/vendor/marked.js': 'node_modules/marked/lib/marked.umd.js',
   '/vendor/mermaid.js': 'node_modules/mermaid/dist/mermaid.min.js',
   '/vendor/xterm.css': 'node_modules/@xterm/xterm/css/xterm.css',
@@ -1111,40 +1114,30 @@ const flag = (body: unknown, key: string): boolean | undefined => {
 // 選び直さなかったほうは、画面が今のモデルの正式な名前を送る。
 const MODEL_ID = /^claude-[a-z0-9-]+$/;
 
-/** 依頼と、起動に渡すモデルと effort。 */
-const launchOf = (body: unknown): { text: string; model: string; effort?: string } => {
+/** 依頼と、起動に渡すモデルと effort と権限モード。 */
+const launchOf = (body: unknown): { text: string; model: string; effort?: string; permissionMode?: string } => {
   const text = field<string>(body, 'text', 'string');
   if (!text.trim()) throw new HttpError(400, 'text is required');
   const model = field<string>(body, 'model', 'string');
   if (model && !(MODELS as readonly string[]).includes(model) && !MODEL_ID.test(model)) throw new HttpError(400, 'model must be alias or model id');
-  return { text, model, effort: oneOf(body, 'effort', EFFORT_LEVELS) };
+  return { text, model, effort: oneOf(body, 'effort', EFFORT_LEVELS), permissionMode: oneOf(body, 'permissionMode', PERMISSION_MODES) };
 };
 
-/** モデルと effort を変えて依頼を渡す。 */
+/** モデルと effort と権限モードを変えて依頼を渡す。 */
 const switchModel = async (id: string, body: unknown): Promise<{ sessionId: string }> => {
-  const { text, model, effort } = launchOf(body);
-  return { sessionId: await switchSession(sessionMeta(id).id, text, model, effort) };
+  const { text, model, effort, permissionMode } = launchOf(body);
+  return { sessionId: await switchSession(sessionMeta(id).id, text, model, effort, permissionMode) };
 };
 
 /** 会話を引き継いだ別のセッションを起動して依頼を渡し、元のセッションは残す。起動できないのは claude の失敗なので 502 にする。 */
 const fork = async (id: string, body: unknown): Promise<{ sessionId: string }> => {
-  const { text, model, effort } = launchOf(body);
+  const { text, model, effort, permissionMode } = launchOf(body);
   const sessionId = sessionMeta(id).id;
   try {
-    return { sessionId: await forkSession(sessionId, text, model, effort) };
+    return { sessionId: await forkSession(sessionId, text, model, effort, permissionMode) };
   } catch (e) {
     throw new HttpError(502, (e as Error).message);
   }
-};
-
-const improveSettings = (body: unknown): Partial<ImproveSettings> => {
-  const patch = {
-    enabled: flag(body, 'enabled'),
-    model: oneOf(body, 'model', MODELS),
-    effort: oneOf(body, 'effort', EFFORT_LEVELS),
-  };
-  // 送られなかった項目は、今の設定を undefined で消さないよう外す。
-  return Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
 };
 
 const proofSentences = (text: string): ReturnType<typeof parseProof> => {
@@ -1322,11 +1315,14 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/translate\/install$/, () => installTranslate(), 10 * 60_000],
   [/^\/api\/translate$/, (_, b) => translate(field<string>(b, 'text', 'string'), field<string>(b, 'target', 'string')), READER_MS],
   [/^\/api\/assistant$/, async (_, b) => askDolphin(await logsReady.then(buildSnapshot), toMessages(b), await focusOf(b)), HAIKU_MS],
-  [/^\/api\/improve$/, (_, b) => updateImprove(improveSettings(b))],
   [/^\/api\/learn$/, (_, b) => updateLearn({ scheduled: field<boolean>(b, 'scheduled', 'boolean') })],
   [/^\/api\/learn\/run$/, () => learnNow()],
+  [/^\/api\/workflows\/consult$/, (_, b) => consultWorkflow(optionalString(b, 'id'))],
+  [/^\/api\/workflows\/([\w-]+)\/run$/, ([, id = '']) => runWorkflow(id)],
+  [/^\/api\/workflows\/([\w-]+)\/enabled$/, ([, id = ''], b) => setWorkflowEnabled(id, field<boolean>(b, 'enabled', 'boolean'))],
   [/^\/api\/learn\/toggle$/, (_, b) => setHarnessToggle(CLAUDE_DIR, harnessToggleOf(b), field<boolean>(b, 'on', 'boolean'))],
   [/^\/api\/auto-continue$/, (_, b) => setAutoContinue(field<boolean>(b, 'enabled', 'boolean'))],
+  [/^\/api\/agent-priority$/, (_, b) => setAgentPriority((oneOf(b, 'priority', AGENT_PRIORITIES) || 'normal') as AgentPriority)],
   [/^\/api\/auth\/([^/]+)$/, ([, id = ''], b) => answerAuth(id, field<boolean>(b, 'ok', 'boolean'))],
   // ブラウザでのログインは数分かかるので、終わるのを待たずに返す。進み具合と失敗は、スナップショットで知らせる。
   [/^\/api\/claude\/login$/, () => void loginClaude().catch(() => {})],
@@ -1556,10 +1552,13 @@ onChange(flushQueue);
 onChange(flushArchives);
 // 使用率の推移は statusline が変わるたびに記録する。起動時にも記録し、次の更新まで推移が空にならないようにする。
 recordRateLimits();
+// 新しく動き出したセッションにも、人間が選んだ優先度を掛ける。起動したときにも、前から動いているセッションへ掛ける。
+applyAgentPriority();
 watch(SESSIONS_DIR, false, () => {
   scheduleBroadcast();
   flushQueue();
   flushArchives();
+  applyAgentPriority();
 });
 watch(STATUSLINE_DIR, false, () => {
   recordRateLimits();
@@ -1577,7 +1576,7 @@ watch(path.join(ROOT, 'public'), false, scheduleBroadcast);
 // 起動したときにも読む。次に書かれるまで待つと、前から残っていた状態まで、そのとき書かれたものとみなしてしまう。
 mergeClaudePrCache(path.join(CLAUDE_DIR, PR_CACHE_FILE));
 watch(CLAUDE_DIR, false, (file) => file === PR_CACHE_FILE && mergeClaudePrCache(path.join(CLAUDE_DIR, PR_CACHE_FILE)));
-ensureImprover();
+startWorkflows();
 // 作業の無いまま再起動しても、前の作業の振り返りを逃さない。
 noteActivity();
 redeliverInterrupted();

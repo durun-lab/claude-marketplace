@@ -1,4 +1,4 @@
-//! `mm-host-ofx` を子プロセスで起こし、試験のプラグイン（`build.rs` が公式のヘッダーで作る）で
+//! `mm-host-ofx` を子プロセスで起こし、テストのプラグイン（`build.rs` が公式のヘッダーで作る）で
 //! describe、パラメータ、1 フレームの render、`mm-host-api` の契約、クラッシュの隔離を確かめる。
 //! - `Invert`: OpenFX の公式のサンプル（`Examples/Invert`、BSD-3-Clause）。8 ビットだけに対応する。
 //! - `MmTestGain`: このクレートの最小のプラグイン（`tests/plugins/gain.c`）。float と 4 つの型のパラメータ。
@@ -52,6 +52,7 @@ fn render_params(source: Option<&RgbaImage>, values: &[(&str, ParamValue)]) -> s
     let p = RenderParams {
         source: source.map(SharedFrame::from_image),
         values: params,
+        shared: None,
     };
     serde_json::to_value(p).unwrap()
 }
@@ -129,6 +130,7 @@ fn パラメータの一覧を型と既定値と範囲つきで取れる() {
             ("channel", ParamKind::Choice),
             ("delay_ms", ParamKind::Integer),
             ("crash", ParamKind::Boolean),
+            ("nonfinite", ParamKind::Boolean),
         ]
     );
     let gain = &p.params[0];
@@ -209,6 +211,88 @@ fn パラメータの値を渡して_float_の_1_フレームを描ける() {
     assert_eq!(empty, RgbaImage::transparent(size), "入力が無ければ透明");
 }
 
+#[cfg(windows)]
+#[test]
+fn 共有メモリで入力と結果を渡せる() {
+    use mm_host_ofx::{frame_bytes, SharedPixels};
+    use mm_host_pipe::shm::{self, Mapping};
+
+    let mut host = start("MmTestGain");
+    let src = source();
+    let one = frame_bytes(src.size());
+    let name = shm::unique_link("mm-ofx-test");
+    let mut mapping = Mapping::create(&name, 2 * one).expect("作れる");
+    shm::write_f32(mapping.bytes_mut(), 0, src.data()).unwrap();
+    let mut params = Params::new();
+    params.set("gain", ParamValue::Number(0.5));
+    let p = RenderParams {
+        source: None,
+        values: params,
+        shared: Some(SharedPixels {
+            name,
+            has_source: true,
+        }),
+    };
+    let res = render(host.as_mut(), src.size(), serde_json::to_value(p).unwrap()).unwrap();
+    assert_eq!(
+        res,
+        HostResponse::Frame(SharedFrame::Cpu {
+            size: src.size(),
+            data: Vec::new()
+        }),
+        "結果は共有メモリに書き、応答の data は空"
+    );
+    let data = shm::read_f32(mapping.bytes(), one, one / 4).unwrap();
+    let out = RgbaImage::from_raw(src.size(), data).unwrap();
+    assert_eq!(out.pixel(1, 1), Rgba::new(0.125, 0.125, 0.125, 1.0));
+}
+
+#[test]
+fn プラグインが書いた有限でない値は_0_にして返す() {
+    let mut host = start("MmTestGain");
+    let src = source();
+    let values = [("nonfinite", ParamValue::Bool(true))];
+    let out = image_of(
+        render(
+            host.as_mut(),
+            src.size(),
+            render_params(Some(&src), &values),
+        )
+        .expect("応答を読める"),
+    );
+    assert_eq!(out.pixel(1, 1), Rgba::new(0.0, 0.0, 0.0, 1.0));
+    assert!(host.is_alive());
+}
+
+#[test]
+fn 描けない大きさは誤りを返し_ホストは動き続ける() {
+    let mut host = start("MmTestGain");
+    for size in [Size::new(0, 0), Size::new(0, 3), Size::new(100_000, 1)] {
+        let res = render(host.as_mut(), size, render_params(None, &[]));
+        assert!(
+            matches!(res, Ok(HostResponse::Error { .. })),
+            "{size:?}: {res:?}"
+        );
+    }
+    let size = Size::new(2, 2);
+    let out = image_of(render(host.as_mut(), size, render_params(None, &[])).unwrap());
+    assert_eq!(out.size(), size);
+}
+
+#[test]
+fn 正でないフレームレートの_prepare_は誤り() {
+    let mut host = OfxLauncher.spawn(&spec()).expect("起動");
+    for frame_rate in [0.0, -30.0] {
+        let mut params = prepare_params("MmTestGain");
+        params["frame_rate"] = serde_json::json!(frame_rate);
+        let res = host.request(&HostRequest::Prepare { params }, TIMEOUT);
+        assert!(
+            matches!(res, Ok(HostResponse::Error { .. })),
+            "{frame_rate}: {res:?}"
+        );
+    }
+}
+
 #[test]
 fn ホストの契約を満たす() {
     let fx = HostFixture {
@@ -220,7 +304,7 @@ fn ホストの契約を満たす() {
 }
 
 #[test]
-fn プラグインのクラッシュはホストだけが落ち_再起動で戻る() {
+fn プラグインのクラッシュはホストだけを止め_再起動で戻る() {
     let mut host = start("MmTestGain");
     let size = Size::new(2, 2);
     let crashed = render(

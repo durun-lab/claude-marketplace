@@ -67,7 +67,7 @@
       const nm = document.createElement('span');
       nm.className = 'nm';
       nm.textContent = name;
-      nm.style.color = colors.sapphire || '#2459E0';
+      nm.style.color = colors.sapphire;
       nm.style.fontFamily = `"${fonts.title || 'Dela Gothic One'}", "Yu Gothic UI", sans-serif`;
       el.classList.add('named');
       if (tail === 'side') el.classList.add('stack');
@@ -75,13 +75,23 @@
     } else {
       el.textContent = text;
     }
-    el.style.color = colors.ink || '#0B1230';
+    el.style.color = colors.ink;
     el.style.fontFamily = `"${fonts.body || 'M PLUS Rounded 1c'}", "Yu Gothic UI", "Meiryo", sans-serif`;
+  };
+
+  // テーマの色を CSS 変数にして、var(--名前) の参照を返す。色は theme.json だけが持ち、ページは名前で引く。
+  const themeColors = (theme) => {
+    const out = {};
+    for (const [k, v] of Object.entries(theme.colors || {})) {
+      document.documentElement.style.setProperty(`--${k}`, v);
+      out[k] = `var(--${k})`;
+    }
+    return out;
   };
 
   window.mmSetTime = (t, data) => {
     const theme = data.theme || {};
-    const colors = theme.colors || {};
+    const colors = themeColors(theme);
     const fonts = theme.fonts || {};
     const tail = ['up', 'side'].includes(data.tail) ? data.tail : 'down';
     const text = document.getElementById('text');
@@ -101,12 +111,12 @@
     const d = plate(box.x0, box.y0, w, h, { edge: box.edge, tip: [tx, ty], base: box.base });
     const shadow = document.getElementById('shadow');
     shadow.setAttribute('d', d);
-    shadow.setAttribute('fill', colors.ink || '#0B1230');
+    shadow.setAttribute('fill', colors.ink);
     shadow.setAttribute('transform', `translate(${SHADOW} ${SHADOW})`);
     const body = document.getElementById('plate');
     body.setAttribute('d', d);
-    body.setAttribute('fill', colors.paper || '#F5F8FF');
-    body.setAttribute('stroke', colors.ink || '#0B1230');
+    body.setAttribute('fill', colors.paper);
+    body.setAttribute('stroke', colors.ink);
     body.setAttribute('stroke-width', BORDER);
     body.setAttribute('stroke-linejoin', 'round');
   };

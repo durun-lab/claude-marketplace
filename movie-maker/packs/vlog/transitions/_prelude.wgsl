@@ -6,7 +6,7 @@
 //   fn matte(uv, p) -> f32           次の場面（B）を見せる所。1 = B、0 = 前の場面（A）
 //   fn overlay(uv, p) -> vec4<f32>   A と B の上に重ねる絵。乗算済みアルファ
 //   fn motion(p) -> Motion2          A と B の映像そのものの動き（ずらし、拡大、回転、ぼかし、不透明度）
-// 合成は元と同じく sRGB の値で行い、最後に線形の光へ戻す（重ねる絵の色と光のにじみが元と同じに見える）。
+// 合成は元と同じく 8 bit の符号化値の空間で行い、最後に線形の光へ戻す（重ねる絵の色と光のにじみが元と同じに見える）。
 
 const REF: vec2<f32> = vec2<f32>(1920.0, 1080.0);
 const PI: f32 = 3.14159265359;
@@ -22,7 +22,7 @@ const BLUR_RADIUS: f32 = 0.6;
 // 黄金角。ぼかしのタップを円盤に散らす。
 const GOLDEN_ANGLE: f32 = 2.39996323;
 
-// 色（sRGB の 0..1）。元の makeCtx の既定（A はミクの色、B は桃色、Ink は白、Shade は濃紺、Star は星の色）。
+// 色（符号化値の 0..1）。元の makeCtx の既定（A はミクの色、B は桃色、Ink は白、Shade は濃紺、Star は星の色）。
 const uA: vec3<f32> = vec3<f32>(0.22353, 0.77255, 0.73333);
 const uB: vec3<f32> = vec3<f32>(1.0, 0.36078, 0.60392);
 const uInk: vec3<f32> = vec3<f32>(1.0, 1.0, 1.0);
@@ -137,13 +137,13 @@ fn inside(uv: vec2<f32>) -> f32 {
     return step(0.0, uv.x) * step(uv.x, 1.0) * step(0.0, uv.y) * step(uv.y, 1.0);
 }
 
-fn to_srgb(c: vec3<f32>) -> vec3<f32> {
-    let x = max(c, vec3<f32>(0.0));
-    return select(1.055 * pow(x, vec3<f32>(1.0 / 2.4)) - 0.055, x * 12.92, x <= vec3<f32>(0.0031308));
+// 符号化値と線形の光の間は、素材と書き出しと同じ Rec.1886 の式（べき 2.4、mm_types::transfer）にする。
+// 元の 16 進の色（uA など）が書き出しで同じ値に戻る。
+fn to_code(c: vec3<f32>) -> vec3<f32> {
+    return pow(max(c, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.4));
 }
 fn to_linear(c: vec3<f32>) -> vec3<f32> {
-    let x = max(c, vec3<f32>(0.0));
-    return select(pow((x + 0.055) / 1.055, vec3<f32>(2.4)), x / 12.92, x <= vec3<f32>(0.04045));
+    return pow(max(c, vec3<f32>(0.0)), vec3<f32>(2.4));
 }
 
 fn scene_tap(which_b: bool, uv: vec2<f32>) -> vec4<f32> {
@@ -151,7 +151,7 @@ fn scene_tap(which_b: bool, uv: vec2<f32>) -> vec4<f32> {
     return mm_from(uv);
 }
 
-// 場面（A か B）を uv で引き、sRGB の乗算済みにする。ぼかしは円盤に散らしたタップの平均。
+// 場面（A か B）を uv で引き、符号化値の乗算済みにする。ぼかしは円盤に散らしたタップの平均。
 fn scene(which_b: bool, uv: vec2<f32>, blur: f32) -> vec4<f32> {
     var c = vec4<f32>(0.0);
     if (blur * BLUR_RADIUS < 1.0) {
@@ -166,7 +166,7 @@ fn scene(which_b: bool, uv: vec2<f32>, blur: f32) -> vec4<f32> {
         }
         c /= f32(BLUR_TAPS);
     }
-    return vec4<f32>(to_srgb(c.rgb), c.a);
+    return vec4<f32>(to_code(c.rgb), c.a);
 }
 
 fn halton(i0: i32, b: i32) -> f32 {

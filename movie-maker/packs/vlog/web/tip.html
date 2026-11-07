@@ -61,22 +61,32 @@
     const [h1, ...rest] = String(data.head || '').split('｜');
     const head = el('p', 'h', '');
     const big = el('span', 'h1', h1);
-    big.style.color = colors.sapphire || '#2459E0';
+    big.style.color = colors.sapphire;
     head.append(big);
     if (rest.length) {
       const sub = el('span', 'h2', rest.join('｜'));
-      sub.style.borderColor = `color-mix(in srgb, ${colors.sapphire || '#2459E0'} 22%, ${colors.paper || '#F5F8FF'})`;
+      sub.style.borderColor = `color-mix(in srgb, ${colors.sapphire} 22%, ${colors.paper})`;
       head.append(sub);
     }
     box.replaceChildren(head);
     if (data.body) box.append(el('p', 'b', String(data.body)));
   };
 
+  // テーマの色を CSS 変数にして、var(--名前) の参照を返す。色は theme.json だけが持ち、ページは名前で引く。
+  const themeColors = (theme) => {
+    const out = {};
+    for (const [k, v] of Object.entries(theme.colors || {})) {
+      document.documentElement.style.setProperty(`--${k}`, v);
+      out[k] = `var(--${k})`;
+    }
+    return out;
+  };
+
   window.mmSetTime = (t, data) => {
     const theme = data.theme || {};
-    const colors = theme.colors || {};
+    const colors = themeColors(theme);
     const fonts = theme.fonts || {};
-    const ink = colors.ink || '#0B1230';
+    const ink = colors.ink;
     const box = document.getElementById('box');
     fill(box, data, colors);
     box.style.color = ink;
@@ -105,14 +115,14 @@
     shadow.setAttribute('transform', `translate(0 ${SHADOW})`);
     const body = document.getElementById('plate');
     body.setAttribute('d', d);
-    body.setAttribute('fill', colors.paper || '#F5F8FF');
+    body.setAttribute('fill', colors.paper);
     body.setAttribute('stroke', ink);
     body.setAttribute('stroke-width', BORDER);
     body.setAttribute('stroke-linejoin', 'round');
     const tag = document.getElementById('tag');
     tag.textContent = tagText;
     tag.style.display = tagText ? 'block' : 'none';
-    tag.style.background = colors.yellow || '#FFD43B';
+    tag.style.background = colors.yellow;
     tag.style.borderColor = ink;
     tag.style.color = ink;
     tag.style.fontFamily = `"${fonts.sticker || 'Mochiy Pop One'}", "Yu Gothic UI", sans-serif`;

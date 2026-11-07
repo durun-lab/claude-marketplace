@@ -8,7 +8,7 @@ use mm_ops::{Editor, OpContext, Transaction};
 use mm_pack::{check, EstimateShaper, Pack};
 use mm_types::{MmError, ParamValue, RationalTime};
 
-fn vlog_dir() -> PathBuf {
+pub(crate) fn vlog_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/vlog")
 }
 
@@ -180,7 +180,7 @@ fn 知らないマクロと足りない引数を拒む() {
 }
 
 /// `packs/vlog` を一時フォルダーにコピーし、`edit` で 1 つのファイルを書き換えて検査する。
-fn check_broken(file: &str, edit: impl FnOnce(&mut serde_json::Value)) -> Vec<String> {
+pub(crate) fn check_broken(file: &str, edit: impl FnOnce(&mut serde_json::Value)) -> Vec<String> {
     let dir = tempfile::tempdir().unwrap();
     copy_dir(&vlog_dir(), dir.path());
     let path = dir.path().join(file);
@@ -191,7 +191,7 @@ fn check_broken(file: &str, edit: impl FnOnce(&mut serde_json::Value)) -> Vec<St
     check(&Pack::load(dir.path()).expect("形は読める")).errors
 }
 
-fn copy_dir(from: &Path, to: &Path) {
+pub(crate) fn copy_dir(from: &Path, to: &Path) {
     for entry in std::fs::read_dir(from).unwrap() {
         let entry = entry.unwrap();
         let target = to.join(entry.file_name());
@@ -204,7 +204,7 @@ fn copy_dir(from: &Path, to: &Path) {
     }
 }
 
-fn mentions(errors: &[String], needle: &str) -> bool {
+pub(crate) fn mentions(errors: &[String], needle: &str) -> bool {
     errors.iter().any(|e| e.contains(needle))
 }
 

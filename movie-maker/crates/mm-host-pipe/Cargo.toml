@@ -1,0 +1,35 @@
+[package]
+name = "mm-host-pipe"
+description = "別プロセスのホストを子プロセスで起こし、標準入出力で mm-host-api のプロトコルを話すアプリ側の接続と、音のプラグインのホストの共通部分（ホストの実装の共通実装）"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-audio-api = { workspace = true }
+mm-host-api = { workspace = true }
+mm-node-api = { workspace = true }
+mm-trace = { workspace = true }
+mm-types = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_Console",
+  "Win32_System_Diagnostics_Debug",
+  "Win32_System_JobObjects",
+  "Win32_System_Memory",
+  "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+# クラッシュのカウンタを MetricsLayer で受けて確かめる。
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+[lints]
+workspace = true

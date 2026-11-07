@@ -1,7 +1,7 @@
-//! `setTransition`。カットの頭のトランジションを置く・種類と長さを差し替える・外す。取り消し 1 回で元に戻る。
+//! `setTransition`。カットの先頭のトランジションを置く・種類と長さを差し替える・外す。取り消し 1 回で元に戻る。
 
-use mm_doc::{Node, Transition};
-use mm_ops::{Editor, OpContext, SetTransition, Transaction};
+use mm_doc::{Node, Transition, NESTED_KIND, NESTED_PARAM};
+use mm_ops::{Editor, Op, OpContext, SetTransition, Transaction};
 use mm_types::{Id, ParamValue};
 
 use crate::common::{canon, project, quarters};
@@ -61,8 +61,28 @@ fn 長さが負なら弾いて変えない() {
         set("k2", Some(transition("transition.dissolve", -1))),
         &OpContext::human(),
     );
-    assert!(err.is_err(), "負の長さは弾く");
+    assert!(err.is_err(), "負の長さは適用後の validate が弾く");
     assert_eq!(canon(ed.project()), canon(&before));
+}
+
+#[test]
+fn 触る所に入れ子の先の先まで入る() {
+    let mut p = project();
+    // c1 の l1 が c2 を入れ子にするので、トランジションが c1 を入れ子にすると c2 まで読む。
+    let nested = |target: &str| {
+        Node::new(NESTED_KIND, 1).with_param(NESTED_PARAM, ParamValue::Text(target.into()))
+    };
+    p.compositions[0].layers[0].source = nested("c2");
+    let op = SetTransition {
+        cut: Id::new("k2"),
+        transition: Some(Transition {
+            node: nested("c1"),
+            duration: quarters(2),
+        }),
+    };
+    let t = Op::from(op).touches(&p).unwrap();
+    assert!(t.contains("c1"), "直接の参照先");
+    assert!(t.contains("c2"), "入れ子の先");
 }
 
 #[test]

@@ -9,11 +9,12 @@ use std::sync::Arc;
 
 use mm_doc::{Composition, Layer, Project, SEQUENCE_KIND};
 use mm_eval::{evaluate_opacity, node_params_at, source_time};
-use mm_node_api::{FrameCx, NoInputs, NodeKind, NodeRegistry, Quality};
+use mm_node_api::{FrameCx, NodeKind, NodeRegistry, Quality};
 use mm_types::{AssetId, CompositionId, Id, MmError, Params, RationalTime, Rect, Result, Size};
 
 use crate::clip::Clip;
 use crate::compose::DrawItem;
+use crate::effects::FrameList;
 use crate::frame_cache::{self, CachedImage, KeyEnv, Keyed, NestedKeyInput};
 use crate::kind_cache::{render_cached, Placement};
 
@@ -193,6 +194,12 @@ impl WgpuRenderer {
             return Ok(None);
         };
         let opacity = evaluate_opacity(layer, cx.t) as f32;
+        let (clip, undrawn) = Clip::of(layer, cx.t, image.place);
+        self.errors.extend(
+            undrawn
+                .into_iter()
+                .map(|e| format!("layer {}: {e}", layer.id)),
+        );
         let out = (cx.size.width as f32, cx.size.height as f32);
         Ok(Some(Prepared {
             texture: image.texture,
@@ -205,7 +212,7 @@ impl WgpuRenderer {
             ),
             opacity,
             taps: minify_taps(&image, &transform, cx.comp_to_out()),
-            clip: Clip::of(layer, cx.t, image.place),
+            clip,
         }))
     }
 
@@ -218,6 +225,7 @@ impl WgpuRenderer {
         params: &Params,
         transform: &LayerTransform,
     ) -> Result<Option<LayerImage>> {
+        let color = self.config_fingerprint();
         let Self {
             sources,
             decoders,
@@ -226,20 +234,23 @@ impl WgpuRenderer {
             cache,
             ..
         } = self;
-        let color = services.color.config_fingerprint();
         let at = source_time(layer, cx.t)?;
-        let opened = sources.footage_with_backend(
-            decoders.as_ref(),
-            gpu.context().as_ref(),
-            cx.project,
-            params,
-            at,
-        )?;
+        let opened = if kind.decodes_asset() {
+            sources.footage_with_backend(
+                decoders.as_ref(),
+                gpu.context().as_ref(),
+                cx.project,
+                params,
+                at,
+            )?
+        } else {
+            None
+        };
         let (footage, backend) = match opened {
             Some((source, backend)) => (Some(source), backend),
             None => (None, decoders.id()),
         };
-        let mut inputs = NoInputs;
+        let mut inputs = FrameList::assets(cx.project);
         let mut frame_cx = FrameCx {
             time: cx.t,
             params,
@@ -348,7 +359,7 @@ impl WgpuRenderer {
         if !self.cache.enabled() {
             return None;
         }
-        let color = self.services.color.config_fingerprint();
+        let color = self.config_fingerprint();
         let factory = self.decoders.id();
         let decoder = |id: &AssetId| self.sources.backend(id).unwrap_or(factory).to_owned();
         let env = KeyEnv {

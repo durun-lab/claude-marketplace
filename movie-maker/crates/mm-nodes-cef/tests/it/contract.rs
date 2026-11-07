@@ -1,10 +1,10 @@
-//! CEF の要らない検査。モックの矩形と、モックのホスト（`SampleLauncher`、CPU の画像で返す）の経路で、
+//! CEF の要らないテスト。モックの矩形と、モックのホスト（`SampleLauncher`、CPU の画像で返す）の経路で、
 //! 契約、キャッシュ、静止のページの扱いを確かめる。
 
 use std::sync::Arc;
 
 use mm_node_api::{NoInputs, NodeKind};
-use mm_nodes_cef::{Stats, WebCefKind, DATA_PARAM, HTML_PARAM, STATIC_PARAM};
+use mm_nodes_cef::{Stats, WebCefKind, DATA_PARAM, HTML_PARAM, KIND_VERSION, STATIC_PARAM};
 use mm_testkit::host::SampleLauncher;
 use mm_testkit::node::{contract, Harness, NodeFixture};
 use mm_types::{ParamValue, Params, RationalTime, RgbaImage, Size};
@@ -122,4 +122,33 @@ fn 前置きはページの_mm_set_time_を包む() {
     assert!(
         html.starts_with("<!doctype html><html><head><meta http-equiv=\"Content-Security-Policy\"")
     );
+}
+
+#[test]
+fn モックは決定的と申告せずレンダラーのキャッシュに残さない() {
+    assert!(!WebCefKind::mock().traits().deterministic);
+    assert!(sample_host().traits().deterministic);
+}
+
+#[test]
+fn バージョン_1_のパラメータはそのまま移行する() {
+    let kind = sample_host();
+    assert!(kind.version() > 1, "色の出力を変えたので上げてある");
+    let old = serde_json::to_value(params(serde_json::json!({"n": 1}), false)).unwrap();
+    let migrated = kind.migrate(old.clone(), 1).expect("1 から移行できる");
+    assert_eq!(serde_json::to_value(&migrated).unwrap(), old);
+    assert!(kind.migrate(old, KIND_VERSION + 1).is_err());
+}
+
+#[test]
+fn 面積_0_の画布はホストに頼まず透明を返す() {
+    let kind = sample_host();
+    let p = params(serde_json::json!({}), false).with_defaults(&kind.params());
+    let mut h = Harness::new(None);
+    let zero = Size::new(0, SIZE.height);
+    let (image, _) = h
+        .render(&kind, &p, RationalTime::ZERO, zero, 1.0, &mut NoInputs)
+        .expect("描ける");
+    assert_eq!(image.size(), zero);
+    assert_eq!(kind.stats(), Stats::default(), "ホストを起こさない");
 }

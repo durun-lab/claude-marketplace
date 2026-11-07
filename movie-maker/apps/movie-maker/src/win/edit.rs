@@ -14,6 +14,7 @@ use mm_ops::Op;
 use serde::Serialize;
 
 use crate::win::history::HistoryMirror;
+use crate::win::hotpatch;
 use crate::win::playback::Command;
 use crate::win::state::Shared;
 
@@ -79,15 +80,16 @@ pub fn submit(shared: &Shared, ops: Vec<Op>) -> Result<EditOutcome, String> {
 
 /// 操作を、計画に使ったバージョン `base` を元にしたトランザクションとして適用する。
 /// その後に別の発行元（CLI など）が同じ所を触っていたら、衝突として拒否する。JSON のプロジェクトでは `base` を見ない。
+/// WebView、キー、ドラッグの編集はみなここを通るので、`mm-ops` の操作のホットパッチの呼び出し箇所をここに置く。
 pub fn submit_based(
     shared: &Shared,
     ops: Vec<Op>,
     base: Option<i64>,
 ) -> Result<EditOutcome, String> {
-    match shared.core.get() {
+    hotpatch::call(|| match shared.core.get() {
         Some(core) => apply_saved(shared, core, ops, base),
         None => submit_within(shared, ops, APPLY_TIMEOUT),
-    }
+    })
 }
 
 /// 待ちの上限を引数で決められる `submit`。時間切れで返した `Err` は「適用していない」を意味する。

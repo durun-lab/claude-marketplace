@@ -1,12 +1,15 @@
 //! Program のビューアー。エンジンが返した線形の画像（`RgbaImage`）を Rgba16Float で持ち、
-//! 書き出しと同じ Rec.1886（べき 2.4）の表示の式で画面に出す。
+//! 書き出しと同じ Rec.1886 の表示の式（`mm_types::transfer`）で画面に出す。HDR の素材は SDR の表示へ
+//! BT.2390 の EETF（`mm_types::tonemap`）で収める。素材の上限が 1 のままなら恒等で、SDR の絵は変わらない。
 
 use half::f16;
+use mm_types::tonemap::TONEMAP_WGSL;
+use mm_types::transfer::TRANSFER_WGSL;
 use mm_types::RgbaImage;
 use mm_ui_layout::Rect;
 
 const SHADER: &str = r#"
-struct U { rect: vec4<f32>, res: vec2<f32>, pad: vec2<f32> };
+struct U { rect: vec4<f32>, res: vec2<f32>, source_peak: f32, pad: f32 };
 @group(0) @binding(0) var<uniform> u: U;
 @group(0) @binding(1) var tex: texture_2d<f32>;
 @group(0) @binding(2) var samp: sampler;
@@ -29,8 +32,8 @@ fn vs(@builtin(vertex_index) vi: u32) -> Out {
 @fragment
 fn fs(in: Out) -> @location(0) vec4<f32> {
   let c = textureSample(tex, samp, in.uv);
-  // 線形の光を Rec.1886 の表示の値にする。premultiplied のまま黒の上に置く。
-  let rgb = pow(max(c.rgb, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.4));
+  // 線形の光を SDR の表示に収めてから Rec.1886 の表示の値にする。premultiplied のまま黒の上に置く。
+  let rgb = mm_linear_to_bt1886_3(max(mm_tonemap_sdr(c.rgb, u.source_peak), vec3<f32>(0.0)));
   return vec4<f32>(rgb, 1.0);
 }
 "#;
@@ -53,9 +56,17 @@ pub struct ProgramViewer {
     sampler: wgpu::Sampler,
     uniform: wgpu::Buffer,
     gpu: Option<Gpu>,
+    /// トーンマップの素材の上限（線形）。1 以下はトーンマップしない。
+    source_peak: f32,
 }
 
 impl ProgramViewer {
+    /// HDR の素材の上限（線形、1.0 が SDR の白）を決める。HDR の素材を置いたプロジェクトでは
+    /// 素材の上限（PQ のマスタリングの 1000 cd/m² なら約 4.9）、SDR だけなら 1.0（トーンマップしない）。
+    pub fn set_source_peak(&mut self, peak: f32) {
+        self.source_peak = peak;
+    }
+
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
         let bgl = bind_group_layout(device);
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -75,6 +86,7 @@ impl ProgramViewer {
             sampler,
             uniform,
             gpu: None,
+            source_peak: 1.0,
         }
     }
 
@@ -194,7 +206,14 @@ impl ProgramViewer {
     /// 描く位置を転送する。パスの外（`submit` の前）で呼ぶ。
     pub fn prepare(&self, queue: &wgpu::Queue, rect: Rect, viewport: (f32, f32)) {
         let u = [
-            rect.x, rect.y, rect.w, rect.h, viewport.0, viewport.1, 0.0, 0.0,
+            rect.x,
+            rect.y,
+            rect.w,
+            rect.h,
+            viewport.0,
+            viewport.1,
+            self.source_peak,
+            0.0,
         ];
         queue.write_buffer(&self.uniform, 0, bytemuck::cast_slice(&u));
     }
@@ -233,7 +252,7 @@ fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("ui program"),
         entries: &[
-            entry(0, wgpu::ShaderStages::VERTEX, uniform_ty()),
+            entry(0, wgpu::ShaderStages::VERTEX_FRAGMENT, uniform_ty()),
             entry(
                 1,
                 wgpu::ShaderStages::FRAGMENT,
@@ -259,7 +278,7 @@ fn pipeline(
 ) -> wgpu::RenderPipeline {
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("ui program"),
-        source: wgpu::ShaderSource::Wgsl(SHADER.into()),
+        source: wgpu::ShaderSource::Wgsl(format!("{TRANSFER_WGSL}{TONEMAP_WGSL}{SHADER}").into()),
     });
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("ui program"),

@@ -5,10 +5,10 @@
 
 ## 分け方
 
-| 段 | 担当 | 中身 |
+| 工程 | 担当 | 中身 |
 |---|---|---|
-| 行組み | `mm-text-glyphon` の `CosmicShaper` | 折り返しの位置、行の位置、`bounds`。ルビの注記を外して親文字だけを組む。`LineBreak::Phrase` なら文節の中で折らない。縁とふりがなの分だけ `bounds` を広げる |
-| 描画 | `mm-text-cef` の `CefRasterizer` | 行ごとの文字を `ShapedText::text` から取り、`assets/text.html` に渡す。行の中は折り返さない |
+| 行組み | `mm-text-glyphon` の `CosmicShaper` | 折り返しの位置、行の位置、`bounds`。ルビの注記を外して親文字だけを組む。`LineBreak::Phrase` なら文節の中で折らない。縁の分だけ `bounds` を広げ、ルビを含む行の上にふりがなの場所を空ける |
+| 描画 | `mm-text-cef` の `CefRasterizer` | 行ごとの文字を `ShapedText::text` から取り、`assets/text.html` に渡す。行の中は折り返さない。ふりがなは親文字の上の中央に置き（行の端では内側へ寄せる）、行の幅を変えない |
 
 `text: cef` を選ぶと、`mm-runtime` がこの 2 つを組む。描画が行組みをやり直さないので、文字の幅と行の数がプレートの大きさ（パックの `text` 手順）と合う。
 
@@ -35,6 +35,6 @@ MM_CEF_HOST=$CARGO_TARGET_DIR/release/mm-host-cef.exe CEF_PATH=D:/dev/cef/156 MM
 
 ## 残したもの
 
-- `text` の種類（`mm-nodes-basic`）に縁取りと折り返しの位置のパラメータが無い。プロジェクトから使うには、`TextStyle::stroke` と `line_break` を作るパラメータを足す（レンダラーの担当）。
 - Chromium と cosmic-text の字の幅の差で、行の端の縁が 1〜2 px 欠けることがある（OS に無い書体を指したとき、両者が別の代わりの書体を選ぶ）。
 - 共有テクスチャの経路。字幕を毎フレーム描き替える用途で要るなら、`mm-nodes-cef` と同じ変換を使う。
+- 行の端の長いふりがなは `bounds` の内側へ寄せるので、親文字の真上からずれる。`bounds` より長いふりがなは右の端で切れる（シェーパーはふりがなの幅を `bounds` に入れない）。

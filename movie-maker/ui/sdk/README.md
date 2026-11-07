@@ -77,6 +77,10 @@ Story と Media は素材を選んだとき、DOM のイベント `mm:asset-sele
 
 編集は `apply_op` で送る。パネルが使う操作は `addTopic`、`removeTopic`、`cutWords`（Delete）、`deleteWords`（Hide と Restore）、`fixTranscript`、`rate`、`tag`、`insertTopics`。単語をクリックしたときの再生位置の移動は `transport`（`{ action: "seek", value: 秒 }`）で、`story_timeline_time` が返した位置に動かす。
 
+## コメントの型
+
+`src/comments.ts`（`@mm/sdk` から型だけ export）。`Comment`、`NewComment`、`CommentQuery`、`CommentEvent`。HTTP の `/comments`（デスクトップの待ち受けと、人の待ち受けの `/m/api/comments`）の本体と応答の形で、仕様は `docs/design/12-mobile.md`。
+
 ## Deliver のコマンド
 
 Deliver パネル（`ui/panels/deliver`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/deliver_ipc.rs`、型は `ui/panels/deliver/src/api.ts`（`createIpcDeliverApi` が呼ぶ）。時間は秒。失敗は `Err(String)`。
@@ -103,6 +107,23 @@ Deliver パネル（`ui/panels/deliver`）が使う Tauri のコマンド。ハ�
 `sequence` の上書きは依頼の全体に 1 つで、レンダーターゲットはコンポジションを指す形のまま（本編とショートはそれぞれのコンポジションを持つ）。縦長のプリセットは、縦長のコンポジションを既定にする。
 
 レンダーターゲットの欄は `RENDER_TARGET_SCHEMA`（`ops.json` の `$defs.RenderTarget` から作る生成物）から Deliver が入力欄を作る。`RenderTarget` に欄が増えたら、`ops.json` を作り直して `pnpm build` を回すだけで画面に出る。
+
+## Feedback のコマンド
+
+Feedback パネル（`ui/panels/feedback`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/win/feedback_ipc.rs`、型は `ui/panels/feedback/src/api.ts`（`createIpcFeedbackApi` が呼ぶ）。中身は `mm_improve::Improver` の公開 API で、JSON は camelCase。失敗は `Err(String)`（作業ツリーが見つからず自動の改善を使えないときも）。
+
+| コマンド | 引数 | 成功 |
+|---|---|---|
+| `feedback_status` | なし | `ImproveStatus`（`settings`、`running`、`run`、`pending`、`waiting`、`last`） |
+| `feedback_list` | `{ filter }`（`all` / `pending` / `done`。省くと `all`） | `FeedbackItem[]`（新しい順、返事つき） |
+| `feedback_get` | `{ id }` | `FeedbackItem` |
+| `feedback_submit` | `{ feedback: { text, targets, context } }` | `FeedbackItem`。アプリが `context.app`（開いているプロジェクト）を添え、回を起こす |
+| `feedback_settings` | `{ patch: { enabled?, model?, effort?, budgetUsd?, wallMinutes?, perfThreshold? } }` | `ImproveStatus` |
+| `feedback_stop` | なし | `ImproveStatus`。OFF にし、動いている回を木ごと止める。要望は未対応に残る |
+| `feedback_capture` | なし | ウィンドウのスクリーンショット（PNG）のパス。指した部品の `screenshot` に入れる |
+| `feedback_report_error` | `{ error: { message, stack?, where? } }` | `null`。画面の例外を自動の起票に回す（出どころはアプリが `webview` に決める） |
+
+Tauri のイベント `mm:feedback-changed`（中身なし）が、起票、設定の変更、回の始めと終わりに届く。
 
 ## Mixer のコマンド
 

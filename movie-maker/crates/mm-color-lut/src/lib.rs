@@ -1,10 +1,13 @@
 //! 色の変換のフォールバック。OCIO が無くても `mm-color-api` の契約を満たす。
 //!
 //! - [`LutColor`]: `lin_rec709`（作業色空間）、`srgb`、`bt709`（Rec.1886）、`bt709_oetf`、`bt601`（`bt709` と同じ）、
-//!   `bt2020`（Rec.1886 と Rec.2020 の原色）の相互変換。式を WGSL に書く。
+//!   `bt2020`（Rec.1886 と Rec.2020 の原色）、`bt2100_pq`、`bt2100_hlg`（HDR、Rec.2020 の原色）の相互変換。
+//!   式を WGSL に書くので、1 を超える線形の値も切らない。
 //! - [`Cdl`]: ASC CDL。WGSL を返す。
-//! - [`Cube3d`]: `.cube` の 3D LUT。`TransformProgram::Lut3d` と、それを引く WGSL（[`LUT3D_APPLY_WGSL`]）。
-//! - [`bake_lut3d`]: 任意の変換を 3D LUT にベイクする（OCIO のフォールバックのためのツール）。
+//! - [`Cube3d`]: `.cube` の 3D LUT。`TransformProgram::Lut3d` と、それを引く WGSL（[`LUT3D_APPLY_WGSL`]、
+//!   シェーパーつきは [`lut3d_apply_wgsl`]）。
+//! - [`bake_lut3d`]: 任意の変換を 3D LUT にベイクする（OCIO のフォールバックのためのツール）。線形の光を入力にする
+//!   変換は [`bake_lut3d_shaped`] で PQ のシェーパーを前置きし、1 を超える値を格子に収める。
 
 mod bake;
 mod cdl;
@@ -12,12 +15,11 @@ mod cube;
 #[cfg(feature = "gpu-eval")]
 pub mod gpu_eval;
 mod space;
-pub mod transfer;
 
-use mm_color_api::{ColorTransform, TransformProgram};
-use mm_types::{ColorSpace, Result};
+use mm_color_api::{ColorTransform, LutShaper, TransformProgram};
+use mm_types::{transfer, ColorSpace, Result};
 
-pub use bake::{bake_lut3d, LUT3D_APPLY_WGSL};
+pub use bake::{bake_lut3d, bake_lut3d_shaped, lut3d_apply_wgsl, sample_lut3d, LUT3D_APPLY_WGSL};
 pub use cdl::{Cdl, MIN_POWER};
 pub use cube::{sample_trilinear, Cube3d};
 
@@ -32,9 +34,14 @@ pub const LUT_ID: &str = "lut";
 pub struct LutColor;
 
 impl LutColor {
-    /// 変換を `size` 点の格子にベイクする。
+    /// 変換を `size` 点の格子にベイクする。`from` が線形なら PQ のシェーパーを前置きする。
     pub fn bake(&self, from: &ColorSpace, to: &ColorSpace, size: u32) -> Result<TransformProgram> {
-        bake_lut3d(size, |rgb| self.apply(from, to, rgb))
+        let shaper = if Space::of(from)?.is_linear() {
+            LutShaper::Pq
+        } else {
+            LutShaper::None
+        };
+        bake_lut3d_shaped(size, shaper, |rgb| self.apply(from, to, rgb))
     }
 }
 
@@ -102,6 +109,8 @@ impl ColorTransform for LutColor {
             ColorSpace::bt709_oetf(),
             ColorSpace::bt601(),
             ColorSpace::bt2020(),
+            ColorSpace::bt2100_pq(),
+            ColorSpace::bt2100_hlg(),
         ]
     }
 }

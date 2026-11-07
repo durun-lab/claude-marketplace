@@ -12,10 +12,7 @@ mod sequence;
 mod time;
 mod transform;
 
-pub use clip::{
-    evaluate_crop, evaluate_mask, fade_curve_gain, fade_gain, has_fades, EvaluatedCrop,
-    EvaluatedMask, FADE_DB_FLOOR,
-};
+pub use clip::{evaluate_crop, evaluate_mask, fade_gain, has_fades, EvaluatedCrop, EvaluatedMask};
 pub use param::{ease, eval_param, lerp_value, node_params_at, BezierCurve};
 pub use sequence::{cut_at, cut_source_time, place_cuts, reframe_at, sequence_duration, PlacedCut};
 pub use time::{

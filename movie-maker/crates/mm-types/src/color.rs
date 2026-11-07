@@ -30,6 +30,18 @@ impl Rgba {
         Self::new(r * a, g * a, b * a, a)
     }
 
+    /// straight の 8 bit の符号化値（`#RRGGBBAA` の 4 つの値）から線形の premultiplied にする。
+    /// 色は Rec.1886 の式で線形にする（[`crate::transfer`]）ので、書き出しで同じ符号化値に戻る。
+    pub fn from_code8([r, g, b, a]: [u8; 4]) -> Self {
+        use crate::transfer::code8_to_linear;
+        Self::from_straight(
+            code8_to_linear(r),
+            code8_to_linear(g),
+            code8_to_linear(b),
+            f32::from(a) / f32::from(u8::MAX),
+        )
+    }
+
     /// `src over self`（W3C Compositing and Blending の source-over）。
     pub fn over(self, src: Self) -> Self {
         let k = 1.0 - src.a;
@@ -86,6 +98,16 @@ impl ColorSpace {
     /// Rec.1886 の表示の式、Rec.2020 の原色（SDR）。
     pub fn bt2020() -> Self {
         Self("bt2020".into())
+    }
+
+    /// PQ（SMPTE ST 2084）、Rec.2020 の原色。HDR10 の素材と書き出し。線形の 1.0 は 203 cd/m²。
+    pub fn bt2100_pq() -> Self {
+        Self("bt2100_pq".into())
+    }
+
+    /// HLG（ARIB STD-B67）、Rec.2020 の原色。表示の上限 1000 cd/m² の OOTF を含む。
+    pub fn bt2100_hlg() -> Self {
+        Self("bt2100_hlg".into())
     }
 
     /// 画像の既定の入力。

@@ -10,11 +10,12 @@
     "build": "node server/build.ts",
     "start": "node server/start.ts",
     "check": "tsc --noEmit",
-    "test": "node --test test/*.test.ts",
+    "test": "node --import ./test/setup.ts --test test/*.test.ts",
     "install-statusline": "node server/setup.ts install",
     "uninstall-statusline": "node server/setup.ts uninstall"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.6.0",
     "@julusian/midi": "3.8.1",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/addon-unicode11": "^0.9.0",

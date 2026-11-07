@@ -138,7 +138,8 @@ impl D3d12vaDecoder {
             self.bits,
             YuvParams::texture_code_scale(self.bits),
             (hw.width(), hw.height()),
-        );
+        )
+        .with_frame_signal(&hw);
         planes.wait_decode_on(&self.queue)?;
         let target = self.pool.take();
         self.converter.submit(&planes, params, &target);
@@ -165,7 +166,11 @@ impl Drop for D3d12vaDecoder {
 
 impl Decoder for D3d12vaDecoder {
     fn backend_id(&self) -> Option<&'static str> {
-        Some("d3d12va")
+        Some(if self.seq.wide_signal() {
+            mm_decode_ffmpeg_core::wide_backend_id!("d3d12va")
+        } else {
+            "d3d12va"
+        })
     }
 
     fn info(&self) -> &MediaInfo {

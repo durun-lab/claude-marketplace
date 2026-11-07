@@ -132,7 +132,11 @@ const claudeOutput = (args: string[], cwd: string, env = process.env, started?: 
 const runClaude = (args: string[], cwd: string, env = process.env): Promise<void> => claudeOutput(args, cwd, env).then(() => undefined);
 
 /** 起動に渡すモデルと effort。空なら渡さず、Claude Code の設定に従わせる。 */
-const modelFlags = (model?: string, effort?: string): string[] => [...(model ? ['--model', model] : []), ...(effort ? ['--effort', effort] : [])];
+const modelFlags = (model?: string, effort?: string, permissionMode?: string): string[] => [
+  ...(model ? ['--model', model] : []),
+  ...(effort ? ['--effort', effort] : []),
+  ...(permissionMode ? ['--permission-mode', permissionMode] : []),
+];
 
 /**
  * 人間が画面から始めるセッション。依頼が - で始まる箇条書きでもオプションと解釈されないよう、-- の後に置く。
@@ -145,14 +149,22 @@ export const startSession = async (cwd: string, prompt: string, model?: string, 
   if (!theme) return;
   // 起動は済んでいるので、テーマを付けられなくても失敗にしない。
   try {
-    const sessionId = await backgroundedSession(output);
-    if (!sessionId) throw new Error('セッションの id を引けません');
-    ensureSession(sessionId, cwd).theme = theme;
+    (await trackedSession(output, cwd)).theme = theme;
     touch();
   } catch (e) {
     console.error(`起動したセッションにテーマを付けられません: ${(e as Error).message}`);
   }
 };
+
+const trackedSession = async (output: string, cwd: string): Promise<SessionMeta> => {
+  const sessionId = await backgroundedSession(output);
+  if (!sessionId) throw new Error('起動したセッションの id を引けません');
+  return ensureSession(sessionId, cwd);
+};
+
+/** バックグラウンドのセッションを起動し、ダッシュボードの記録を返す。記録に印を付けたいときに使う。id を引けなければ reject する。 */
+export const startTrackedSession = async (cwd: string, prompt: string, model?: string, effort?: string): Promise<SessionMeta> =>
+  trackedSession(await claudeOutput(['--bg', ...modelFlags(model, effort), '--', prompt], cwd), cwd);
 
 /**
  * claude stop は止める指示を出すとすぐに戻り、supervisor が止まったと記録するのは 1、2 秒後になる。
@@ -334,7 +346,8 @@ const deleteWorktree = async (dir: string): Promise<void> => {
   const [gitDir, commonDir] = stdout.trim().split('\n');
   // 作業ツリーの git-dir は、リポジトリの本体の git-dir（共通の git-dir）の下にある。
   if (!commonDir || gitDir === commonDir) throw new Error(`${dir} は git の作業ツリーではないので、消しません`);
-  await run('git', ['-C', dir, 'worktree', 'remove', '--force', '--force', dir]);
+  // 消す作業ツリーの中で git を動かすと、Windows では使用中のディレクトリを消せないので、共通の git-dir から消す。
+  await run('git', ['--git-dir', commonDir, 'worktree', 'remove', '--force', '--force', dir]);
   await run('git', ['--git-dir', commonDir, 'worktree', 'prune']);
 };
 
@@ -577,7 +590,7 @@ export const flushQueue = (): void => {
     const head = state.queue.find((m) => m.sessionId === sessionId);
     if (!head || head.editing || !readyForQueue(sessionId, live.get(sessionId))) continue;
     // 送ってから外す。送る途中で状態が変わってここが呼ばれても、送っている間は readyForQueue が止める。
-    sendMessage(sessionId, head.text);
+    sendHeld(head, live.get(sessionId));
     state.queue = state.queue.filter((m) => m !== head);
     touch();
   }
@@ -588,9 +601,10 @@ export const flushQueue = (): void => {
  * 権限の確認待ちのバックグラウンドのセッションでは、送っても保留の最後に戻って順番だけが変わるので、そのまま残して queued を返す。
  */
 export const sendQueued = (message: QueuedMessage): Delivery => {
-  if (mustWait(readLiveSessions().get(message.sessionId))) return 'queued';
+  const live = readLiveSessions().get(message.sessionId);
+  if (mustWait(live)) return 'queued';
   // flushQueue と同じく、送ってから外す。
-  const { delivery } = sendMessage(message.sessionId, message.text);
+  const delivery = sendHeld(message, live);
   state.queue = state.queue.filter((m) => m !== message);
   touch();
   return delivery;
@@ -643,19 +657,44 @@ export const redeliverInterrupted = (): void => {
   }
 };
 
+/** 保留に積む /compact。flushQueue と sendQueued は、この本文を発言ではなく compact として渡す。 */
+export const COMPACT_COMMAND = '/compact';
+
 /**
  * /compact はスラッシュコマンドとして動かす。受信ソケットで送ると、Claude は発言として読むだけで compact しない。
  * 入力待ちのバックグラウンドのセッションは、止めずに supervisor に返信を頼む。人間が打った発言として届くので、スラッシュコマンドとして動く。止めて再開すると、混んだマシンでは数十秒かかる。
- * 動いていないセッションは、再開して渡す。
- * 質問や権限の確認で止まっているセッションは、返信がその答えとして読まれることがあるので断る。作業中のセッションも、この先で質問や権限の確認に止まると同じことが起こりうるので断る。端末のセッションには渡す経路が無い。
+ * 動いていないセッションは、再開して渡す。端末のセッションには渡す経路が無い。
  */
-export const compactSession = (sessionId: string, cwd: string): Promise<void> => {
+const runCompact = (sessionId: string, cwd: string, live: LiveSession | undefined): Promise<void> => {
+  if (!live) return resume(sessionId, cwd, COMPACT_COMMAND);
+  if (live.kind !== 'bg' || !live.jobId) throw new SessionStateError('端末で開いているセッションは compact できません');
+  return replyToJob(live.jobId, COMPACT_COMMAND);
+};
+
+/**
+ * 作業中のセッションと、質問や権限の確認を待つセッションは、保留に積み、入力待ちになってから flushQueue に compact させる。
+ * 質問や確認を待つ間に返信すると、その答えとして読まれることがある。作業中も、この先で質問や確認に止まると同じことが起こりうる。
+ */
+export const compactSession = async (sessionId: string, cwd: string): Promise<{ queued: boolean }> => {
   const live = readLiveSessions().get(sessionId);
-  if (!live) return resume(sessionId, cwd, '/compact');
-  if (live.kind !== 'bg' || live.status !== 'idle' || !live.jobId || awaitingAnswer(sessionId)) {
-    throw new SessionStateError('作業中のセッション、質問や権限の確認を待つセッション、端末で開いているセッションは compact できません');
+  if (live?.kind === 'bg' && (live.status !== 'idle' || awaitingAnswer(sessionId))) {
+    state.queue.push({ id: newId(), sessionId, text: COMPACT_COMMAND, createdAt: Date.now() });
+    touch();
+    return { queued: true };
   }
-  return replyToJob(live.jobId, '/compact');
+  await runCompact(sessionId, cwd, live);
+  return { queued: false };
+};
+
+/** 保留したものを渡す。/compact は compact として渡し、それ以外は送信と同じ経路で送る。 */
+const sendHeld = (message: QueuedMessage, live: LiveSession | undefined): Delivery => {
+  if (message.text !== COMPACT_COMMAND) return sendMessage(message.sessionId, message.text).delivery;
+  const cwd = state.sessions[message.sessionId]?.cwd ?? '';
+  // 失敗しても保留には戻さない。人間が押し直せば、そのときの状態で渡し直す。
+  void Promise.resolve()
+    .then(() => runCompact(message.sessionId, cwd, live))
+    .catch((e: Error) => console.error(`${message.sessionId} を compact できません: ${e.message}`));
+  return 'sent';
 };
 
 /** 使用制限が明けたときと、通信が戻ったときに渡す依頼。人間が続きを頼むときと同じ言い方にし、止まったことには触れない。 */
@@ -679,7 +718,7 @@ export const continueStopped = async (sessionId: string, cwd: string): Promise<v
  * 端末で始めて終わったセッションは保存したオプションを持たないので、同じ id のまま続く。
  * 止めて再開するので、作業中のセッションと端末で開いているセッションでは失敗する。
  */
-export const switchSession = async (sessionId: string, text: string, model?: string, effort?: string): Promise<string> => {
+export const switchSession = async (sessionId: string, text: string, model?: string, effort?: string, permissionMode?: string): Promise<string> => {
   const meta = state.sessions[sessionId];
   if (!meta) throw new Error(`unknown session: ${sessionId}`);
   const live = readLiveSessions().get(sessionId);
@@ -691,7 +730,7 @@ export const switchSession = async (sessionId: string, text: string, model?: str
   touch();
   let output: string;
   try {
-    output = await relaunch(sessionId, meta.cwd, joinTexts(pending), live?.jobId, undefined, modelFlags(model, effort));
+    output = await relaunch(sessionId, meta.cwd, joinTexts(pending), live?.jobId, undefined, modelFlags(model, effort, permissionMode));
     // claude はセッションを起動しないまま正常に終わることがある。届いたことにすると、本文がどこにも残らない。
     if (!backgroundedJob(output)) throw new UpstreamError(output.trim() || 'claude がセッションを起動しませんでした');
   } catch (e) {
@@ -725,10 +764,10 @@ const follow = async (sessionId: string, output: string): Promise<string> => {
  * 元のセッションは止めずに残すので、作業中のセッションと端末で開いているセッションからも分岐できる。
  * テーマと、set_task で付けた JIRA の課題と、人間が登録したり外したりしたバッジは、分岐先にも付ける。名前は、ほかの新しいセッションと同じく、最初の応答の後に haiku に付けさせる。
  */
-export const forkSession = async (sessionId: string, text: string, model?: string, effort?: string): Promise<string> => {
+export const forkSession = async (sessionId: string, text: string, model?: string, effort?: string, permissionMode?: string): Promise<string> => {
   const meta = state.sessions[sessionId];
   if (!meta) throw new Error(`unknown session: ${sessionId}`);
-  const output = await claudeOutput(['--bg', '--resume', sessionId, '--fork-session', ...modelFlags(model, effort), '--', text], meta.cwd);
+  const output = await claudeOutput(['--bg', '--resume', sessionId, '--fork-session', ...modelFlags(model, effort, permissionMode), '--', text], meta.cwd);
   const fork = await backgroundedSession(output);
   if (!fork) throw new Error('分岐したセッションの id を引けません');
   Object.assign(ensureSession(fork, meta.cwd), { theme: meta.theme, jira: [...meta.jira], badges: meta.badges, hiddenBadges: meta.hiddenBadges, slack: meta.slack, hiddenSlack: meta.hiddenSlack });

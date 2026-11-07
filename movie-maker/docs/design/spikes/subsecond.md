@@ -31,7 +31,7 @@
 | `tauri-app/` | 最小の Tauri 2。WebView が 200ms ごとに Tauri のコマンドを呼び、コマンドが `subsecond::call` の中で `ops-sample` を呼んで同じ形の 1 行を出す |
 | `scripts/` | `measure.sh`（マーカー文字列を書き換えた時刻から、新しいマーカー文字列が出るまで）、`repeat.sh`（繰り返し）、`baseline.sh`（`cargo build` の増分と再起動） |
 
-測り方は[計装](../17-instrumentation.md)の考え方に合わせ、時計を 1 つにそろえる。保存の代わりに `sed` でマーカー文字列を書き換えた時刻 T0 と、アプリ自身が出した TICK の epoch ms の T1 の差を取る（ファイル監視の待ち、再ビルド、リンク、パッチの読み込み、次の呼び出しまで全部入る）。
+計測の仕方は[計装](../17-instrumentation.md)の考え方に合わせ、時計を 1 つにそろえる。保存の代わりに `sed` でマーカー文字列を書き換えた時刻 T0 と、アプリ自身が出した TICK の epoch ms の T1 の差を取る（ファイル監視の待ち、再ビルド、リンク、パッチの読み込み、次の呼び出しまで全部入る）。
 
 ## 実測
 
@@ -85,3 +85,43 @@
 - `mm-ops` が別クレートで差し替わるか、Tauri 側のワークスペースにまとめて確かめる（単体の実行ファイルでは確認済み）。
 - 構造体の形を変えたときの挙動と、プロジェクトのデータの復元の流れを確かめる。
 - 再現: `spikes/subsecond/` で `dx serve --hot-patch --platform desktop -p spike-plain`、`tauri-app/` で `MM_SKIP_WINRES=1 dx serve --hot-patch --platform desktop`。測定は `scripts/repeat.sh <ログ> <ソース> <マーカーの接頭辞> <回数> <開始のバージョン>`。
+
+## 本体のアプリでの実測（段階 7）
+
+`apps/movie-maker` の feature `hotpatch` に入れた（手順は [apps/movie-maker/README.md](../../../apps/movie-maker/README.md#rust-の関数の差し替え開発のときだけ)）。計測の仕方は上と同じ（マーカー文字列の書き換えから、アプリが出した TICK まで）。ホットパッチの呼び出し箇所は、操作の適用（`mm-ops` の `apply_transaction`）と IPC のハンドラー（`sync_ack`）。各 5 回の中央値。
+
+| 変えた所 | `CARGO_INCREMENTAL=0` | `CARGO_INCREMENTAL=1` |
+|---|---|---|
+| アプリのクレート（IPC のハンドラー） | 10,066（9,978〜10,156） | 5,047（4,394〜6,497） |
+| `mm-ops`（`mm-pack`、`mm-store`、`mm-serve` も作り直す） | 31,396（29,302〜49,754） | 8,786（8,621〜10,834） |
+
+- 試作の 1.5 秒より 3〜20 倍遅い。`dx` の内訳ではリンク（0.2〜0.6 秒）は小さく、作り直すクレートのコンパイルが 9 割を占める。アプリのクレートが大きく（Tauri のコマンドと再生と描画を全部持つ）、増分なしでは毎回全部をコンパイルし直す。
+- 状態は残る。ウィンドウ、再生スレッド、WebView の同期は差し替えをまたいで動き続けた。
+- `mm-ops` は別クレートのまま差し替わった（同じワークスペースのメンバーなので）。
+
+### 本体で詰まった所
+
+1. **`dx` がリンカーを `-flavor` なしで呼ぶ。** `.cargo/config.toml` の `linker = "rust-lld.exe"` をそのまま呼び、`lld is a generic driver` で失敗する。LLVM の `lld-link.exe` を `CARGO_TARGET_X86_64_PC_WINDOWS_MSVC_LINKER` で渡して避けた。
+2. **リンカーの引数の空白で切れる。** 試作の `/MANIFESTDEPENDENCY:type='win32' name=...` は `dx` を通すと空白で別々の引数になり、`could not open 'name=...'` で失敗した。`build.rs` で `tauri-build` のリソースを、マニフェストだけの `.res`（自前で書いた 2 項目）に置き換えた。`tauri-build` のコピーと `[patch.crates-io]` は要らなくなった。
+3. **アプリが依存しないワークスペースのメンバーまで作り直そうとする。** `mm-ops` を変えると、`apps/mm`（`mm-ops` に依存する別の実行ファイル）も作り直す対象に入り、`Missing rustc args for replay: 'mm'` で失敗する（試作の 3 つ目の「分かったこと」と同じ）。`dx` の `patch_rebuild` が、変えたクレートの依存元をアプリの依存の閉包で絞らないため。起動の間だけ `exclude = ["apps/mm"]` を足して避けた。
+
+## 上流への報告の文案
+
+起票はしていない。出すときはこの文案から始める。
+
+### tauri-build: Windows のリソースを作らない切り替え
+
+> **tauri-build: allow skipping the Windows resource when another tool links its own**
+>
+> `tauri_build::build()` always compiles `resource.lib` (icon, VERSIONINFO, app manifest) on Windows. `dx serve --hot-patch` (dioxus-cli 0.7) links its own Windows resource into the same binary, so the link fails with `duplicate resource`. We currently overwrite `OUT_DIR/resource.lib` from our build script with a manifest-only `.res`, which depends on tauri-build internals.
+>
+> Proposal: a `WindowsAttributes` option (or an env var such as `TAURI_SKIP_WINDOWS_RESOURCE`) that skips `res.compile()` but still embeds the app manifest, e.g. via `/MANIFEST:EMBED` and `/MANIFESTDEPENDENCY` link args. Reproduction: any Tauri 2 app on Windows, `dx serve --hot-patch --platform desktop`.
+
+### dioxus-cli: 自前の Windows のリソースを止める切り替えと、ワークスペースの依存元の絞り込み
+
+> **dx hot-patch on Windows: issues with non-Dioxus Tauri apps in a larger workspace (0.7.10)**
+>
+> 1. `write_winres` always links a Windows resource. Apps whose build script already links one (Tauri) fail with `duplicate resource`. Please add a `Dioxus.toml` / CLI switch to skip it.
+> 2. With `target.x86_64-pc-windows-msvc.linker = "rust-lld.exe"` in `.cargo/config.toml`, the hot-patch link calls `rust-lld.exe` without `-flavor link` and fails with `lld is a generic driver`. `linker_flavor()` could map `rust-lld` to MSVC on msvc targets and pass `-flavor link`.
+> 3. Link args containing spaces (`-C link-arg=/MANIFESTDEPENDENCY:type='win32' name='...'`) are split into several arguments.
+> 4. Editing a workspace crate that is also used by another binary in the workspace fails with `Missing rustc args for replay: '<other bin>'`. `patch_rebuild` walks `workspace_dependents_of` without restricting it to the tip's dependency closure, while `workspace_hotpatch_replay_order` assumes every modified crate reaches the tip. Filtering the dependents to crates that have captured rustc args from the fat build would fix it.

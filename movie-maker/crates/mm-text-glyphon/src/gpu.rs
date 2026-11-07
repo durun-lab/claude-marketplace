@@ -8,12 +8,12 @@ use std::sync::{Arc, Mutex};
 
 use cosmic_text::{Buffer, FontSystem, Metrics, SwashCache};
 use glyphon::{
-    Cache, Color, ColorMode, CustomGlyph, RasterizedCustomGlyph, Resolution, TextArea, TextAtlas,
-    TextBounds, TextRenderer, Viewport,
+    Cache, Color, ColorMode, ContentType, CustomGlyph, RasterizedCustomGlyph, Resolution, TextArea,
+    TextAtlas, TextBounds, TextRenderer, Viewport,
 };
 use half::f16;
 use mm_gpu::{map_blocking, GpuContext, FRAME_FORMAT};
-use mm_text_api::{ShapedText, TextRasterizer, TextStyle};
+use mm_text_api::{FontFile, ShapedText, TextRasterizer, TextStyle};
 use mm_types::{MmError, Result, Rgba, RgbaImage, Size};
 
 use crate::glyph_ids::{GlyphIds, IdsExhausted, MAX_GLYPH_IDS};
@@ -36,7 +36,7 @@ struct GpuState {
 impl GpuState {
     fn new(ctx: &GpuContext, id_limit: usize) -> Self {
         let cache = Cache::new(&ctx.device);
-        // 出力が線形なので、色は sRGB の指定を線形にして混ぜる Accurate。
+        // 出力が線形なので、白（1.0）を線形のまま混ぜる Accurate。文字の色は読み戻しで掛ける。
         let mut atlas = TextAtlas::with_color_mode(
             &ctx.device,
             &ctx.queue,
@@ -109,30 +109,18 @@ fn ensure_device(slot: &mut (Arc<GpuContext>, GpuState), id_limit: usize) -> Res
     Ok(())
 }
 
-/// 線形の 1 成分を sRGB の 8 bit に。glyphon の色指定は sRGB。
-fn to_srgb8(v: f32) -> u8 {
-    let c = v.clamp(0.0, 1.0);
-    let s = if c <= 0.003_130_8 {
-        c * 12.92
-    } else {
-        1.055 * c.powf(1.0 / 2.4) - 0.055
-    };
-    (s * 255.0).round() as u8
-}
+/// glyphon に渡す色。glyphon の色は 8 bit の sRGB で暗い色を表せないので、白で被覆率だけを描き、
+/// 線形の文字の色は読み戻しで掛ける（[`read_back`]）。
+const WHITE: Color = Color::rgba(u8::MAX, u8::MAX, u8::MAX, u8::MAX);
 
-/// premultiplied の線形色を、glyphon の色（sRGB の straight）にする。
-fn glyphon_color(c: Rgba) -> Color {
-    let (r, g, b) = if c.a > 0.0 {
-        (c.r / c.a, c.g / c.a, c.b / c.a)
-    } else {
-        (0.0, 0.0, 0.0)
-    };
-    Color::rgba(
-        to_srgb8(r),
-        to_srgb8(g),
-        to_srgb8(b),
-        (c.a.clamp(0.0, 1.0) * 255.0).round() as u8,
-    )
+/// 色つきのグリフ（絵文字）を含むか。glyphon の atlas は絵文字を sRGB の式で線形にし、読み戻しの色も掛かるので、
+/// 含むときは CPU の経路で描く。
+fn has_color_glyph(table: &GlyphIds, glyphs: &[CustomGlyph]) -> bool {
+    glyphs.iter().any(|g| {
+        table
+            .bitmap(g.id)
+            .is_some_and(|b| matches!(b.content, ContentType::Color))
+    })
 }
 
 /// グリフを集めて `CustomGlyph` にする。位置は画像の中の整数の左上。
@@ -182,7 +170,14 @@ fn collect_glyphs(
     }
 }
 
-fn read_back(ctx: &GpuContext, texture: &wgpu::Texture, size: Size) -> Result<RgbaImage> {
+/// `texture` を読み戻し、各画素に線形の premultiplied の文字の色 `tint` を成分ごとに掛ける。
+/// 白で描いた画素は (被覆率, 被覆率, 被覆率, 被覆率) なので、掛けると文字の色の premultiplied になる。
+fn read_back(
+    ctx: &GpuContext,
+    texture: &wgpu::Texture,
+    size: Size,
+    tint: Rgba,
+) -> Result<RgbaImage> {
     let padded_row = (size.width * BYTES_PER_PIXEL).div_ceil(ROW_ALIGN) * ROW_ALIGN;
     let buffer = ctx.device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("mm-text readback"),
@@ -211,12 +206,14 @@ fn read_back(ctx: &GpuContext, texture: &wgpu::Texture, size: Size) -> Result<Rg
         .slice(..)
         .get_mapped_range()
         .map_err(|e| MmError::Internal(format!("リードバックの範囲: {e}")))?;
+    let tint = [tint.r, tint.g, tint.b, tint.a];
     let mut pixels = Vec::with_capacity(size.area() * 4);
     for row in data.chunks_exact(padded_row as usize) {
         let used = &row[..(size.width * BYTES_PER_PIXEL) as usize];
         pixels.extend(
             used.chunks_exact(2)
-                .map(|b| f16::from_le_bytes([b[0], b[1]]).to_f32()),
+                .zip(tint.iter().cycle())
+                .map(|(b, k)| f16::from_le_bytes([b[0], b[1]]).to_f32() * k),
         );
     }
     drop(data);
@@ -262,9 +259,20 @@ impl GlyphonRasterizer {
         let ctx = ctx.clone();
         let texture = Self::target(&ctx, size)?;
         let glyphs = self.collect(&ctx, state, shaped, style, scale)?;
-        self.prepare(&ctx, state, &glyphs, style, size)?;
+        if has_color_glyph(&state.glyphs, &glyphs) {
+            drop(slot);
+            return self.draw_cpu(shaped, style, scale);
+        }
+        self.prepare(&ctx, state, &glyphs, size)?;
         Self::render(&ctx, state, &texture)?;
-        read_back(&ctx, &texture, size)
+        read_back(&ctx, &texture, size, style.color)
+    }
+
+    /// CPU の経路（swash の被覆率に線形の色を掛ける）で描く。
+    fn draw_cpu(&self, shaped: &ShapedText, style: &TextStyle, scale: f32) -> Result<RgbaImage> {
+        let mut fonts = lock(&self.inner.fonts)?;
+        let (fs, cache) = &mut *fonts;
+        Ok(raster::draw(fs, cache, shaped, style, scale))
     }
 
     /// グリフに ID を振って集める。ID を使い切ったら表と atlas を作り直して最初から振り直し、
@@ -299,7 +307,6 @@ impl GlyphonRasterizer {
         ctx: &GpuContext,
         state: &mut GpuState,
         glyphs: &[CustomGlyph],
-        style: &TextStyle,
         size: Size,
     ) -> Result<()> {
         state.viewport.update(
@@ -316,7 +323,7 @@ impl GlyphonRasterizer {
             top: 0.0,
             scale: 1.0,
             bounds: TextBounds::default(),
-            default_color: glyphon_color(style.color),
+            default_color: WHITE,
             custom_glyphs: glyphs,
         };
         let table = &state.glyphs;
@@ -388,11 +395,13 @@ impl TextRasterizer for GlyphonRasterizer {
         }
         if raster::visible_stroke(style).is_some() {
             // 縁は被覆率の膨張で描くので CPU の経路に任せる。glyphon の atlas は縁を持たない。
-            let mut fonts = lock(&self.inner.fonts)?;
-            let (fs, cache) = &mut *fonts;
-            return Ok(raster::draw(fs, cache, shaped, style, scale));
+            return self.draw_cpu(shaped, style, scale);
         }
         self.draw(shaped, style, scale, size)
+    }
+
+    fn use_fonts(&self, fonts: &[FontFile]) -> Result<()> {
+        self.inner.use_fonts(fonts)
     }
 }
 

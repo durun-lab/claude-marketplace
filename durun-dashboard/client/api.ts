@@ -1,5 +1,5 @@
 import type {
-  CdMeta, AssistantMessage, TranslateStatus, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, GithubSearch, Glossary, Harness, HarnessToggle, ImproveSettings, InboxSection, PrReviewEvent, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, SlackChannel, SlackConversation, TextSaveResult,
+  AgentPriority, CdMeta, AssistantMessage, TranslateStatus, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, GithubSearch, Glossary, Harness, HarnessToggle, InboxSection, PrReviewEvent, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, SlackChannel, SlackConversation, TextSaveResult,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -41,6 +41,9 @@ const postJson = async <T,>(url: string, body: unknown = {}): Promise<T> => {
 const seg = (value: string): string => encodeURIComponent(value).replaceAll('%3A', ':');
 
 const session = (id: string): string => `/api/sessions/${seg(id)}`;
+
+/** 複製や分岐の起動に渡すモデルと effort と権限モード。空の項目は元のセッションか Claude Code の設定に従う。 */
+export type Launch = { model: string; effort: string; permissionMode: string };
 
 /** ファイルを読む API の場所。エクスプローラーからセッションの外で開いたファイルは id が空で、セッションを付けずに読む。 */
 const files = (id: string): string => (id ? session(id) : '/api');
@@ -158,16 +161,14 @@ export const api = {
   queue: (id: string, text: string) => postJson<{ queued: boolean }>(`${session(id)}/queue`, { text }),
   rewind: (id: string, rewindTo: string, text: string) =>
     postJson<{ message: OutboxMessage; delivery: Delivery }>(`${session(id)}/rewind`, { rewindTo, text }),
-  /** モデルと effort を変えて送る。会話が続くセッションの id が返る。複製に乗り換えたときは、元とは別の id になる。 */
-  switchModel: (id: string, text: string, model: string, effort: string) =>
-    postJson<{ sessionId: string }>(`${session(id)}/switch`, { text, model, effort }),
+  /** モデルと effort と権限モードを変えて送る。会話が続くセッションの id が返る。複製に乗り換えたときは、元とは別の id になる。 */
+  switchModel: (id: string, text: string, launch: Launch) => postJson<{ sessionId: string }>(`${session(id)}/switch`, { text, ...launch }),
   /** 会話を引き継いだ別のセッションを起動して送る。分岐したセッションの id が返る。 */
-  fork: (id: string, text: string, model: string, effort: string) =>
-    postJson<{ sessionId: string }>(`${session(id)}/fork`, { text, model, effort }),
+  fork: (id: string, text: string, launch: Launch) => postJson<{ sessionId: string }>(`${session(id)}/fork`, { text, ...launch }),
   suggestions: (id: string) => postJson<Replies>(`${session(id)}/suggestions`),
   summary: (id: string) => postJson<SessionSummary>(`${session(id)}/summary`),
   glossary: (id: string) => postJson<Glossary>(`${session(id)}/glossary`),
-  compact: (id: string) => postJson<void>(`${session(id)}/compact`),
+  compact: (id: string) => postJson<{ queued: boolean }>(`${session(id)}/compact`),
   stop: (id: string) => postJson<void>(`${session(id)}/stop`),
   /** スリープや通信の途切れで止まったセッションを続けるか、確認のダイアログで答える。 */
   answerOffline: (id: string, resume: boolean) => postJson<void>(`${session(id)}/offline`, { resume }),
@@ -204,12 +205,15 @@ export const api = {
   prComment: (url: string, body: string) => postJson<{ url: string }>('/api/pr/comment', { url, body }),
   feedback: (text: string, targets: FeedbackTarget[], context: FeedbackContext) =>
     postJson<{ path: string }>('/api/feedback', { text, targets, context }),
-  improve: (patch: Partial<ImproveSettings>) => postJson('/api/improve', patch),
   learn: (scheduled: boolean) => postJson('/api/learn', { scheduled }),
   learnNow: () => postJson('/api/learn/run', {}),
+  workflowConsult: (id?: string) => postJson<{ sessionId: string }>('/api/workflows/consult', { id }),
+  workflowRun: (id: string) => postJson(`/api/workflows/${seg(id)}/run`),
+  workflowEnabled: (id: string, enabled: boolean) => postJson(`/api/workflows/${seg(id)}/enabled`, { enabled }),
   harness: () => getJson<Harness>('/api/learn/harness'),
   harnessToggle: ({ setting, key }: HarnessToggle, on: boolean) => postJson('/api/learn/toggle', { setting, key, on }),
   autoContinue: (enabled: boolean) => postJson<void>('/api/auto-continue', { enabled }),
+  agentPriority: (priority: AgentPriority) => postJson<void>('/api/agent-priority', { priority }),
   assistant: (messages: AssistantMessage[], sessionId: string) => postJson<AssistantReply>('/api/assistant', { messages, sessionId }),
   /** 文章校正の進み具合を、届いた順に onEvent に渡す。signal で中止すると、サーバーも残りの文を読ませない。明確化では、readings に答えがある文は読み直さない。 */
   proofread: async (mode: ProofMode, text: string, glossary: string, readings: (ProofReading | null)[], onEvent: (e: ProofEvent) => void, signal: AbortSignal): Promise<void> => {

@@ -4,8 +4,8 @@
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use mm_color_api::{ColorTransform, TransformProgram};
-use mm_color_lut::{bake_lut3d, LutColor};
+use mm_color_api::{ColorTransform, LutShaper, TransformProgram};
+use mm_color_lut::{bake_lut3d_shaped, LutColor};
 use mm_types::{ColorSpace, MmError, Result};
 use tracing::info_span;
 
@@ -119,8 +119,9 @@ impl OcioColor {
     ) -> Result<TransformProgram> {
         let size = self.lut_size;
         let mut inner = self.lock();
+        let shaper = shaper_for(&resolve(&inner.config, from)?);
         let p = display_processor_for(&mut inner, from, display, view)?;
-        program_of(p, size)
+        program_of(p, size, shaper)
     }
 
     /// `from` を display と view で見る変換を CPU で 1 画素に適用する。
@@ -187,8 +188,18 @@ fn display_processor_for<'a>(
     Ok(inner.processors.get_mut(&key).expect("入れたばかり"))
 }
 
+/// 3D LUT にベイクするときのシェーパー。線形の光（OCIO の名前が `Linear ` で始まるものと ACES の線形）は 1 を超える
+/// ハイライトを持つので、PQ で格子に収める。符号化値の空間は 0..=1 のまま引く。
+fn shaper_for(ocio_name: &str) -> LutShaper {
+    if ocio_name.starts_with("Linear ") || matches!(ocio_name, "ACEScg" | "ACES2065-1") {
+        LutShaper::Pq
+    } else {
+        LutShaper::None
+    }
+}
+
 /// 変換から GPU の形を選ぶ。
-fn program_of(p: &mut Processor, lut_size: u32) -> Result<TransformProgram> {
+fn program_of(p: &mut Processor, lut_size: u32, shaper: LutShaper) -> Result<TransformProgram> {
     if p.is_noop() {
         return Ok(TransformProgram::Identity);
     }
@@ -202,7 +213,8 @@ fn program_of(p: &mut Processor, lut_size: u32) -> Result<TransformProgram> {
         }
     }
     let p: &Processor = p;
-    info_span!("color_ocio.bake_lut").in_scope(|| bake_lut3d(lut_size, |rgb| p.apply_rgb(rgb)))
+    info_span!("color_ocio.bake_lut")
+        .in_scope(|| bake_lut3d_shaped(lut_size, shaper, |rgb| p.apply_rgb(rgb)))
 }
 
 impl ColorTransform for OcioColor {
@@ -211,18 +223,19 @@ impl ColorTransform for OcioColor {
     }
 
     fn program(&self, from: &ColorSpace, to: &ColorSpace) -> Result<TransformProgram> {
-        if is_bt2020(from) || is_bt2020(to) {
-            return self.bt2020_program(from, to);
+        if is_lut_only(from) || is_lut_only(to) {
+            return self.lut_only_program(from, to);
         }
         let size = self.lut_size;
         let mut inner = self.lock();
+        let shaper = shaper_for(&resolve(&inner.config, from)?);
         let p = processor_for(&mut inner, from, to)?;
-        program_of(p, size)
+        program_of(p, size, shaper)
     }
 
     fn apply(&self, from: &ColorSpace, to: &ColorSpace, rgb: [f32; 3]) -> Result<[f32; 3]> {
-        if is_bt2020(from) || is_bt2020(to) {
-            return self.bt2020_apply(from, to, rgb);
+        if is_lut_only(from) || is_lut_only(to) {
+            return self.lut_only_apply(from, to, rgb);
         }
         self.apply_ocio(from, to, rgb)
     }
@@ -248,18 +261,19 @@ impl ColorTransform for OcioColor {
             .filter(|n| inner.config.has_colorspace(n));
         aliases
             .chain(ocio)
-            .chain([BT2020])
+            .chain(LUT_ONLY)
             .map(|n| ColorSpace(n.into()))
             .collect()
     }
 }
 
-/// 組み込みの studio 設定には Rec.1886 の Rec.2020 の色空間が無いので、`bt2020` は
-/// `mm-color-lut` で作業色空間に直してから（作業色空間から）OCIO に渡す。
-const BT2020: &str = "bt2020";
+/// 組み込みの studio 設定には Rec.1886 の Rec.2020 の色空間が無く、PQ と HLG の表示の色空間は線形の 1.0 を
+/// 100 cd/m² に置く（mm は 203 cd/m²）ので、これらは `mm-color-lut` で作業色空間に直してから（作業色空間から）
+/// OCIO に渡す。
+const LUT_ONLY: [&str; 3] = ["bt2020", "bt2100_hlg", "bt2100_pq"];
 
-fn is_bt2020(cs: &ColorSpace) -> bool {
-    cs.0 == BT2020
+fn is_lut_only(cs: &ColorSpace) -> bool {
+    LUT_ONLY.contains(&cs.0.as_str())
 }
 
 impl OcioColor {
@@ -268,15 +282,20 @@ impl OcioColor {
         processor_for(&mut inner, from, to)?.apply_rgb(rgb)
     }
 
-    /// `bt2020` の端を LUT で作業色空間と行き来し、反対側を OCIO に任せる。
-    fn bt2020_apply(&self, from: &ColorSpace, to: &ColorSpace, rgb: [f32; 3]) -> Result<[f32; 3]> {
+    /// [`LUT_ONLY`] の端を LUT で作業色空間と行き来し、反対側を OCIO に任せる。
+    fn lut_only_apply(
+        &self,
+        from: &ColorSpace,
+        to: &ColorSpace,
+        rgb: [f32; 3],
+    ) -> Result<[f32; 3]> {
         let working = ColorSpace::working();
-        let mid = if is_bt2020(from) {
+        let mid = if is_lut_only(from) {
             LutColor.apply(from, &working, rgb)?
         } else {
             self.apply_ocio(from, &working, rgb)?
         };
-        if is_bt2020(to) {
+        if is_lut_only(to) {
             LutColor.apply(&working, to, mid)
         } else {
             self.apply_ocio(&working, to, mid)
@@ -284,10 +303,17 @@ impl OcioColor {
     }
 
     /// 相手が `mm-color-lut` も知る空間ならその WGSL をそのまま返し、そうでなければ 3D LUT にベイクする。
-    fn bt2020_program(&self, from: &ColorSpace, to: &ColorSpace) -> Result<TransformProgram> {
+    fn lut_only_program(&self, from: &ColorSpace, to: &ColorSpace) -> Result<TransformProgram> {
         if let Ok(p) = LutColor.program(from, to) {
             return Ok(p);
         }
-        bake_lut3d(self.lut_size, |rgb| self.bt2020_apply(from, to, rgb))
+        let shaper = if is_lut_only(from) {
+            LutShaper::None
+        } else {
+            shaper_for(&resolve(&self.lock().config, from)?)
+        };
+        bake_lut3d_shaped(self.lut_size, shaper, |rgb| {
+            self.lut_only_apply(from, to, rgb)
+        })
     }
 }

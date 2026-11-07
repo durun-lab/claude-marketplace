@@ -13,6 +13,8 @@ mm-ops = { workspace = true }
 # プレートの大きさを決めるために文字を組む（型だけ。シェーパーは呼ぶ側が渡す）。
 mm-text-api = { workspace = true }
 serde = { workspace = true }
+# 書体の素材のコンテンツハッシュ（取り込みと同じ BLAKE3）。
+blake3 = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]

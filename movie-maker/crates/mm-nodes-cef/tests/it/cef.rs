@@ -1,4 +1,4 @@
-//! 実際の CEF で描く検査。`CEF_PATH`（配布物）と `MM_CEF_HOST`（`--features cef` で作った `mm-host-cef`）が
+//! 実際の CEF で描くテスト。`CEF_PATH`（配布物）と `MM_CEF_HOST`（`--features cef` で作った `mm-host-cef`）が
 //! 無ければスキップする（`MM_REQUIRE_CEF` があれば失敗にする）。`MM_CEF_OUT` があればそこへ PNG を書く。
 #![cfg(windows)]
 
@@ -16,7 +16,7 @@ use mm_types::{ParamValue, Params, RationalTime, RgbaImage, Size};
 
 const PAGE: &str = include_str!("pages/probe.html");
 const FULL_HD: Size = Size::new(1920, 1080);
-/// f16 への丸めと、GPU と CPU の sRGB の復号の差を見込んだ許容。
+/// f16 への丸めと、GPU と CPU の符号化値の復号の差を見込んだ許容。
 const TOLERANCE: f32 = 4e-3;
 
 pub(super) fn host() -> Option<PathBuf> {
@@ -26,7 +26,7 @@ pub(super) fn host() -> Option<PathBuf> {
             std::env::var_os("MM_REQUIRE_CEF").is_none(),
             "MM_REQUIRE_CEF があるのに CEF_PATH か MM_CEF_HOST が無い"
         );
-        eprintln!("CEF_PATH か MM_CEF_HOST が無いので CEF の検査をスキップする");
+        eprintln!("CEF_PATH か MM_CEF_HOST が無いので CEF のテストをスキップする");
     }
     found.map(PathBuf::from)
 }
@@ -176,8 +176,8 @@ fn デバイスを作り直しても新しいデバイスのホストで描く()
     );
 }
 
-/// `data.i` 番目の位置に印を描くページ。`variant` を変えると別のページ（別のホストの割り振り）になる。
-/// 印を動かすのは BeginFrame の後の requestAnimationFrame で、描画に `slow_ms` かかる
+/// `data.i` 番目の位置に白い矩形を描くページ。`variant` を変えると別のページ（別のホストの割り振り）になる。
+/// 矩形を動かすのは BeginFrame の後の requestAnimationFrame で、描画に `slow_ms` かかる
 /// （多数のレイヤーの合成や動画のデコードと GPU を取り合って、1 フレームが遅くなった場合）。
 fn mark_page(variant: usize, slow_ms: u32) -> String {
     format!(
@@ -213,7 +213,7 @@ fn 同じフレームに多数のレイヤーが並んでも全部を描く() {
         assert_eq!(
             marks,
             vec![i],
-            "{i} 枚目のレイヤーは自分の位置にだけ印を描く"
+            "{i} 枚目のレイヤーは自分の位置にだけ矩形を描く"
         );
     }
     assert_eq!(kind.stats().drawn, LAYERS as u64);

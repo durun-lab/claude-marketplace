@@ -283,13 +283,13 @@ impl Transform {
     }
 }
 
-/// マスク。形は角丸の矩形（`rect`）か、ベジェの頂点の列（`path`。型だけで、レンダラーは描かない）。
+/// マスク。形は角丸の矩形（`rect`）か、ベジェの頂点の並び（`path`。型だけで、レンダラーは描かない）。
 /// 座標はレイヤーの座標で、変形と一緒に動く（After Effects のレイヤーのマスクと同じ）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
 pub struct Mask {
     pub id: MaskId,
-    /// 頂点の列。キーフレームで形を動かせる。`rect` があれば使わない。
+    /// 頂点の並び。キーフレームで形を動かせる。`rect` があれば使わない。
     #[serde(default = "shape::empty_path")]
     pub path: Param,
     /// 角丸の矩形。あれば形はこれで決まる。

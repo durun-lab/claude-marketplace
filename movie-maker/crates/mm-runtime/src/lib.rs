@@ -4,10 +4,12 @@
 //! `ffmpeg` は feature `ffmpeg`、`d3d12va` と `cuvid` は同名の feature のときだけ組める。`auto` は素材ごとに d3d12va、cuvid、ffmpeg の順に試す。実際の実装が増えたら [`assemble`] に腕を足す（インターフェースは変えない）。
 
 mod assemble;
+mod cef;
 mod config;
 mod decode_select;
 mod encode_select;
 mod engine;
+mod ofx;
 mod registry;
 
 pub use assemble::assemble;

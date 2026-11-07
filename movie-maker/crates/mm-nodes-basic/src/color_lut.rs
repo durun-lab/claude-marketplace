@@ -10,7 +10,8 @@ use std::time::SystemTime;
 use mm_color_api::{ColorTransform, TransformProgram};
 use mm_node_api::{FrameCx, FrameRef, InputSchema, InputSpec, NodeKind, Traits};
 use mm_types::{
-    AssetId, ColorSpace, MmError, ParamSchema, ParamSpec, ParamType, ParamValue, Params, Result,
+    transfer, AssetId, ColorSpace, MmError, ParamSchema, ParamSpec, ParamType, ParamValue, Params,
+    Result,
 };
 
 use crate::color::{apply, ColorPass};
@@ -23,11 +24,6 @@ use crate::KIND_VERSION;
 const SPACES: [&str; 3] = ["lin_rec709", "srgb", "bt709"];
 /// LUT の `.cube` の素材（`AssetRef`）を持つパラメータの名前。
 pub const LUT_PARAM: &str = "lut";
-/// 線形の光の折れ点（sRGB）。
-const SRGB_LINEAR_CUT: f32 = 0.003_130_8;
-const SRGB_ENCODED_CUT: f32 = 0.040_45;
-/// Rec.1886 の表示の式のべき。
-const GAMMA: f32 = 2.4;
 
 fn input_schema() -> InputSchema {
     InputSchema {
@@ -69,32 +65,18 @@ impl Encoding {
     }
 
     fn encode(self, v: f32) -> f32 {
-        let a = v.abs();
-        let e = match self {
-            Self::Linear => a,
-            Self::Srgb if a <= SRGB_LINEAR_CUT => 12.92 * a,
-            Self::Srgb => 1.055 * a.powf(1.0 / GAMMA) - 0.055,
-            Self::Bt709 => a.powf(1.0 / GAMMA),
-        };
-        if v < 0.0 {
-            -e
-        } else {
-            e
+        match self {
+            Self::Linear => v,
+            Self::Srgb => transfer::linear_to_srgb(v),
+            Self::Bt709 => transfer::linear_to_bt1886(v),
         }
     }
 
     fn decode(self, v: f32) -> f32 {
-        let a = v.abs();
-        let l = match self {
-            Self::Linear => a,
-            Self::Srgb if a <= SRGB_ENCODED_CUT => a / 12.92,
-            Self::Srgb => ((a + 0.055) / 1.055).powf(GAMMA),
-            Self::Bt709 => a.powf(GAMMA),
-        };
-        if v < 0.0 {
-            -l
-        } else {
-            l
+        match self {
+            Self::Linear => v,
+            Self::Srgb => transfer::srgb_to_linear(v),
+            Self::Bt709 => transfer::bt1886_to_linear(v),
         }
     }
 }
@@ -146,33 +128,42 @@ impl ColorLutKind {
 
 const LUT_BODY_WGSL: &str = r"
 fn mm_encode(c: vec3<f32>) -> vec3<f32> {
-    let a = abs(c);
     if (u.d.x == 1.0) {
-        return sign(c) * select(1.055 * pow(a, vec3<f32>(1.0 / 2.4)) - 0.055, 12.92 * a, a <= vec3<f32>(0.0031308));
+        return mm_linear_to_srgb3(c);
     }
     if (u.d.x == 2.0) {
-        return sign(c) * pow(a, vec3<f32>(1.0 / 2.4));
+        return mm_linear_to_bt1886_3(c);
     }
     return c;
 }
 
 fn mm_decode(c: vec3<f32>) -> vec3<f32> {
-    let a = abs(c);
     if (u.d.x == 1.0) {
-        return sign(c) * select(pow((a + 0.055) / 1.055, vec3<f32>(2.4)), a / 12.92, a <= vec3<f32>(0.04045));
+        return mm_srgb_to_linear3(c);
     }
     if (u.d.x == 2.0) {
-        return sign(c) * pow(a, vec3<f32>(2.4));
+        return mm_bt1886_to_linear3(c);
     }
     return c;
 }
 
 fn mm_color(c: vec3<f32>) -> vec3<f32> {
     let span = max(u.c.xyz - u.b.xyz, vec3<f32>(1e-6));
-    let looked = mm_decode(mm_lut_sample((mm_encode(c) - u.b.xyz) / span));
+    let e = mm_encode(c);
+    let inside = clamp(e, u.b.xyz, u.c.xyz);
+    let looked = mm_decode(mm_lut_sample((inside - u.b.xyz) / span) + (e - inside));
     return mix(c, looked, u.a.x);
 }
 ";
+
+/// LUT を CPU で引く。定義域の外へ出た分（1 を超えるハイライト、広色域の負の値）は端の値に足して持ち越し、切らない。
+/// GPU の `LUT_BODY_WGSL` の `mm_color` と同じ式。
+fn sample_carrying(lut: &Lut, enc: [f32; 3]) -> [f32; 3] {
+    let inside: [f32; 3] =
+        std::array::from_fn(|i| enc[i].clamp(lut.domain_min[i], lut.domain_max[i]));
+    let looked = lut.sample(inside);
+    std::array::from_fn(|i| looked[i] + enc[i] - inside[i])
+}
 
 impl NodeKind for ColorLutKind {
     fn id(&self) -> &'static str {
@@ -238,12 +229,12 @@ impl NodeKind for ColorLutKind {
         uniform[12] = encoding.code();
         let cpu_lut = lut.clone();
         let pass = ColorPass {
-            wgsl: format!("{LUT_WGSL}\n{LUT_BODY_WGSL}"),
+            wgsl: format!("{}\n{LUT_WGSL}\n{LUT_BODY_WGSL}", transfer::TRANSFER_WGSL),
             uniform,
             lut: Some(lut),
             cpu: Box::new(move |rgb| {
                 let enc = rgb.map(|c| encoding.encode(c));
-                let looked = cpu_lut.sample(enc).map(|c| encoding.decode(c));
+                let looked = sample_carrying(&cpu_lut, enc).map(|c| encoding.decode(c));
                 std::array::from_fn(|i| rgb[i] + (looked[i] - rgb[i]) * intensity)
             }),
         };
@@ -316,9 +307,11 @@ fn shader_program(program: TransformProgram) -> Result<Option<Program>> {
             wgsl: format!("{source}\nfn mm_color(c: vec3<f32>) -> vec3<f32> {{ return mm_color_transform(c); }}\n"),
             lut: None,
         }),
-        TransformProgram::Lut3d { size, data } => Some(Program {
+        TransformProgram::Lut3d { size, data, shaper } => Some(Program {
             wgsl: format!(
-                "{LUT_WGSL}\nfn mm_color(c: vec3<f32>) -> vec3<f32> {{ return mm_lut_sample(c); }}\n"
+                "{}\n{LUT_WGSL}\nfn mm_color(c: vec3<f32>) -> vec3<f32> {{ return mm_lut_sample({}); }}\n",
+                transfer::TRANSFER_WGSL,
+                shaper.wgsl("c")
             ),
             lut: Some(Arc::new(Lut::new(size, data, [0.0; 3], [1.0; 3])?)),
         }),

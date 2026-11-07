@@ -13,6 +13,8 @@ pub mod param;
 #[cfg(feature = "schema")]
 mod schema;
 pub mod time;
+pub mod tonemap;
+pub mod transfer;
 
 pub use color::{ColorSpace, Rgba};
 pub use error::{MmError, Result};

@@ -739,6 +739,12 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .learn-harness .learn-leaf { padding-left: 22px; }
 .learn-switch { margin: 0 4px 0 0; vertical-align: -2px; }
 .learn-harness tr.is-off td { color: #8c8c8c; }
+.workflow-table th:nth-child(1) { width: 22%; }
+.workflow-table th:nth-child(2) { width: 18%; }
+.workflow-table th:nth-child(3) { width: 22%; }
+.workflow-table th:nth-child(4) { width: 22%; }
+.workflow-table tr.is-off td { color: #8c8c8c; }
+.workflow-actions { display: flex; gap: 8px; }
 /* メモ帳と Internet Explorer の、XP のメニュー。 */
 .xp-menu { padding: 2px 7px; border: 0; background: none; font: inherit; }
 .xp-menu:hover, .xp-menu:has(+ :popover-open) { background: #316ac5; color: #fff; }
@@ -816,6 +822,7 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .fl-session select { max-width: 360px; }
 .mm-project { display: flex; align-items: center; gap: 6px; }
 .mm-project .input { flex: 1; min-width: 0; }
+.mm-project .mm-recent { flex: 0 1 9em; }
 .mm-output { max-height: 160px; }
 .fl-links { display: flex; flex-wrap: wrap; gap: 6px; }
 .fl-toggle { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; }
@@ -1209,6 +1216,8 @@ a.skype-time:hover { color: #0078ca; text-decoration: underline; }
 .subagent-chat { max-height: 420px; margin-top: 8px; padding: 8px; overflow-y: auto; border: 1px solid var(--border); border-radius: var(--radius); }
 .bg-command, .bg-output { margin: 6px 0; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .subagent:last-child { border-bottom: 0; }
+.subagents:empty { display: none; }
+.agent-done > summary { display: flex; align-items: center; gap: 6px; padding: 6px 0; color: var(--muted); font-size: 12px; cursor: pointer; }
 .agent-section + .agent-section { margin-top: 12px; }
 .agent-section-title { display: flex; align-items: center; gap: 6px; margin: 0; padding-bottom: 3px; border-bottom: 1px solid var(--border-strong); color: var(--text-2); font-size: 12px; font-weight: 600; }
 .agent-main { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 2px 10px; }

@@ -54,9 +54,17 @@ impl Depth {
         }
     }
 
+    /// プラグインが書いた有限でない値（NaN、Inf）は 0 にする。JSON は NaN を書けず、応答が読めなくなるため。
     fn decode(self, b: &[u8]) -> f32 {
         match self {
-            Self::Float => f32::from_ne_bytes([b[0], b[1], b[2], b[3]]),
+            Self::Float => {
+                let v = f32::from_ne_bytes([b[0], b[1], b[2], b[3]]);
+                if v.is_finite() {
+                    v
+                } else {
+                    0.0
+                }
+            }
             Self::Short => f32::from(u16::from_ne_bytes([b[0], b[1]])) / f32::from(u16::MAX),
             Self::Byte => f32::from(b[0]) / f32::from(u8::MAX),
         }
@@ -119,16 +127,32 @@ impl Pixels {
 
     /// `RgbaImage` から。
     pub fn from_image(image: &RgbaImage, depth: Depth) -> std::result::Result<Self, String> {
-        let mut px = Self::new(image.size(), depth)?;
-        let row = px.row_bytes();
-        let comp = depth.bytes();
-        let height = image.height() as usize;
+        Self::from_rows(image.size(), image.data(), depth)
+    }
+
+    /// 上の行からの RGBA f32 の列（`RgbaImage` と同じ並び）から。Float の深さは行ごとの写しで済ませる。
+    pub fn from_rows(size: Size, data: &[f32], depth: Depth) -> std::result::Result<Self, String> {
+        let mut px = Self::new(size, depth)?;
+        let w = size.width as usize * CHANNELS;
+        let height = size.height as usize;
+        if data.len() != w * height {
+            return Err(format!(
+                "画素の数 {} が {}x{} と合わない",
+                data.len(),
+                size.width,
+                size.height
+            ));
+        }
+        if depth == Depth::Float {
+            let dst = px.floats_mut();
+            for (y_top, src) in data.chunks_exact(w).enumerate() {
+                dst[(height - 1 - y_top) * w..][..w].copy_from_slice(src);
+            }
+            return Ok(px);
+        }
+        let (row, comp) = (px.row_bytes(), depth.bytes());
         let bytes = px.bytes_mut();
-        for (y_top, src) in image
-            .data()
-            .chunks_exact(image.width() as usize * CHANNELS)
-            .enumerate()
-        {
+        for (y_top, src) in data.chunks_exact(w).enumerate() {
             let dst = &mut bytes[(height - 1 - y_top) * row..][..row];
             for (v, out) in src.iter().zip(dst.chunks_exact_mut(comp)) {
                 depth.encode(*v, out);
@@ -137,18 +161,45 @@ impl Pixels {
         Ok(px)
     }
 
+    /// 上の行からの RGBA f32 の列に書く。有限でない値は 0 にする（`Depth::decode` と同じ）。
+    pub fn write_rows(&self, out: &mut [f32]) -> std::result::Result<(), String> {
+        let w = self.width as usize * CHANNELS;
+        let height = self.height as usize;
+        if out.len() != w * height {
+            return Err(format!(
+                "書き先 {} が {}x{} と合わない",
+                out.len(),
+                self.width,
+                self.height
+            ));
+        }
+        if self.depth == Depth::Float {
+            let src = self.floats();
+            for (y_top, dst) in out.chunks_exact_mut(w).enumerate() {
+                dst.copy_from_slice(&src[(height - 1 - y_top) * w..][..w]);
+            }
+            out.iter_mut()
+                .filter(|v| !v.is_finite())
+                .for_each(|v| *v = 0.0);
+            return Ok(());
+        }
+        let (row, comp, bytes) = (self.row_bytes(), self.depth.bytes(), self.bytes());
+        for (y_top, dst) in out.chunks_exact_mut(w).enumerate() {
+            let src = &bytes[(height - 1 - y_top) * row..][..row];
+            for (v, b) in dst.iter_mut().zip(src.chunks_exact(comp)) {
+                *v = self.depth.decode(b);
+            }
+        }
+        Ok(())
+    }
+
     /// `RgbaImage` へ。
     pub fn to_image(&self) -> Result<RgbaImage> {
-        let row = self.row_bytes();
-        let comp = self.depth.bytes();
-        let height = self.height as usize;
-        let bytes = self.bytes();
-        let mut data = Vec::with_capacity(self.width as usize * height * CHANNELS);
-        for y_top in 0..height {
-            let src = &bytes[(height - 1 - y_top) * row..][..row];
-            data.extend(src.chunks_exact(comp).map(|b| self.depth.decode(b)));
-        }
-        RgbaImage::from_raw(Size::new(self.width, self.height), data)
+        let size = Size::new(self.width, self.height);
+        let mut data = vec![0.0; size.width as usize * size.height as usize * CHANNELS];
+        self.write_rows(&mut data)
+            .map_err(mm_types::MmError::Internal)?;
+        RgbaImage::from_raw(size, data)
     }
 
     pub fn data_ptr(&self) -> *mut std::ffi::c_void {
@@ -179,6 +230,17 @@ impl Pixels {
     fn bytes_mut(&mut self) -> &mut [u8] {
         // SAFETY: words 個の u64 の割り当てを、まだプラグインに渡していない間だけ書く。
         unsafe { std::slice::from_raw_parts_mut(self.data.cast::<u8>(), self.words * WORD) }
+    }
+
+    /// f32 の並び。割り当ては u64 の境界なので f32 の境界も満たす。
+    fn floats(&self) -> &[f32] {
+        // SAFETY: bytes と同じ割り当てを f32 の列として読む。どのビット列も f32 として正しい。
+        unsafe { std::slice::from_raw_parts(self.data.cast::<f32>(), self.words * 2) }
+    }
+
+    fn floats_mut(&mut self) -> &mut [f32] {
+        // SAFETY: bytes_mut と同じ。
+        unsafe { std::slice::from_raw_parts_mut(self.data.cast::<f32>(), self.words * 2) }
     }
 }
 
@@ -218,6 +280,16 @@ mod tests {
         // 上の行の左端（赤）は、OpenFX の並びでは最後の行の先頭。
         let last_row = px.row_bytes();
         assert_eq!(px.bytes()[last_row..last_row + 4], 1.0f32.to_ne_bytes());
+    }
+
+    #[test]
+    fn 有限でない値は_0_にして返す() {
+        let mut px = Pixels::new(Size::new(1, 1), Depth::Float).unwrap();
+        let written = [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, 0.5];
+        for (v, out) in written.iter().zip(px.bytes_mut().chunks_exact_mut(4)) {
+            out.copy_from_slice(&v.to_ne_bytes());
+        }
+        assert_eq!(px.to_image().unwrap().data(), [0.0, 0.0, 0.0, 0.5]);
     }
 
     #[test]

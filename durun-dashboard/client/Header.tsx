@@ -1,5 +1,5 @@
 import { useContext, useEffect, useState } from 'preact/hooks';
-import type { Attention, DocMeta, ImproveState, MemoryStatus, RateLimit, Session, Snapshot } from '../shared/types.ts';
+import { AGENT_PRIORITIES, type AgentPriority, type Attention, type DocMeta, type ImproveState, type MemoryStatus, type RateLimit, type Session, type Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { AppIcon, useApps } from './apps.tsx';
 import { createDashboard, duplicateDashboard, renameDashboard, switchDashboard, useDashboards } from './dashboards.ts';
@@ -236,7 +236,9 @@ type MenuProps = { onSearch: () => void; onEdit?: () => void };
  * 名前の左のボタンで開くメニュー。外を押すか Esc で閉じるよう、popover で開く。
  * リンクは popovertarget で閉じられないので、項目を押したら、ここでまとめて閉じる。
  */
-const AppMenu = ({ onSearch, onEdit, docs, autoContinue }: MenuProps & { docs: DocMeta[]; autoContinue: boolean }) => {
+const PRIORITY_LABEL: Record<AgentPriority, string> = { normal: '通常', low: '低め', idle: 'アイドル' };
+
+const AppMenu = ({ onSearch, onEdit, docs, autoContinue, agentPriority }: MenuProps & { docs: DocMeta[]; autoContinue: boolean; agentPriority: AgentPriority }) => {
   const light = useLightMode();
   const skin = useSkin();
   // Esc でも全画面が解けるので、押した状態は fullscreenchange から取る。
@@ -354,6 +356,14 @@ const AppMenu = ({ onSearch, onEdit, docs, autoContinue }: MenuProps & { docs: D
                   <div class="app-menu-submenu" role="group" aria-label="スキン">
                     {Object.entries(SKINS).map(([id, label]) => (
                       <button key={id} class="app-menu-item" aria-pressed={skin === id} onClick={() => setSkin(id as Skin)}>{label}</button>
+                    ))}
+                  </div>
+                </div>
+                <div class="app-menu-sub">
+                  <div class="app-menu-item" tabindex={0} aria-haspopup="true" title="エージェントのプロセスの優先度。低めやアイドルにすると、ゲームやほかの作業に CPU を先に回す">優先度: {PRIORITY_LABEL[agentPriority]}<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
+                  <div class="app-menu-submenu" role="group" aria-label="優先度">
+                    {AGENT_PRIORITIES.map((p) => (
+                      <button key={p} class="app-menu-item" aria-pressed={agentPriority === p} onClick={() => void attempt('エージェントの優先度の切り替え', () => api.agentPriority(p))}>{PRIORITY_LABEL[p]}</button>
                     ))}
                   </div>
                 </div>
@@ -492,8 +502,8 @@ const MemoryTray = () => {
 
 /** XP のスキンでだけ見せる、通知領域の改善要望。右下に浮かぶボタンの代わりに置く。電球のアイコンにし、改善中は右下に矢印が回るバッジを重ねる。 */
 const FeedbackTray = ({ improve, onClick }: { improve?: ImproveState; onClick: () => void }) =>
-  improve?.running ? (
-    <button class="fb-tray is-running" title={improve.current ? `改善中: ${improve.current}` : '改善中'} aria-label="改善中" onClick={onClick} />
+  improve?.workflow?.running ? (
+    <button class="fb-tray is-running" title={improve.workflow.current ? `改善中: ${improve.workflow.current}` : '改善中'} aria-label="改善中" onClick={onClick} />
   ) : (
     <button class="fb-tray" title="改善要望" aria-label="改善要望" onClick={onClick} />
   );
@@ -532,7 +542,7 @@ export const Header = ({ snapshot, assets, connected, home, onSearch, onEdit, on
   const stale = useLiveReload(assets);
   return (
     <header class="topbar">
-      <AppMenu onSearch={onSearch} onEdit={onEdit} docs={snapshot?.docs ?? []} autoContinue={!!snapshot?.autoContinue} />
+      <AppMenu onSearch={onSearch} onEdit={onEdit} docs={snapshot?.docs ?? []} autoContinue={!!snapshot?.autoContinue} agentPriority={snapshot?.agentPriority ?? 'normal'} />
       <Brand home={home} />
       {/* 浮かべたウィンドウのボタンは、Float.tsx の FloatFrame がここへ置く。 */}
       <div class="taskbar-windows" />

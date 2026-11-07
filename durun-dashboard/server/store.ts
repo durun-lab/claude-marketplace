@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { type AskedQuestion, type Bookmark, type BranchView, type DiffRange, type DocFormat, type ImproveSettings, type LearnRun, type LearnSettings, MEDIA_TYPES, type OutboxMessage, type PrThreadNote, type QueuedMessage, type RatePoint, type SavedDoc, type SavedFile, type SavedLink, type SavedProof, type SavedTerm } from '../shared/types.ts';
+import { type AgentPriority, type AskedQuestion, type Bookmark, type BranchView, type DiffRange, type DocFormat, type LearnRun, type LearnSettings, MEDIA_TYPES, type OutboxMessage, type PrThreadNote, type QueuedMessage, type RatePoint, type SavedDoc, type SavedFile, type SavedLink, type SavedProof, type SavedTerm } from '../shared/types.ts';
 
 // 利用者ごとのデータはツールのリポジトリと分けてホームに置く。テストでは一時ディレクトリに向けて、実際の状態に触れないようにする。
 export const DATA_DIR = process.env.DURUN_DASHBOARD_DATA_DIR ?? path.join(os.homedir(), '.durun-dashboard');
@@ -76,6 +76,8 @@ export type SessionMeta = {
   improver?: boolean;
   /** 学習アプリが提案を作らせるために起動したセッション */
   learner?: boolean;
+  /** このセッションを起動したワークフローの id */
+  workflow?: string;
   /** 巻き戻して送ったターンを動かす claude -p の pid。端末のセッションと同じに見えるが、ダッシュボードが起動したものなので止められる。 */
   printPid?: number;
   /** 使用制限か通信の途切れで止まったのを続けさせたか、続けないと人間が答えたときの、止まった時刻。同じもので 2 度続けさせず、2 度尋ねないために残す。 */
@@ -109,15 +111,25 @@ export type StoredDoc = {
   seen: boolean;
 };
 
-export type ImproveRun = {
-  sessionId: string;
-  pid: number;
-  /** このウェーブで計画を頼んだ要望のファイル名 */
-  items?: string[];
-  /** 画面に出す、対応中のウェーブの説明 */
-  summary?: string;
-  startedAt: number;
-};
+/**
+ * ワークフローに移す前の、改善要望の自動実装の設定。起動したときに workflows.json の定義へ移す。
+ * run は移したときに動いていたウェーブで、終わるまでワークフローに次のウェーブを始めさせない。
+ */
+export type LegacyImprove = { enabled?: boolean; model?: string; effort?: string; run?: { sessionId: string; pid: number } };
+
+/**
+ * 改善要望のトリガーで渡したウェーブ。items は渡した要望。
+ * stalled は待機している理由で、unmarked は「対応した要望:」を書かずに止まったこと、nothing-done は対応を終えた要望が無かったこと。
+ */
+export type FeedbackWave = { items: string[]; sessionId?: string; stalled?: 'unmarked' | 'nothing-done' };
+
+/**
+ * ワークフローの動き。queue はまだセッションに渡していないイベントの本文。sessionId は continue で引き継いでいるセッション。
+ * seenPrs は、既に動いたレビュー依頼の PR の URL。無ければまだ一度も読んでおらず、そのとき届いている依頼では動かない。
+ * seenMentions は、既に動いた Slack のメンションの発言のリンク。seenPrs と同じく、初めて読んだときに届いていたものでは動かない。
+ * feedback は、改善要望のトリガーで最後に渡したウェーブ。
+ */
+export type WorkflowRun = { queue: string[]; sessionId?: string; lastRunAt?: number; seenPrs?: string[]; seenMentions?: string[]; feedback?: FeedbackWave; error?: string };
 
 /** ダッシュボード自身で起きた想定外のエラー。同じエラーは 1 件にまとめて数える。item は起票した改善要望のファイル名。 */
 export type ErrorRecord = {
@@ -151,12 +163,20 @@ type State = {
   queue: QueuedMessage[];
   /** 既読にした派生の要対応（PR の状態など）の id */
   dismissed: string[];
-  /** 改善要望の自動実装。model と effort は空なら Claude Code の設定に従う。error があれば待機する。 */
-  improve: ImproveSettings & { run?: ImproveRun; error?: string };
+  /** ワークフローに移す前の改善要望の自動実装。 */
+  improve?: LegacyImprove;
   /** 自動継続モード。スリープや通信の途切れで止まったセッションを、人間に尋ねずに続けさせる。Claude のログインが切れて止まったセッションも、ログインが戻ったら続けさせる。 */
   autoContinue?: boolean;
+  /** エージェントのプロセスの優先度。無ければ通常。 */
+  agentPriority?: AgentPriority;
+  /** ムービーメーカーで最近開いたプロジェクトのフォルダー。新しい順。 */
+  mmRecentProjects?: string[];
   /** 学習アプリ。pid は提案を作っている学習のセッションのもの。 */
   learn: LearnSettings & { runs: LearnRun[]; pid?: number; error?: string };
+  /** ワークフローごとの動き。定義は workflows.json にある。 */
+  workflowRuns?: Record<string, WorkflowRun>;
+  /** ワークフローの時刻のトリガーを最後に確かめた時刻。これより後に過ぎた時刻で動かす。 */
+  workflowCheckedAt?: number;
   /** 人間がダッシュボードから Claude にログインし直した時刻。これより前にログインが切れて止まったセッションは、もうログインを尋ねない。 */
   claudeLoginAt?: number;
   /** エラーをまとめる鍵ごとの記録 */
@@ -171,7 +191,7 @@ type State = {
   rateWindows: { fiveHour?: RateWindow; sevenDay?: RateWindow };
 };
 
-const empty = (): State => ({ sessions: {}, attention: [], docs: [], outbox: [], queue: [], dismissed: [], improve: { enabled: false }, learn: { scheduled: false, runs: [] }, errors: {}, prNotes: {}, sessionOrder: [], themeOrder: [], rateWindows: {} });
+const empty = (): State => ({ sessions: {}, attention: [], docs: [], outbox: [], queue: [], dismissed: [], learn: { scheduled: false, runs: [] }, errors: {}, prNotes: {}, sessionOrder: [], themeOrder: [], rateWindows: {} });
 
 const DOCS_DIR = path.resolve(DATA_DIR, 'docs');
 // 画像と動画の資料はファイルを指すだけで、本文を書かない。

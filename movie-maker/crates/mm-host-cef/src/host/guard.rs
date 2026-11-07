@@ -1,8 +1,9 @@
-//! ページの遷移と資源の要求を [`mm_host_cef::policy`] で拒否するハンドラ。ポップアップも開かせない。
+//! ページの遷移と資源の要求を [`mm_host_cef::policy`] で拒否するハンドラー。ポップアップも開かせない。
 //!
-//! 通すページの URL は、`Prepare` の後の最初のメインフレームの遷移（ホストが開いたページ）の URL を Chromium が
-//! 正規化した形のまま覚える。ファイルのパスから組んだ URL と比べると、パーセントエンコードの違いで食い違うため。
+//! 通すページの URL は、ホストが書いたページのファイルを指すメインフレームの遷移の URL を、Chromium が
+//! 正規化した形のまま覚える。資源の要求はその形で届くので、覚えた形と完全に一致するものだけを通せる。
 
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use cef::*;
@@ -11,17 +12,26 @@ use mm_host_cef::policy;
 /// 拒否した URL を標準エラーに書くときの長さの上限（`data:` の URL は長い）。
 const LOG_URL_CHARS: usize = 120;
 
-/// 通すページの URL。空なら次のメインフレームの遷移を通して覚える。
-/// 資源の要求は CEF の IO スレッドで調べるので、UI スレッドの `Shared` とは別に `Mutex` で持つ。
-pub type AllowedPage = Arc<Mutex<String>>;
+/// 通すページ。`url` が空なら、`file` を指す次のメインフレームの遷移を通して覚える。
+/// 閉じ切る前の前のブラウザーの遷移を覚えないよう、ファイルのパスで確かめる。
+#[derive(Debug, Default)]
+pub struct Allowed {
+    file: PathBuf,
+    url: String,
+}
 
-fn lock(page: &AllowedPage) -> MutexGuard<'_, String> {
+/// 資源の要求は CEF の IO スレッドで調べるので、UI スレッドの `Shared` とは別に `Mutex` で持つ。
+pub type AllowedPage = Arc<Mutex<Allowed>>;
+
+fn lock(page: &AllowedPage) -> MutexGuard<'_, Allowed> {
     page.lock().unwrap_or_else(|e| e.into_inner())
 }
 
-/// 次に開くページを通せるよう、覚えた URL を忘れる。
-pub fn reset(page: &AllowedPage) {
-    lock(page).clear();
+/// 覚えた URL を忘れ、次に開くページのファイル `file` を通せるようにする。
+pub fn reset(page: &AllowedPage, file: &Path) {
+    let mut page = lock(page);
+    page.file = file.to_path_buf();
+    page.url.clear();
 }
 
 fn url_of(request: Option<&mut Request>) -> String {
@@ -49,7 +59,7 @@ wrap_resource_request_handler! {
             _callback: Option<&mut Callback>,
         ) -> ReturnValue {
             let url = url_of(request);
-            if policy::allows_resource(&url, &lock(&self.page)) {
+            if policy::allows_resource(&url, &lock(&self.page).url) {
                 return ReturnValue::CONTINUE;
             }
             log_blocked("資源の要求", &url);
@@ -76,11 +86,11 @@ wrap_request_handler! {
             let url = url_of(request);
             let main = frame.is_some_and(|f| f.is_main() == 1);
             let mut page = lock(&self.page);
-            if main && page.is_empty() {
-                page.clone_from(&url);
+            if main && page.url.is_empty() && policy::is_file_url_of(&url, &page.file) {
+                page.url.clone_from(&url);
                 return false as _;
             }
-            if policy::allows_navigation(&url, &page) {
+            if policy::allows_navigation(&url, &page.url) {
                 return false as _;
             }
             log_blocked("遷移", &url);
@@ -141,13 +151,32 @@ pub fn isolate_network(command_line: &mut CommandLine) {
     );
 }
 
-/// 遷移と要求を拒否するハンドラ。
+/// WebRTC の IP の扱いの設定（Chromium の設定の名前と、プロキシを通らない UDP を禁じる値）。
+const WEBRTC_POLICY: (&str, &str) = ("webrtc.ip_handling_policy", "disable_non_proxied_udp");
+
+/// WebRTC の UDP（STUN、TURN）はプロキシも `RequestHandler` も通らないので、プロキシを通らない UDP を禁じる。
+/// CEF の Chromium にはこれを決めるスイッチ（`force-webrtc-ip-handling-policy`）が無く、設定で渡す。
+pub fn block_webrtc_udp() -> Result<(), String> {
+    let context = request_context_get_global_context().ok_or("RequestContext が無い")?;
+    let mut value = value_create().ok_or("CEF の値を作れない")?;
+    value.set_string(Some(&WEBRTC_POLICY.1.into()));
+    // 既定の空の CefString は null で渡り、CEF は必須の引数が無いとして何もせず失敗を返すので、値を持たせる。
+    let mut error = CefString::from("");
+    let name = CefString::from(WEBRTC_POLICY.0);
+    if context.set_preference(Some(&name), Some(&mut value), Some(&mut error)) == 1 {
+        Ok(())
+    } else {
+        Err(format!("{} を設定できない: {error}", WEBRTC_POLICY.0))
+    }
+}
+
+/// 遷移と要求を拒否するハンドラー。
 pub fn request_handler(page: &AllowedPage) -> RequestHandler {
     let resource = GuardResourceHandler::new(page.clone());
     GuardRequestHandler::new(page.clone(), resource)
 }
 
-/// ポップアップを開かせないハンドラ。
+/// ポップアップを開かせないハンドラー。
 pub fn life_span_handler() -> LifeSpanHandler {
     GuardLifeSpanHandler::new()
 }

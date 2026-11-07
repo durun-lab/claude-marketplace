@@ -7,7 +7,7 @@
     "id": {"type": "id", "description": "レイヤーの ID"},
     "tab": {"type": "text", "description": "タブの題（ページの題）"},
     "doc": {"type": "text", "description": "ページの文。\\n で行を分け、「# 」は題、「## 」は節、「> 」は要点の箱、「- 」は番号つきの項目、ほかは段落。**…** は青い太字、==…== は黄色のマーカー"},
-    "segs": {"type": "text", "optional": true, "description": "読む言葉。「文の中の言葉@始まり+長さ」を | で区切る（秒はレイヤーの始まりから）。前から順に、まだ使っていない一致に下線を引く"},
+    "segs": {"type": "text", "format": "segs", "optional": true, "description": "読む言葉。「文の中の言葉@始まり+長さ」を | で区切る（秒はレイヤーの始まりから）。前から順に、まだ使っていない一致に下線を引く"},
     "x": {"type": "number", "default": "40", "description": "窓の左上の x（顔の反対側に置く）"},
     "y": {"type": "number", "default": "50", "description": "窓の左上の y"},
     "w": {"type": "number", "default": "1000", "description": "窓の幅"},

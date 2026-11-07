@@ -15,7 +15,7 @@ pub const HOST_ENV: &str = "MM_CEF_HOST";
 pub const PROBE_COMMAND: &str = "probe";
 /// `probe` の答え。`cef` の feature つきで作ったホストだけが書く。
 pub const PROBE_REPLY: &str = "mm-host-cef cef";
-/// sandbox つきの起動（`bundle.sh` の組み立て）のホストが `probe` の答えの後ろに足す印。
+/// sandbox つきの起動（`bundle.sh` の組み立て）のホストが `probe` の答えの後ろに足す文字列。
 pub const PROBE_SANDBOX: &str = " sandbox";
 /// ホストの実行ファイルの名前（拡張子を除く）。
 const HOST_STEM: &str = "mm-host-cef";

@@ -22,6 +22,7 @@ const VIEW_LOG = 200;
 const HOOK_LIMIT = 20;
 const CHANGES_ALL = 50;
 const OUTPUT_CHARS = 4000;
+const RECENT_KEPT = 10;
 
 type Win = { res: ServerResponse; sessionId?: string };
 type ChangeRecord = { seq: number; at: number; change: MmChange };
@@ -69,6 +70,7 @@ const view = (): MovieMakerView => ({
   sessionId: boundSession,
   install: getInstaller().view(),
   project: projectDir,
+  recent: state.mmRecentProjects ?? [],
   hasStore: hasStore(),
   link: { status: linkStatus, message: linkMessage, port: client?.port, version, undoDepth },
   log,
@@ -229,13 +231,19 @@ const stop = (): void => {
   setLink(projectDir ? 'waiting' : 'no-project');
 };
 
+/** 開いたプロジェクトを、最近開いたものの先頭に置く。 */
+const remember = (dir: string): void => {
+  state.mmRecentProjects = [dir, ...(state.mmRecentProjects ?? []).filter((p) => p !== dir)].slice(0, RECENT_KEPT);
+  touch();
+};
+
 /** ウィンドウからの接続。最初のウィンドウがつないだら movie-maker を探し、最後のウィンドウが切れたら離れる。 */
 export const streamMovieMaker = (res: ServerResponse, sessionId: string | undefined, project: string | undefined): void => {
   res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-cache' });
   const win: Win = { res, sessionId };
   windows.add(win);
   if (sessionId) bind(sessionId);
-  if (project && !projectDir) projectDir = path.resolve(project);
+  if (project && !projectDir) remember((projectDir = path.resolve(project)));
   if (windows.size === 1) start();
   sendView(win, JSON.stringify(view()));
   const keepalive = setInterval(() => res.write(': keepalive\n\n'), KEEPALIVE_MS);
@@ -252,6 +260,7 @@ export const setMmProject = (project: string | undefined): void => {
   const next = project?.trim() ? path.resolve(project.trim()) : undefined;
   if (next === projectDir) return;
   projectDir = next;
+  if (next) remember(next);
   unlink();
   if (windows.size) start();
   broadcast();

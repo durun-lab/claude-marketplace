@@ -1,0 +1,30 @@
+[package]
+name = "mm-improve"
+description = "自動の改善。要望（Feedback と自動の起票）をため、別の worktree で claude -p に直させ、囲いの検査を通ったものを取り込む"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-types = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+toml = { workspace = true }
+# 回の ID と claude -p のセッションの UUID。
+getrandom = { workspace = true }
+
+# claude -p の木をジョブオブジェクトに入れ、アプリが落ちても木を残さない。
+[target.'cfg(windows)'.dependencies]
+windows = { workspace = true, features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

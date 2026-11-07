@@ -1,12 +1,11 @@
 //! CEF の画素（BGRA8、premultiplied、8 bit の符号化値）を中間の形式（`Rgba16Float`、premultiplied、線形）に直すパス。
-//! 符号化値は素材と同じ Rec.1886 の式で線形にする（[`crate::transfer`]）。半透明の画素は alpha で割ってから線形にし、
-//! 掛け直す（CPU の経路の `transfer::rec1886_from_srgb_linear` と同じ結果になる）。
+//! 符号化値は素材と同じ Rec.1886 の式で線形にする（`mm_types::transfer`）。半透明の画素は alpha で割ってから線形にし、
+//! 掛け直す（CPU の経路の `mm_host_cef::pixel` と同じ結果になる）。
 
 use std::sync::{Arc, Weak};
 
 use mm_gpu::{GpuContext, FRAME_FORMAT};
-
-use crate::transfer::GAMMA;
+use mm_types::transfer::TRANSFER_WGSL;
 
 const SHADER: &str = r"
 @group(0) @binding(0) var src: texture_2d<f32>;
@@ -17,10 +16,6 @@ fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
     return vec4<f32>(p * 2.0 - 1.0, 0.0, 1.0);
 }
 
-fn decode(c: vec3<f32>) -> vec3<f32> {
-    return pow(c, vec3<f32>(GAMMA));
-}
-
 @fragment
 fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
     let c = textureLoad(src, vec2<i32>(pos.xy), 0);
@@ -28,7 +23,7 @@ fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
         return vec4<f32>(0.0);
     }
     let straight = min(c.rgb / c.a, vec3<f32>(1.0));
-    return vec4<f32>(decode(straight) * c.a, c.a);
+    return vec4<f32>(mm_bt1886_to_linear3(straight) * c.a, c.a);
 }
 ";
 
@@ -42,55 +37,10 @@ pub struct Converter {
 impl Converter {
     /// `ctx` の上に作る。
     pub fn new(ctx: &Arc<GpuContext>) -> Self {
-        let device = &ctx.device;
-        let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("web.cef convert"),
-            source: wgpu::ShaderSource::Wgsl(
-                format!("const GAMMA: f32 = {GAMMA:?};\n{SHADER}").into(),
-            ),
-        });
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("web.cef convert"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                    view_dimension: wgpu::TextureViewDimension::D2,
-                    multisampled: false,
-                },
-                count: None,
-            }],
-        });
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("web.cef convert"),
-            bind_group_layouts: &[Some(&layout)],
-            immediate_size: 0,
-        });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("web.cef convert"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &module,
-                entry_point: Some("vs"),
-                compilation_options: Default::default(),
-                buffers: &[],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &module,
-                entry_point: Some("fs"),
-                compilation_options: Default::default(),
-                targets: &[Some(FRAME_FORMAT.into())],
-            }),
-            primitive: wgpu::PrimitiveState::default(),
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
+        let layout = bind_layout(&ctx.device);
         Self {
             ctx: Arc::downgrade(ctx),
-            pipeline,
+            pipeline: pipeline(&ctx.device, &layout),
             layout,
         }
     }
@@ -99,7 +49,60 @@ impl Converter {
     pub fn is_for(&self, ctx: &Arc<GpuContext>) -> bool {
         self.ctx.upgrade().is_some_and(|c| Arc::ptr_eq(&c, ctx))
     }
+}
 
+/// 変換の元（BGRA8 のコピー）を 1 枚だけ受けるバインドグループの形。
+fn bind_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("web.cef convert"),
+        entries: &[wgpu::BindGroupLayoutEntry {
+            binding: 0,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture {
+                sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                view_dimension: wgpu::TextureViewDimension::D2,
+                multisampled: false,
+            },
+            count: None,
+        }],
+    })
+}
+
+/// 全画面の三角形 1 枚で中間の形式に描くパイプライン。
+fn pipeline(device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> wgpu::RenderPipeline {
+    let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+        label: Some("web.cef convert"),
+        source: wgpu::ShaderSource::Wgsl(format!("{TRANSFER_WGSL}\n{SHADER}").into()),
+    });
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("web.cef convert"),
+        bind_group_layouts: &[Some(layout)],
+        immediate_size: 0,
+    });
+    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+        label: Some("web.cef convert"),
+        layout: Some(&pipeline_layout),
+        vertex: wgpu::VertexState {
+            module: &module,
+            entry_point: Some("vs"),
+            compilation_options: Default::default(),
+            buffers: &[],
+        },
+        fragment: Some(wgpu::FragmentState {
+            module: &module,
+            entry_point: Some("fs"),
+            compilation_options: Default::default(),
+            targets: &[Some(FRAME_FORMAT.into())],
+        }),
+        primitive: wgpu::PrimitiveState::default(),
+        depth_stencil: None,
+        multisample: wgpu::MultisampleState::default(),
+        multiview_mask: None,
+        cache: None,
+    })
+}
+
+impl Converter {
     /// 共有テクスチャ `shared` を、自前の BGRA8 にコピーしてから中間の形式の新しいテクスチャへ変換する。
     /// コピーの後に共有テクスチャの状態を `PRESENT` に戻す（ホストとの約束の COMMON）。提出して返す。
     pub fn convert(&self, ctx: &GpuContext, shared: &wgpu::Texture) -> wgpu::Texture {

@@ -1,18 +1,25 @@
 //! C の部品を作る。
 //! - `csrc/shim.c`: Rust の安定版では可変長引数の関数を定義できないので、OpenFX の可変長の関数
 //!   （`paramGetValue`、`message` など）を C で受けて Rust の固定長の関数へ渡す。
-//! - `tests/plugins/`: 試験に使う OpenFX のプラグインを、公式のヘッダーでバンドルの形に作る。
+//! - `tests/plugins/`: テストに使う OpenFX のプラグインを、公式のヘッダーでバンドルの形に作る。
 //!   ヘッダーで作ったプラグインと突き合わせることで、Rust 側の構造体の並びの誤りを捕まえる。
-//!   置き場所は環境変数 `MM_OFX_TEST_PLUGINS` で試験に渡す。
+//!   置き場所は環境変数 `MM_OFX_TEST_PLUGINS` でテストに渡す。
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const INCLUDE: &str = "vendor/openfx/include";
-/// 試験のプラグイン（ソース、バンドルの名前、C++ か）。
-const TEST_PLUGINS: [(&str, &str, bool); 2] = [
-    ("tests/plugins/invert.cpp", "Invert", true),
-    ("tests/plugins/gain.c", "MmTestGain", false),
+/// テストのプラグイン（ソース、バンドルの名前、C++ か、マクロの定義）。
+/// `MmTestGainV2` は識別子が同じで gain を 2 倍にする版で、共有ライブラリを差し替えた試験に使う。
+const TEST_PLUGINS: [(&str, &str, bool, Option<&str>); 3] = [
+    ("tests/plugins/invert.cpp", "Invert", true, None),
+    ("tests/plugins/gain.c", "MmTestGain", false, None),
+    (
+        "tests/plugins/gain.c",
+        "MmTestGainV2",
+        false,
+        Some("MM_GAIN_SCALE=2.0"),
+    ),
 ];
 
 fn main() {
@@ -25,9 +32,9 @@ fn main() {
         .compile("mm_ofx_shim");
 
     let out = PathBuf::from(std::env::var("OUT_DIR").expect("OUT_DIR")).join("plugins");
-    for (src, name, cpp) in TEST_PLUGINS {
+    for (src, name, cpp, define) in TEST_PLUGINS {
         println!("cargo:rerun-if-changed={src}");
-        build_plugin(Path::new(src), name, cpp, &out);
+        build_plugin(Path::new(src), name, cpp, define, &out);
     }
     println!("cargo:rustc-env=MM_OFX_TEST_PLUGINS={}", out.display());
 }
@@ -43,7 +50,7 @@ fn arch_dir() -> &'static str {
 }
 
 /// `<out>/<name>.ofx.bundle/Contents/<arch>/<name>.ofx` に共有ライブラリを作る。
-fn build_plugin(src: &Path, name: &str, cpp: bool, out: &Path) {
+fn build_plugin(src: &Path, name: &str, cpp: bool, define: Option<&str>, out: &Path) {
     let dir = out
         .join(format!("{name}.ofx.bundle"))
         .join("Contents")
@@ -58,6 +65,10 @@ fn build_plugin(src: &Path, name: &str, cpp: bool, out: &Path) {
         .cargo_metadata(false)
         .get_compiler();
     let mut cmd: Command = tool.to_command();
+    if let Some(define) = define {
+        let flag = if tool.is_like_msvc() { "/D" } else { "-D" };
+        cmd.arg(format!("{flag}{define}"));
+    }
     if tool.is_like_msvc() {
         cmd.args(["/nologo", "/LD", "/O2", "/EHsc"])
             .arg(format!("/I{INCLUDE}"))

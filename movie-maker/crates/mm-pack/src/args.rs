@@ -6,6 +6,7 @@ use mm_types::{MmError, RationalTime, Result};
 use serde_json::Value;
 
 use crate::macros::{MacroDef, ParamType};
+use crate::param_format::validate;
 use crate::theme::Theme;
 
 /// 小数の秒の桁の上限（`mm op` の時刻と同じ）。
@@ -24,7 +25,7 @@ pub enum ArgValue {
 impl ArgValue {
     fn parse(ty: ParamType, raw: &str) -> Result<Self> {
         Ok(match ty {
-            ParamType::Text | ParamType::Id => Self::Text(raw.to_string()),
+            ParamType::Text | ParamType::Id | ParamType::Bool => Self::Text(raw.to_string()),
             ParamType::Time => Self::Time(parse_time(raw)?),
             // NaN と無限大は JSON で null になり、ページとシェーダーで黙って 0 や NaN に化けるので弾く。
             ParamType::Number => Self::Number(
@@ -128,7 +129,8 @@ impl Env {
         let mut values = theme_values(theme);
         for (name, param) in &def.params {
             let value = match raw.get(name).or(param.default.as_ref()) {
-                Some(text) => ArgValue::parse(param.ty, text)
+                Some(text) => validate(param, text)
+                    .and_then(|()| ArgValue::parse(param.ty, text))
                     .map_err(|e| MmError::InvalidArgument(format!("引数 {name}: {e}")))?,
                 None if param.optional => ArgValue::Missing,
                 None => {

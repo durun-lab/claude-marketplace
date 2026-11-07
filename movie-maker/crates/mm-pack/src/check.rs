@@ -5,14 +5,19 @@ use std::collections::BTreeSet;
 
 use mm_doc::{Cut, Node, Project, Sequence};
 use mm_ops::{AddSequence, Editor, OpContext, Transaction};
+use mm_text_api::FONTS_DIR;
 use mm_types::{Id, RationalTime};
 
 use crate::args::{referenced_names, Env};
 use crate::expand::expand;
 use crate::layout::EstimateShaper;
-use crate::macros::{MacroDef, MacroKind, Step, WebStep};
+use crate::macros::{MacroDef, MacroKind, ParamFormat, ParamType, Step, WebStep};
 use crate::pack::{Pack, FORMAT};
+use crate::param_format::validate;
 use crate::style::TextStyleSpec;
+
+/// 書体の配布元の URL の頭。取るときも HTTPS だけを許す（[`crate::Curl`]）。
+const HTTPS: &str = "https://";
 
 /// 検査の結果。`errors` が空なら通った。
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -38,6 +43,7 @@ pub fn check(pack: &Pack) -> Report {
     let mut report = Report::default();
     check_manifest(pack, &mut report);
     check_theme(pack, &mut report);
+    check_fonts(pack, &mut report);
     for (name, style) in &pack.styles {
         check_style(pack, name, style, &mut report);
     }
@@ -48,8 +54,10 @@ pub fn check(pack: &Pack) -> Report {
             .into_iter()
             .for_each(|e| report.push(e));
     }
+    check_page_colors(pack, &mut report);
     for def in &pack.macros {
         check_references(pack, def, &mut report);
+        check_params(def, &mut report);
     }
     if report.ok() {
         apply_examples(pack, &mut report);
@@ -91,6 +99,40 @@ fn check_theme(pack: &Pack, report: &mut Report) {
     }
 }
 
+/// テーマの書体が目録にあり、URL が HTTPS で、family ごとに `fonts/<family>/` にライセンスの文があるか。
+/// 本体は取らずに目録だけを見る（オフラインでも検査が通る）。目録が無いパックは OS の書体で描くので見ない。
+fn check_fonts(pack: &Pack, report: &mut Report) {
+    if pack.fonts.is_empty() {
+        return;
+    }
+    let at = format!("{FONTS_DIR}/{}", crate::fonts::MANIFEST);
+    for (role, family) in &pack.theme.fonts {
+        if !pack.fonts.iter().any(|f| f.family == *family) {
+            report.push(format!("theme.json: 書体 {role}（{family}）が {at} に無い"));
+        }
+    }
+    for font in &pack.fonts {
+        if !font.url.starts_with(HTTPS) {
+            report.push(format!("{at}: {} の URL は HTTPS にする", font.file));
+        }
+        if !mm_text_api::is_font_path(std::path::Path::new(&font.file)) {
+            report.push(format!(
+                "{at}: {} は書体のファイルの拡張子でない",
+                font.file
+            ));
+        }
+    }
+    let mut families: Vec<&str> = pack.fonts.iter().map(|f| f.family.as_str()).collect();
+    families.dedup();
+    for family in families {
+        if !crate::fonts::has_license(&pack.dir.join(FONTS_DIR).join(family)) {
+            report.push(format!(
+                "{FONTS_DIR}/{family}/: ライセンスの文（OFL.txt など）が無い"
+            ));
+        }
+    }
+}
+
 fn check_style(pack: &Pack, name: &str, s: &TextStyleSpec, report: &mut Report) {
     let at = |what: &str| format!("styles.json の {name}: {what}");
     let mut colors = vec![s.color.as_str()];
@@ -111,6 +153,9 @@ fn check_style(pack: &Pack, name: &str, s: &TextStyleSpec, report: &mut Report) 
     }
     if s.size <= 0.0 {
         report.push(at("size は正にする"));
+    }
+    if let Some(Err(e)) = s.font.as_deref().map(|r| pack.theme.font(r)) {
+        report.push(at(&e.to_string()));
     }
     if s.anchor.iter().any(|a| !(0.0..=1.0).contains(a)) {
         report.push(at("anchor は 0..1"));
@@ -224,6 +269,51 @@ fn check_web(pack: &Pack, w: &WebStep) -> Vec<String> {
         ));
     }
     errors
+}
+
+/// 引数の定義が噛み合うか。選べる値と書式は文の引数だけに付け、既定の値は型と書式に合う。
+fn check_params(def: &MacroDef, report: &mut Report) {
+    for (name, p) in &def.params {
+        let at = |what: &str| format!("{}: 引数 {name}: {what}", def.name);
+        if (!p.choices.is_empty() || p.format.is_some()) && p.ty != ParamType::Text {
+            report.push(at("choices と format は type が text の引数だけ"));
+        }
+        if p.format == Some(ParamFormat::List) && p.choices.is_empty() {
+            report.push(at("format が list なら choices が要る"));
+        }
+        if let Some(Err(e)) = p.default.as_deref().map(|d| validate(p, d)) {
+            report.push(at(&format!("既定の値が誤り: {e}")));
+        }
+    }
+}
+
+/// ページに色を直に書かない（色はテーマから引く）。
+fn check_page_colors(pack: &Pack, report: &mut Report) {
+    for (name, html) in &pack.pages {
+        if let Some(found) = find_literal_color(html) {
+            report.push(format!(
+                "web/{name}.html: 色 {found} を直に書かない（theme.json の色を引く）"
+            ));
+        }
+    }
+}
+
+/// 16 進の色（`#` に続く 3、4、6、8 桁の 16 進だけの語）か、`rgb(`、`rgba(`、`hsl(`、`hsla(` の最初の 1 つ。
+fn find_literal_color(html: &str) -> Option<String> {
+    const FUNCS: [&str; 4] = ["rgb(", "rgba(", "hsl(", "hsla("];
+    for (i, _) in html.match_indices('#') {
+        let word: String = html[i + 1..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+            .collect();
+        if matches!(word.len(), 3 | 4 | 6 | 8) && word.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Some(format!("#{word}"));
+        }
+    }
+    FUNCS
+        .iter()
+        .find(|f| html.contains(**f))
+        .map(|f| (*f).to_string())
 }
 
 /// カットに掛けるマクロ（`transition`）の例が引く、2 つのカット `c1`、`c2` の sequence `check`。

@@ -237,7 +237,7 @@ wrap_client! {
     }
 }
 
-/// 描画、読み込み、タイトル、遷移と要求の拒否、ポップアップの拒否のハンドラをまとめたクライアント。
+/// 描画、読み込み、タイトル、遷移と要求の拒否、ポップアップの拒否のハンドラーをまとめたクライアント。
 pub fn build_client(shared: &Rc<Shared>) -> Client {
     OsrClient::new(
         OsrRenderHandler::new(shared.clone()),

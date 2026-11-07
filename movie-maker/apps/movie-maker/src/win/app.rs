@@ -21,6 +21,9 @@ use crate::win::cli::{self, Args};
 use crate::win::deliver::DeliverState;
 use crate::win::deliver_ipc;
 use crate::win::edit;
+use crate::win::feedback;
+use crate::win::feedback_ipc;
+use crate::win::hotpatch;
 use crate::win::ipc::{self, ProjectInfo, SyncState};
 use crate::win::media::{self, MediaState};
 use crate::win::media_ipc;
@@ -112,6 +115,7 @@ fn init_tracing() -> Telemetry {
     tracing_subscriber::registry()
         .with(metrics_layer)
         .with(chrome_layer)
+        .with(feedback::watch_layer())
         .init();
     Telemetry { metrics, chrome }
 }
@@ -200,6 +204,7 @@ pub fn run() {
     let telemetry = init_tracing();
     let args =
         cli::parse(&std::env::args().skip(1).collect::<Vec<_>>()).unwrap_or_else(|e| fail(&e));
+    feedback::start(&args.project);
     let mut opened = project::open(&args.project).unwrap_or_else(|e| fail(&e.to_string()));
     let comp_id = project::pick_composition(&opened.project, args.composition.as_deref())
         .unwrap_or_else(|e| fail(&e.to_string()));
@@ -283,6 +288,7 @@ fn build_and_run(boot: Boot) {
 enum Panel {
     Common,
     Deliver,
+    Feedback,
     Media,
     Mixer,
     Pack,
@@ -297,6 +303,7 @@ fn route(command: &str) -> Panel {
     match command {
         "edit_action" => Panel::Source,
         c if c.starts_with("export_") => Panel::Deliver,
+        c if c.starts_with("feedback_") => Panel::Feedback,
         c if c.starts_with("media_") => Panel::Media,
         c if c.starts_with("mixer_") => Panel::Mixer,
         c if c.starts_with("pack_") => Panel::Pack,
@@ -313,6 +320,7 @@ fn dispatch(invoke: tauri::ipc::Invoke) -> bool {
     let handler: fn(tauri::ipc::Invoke) -> bool = match route(invoke.message.command()) {
         Panel::Common => ipc::handler,
         Panel::Deliver => deliver_ipc::handler,
+        Panel::Feedback => feedback_ipc::handler,
         Panel::Media => media_ipc::handler,
         Panel::Mixer => mixer_ipc::handler,
         Panel::Pack => pack_ipc::handler,
@@ -337,7 +345,9 @@ impl Boot {
             model.clone(),
         ));
         ipc::spawn(app.handle().clone(), self.state.clone());
+        hotpatch::start(app.handle());
         forward_changes(app.handle(), &self.shared);
+        feedback::connect(app.handle().clone());
         offer_drops(&webview, app.state::<Arc<MediaState>>().inner().clone());
         watch_window(
             &window,
@@ -432,6 +442,7 @@ mod tests {
             ("subscribe", Panel::Common),
             ("apply_ops", Panel::Common),
             ("export_start", Panel::Deliver),
+            ("feedback_submit", Panel::Feedback),
             ("media_list", Panel::Media),
             ("mixer_state", Panel::Mixer),
             ("pack_apply", Panel::Pack),

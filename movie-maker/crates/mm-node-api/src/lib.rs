@@ -26,7 +26,7 @@ use serde::{Deserialize, Serialize};
 use mm_audio_api::AudioBlock;
 use mm_color_api::ColorTransform;
 use mm_decode_api::{FrameSource, GpuFrameHandle};
-use mm_text_api::{TextRasterizer, TextShaper};
+use mm_text_api::{FontFile, TextRasterizer, TextShaper};
 use mm_types::{
     AssetId, ParamSchema, Params, RationalTime, Rect, Result, Rgba, RgbaImage, Size, TimeRange,
 };
@@ -242,6 +242,22 @@ pub struct AudioCx<'a> {
     pub footage: Option<&'a mut dyn FrameSource>,
 }
 
+/// 音の効果（レイヤーの `effects` の、`traits().audio` が真の種類）を 1 区間かけるコンテキスト。
+pub struct AudioEffectCx<'a> {
+    /// コンポジションの時間軸での区間。前の呼び出しの `range.end` から始まれば続きで、離れていればシーク。
+    pub range: TimeRange,
+    /// 効果のインスタンスを見分けるキー（コンポジション、レイヤー、効果の ID から作る）。状態はキーごとに持つ。
+    pub instance: &'a str,
+    /// 区間の中のパラメータの値。区間の先頭からのフレームの位置の昇順で、先頭（0）を必ず含む。
+    /// 位置は区間の分け方に依らない時刻の格子（[`AUDIO_PARAM_STEP`] フレームごと）に置く。
+    pub params: &'a [(usize, Params)],
+    pub sample_rate: u32,
+    pub channels: u16,
+}
+
+/// 音の効果のパラメータを評価する間隔（フレーム）。コンポジションの時間軸の 0 からこの間隔の格子で評価する。
+pub const AUDIO_PARAM_STEP: u64 = 64;
+
 /// ノードの種類。実装は `mm-nodes-*` に 1 種類ずつ置く。
 pub trait NodeKind: Send + Sync {
     /// ノードの種類の名前（`footage`、`text`、`web.cef`、`shader.wgsl`）。プロジェクトのデータの `Node.kind` に入る。
@@ -250,12 +266,34 @@ pub trait NodeKind: Send + Sync {
     fn version(&self) -> u32;
     /// パラメータの定義。UI の入力フィールドと MCP の引数はここから作る。
     fn params(&self) -> ParamSchema;
+    /// このパラメータの組のときの定義。パラメータで一覧が変わる種類（`ofx` はバンドルとプラグインで変わる）が上書きし、
+    /// `params()` の後ろに選んだものの分を足して返す。既定は `params()`（RFC 0132）。
+    fn params_for(&self, params: &Params) -> ParamSchema {
+        let _ = params;
+        self.params()
+    }
+    /// 画素を変えうる、パラメータと素材の外の入力の指紋（`ofx` のプラグインの共有ライブラリの印など）。
+    /// レンダラーはフレームのキャッシュのキーに入れ、`None` ならそのフレームを覚えない。
+    /// `asset_path` は素材のパスを引く。既定は空の文字列（パラメータと素材だけで画素が決まる。RFC 0132）。
+    fn cache_fingerprint(
+        &self,
+        params: &Params,
+        asset_path: &dyn Fn(&AssetId) -> Option<PathBuf>,
+    ) -> Option<String> {
+        let _ = (params, asset_path);
+        Some(String::new())
+    }
     /// 受ける映像の定義。
     fn inputs(&self) -> InputSchema {
         InputSchema::default()
     }
     /// 性質。
     fn traits(&self) -> Traits;
+    /// パラメータの `AssetRef` の素材を、レンダラーがデコーダーで開いて `FrameCx::footage` に渡すか。
+    /// 素材のファイルを自分で読む種類（`lottie`）は偽にし、`InputFrames::asset_path` でパスを引く。
+    fn decodes_asset(&self) -> bool {
+        true
+    }
     /// 自前の長さ（素材、音）。無ければ `None` で、レイヤーの in/out に従う。
     fn duration(&self, params: &Params) -> Option<RationalTime> {
         let _ = params;
@@ -287,6 +325,18 @@ pub trait NodeKind: Send + Sync {
     fn render_audio(&self, cx: &mut AudioCx<'_>) -> Result<AudioBlock> {
         let frames = audio_frames_in(cx.range, cx.sample_rate);
         Ok(AudioBlock::silence(cx.sample_rate, cx.channels, frames))
+    }
+    /// 音の効果として `block` をその場で変える。レイヤーの `effects` に置かれ `traits().audio` が真の種類を、
+    /// レンダラーがレイヤーの音（音量とパンの前）に上から順にかける。既定は何もしない。
+    fn process_audio(&self, cx: &AudioEffectCx<'_>, block: &mut AudioBlock) -> Result<()> {
+        let _ = (cx, block);
+        Ok(())
+    }
+    /// プロジェクトの書体の組（レンダラーが組の変わったときに渡す）。書体を自前で読み込む種類（`web.cef`）と、
+    /// 組んだ文字を覚える種類（`text`）が使う。ほかの種類は何もしない。
+    fn use_fonts(&self, fonts: &[FontFile]) -> Result<()> {
+        let _ = fonts;
+        Ok(())
     }
 }
 

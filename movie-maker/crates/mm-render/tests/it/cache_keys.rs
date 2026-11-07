@@ -1,6 +1,7 @@
-//! 入れ子の画像のキーが、レイヤーの効果（種類が決定的か、効果が参照する素材の中身）を見ること。
+//! 入れ子の画像のキーが、レイヤーの効果（種類が決定的か、効果が参照する素材の中身、種類の指紋）を見ること。
 //! GPU が無い環境ではスキップし、`MM_REQUIRE_GPU` があれば失敗にする。
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use mm_doc::{Composition, Effect, Layer, Node, Project};
@@ -71,12 +72,58 @@ impl NodeKind for Noisy {
     }
 }
 
+/// `Fingerprinted` の指紋。0 なら引けない（`None`）。
+static FINGERPRINT: AtomicU64 = AtomicU64::new(1);
+
+/// パラメータの外の指紋を持つ種類（`ofx` のプラグインの印の代わり）。入力があればそのまま返し、無ければ単色。
+struct Fingerprinted;
+
+impl NodeKind for Fingerprinted {
+    fn id(&self) -> &'static str {
+        "fingerprinted"
+    }
+
+    fn version(&self) -> u32 {
+        1
+    }
+
+    fn params(&self) -> ParamSchema {
+        ParamSchema::new(vec![])
+    }
+
+    fn traits(&self) -> Traits {
+        Traits::PIXEL
+    }
+
+    fn migrate(&self, _old: serde_json::Value, _from: u32) -> Result<Params> {
+        Ok(Params::default())
+    }
+
+    fn cache_fingerprint(
+        &self,
+        _params: &Params,
+        _asset_path: &dyn Fn(&mm_types::AssetId) -> Option<std::path::PathBuf>,
+    ) -> Option<String> {
+        let v = FINGERPRINT.load(Ordering::SeqCst);
+        (v != 0).then(|| format!("v{v}"))
+    }
+
+    fn render(&self, cx: &mut FrameCx<'_>) -> Result<FrameRef> {
+        if cx.inputs.is_empty() {
+            return cx.gpu.fill(cx.size, Rgba::new(0.1, 0.2, 0.3, 1.0));
+        }
+        let t = cx.time;
+        cx.inputs.frame(0, t)
+    }
+}
+
 fn registry() -> MapRegistry {
     let mut r = MapRegistry::default();
     for kind in all_kinds() {
         r.insert(kind);
     }
     r.insert(Arc::new(Noisy));
+    r.insert(Arc::new(Fingerprinted));
     r
 }
 
@@ -173,6 +220,43 @@ fn 入れ子の中の効果の素材の中身が変わったら入れ子を描�
     p.assets[0].content_hash = "invertcube000001".into();
     render(&mut r, &p);
     assert_eq!(entries(&r), 3, "LUT の中身が変わった入れ子は別のキー");
+}
+
+#[test]
+fn 種類の指紋が変われば別のキーにし_引けなければ覚えない() {
+    let Some(ctx) = gpu() else { return };
+    let source = || {
+        let mut p = Project::new();
+        p.compositions = vec![comp(
+            "main",
+            vec![layer("s", Node::new("fingerprinted", 1))],
+        )];
+        p
+    };
+    let mut r = renderer(&ctx);
+    FINGERPRINT.store(1, Ordering::SeqCst);
+    render(&mut r, &source());
+    render(&mut r, &source());
+    assert_eq!(entries(&r), 1, "同じ指紋なら当たる");
+    FINGERPRINT.store(2, Ordering::SeqCst);
+    render(&mut r, &source());
+    assert_eq!(entries(&r), 2, "レイヤーの種類の指紋が変われば別のキー");
+
+    let mut r = renderer(&ctx);
+    let p = nested_with_effect(Node::new("fingerprinted", 1));
+    render(&mut r, &p);
+    assert_eq!(entries(&r), 2, "中の単色と入れ子");
+    FINGERPRINT.store(3, Ordering::SeqCst);
+    render(&mut r, &p);
+    assert_eq!(
+        entries(&r),
+        3,
+        "入れ子の中の効果の指紋が変われば入れ子は別のキー"
+    );
+    FINGERPRINT.store(0, Ordering::SeqCst);
+    render(&mut r, &p);
+    assert_eq!(entries(&r), 3, "指紋を引けない効果を含む入れ子は覚えない");
+    FINGERPRINT.store(1, Ordering::SeqCst);
 }
 
 #[test]

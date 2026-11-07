@@ -15,9 +15,19 @@ use crate::layers::{CompCx, LayerImage};
 use crate::renderer::WgpuRenderer;
 
 /// 入力の列を、時刻によらず同じフレームで返す。素材のパスはプロジェクトのデータから引く。
-struct FrameList<'p> {
+pub(crate) struct FrameList<'p> {
     frames: Vec<FrameRef>,
     project: &'p Project,
+}
+
+impl<'p> FrameList<'p> {
+    /// 入力の無い列。素材のファイルを自分で読む種類（`lottie`）に素材のパスだけを渡す。
+    pub(crate) fn assets(project: &'p Project) -> Self {
+        Self {
+            frames: Vec::new(),
+            project,
+        }
+    }
 }
 
 impl InputFrames for FrameList<'_> {

@@ -1,9 +1,7 @@
 //! `mm-color-lut` が知る色空間を、伝達関数と原色に分けて持つ。
 
 use mm_color_api::{REC2020_TO_REC709, REC709_TO_REC2020};
-use mm_types::{ColorSpace, MmError, Result};
-
-use crate::transfer;
+use mm_types::{transfer, ColorSpace, MmError, Result};
 
 /// 3x3 行列（行ごと）。
 pub(crate) type Matrix = [[f32; 3]; 3];
@@ -15,6 +13,8 @@ enum Transfer {
     Srgb,
     Bt1886,
     Bt709Oetf,
+    Pq,
+    Hlg,
 }
 
 /// 原色。作業色空間は Rec.709。
@@ -42,13 +42,15 @@ impl Space {
     /// `bt601` は Rec.709 と同じ原色として扱う（RFC 0005）ので `bt709` と同じ値になる。
     pub(crate) fn of(cs: &ColorSpace) -> Result<Self> {
         use Primaries::{Rec2020, Rec709};
-        use Transfer::{Bt1886, Bt709Oetf, Linear, Srgb};
+        use Transfer::{Bt1886, Bt709Oetf, Hlg, Linear, Pq, Srgb};
         match cs.0.as_str() {
             "lin_rec709" => Ok(space(Linear, Rec709)),
             "srgb" => Ok(space(Srgb, Rec709)),
             "bt709" | "bt601" => Ok(space(Bt1886, Rec709)),
             "bt709_oetf" => Ok(space(Bt709Oetf, Rec709)),
             "bt2020" => Ok(space(Bt1886, Rec2020)),
+            "bt2100_pq" => Ok(space(Pq, Rec2020)),
+            "bt2100_hlg" => Ok(space(Hlg, Rec2020)),
             other => Err(MmError::Unsupported(format!("色空間 {other}"))),
         }
     }
@@ -58,6 +60,11 @@ impl Space {
         self == other
     }
 
+    /// 値が線形の光か。3D LUT にベイクするとき、1 を超える値を格子に収めるシェーパーが要る。
+    pub(crate) fn is_linear(self) -> bool {
+        self.transfer == Transfer::Linear
+    }
+
     /// 符号化値から線形へ（チャンネルごと）。
     pub(crate) fn decode(self, v: f32) -> f32 {
         match self.transfer {
@@ -65,6 +72,8 @@ impl Space {
             Transfer::Srgb => transfer::srgb_to_linear(v),
             Transfer::Bt1886 => transfer::bt1886_to_linear(v),
             Transfer::Bt709Oetf => transfer::bt709_to_linear(v),
+            Transfer::Pq => transfer::pq_to_linear(v),
+            Transfer::Hlg => transfer::hlg_to_linear(v),
         }
     }
 
@@ -75,6 +84,8 @@ impl Space {
             Transfer::Srgb => transfer::linear_to_srgb(v),
             Transfer::Bt1886 => transfer::linear_to_bt1886(v),
             Transfer::Bt709Oetf => transfer::linear_to_bt709(v),
+            Transfer::Pq => transfer::linear_to_pq(v),
+            Transfer::Hlg => transfer::linear_to_hlg(v),
         }
     }
 
@@ -85,6 +96,8 @@ impl Space {
             Transfer::Srgb => format!("mm_srgb_to_linear({arg})"),
             Transfer::Bt1886 => format!("mm_bt1886_to_linear({arg})"),
             Transfer::Bt709Oetf => format!("mm_bt709_to_linear({arg})"),
+            Transfer::Pq => format!("mm_pq_to_linear({arg})"),
+            Transfer::Hlg => format!("mm_hlg_to_linear({arg})"),
         }
     }
 
@@ -95,6 +108,8 @@ impl Space {
             Transfer::Srgb => format!("mm_linear_to_srgb({arg})"),
             Transfer::Bt1886 => format!("mm_linear_to_bt1886({arg})"),
             Transfer::Bt709Oetf => format!("mm_linear_to_bt709({arg})"),
+            Transfer::Pq => format!("mm_linear_to_pq({arg})"),
+            Transfer::Hlg => format!("mm_linear_to_hlg({arg})"),
         }
     }
 
@@ -110,7 +125,7 @@ impl Space {
 
 /// 行列を RGB に掛ける。
 pub(crate) fn mul(m: &Matrix, v: [f32; 3]) -> [f32; 3] {
-    m.map(|row| row[0] * v[0] + row[1] * v[1] + row[2] * v[2])
+    transfer::mul3(m, v)
 }
 
 /// 行列を掛ける WGSL の文（`lin` を `vec3<f32>` に直す）。

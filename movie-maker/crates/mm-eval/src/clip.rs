@@ -1,5 +1,5 @@
 //! レイヤーの見える範囲（切り抜き、角丸の矩形のマスク）と音のフェードを時刻 t で評価する。
-//! レンダラーとモックのレンダラーが同じ値を読む。
+//! 切り抜きとマスクは GPU のレンダラーが、音のフェードはレンダラーとモックのレンダラーが、同じ値を読む。
 
 use mm_doc::{Crop, Fade, FadeCurve, Layer, Mask, MaskMode, Param};
 use mm_types::RationalTime;
@@ -7,7 +7,7 @@ use mm_types::RationalTime;
 use crate::param::eval_param;
 
 /// dB の直線のフェードの始まりの音量（dB）。ここから 0 dB まで直線で上げる。
-pub const FADE_DB_FLOOR: f64 = -60.0;
+const FADE_DB_FLOOR: f64 = -60.0;
 
 /// 時刻 t で評価した切り抜き。レイヤーの画像の縁から内側へ削る幅（画素）。負の値は 0 にする。
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
@@ -16,13 +16,6 @@ pub struct EvaluatedCrop {
     pub top: f64,
     pub right: f64,
     pub bottom: f64,
-}
-
-impl EvaluatedCrop {
-    /// どの辺も削らないか。
-    pub fn is_none(&self) -> bool {
-        *self == Self::default()
-    }
 }
 
 fn number(p: Option<&Param>, t: RationalTime) -> f64 {
@@ -57,7 +50,7 @@ pub struct EvaluatedMask {
     pub inverted: bool,
 }
 
-/// 角丸の矩形のマスクを時刻 `t` で評価する。形が頂点の列（`rect` が無い）なら `None`（描かない）。
+/// 角丸の矩形のマスクを時刻 `t` で評価する。形が頂点の並び（`rect` が無い）なら `None`（描かない）。
 pub fn evaluate_mask(mask: &Mask, t: RationalTime) -> Option<EvaluatedMask> {
     let rect = mask.rect.as_ref()?;
     let position = eval_param(&rect.position, t)
@@ -83,7 +76,7 @@ pub fn evaluate_mask(mask: &Mask, t: RationalTime) -> Option<EvaluatedMask> {
 }
 
 /// フェードの曲線で、進み具合 `p`（0..1。無音の側が 0）の振幅の倍率。
-pub fn fade_curve_gain(curve: FadeCurve, p: f64) -> f64 {
+fn fade_curve_gain(curve: FadeCurve, p: f64) -> f64 {
     let p = p.clamp(0.0, 1.0);
     match curve {
         FadeCurve::Linear => p,

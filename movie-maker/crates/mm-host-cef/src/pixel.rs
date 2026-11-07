@@ -1,33 +1,18 @@
-//! CEF の画素（BGRA8、premultiplied、sRGB の符号化）を、`SharedFrame::Cpu` の形
-//! （RGBA f32、premultiplied、線形）に直す。
+//! CEF の画素（BGRA8、premultiplied、8 bit の符号化値）を、`SharedFrame::Cpu` の形
+//! （RGBA f32、premultiplied、線形）に直す。符号化値は素材と同じ Rec.1886 の式で線形にする（`mm_types::transfer`）ので、
+//! CSS の `#06090d` は書き出しでも (6, 9, 13) に戻る。
+
+use mm_types::transfer::{bt1886_to_linear, code8_table};
 
 /// 8 bit の最大値。
 const MAX8: f32 = 255.0;
 
-/// sRGB の符号化を線形に戻す（0..=1）。
-fn decode_srgb(s: f32) -> f32 {
-    if s <= 0.040_45 {
-        s / 12.92
-    } else {
-        ((s + 0.055) / 1.055).powf(2.4)
-    }
-}
-
-/// 8 bit の sRGB から線形への表。不透明な画素はこれだけで済む。
-fn table() -> [f32; 256] {
-    let mut t = [0.0; 256];
-    for (i, v) in t.iter_mut().enumerate() {
-        *v = decode_srgb(i as f32 / MAX8);
-    }
-    t
-}
-
 /// BGRA8 の行（行の間に詰め物が無い）を、線形の premultiplied の RGBA f32 にする。
 ///
-/// CEF は sRGB の符号化のまま premultiplied で渡すので、半透明の画素は一度 alpha で割ってから線形にし、
+/// CEF は符号化値のまま premultiplied で渡すので、半透明の画素は一度 alpha で割ってから線形にし、
 /// alpha を掛け直す（符号化の空間で掛けた値をそのまま線形にすると暗くなる）。
 pub fn bgra8_to_linear_rgba(bgra: &[u8]) -> Vec<f32> {
-    let lut = table();
+    let lut = code8_table();
     let mut out = Vec::with_capacity(bgra.len());
     for px in bgra.chunks_exact(4) {
         let (b, g, r, a) = (px[0], px[1], px[2], px[3]);
@@ -40,7 +25,7 @@ pub fn bgra8_to_linear_rgba(bgra: &[u8]) -> Vec<f32> {
             continue;
         }
         let alpha = f32::from(a) / MAX8;
-        let lin = |c: u8| decode_srgb((f32::from(c) / f32::from(a)).min(1.0)) * alpha;
+        let lin = |c: u8| bt1886_to_linear((f32::from(c) / f32::from(a)).min(1.0)) * alpha;
         out.extend([lin(r), lin(g), lin(b), alpha]);
     }
     out
@@ -55,8 +40,8 @@ mod tests {
         let out = bgra8_to_linear_rgba(&[0, 128, 255, 255]);
         assert_eq!(out[0], 1.0, "R は元の 3 番目");
         assert!(
-            (out[1] - 0.2158).abs() < 1e-3,
-            "sRGB 128 は線形で約 0.216: {}",
+            (out[1] - 0.1913).abs() < 1e-3,
+            "符号化値 128 は Rec.1886 の線形で約 0.191: {}",
             out[1]
         );
         assert_eq!(out[2], 0.0);
@@ -65,7 +50,7 @@ mod tests {
 
     #[test]
     fn 半透明の画素は割ってから線形にし掛け直す() {
-        // premultiplied の白の 50%（sRGB の符号化で 128, alpha 128）は、線形でも白の 50%。
+        // premultiplied の白の 50%（符号化値で 128, alpha 128）は、線形でも白の 50%。
         let out = bgra8_to_linear_rgba(&[128, 128, 128, 128]);
         let alpha = 128.0 / 255.0;
         for c in &out[..3] {

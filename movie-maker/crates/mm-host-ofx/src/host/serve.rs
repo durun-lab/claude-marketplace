@@ -5,13 +5,19 @@ use std::io::{BufRead, Write};
 use std::mem::ManuallyDrop;
 
 use mm_host_api::{HostRequest, HostResponse, SharedFrame, PROTOCOL_VERSION};
-use mm_host_ofx::{PrepareParams, RenderParams};
-use mm_types::{RationalTime, Size};
+use mm_host_ofx::{frame_bytes, PrepareParams, RenderParams};
+use mm_host_pipe::shm::{self, Mapping};
+use mm_types::{RationalTime, RgbaImage, Size};
 
 use super::names::FX_SUPPORTED_DEPTHS;
-use super::pixels::Depth;
+use super::pixels::{Depth, Pixels};
 use super::plugin::{Bundle, Described, Plugin};
 use super::render::Instance;
+
+/// 描く大きさの 1 辺の上限。D3D12 のテクスチャの 1 辺の上限と同じ。
+const MAX_SIDE: u32 = 16_384;
+/// 描く大きさの画素の数の上限（8K UHD）。入力と出力の RGBA f32 を確保する前に、確保できない大きさを断る。
+const MAX_PIXELS: u64 = 7680 * 4320;
 
 /// 読み込んだ 1 つのプラグインとインスタンス。捨てるときは DestroyInstance、Unload の順に呼ぶ。
 struct Session {
@@ -32,6 +38,8 @@ impl Drop for Session {
 #[derive(Default)]
 struct Server {
     session: Option<Session>,
+    /// 最後に開いた共有メモリ（`RenderParams::shared`）と名前。
+    shared: Option<(String, Mapping)>,
 }
 
 /// 標準入力が閉じるか `Shutdown` が来るまで答え続ける。応答は `out` に書く。
@@ -84,6 +92,7 @@ impl Server {
     fn prepare(&mut self, params: serde_json::Value) -> Result<(), String> {
         let params: PrepareParams = serde_json::from_value(params)
             .map_err(|e| format!("Prepare の params が読めない: {e}"))?;
+        check_frame_rate(params.frame_rate)?;
         self.session.take();
         let bundle = ManuallyDrop::new(Bundle::open(&params.bundle)?);
         let plugin = pick(bundle.plugins()?, params.plugin.as_deref())?;
@@ -121,16 +130,99 @@ impl Server {
         size: Size,
         params: serde_json::Value,
     ) -> Result<SharedFrame, String> {
+        check_size(size)?;
         let params: RenderParams = serde_json::from_value(params)
             .map_err(|e| format!("RenderFrame の params が読めない: {e}"))?;
-        let instance = self
-            .session
+        let Self { session, shared } = self;
+        let instance = session
             .as_ref()
             .and_then(|s| s.instance.as_ref())
             .ok_or("Prepare の前に RenderFrame")?;
-        let image = instance.render(time, size, &params)?;
-        Ok(SharedFrame::from_image(&image))
+        let depth = instance.depth();
+        let Some(pixels) = &params.shared else {
+            let source = Pixels::from_image(&source_image(params.source, size)?, depth)?;
+            let output = instance.render(time, size, source, &params.values)?;
+            let image = output.to_image().map_err(|e| e.to_string())?;
+            return Ok(SharedFrame::from_image(&image));
+        };
+        let one = frame_bytes(size);
+        let mapping = shared_mapping(shared, &pixels.name, 2 * one)?;
+        let (input, result) = mapping.bytes_mut().split_at_mut(one);
+        let source = if pixels.has_source {
+            Pixels::from_rows(size, shm::as_f32(input).ok_or(SHARED_LAYOUT)?, depth)?
+        } else {
+            Pixels::new(size, depth)?
+        };
+        let output = instance.render(time, size, source, &params.values)?;
+        let result = result.get_mut(..one).ok_or(SHARED_LAYOUT)?;
+        output.write_rows(shm::as_f32_mut(result).ok_or(SHARED_LAYOUT)?)?;
+        Ok(SharedFrame::Cpu {
+            size,
+            data: Vec::new(),
+        })
     }
+}
+
+/// 共有メモリを f32 の列として読めないときの誤り。
+const SHARED_LAYOUT: &str = "共有メモリの大きさか境界が f32 の画像に合わない";
+
+/// `name` の共有メモリ。前のフレームと同じ区画なら開き直さない（開き直すと毎回ページを割り当て直す）。
+fn shared_mapping<'a>(
+    cache: &'a mut Option<(String, Mapping)>,
+    name: &str,
+    bytes: usize,
+) -> Result<&'a mut Mapping, String> {
+    let reuse = matches!(cache, Some((n, m)) if n == name && m.len() >= bytes);
+    if !reuse {
+        // 古い区画を先に閉じてから開く。
+        *cache = None;
+        let mapping = Mapping::open(name, bytes).map_err(|e| e.to_string())?;
+        *cache = Some((name.to_string(), mapping));
+    }
+    cache
+        .as_mut()
+        .map(|(_, m)| m)
+        .ok_or_else(|| "共有メモリが無い".to_string())
+}
+
+/// JSON で渡された入力の画像。無ければ透明。
+fn source_image(source: Option<SharedFrame>, size: Size) -> Result<RgbaImage, String> {
+    match source {
+        None => Ok(RgbaImage::transparent(size)),
+        Some(SharedFrame::Cpu { size: s, data }) if s == size => {
+            RgbaImage::from_raw(s, data).map_err(|e| e.to_string())
+        }
+        Some(SharedFrame::Cpu { size: s, .. }) => Err(format!(
+            "入力の大きさ {}x{} が描く大きさ {}x{} と違う",
+            s.width, s.height, size.width, size.height
+        )),
+        Some(SharedFrame::SharedTexture { .. }) => {
+            Err("共有テクスチャの入力はまだ受けない（CPU の画像で渡す）".into())
+        }
+    }
+}
+
+/// 時刻をフレームの番号に直すフレームレートは、正の有限の数だけを受ける。
+fn check_frame_rate(rate: f64) -> Result<(), String> {
+    if rate.is_finite() && rate > 0.0 {
+        Ok(())
+    } else {
+        Err(format!("frame_rate {rate} は正の有限の数でない"))
+    }
+}
+
+/// 描く大きさは幅と高さが 1 以上で、上限（`MAX_SIDE`、`MAX_PIXELS`）以下だけを受ける。
+fn check_size(size: Size) -> Result<(), String> {
+    let (w, h) = (size.width, size.height);
+    if w == 0 || h == 0 {
+        return Err(format!("{w}x{h} は描けない（幅と高さは 1 以上）"));
+    }
+    if w > MAX_SIDE || h > MAX_SIDE || u64::from(w) * u64::from(h) > MAX_PIXELS {
+        return Err(format!(
+            "{w}x{h} は大きすぎる（1 辺 {MAX_SIDE}、画素の数 {MAX_PIXELS} まで）"
+        ));
+    }
+    Ok(())
 }
 
 /// `id` のプラグイン。`None` なら最初の画像の効果。
@@ -141,4 +233,27 @@ fn pick(plugins: Vec<Plugin>, id: Option<&str>) -> Result<Plugin, String> {
         .filter(Plugin::is_image_effect)
         .find(|p| id.is_none_or(|id| p.id == id))
         .ok_or_else(|| format!("プラグイン {id:?} が無い（あるのは {ids:?}）"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 幅か高さが_0_か上限を超える大きさは断る() {
+        for (w, h) in [(0, 0), (0, 4), (4, 0), (MAX_SIDE + 1, 1), (8192, 8192)] {
+            assert!(check_size(Size::new(w, h)).is_err(), "{w}x{h}");
+        }
+        for (w, h) in [(1, 1), (1920, 1080), (7680, 4320), (MAX_SIDE, 1)] {
+            assert!(check_size(Size::new(w, h)).is_ok(), "{w}x{h}");
+        }
+    }
+
+    #[test]
+    fn フレームレートは正の有限の数だけを受ける() {
+        for rate in [0.0, -30.0, f64::NAN, f64::INFINITY] {
+            assert!(check_frame_rate(rate).is_err(), "{rate}");
+        }
+        assert!(check_frame_rate(29.97).is_ok());
+    }
 }

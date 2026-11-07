@@ -19,3 +19,29 @@ ep04 から、この形で作れるかを試す。
 `web.cef` を使わずに作れる分（色と書体の決まり、文字のスタイル、エピソードのテンプレート、マクロ、ダッキングの設定）は `packs/vlog` にあり、読み込みと検査と展開は `crates/mm-pack`、使う経路は `mm pack` とアプリの `pack_list`・`pack_apply`。中身と、段階 6 に回すものの一覧は [packs/vlog/README.md](../../packs/vlog/README.md)。
 
 `web.cef` の部品は `packs/vlog/web/*.html` に置き、マクロの `web` 手順がレイヤーにする（テーマの色と書体はページの `data.theme` で渡す）。部品の一覧は同じ README の「web の部品」、書き方は「web の部品の書き方」。時刻で中身が変わる部品（歌詞、図解の cues、読む窓、Claude の吹き出し）と出た後も動く部品（題字、名乗り、縦の動画の終わりの札）は `animated: true` で、レイヤーの始まりからの秒 `t` と `data` だけで画面を決める。
+
+## 書体
+
+パックの書体を、OS に入っていない PC でも、プロジェクトを別の PC に移しても、同じ画素で描く。`web.cef`（ページの CSS）と `text`（cosmic-text と swash、glyphon）の両方が同じファイルを使う。書体の本体（3 書体で 25 MB）はリポジトリに入れず、初めて使うときに配布元から取る。
+
+### 先行事例
+
+| 事例 | 書体の持ち方 | 採ったこと |
+|---|---|---|
+| After Effects、Premiere、DaVinci Resolve | OS に入った書体を名前で引く。プロジェクトは書体を持たず、無い PC では置き換えて警告する（AE の「ファイルを収集」も書体は集めない） | 無ければ落ちずに置き換える |
+| Unity、Godot | 書体のファイルをプロジェクトの資産として取り込み、資産として配る | 書体を素材（`assets`）にする |
+| Google Fonts の配布元（`google/fonts`） | OFL の書体を Git のリポジトリで配り、`METADATA.pb` が family の名前を持つ。CSS API はファイルの中の名前によらずその名前で `@font-face` を宣言する（M PLUS Rounded 1c のファイルの中の名前は `Rounded Mplus 1c`） | 配布元のコミットを固定した URL から取る。family の名前を外で決める |
+| Homebrew の formula、npm の lockfile（`@fontsource` の書体の包みなど） | 取る先の URL か版と、中身のハッシュ（`sha256`、`integrity`）を並べ、取ったものを照らしてから使う | 目録に URL と BLAKE3 を書き、合わなければ使わない |
+| Typst のパッケージ、MiKTeX | 文書が使うものを初めて使うときに取り、ユーザーのキャッシュに置く（Typst は `{cache}/typst/packages`）。2 回目からは取らない | 適用するときに足りない書体だけを取り、キャッシュに置く |
+| Remotion | `public/` に書体を置き、`staticFile` の URL を `@font-face` で宣言し、読み込みを待ってから描く（`delayRender`） | `@font-face` で宣言し、読み込みを待つ |
+| CEF の scheme handler | 決めた scheme と名前の要求に、アプリが答える（`CefRegisterSchemeHandlerFactory`） | 書体のファイルをホストが配る |
+
+### 新しい設計
+
+- 目録: パックは `fonts/fonts.json` に書体ごとの family の名前、ファイル名、配布元の URL（`google/fonts` の固定のコミット）、BLAKE3 を書く。`fonts/<family>/` にはライセンスの文（`OFL.txt`）だけを置く。family の名前はテーマ（`theme.json` の `fonts`）と CSS が書く名前で、プロジェクトのフォルダーの名前になる。`mm pack check` は本体を取らずに、テーマの書体が目録にあるか、URL が HTTPS か、family ごとにライセンスの文があるかを見る。
+- 取得: `mm pack fetch-fonts <パック>` が目録の書体を取り、BLAKE3 を照らして、ユーザーのキャッシュ（Windows は `%LOCALAPPDATA%\movie-maker\fonts\<BLAKE3>\<ファイル>`、`MM_FONT_CACHE` で変えられる）に置く。`mm pack apply` も足りない書体を取る。取るのは OS の `curl` で、HTTPS だけを許す。ハッシュが違えば置かず、配布元に届かなければ残りは取りにいかずに進む。キャッシュの中身も使う前に照らす。
+- 取り込み: パックを適用すると、キャッシュの書体とパックのライセンスの文をプロジェクトの `fonts/<family>/` へ写し、まだ無い書体を素材として足す（`addAsset`。場所は `fonts/<family>/<ファイル>` の相対パス、`contentHash` は目録の BLAKE3）。プロジェクトは書体を持つので、フォルダーごと移せば書体も付いていき、移した先で取り直さない。スキーマは変えない（拡張子 `ttf`、`otf`、`ttc` の素材を書体として扱う）。
+- 渡し方: レンダラーがフレームごとにプロジェクトの書体の素材を集め、組が変わったときだけ、文字の実装（`TextShaper::use_fonts`、`TextRasterizer::use_fonts`）とノードの種類（`NodeKind::use_fonts`）に渡す。組の指紋（`contentHash` と family の名前）をフレームのキャッシュのキーに入れる。
+- `text`: fontdb に読み込み、フォルダーの名前を family の名前として足す。同じ family の OS の書体は外す（PC ごとに入っている版で画素が変わらないように）。`text` の種類に `font`（family の名前）を足し、パックの文字のスタイルは `font` に書体の役（`body` など）を書く。
+- `web.cef`: ページの HTML に書体を埋めない（3 書体で 25 MB あり、HTML はレイヤーごとにコピーされる）。ホストは `Prepare` の `fonts` から `@font-face` をページに差し込み、ファイルを `https://mm-font.invalid/<contentHash>` の URL で配る（scheme handler）。CSP の `font-src` と、ホストの要求の決まり（`policy`）は、この起点だけを足して許す。Chromium は使う family と太さのファイルだけを取りに来る。ホストは時刻を反映したあと書体の読み込みを待ち、待ったときは時刻をもう一度反映する（文字の幅を測って枠を組む吹き出しが、置き換えの書体の幅のまま描かないように）。
+- 無いとき: 取れなかった書体（オフライン、ハッシュの違い）は取り込まず、プロジェクトの書体のファイルが読めなければ飛ばして、その family は OS の書体で描く。適用も描画も止めない。あとで `mm pack fetch-fonts` で取り、適用し直せば書体が入る。

@@ -356,7 +356,7 @@ fn 親が3倍の入れ子の文字を_png_に書く() {
         .flat_map(|px| {
             px[..3]
                 .iter()
-                .map(|c| (c.clamp(0.0, 1.0).powf(1.0 / 2.2) * 255.0) as u8)
+                .map(|c| mm_types::transfer::linear_to_code8(*c))
         })
         .collect();
     let path = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join("nested_vector_x3.png");

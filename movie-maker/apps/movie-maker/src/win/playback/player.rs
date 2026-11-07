@@ -19,6 +19,7 @@ use super::{Command, PlaybackInfo};
 use crate::win::clock::{AudioClock, PlayClock, SwitchClock, WallClock};
 use crate::win::edit::EditOutcome;
 use crate::win::history::HistoryMirror;
+use crate::win::hotpatch;
 use crate::win::state::{FrameImage, Shared};
 
 /// 先読みする音の長さ（秒）。映像 1 フレームの描画が数十 ms かかっても音が途切れない長さ。
@@ -236,11 +237,12 @@ impl Player {
     }
 
     /// 積まれた操作を順に適用し、結果を返す。適用したら今のフレームを描き直す。
+    /// JSON のプロジェクトでは操作をこのスレッドで適用するので、`mm-ops` のホットパッチの呼び出し箇所をここにも置く。
     fn apply_edits(&mut self) {
         let edits = std::mem::take(&mut *self.shared.edits.lock().expect("edits"));
         for edit in edits {
             if edit.claim() {
-                let _ = edit.reply.send(self.apply(&edit.ops));
+                let _ = edit.reply.send(hotpatch::call(|| self.apply(&edit.ops)));
             }
         }
     }

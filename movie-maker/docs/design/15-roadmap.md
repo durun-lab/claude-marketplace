@@ -11,7 +11,7 @@
 | 6 | `web.cef` と vlog のパック、ep04 | ep04 を movie-maker で作れる | `mm-nodes-cef` と `mm-text-cef` ‖ パック ‖ `mm-host-ofx`（段階 8 の準備） |
 | 7 | 自動の改善（worktree の囲い、Feedback、subsecond） | 要望を起票すると、自動で直って返事が付く | `mm-improve` ‖ `feedback` パネル ‖ `areas.toml` の検査 |
 | 8 | `ofx`、VST3、CLAP、`lottie`、`gen.ai`、HLSL、HDR | 種類を足すだけで使える | 全部が別の実装のクレート。互いに独立 |
-| 9 | モバイル版 | 出先で Story とコメントと操作の発行ができる | |
+| 9 | モバイル版（`mm-serve` が配る PWA、[設計](12-mobile.md)） | 出先で Story とコメントと操作の発行ができる | 人の待ち受けと端末の登録（`mm-serve`、`Entry::Mobile`） ‖ コメントの API と MCP のツール ‖ Story の読み出しを `mm-story` に ‖ 映像の配信（`mm-stream`） ‖ `ui/mobile` の骨組み。続けて `ui/mobile` の Watch と Proposals ‖ `ui/mobile` の Story ‖ アプリの端末の登録 ‖ デスクトップの Review のコメント ‖ durun-dashboard のつなぎ。最後に通しの確認（iOS の Safari と Android の Chrome、実機） |
 | 10 | 機能の網羅性テスト: ep02（`D:/dev/DTM_Vlog/ep02/`）を movie-maker で再現する。再現の途中で見つけた機能の不足は、見つけたそばから足す | ep02 を movie-maker で作り直せ、前の書き出しと見比べて同じ内容になっている。足りなかった機能の一覧と、それぞれを足した PR が設計書に戻っている | 不足ごとに別の worktree（見つけた順に起こす） |
 
 「‖」で区切ったものは別の worktree で同時に進められる。段階の順は「終わりの条件」を確かめる順で、各領域はそれより早く始めてよい（インターフェースとモックの実装があるので）。
@@ -63,7 +63,7 @@
 | 1 デコード | `d3d12va` を既定にする。`open` の後に最初の数フレームをデコードして `Err` なら `cuvid`、最後は CPU 経由に切り替える（NVENC で作った 4K の HEVC は 1 フレーム目でデコードに失敗する）。この素材（NVENC の 4K、CTB 32）を契約テストのフィクスチャに入れ、OBS の NVENC の録画が同じ形かを確かめる。FFmpeg の既定の D3D12 アダプターは内蔵 GPU なので、wgpu の `ID3D12Device` を渡して同じ GPU でデコードする。実素材で 4K の fps を測り直す。[nvdec](spikes/nvdec.md#詰まった所) |
 | 1 デコード | d3d12va と cuvid に「wgpu が読み終えた」フェンスが無く（`mm-decode-d3d12va`、`mm-decode-cuvid`）、GPU が遅れると別のフレームが混ざる。段階 1 で直す。 |
 | 1 デコード | d3d12va を `Decoder` のインターフェースだけで使うと壊れる（`take_frame` を呼ばないと `held` が増えてプールが尽きる、長さを整数秒で切り捨てる、シークにコンテナの絶対時刻を使う、渡された `gpu` を無視する）。`mm-decode-cuvid` の `convert.rs` は 50 行を超える。段階 1 で直す。 |
-| 1 デコード | 10 bit の素材も 8 bit の RGBA を経由し、バンディングと HDR の喪失が出る（`mm-decode-ffmpeg` の `convert.rs`）。段階 1 で直す。 |
+| 1 デコード | 済（段階 8 の HDR）: 10 bit 以上、HDR（PQ と HLG）、Rec.2020 の原色の素材は CPU の経路でも 8 bit を経由せず線形にする（`mm-decode-ffmpeg` の `wide.rs`）。元の問題: 10 bit の素材も 8 bit の RGBA を経由し、バンディングと HDR の喪失が出た。 |
 | 1 色 | `bt709` は Rec.1886 の表示の式を指す（2026-11-06 の決定）。BT.709 の OETF は別の名前で持ち、`mm-color-lut` のフィクスチャもそれに合わせる。契約の「白は白」はログと PQ の空間に合わないので、空間ごとに期待値を持たせる。OCIO の環境（vcpkg、LLVM、`OCIO_ROOT`、DLL の同梱）は `mm-color-ocio` の README。[ocio](spikes/ocio.md#詰まった所) |
 | 2 レンダラー | NVDEC のフレームは `submit` が終わるまでの借用にし、`Queue::submit` の前に使うフレームすべての待ちを登録する。フレームのキャッシュは NV12 のままにせず RGBA で置く。ACES 2.0 の表示変換を WGSL で出すなら、結合サンプラーの書き換えと `TransformProgram` のテクスチャの置き場所が要る。 |
 | 2 レンダラー | 済（RFC 0009）: ベクターの倍率は `region_of_definition` の領域だけに掛かり、素材の縮小は合成のシェーダーで 1 回だけ面積平均、ffmpeg のフレームは YUV のまま GPU に上げ、書き出しは GPU で NV12 にしてリードバックを 3 枚先行させる。残り: GPU の無い CPU の経路（`FfmpegCpuDecoderFactory`、契約テスト）は `DecodedFrame` の clone と双線形の縮小のまま。デコードと描画はまだ同じスレッド。 |
@@ -82,8 +82,8 @@
 | 4 `mm-host-cef`（段階 6 の準備） | CEF と wgpu を同じ GPU に揃える（既定は内蔵の AMD を選び、`OpenSharedHandle` が `E_INVALIDARG` で失敗する）。`windowless_frame_rate` は 240 以上にする（既定の 60 だと BeginFrame からフレームが来るまで p50 35 ms）。BeginFrame は捨てられることがあるので、フレームが来るまで送り直し、`seq` のシーケンス番号で古いフレームを検出する。別プロセスのアプリへは、`DuplicateHandle` で複製するか、ホストが自前の D3D12 共有テクスチャへコピーして渡す。1280x720 で p95 が 26 ms に跳ねた原因を調べる。[cef](spikes/cef.md#つまずいた所) 済（段階 4）: `timeBeginPeriod(1)`、`windowless_frame_rate` 1000（720p の p95 26 ms の原因）、`use-adapter-luid` で GPU を揃え、自前の共有テクスチャへコピーして `DuplicateHandle` で渡す。[cef](spikes/cef.md#段階-4-の追加mm-host-cef) |
 | 6 `web.cef` | 実際のページ（動画、`<canvas>`、Web フォント）と透過の扱いで 1 フレームの時間を取り直す。CEF をクラッシュさせたときの再起動と複数ブラウザの同時描画を試す。 |
 | 6 ホスト | レンダラーがデバイスを作り直したとき、別プロセスのホストも新しいデバイスに持ち替える。段階 2 ではホストが再生の経路に入っていない（段階 2 のレビュー、[RFC 0012](../rfcs/0012-stage2-leftovers.md)）。 |
-| 7 subsecond | 差し替えは `subsecond::call` の中だけで効く。ポインタ 1 本分だけを捕まえるクロージャは差し替えを素通りして古いまま動く（エラーも出ない）。試作では捕まえる値に通し番号を足して 2 本分にしたら効いた。Tauri では `tauri-build` と `dx` の `resource.lib` が二重になる（試作は `tauri-build` をコピーして `[patch.crates-io]` で差し替え、`MM_SKIP_WINRES` で省いた）。差し替えが効くのは `dx` で起動したワークスペースのメンバーだけ。実物の大きさで測り直す。[subsecond](spikes/subsecond.md#詰まった所) |
-| 8 HDR | 線形の光で 1 を超える値が 3D LUT で切られる（`color.lut` と、3D LUT にベイクした色の変換）。`TransformProgram::Lut3d` に shaper か定義域を持たせる（段階 2 のレビュー）。 |
+| 7 subsecond | 差し替えは `subsecond::call` の中だけで効く。ポインタ 1 本分だけを捕まえるクロージャは差し替えを素通りして古いまま動く（エラーも出ない）。試作では捕まえる値に通し番号を足して 2 本分にしたら効いた。Tauri では `tauri-build` と `dx` の `resource.lib` が二重になる（試作は `tauri-build` をコピーして `[patch.crates-io]` で差し替え、`MM_SKIP_WINRES` で省いた）。差し替えが効くのは `dx` で起動したワークスペースのメンバーだけ。本体のアプリでは保存から反映まで 5〜31 秒（増分のコンパイルの有無と、作り直すクレートの数による）で、`apps/movie-maker` の feature `hotpatch` に入れた [subsecond](spikes/subsecond.md#本体のアプリでの実測段階-7) |
+| 8 HDR | 済（[RFC](../rfcs/0138-hdr.md)）: `TransformProgram::Lut3d` に PQ のシェーパーを持たせ、線形の光をベイクした LUT でも 1 を超える値を切らない。`color.lut` は定義域の外の分を端の値に足して持ち越す。PQ と HLG の素材を読み（`bt2100_pq`、`bt2100_hlg`）、`hevc_pq`、`hevc_hlg` で書き出し、プレビューは BT.2390 の EETF で SDR に収める。残り: MaxCLL / MaxFALL を画素から測る、NVENC の HDR、HDR の表示、アプリから `Ui::set_hdr_peak` を呼ぶこと。元の問題: 線形の光で 1 を超える値が 3D LUT で切られた（段階 2 のレビュー）。 |
 
 ---
 

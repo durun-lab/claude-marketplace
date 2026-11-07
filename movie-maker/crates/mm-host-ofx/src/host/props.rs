@@ -120,7 +120,7 @@ pub unsafe fn read_str(p: *const c_char) -> String {
     if p.is_null() {
         return String::new();
     }
-    // SAFETY: 呼ぶ側の約束どおり、NUL で終わる文字列。
+    // SAFETY: 呼び出し側の前提どおり、NUL で終わる文字列。
     unsafe { CStr::from_ptr(p) }.to_string_lossy().into_owned()
 }
 
@@ -129,7 +129,7 @@ pub unsafe fn read_str(p: *const c_char) -> String {
 /// # Safety
 /// `h` は NULL か、このホストが渡した `PropSet` のハンドル。
 pub unsafe fn from_handle<'a>(h: Handle) -> Option<&'a PropSet> {
-    // SAFETY: 呼ぶ側の約束どおり、生きている PropSet を指す。
+    // SAFETY: 呼び出し側の前提どおり、生きている PropSet を指す。
     unsafe { (h as *const PropSet).as_ref() }
 }
 

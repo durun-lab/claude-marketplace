@@ -1,15 +1,21 @@
 /*
- * mm-host-ofx の試験に使う、最小の OpenFX のプラグイン（Filter、RGBA の float だけ）。
+ * mm-host-ofx のテストに使う、最小の OpenFX のプラグイン（Filter、RGBA の float だけ）。
  * 出力 = 入力 x gain。パラメータの 4 つの型（Double、Integer、Boolean、Choice）と、可変長の
  * paramGetValueAtTime と message、標準出力への printf（応答の JSON に混ざらないこと）、
- * クラッシュ（crash）と遅い描画（delay_ms）を試すためのパラメータを持つ。
+ * クラッシュ（crash）、遅い描画（delay_ms）、有限でない値の出力（nonfinite）を試すためのパラメータを持つ。
  */
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "ofxImageEffect.h"
 #include "ofxMessage.h"
 #include "ofxPixels.h"
+
+/* gain に掛ける倍率。同じ識別子で画素だけが違う版（MmTestGainV2）を作り、共有ライブラリの差し替えを試す。 */
+#ifndef MM_GAIN_SCALE
+#define MM_GAIN_SCALE 1.0
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -70,6 +76,10 @@ static void define_params(OfxParamSetHandle params) {
   gParam->paramDefine(params, kOfxParamTypeBoolean, "crash", &p);
   gProp->propSetInt(p, kOfxParamPropDefault, 0, 0);
   gProp->propSetInt(p, kOfxParamPropSecret, 0, 1);
+
+  gParam->paramDefine(params, kOfxParamTypeBoolean, "nonfinite", &p);
+  gProp->propSetInt(p, kOfxParamPropDefault, 0, 0);
+  gProp->propSetInt(p, kOfxParamPropSecret, 0, 1);
 }
 
 static OfxStatus describe_in_context(OfxImageEffectHandle effect) {
@@ -89,21 +99,25 @@ typedef struct Settings {
   int channel;
   int delay_ms;
   int crash;
+  int nonfinite;
 } Settings;
 
 static Settings read_settings(OfxImageEffectHandle instance, OfxTime time) {
-  Settings s = {1.0, 0, 0, 0};
+  Settings s = {1.0, 0, 0, 0, 0};
   OfxParamSetHandle params;
   OfxParamHandle h;
   gEffect->getParamSet(instance, &params);
   gParam->paramGetHandle(params, "gain", &h, NULL);
   gParam->paramGetValueAtTime(h, time, &s.gain);
+  s.gain *= MM_GAIN_SCALE;
   gParam->paramGetHandle(params, "channel", &h, NULL);
   gParam->paramGetValueAtTime(h, time, &s.channel);
   gParam->paramGetHandle(params, "delay_ms", &h, NULL);
   gParam->paramGetValueAtTime(h, time, &s.delay_ms);
   gParam->paramGetHandle(params, "crash", &h, NULL);
   gParam->paramGetValueAtTime(h, time, &s.crash);
+  gParam->paramGetHandle(params, "nonfinite", &h, NULL);
+  gParam->paramGetValueAtTime(h, time, &s.nonfinite);
   return s;
 }
 
@@ -138,6 +152,11 @@ static void process(const Image *src, const Image *dst, OfxRectI win, Settings s
       out->g = s.channel == 0 ? (float)(in.g * s.gain) : in.g;
       out->b = s.channel == 0 ? (float)(in.b * s.gain) : in.b;
       out->a = in.a;
+      if (s.nonfinite) {
+        out->r = NAN;
+        out->g = INFINITY;
+        out->b = -INFINITY;
+      }
     }
   }
 }

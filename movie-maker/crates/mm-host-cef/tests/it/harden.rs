@@ -1,12 +1,12 @@
-//! ホストの守りと決定性の検査（実際の CEF）。遷移と外への要求の拒否、Web フォントの読み込み待ち、
-//! 遅いページで前のフレームを返さないこと、kill の後の片付け、渡すハンドルの権限。
+//! ホストの守りと決定性のテスト（実際の CEF）。遷移と外への要求と WebRTC の UDP の拒否、Web フォントと画像の
+//! 読み込み待ち、遅いページでその時刻のフレームを待つこと、1 フレームの上限、kill の後の片付け、渡すハンドルの権限。
 #![cfg(all(feature = "cef", windows))]
 
-use std::net::TcpListener;
+use std::net::{TcpListener, UdpSocket};
 use std::time::Duration;
 
-use mm_host_api::{HostProcess, SharedFrame};
-use mm_host_cef::PipeHost;
+use mm_host_api::{HostProcess, HostRequest, HostResponse, SharedFrame};
+use mm_host_cef::CefLauncher;
 use mm_types::{RationalTime, Size};
 
 use crate::serve::{gpu, host_exe, marker, prepare, read_shared, render, spec, to_image};
@@ -48,7 +48,7 @@ fn ページの遷移と外への要求を拒否し_data_の画像は描く() {
     let page = LEAK_PAGE
         .replace("FILE_URL", &file_url)
         .replace("PORT", &port.to_string());
-    let mut host = PipeHost::start(spec(&exe, None)).expect("起動");
+    let mut host = CefLauncher::start(spec(&exe, None)).expect("起動");
     prepare(&mut host, &page);
     for n in 0..4 {
         let t = RationalTime::seconds(n);
@@ -75,6 +75,103 @@ fn ページの遷移と外への要求を拒否し_data_の画像は描く() {
         Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
         other => panic!("ページがネットワークに接続した: {other:?}"),
     }
+}
+
+/// 時刻 1 で、STUN のサーバー（手元の UDP のソケット）を指定した RTCPeerConnection で ICE の候補を集めるページ。
+const WEBRTC_PAGE: &str = r#"<!doctype html><html><body><script>
+window.mmSetTime = (t) => {
+  if (t !== 1) { return; }
+  const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:127.0.0.1:PORT' }] });
+  pc.createDataChannel('probe');
+  pc.createOffer().then((o) => pc.setLocalDescription(o)).catch(() => {});
+  window.__pc = pc;
+};
+</script></body></html>"#;
+
+#[test]
+fn ページの_webrtc_は_udp_を送らない() {
+    let Some(exe) = host_exe() else { return };
+    let socket = UdpSocket::bind("127.0.0.1:0").expect("待ち受けられる");
+    socket.set_nonblocking(true).expect("非同期にできる");
+    let port = socket.local_addr().expect("ポート").port();
+    let page = WEBRTC_PAGE.replace("PORT", &port.to_string());
+    let mut host = CefLauncher::start(spec(&exe, None)).expect("起動");
+    prepare(&mut host, &page);
+    for n in 0..6 {
+        let t = RationalTime::seconds(n);
+        render(&mut host, t, LEAK_SIZE, serde_json::json!({}));
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    let mut buf = [0u8; 1500];
+    match socket.recv_from(&mut buf) {
+        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+        other => panic!("ページの WebRTC が UDP を送った: {other:?}"),
+    }
+}
+
+/// 時刻 1 で初めて、大きい `data:` の PNG（赤に細かいノイズ）を `<img>` に出すページ。
+/// 読み込みの時点で canvas から PNG を作り、デコードに時間がかかるようノイズで圧縮を効きにくくする。
+const IMAGE_PAGE: &str = r#"<!doctype html><html><head><style>
+html, body { margin: 0; background: transparent; }
+img { position: absolute; left: 0; top: 0; width: 64px; height: 64px; }
+</style></head><body><script>
+const side = 2048;
+const c = document.createElement('canvas'); c.width = side; c.height = side;
+const g = c.getContext('2d');
+const px = g.createImageData(side, side);
+for (let i = 0; i < px.data.length; i += 4) {
+  px.data[i] = 255; px.data[i + 1] = (i * 2654435761 >>> 24) & 7; px.data[i + 2] = 0; px.data[i + 3] = 255;
+}
+g.putImageData(px, 0, 0);
+const url = c.toDataURL('image/png');
+window.mmSetTime = (t) => {
+  document.body.innerHTML = t >= 1 ? `<img alt="" src="${url}">` : '';
+};
+</script></body></html>"#;
+
+#[test]
+fn 初めて出す_data_の画像はデコードを待ってから描く() {
+    let Some(exe) = host_exe() else { return };
+    let ctx = gpu();
+    let size = Size::new(64, 64);
+    let mut host = CefLauncher::start(spec(&exe, None)).expect("起動");
+    prepare(&mut host, IMAGE_PAGE);
+    render(&mut host, RationalTime::ZERO, size, serde_json::json!({}));
+    let t = RationalTime::seconds(1);
+    let first = to_image(&render(&mut host, t, size, serde_json::json!({})), &ctx);
+    let center = first.pixel(32, 32);
+    assert!(
+        center.a > 0.99 && center.r > 0.9,
+        "最初のフレームも画像を描く: {center:?}"
+    );
+}
+
+/// 時刻 1 で、レンダラーを 8 秒止めるページ。
+const STUCK_PAGE: &str = r#"<!doctype html><html><body><script>
+window.mmSetTime = (t) => {
+  if (t !== 1) { return; }
+  const end = performance.now() + 8000;
+  while (performance.now() < end) {}
+};
+</script></body></html>"#;
+
+#[test]
+fn 止まったページはアプリの期限より前に理由を返す() {
+    /// アプリの 1 フレームの期限（`mm-nodes-cef` と `mm-text-cef`）。
+    const APP_RENDER_TIMEOUT: Duration = Duration::from_secs(5);
+    let Some(exe) = host_exe() else { return };
+    let mut host = CefLauncher::start(spec(&exe, None)).expect("起動");
+    prepare(&mut host, STUCK_PAGE);
+    let req = HostRequest::RenderFrame {
+        time: RationalTime::seconds(1),
+        size: Size::new(32, 16),
+        params: serde_json::json!({}),
+    };
+    let res = host.request(&req, APP_RENDER_TIMEOUT);
+    assert!(
+        matches!(res, Ok(HostResponse::Error { .. })),
+        "ホストが誤りを返す: {res:?}"
+    );
 }
 
 /// 標準の Base64（パディングつき）。
@@ -128,7 +225,7 @@ fn 初めて使う_web_フォントは読み込みを待ってから描く() {
     };
     let ctx = gpu();
     let size = Size::new(320, 64);
-    let mut host = PipeHost::start(spec(&exe, None)).expect("起動");
+    let mut host = CefLauncher::start(spec(&exe, None)).expect("起動");
     prepare(&mut host, &page);
     let first = to_image(
         &render(
@@ -166,11 +263,11 @@ window.mmSetTime = (t, p) => {
 </script></body></html>"#;
 
 #[test]
-fn 描画の遅いページでも前のフレームを返さずに待つ() {
+fn 描画の遅いページでもその時刻のフレームを待って返す() {
     let Some(exe) = host_exe() else { return };
     let ctx = gpu();
     let size = Size::new(64, 36);
-    let mut host = PipeHost::start(spec(&exe, Some(std::process::id()))).expect("起動");
+    let mut host = CefLauncher::start(spec(&exe, Some(std::process::id()))).expect("起動");
     prepare(&mut host, SLOW_PAGE);
     for seq in 1..=4u64 {
         let t = RationalTime::new(i128::from(seq), 30).unwrap();
@@ -185,7 +282,7 @@ fn 描画の遅いページでも前のフレームを返さずに待つ() {
 #[test]
 fn kill_したホストの一時フォルダーを消す() {
     let Some(exe) = host_exe() else { return };
-    let mut host = PipeHost::start(spec(&exe, None)).expect("起動");
+    let mut host = CefLauncher::start(spec(&exe, None)).expect("起動");
     prepare(&mut host, "<!doctype html><p>x</p>");
     render(
         &mut host,
@@ -230,7 +327,7 @@ fn 渡す共有ハンドルは読み取りの権限だけ() {
     let Some(exe) = host_exe() else { return };
     let ctx = gpu();
     let size = Size::new(32, 16);
-    let mut host = PipeHost::start(spec(&exe, Some(std::process::id()))).expect("起動");
+    let mut host = CefLauncher::start(spec(&exe, Some(std::process::id()))).expect("起動");
     prepare(&mut host, "<!doctype html><p>x</p>");
     let frame = render(&mut host, RationalTime::ZERO, size, serde_json::json!({}));
     let SharedFrame::SharedTexture { handle, .. } = frame else {
@@ -245,14 +342,14 @@ fn 渡す共有ハンドルは読み取りの権限だけ() {
     );
 }
 
-/// `bundle.sh` で組み立てた、sandbox つきで動くホストを指す環境変数。無ければその検査をスキップする。
+/// `bundle.sh` で組み立てた、sandbox つきで動くホストを指す環境変数。無ければそのテストをスキップする。
 const SANDBOX_HOST_ENV: &str = "MM_CEF_SANDBOX_HOST";
 
 #[test]
 fn sandbox_つきのホストも同じ画素で描く() {
     let Some(exe) = host_exe() else { return };
     let Some(sandboxed) = std::env::var_os(SANDBOX_HOST_ENV).map(std::path::PathBuf::from) else {
-        eprintln!("{SANDBOX_HOST_ENV} が無いので sandbox の検査をスキップする");
+        eprintln!("{SANDBOX_HOST_ENV} が無いので sandbox のテストをスキップする");
         return;
     };
     let reply = mm_host_cef::probe_reply(&sandboxed);
@@ -268,7 +365,7 @@ fn sandbox_つきのホストも同じ画素で描く() {
     let frames: Vec<_> = [exe, sandboxed]
         .iter()
         .map(|exe| {
-            let mut host = PipeHost::start(spec(exe, Some(std::process::id()))).expect("起動");
+            let mut host = CefLauncher::start(spec(exe, Some(std::process::id()))).expect("起動");
             prepare(&mut host, page);
             let t = RationalTime::seconds(1);
             to_image(&render(&mut host, t, size, serde_json::json!({})), &ctx)
