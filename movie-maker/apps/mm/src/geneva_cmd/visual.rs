@@ -1,9 +1,10 @@
-//! 映像と画像のレイヤー（`layers[].clips[]` の `video` と `image`）を movie-maker のレイヤーにする。
+//! 映像と画像のレイヤー（`layers[].clips[]` の `video`、`image`、`solid`、`composition`）を movie-maker のレイヤーにする。
 //!
 //! geneva はクリップの矩形（切り抜いて `fit` で収めたもの）のアンカーを `position` に置き、その周りで拡大する。
 //! movie-maker では素材を `fit: none`（素材の画素のまま左上に置く）で描き、アンカーを原点に固定して、
 //! 同じ対応になる拡大と位置を求める。レイヤーの座標は素材の画素なので、切り抜きはレイヤーの切り抜き（`crop`）、
 //! 角丸の矩形のマスクはレイヤーのマスクに、クリップの矩形の画素を素材の画素に戻して置く。
+//! 単色は画面の大きさの素材、入れ子はそのコンポジションの大きさの素材として同じ式で置く。
 
 use std::collections::HashMap;
 
@@ -12,6 +13,7 @@ use mm_types::{Id, MmError, ParamValue, Rational, RationalTime, Result};
 use serde_json::Value;
 
 use super::html;
+use super::look;
 use super::media::Media;
 use super::report::{Gap, Report};
 use super::shape;
@@ -26,16 +28,41 @@ const FOOTAGE_KIND: &str = "footage";
 const IMAGE_KIND: &str = "image";
 /// geneva のマークアップの source の種類。
 const HTML_KIND: &str = "html";
+/// 入れ子のコンポジションのノードの種類とパラメータ（`mm-nodes-basic` の composition）。geneva の source の種類と同じ名前。
+pub const COMPOSITION_KIND: &str = "composition";
+const COMPOSITION_PARAM: &str = "composition";
 const ASSET_PARAM: &str = "asset";
-const KIND_VERSION: u32 = 1;
+pub const KIND_VERSION: u32 = 1;
 
 /// 変換の共通の状態。
 pub struct Ctx<'a> {
     pub fps: Rational,
-    /// 出力の大きさ。
+    /// 出力の大きさ。入れ子のコンポジションを変換する間はそのコンポジションの大きさ。
     pub frame: [f64; 2],
     pub media: &'a HashMap<String, Media>,
+    /// 入れ子のコンポジションの名前ごとの大きさ。
+    pub comps: HashMap<String, [u32; 2]>,
     pub report: Report,
+}
+
+impl<'a> Ctx<'a> {
+    /// 入れ子の無い状態。
+    pub fn new(fps: Rational, frame: [f64; 2], media: &'a HashMap<String, Media>) -> Self {
+        Self {
+            fps,
+            frame,
+            media,
+            comps: HashMap::new(),
+            report: Report::default(),
+        }
+    }
+}
+
+/// クリップに描くもの: ノード、素材の画素の大きさ、撮影素材か。
+struct Picture {
+    node: Node,
+    size: [u32; 2],
+    is_video: bool,
 }
 
 /// クリップの置き方（geneva の意味のまま）。
@@ -111,17 +138,16 @@ fn convert_clip(
     if kind == HTML_KIND {
         return html_layer(ctx, id, clip, timing);
     }
-    let asset = source.get("asset").and_then(Value::as_str).unwrap_or("");
-    let (is_video, size) = match (kind, ctx.media.get(asset).and_then(|m| m.size)) {
-        ("video", Some(size)) => (true, size),
-        ("image", Some(size)) => (false, size),
-        _ => {
-            ctx.report.add(Gap::Source);
-            return Ok(None);
-        }
+    let Some(pic) = picture(ctx, kind, &source) else {
+        ctx.report.add(Gap::Source);
+        return Ok(None);
     };
-    let geo = geometry(ctx, clip, size, is_video)?;
-    let mut layer = timed_layer(id, picture_node(asset, is_video), clip, timing, ctx.fps)?;
+    let geo = geometry(ctx, clip, pic.size, pic.is_video)?;
+    let mut layer = timed_layer(id, pic.node, clip, timing, ctx.fps)?;
+    layer.blend = look::blend(&mut ctx.report, clip);
+    // geneva の効果の大きさは置いた後の画素なので、レイヤーの画像（素材の画素）の 1 画素が出力で何画素になるかで割る。
+    let out_per_src = geo.k * geo.scale.at(RationalTime::ZERO)[0];
+    layer.effects = look::effects(&mut ctx.report, clip, id, out_per_src);
     layer.transform = transform(&geo, timing.start)?;
     layer.crop = shape::layer_crop(geo.crop, geo.src);
     if let Some(m) = clip.get("mask").filter(|m| !m.is_null()) {
@@ -143,26 +169,14 @@ fn html_layer(ctx: &mut Ctx<'_>, id: &str, clip: &Value, timing: &Timing) -> Res
     };
     let mut layer = Layer::new(id, node, timing.start, RationalTime::ZERO, timing.duration);
     layer.transform = transform;
+    layer.blend = look::blend(&mut ctx.report, clip);
+    layer.effects = look::effects(&mut ctx.report, clip, id, 1.0);
     layer.opacity = opacity_param(ctx, clip, timing.start)?;
     Ok(Some(layer))
 }
 
 fn note_gaps(report: &mut Report, clip: &Value) {
     let has = |k: &str| clip.get(k).is_some_and(|v| !v.is_null());
-    if clip
-        .get("effects")
-        .and_then(Value::as_array)
-        .is_some_and(|e| !e.is_empty())
-    {
-        report.add(Gap::Effects);
-    }
-    if clip
-        .get("blend")
-        .and_then(Value::as_str)
-        .is_some_and(|b| b != "normal")
-    {
-        report.add(Gap::Blend);
-    }
     if has("transition") || has("transition_out") {
         report.add(Gap::Transition);
     }
@@ -178,7 +192,34 @@ fn note_gaps(report: &mut Report, clip: &Value) {
     }
 }
 
-fn picture_node(asset: &str, is_video: bool) -> Node {
+/// source を描くノードと大きさにする。素材の無い映像と画像、知らない種類は `None`。
+fn picture(ctx: &Ctx<'_>, kind: &str, source: &Value) -> Option<Picture> {
+    let text = |k: &str| source.get(k).and_then(Value::as_str).unwrap_or("");
+    let asset_size = || ctx.media.get(text(ASSET_PARAM)).and_then(|m| m.size);
+    match kind {
+        "video" | "image" => asset_size().map(|size| Picture {
+            node: asset_node(text(ASSET_PARAM), kind == "video"),
+            size,
+            is_video: kind == "video",
+        }),
+        look::SOLID_KIND => look::solid_node(source).map(|node| Picture {
+            node,
+            size: ctx.frame.map(|v| v.round() as u32),
+            is_video: false,
+        }),
+        COMPOSITION_KIND => ctx.comps.get(text(COMPOSITION_PARAM)).map(|&size| Picture {
+            node: Node::new(COMPOSITION_KIND, KIND_VERSION).with_param(
+                COMPOSITION_PARAM,
+                ParamValue::Text(text(COMPOSITION_PARAM).to_owned()),
+            ),
+            size,
+            is_video: false,
+        }),
+        _ => None,
+    }
+}
+
+fn asset_node(asset: &str, is_video: bool) -> Node {
     let kind = if is_video { FOOTAGE_KIND } else { IMAGE_KIND };
     Node::new(kind, KIND_VERSION)
         .with_param(ASSET_PARAM, ParamValue::AssetRef(Id::new(asset)))
@@ -193,13 +234,15 @@ fn geometry(ctx: &mut Ctx<'_>, clip: &Value, size: [u32; 2], is_video: bool) -> 
         .get("fit")
         .and_then(Value::as_str)
         .unwrap_or(default_fit);
-    if fit == "cover" || fit == "fill" {
-        ctx.report.add(Gap::FitCoverFill);
-    }
-    let k = if fit == FIT_NONE {
-        1.0
-    } else {
-        (ctx.frame[0] / crop[2]).min(ctx.frame[1] / crop[3])
+    let ratio = [ctx.frame[0] / crop[2], ctx.frame[1] / crop[3]];
+    let k = match fit {
+        FIT_NONE => 1.0,
+        "cover" => ratio[0].max(ratio[1]),
+        "fill" => {
+            ctx.report.add(Gap::FitFill);
+            ratio[0].min(ratio[1])
+        }
+        _ => ratio[0].min(ratio[1]),
     };
     let box_size = [crop[2] * k, crop[3] * k];
     let t = clip.get("transform").cloned().unwrap_or(Value::Null);

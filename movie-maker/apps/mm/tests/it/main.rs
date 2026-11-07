@@ -11,6 +11,8 @@ mod common;
 #[cfg(feature = "ffmpeg")]
 mod cut_words;
 #[cfg(feature = "ffmpeg")]
+mod ep02;
+#[cfg(feature = "ffmpeg")]
 mod ep03;
 #[cfg(feature = "ffmpeg")]
 mod ep04;
