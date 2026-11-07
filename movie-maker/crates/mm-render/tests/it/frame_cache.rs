@@ -208,6 +208,24 @@ fn パラメータを変えたレイヤーだけ描き直す() {
 }
 
 #[test]
+fn 有効と無効を切り替えると描き直し_戻すと覚えた画像が出る() {
+    let Some(ctx) = gpu() else { return };
+    let mut f = fixture(&ctx, true, FrameCacheConfig::default());
+    let mut p = project(vec![comp(
+        "main",
+        vec![counting("a", 0.5), counting("b", 0.25)],
+    )]);
+    let on = render(&mut f, &p, 0);
+    assert_eq!(renders(&f), 2);
+    p.compositions[0].layers[1].enabled = false;
+    let off = render(&mut f, &p, 0);
+    assert_ne!(*on, *off, "無効にしたら古い絵が出てはいけない");
+    p.compositions[0].layers[1].enabled = true;
+    let back = render(&mut f, &p, 0);
+    assert_eq!(*on, *back);
+}
+
+#[test]
 fn 触ったレイヤーに頼った画像だけ捨てる() {
     let Some(ctx) = gpu() else { return };
     let mut f = fixture(&ctx, true, FrameCacheConfig::default());

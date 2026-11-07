@@ -150,7 +150,7 @@ fn validate_composition(project: &Project, comp: &Composition) -> Result<()> {
     for layer in &comp.layers {
         validate_layer(project, &ids, layer)?;
     }
-    validate_parent_chain(comp)
+    validate_chains(comp)
 }
 
 fn validate_layer(project: &Project, ids: &HashSet<&str>, layer: &Layer) -> Result<()> {
@@ -252,21 +252,33 @@ fn validate_fades(layer: &Layer) -> Result<()> {
     Ok(())
 }
 
-/// 親の鎖をたどって循環を見つける。
-fn validate_parent_chain(comp: &Composition) -> Result<()> {
-    let parents: HashMap<&str, &LayerId> = comp
+/// 親とトラックマットの鎖をたどって循環を見つける。
+fn validate_chains(comp: &Composition) -> Result<()> {
+    validate_chain(comp, "親", |l| l.parent.as_ref())?;
+    validate_chain(comp, "トラックマット", |l| {
+        l.track_matte.as_ref().map(|m| &m.layer)
+    })
+}
+
+/// `next` が返す先を鎖としてたどり、戻ってくるレイヤーがあれば `what` の循環として拒否する。
+fn validate_chain<'a>(
+    comp: &'a Composition,
+    what: &str,
+    next: impl Fn(&'a Layer) -> Option<&'a LayerId>,
+) -> Result<()> {
+    let links: HashMap<&str, &LayerId> = comp
         .layers
         .iter()
-        .filter_map(|l| l.parent.as_ref().map(|p| (l.id.as_str(), p)))
+        .filter_map(|l| next(l).map(|target| (l.id.as_str(), target)))
         .collect();
     for layer in &comp.layers {
         let mut seen = BTreeSet::new();
         let mut cur = layer.id.as_str();
-        while let Some(parent) = parents.get(cur) {
+        while let Some(target) = links.get(cur) {
             if !seen.insert(cur) {
-                return Err(invalid(format!("レイヤー {} の親が循環", layer.id)));
+                return Err(invalid(format!("レイヤー {} の{what}が循環", layer.id)));
             }
-            cur = parent.as_str();
+            cur = target.as_str();
         }
     }
     Ok(())

@@ -6,6 +6,7 @@ mod cache_keys;
 mod common;
 mod contract;
 mod decoder_version;
+mod enabled;
 mod fonts;
 mod footage_reuse;
 mod frame_cache;
