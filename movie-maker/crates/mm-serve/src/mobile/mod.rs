@@ -12,6 +12,7 @@ mod ops;
 mod pair;
 mod proposals;
 mod read;
+mod spans;
 mod tailnet;
 
 use std::net::{Ipv4Addr, SocketAddr, TcpListener};

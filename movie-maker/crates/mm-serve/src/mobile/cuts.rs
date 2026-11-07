@@ -1,30 +1,60 @@
-//! スクラブの棒の目盛りに使う、コンポジションのカットの境の秒。
+//! スクラブの棒の目盛りに使う、コンポジションのカットの境の秒。シーケンスの時刻をコンポジションの時刻に写す
+//! [`Placement`] は、提案の範囲の写し（`spans`）と共有する。
 
-use mm_doc::{Composition, Project};
+use mm_doc::{Composition, Layer, Project};
 use mm_eval::place_cuts;
 use mm_story::layer_sequence;
 
+/// シーケンスを置いたレイヤーの、シーケンスの時刻からコンポジションの時刻への写し。
+#[derive(Debug, Clone, Copy)]
+pub(super) struct Placement {
+    start: f64,
+    offset: f64,
+    speed: f64,
+}
+
+impl Placement {
+    /// 時間の写像を持つレイヤーと逆再生のレイヤーは、シーケンスの時刻が一意に戻らないので `None`。
+    pub(super) fn of(layer: &Layer) -> Option<Self> {
+        let speed = layer.speed.to_f64();
+        (layer.time_remap.is_none() && speed > 0.0).then(|| Self {
+            start: layer.start.to_f64(),
+            offset: layer.in_point.to_f64(),
+            speed,
+        })
+    }
+
+    /// シーケンスの時刻 `t`（秒）のコンポジションの時刻。
+    pub(super) fn to_comp(self, t: f64) -> f64 {
+        self.start + (t - self.offset) / self.speed
+    }
+
+    /// レイヤーが見えている区間（コンポジションの時刻の始まりと終わり）。
+    pub(super) fn visible(self, layer: &Layer) -> (f64, f64) {
+        (self.start, self.to_comp(layer.out_point.to_f64()))
+    }
+}
+
 /// `comp` のシーケンスのレイヤーが並べるカットの境（コンポジションの時間軸の秒、昇順、重複なし）。
-/// 0 とコンポジションの終わりは境に数えない。時間の写像を持つレイヤーは素材の時刻が一意に戻らないので除く。
+/// 0 とコンポジションの終わりは境に数えない。
 pub(super) fn boundaries(project: &Project, comp: &Composition) -> Vec<f64> {
     let end = comp.duration.to_f64();
     let mut out: Vec<f64> = Vec::new();
     for layer in &comp.layers {
-        let (Some(seq), None) = (layer_sequence(project, layer), &layer.time_remap) else {
+        let (Some(seq), Some(place)) = (layer_sequence(project, layer), Placement::of(layer))
+        else {
             continue;
         };
         let Ok(placed) = place_cuts(seq) else {
             continue;
         };
-        let (start, offset) = (layer.start.to_f64(), layer.in_point.to_f64());
-        let speed = layer.speed.to_f64();
-        let last = start + (layer.out_point.to_f64() - offset) / speed;
+        let (first, last) = place.visible(layer);
         out.extend(
             placed
                 .iter()
                 .flat_map(|p| [p.range.start, p.range.end])
-                .map(|t| start + (t.to_f64() - offset) / speed)
-                .filter(|t| *t > start && *t < last && *t > 0.0 && *t < end),
+                .map(|t| place.to_comp(t.to_f64()))
+                .filter(|t| *t > first && *t < last && *t > 0.0 && *t < end),
         );
     }
     out.sort_by(f64::total_cmp);

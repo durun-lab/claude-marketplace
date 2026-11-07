@@ -15,6 +15,7 @@ use serde_json::json;
 
 use super::devices::DeviceInfo;
 use super::ops::MobileOpsBody;
+use super::spans::{view_json, with_comp_spans};
 use super::{MobileError, MobileState};
 use crate::core::ServeError;
 use crate::http::blocking;
@@ -28,9 +29,17 @@ pub(super) fn routes() -> Router<Arc<MobileState>> {
         .route("/m/api/proposals/{id}/reopen", post(reopen))
 }
 
+/// 提案の応答には、範囲のコンポジションの時刻 `comp_spans` を足す（`spans`）。
 async fn list(State(st): State<Arc<MobileState>>) -> Result<Response, MobileError> {
     let core = st.core.clone();
-    let proposals = blocking(move || core.proposals()).await?;
+    let proposals = blocking(move || {
+        let project = core.project()?.project;
+        core.proposals()?
+            .iter()
+            .map(|v| with_comp_spans(&project, v))
+            .collect::<Result<Vec<_>, _>>()
+    })
+    .await?;
     Ok(Json(json!({ "proposals": proposals })).into_response())
 }
 
@@ -39,7 +48,7 @@ async fn one(
     Path(id): Path<i64>,
 ) -> Result<Response, MobileError> {
     let core = st.core.clone();
-    let view = blocking(move || core.proposal(id)).await?;
+    let view = blocking(move || view_json(&core, &core.proposal(id)?)).await?;
     Ok(Json(view).into_response())
 }
 
@@ -52,7 +61,7 @@ async fn create(
     let txn = MobileOpsBody::parse(&body)?;
     let caller = device.caller();
     let core = st.core.clone();
-    let view = blocking(move || core.propose(txn, &caller, None)).await?;
+    let view = blocking(move || view_json(&core, &core.propose(txn, &caller, None)?)).await?;
     Ok(Json(view).into_response())
 }
 
@@ -77,7 +86,13 @@ async fn approve(
     };
     let caller = device.caller();
     let core = st.core.clone();
-    let approval = blocking(move || core.approve(id, parsed.ops.as_deref(), &caller)).await?;
+    let approval = blocking(move || {
+        let a = core.approve(id, parsed.ops.as_deref(), &caller)?;
+        Ok::<_, ServeError>(
+            json!({ "proposal": view_json(&core, &a.proposal)?, "change": a.change }),
+        )
+    })
+    .await?;
     Ok(Json(approval).into_response())
 }
 
@@ -98,7 +113,7 @@ async fn reject(
     require_empty(&body)?;
     let caller = device.caller();
     let core = st.core.clone();
-    let view = blocking(move || core.reject(id, &caller)).await?;
+    let view = blocking(move || view_json(&core, &core.reject(id, &caller)?)).await?;
     Ok(Json(view).into_response())
 }
 
@@ -111,6 +126,6 @@ async fn reopen(
     require_empty(&body)?;
     let caller = device.caller();
     let core = st.core.clone();
-    let view = blocking(move || core.reopen(id, &caller)).await?;
+    let view = blocking(move || view_json(&core, &core.reopen(id, &caller)?)).await?;
     Ok(Json(view).into_response())
 }
