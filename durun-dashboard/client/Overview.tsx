@@ -154,25 +154,39 @@ const AgentSection = ({ title, count, empty, children }: { title: string; count?
   </section>
 );
 
-const runningFirst = <T,>(list: T[], running: (item: T) => boolean): T[] => list.toSorted((a, b) => Number(running(b)) - Number(running(a)));
+/** 実行中のものを並べ、終わったものは件数だけを出して畳む。 */
+const RunningThenDone = <T,>({ list, running, row }: { list: T[]; running: (item: T) => boolean; row: (item: T) => ComponentChildren }) => {
+  const done = list.filter((item) => !running(item));
+  return (
+    <>
+      <ul class="subagents">{list.filter(running).map(row)}</ul>
+      {done.length > 0 && (
+        <details class="agent-done">
+          <summary>終わったもの <span class="count-pill">{done.length}</span></summary>
+          <ul class="subagents">{done.map(row)}</ul>
+        </details>
+      )}
+    </>
+  );
+};
 
 /**
  * メインエージェント、サブエージェント、ツール（バックグラウンドの shell と Monitor）の 3 つに分けて並べる。
- * サブエージェントとツールは、実行中のものから並べる。見出しの件数には、メインエージェントを入れない。
+ * サブエージェントとツールは、終わったものを畳む。見出しの件数には、メインエージェントを入れない。
  */
 export const AgentList = ({ s }: { s: Session }) => {
-  const subagents = runningFirst(s.subagents, (a) => a.running);
-  const tools = runningFirst(s.background.toReversed(), (t) => t.status === 'running');
+  const subagents = s.subagents;
+  const tools = s.background.toReversed();
   return (
     <WidgetPanel title="エージェント" count={subagents.length + tools.length}>
       <AgentSection title="メインエージェント">
         <MainAgent s={s} />
       </AgentSection>
       <AgentSection title="サブエージェント" count={subagents.length} empty="サブエージェントはいません。">
-        <ul class="subagents">{subagents.map((a) => <SubagentRow key={a.id} sessionId={s.id} a={a} />)}</ul>
+        <RunningThenDone list={subagents} running={(a) => a.running} row={(a) => <SubagentRow key={a.id} sessionId={s.id} a={a} />} />
       </AgentSection>
       <AgentSection title="ツール" count={tools.length} empty="バックグラウンドで動かしたツールはありません。">
-        <ul class="subagents">{tools.map((t) => <BgRow key={t.id} sessionId={s.id} t={t} />)}</ul>
+        <RunningThenDone list={tools} running={(t) => t.status === 'running'} row={(t) => <BgRow key={t.id} sessionId={s.id} t={t} />} />
       </AgentSection>
     </WidgetPanel>
   );
