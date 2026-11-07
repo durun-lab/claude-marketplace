@@ -6,12 +6,12 @@
 
 use std::collections::HashMap;
 
-use mm_doc::{Composition, Layer, Node};
-use mm_types::{Id, MmError, ParamValue, RationalTime, Result};
+use mm_doc::{Composition, Layer};
+use mm_types::{Id, MmError, RationalTime, Result};
 use serde_json::{Map, Value};
 
-use super::look::{self, SOLID_KIND};
-use super::visual::{self, Ctx, KIND_VERSION};
+use super::look;
+use super::visual::{self, Ctx};
 
 /// 入れ子の名前ごとの大きさ。幅か高さが無い入れ子は誤り。
 pub fn sizes(defs: &Map<String, Value>) -> Result<HashMap<String, [u32; 2]>> {
@@ -61,24 +61,7 @@ fn inner_layers(ctx: &mut Ctx<'_>, name: &str, def: &Value) -> Result<Vec<Layer>
         .unwrap_or_default();
     let mut layers = visual::visual_layers(ctx, &list)?;
     let background = def.get("background").and_then(Value::as_str);
-    if let Some(color) = background.and_then(look::color) {
-        let end = layers
-            .iter()
-            .map(|l| l.range().map(|r| r.end))
-            .try_fold(RationalTime::ZERO, |m, e| e.map(|e| m.max(e)))?;
-        if end > RationalTime::ZERO {
-            let node =
-                Node::new(SOLID_KIND, KIND_VERSION).with_param("color", ParamValue::Color(color));
-            let bg = Layer::new(
-                "background",
-                node,
-                RationalTime::ZERO,
-                RationalTime::ZERO,
-                end,
-            );
-            layers.insert(0, bg);
-        }
-    }
+    look::lay_background(&mut layers, background.unwrap_or(look::TRANSPARENT))?;
     for l in &mut layers {
         l.id = Id::new(format!("{name}/{}", l.id));
         for m in &mut l.masks {
@@ -93,6 +76,7 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    use crate::geneva_cmd::look::SOLID_KIND;
     use crate::geneva_cmd::media::Media;
     use mm_types::Rational;
 

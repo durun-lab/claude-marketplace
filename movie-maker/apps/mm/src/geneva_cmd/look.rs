@@ -1,7 +1,7 @@
 //! 色と重ね方: `solid` の source を movie-maker の単色のノードに、`blend` をレイヤーの合成モードにする。
 
-use mm_doc::{BlendMode, Effect, Node};
-use mm_types::{Id, ParamValue, Rgba};
+use mm_doc::{BlendMode, Effect, Layer, Node};
+use mm_types::{Id, ParamValue, RationalTime, Result, Rgba};
 use serde_json::Value;
 
 use super::report::{Gap, Report};
@@ -13,6 +13,11 @@ const COLOR_PARAM: &str = "color";
 /// ガウスぼかしの効果の種類と、標準偏差（入力の画素）のパラメータ（`mm-nodes-basic` の blur.gaussian）。
 const BLUR_KIND: &str = "blur.gaussian";
 const RADIUS_PARAM: &str = "radius";
+/// 地の色の名前（geneva の出力の既定と、入れ子の既定）。
+pub const BLACK: &str = "black";
+pub const TRANSPARENT: &str = "transparent";
+/// 地の色のレイヤーの ID。
+const BACKGROUND_ID: &str = "background";
 /// `#RGB`、`#RRGGBB`、`#RRGGBBAA` の 16 進の桁の数。
 const SHORT_HEX: usize = 3;
 const OPAQUE_HEX: usize = 6;
@@ -49,6 +54,31 @@ pub fn color(text: &str) -> Option<Rgba> {
         _ => return None,
     };
     Some(Rgba::from_code8(code))
+}
+
+/// geneva の地の色（`background`）を、全部のレイヤーの長さいっぱいの単色として一番下に敷く。
+/// geneva は地の色を塗ってから重ねるので、下の色を読む合成モード（`multiply` など）は地の上で計算される。透明なら敷かない。
+pub fn lay_background(layers: &mut Vec<Layer>, color_text: &str) -> Result<()> {
+    let Some(fill) = color(color_text).filter(|c| c.a > 0.0) else {
+        return Ok(());
+    };
+    let end = layers
+        .iter()
+        .map(|l| l.range().map(|r| r.end))
+        .try_fold(RationalTime::ZERO, |m, e| e.map(|e| m.max(e)))?;
+    if end > RationalTime::ZERO {
+        let node =
+            Node::new(SOLID_KIND, KIND_VERSION).with_param(COLOR_PARAM, ParamValue::Color(fill));
+        let bg = Layer::new(
+            BACKGROUND_ID,
+            node,
+            RationalTime::ZERO,
+            RationalTime::ZERO,
+            end,
+        );
+        layers.insert(0, bg);
+    }
+    Ok(())
 }
 
 /// クリップの `blend` をレイヤーの合成モードにする。名前は geneva と同じ式（W3C）を指す。知らない名前は数えて `normal`。
@@ -127,6 +157,27 @@ mod tests {
         let radius = fx[0].node.params[RADIUS_PARAM].value.as_number();
         assert_eq!(radius, Some(72.0));
         assert_eq!(report.to_json()[0]["what"], "effects");
+    }
+
+    #[test]
+    fn 地の色は全部の長さの単色を一番下に敷き_透明なら敷かない() {
+        let clip = |id: &str, end: i64| {
+            let node = solid_node(&json!({"color": "#fff"})).unwrap();
+            Layer::new(
+                id,
+                node,
+                RationalTime::seconds(1),
+                RationalTime::ZERO,
+                RationalTime::seconds(end),
+            )
+        };
+        let mut layers = vec![clip("a", 2), clip("b", 5)];
+        lay_background(&mut layers, BLACK).unwrap();
+        assert_eq!(layers[0].id.as_str(), BACKGROUND_ID);
+        assert_eq!(layers[0].range().unwrap().end, RationalTime::seconds(6));
+        let mut layers = vec![clip("a", 2)];
+        lay_background(&mut layers, TRANSPARENT).unwrap();
+        assert_eq!(layers.len(), 1);
     }
 
     #[test]

@@ -133,6 +133,8 @@ pub fn convert(timeline: &Value, base: &Path, render_output: &Path) -> Result<(P
     };
     let mut layers = sound::audio_layers(&mut ctx, &list("audio"))?;
     layers.extend(visual::visual_layers(&mut ctx, &list("layers"))?);
+    let background = out.get("background").and_then(Value::as_str);
+    look::lay_background(&mut layers, background.unwrap_or(look::BLACK))?;
     let duration = layers
         .iter()
         .map(|l| l.range().map(|r| r.end))
