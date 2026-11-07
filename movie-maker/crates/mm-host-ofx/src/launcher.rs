@@ -56,7 +56,7 @@ impl HostLauncher for OfxLauncher {
     }
 }
 
-/// `executable describe <bundle>` を別プロセスで走らせ、バンドルの記述を受け取る。
+/// `executable describe <bundle>` を別プロセスで実行し、バンドルの記述を受け取る。
 /// プラグインの describe がクラッシュしても、このプロセスには `HostCrashed` で返る。
 pub fn describe_bundle(executable: &Path, bundle: &Path, timeout: Duration) -> Result<BundleDesc> {
     let mut child = Command::new(executable)

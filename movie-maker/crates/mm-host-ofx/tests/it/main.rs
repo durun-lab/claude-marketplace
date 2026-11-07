@@ -1,4 +1,4 @@
-//! `mm-host-ofx` を子プロセスで起こし、試験のプラグイン（`build.rs` が公式のヘッダーで作る）で
+//! `mm-host-ofx` を子プロセスで起こし、テストのプラグイン（`build.rs` が公式のヘッダーで作る）で
 //! describe、パラメータ、1 フレームの render、`mm-host-api` の契約、クラッシュの隔離を確かめる。
 //! - `Invert`: OpenFX の公式のサンプル（`Examples/Invert`、BSD-3-Clause）。8 ビットだけに対応する。
 //! - `MmTestGain`: このクレートの最小のプラグイン（`tests/plugins/gain.c`）。float と 4 つの型のパラメータ。
@@ -267,7 +267,7 @@ fn ホストの契約を満たす() {
 }
 
 #[test]
-fn プラグインのクラッシュはホストだけが落ち_再起動で戻る() {
+fn プラグインのクラッシュはホストだけを止め_再起動で戻る() {
     let mut host = start("MmTestGain");
     let size = Size::new(2, 2);
     let crashed = render(

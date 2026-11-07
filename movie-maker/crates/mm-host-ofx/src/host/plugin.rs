@@ -37,7 +37,7 @@ impl Bundle {
 
     /// バンドルの中のプラグイン。`OfxSetHost`（1.5）があれば先に呼ぶ。
     pub fn plugins(&self) -> Result<Vec<Plugin>, String> {
-        // SAFETY: OpenFX の約束どおりの型で、ホストの構造体はプロセスの間ずっと生きている。
+        // SAFETY: OpenFX の規約どおりの型で、ホストの構造体はプロセスの間ずっと生きている。
         unsafe {
             if let Ok(set_host) = self
                 .lib
@@ -98,7 +98,7 @@ pub struct Plugin {
 
 impl Plugin {
     fn new(index: usize, p: *const OfxPlugin, bundle: &Path) -> Option<Self> {
-        // SAFETY: OfxGetPlugin が返した、ライブラリが生きている間有効な構造体（NULL は飛ばす）。
+        // SAFETY: OfxGetPlugin が返した、ライブラリが生きている間有効な構造体（NULL はスキップする）。
         let p = unsafe { p.as_ref()? };
         Some(Self {
             index,

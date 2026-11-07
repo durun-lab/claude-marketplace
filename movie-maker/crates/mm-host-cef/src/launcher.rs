@@ -31,7 +31,7 @@ const KIND: PipeKind = PipeKind {
 pub struct CefLauncher;
 
 impl CefLauncher {
-    /// 起動して `Ping` が通るまで待つ。一時フォルダーを見る試験のために具体の型で返す。
+    /// 起動して `Ping` が通るまで待つ。一時フォルダーを見るテストのために具体の型で返す。
     pub fn start(spec: HostSpec) -> Result<PipeHost> {
         PipeHost::start(KIND, spec)
     }
