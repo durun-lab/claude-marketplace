@@ -195,7 +195,7 @@ define_ops! {
 impl Op {
     /// 操作を 1 つ適用する。失敗したらプロジェクトのデータは変わらない。
     ///
-    /// Claude の操作経路からは、ロックの付いた所に触る操作を拒否する。適用した後に `Project::validate` を通す。
+    /// PC のアプリの外の操作経路からは、ロックの付いた所に触る操作を拒否する。適用した後に `Project::validate` を通す。
     pub fn apply(&self, project: &mut Project, ctx: &OpContext) -> OpResult<Applied> {
         let before = project.clone();
         match self.apply_unchecked(project, ctx) {
@@ -214,7 +214,7 @@ impl Op {
         ctx: &OpContext,
     ) -> OpResult<Applied> {
         let touches = self.touches(project)?;
-        if ctx.entry.is_claude() {
+        if ctx.entry.locks_apply() {
             let locked = touches.intersection(&locked_ids(project));
             if !locked.is_empty() {
                 return Err(OpError::Locked(locked));

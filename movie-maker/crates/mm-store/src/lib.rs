@@ -47,6 +47,7 @@ pub use records::{
 pub use schema::{APPLICATION_ID, SCHEMA_VERSION};
 pub use store::{OpenMode, SearchHit, Store, StoreWarning};
 pub use sync::{detect_sync_folder, SyncFolder, SyncKind};
+pub use token::{private_app_file, write_private_file};
 pub use transcript::{word_id, TranscriptInput, TranscriptWord, WordInput, RUN_EXTRA_CHARS};
 pub use transcript_search::WordHit;
 pub use wal::uncommitted_frames;
