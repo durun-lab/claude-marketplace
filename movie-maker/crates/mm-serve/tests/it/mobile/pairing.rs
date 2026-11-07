@@ -93,8 +93,8 @@ fn 資格の要らない読み出しも_host_と本人の見出しは確かめ�
         login: None,
         ..Req::tailnet()
     };
-    // 資格は問わない（PWA の画面がまだ無いので 404、登録の画面の GET は PWA が受け持つので 405）。
-    for (path, status) in [("/m/", 404), ("/m/pair", 405)] {
+    // 資格は問わない（置き場の無い待ち受けでは PWA の画面が 404）。
+    for (path, status) in [("/m/", 404), ("/m/pair", 404)] {
         assert_eq!(
             code(&r.send(&bad_host, "GET", path, None)),
             "forbidden_host"
