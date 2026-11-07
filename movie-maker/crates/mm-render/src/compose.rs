@@ -19,7 +19,7 @@ pub struct DrawItem<'a> {
     pub clip: Clip,
 }
 
-/// シェーダーの `Item` と同じフィールド順（240 バイト）。
+/// シェーダーの `Item` と同じフィールド順（256 バイト）。
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct ItemUniform {
@@ -27,10 +27,16 @@ struct ItemUniform {
     opacity: f32,
     mask_count: u32,
     taps: [f32; 2],
+    mask_base: f32,
+    /// `place`（vec4）を 16 バイトの境界に置くための詰め物。
+    _pad: [f32; 3],
     place: [f32; 4],
     crop: [f32; 4],
     masks: [MaskUniform; MAX_MASKS],
 }
+
+/// WGSL の `Item` の大きさ（64 + 16 + 16 + 16 + 16 + 32 * MAX_MASKS）。上限を変えたら合わせて見直す。
+const _: () = assert!(std::mem::size_of::<ItemUniform>() == 128 + 32 * MAX_MASKS);
 
 /// 合成のパイプライン。
 pub struct Compositor {
@@ -105,6 +111,8 @@ impl Compositor {
             opacity: item.opacity,
             mask_count: item.clip.mask_count,
             taps: item.taps,
+            mask_base: item.clip.mask_base,
+            _pad: [0.0; 3],
             place: item.clip.place,
             crop: item.clip.crop,
             masks: item.clip.masks,
@@ -181,7 +189,11 @@ fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
 fn create_pipeline(device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("mm-render compose"),
-        source: wgpu::ShaderSource::Wgsl(include_str!("compose.wgsl").into()),
+        source: wgpu::ShaderSource::Wgsl(
+            include_str!("compose.wgsl")
+                .replace("{{MAX_MASKS}}", &MAX_MASKS.to_string())
+                .into(),
+        ),
     });
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("mm-render compose pipeline layout"),

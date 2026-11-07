@@ -20,11 +20,13 @@ struct Item {
     mask_count: u32,
     // 出力の 1 画素あたりの元の画素の数（軸ごと）。1 以下なら双線形 1 点。
     taps: vec2<f32>,
+    // マスクの組み合わせを始める被覆率。最初のマスクが足すなら 0、ほかなら 1。
+    mask_base: f32,
     // 画像の置き場所 [x, y, w, h]（レイヤーの座標）。
     place: vec4<f32>,
     // 切り抜いた後の矩形の左上と右下。削らない辺は遠い値。
     crop: vec4<f32>,
-    masks: array<MaskItem, 4>,
+    masks: array<MaskItem, MAX_MASKS>,
 }
 
 @group(0) @binding(0) var<uniform> item: Item;
@@ -33,6 +35,8 @@ struct Item {
 
 // 面積平均に使う点の数の上限（軸ごと）。これを超える縮小は、この間隔の点の平均になる。
 const MAX_TAPS: u32 = 8u;
+// マスクの数の上限。Rust の `MAX_MASKS` を `{{MAX_MASKS}}` の位置に埋めてから読み込む。
+const MAX_MASKS: u32 = {{MAX_MASKS}}u;
 const MODE_SUBTRACT: u32 = 1u;
 const MODE_INTERSECT: u32 = 2u;
 const FLAG_INVERTED: u32 = 4u;
@@ -63,22 +67,30 @@ fn sd_round_rect(p: vec2<f32>, lo: vec2<f32>, hi: vec2<f32>, r: f32) -> f32 {
 
 // 切り抜きの被覆率。辺ごとに差を取り、削らない辺の遠い値で桁落ちしない。aa は出力の 1 画素のレイヤーの画素数。
 fn crop_coverage(p: vec2<f32>, aa: f32) -> f32 {
+    // 左右（上下）の切り抜きが交差したら何も残さない。和が幅をわずかに超えても細い線を残さない。
+    if (item.crop.x >= item.crop.z || item.crop.y >= item.crop.w) {
+        return 0.0;
+    }
     let inside = vec4<f32>(p - item.crop.xy, item.crop.zw - p) / aa + 0.5;
     let c = clamp(inside, vec4<f32>(0.0), vec4<f32>(1.0));
     return c.x * c.y * c.z * c.w;
 }
 
-// マスクの組み合わせ。After Effects と同じく、最初のマスクが足すなら空から、ほかなら全部から始める。
+// マスクの組み合わせ。始めの被覆率は、最初のマスクの組み合わせ方から Rust 側が決める（After Effects と同じ）。
 fn mask_coverage(p: vec2<f32>, aa: f32) -> f32 {
     if (item.mask_count == 0u) {
         return 1.0;
     }
-    var a = select(1.0, 0.0, (item.masks[0].flags & 3u) == 0u);
+    var a = item.mask_base;
     for (var i = 0u; i < item.mask_count; i++) {
         let m = item.masks[i];
         let soft = max(m.feather, aa);
         let d = sd_round_rect(p, m.rect.xy, m.rect.zw, m.radius);
         var c = clamp(0.5 - d / soft, 0.0, 1.0);
+        // 幅か高さが 0 以下の矩形は空。距離が点までになり中心が半透明になるのを、反転の前に止める。
+        if (m.rect.z <= m.rect.x || m.rect.w <= m.rect.y) {
+            c = 0.0;
+        }
         if ((m.flags & FLAG_INVERTED) != 0u) {
             c = 1.0 - c;
         }
