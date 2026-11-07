@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 use mm_color_api::{ColorTransform, TransformProgram};
-use mm_node_api::{FrameCx, FrameRef, InputSchema, InputSpec, NodeKind, Traits};
+use mm_node_api::{file_digest, FrameCx, FrameRef, InputSchema, InputSpec, NodeKind, Traits};
 use mm_types::{
     transfer, AssetId, ColorSpace, MmError, ParamSchema, ParamSpec, ParamType, ParamValue, Params,
     Result,
@@ -209,13 +209,20 @@ impl NodeKind for ColorLutKind {
         Traits::PIXEL
     }
 
-    /// 定義域の外の値を端の値に足して持ち越す作り方のバージョン。画素の作り方を変えたら上げ、キャッシュした画像を引かない。
+    /// 定義域の外の値を端の値に足して持ち越す作り方のバージョンと、LUT のファイルの中身のハッシュ。
+    /// 画素の作り方を変えたらバージョンを上げる。LUT は取り込んだ後に書き換えられうる（`contentHash` は取り込み時の値）。
     fn cache_fingerprint(
         &self,
-        _params: &Params,
-        _asset_path: &dyn Fn(&AssetId) -> Option<PathBuf>,
+        params: &Params,
+        asset_path: &dyn Fn(&AssetId) -> Option<PathBuf>,
     ) -> Option<String> {
-        Some(LUT_PIXEL_VERSION.into())
+        match lut_asset(params) {
+            Some(id) => Some(format!(
+                "{LUT_PIXEL_VERSION}|{}",
+                file_digest(&asset_path(id)?)?
+            )),
+            None => Some(LUT_PIXEL_VERSION.into()),
+        }
     }
 
     fn migrate(&self, old: serde_json::Value, from: u32) -> Result<Params> {
@@ -415,5 +422,22 @@ mod tests {
     fn 画素の作り方のバージョンをフレームのキャッシュの指紋に出す() {
         let fp = ColorLutKind::default().cache_fingerprint(&Params::new(), &|_| None);
         assert_eq!(fp.as_deref(), Some(LUT_PIXEL_VERSION));
+    }
+
+    #[test]
+    fn lut_のファイルを書き換えると指紋が変わり_読めなければキャッシュしない() {
+        let dir = std::env::temp_dir().join(format!("mm-color-lut-fp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("一時フォルダー");
+        let path = dir.join("a.cube");
+        let mut params = Params::new();
+        params.set(LUT_PARAM, ParamValue::AssetRef(AssetId::new("lut")));
+        let kind = ColorLutKind::default();
+        let fp = |p: &Path| kind.cache_fingerprint(&params, &|_| Some(p.to_path_buf()));
+        std::fs::write(&path, "LUT_3D_SIZE 2\n").expect("書ける");
+        let first = fp(&path).expect("読める");
+        assert!(first.starts_with(LUT_PIXEL_VERSION));
+        std::fs::write(&path, "LUT_3D_SIZE 3\n").expect("書ける");
+        assert_ne!(fp(&path), Some(first), "中身が変われば別の指紋");
+        assert_eq!(fp(&dir.join("none.cube")), None);
     }
 }

@@ -201,3 +201,29 @@ fn 入力の大きさが違えば誤り() {
     let err = render_with(&hlsl, &p, &mut wgpu, inputs, (SIZE, RationalTime::ZERO)).unwrap_err();
     assert!(matches!(err, MmError::InvalidArgument(_)), "{err:?}");
 }
+
+#[test]
+fn 素材の_hlsl_を書き換えると指紋が変わり_読めなければキャッシュしない() {
+    let dir = std::env::temp_dir().join(format!("mm-nodes-hlsl-fp-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("一時フォルダー");
+    let path = dir.join("a.hlsl");
+    std::fs::write(&path, fixture("invert.hlsl")).expect("書ける");
+    let kind = ShaderHlslKind::with_dxc(None);
+    let p = params_of(
+        &kind,
+        &[(ASSET_PARAM, ParamValue::AssetRef(AssetId::new("src")))],
+    );
+    let fp = |p: &mm_types::Params| kind.cache_fingerprint(p, &|_| Some(path.clone()));
+    let first = fp(&p).expect("読める");
+    assert!(first.starts_with("dxc=none|"), "{first}");
+    std::fs::write(&path, fixture("mix.hlsl")).expect("書ける");
+    assert_ne!(fp(&p), Some(first), "中身が変われば別の指紋");
+    std::fs::remove_file(&path).expect("消せる");
+    assert_eq!(fp(&p), None, "読めない素材はキャッシュしない");
+    let code = params_of(&kind, &[(CODE_PARAM, text(&fixture("invert.hlsl")))]);
+    assert_eq!(
+        fp(&code).as_deref(),
+        Some("dxc=none"),
+        "源がパラメータなら DXC だけ"
+    );
+}

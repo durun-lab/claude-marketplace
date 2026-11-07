@@ -1,14 +1,16 @@
 //! `web.cef` の種類。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 
 use mm_gpu::{GpuContext, WgpuGpu};
 use mm_host_api::{HostLauncher, SharedFrame};
-use mm_node_api::{Cost, FrameCx, FrameRef, GpuTexture, Isolation, NodeKind, Traits};
+use mm_node_api::{file_stamp, Cost, FrameCx, FrameRef, GpuTexture, Isolation, NodeKind, Traits};
 use mm_text_api::FontFile;
-use mm_types::{MmError, ParamSchema, ParamSpec, ParamType, ParamValue, Params, Result, RgbaImage};
+use mm_types::{
+    AssetId, MmError, ParamSchema, ParamSpec, ParamType, ParamValue, Params, Result, RgbaImage,
+};
 
 use crate::cache::{Cached, FrameCache, FrameKey};
 use crate::gpu::{copy_into, Converter};
@@ -18,6 +20,10 @@ use crate::{mock, KIND_ID, KIND_VERSION};
 
 /// 移行できる最も古いバージョン。パラメータの形は 1 から変わっていない（上げたのは画素が変わったため）。
 const OLDEST_VERSION: u32 = 1;
+/// CEF の配布物の置き場所の環境変数。ランチャー（`mm-host-cef`）が子プロセスの `PATH` に足すものと同じ。
+const CEF_PATH_ENV: &str = "CEF_PATH";
+/// CEF の本体。
+const LIBCEF: &str = "libcef.dll";
 
 /// 描いた数と、キャッシュから返した数。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -34,6 +40,8 @@ pub struct Stats {
 pub struct WebCefKind {
     /// ホストの組。`None` ならモック。作るときに決まるので、ホストの有無はロックを取らずに分かる。
     hosts: Option<Mutex<HostPages>>,
+    /// ホストの実行ファイル。キャッシュの指紋に入れるので、ホストのロックを取らずに引けるよう別に持つ。
+    executable: Option<PathBuf>,
     cache: Mutex<FrameCache>,
     converter: Mutex<Option<Converter>>,
     device: Mutex<DeviceGeneration>,
@@ -67,9 +75,10 @@ fn relock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
 }
 
 impl WebCefKind {
-    fn with_hosts(hosts: Option<HostPages>) -> Self {
+    fn with_hosts(hosts: Option<HostPages>, executable: Option<PathBuf>) -> Self {
         Self {
             hosts: hosts.map(Mutex::new),
+            executable,
             cache: Mutex::new(FrameCache::default()),
             converter: Mutex::new(None),
             device: Mutex::new(DeviceGeneration::default()),
@@ -81,12 +90,15 @@ impl WebCefKind {
 
     /// `executable`（`mm-host-cef`）を `launcher` で起こして描く。
     pub fn with_host(launcher: Arc<dyn HostLauncher>, executable: PathBuf) -> Self {
-        Self::with_hosts(Some(HostPages::new(launcher, executable)))
+        Self::with_hosts(
+            Some(HostPages::new(launcher, executable.clone())),
+            Some(executable),
+        )
     }
 
     /// CEF の代わりに矩形を描く。
     pub fn mock() -> Self {
-        Self::with_hosts(None)
+        Self::with_hosts(None, None)
     }
 
     /// ホストで描くか（偽ならモック）。
@@ -348,6 +360,22 @@ impl NodeKind for WebCefKind {
             deterministic: self.uses_host(),
             ..Traits::PIXEL
         }
+    }
+
+    /// ホストの実行ファイルと CEF の配布物（`libcef.dll`）のスタンプ。Chromium が変われば同じページでも画素が変わりうる。
+    fn cache_fingerprint(
+        &self,
+        _params: &Params,
+        _asset_path: &dyn Fn(&AssetId) -> Option<PathBuf>,
+    ) -> Option<String> {
+        let Some(exe) = &self.executable else {
+            return Some(String::new());
+        };
+        let cef = std::env::var_os(CEF_PATH_ENV).map_or_else(
+            || "unset".to_owned(),
+            |dir| file_stamp(&Path::new(&dir).join(LIBCEF)),
+        );
+        Some(format!("host={}|cef={cef}", file_stamp(exe)))
     }
 
     fn migrate(&self, old: serde_json::Value, from: u32) -> Result<Params> {
