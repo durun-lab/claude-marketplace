@@ -161,7 +161,7 @@ mod tests {
         l.masks.push(first);
         for i in 0..MAX_MASKS {
             l.masks.push(Mask::rect(
-                &format!("m{i}"),
+                format!("m{i}"),
                 MaskRect::new([0.0, 0.0], [1.0, 1.0], 0.0),
             ));
         }

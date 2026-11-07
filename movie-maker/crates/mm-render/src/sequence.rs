@@ -1,8 +1,8 @@
 //! マグネティックシーケンス（種類 `sequence`）の展開。
 //!
 //! シーケンスのレイヤーは、その時刻にあるカットを 1 枚の画布に描いたもの。カットは `Cut.source` のノードを、カットの
-//! 位置・イン点・速さを持つレイヤーとして描く（`layer_item`）。カットの境のトランジション（`Cut.transition_in`）は
-//! 境を中心に前後へ半分ずつ掛け、境の前では前のカットを後ろへ、境の後では次のカットを前へ延ばして描く
+//! 位置・イン点・速さを持つレイヤーとして描く（`layer_item`）。カットの編集点のトランジション（`Cut.transition_in`）は
+//! 編集点を中心に前後へ半分ずつ掛け、編集点の前では前のカットを後ろへ、編集点の後では次のカットを前へ延ばして描く
 //! （掛かる範囲は [`crate::crossfade`]）。
 
 use std::sync::Arc;
@@ -22,7 +22,7 @@ const PROGRESS_PARAM: &str = "progress";
 /// 掛かる長さ（秒）のパラメータの名前。種類のパラメータにあるときだけ書く。
 const DURATION_PARAM: &str = "duration";
 
-/// 境のトランジションを描く手順。種類は `Transition.node.kind` で引いたもの。
+/// 編集点のトランジションを描く手順。種類は `Transition.node.kind` で引いたもの。
 struct Plan {
     fade: Crossfade,
     kind: Arc<dyn NodeKind>,
@@ -31,10 +31,10 @@ struct Plan {
     rewind: f64,
 }
 
-/// 逆向きの時刻を有理数に丸める刻み（1 秒あたり）。24、25、30、48、50、60 fps のコマの境を割り切る。
+/// 逆向きの時刻を有理数に丸める刻み（1 秒あたり）。24、25、30、48、50、60 fps のフレームの境界を割り切る。
 const REWIND_TICKS: u32 = 120_000;
 
-/// 逆向きに描くときの出ていくカットの時刻。掛かり始めから `rate` 倍で戻り、カットの頭で止まる。
+/// 逆向きに描くときの出ていくカットの時刻。掛かり始めから `rate` 倍で戻り、カットの先頭で止まる。
 fn rewound_time(placed: &PlacedCut, fade: &Crossfade, t: RationalTime, rate: f64) -> RationalTime {
     let back = fade.start - (t.to_f64() - fade.start) * rate;
     let ticks = (back * f64::from(REWIND_TICKS)).round() as i128;
@@ -60,7 +60,7 @@ pub(crate) fn cut_layer(cut: &Cut, placed: &PlacedCut) -> Layer {
 }
 
 impl WgpuRenderer {
-    /// シーケンスのレイヤーの画像。レイヤーの時刻にあるカット（境ではトランジションで混ぜた 2 つ）を画布に描く。
+    /// シーケンスのレイヤーの画像。レイヤーの時刻にあるカット（編集点ではトランジションで混ぜた 2 つ）を画布に描く。
     /// どのカットにも掛からない時刻は `None`。
     pub(crate) fn sequence_image(
         &mut self,

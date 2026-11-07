@@ -46,7 +46,7 @@ fn add_mask(id: &str, index: Option<usize>) -> Op {
     .into()
 }
 
-/// 操作の列を 1 つのトランザクションで適用し、取り消して元に戻ることを確かめる。
+/// 操作の並びを 1 つのトランザクションで適用し、取り消して元に戻ることを確かめる。
 fn apply_and_undo(before: &Project, ops: Vec<Op>) -> Editor {
     let mut ed = Editor::new(before.clone());
     let ctx = OpContext::human();

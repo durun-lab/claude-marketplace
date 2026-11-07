@@ -209,16 +209,18 @@ fn validate_framing(layer: &Layer) -> Result<()> {
 /// 矩形のマスクの位置と大きさは Vec2、角の半径は Number（キーフレームの値も同じ）。
 /// 型が違うと評価が黙って 0 に倒れ、レイヤーが消えるので読み込みと操作の時点で拒否する。
 fn validate_mask_rects(layer: &Layer) -> Result<()> {
-    let is_vec2 = |v: &ParamValue| matches!(v, ParamValue::Vec2(_));
-    let is_number = |v: &ParamValue| matches!(v, ParamValue::Number(_));
     for mask in &layer.masks {
         let Some(rect) = &mask.rect else { continue };
-        let fields: [(&str, &Param, &dyn Fn(&ParamValue) -> bool, &str); 3] = [
-            ("rect.position", &rect.position, &is_vec2, "Vec2"),
-            ("rect.size", &rect.size, &is_vec2, "Vec2"),
-            ("rect.radius", &rect.radius, &is_number, "Number"),
+        let fields = [
+            ("rect.position", &rect.position, "Vec2"),
+            ("rect.size", &rect.size, "Vec2"),
+            ("rect.radius", &rect.radius, "Number"),
         ];
-        for (name, param, ok, ty) in fields {
+        for (name, param, ty) in fields {
+            let ok = |v: &ParamValue| match ty {
+                "Vec2" => matches!(v, ParamValue::Vec2(_)),
+                _ => matches!(v, ParamValue::Number(_)),
+            };
             let values =
                 std::iter::once(&param.value).chain(param.keyframes.iter().map(|k| &k.value));
             if !values.into_iter().all(ok) {

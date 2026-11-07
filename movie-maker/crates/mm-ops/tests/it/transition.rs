@@ -1,4 +1,4 @@
-//! `setTransition`。カットの頭のトランジションを置く・種類と長さを差し替える・外す。取り消し 1 回で元に戻る。
+//! `setTransition`。カットの先頭のトランジションを置く・種類と長さを差し替える・外す。取り消し 1 回で元に戻る。
 
 use mm_doc::{Node, Transition, NESTED_KIND, NESTED_PARAM};
 use mm_ops::{Editor, Op, OpContext, SetTransition, Transaction};

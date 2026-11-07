@@ -244,7 +244,7 @@ pub fn layer_audio(seed: u8) -> Option<LayerAudio> {
 /// 種からフェードを作る。`salt` で先頭と末尾の出方を変える。4 通りに 1 通りは付けず、曲線は種で選ぶ。
 fn fade_for(seed: u8, salt: u8) -> Option<Fade> {
     let v = seed.wrapping_mul(salt.wrapping_add(7)).wrapping_add(salt);
-    (v % 4 != 0).then(|| Fade {
+    (!v.is_multiple_of(4)).then(|| Fade {
         duration: RationalTime::new(i128::from(v % 8) + 1, 4).expect("表せる"),
         curve: match v / 4 % 3 {
             0 => FadeCurve::Linear,

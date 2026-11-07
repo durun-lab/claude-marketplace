@@ -1,10 +1,10 @@
-//! シーケンスのカットの境のトランジションが、時刻のどこに掛かるか。
+//! シーケンスのカットの編集点のトランジションが、時刻のどこに掛かるか。
 //!
-//! トランジションは境を中心に前後へ半分ずつ掛け、境の前では前のカットを後ろへ、境の後では次のカットを前へ延ばす。
+//! トランジションは編集点を中心に前後へ半分ずつ掛け、編集点の前では前のカットを後ろへ、編集点の後では次のカットを前へ延ばす。
 //! 半分の長さは次のどれも超えない。
 //! - トランジションの長さの半分。
-//! - 両側のカットの長さ。カットの両端にトランジションがあるときは、その半分（隣の境の掛かりと重ならない）。
-//! - 延ばす側の素材の余白（ハンドル）。出ていくカットは出の後ろ、入ってくるカットはイン点の前の素材の長さ。
+//! - 両側のカットの長さ。カットの両端にトランジションがあるときは、その半分（隣の編集点の掛かりと重ならない）。
+//! - 延ばす側の素材の余白。出ていくカットは出の後ろ、入ってくるカットはイン点の前の素材の長さ。
 
 use mm_doc::{Cut, Project, Sequence, Transition, SEQUENCE_KIND, SEQUENCE_PARAM};
 use mm_eval::{node_params_at, place_cuts, PlacedCut};
@@ -15,7 +15,7 @@ use crate::layers::{NESTED_KIND, NESTED_PARAM};
 /// 出ていくカットを逆向きに描く倍率のパラメータの名前（`transition.*` の規約）。
 const REWIND_PARAM: &str = "rewind";
 
-/// 境のトランジションの掛かり方。番号は配置したカットの並びの中の位置。
+/// 編集点のトランジションの掛かり方。番号は配置したカットの並びの中の位置。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Crossfade {
     pub from: usize,
@@ -24,7 +24,7 @@ pub(crate) struct Crossfade {
     pub progress: f32,
     /// 掛かり始めの時刻（シーケンスの時間軸の秒）。
     pub start: f64,
-    /// 掛かる長さ（秒）。トランジションの長さを両側のカットと余白で縮めたもの。
+    /// 掛かる長さ（秒）。トランジションの長さを両側のカットと素材の余白で縮めたもの。
     pub length: f64,
 }
 
@@ -44,7 +44,7 @@ impl Handles {
     };
 }
 
-/// 時刻 `t` が `placed[pos]` の中にあるとき、境のトランジションに掛かっていればその掛かり方を返す。
+/// 時刻 `t` が `placed[pos]` の中にあるとき、編集点のトランジションに掛かっていればその掛かり方を返す。
 /// `handles` はカットの素材の余白を返す。
 pub(crate) fn crossfade_at(
     seq: &Sequence,
@@ -84,8 +84,8 @@ fn crossfade(from: usize, to: usize, t: f64, boundary: f64, half: f64) -> Crossf
     }
 }
 
-/// トランジションのパラメータを評価する時刻。余白の決定（掛かりの長さ）、逆向きの倍率、シェーダーに渡す値が
-/// 食い違わないよう、どれも境（入ってくるカットの先頭）の値を読む。
+/// トランジションのパラメータを評価する時刻。素材の余白の決定（掛かりの長さ）、逆向きの倍率、シェーダーに渡す値が
+/// 食い違わないよう、どれも編集点（入ってくるカットの先頭）の値を読む。
 pub(crate) fn params_time(placed: &PlacedCut) -> RationalTime {
     placed.range.start
 }
@@ -102,7 +102,7 @@ pub(crate) fn rewind_rate(tr: &Transition, at: RationalTime) -> f64 {
         .max(0.0)
 }
 
-/// `placed[to - 1]` と `placed[to]` の境のトランジションの半分の長さ。トランジションが無いか、0 なら `None`。
+/// `placed[to - 1]` と `placed[to]` の編集点のトランジションの半分の長さ。トランジションが無いか、0 なら `None`。
 fn half_at(
     seq: &Sequence,
     placed: &[PlacedCut],
@@ -119,7 +119,7 @@ fn half_at(
                 .get(pos)
                 .is_some_and(|p| seq.cuts[p.index].transition_in.is_some())
     };
-    // 隣の境にもトランジションがあるカットは、長さの半分ずつを両端で分ける。
+    // 隣の編集点にもトランジションがあるカットは、長さの半分ずつを両端で分ける。
     let room = |p: &PlacedCut, shared: bool| -> Result<f64> {
         let len = p.range.duration()?.to_f64();
         Ok(if shared { len / 2.0 } else { len })
@@ -138,7 +138,7 @@ fn half_at(
 }
 
 /// カットの素材の余白を、プロジェクトのデータから引く。素材（`AssetRef`）は素材の長さ、入れ子は
-/// コンポジションの長さ、シーケンスは配置したカットの全体の長さが素材の長さ。引けないときは余白なし。
+/// コンポジションの長さ、シーケンスは配置したカットの全体の長さが素材の長さ。引けないときは素材の余白なし。
 pub(crate) fn handles_in(project: &Project, cut: &Cut) -> Handles {
     let Some(length) = source_length(project, cut) else {
         return Handles::UNLIMITED;

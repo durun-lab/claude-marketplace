@@ -50,7 +50,7 @@ pub struct EvaluatedMask {
     pub inverted: bool,
 }
 
-/// 角丸の矩形のマスクを時刻 `t` で評価する。形が頂点の列（`rect` が無い）なら `None`（描かない）。
+/// 角丸の矩形のマスクを時刻 `t` で評価する。形が頂点の並び（`rect` が無い）なら `None`（描かない）。
 pub fn evaluate_mask(mask: &Mask, t: RationalTime) -> Option<EvaluatedMask> {
     let rect = mask.rect.as_ref()?;
     let position = eval_param(&rect.position, t)

@@ -1,5 +1,5 @@
-//! `transition.wgsl` をシーケンスの境で描く。レンダラーが進み具合と長さを渡すこと、`rewind` で出ていくカットを
-//! 逆向きに描くことを、画素の値（線形の光）で確かめる。GPU が無い環境ではスキップする。
+//! `transition.wgsl` をシーケンスの編集点で描く。レンダラーが進み具合と長さを渡すこと、`rewind` で出ていくカットを
+//! 逆向きに描くことを、画素の値（線形の光）で確かめる。GPU が無い環編集点ではスキップする。
 
 use crate::common;
 
@@ -23,7 +23,7 @@ fn transition(code: &str, rewind: f64) -> Transition {
     }
 }
 
-/// 2 秒のカット a（緑 0）と b（緑 1）。b の頭に `tr`。掛かるのは 1.5..2.5 秒。
+/// 2 秒のカット a（緑 0）と b（緑 1）。b の先頭に `tr`。掛かるのは 1.5..2.5 秒。
 fn two_cuts(tr: Transition) -> Project {
     let cut = |id: &str, green: f64| {
         let node = shader(CLOCK).with_param("p0", ParamValue::Number(green));
@@ -96,7 +96,7 @@ fn rewind_が正なら出ていくカットを掛かり始めから逆向きに�
         SMALL,
     );
     near(back.pixel(10, 10).r, 0.75 / 4.0, "逆向き");
-    // カットの頭より前には戻らない。
+    // カットの先頭より前には戻らない。
     let floor = render_at(
         &mut r,
         &two_cuts(transition(from, 9.0)),
@@ -104,7 +104,7 @@ fn rewind_が正なら出ていくカットを掛かり始めから逆向きに�
         at(9, 4),
         SMALL,
     );
-    near(floor.pixel(10, 10).r, 0.0, "カットの頭で止まる");
+    near(floor.pixel(10, 10).r, 0.0, "カットの先頭で止まる");
     assert!(r.take_errors().is_empty());
 }
 
@@ -136,10 +136,10 @@ fn with_duration(mut tr: Transition, secs: i64) -> Transition {
 const FROM: &str = "fn mm_transition(uv: vec2<f32>) -> vec4<f32> {\n    return mm_from(uv);\n}\n";
 
 #[test]
-fn 逆向きの倍率はキーフレームでも境の値で読む() {
+fn 逆向きの倍率はキーフレームでも編集点の値で読む() {
     let Some(ctx) = gpu() else { return };
     let mut tr = transition(FROM, 0.0);
-    // 境（2 秒）で倍率 2。時刻 0 の値（0）を読むと普通の向きになる。
+    // 編集点（2 秒）で倍率 2。時刻 0 の値（0）を読むと普通の向きになる。
     tr.node.params.get_mut("rewind").unwrap().keyframes = vec![
         Keyframe::new(seconds(0), ParamValue::Number(0.0), Interpolation::Linear),
         Keyframe::new(seconds(4), ParamValue::Number(4.0), Interpolation::Linear),
@@ -147,7 +147,7 @@ fn 逆向きの倍率はキーフレームでも境の値で読む() {
     let mut r = renderer(&ctx);
     let img = render_at(&mut r, &two_cuts(tr), "main", at(7, 4), SMALL);
     // 掛かり始め 1.5 秒の 0.25 秒後、2 倍の逆向きなら素材の 1.5 - 0.5 = 1.0 秒。
-    near(img.pixel(10, 10).r, 1.0 / 4.0, "境の倍率で逆向き");
+    near(img.pixel(10, 10).r, 1.0 / 4.0, "編集点の倍率で逆向き");
     assert!(r.take_errors().is_empty());
 }
 
@@ -186,10 +186,10 @@ fn 両端にトランジションのあるカットは長さを分け合い逆�
         clock_cut("c", Some(with_duration(transition(FROM, 0.0), 4))),
     ]);
     let mut r = renderer(&ctx);
-    // a と b の境（2 秒）は 1..3 秒。1.5 秒は掛かり始めの 0.5 秒後で、9 倍に戻ると a の先頭で止まる。
+    // a と b の編集点（2 秒）は 1..3 秒。1.5 秒は掛かり始めの 0.5 秒後で、9 倍に戻ると a の先頭で止まる。
     let first = render_at(&mut r, &p, "main", at(3, 2), SMALL);
     near(first.pixel(10, 10).r, 0.0, "a の先頭で止まる");
-    // b と c の境（4 秒）は 3..5 秒。3.25 秒の出ていく b は、c にトランジションが無いときと同じ普通の向き。
+    // b と c の編集点（4 秒）は 3..5 秒。3.25 秒の出ていく b は、c にトランジションが無いときと同じ普通の向き。
     let second = render_at(&mut r, &p, "main", at(13, 4), SMALL);
     let plain = cuts_project(vec![clock_cut("a", None), clock_cut("b", None)]);
     let want = render_at(&mut r, &plain, "main", at(13, 4), SMALL)

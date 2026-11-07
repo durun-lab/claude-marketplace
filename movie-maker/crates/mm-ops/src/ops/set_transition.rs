@@ -1,4 +1,4 @@
-//! `setTransition`。カットの頭（前のカットとの境）のトランジションを置く・差し替える・外す。
+//! `setTransition`。カットの先頭（前のカットとの編集点）のトランジションを置く・差し替える・外す。
 
 use serde::{Deserialize, Serialize};
 

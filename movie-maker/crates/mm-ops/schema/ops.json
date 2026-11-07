@@ -777,7 +777,7 @@
       ]
     },
     {
-      "description": "カットの頭のトランジションを置く・差し替える・外す。",
+      "description": "カットの先頭のトランジションを置く・差し替える・外す。",
       "type": "object",
       "properties": {
         "cut": {
@@ -2233,7 +2233,7 @@
           "const": "linear"
         },
         {
-          "description": "等パワー（`sin(p π/2)`）。重なった 2 つのフェードの和の大きさが保たれる。Final Cut Pro の +3dB。",
+          "description": "等パワー（`sin(p π/2)`）。重なった 2 つのフェードの 2 乗和（パワー）が保たれる。Final Cut Pro の +3dB。",
           "type": "string",
           "const": "equal_power"
         },
@@ -2574,7 +2574,7 @@
       ]
     },
     "Mask": {
-      "description": "マスク。形は角丸の矩形（`rect`）か、ベジェの頂点の列（`path`。型だけで、レンダラーは描かない）。\n座標はレイヤーの座標で、変形と一緒に動く（After Effects のレイヤーのマスクと同じ）。",
+      "description": "マスク。形は角丸の矩形（`rect`）か、ベジェの頂点の並び（`path`。型だけで、レンダラーは描かない）。\n座標はレイヤーの座標で、変形と一緒に動く（After Effects のレイヤーのマスクと同じ）。",
       "type": "object",
       "properties": {
         "feather": {
@@ -2611,7 +2611,7 @@
           }
         },
         "path": {
-          "description": "頂点の列。キーフレームで形を動かせる。`rect` があれば使わない。",
+          "description": "頂点の並び。キーフレームで形を動かせる。`rect` があれば使わない。",
           "$ref": "#/$defs/Param",
           "default": {
             "keyframes": [],

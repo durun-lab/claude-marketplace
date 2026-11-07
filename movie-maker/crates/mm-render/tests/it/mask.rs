@@ -5,7 +5,8 @@ use crate::common;
 use common::{comp, gpu, layer, project, render_at, renderer, seconds, solid};
 use mm_doc::{Layer, Mask, MaskMode, MaskRect, Param};
 use mm_render::WgpuRenderer;
-use mm_types::{ParamValue, Rgba, Size};
+use mm_types::{ParamValue, Rgba, RgbaImage, Size};
+use std::sync::Arc;
 
 const SIZE: Size = Size::new(64, 36);
 const TOLERANCE: f32 = 3e-3;
@@ -27,17 +28,24 @@ fn rect_mask(id: &str, pos: [f64; 2], size: [f64; 2], mode: MaskMode, inverted: 
     m
 }
 
-/// 赤い 1 枚のレイヤーを描いて、アルファを返す関数と、レンダラーのエラーを返す。
-fn render_alpha(
-    edit: impl FnOnce(&mut Layer),
-) -> Option<(impl Fn((u32, u32)) -> f32, Vec<String>)> {
+/// 描いた画像のアルファを画素で引く。
+struct Alpha(Arc<RgbaImage>);
+
+impl Alpha {
+    fn at(&self, (x, y): (u32, u32)) -> f32 {
+        self.0.pixel(x, y).a
+    }
+}
+
+/// 赤い 1 枚のレイヤーを描いて、アルファとレンダラーのエラーを返す。GPU が無ければ `None`。
+fn render_alpha(edit: impl FnOnce(&mut Layer)) -> Option<(Alpha, Vec<String>)> {
     let ctx = gpu()?;
     let mut l = layer("l", solid(RED), 2);
     edit(&mut l);
     let p = project(vec![comp("main", SIZE, 2, vec![l])], vec![]);
     let mut r: WgpuRenderer = renderer(&ctx);
     let img = render_at(&mut r, &p, "main", seconds(0), SIZE);
-    Some((move |(x, y)| img.pixel(x, y).a, r.take_errors()))
+    Some((Alpha(img), r.take_errors()))
 }
 
 fn assert_alpha(got: f32, want: f32, what: &str) {
@@ -56,8 +64,8 @@ fn 大きさ_0_の矩形のマスクはぼかしても空() {
     }) else {
         return;
     };
-    assert_alpha(alpha(CENTER), 0.0, "中心");
-    assert_alpha(alpha(LEFT), 0.0, "左");
+    assert_alpha(alpha.at(CENTER), 0.0, "中心");
+    assert_alpha(alpha.at(LEFT), 0.0, "左");
 }
 
 #[test]
@@ -74,7 +82,7 @@ fn 大きさ_0_の矩形の反転は全部を通す() {
         return;
     };
     // 全部から始めて、空の矩形の反転（全部）を引くと何も残らない。
-    assert_alpha(alpha(CENTER), 0.0, "中心");
+    assert_alpha(alpha.at(CENTER), 0.0, "中心");
 }
 
 #[test]
@@ -97,8 +105,8 @@ fn 引くマスクは重なった所を抜く() {
     }) else {
         return;
     };
-    assert_alpha(alpha(LEFT), 0.0, "引いた左");
-    assert_alpha(alpha(RIGHT), 1.0, "残った右");
+    assert_alpha(alpha.at(LEFT), 0.0, "引いた左");
+    assert_alpha(alpha.at(RIGHT), 1.0, "残った右");
     assert!(errors.is_empty());
 }
 
@@ -122,9 +130,9 @@ fn 重なりのマスクは両方に入る所だけ残す() {
     }) else {
         return;
     };
-    assert_alpha(alpha(TOP_RIGHT), 1.0, "右上");
-    assert_alpha(alpha(RIGHT), 0.0, "右下は 2 つ目の外");
-    assert_alpha(alpha(LEFT), 0.0, "左は 1 つ目の外");
+    assert_alpha(alpha.at(TOP_RIGHT), 1.0, "右上");
+    assert_alpha(alpha.at(RIGHT), 0.0, "右下は 2 つ目の外");
+    assert_alpha(alpha.at(LEFT), 0.0, "左は 1 つ目の外");
 }
 
 #[test]
@@ -140,8 +148,8 @@ fn 反転は矩形の外を通す() {
     }) else {
         return;
     };
-    assert_alpha(alpha(LEFT), 0.0, "矩形の中");
-    assert_alpha(alpha(RIGHT), 1.0, "矩形の外");
+    assert_alpha(alpha.at(LEFT), 0.0, "矩形の中");
+    assert_alpha(alpha.at(RIGHT), 1.0, "矩形の外");
 }
 
 #[test]
@@ -164,9 +172,9 @@ fn 複数枚の足すマスクは和になる() {
     }) else {
         return;
     };
-    assert_alpha(alpha(LEFT), 1.0, "左");
-    assert_alpha(alpha(RIGHT), 1.0, "右");
-    assert_alpha(alpha(CENTER), 0.0, "間");
+    assert_alpha(alpha.at(LEFT), 1.0, "左");
+    assert_alpha(alpha.at(RIGHT), 1.0, "右");
+    assert_alpha(alpha.at(CENTER), 0.0, "間");
 }
 
 #[test]
@@ -185,7 +193,7 @@ fn 描けないマスクが先頭でも足すなら空から始めエラーを�
     }) else {
         return;
     };
-    assert_alpha(alpha(RIGHT), 0.0, "空から引いても空");
+    assert_alpha(alpha.at(RIGHT), 0.0, "空から引いても空");
     assert!(
         errors.iter().any(|e| e.contains("mask p")),
         "頂点の並びのマスクが残る: {errors:?}"
@@ -221,6 +229,6 @@ fn 左右の切り抜きが幅を少し超えても何も残らない() {
     }) else {
         return;
     };
-    assert_alpha(alpha(CENTER), 0.0, "交差した中央");
-    assert_alpha(alpha((31, 18)), 0.0, "中央の左");
+    assert_alpha(alpha.at(CENTER), 0.0, "交差した中央");
+    assert_alpha(alpha.at((31, 18)), 0.0, "中央の左");
 }

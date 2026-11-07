@@ -72,7 +72,7 @@ impl MaskRect {
     }
 }
 
-/// 頂点の列のマスクの既定（空）。serde の `default` に渡す形。
+/// 頂点の並びのマスクの既定（空）。serde の `default` に渡す形。
 pub fn empty_path() -> Param {
     Param::constant(ParamValue::Json(serde_json::Value::Array(Vec::new())))
 }
