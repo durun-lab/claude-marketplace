@@ -309,6 +309,7 @@ fn registry(render: Backend) -> Result<Registry> {
             r.register(kind)?;
         }
         r.register(crate::cef::web_cef())?;
+        r.register(Arc::new(mm_nodes_hlsl::ShaderHlslKind::default()))?;
         crate::ofx::register(&mut r)?;
     } else {
         r.register(Arc::new(SolidKind))?;
