@@ -3452,9 +3452,7 @@ dependencies = [
  "mm-host-pipe",
  "mm-node-api",
  "mm-types",
- "serde",
  "serde_json",
- "windows",
 ]
 
 [[package]]
@@ -3475,9 +3473,12 @@ dependencies = [
 name = "mm-host-pipe"
 version = "0.1.0"
 dependencies = [
+ "mm-audio-api",
  "mm-host-api",
+ "mm-node-api",
  "mm-trace",
  "mm-types",
+ "serde",
  "serde_json",
  "tracing",
  "tracing-subscriber",

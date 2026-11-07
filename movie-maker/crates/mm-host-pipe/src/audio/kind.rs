@@ -1,9 +1,9 @@
-//! 音の効果の種類 `audio.clap`。レイヤーの `effects` に置くと、レンダラーがレイヤーの音にかける。
+//! 音の効果の種類（`audio.clap`、`audio.vst3`）。レイヤーの `effects` に置くと、レンダラーがレイヤーの音にかける。
 //!
-//! パラメータ: `plugin`（`.clap` のファイル）、`plugin_id`（空ならファイルの最初のプラグイン）、
-//! `param.<CLAP のパラメータの id>`（plain value の数。キーフレームを打てる）。
+//! パラメータ: `plugin`（プラグインのファイル）、`plugin_id`（空ならファイルの最初のプラグイン）、
+//! `param.<パラメータの id>`（[`super::ParamDesc`] の値。キーフレームを打てる）。
 //! 効果のインスタンス（`AudioEffectCx::instance`）ごとにホストを 1 つ持ち、区間が前の区間の続きでなければ
-//! プラグインを `reset` する（ミキサーのダッキングと同じ扱い）。
+//! プラグインの状態を消す（ミキサーのダッキングと同じ扱い）。
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
@@ -17,38 +17,37 @@ use mm_types::{
     MmError, ParamSchema, ParamSpec, ParamType, ParamValue, Params, RationalTime, Result,
 };
 
-use crate::effect::{ClapEffect, ParamPoint};
+use super::effect::{AudioEffect, ParamPoint};
+use super::PluginStandard;
 
-/// 種類の名前。
-pub const KIND_ID: &str = "audio.clap";
-/// `.clap` のファイルのパラメータの名前。
+/// プラグインのファイルのパラメータの名前。
 pub const PLUGIN_PARAM: &str = "plugin";
 /// プラグインの `id` のパラメータの名前。
 pub const PLUGIN_ID_PARAM: &str = "plugin_id";
-/// プラグインのパラメータの名前の頭。後ろに CLAP のパラメータの `id` を 10 進で付ける。
+/// プラグインのパラメータの名前の頭。後ろにパラメータの `id` を 10 進で付ける。
 pub const PARAM_PREFIX: &str = "param.";
 const KIND_VERSION: u32 = 1;
 /// 1 回の往復の既定の期限。プラグインの読み込みを含む。
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// 1 つの効果のインスタンス。
-struct Instance {
-    effect: ClapEffect,
+struct Instance<S: PluginStandard> {
+    effect: AudioEffect<S>,
     path: String,
     plugin: Option<String>,
     /// 直前に処理した区間の終わり。次の区間がここから始まれば続き。
     next_start: Option<RationalTime>,
 }
 
-/// 種類 `audio.clap`。組み立て（レンダラー）ごとに 1 つ作り、インスタンスの状態を持つ。
-pub struct ClapEffectKind {
+/// 音の効果の種類。組み立て（レンダラー）ごとに 1 つ作り、インスタンスの状態を持つ。`S` は規格。
+pub struct PluginEffectKind<S: PluginStandard> {
     executable: Option<PathBuf>,
     timeout: Duration,
-    instances: Mutex<HashMap<String, Instance>>,
+    instances: Mutex<HashMap<String, Instance<S>>>,
 }
 
-impl ClapEffectKind {
-    /// `executable` の `mm-host-clap` で処理する。`None` なら処理のたびに `Unsupported`。
+impl<S: PluginStandard> PluginEffectKind<S> {
+    /// `executable` のホストで処理する。`None` なら処理のたびに `Unsupported`。
     pub fn new(executable: Option<PathBuf>) -> Self {
         Self {
             executable,
@@ -73,7 +72,7 @@ impl ClapEffectKind {
         self.lock().get(instance).and_then(|i| i.effect.pid())
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, Instance>> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, Instance<S>>> {
         self.instances
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
@@ -81,7 +80,7 @@ impl ClapEffectKind {
 
     fn spec(&self) -> Result<HostSpec> {
         let executable = self.executable.clone().ok_or_else(|| {
-            MmError::Unsupported("mm-host-clap の実行ファイルが見つからない".into())
+            MmError::Unsupported(format!("{} の実行ファイルが見つからない", S::HOST_STEM))
         })?;
         Ok(HostSpec {
             executable,
@@ -118,9 +117,9 @@ fn text_param(params: &Params, name: &str) -> String {
         .to_owned()
 }
 
-impl NodeKind for ClapEffectKind {
+impl<S: PluginStandard> NodeKind for PluginEffectKind<S> {
     fn id(&self) -> &'static str {
-        KIND_ID
+        S::KIND_ID
     }
 
     fn version(&self) -> u32 {
@@ -150,7 +149,8 @@ impl NodeKind for ClapEffectKind {
     fn migrate(&self, old: serde_json::Value, from: u32) -> Result<Params> {
         if from != KIND_VERSION {
             return Err(MmError::Unsupported(format!(
-                "{KIND_ID} のバージョン {from} からの移行が無い"
+                "{} のバージョン {from} からの移行が無い",
+                S::KIND_ID
             )));
         }
         Ok(serde_json::from_value(old)?)
@@ -185,7 +185,7 @@ impl NodeKind for ClapEffectKind {
             instances.remove(cx.instance);
         }
         if !instances.contains_key(cx.instance) {
-            let effect = ClapEffect::start(self.spec()?, &path, plugin.clone(), cx.sample_rate)?;
+            let effect = AudioEffect::start(self.spec()?, &path, plugin.clone(), cx.sample_rate)?;
             let instance = Instance {
                 effect,
                 path,
@@ -194,15 +194,19 @@ impl NodeKind for ClapEffectKind {
             };
             instances.insert(cx.instance.to_owned(), instance);
         }
-        let instance = instances
-            .get_mut(cx.instance)
-            .ok_or_else(|| MmError::Internal("CLAP の効果のインスタンスが無い".into()))?;
+        let instance = instances.get_mut(cx.instance).ok_or_else(|| {
+            MmError::Internal(format!("{} の効果のインスタンスが無い", S::NAME))
+        })?;
         run(instance, cx, block)
     }
 }
 
 /// 続きでなければ状態を消してから処理する。失敗したら次の呼び出しを続きと見なさない。
-fn run(instance: &mut Instance, cx: &AudioEffectCx<'_>, block: &mut AudioBlock) -> Result<()> {
+fn run<S: PluginStandard>(
+    instance: &mut Instance<S>,
+    cx: &AudioEffectCx<'_>,
+    block: &mut AudioBlock,
+) -> Result<()> {
     let points: Vec<ParamPoint> = cx
         .params
         .iter()
@@ -225,6 +229,24 @@ fn run(instance: &mut Instance, cx: &AudioEffectCx<'_>, block: &mut AudioBlock) 
 mod tests {
     use super::*;
 
+    /// ホストを起こさない試験に使う規格。
+    struct TestStandard;
+
+    impl PluginStandard for TestStandard {
+        const NAME: &'static str = "TEST";
+        const KIND_ID: &'static str = "audio.test";
+        const PIPE: crate::PipeKind = crate::PipeKind {
+            name: "host_test",
+            startup_timeout: DEFAULT_TIMEOUT,
+            work_dir_env: None,
+            stale_handles: crate::StaleHandles::Count,
+            configure: |_| {},
+        };
+        const HOST_STEM: &'static str = "mm-host-test";
+        const HOST_ENV: &'static str = "MM_TEST_HOST";
+        const LINK_PREFIX: &'static str = "mm-test";
+    }
+
     #[test]
     fn プラグインのパラメータは名前の頭で見分ける() {
         let mut p = Params::new();
@@ -236,7 +258,8 @@ mod tests {
 
     #[test]
     fn プラグインが空なら何もしない() {
-        let kind = ClapEffectKind::new(None);
+        let kind = PluginEffectKind::<TestStandard>::new(None);
+        assert_eq!(kind.id(), "audio.test");
         let params = [(0, kind.params().defaults())];
         let cx = AudioEffectCx {
             range: mm_types::TimeRange::new(RationalTime::ZERO, RationalTime::seconds(1)).unwrap(),
