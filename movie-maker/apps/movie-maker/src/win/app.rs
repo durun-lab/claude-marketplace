@@ -24,6 +24,7 @@ use crate::win::edit;
 use crate::win::feedback;
 use crate::win::feedback_ipc;
 use crate::win::hotpatch;
+use crate::win::inspector_ipc;
 use crate::win::ipc::{self, ProjectInfo, SyncState};
 use crate::win::media::{self, MediaState};
 use crate::win::media_ipc;
@@ -289,6 +290,7 @@ enum Panel {
     Common,
     Deliver,
     Feedback,
+    Inspector,
     Media,
     Mixer,
     Pack,
@@ -304,6 +306,7 @@ fn route(command: &str) -> Panel {
         "edit_action" => Panel::Source,
         c if c.starts_with("export_") => Panel::Deliver,
         c if c.starts_with("feedback_") => Panel::Feedback,
+        c if c.starts_with("inspector_") => Panel::Inspector,
         c if c.starts_with("media_") => Panel::Media,
         c if c.starts_with("mixer_") => Panel::Mixer,
         c if c.starts_with("pack_") => Panel::Pack,
@@ -321,6 +324,7 @@ fn dispatch(invoke: tauri::ipc::Invoke) -> bool {
         Panel::Common => ipc::handler,
         Panel::Deliver => deliver_ipc::handler,
         Panel::Feedback => feedback_ipc::handler,
+        Panel::Inspector => inspector_ipc::handler,
         Panel::Media => media_ipc::handler,
         Panel::Mixer => mixer_ipc::handler,
         Panel::Pack => pack_ipc::handler,
@@ -443,6 +447,7 @@ mod tests {
             ("apply_ops", Panel::Common),
             ("export_start", Panel::Deliver),
             ("feedback_submit", Panel::Feedback),
+            ("inspector_kind", Panel::Inspector),
             ("media_list", Panel::Media),
             ("mixer_state", Panel::Mixer),
             ("pack_apply", Panel::Pack),

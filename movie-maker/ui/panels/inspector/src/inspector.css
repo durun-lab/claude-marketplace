@@ -157,6 +157,11 @@
   font-weight: 700;
 }
 
+/* プロジェクトに値が無く、種類の既定値を出している行。触ると値を書く。 */
+.mm-insp-row[data-default="true"] .mm-insp-input {
+  color: var(--mm-color-text-muted);
+}
+
 /* キーフレームナビゲーター: 前へ、再生位置のキー、次へ、補間。 */
 .mm-insp-kfnav {
   display: flex;

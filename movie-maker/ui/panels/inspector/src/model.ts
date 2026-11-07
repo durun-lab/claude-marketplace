@@ -1,4 +1,5 @@
 import type { Effect, Layer, Mask, Op, Param, ParamValue } from "@mm/sdk";
+import { hintOf, NO_KINDS, type KindParamSpec, type LayerKinds } from "./kinds.ts";
 
 /** 1 つのパラメータの入力欄に付ける補足。JSON Schema に無い範囲や選択肢を渡す。 */
 export interface ParamHint {
@@ -38,6 +39,8 @@ export interface FieldRow {
   label: string;
   param: Param;
   hint: ParamHint;
+  /** プロジェクトに値が無く、種類の既定値を出している。触ると値を書く。 */
+  isDefault?: boolean;
 }
 
 export interface Section {
@@ -104,24 +107,52 @@ const maskSection = (m: Mask, hints: ParamHints): Section => {
   };
 };
 
-const paramRows = (prefix: string, params: Record<string, Param> | undefined, hints: ParamHints): FieldRow[] =>
-  Object.entries(params ?? {})
+/**
+ * ノードのパラメータの行。種類の定義があれば定義の順に並べ、値の無いものは既定値で出す（触ると値を書く）。
+ * 定義に無い値がプロジェクトにあれば、名前の順で後ろに残す。定義が無ければプロジェクトの値だけ。
+ */
+const paramRows = (
+  prefix: string,
+  params: Record<string, Param> | undefined,
+  hints: ParamHints,
+  specs: readonly KindParamSpec[] = [],
+): FieldRow[] => {
+  const given = params ?? {};
+  const defined: FieldRow[] = specs.map((spec) => {
+    const path = `${prefix}.${spec.name}`;
+    const own = given[spec.name];
+    const merged = { ...hints, [path]: { ...hintOf(spec), ...hints[path] } };
+    return { ...row(path, spec.name, own ?? { value: spec.default }, merged), isDefault: own === undefined };
+  });
+  const known = new Set(specs.map((s) => s.name));
+  const rest = Object.entries(given)
+    .filter(([name]) => !known.has(name))
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([name, p]) => row(`${prefix}.${name}`, name, p, hints));
+  return [...defined, ...rest];
+};
 
-const effectSection = (e: Effect, hints: ParamHints): Section => ({
+const effectSection = (e: Effect, hints: ParamHints, kinds: LayerKinds): Section => ({
   id: `effect-${e.id}`,
   title: `Effect: ${e.node.kind}`,
-  rows: paramRows(`effects.${e.id}`, e.node.params, hints),
+  rows: paramRows(`effects.${e.id}`, e.node.params, hints, kinds.effects[e.id]),
 });
 
-/** 選んだレイヤーを、Inspector に出す区画の並びにする。 */
-export const describeLayer = (layer: Layer, hints: ParamHints = DEFAULT_HINTS): Section[] => {
+/** 選んだレイヤーを、Inspector に出す区画の並びにする。`kinds` を渡すと種類の定義でパラメータの入力欄を広げる。 */
+export const describeLayer = (
+  layer: Layer,
+  hints: ParamHints = DEFAULT_HINTS,
+  kinds: LayerKinds = NO_KINDS,
+): Section[] => {
   const sections: Section[] = [
     { id: "layer", title: "Layer", rows: [row("opacity", "opacity", layer.opacity, hints)] },
     transformSection(layer, hints),
     cropSection(layer, hints),
-    { id: "source", title: `Source: ${layer.source.kind}`, rows: paramRows("source", layer.source.params, hints) },
+    {
+      id: "source",
+      title: `Source: ${layer.source.kind}`,
+      rows: paramRows("source", layer.source.params, hints, kinds.source),
+    },
   ];
   if (layer.audio) {
     sections.push({
@@ -136,7 +167,7 @@ export const describeLayer = (layer: Layer, hints: ParamHints = DEFAULT_HINTS): 
   return [
     ...sections,
     ...(layer.masks ?? []).map((m) => maskSection(m, hints)),
-    ...(layer.effects ?? []).map((e) => effectSection(e, hints)),
+    ...(layer.effects ?? []).map((e) => effectSection(e, hints, kinds)),
   ].filter((s) => s.rows.length > 0 || s.maskId !== undefined);
 };
 

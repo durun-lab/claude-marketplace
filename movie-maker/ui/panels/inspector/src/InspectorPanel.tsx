@@ -3,6 +3,7 @@ import { Editor } from "./editors.tsx";
 import { AddMaskButton, FadeRows, RemoveMaskButton } from "./Extras.tsx";
 import { fieldSpecFor } from "./fields.ts";
 import { KeyframeNav } from "./KeyframeNav.tsx";
+import type { LayerKinds } from "./kinds.ts";
 import { valueAtOp, type Playhead } from "./keyframes.ts";
 import {
   DEFAULT_HINTS,
@@ -23,6 +24,8 @@ export interface InspectorPanelProps {
   /** `asset_ref` の選択肢。 */
   assets?: readonly Asset[];
   hints?: ParamHints;
+  /** 種類の定義。渡すと、プロジェクトに値の無いパラメータも既定値で出す。 */
+  kinds?: LayerKinds;
   /** 値を変えたときに操作を渡す。送るのは呼び出し側（sdk の client）。 */
   onOp: (op: Op) => void;
   /** 再生位置（コンポジションの秒）。渡すとキーフレームナビゲーターを出し、動きのある値を再生位置で編集する。 */
@@ -79,7 +82,7 @@ const RowView = ({ row, target, assets, at, selected, onOp, onSeek, onSelect }: 
   const commit = (next: ParamValue) =>
     onOp(animated && at ? valueAtOp(target, row.param, at, next) : setParamOp(target.layer ?? "", row.path, next));
   return (
-    <div class="mm-insp-row" data-animated={animated} data-selected={selected}>
+    <div class="mm-insp-row" data-animated={animated} data-selected={selected} data-default={row.isDefault === true}>
       <RowLabel row={row} onSelect={onSelect} />
       <div class="mm-insp-value">
         <Editor
@@ -102,7 +105,7 @@ const RowView = ({ row, target, assets, at, selected, onOp, onSeek, onSelect }: 
  * 再生位置を渡すと、各パラメータにキーフレームナビゲーター（前へ・足す外す・次へ・補間）を出す。
  */
 export const InspectorPanel = (props: InspectorPanelProps) => {
-  const { layer, assets = [], hints = DEFAULT_HINTS, onOp, time, onSeek, selectedPath, onSelectParam } = props;
+  const { layer, assets = [], hints = DEFAULT_HINTS, kinds, onOp, time, onSeek, selectedPath, onSelectParam } = props;
   if (!layer) {
     return <div class="mm-insp mm-insp-empty">No layer selected</div>;
   }
@@ -110,7 +113,7 @@ export const InspectorPanel = (props: InspectorPanelProps) => {
   return (
     <div class="mm-insp">
       <h2 class="mm-insp-header">{layer.id}</h2>
-      {describeLayer(layer, hints).map((section) => (
+      {describeLayer(layer, hints, kinds).map((section) => (
         <section key={section.id} class="mm-insp-section">
           <h3 class="mm-insp-title">
             {section.title}

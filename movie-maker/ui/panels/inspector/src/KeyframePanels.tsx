@@ -1,6 +1,7 @@
 import { useEffect, useState } from "preact/hooks";
 import { GraphPanel } from "@mm/graph";
 import { InspectorPanel } from "./InspectorPanel.tsx";
+import { useLayerKinds, type KindLookup } from "./kinds.ts";
 import { describeLayer } from "./model.ts";
 import type { Asset, Layer, Op } from "@mm/sdk";
 
@@ -37,18 +38,25 @@ export interface KeyframePanelsProps {
   layer: Layer | null;
   assets?: readonly Asset[];
   onOp: (op: Op) => void;
+  /** 種類の定義を引く。渡さなければプロジェクトにある値だけで入力欄を作る。 */
+  lookup?: KindLookup;
 }
 
 /** 右の列の Inspector と、その下の Graph。Inspector で名前を押したパラメータを Graph に出す。 */
-export const KeyframePanels = ({ layer, assets, onOp }: KeyframePanelsProps) => {
+export const KeyframePanels = ({ layer, assets, onOp, lookup }: KeyframePanelsProps) => {
+  const kinds = useLayerKinds(layer, lookup);
   const playhead = usePlayhead();
   const [path, setPath] = useState<string | null>(null);
-  const row = layer && path ? describeLayer(layer).flatMap((s) => s.rows).find((r) => r.path === path) : undefined;
+  const row =
+    layer && path
+      ? describeLayer(layer, undefined, kinds).flatMap((s) => s.rows).find((r) => r.path === path)
+      : undefined;
   return (
     <>
       <InspectorPanel
         layer={layer}
         assets={assets}
+        kinds={kinds}
         onOp={onOp}
         time={playhead?.time}
         fps={playhead?.fps}
