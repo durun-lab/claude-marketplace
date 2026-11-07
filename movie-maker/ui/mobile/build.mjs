@@ -1,5 +1,5 @@
 // PWA を dist/ に出す。`GET /m/` はこの dist/ をそのまま返す（docs/design/12-mobile.md「HTTP の形」）。
-// 使い方: node build.mjs（ui/mobile/ で）。出力は index.html、demo.html、app.js、sw.js、manifest、アイコン。
+// 使い方: node build.mjs（ui/mobile/ で）。出力は index.html、demo.html、app.js、sw.js、manifest、アイコン、hls.js の分割した塊。
 import { createHash } from "node:crypto";
 import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { URL, fileURLToPath } from "node:url";
@@ -33,12 +33,16 @@ const page = (name) => `<!doctype html>
 </head>
 <body>
 <div id="root"></div>
-<script src="./${name}.js"></script>
+<script type="module" src="./${name}.js"></script>
 </body>
 </html>
 `;
 
 const common = { bundle: true, format: "iife", target: ["safari15", "chrome100"], jsx: "automatic", jsxImportSource: "preact", minify: true, logLevel: "warning" };
+// 画面は ES モジュールで分割し、hls.js（約 500 KB）は使う端末（iOS 以外）だけが動的 import で読む。
+// 画面ごとに別に組むので、静的に読む分は app.js 1 つに収まり、Service Worker が先に取るのも app.js だけでよい。
+const screen = (name, entry) =>
+  build({ ...common, format: "esm", splitting: true, chunkNames: "[name]-[hash]", entryPoints: { [name]: entry }, outdir: DIST });
 
 const hashOf = async (files) => {
   const h = createHash("sha256");
@@ -48,7 +52,8 @@ const hashOf = async (files) => {
 
 await rm(DIST, { recursive: true, force: true });
 await mkdir(DIST, { recursive: true });
-await build({ ...common, entryPoints: { app: here("./src/main.tsx"), demo: here("./demo/main.tsx") }, outdir: DIST });
+await screen("app", here("./src/main.tsx"));
+await screen("demo", here("./demo/main.tsx"));
 await cp(here("./public/manifest.webmanifest"), `${DIST}manifest.webmanifest`);
 for (const [file, size, scale] of ICONS) await writeFile(`${DIST}${file}`, makeIcon(size, scale));
 await writeFile(`${DIST}index.html`, page("app"));

@@ -64,6 +64,7 @@ fn settings(path: PathBuf, codec: &str, size: Size) -> EncodeSettings {
             sample_rate: RATE,
             channels: 2,
         }),
+        stream: None,
     }
 }
 

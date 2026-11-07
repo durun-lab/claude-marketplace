@@ -41,7 +41,7 @@ fn write_w(src: &str, dst: &mut [TChar]) {
     dst[..units.len()].copy_from_slice(&units);
 }
 
-/// `IHostApplication`。インスタンスを作る頼み（メッセージなど）は断る。
+/// `IHostApplication`。インスタンスを作る頼み（メッセージなど）は拒否する。
 pub struct HostApp;
 
 impl Class for HostApp {
@@ -90,7 +90,7 @@ impl IComponentHandlerTrait for Handler {
     }
 }
 
-/// 1 つのパラメータの値の変化の列（位置の昇順）。
+/// 1 つのパラメータの値の変化の並び（位置の昇順）。
 pub struct ParamQueue {
     id: Cell<ParamID>,
     points: RefCell<Vec<(int32, ParamValue)>>,
@@ -130,7 +130,7 @@ impl IParamValueQueueTrait for ParamQueue {
     }
 }
 
-/// `IParameterChanges`。列は使い回し、`used` から先は空きとして持つ。
+/// `IParameterChanges`。並びは使い回し、`used` から先は空きとして持つ。
 pub struct ParamChanges {
     queues: RefCell<Vec<ComWrapper<ParamQueue>>>,
     used: Cell<usize>,
@@ -148,12 +148,12 @@ impl ParamChanges {
         }
     }
 
-    /// 全部の列を空にする。
+    /// 全部の並びを空にする。
     pub fn clear(&self) {
         self.used.set(0);
     }
 
-    /// `id` の列の番号。無ければ空きの列を使うか足す。
+    /// `id` の並びの番号。無ければ空きの並びを使うか足す。
     fn queue_for(&self, id: ParamID) -> usize {
         let mut queues = self.queues.borrow_mut();
         let used = self.used.get();
@@ -172,7 +172,7 @@ impl ParamChanges {
         used
     }
 
-    /// 共有メモリのイベント（位置の昇順）を、パラメータごとの列に入れ直す。
+    /// 共有メモリのイベント（位置の昇順）を、パラメータごとの並びに入れ直す。
     pub fn fill(&self, events: &[ParamEvent]) {
         self.clear();
         for e in events {
@@ -243,7 +243,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn イベントはパラメータごとの列に位置の順で入る() {
+    fn イベントはパラメータごとの並びに位置の順で入る() {
         let changes = ParamChanges::new();
         let e = |offset, param_id, value| ParamEvent {
             offset,
@@ -251,7 +251,7 @@ mod tests {
             value,
         };
         changes.fill(&[e(0, 1, 0.5), e(0, 2, 1.0), e(64, 1, 0.25)]);
-        // SAFETY: 自分で作った列を読むだけ。
+        // SAFETY: 自分で作った並びを読むだけ。
         unsafe {
             assert_eq!(changes.getParameterCount(), 2);
             let q = &changes.queues.borrow()[0];

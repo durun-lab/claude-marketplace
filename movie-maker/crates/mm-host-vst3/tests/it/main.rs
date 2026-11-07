@@ -35,17 +35,17 @@ const PLUGIN_DLL: &str = "mm_vst3_test.dll";
 const BUNDLE: &str = "MmTest.vst3";
 
 /// テストのプラグインのバンドル（`<tmp>/MmTest.vst3/Contents/x86_64-win/MmTest.vst3`）。
-/// 読み込まれている DLL は上書きできないので、試験のプロセスごとに置き場所を分ける。
+/// 読み込まれている DLL は上書きできないので、テストのプロセスごとに置き場所を分ける。
 pub fn plugin_path() -> PathBuf {
     static BUNDLE_PATH: OnceLock<PathBuf> = OnceLock::new();
     BUNDLE_PATH
         .get_or_init(|| {
-            let exe = std::env::current_exe().expect("試験の実行ファイル");
+            let exe = std::env::current_exe().expect("テストの実行ファイル");
             let profile = exe.parent().and_then(|d| d.parent()).expect("target の下");
             let dll = profile.join("examples").join(PLUGIN_DLL);
             assert!(
                 dll.is_file(),
-                "{} が無い。`cargo nextest run -p mm-host-vst3`（例も作る）で走らせる",
+                "{} が無い。`cargo nextest run -p mm-host-vst3`（例も作る）で実行する",
                 dll.display()
             );
             let root = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
@@ -53,7 +53,7 @@ pub fn plugin_path() -> PathBuf {
             let bundle = root.join(BUNDLE);
             let inner = bundle.join("Contents").join("x86_64-win");
             std::fs::create_dir_all(&inner).expect("バンドルのフォルダー");
-            std::fs::copy(&dll, inner.join(BUNDLE)).expect("DLL を写す");
+            std::fs::copy(&dll, inner.join(BUNDLE)).expect("DLL をコピーする");
             bundle
         })
         .clone()
@@ -78,7 +78,7 @@ pub fn gain(factor: f64) -> f64 {
     factor / GAIN_MAX
 }
 
-/// 左右で違う、決まった値の列（`seed` でずらす）。
+/// 左右で違う、決まった値の並び（`seed` でずらす）。
 pub fn signal(frames: usize, seed: usize) -> AudioBlock {
     let samples = (0..frames * 2)
         .map(|i| {

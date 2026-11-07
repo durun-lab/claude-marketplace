@@ -1,7 +1,7 @@
 # mm-nodes-genai
 
 `gen.ai` のノードの種類。プロンプトと設定から画像・動画・音を生成 AI に作らせ、プロジェクトの素材として保存して描く（[04-nodes.md](../../docs/design/04-nodes.md) の `gen.ai`）。
-この版は提供元を差し替える層（`Provider`）と偽の提供元（`FakeProvider`）だけを持ち、実際のサービスは呼ばない。どのサービスを使うかは下の「提供元の候補」を見て人が決める。
+現時点では提供元を差し替える層（`Provider`）とモックの提供元（`FakeProvider`）だけを持ち、実際のサービスは呼ばない。どのサービスを使うかは下の「提供元の候補」を見て人が決める。
 
 ## パラメータ
 
@@ -21,7 +21,7 @@
 
 ```mermaid
 sequenceDiagram
-  participant P as 人（アプリ / CLI）
+  participant P as 人（アプリ）
   participant G as GenAi
   participant V as Provider
   participant E as 操作の層（Editor / Store）
@@ -29,7 +29,7 @@ sequenceDiagram
   G->>V: estimate（通信しない）
   G-->>P: Quote（費用、時間、使い回し）
   P->>G: approve(quote, entry)
-  G-->>P: Approval（鍵と費用の上限）
+  G-->>P: Approval（キーと費用の上限）
   P->>G: generate(project, approval)
   G->>G: 見積もりを出し直して承認と突き合わせる
   G->>V: generate（使い回すときは呼ばない）
@@ -37,10 +37,10 @@ sequenceDiagram
   P->>E: apply（取り消しとやり直しが効く）
 ```
 
-- 頼みの鍵は、パラメータ（`asset` と種類に関係しない値を除く）と提供元の版（`Provider::revision`）の BLAKE3。同じ鍵の素材は `<project>/media/genai/<鍵>.<拡張子>` と素材の JSON（`<鍵>.json`）に残り、取り消した後も提供元を呼ばずに置き直せる。
-- 承認（`Approval`）は `GenAi::approve` だけが作る。MCP の経路（`Entry::Mcp`）からは作れない（提案の承認と同じ。[RFC 0078](../../docs/rfcs/0078-review-proposals.md)）。
-- `generate` は見積もりを出し直し、承認の後にパラメータが変わっていれば `NotApproved`、費用が承認した上限を超えれば `OverBudget` で断る。
-- 自動の改善の回の中（環境変数 `MM_IMPROVE_RUN` がある。`mm-improve` が回の `claude -p` に渡し、子の `mm` が受け継ぐ）では、`approve` と `generate` を `Forbidden` で断る。`GenAi::in_round` は印を足せるだけで外せない。
+- 頼みのキーは、パラメータ（`asset` と種類に関係しない値を除く）と提供元のバージョン（`Provider::revision`）の BLAKE3。同じキーの素材は `<project>/media/genai/<キー>.<拡張子>` と素材の JSON（`<キー>.json`）に残り、取り消した後も提供元を呼ばずに置き直せる。
+- 承認（`Approval`）は `GenAi::approve` だけが作る。Claude の経路（`Entry::Mcp`、`Entry::Cli`）からは作れない（提案の承認と同じ。[RFC 0078](../../docs/rfcs/0078-review-proposals.md)）。
+- `generate` は見積もりを出し直し、承認の後にパラメータが変わっていれば `NotApproved`、費用が承認した上限を超えれば `OverBudget` で拒否する。
+- 自動の改善の回の中（環境変数 `MM_IMPROVE_RUN` がある。`mm-improve` が回の `claude -p` に渡し、子の `mm` が受け継ぐ）では、`approve` と `generate` を `Forbidden` で拒否する。`GenAi::in_round` は印を足せるだけで外せない。
 
 ## 提供元を足すとき
 
@@ -50,7 +50,7 @@ sequenceDiagram
 - `generate` だけが費用のかかる呼び出しをする。非同期の API（ジョブを投げて待つ形）は、この中で完了まで待つ。
 - 同じ `revision` と頼みには、できるだけ同じ中身を返す（シードを渡す）。モデルを変えたら `revision` を変える。
 
-API の鍵は環境変数で渡し、プロジェクトのデータとログに残さない。
+API キーは環境変数で渡し、プロジェクトのデータとログに残さない。
 
 ## 提供元の候補
 
@@ -88,7 +88,7 @@ Suno と Udio は公式の公開 API が無いので候補から外す。MusicGe
 
 | 案 | 自信度 | 理由 |
 |---|---|---|
-| まずローカルの ComfyUI（画像は FLUX.1 schnell、動画は Wan 2.x、音は Stable Audio Open）を 1 つ目の提供元にする | 55% | RTX 5090 があり、費用 0 で試行回数を気にせず回せる。シードで再現でき、使い回しの鍵とも合う。1 つの HTTP の形で 3 種類をまかなえる |
+| まずローカルの ComfyUI（画像は FLUX.1 schnell、動画は Wan 2.x、音は Stable Audio Open）を 1 つ目の提供元にする | 55% | RTX 5090 があり、費用 0 で試行回数を気にせず回せる。シードで再現でき、使い回しのキーとも合う。1 つの HTTP の形で 3 種類をまかなえる |
 | fal.ai か Replicate を 1 つ目にする | 35% | 1 つの API の形で FLUX、Kling、Veo などを選べ、品質の上限が高い。費用は見積もりの関門で抑えられる |
-| 種類ごとに直接の提供元（画像は OpenAI、動画は Veo、音は ElevenLabs）にする | 25% | 各分野の最上位。ただし API の形が 3 つになり、鍵と規約の管理が増える |
+| 種類ごとに直接の提供元（画像は OpenAI、動画は Veo、音は ElevenLabs）にする | 25% | 各分野の最上位。ただし API の形が 3 つになり、キーと規約の管理が増える |
 | その他 | 15% | 用途（字幕の挿絵だけ、BGM だけなど）が絞れれば、もっと安い専用のサービスが合う |

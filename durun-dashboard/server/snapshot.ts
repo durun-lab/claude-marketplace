@@ -184,18 +184,32 @@ const slackRefs = (meta: SessionMeta, log: claude.LogSummary | undefined): strin
   return [...byKey.values()];
 };
 
+const warmedListeners = new Set<() => void>();
+
+/** その場で読まずに裏へ回した会話ログを、読み終えたときに呼ぶ。読み終えた要約で配り直すために使う。 */
+export const onLogWarmed = (fn: () => void): void => {
+  warmedListeners.add(fn);
+};
+
+const notifyWarmed = (): void => {
+  for (const fn of warmedListeners) fn();
+};
+
 const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): Session => {
   // Claude Code は、worktree に入ったセッションの会話ログを、その worktree のディレクトリへ移すことがある。覚えた場所に無ければ探し直す。
-  if (!meta.transcriptPath || !fs.existsSync(meta.transcriptPath)) {
+  if (!meta.transcriptPath || !claude.statOf(meta.transcriptPath)) {
     const found = claude.findTranscript(meta.id);
     if (found) {
       meta.transcriptPath = found;
       persist();
     }
   }
-  const log = meta.transcriptPath ? claude.summarizeLog(meta.transcriptPath) : undefined;
-  const subs = meta.transcriptPath ? claude.readSubagents(meta.transcriptPath) : [];
-  recordBgQuestion(meta, log, live);
+  // 読み残しの多い会話ログは裏で読み、読み終えるまでは読んだところまでの要約で組み立てる。
+  const peeked = meta.transcriptPath ? claude.peekLog(meta.transcriptPath, false, notifyWarmed) : undefined;
+  const log = peeked?.summary;
+  const subs = meta.transcriptPath ? claude.readSubagents(meta.transcriptPath, (file) => claude.peekLog(file, true, notifyWarmed).summary) : [];
+  // 読みかけの要約の最後の質問は、もう答えた古いものかもしれないので、読み終えてから拾う。
+  if (peeked?.ready !== false) recordBgQuestion(meta, log, live);
   const name = displayName(meta, log);
   // アーカイブしたセッションの PR と課題は、gh と JIRA を呼びすぎないよう、覚えた後は読み直さない。
   const keep = meta.archived;
@@ -288,13 +302,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
 };
 
 // 会話ログの場所が分からない終了済みセッションは、表示できる中身が無いので一覧から外れる。
-const mtimeMs = (file: string | undefined): number => {
-  try {
-    return file ? fs.statSync(file).mtimeMs : 0;
-  } catch {
-    return 0;
-  }
-};
+const mtimeMs = (file: string | undefined): number => (file && claude.statOf(file)?.mtimeMs) || 0;
 
 /** PR の要対応を返し、出さなかった要対応の id を settled に足す。 */
 const prAttention = (s: Session, settled: Set<string>): Attention[] => {
@@ -379,6 +387,8 @@ export const warmLogs = async (): Promise<void> => {
       if (!m.transcriptPath) continue;
       await claude.warmLog(m.transcriptPath);
       await claude.warmSubagents(m.transcriptPath);
+      // サブエージェントの説明のファイルも読んで覚え、最初のスナップショットで数百のファイルを開かないようにする。
+      claude.readSubagents(m.transcriptPath);
     }
   } catch (e) {
     // 残りの会話ログは、スナップショットを組み立てるときに読む。

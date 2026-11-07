@@ -1,38 +1,17 @@
-//! `packs/vlog` の回の頭と締めの `web.cef` の部品（見出しの ToDo、題字、名乗り、次回予告、締めのお願い、縦の動画の終わりの札）と、
+//! `packs/vlog` のエピソードの頭と締めの `web.cef` の部品（見出しの ToDo、題字、名乗り、次回予告、締めのお願い、縦の動画の終わりの札）と、
 //! 画面の注記と線（`marks`）。展開したレイヤーがパックのページをコピーし、引数とテーマを `data` で渡すかを見る。
 
-use std::collections::BTreeMap;
-use std::path::{Path, PathBuf};
-
 use mm_doc::{Layer, Project};
-use mm_ops::{Editor, OpContext};
-use mm_pack::{EstimateShaper, Pack};
 use mm_types::{ParamValue, RationalTime};
 use serde_json::Value;
 
-fn vlog_dir() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packs/vlog")
-}
-
-fn args(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
-    pairs
-        .iter()
-        .map(|(k, v)| (k.to_string(), v.to_string()))
-        .collect()
-}
+use crate::vlog::{apply_on_episode, args, expand_est, vlog};
 
 /// テンプレートを適用したプロジェクトにマクロ `name` を適用し、置いたレイヤーを返す。
 fn place(name: &str, pairs: &[(&str, &str)]) -> (Project, Layer) {
-    let pack = Pack::load(&vlog_dir()).expect("packs/vlog を読める");
-    let ctx = OpContext::human();
-    let mut editor = Editor::new(Project::new());
-    let episode = mm_pack::expand(&pack, "episode", &args(&[("n", "4")]), &EstimateShaper).unwrap();
-    editor
-        .apply(episode, &ctx)
-        .expect("テンプレートを適用できる");
-    let txn = mm_pack::expand(&pack, name, &args(pairs), &EstimateShaper).expect("展開できる");
-    editor.apply(txn, &ctx).expect("マクロを適用できる");
-    let project = editor.project().clone();
+    let pack = vlog();
+    let txn = expand_est(&pack, name, &args(pairs)).expect("展開できる");
+    let project = apply_on_episode(&pack, txn);
     let layer = project
         .compositions
         .iter()
@@ -116,7 +95,7 @@ const PARTS: [(&str, Pairs, (&str, &str)); 7] = [
 ];
 
 #[test]
-fn 回の頭と締めの部品は_web_cef_のレイヤーでページと引数とテーマを渡す() {
+fn エピソードの頭と締めの部品は_web_cef_のレイヤーでページと引数とテーマを渡す() {
     for (name, pairs, (key, want)) in PARTS {
         let (_, layer) = place(name, pairs);
         assert_eq!(layer.source.kind, "web.cef", "{name}");
@@ -202,39 +181,4 @@ fn 画面の注記は点と矩形を文字のまま渡す() {
     assert_eq!(data["dash"], "true");
     assert_eq!(data["color"], "yellow");
     assert_eq!(data["pts"], "", "既定は空");
-}
-
-/// ページの約束（mm-nodes-cef の README）を破る書き方。時計と乱数と CSS の動きは実時間で進み、外の資源は CSP が読ませない。
-const FORBIDDEN: [&str; 8] = [
-    "Date.now",
-    "performance.now",
-    "Math.random",
-    "@keyframes",
-    "animation:",
-    "transition:",
-    "src=\"http",
-    "url(http",
-];
-
-#[test]
-fn web_の部品のページは時計と乱数と_css_の動きと外の資源を使わない() {
-    let dir = vlog_dir().join("web");
-    let mut pages = 0;
-    for entry in std::fs::read_dir(&dir).expect("web/ を読める") {
-        let path = entry.unwrap().path();
-        if path.extension().and_then(|e| e.to_str()) != Some("html") {
-            continue;
-        }
-        let text = std::fs::read_to_string(&path).unwrap();
-        for word in FORBIDDEN {
-            assert!(
-                !text.contains(word),
-                "{}: {word} を使っている",
-                path.display()
-            );
-        }
-        assert!(text.contains("window.mmSetTime"), "{}", path.display());
-        pages += 1;
-    }
-    assert!(pages >= PARTS.len(), "部品のページが揃っている: {pages}");
 }
