@@ -3628,6 +3628,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "mm-nodes-ofx"
+version = "0.1.0"
+dependencies = [
+ "mm-doc",
+ "mm-host-api",
+ "mm-host-ofx",
+ "mm-host-pipe",
+ "mm-node-api",
+ "mm-nodes-basic",
+ "mm-render",
+ "mm-render-api",
+ "mm-testkit",
+ "mm-types",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "mm-ops"
 version = "0.1.0"
 dependencies = [
@@ -3727,12 +3745,14 @@ dependencies = [
  "mm-gpu",
  "mm-host-cef",
  "mm-host-clap",
+ "mm-host-ofx",
  "mm-node-api",
  "mm-nodes-basic",
  "mm-nodes-cef",
  "mm-nodes-genai",
  "mm-nodes-hlsl",
  "mm-nodes-lottie",
+ "mm-nodes-ofx",
  "mm-render",
  "mm-render-api",
  "mm-testkit",

@@ -36,6 +36,7 @@ mm-gpu = { path = "crates/mm-gpu" }
 mm-host-api = { path = "crates/mm-host-api" }
 mm-host-cef = { path = "crates/mm-host-cef" }
 mm-host-clap = { path = "crates/mm-host-clap" }
+mm-host-ofx = { path = "crates/mm-host-ofx" }
 mm-host-pipe = { path = "crates/mm-host-pipe" }
 mm-improve = { path = "crates/mm-improve" }
 mm-ingest = { path = "crates/mm-ingest" }
@@ -46,6 +47,7 @@ mm-nodes-cef = { path = "crates/mm-nodes-cef" }
 mm-nodes-genai = { path = "crates/mm-nodes-genai" }
 mm-nodes-hlsl = { path = "crates/mm-nodes-hlsl" }
 mm-nodes-lottie = { path = "crates/mm-nodes-lottie" }
+mm-nodes-ofx = { path = "crates/mm-nodes-ofx" }
 mm-ops = { path = "crates/mm-ops" }
 mm-pack = { path = "crates/mm-pack" }
 mm-render = { path = "crates/mm-render" }

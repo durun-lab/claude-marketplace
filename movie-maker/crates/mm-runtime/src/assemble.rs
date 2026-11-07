@@ -315,6 +315,7 @@ fn registry(render: Backend) -> Result<Registry> {
         r.register(Arc::new(mm_nodes_genai::GenAiKind))?;
         r.register(Arc::new(mm_nodes_hlsl::ShaderHlslKind::default()))?;
         r.register(Arc::new(mm_nodes_lottie::LottieKind::default()))?;
+        crate::ofx::register(&mut r)?;
     } else {
         r.register(Arc::new(SolidKind))?;
         r.register(Arc::new(FootageKind))?;

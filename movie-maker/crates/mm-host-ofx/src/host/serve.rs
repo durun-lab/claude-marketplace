@@ -5,11 +5,12 @@ use std::io::{BufRead, Write};
 use std::mem::ManuallyDrop;
 
 use mm_host_api::{HostRequest, HostResponse, SharedFrame, PROTOCOL_VERSION};
-use mm_host_ofx::{PrepareParams, RenderParams};
-use mm_types::{RationalTime, Size};
+use mm_host_ofx::{frame_bytes, PrepareParams, RenderParams};
+use mm_host_pipe::shm::{self, Mapping};
+use mm_types::{RationalTime, RgbaImage, Size};
 
 use super::names::FX_SUPPORTED_DEPTHS;
-use super::pixels::Depth;
+use super::pixels::{Depth, Pixels};
 use super::plugin::{Bundle, Described, Plugin};
 use super::render::Instance;
 
@@ -37,6 +38,8 @@ impl Drop for Session {
 #[derive(Default)]
 struct Server {
     session: Option<Session>,
+    /// 最後に開いた共有メモリ（`RenderParams::shared`）と名前。
+    shared: Option<(String, Mapping)>,
 }
 
 /// 標準入力が閉じるか `Shutdown` が来るまで答え続ける。応答は `out` に書く。
@@ -130,13 +133,72 @@ impl Server {
         check_size(size)?;
         let params: RenderParams = serde_json::from_value(params)
             .map_err(|e| format!("RenderFrame の params が読めない: {e}"))?;
-        let instance = self
-            .session
+        let Self { session, shared } = self;
+        let instance = session
             .as_ref()
             .and_then(|s| s.instance.as_ref())
             .ok_or("Prepare の前に RenderFrame")?;
-        let image = instance.render(time, size, &params)?;
-        Ok(SharedFrame::from_image(&image))
+        let depth = instance.depth();
+        let Some(pixels) = &params.shared else {
+            let source = Pixels::from_image(&source_image(params.source, size)?, depth)?;
+            let output = instance.render(time, size, source, &params.values)?;
+            let image = output.to_image().map_err(|e| e.to_string())?;
+            return Ok(SharedFrame::from_image(&image));
+        };
+        let one = frame_bytes(size);
+        let mapping = shared_mapping(shared, &pixels.name, 2 * one)?;
+        let (input, result) = mapping.bytes_mut().split_at_mut(one);
+        let source = if pixels.has_source {
+            Pixels::from_rows(size, shm::as_f32(input).ok_or(SHARED_LAYOUT)?, depth)?
+        } else {
+            Pixels::new(size, depth)?
+        };
+        let output = instance.render(time, size, source, &params.values)?;
+        let result = result.get_mut(..one).ok_or(SHARED_LAYOUT)?;
+        output.write_rows(shm::as_f32_mut(result).ok_or(SHARED_LAYOUT)?)?;
+        Ok(SharedFrame::Cpu {
+            size,
+            data: Vec::new(),
+        })
+    }
+}
+
+/// 共有メモリを f32 の列として読めないときの誤り。
+const SHARED_LAYOUT: &str = "共有メモリの大きさか境界が f32 の画像に合わない";
+
+/// `name` の共有メモリ。前のフレームと同じ区画なら開き直さない（開き直すと毎回ページを割り当て直す）。
+fn shared_mapping<'a>(
+    cache: &'a mut Option<(String, Mapping)>,
+    name: &str,
+    bytes: usize,
+) -> Result<&'a mut Mapping, String> {
+    let reuse = matches!(cache, Some((n, m)) if n == name && m.len() >= bytes);
+    if !reuse {
+        // 古い区画を先に閉じてから開く。
+        *cache = None;
+        let mapping = Mapping::open(name, bytes).map_err(|e| e.to_string())?;
+        *cache = Some((name.to_string(), mapping));
+    }
+    cache
+        .as_mut()
+        .map(|(_, m)| m)
+        .ok_or_else(|| "共有メモリが無い".to_string())
+}
+
+/// JSON で渡された入力の画像。無ければ透明。
+fn source_image(source: Option<SharedFrame>, size: Size) -> Result<RgbaImage, String> {
+    match source {
+        None => Ok(RgbaImage::transparent(size)),
+        Some(SharedFrame::Cpu { size: s, data }) if s == size => {
+            RgbaImage::from_raw(s, data).map_err(|e| e.to_string())
+        }
+        Some(SharedFrame::Cpu { size: s, .. }) => Err(format!(
+            "入力の大きさ {}x{} が描く大きさ {}x{} と違う",
+            s.width, s.height, size.width, size.height
+        )),
+        Some(SharedFrame::SharedTexture { .. }) => {
+            Err("共有テクスチャの入力はまだ受けない（CPU の画像で渡す）".into())
+        }
     }
 }
 
