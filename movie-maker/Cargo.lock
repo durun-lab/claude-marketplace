@@ -3803,6 +3803,7 @@ dependencies = [
  "mm-ops",
  "mm-runtime",
  "mm-store",
+ "mm-testkit",
  "mm-types",
  "png",
  "serde",

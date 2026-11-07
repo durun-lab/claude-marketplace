@@ -13,6 +13,8 @@ use mm_ops::{Entry, OpContext, OpError, Transaction};
 use mm_store::{Actor, BackupJob, Store, StoredTxn, TranscriptInput, TxnKind, UndoPlan};
 use mm_types::{AssetId, MmError};
 use serde::Serialize;
+
+use crate::kinds::{KindInfo, KindQuery};
 use tokio::sync::broadcast;
 
 use crate::frames::{FrameRequest, FrameSource};
@@ -365,6 +367,15 @@ impl Core {
         frames
             .frame_png(&project, request)
             .map_err(ServeError::from)
+    }
+
+    /// 描画に使うノードの種類の定義（MCP の `kinds`）。
+    pub fn kinds(&self, query: &KindQuery) -> Result<Vec<KindInfo>, ServeError> {
+        let frames = self
+            .frames
+            .as_ref()
+            .ok_or_else(|| ServeError::Unavailable("この HTTP サーバーは描画を持たない".into()))?;
+        frames.kinds(query).map_err(ServeError::from)
     }
 
     /// 閉じる。バックアップと WAL の書き戻しをして、以後の要求は 503 にする。

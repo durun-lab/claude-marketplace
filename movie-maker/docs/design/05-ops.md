@@ -92,7 +92,7 @@ Claude の対応 1 回を、適用せずに保留して人が決める単位（[
 
 失敗は `{"error": {"code","message", ...}}`。`conflict`（409、`touches` を添える）、`future_base`（409）、`locked`（403）、`invalid`（422、検証の失敗）、`bad_request`（400）、`unavailable`（503、閉じた後や描画が無いとき）。
 
-MCP のツールは、操作ごとに 1 つ（名前は操作名。`inputSchema` は `ops_schema()` の各要素から `op` を除き、任意の `label`、`base_version`、`responds_to` を足して作る）と、`transaction`（操作の列を 1 つの取り消しの単位にする。コメントへの対応 1 回分）、`propose`（引数は `transaction` と同じで、適用せずに提案として保留する）、`undo`、`redo`、`project`、`proposals`（提案の一覧）、`frame`（PNG を画像で返す。`proposal` と `ops` で提案を適用したフレーム）。提案の承認・却下のツールは置かない。呼び出し元は常に `Entry::Mcp`、`actor` は `mcp`/`claude`。`responds_to` は記録の `txns` に残る。失敗は `isError` で、HTTP の失敗と同じ `{"error": ...}` を text に入れる。
+MCP のツールは、操作ごとに 1 つ（名前は操作名。`inputSchema` は `ops_schema()` の各要素から `op` を除き、任意の `label`、`base_version`、`responds_to` を足して作る）と、`transaction`（操作の列を 1 つの取り消しの単位にする。コメントへの対応 1 回分）、`propose`（引数は `transaction` と同じで、適用せずに提案として保留する）、`undo`、`redo`、`project`、`proposals`（提案の一覧）、`frame`（PNG を画像で返す。`proposal` と `ops` で提案を適用したフレーム）、`kinds`（登録されているノードの種類と、`NodeKind::params_for` のパラメータの定義。`params` を渡すと、選んだもので一覧が変わる種類はその組に合わせる）。提案の承認・却下のツールは置かない。呼び出し元は常に `Entry::Mcp`、`actor` は `mcp`/`claude`。`responds_to` は記録の `txns` に残る。失敗は `isError` で、HTTP の失敗と同じ `{"error": ...}` を text に入れる。
 
 CLI は `Store::open` で書き手になれなければ、`.mm/` のポートとトークンで `mm op`、`mm undo`、`mm redo` を転送する（応答の `touched` を出す）。`mm frame <project> <t> -o x.png` も、動いているアプリがあればそこで描いてもらい、無ければ自分で描く。
 

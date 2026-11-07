@@ -139,6 +139,18 @@ fn fixed_tools() -> Vec<Value> {
                 "additionalProperties": false,
             },
         }),
+        json!({
+            "name": "kinds",
+            "description": "登録されているノードの種類と、そのパラメータの定義（名前、型、既定値）を読む。kind を渡すとその種類だけ。params を渡すと、選んだもので一覧が変わる種類（ofx のプラグインのパラメータなど）はその組に合わせた定義を返す",
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "description": "種類の名前（\"ofx\" など）。省くと全部"},
+                    "params": {"type": "object", "description": "パラメータの名前と値（ParamValue）。setParam と同じ形"},
+                },
+                "additionalProperties": false,
+            },
+        }),
     ]
 }
 
