@@ -162,7 +162,7 @@ fn matted_by(mut l: Layer, matte: &str) -> Layer {
 }
 
 #[test]
-fn 循環したマットは描かずに誤りに残す() {
+fn 循環したマットは描かずにエラーを記録する() {
     // c ← a ← b ← a。a と b はマットなので合成から外れ、c はマットを辿りきれない。
     let layers = vec![
         matted_by(layer("c", solid(RED), 2), "a"),

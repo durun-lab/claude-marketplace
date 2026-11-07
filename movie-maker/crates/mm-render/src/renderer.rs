@@ -19,7 +19,7 @@ use crate::source::SourcePool;
 use mm_gpu::{GpuContext, PassTimer, WgpuGpu};
 
 /// レンダラーのバージョン。合成の式を変えたら上げる（フレームのキャッシュのキーに入る）。
-pub const WGPU_RENDERER_VERSION: u32 = 2;
+pub const WGPU_RENDERER_VERSION: u32 = 3;
 /// `render_frame` が返したテクスチャを持っておく数。これより古いフレームの `FrameRef` は無効になる。
 const KEPT_OUTPUTS: usize = mm_render_api::KEPT_RENDERED_FRAMES;
 
