@@ -482,3 +482,26 @@ test('setProcessPriority は、終わったプロセスに掛けられなかっ�
   };
   assert.equal(platformFor('win32').setProcessPriority(10, 'idle', set), false);
 });
+
+test('throttleProcesses は、Windows では PowerShell に Base64 のスクリプトで渡し、子孫まで優先度とメモリ優先度と効率モードを掛ける', async () => {
+  const calls: string[][] = [];
+  const run: Run = async (file, args) => (calls.push([file, ...args]), '');
+  await platformFor('win32').throttleProcesses([10, 20], 'idle', 'C:\\data', run);
+  const [file, ...args] = calls[0] ?? [];
+  assert.equal(file, 'powershell.exe');
+  const script = Buffer.from(args.at(-1) ?? '', 'base64').toString('utf16le');
+  assert.match(script, /@\(10,20\)/);
+  assert.match(script, /\[DurunThrottle\]::Apply\(\$id, 1, 1, 1\)/);
+  assert.match(script, /PriorityClass = 'Idle'/);
+  assert.match(script, /C:\\data\\durun-throttle-[0-9a-f]{12}\.dll/);
+});
+
+test('throttleProcesses は、通常では効率モードを Windows の判断に戻し、PID が無ければ PowerShell を起動しない', async () => {
+  const scripts: string[] = [];
+  const run: Run = async (_file, args) => (scripts.push(Buffer.from(args.at(-1) ?? '', 'base64').toString('utf16le')), '');
+  await platformFor('win32').throttleProcesses([10], 'normal', 'C:\\data', run);
+  await platformFor('win32').throttleProcesses([], 'low', 'C:\\data', run);
+  await platformFor('darwin').throttleProcesses([10], 'low', '/data', run);
+  assert.equal(scripts.length, 1);
+  assert.match(scripts[0] ?? '', /Apply\(\$id, 5, 0, 0\)/);
+});
