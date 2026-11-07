@@ -14,6 +14,7 @@ use mm_ops::{apply_transaction, Entry, Op, OpContext};
 use mm_runtime::{assemble, Backend, Engine, RuntimeConfig};
 use mm_types::{CompositionId, Rational, RationalTime, Result, Size, TimeRange};
 
+use super::burned::{Burned, StoreStamp};
 use super::intake::{collect_batch, fit_chunk};
 use super::{Command, PlaybackInfo};
 use crate::win::clock::{AudioClock, PlayClock, SwitchClock, WallClock};
@@ -110,8 +111,8 @@ pub struct Player {
     /// 取り消した編集の元の操作。`Redo` で後ろから適用する。
     redo: Vec<Vec<Op>>,
     store_dir: Option<PathBuf>,
-    /// 字幕を焼き込んだプロジェクトのデータ。元の `project` が同じ間は作り直さない。
-    burned: Option<(Arc<Project>, Arc<Project>)>,
+    /// 字幕を焼き込んだプロジェクトのデータ。元の `project` と文字起こしが同じ間は作り直さない。
+    burned: Option<Burned>,
 }
 
 impl Player {
@@ -249,7 +250,7 @@ impl Player {
 
     /// 操作を適用して、取り消しの履歴に積む。新しい編集はやり直しの履歴を捨てる。
     fn apply(&mut self, ops: &[Op]) -> std::result::Result<EditOutcome, String> {
-        let (outcome, inverse) = self.commit(ops)?;
+        let (outcome, inverse) = self.commit("apply", ops)?;
         self.undo.push(inverse);
         self.redo.clear();
         Ok(outcome)
@@ -266,7 +267,7 @@ impl Player {
             let message = HistoryMirror::message(undo, Ok(None), None);
             return self.shared.edit.notify(message);
         };
-        match self.commit(&ops) {
+        match self.commit(if undo { "undo" } else { "redo" }, &ops) {
             Ok((_, inverse)) => {
                 let other = if undo { &mut self.redo } else { &mut self.undo };
                 other.push(inverse);
@@ -280,7 +281,12 @@ impl Player {
     }
 
     /// 操作を 1 つのトランザクションとして適用し、触った ID に頼ったキャッシュだけを捨てる。逆操作も返す。
-    fn commit(&mut self, ops: &[Op]) -> std::result::Result<(EditOutcome, Vec<Op>), String> {
+    /// 適用したら `kind`（`apply`、`undo`、`redo`）で `mm:doc-changed` の口に知らせる。
+    fn commit(
+        &mut self,
+        kind: &'static str,
+        ops: &[Op],
+    ) -> std::result::Result<(EditOutcome, Vec<Op>), String> {
         let mut project = (*self.project).clone();
         let ops = mm_ops::with_fitted_layers(&project, ops);
         let outcome = apply_transaction(&mut project, &ops, &OpContext::new(Entry::WebView))
@@ -290,6 +296,7 @@ impl Player {
         let project = Arc::new(project);
         self.adopt_project(project.clone(), &touched)?;
         self.shared.publish_doc(project, self.comp.clone());
+        self.shared.announce_edit(kind, touched.clone());
         Ok((EditOutcome { touched }, inverse))
     }
 
@@ -514,10 +521,13 @@ impl Player {
         if !mm_export::burn_in_enabled(&self.project, &self.comp) {
             return self.project.clone();
         }
-        if let Some((from, shown)) = &self.burned {
-            if Arc::ptr_eq(from, &self.project) {
-                return shown.clone();
-            }
+        let stamp = self.store_dir.as_deref().map(StoreStamp::of);
+        if let Some(burned) = self
+            .burned
+            .as_ref()
+            .filter(|b| b.fits(&self.project, &stamp))
+        {
+            return burned.shown.clone();
         }
         let words = crate::win::deliver::transcript_words(self.store_dir.as_deref(), &self.project);
         let shaper = self.engine.services().text_shaper.clone();
@@ -528,7 +538,11 @@ impl Player {
                 self.project.clone()
             }
         };
-        self.burned = Some((self.project.clone(), shown.clone()));
+        self.burned = Some(Burned {
+            from: self.project.clone(),
+            stamp,
+            shown: shown.clone(),
+        });
         shown
     }
 

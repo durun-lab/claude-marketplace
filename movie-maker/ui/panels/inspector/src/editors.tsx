@@ -1,3 +1,4 @@
+import { useState } from "preact/hooks";
 import type { Asset, ParamValue } from "@mm/sdk";
 import { hexToRgba, rgbaToHex } from "./color.ts";
 import type { FieldSpec } from "./fields.ts";
@@ -31,22 +32,41 @@ interface NumberInputProps {
   onCommit: (n: number) => void;
 }
 
-const NumberInput = ({ value, hint, label, disabled, onCommit }: NumberInputProps) => (
-  <input
-    type="number"
-    class="mm-insp-input"
-    aria-label={label}
-    value={fmt(value)}
-    min={hint.min}
-    max={hint.max}
-    step={hint.step ?? DEFAULT_STEP}
-    disabled={disabled}
-    onChange={(e) => {
-      const n = e.currentTarget.valueAsNumber;
-      if (Number.isFinite(n)) onCommit(n);
-    }}
-  />
-);
+/**
+ * 入力中の文字を持つ。再生中は再生位置のたびに描き直すので、確定（change）か外れる（blur）までは
+ * モデルの値で上書きせず、打った文字を見せ続ける。
+ */
+const useDraft = (shown: string) => {
+  const [draft, setDraft] = useState<string | null>(null);
+  return {
+    shown: draft ?? shown,
+    onInput: (e: Event) => setDraft((e.currentTarget as HTMLInputElement).value),
+    clear: () => setDraft(null),
+  };
+};
+
+const NumberInput = ({ value, hint, label, disabled, onCommit }: NumberInputProps) => {
+  const draft = useDraft(String(fmt(value)));
+  return (
+    <input
+      type="number"
+      class="mm-insp-input"
+      aria-label={label}
+      value={draft.shown}
+      onInput={draft.onInput}
+      onBlur={draft.clear}
+      min={hint.min}
+      max={hint.max}
+      step={hint.step ?? DEFAULT_STEP}
+      disabled={disabled}
+      onChange={(e) => {
+        const n = e.currentTarget.valueAsNumber;
+        if (Number.isFinite(n)) onCommit(n);
+        draft.clear();
+      }}
+    />
+  );
+};
 
 const COMPONENT_NAMES = ["x", "y", "z"];
 
@@ -128,16 +148,24 @@ const Select = ({ options, current, label, disabled, onCommit }: SelectProps) =>
   );
 };
 
-const TextEditor = ({ value, label, disabled, onCommit }: EditorProps) => (
-  <input
-    type="text"
-    class="mm-insp-input"
-    aria-label={label}
-    value={value.type === "text" || value.type === "choice" ? value.value : ""}
-    disabled={disabled}
-    onChange={(e) => onCommit({ type: value.type === "choice" ? "choice" : "text", value: e.currentTarget.value })}
-  />
-);
+const TextEditor = ({ value, label, disabled, onCommit }: EditorProps) => {
+  const draft = useDraft(value.type === "text" || value.type === "choice" ? value.value : "");
+  return (
+    <input
+      type="text"
+      class="mm-insp-input"
+      aria-label={label}
+      value={draft.shown}
+      disabled={disabled}
+      onInput={draft.onInput}
+      onBlur={draft.clear}
+      onChange={(e) => {
+        onCommit({ type: value.type === "choice" ? "choice" : "text", value: e.currentTarget.value });
+        draft.clear();
+      }}
+    />
+  );
+};
 
 const NumberEditor = ({ value, hint, label, disabled, onCommit }: EditorProps) => (
   <NumberInput
