@@ -1,0 +1,26 @@
+[package]
+name = "mm-nodes-hlsl"
+description = "shader.hlsl のノードの種類。HLSL を DXC で SPIR-V に、naga で WGSL にして shader.wgsl と同じ形で描く"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-types = { workspace = true }
+mm-node-api = { workspace = true }
+mm-gpu = { workspace = true }
+wgpu = { workspace = true }
+pollster = { workspace = true }
+naga = { workspace = true, features = ["spv-in"] }
+blake3 = { workspace = true }
+tempfile = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+mm-nodes-basic = { workspace = true }
+mm-testkit = { workspace = true }
+
+[lints]
+workspace = true
