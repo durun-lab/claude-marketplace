@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use mm_pack::{expand, font_files, FontCache, MacroSummary, Pack};
+use mm_pack::{expand_for, font_files, FontCache, MacroSummary, Pack};
 use mm_runtime::{Backend, RuntimeConfig};
 
 use crate::win::edit::{submit, EditOutcome};
@@ -57,7 +57,12 @@ pub async fn pack_apply(
         shaper
             .use_fonts(&font_files(&fonts))
             .map_err(|e| e.to_string())?;
-        let txn = expand(&pack, &name, &args, shaper).map_err(|e| e.to_string())?;
+        // 部品を置くコンポジションの画面の大きさ（ショートなど）を開いているプロジェクトから引く。
+        let project = shared
+            .doc()
+            .map(|d| d.project)
+            .ok_or_else(|| "プロジェクトを開いていない".to_owned())?;
+        let txn = expand_for(&pack, &name, &args, shaper, &project).map_err(|e| e.to_string())?;
         submit(&shared, txn.ops)
     })
     .await

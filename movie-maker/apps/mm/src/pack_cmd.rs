@@ -6,13 +6,13 @@ use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
 use mm_pack::{
-    check, copy_fonts, expand, font_asset_ops, font_files, CachedFont, Curl, FetchReport,
-    FontCache, Pack,
+    check, copy_fonts, expand, expand_for, font_asset_ops, font_files, CachedFont, Curl,
+    FetchReport, FontCache, Pack,
 };
 use mm_runtime::{Backend, Engine, RuntimeConfig};
 use mm_types::{MmError, Result};
 
-use crate::commands::apply_txn;
+use crate::commands::{apply_txn, open_reader};
 
 /// `mm pack`。上の段の登録は `main.rs` の 1 行。
 #[derive(Subcommand)]
@@ -97,7 +97,9 @@ pub fn run(command: PackCommand) -> Result<()> {
             let fonts = ensure_fonts(&pack);
             let engine = text_engine(&fonts)?;
             let shaper = &*engine.services().text_shaper;
-            let mut txn = expand(&pack, &name, &args, shaper)?;
+            // 部品を置くコンポジションの画面の大きさ（ショートなど）をプロジェクトから引く。書き手がアプリでも読める
+            let project = open_reader(&dir)?.project().clone();
+            let mut txn = expand_for(&pack, &name, &args, shaper, &project)?;
             txn.ops.splice(0..0, import_fonts(&pack, &fonts, &dir)?);
             txn.base_version = base;
             apply_txn(&dir, txn)

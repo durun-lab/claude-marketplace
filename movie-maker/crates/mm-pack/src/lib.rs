@@ -15,7 +15,8 @@
 //! - `transitions/*.wgsl`: WGSL のトランジション。`transition` 手順（[`TransitionStep`]）がカットの頭に
 //!   `transition.wgsl` のトランジションとして置く。`_` で始まるファイルは共通のコード（[`Transitions`]）。
 //!
-//! 使い方は [`Pack::load`] で読み、[`check`] で検査し、[`expand`] で 1 つのトランザクションにする。
+//! 使い方は [`Pack::load`] で読み、[`check`] で検査し、[`expand`] で 1 つのトランザクションにする。適用する先の
+//! プロジェクトがあるときは [`expand_for`] で、部品を置くコンポジションの画面の大きさ（ショートなど）に合わせる。
 //! 操作経路はそのトランザクションを `mm op --txn` と同じ経路で適用するので、取り消しも記録も普通の操作と同じ。
 
 mod args;
@@ -27,6 +28,7 @@ mod layout;
 mod macros;
 mod pack;
 mod param_format;
+mod screen;
 mod sticker;
 mod style;
 mod theme;
@@ -35,7 +37,7 @@ mod web;
 
 pub use args::{parse_time, ArgValue};
 pub use check::{check, Report};
-pub use expand::expand;
+pub use expand::{expand, expand_for};
 pub use font_cache::{Curl, Fetch, FetchReport, FontCache, CACHE_ENV};
 pub use fonts::{copy_fonts, font_asset_ops, font_files, CachedFont, PackFont};
 pub use layout::EstimateShaper;

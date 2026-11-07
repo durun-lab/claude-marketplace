@@ -9,7 +9,7 @@ use mm_text_api::FONTS_DIR;
 use mm_types::{Id, RationalTime};
 
 use crate::args::{referenced_names, Env};
-use crate::expand::expand;
+use crate::expand::{expand, expand_for};
 use crate::layout::EstimateShaper;
 use crate::macros::{MacroDef, MacroKind, ParamFormat, ParamType, Step, WebStep};
 use crate::pack::{Pack, FORMAT};
@@ -350,14 +350,20 @@ fn apply_examples(pack: &Pack, report: &mut Report) {
     }
     for def in pack.macros.iter().filter(|m| m.kind == MacroKind::Macro) {
         let mut editor = Editor::new(base.project().clone());
-        let result = expand(pack, &def.name, &def.example, &EstimateShaper)
-            .map_err(|e| format!("例を展開できない: {e}"))
-            .and_then(|txn| {
-                editor
-                    .apply(txn, &ctx)
-                    .map(|_| ())
-                    .map_err(|e| format!("例を適用できない: {e}"))
-            });
+        let result = expand_for(
+            pack,
+            &def.name,
+            &def.example,
+            &EstimateShaper,
+            base.project(),
+        )
+        .map_err(|e| format!("例を展開できない: {e}"))
+        .and_then(|txn| {
+            editor
+                .apply(txn, &ctx)
+                .map(|_| ())
+                .map_err(|e| format!("例を適用できない: {e}"))
+        });
         match result {
             Ok(()) => report.applied += 1,
             Err(e) => report.push(format!("{}: {e}", def.name)),
