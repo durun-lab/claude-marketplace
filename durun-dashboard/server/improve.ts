@@ -21,6 +21,8 @@ const SUMMARY_CHARS = 120;
 const DONE_MARK = '対応した要望:';
 const BASH_TIMEOUT_MS = 2 * 60 * 1000;
 const MAX_NUDGES = 2;
+// main はマージキューを通さないと変えられないので、手元ではこのブランチにコミットしてダッシュボードにすぐ反映する。
+const LOCAL_BRANCH = 'local/dashboard';
 const NUDGE_PROMPT = `ウェーブの途中でターンが終わりました。バックグラウンドに移したコマンドがあれば、その結果を読んで作業を続けてください。ターンを終えるとセッションも終わるので、テストなどの長いコマンドは終わるまで待ってください。ウェーブを終えたら、最後に「${DONE_MARK}」の行と、対応を終えた要望のファイル名を書いて止まってください。`;
 
 /** 未対応の要望。ファイル名が時刻から始まるので、名前順が古い順になる。 */
@@ -34,8 +36,9 @@ const promptFor = (items: string[]): string => `[durun-dashboard] 人間がダ�
 ${items.map((item) => `  - ${path.relative(ROOT, path.join(FEEDBACK_DIR, item))}: ${summaryOf(item)}`).join('\n')}
 - まず全体を読み、似た作業や同じ場所を触る要望をまとめて、このウェーブで対応する要望と順番を決めてください。一度に仕上げられる量にとどめ、残りは次のウェーブに回してください。
 - ダッシュボードは起動済みで、コードを変えると画面とサーバーに自動で反映されます。pnpm start は実行しないでください。
-- 実装を始める前に、git pull で最新を取り込んでください。
-- まとまりごとに pnpm check と pnpm test を通し、自分が変更したファイルだけを 1 つのコミットにして push してください。コードレビューは依頼せず、そのまま次のまとまりへ進んでください。
+- ダッシュボードは手元専用のブランチ ${LOCAL_BRANCH} で動いています。実装を始める前に、${LOCAL_BRANCH} にいることを確かめ、git pull origin main で main を取り込んでください。
+- まとまりごとに pnpm check と pnpm test を通し、自分が変更したファイルだけを 1 つのコミットにして ${LOCAL_BRANCH} にコミットしてください。コードレビューは依頼せず、そのまま次のまとまりへ進んでください。
+- main は直接 push できません。すべてのまとまりを終えたら、origin/main から fix/dashboard-improve-<日時> のブランチを作り、このウェーブのコミットを cherry-pick して push し、PR を作って gh pr merge --auto でマージキューに載せてください。${LOCAL_BRANCH} は push しないでください。
 - 判断に迷う点は ask_human で人間に聞いてください。
 - 終えたら、まとまりごとに何をどう変えたかを 2、3 行で書いてください。最後に「${DONE_MARK}」の行を置き、続けて対応を終えた要望のファイル名を 1 行に 1 つずつ書いて止まってください。残りの要望は、次のウェーブで計画し直します。`;
 
