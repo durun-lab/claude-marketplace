@@ -56,9 +56,9 @@ pub enum Outcome {
         /// 止めた理由。
         reason: String,
     },
-    /// 囲いの検査で落ちたので取り込まなかった。要望は未対応に残る。
+    /// 囲いの検査に通らなかったので取り込まなかった。要望は未対応に残る。
     Rejected {
-        /// 落ちた理由。
+        /// 通らなかった理由。
         reason: String,
     },
 }
@@ -178,11 +178,11 @@ impl FeedbackStore {
             .filter(|p| p.extension().is_some_and(|x| x == "json"))
             .collect();
         paths.sort();
-        let mut out = Vec::new();
-        for p in paths {
-            out.extend(read_json::<FeedbackItem>(&p)?);
-        }
-        Ok(out)
+        // 読めない 1 件（回が `--add-dir` で触れたものなど）で、一覧と自動の起票の全部を止めない。
+        Ok(paths
+            .iter()
+            .filter_map(|p| read_json::<FeedbackItem>(p).ok().flatten())
+            .collect())
     }
 
     /// 未対応の要望（古い順）。

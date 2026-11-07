@@ -31,6 +31,7 @@ fn wgpu_と_glyphon_と_dsp_を選べる() {
     for kind in mm_nodes_basic::all_kinds() {
         assert!(engine.registry().get(kind.id()).is_some(), "{}", kind.id());
     }
+    assert!(engine.registry().get("lottie").is_some());
     assert!(engine.registry().get("web.cef").is_some());
     assert!(engine.registry().get("gen.ai").is_some());
     assert!(engine.registry().get("shader.hlsl").is_some());

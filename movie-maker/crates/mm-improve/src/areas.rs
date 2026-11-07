@@ -106,13 +106,20 @@ impl Areas {
     }
 
     /// 自動の改善の回が取り込んでよいか。`merge` の外か `hold` に当たるファイルがあれば止める。
+    /// 正規化されていないパスは止める。`hold` は大文字と小文字を区別せずに照合する
+    /// （Windows のファイルシステムでは `mm-text-API/` が `mm-text-api/` と同じフォルダーになる）。
     pub fn improve_verdict(&self, files: &[String]) -> ImproveVerdict {
         let held: Vec<String> = files
             .iter()
             .filter(|f| {
                 let merge = self.improve.merge.iter().any(|m| matches(m, f));
-                let hold = self.improve.hold.iter().any(|h| matches(h, f));
-                !merge || hold
+                let lower = f.to_ascii_lowercase();
+                let hold = self
+                    .improve
+                    .hold
+                    .iter()
+                    .any(|h| matches(&h.to_ascii_lowercase(), &lower));
+                !is_plain_path(f) || !merge || hold
             })
             .cloned()
             .collect();
@@ -122,6 +129,15 @@ impl Areas {
             ImproveVerdict::Hold(held)
         }
     }
+}
+
+/// "/" で区切った相対パスで、空、"."、".." の区切りと "\" と ":" を含まないか。
+/// "*" は ".." にも当たるので、`ui/panels/../../x` のようなパスを `merge` に通さない。
+fn is_plain_path(path: &str) -> bool {
+    !path.contains(['\\', ':'])
+        && path
+            .split('/')
+            .all(|s| !s.is_empty() && s != "." && s != "..")
 }
 
 /// `pattern` がファイル `path` に当たるか。末尾が "/" ならその配下の全部。
@@ -180,7 +196,40 @@ fn placeholder_to_star(pat: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::matches;
+    use super::{matches, Areas, ImproveVerdict};
+
+    fn verdict(file: &str) -> ImproveVerdict {
+        let areas =
+            Areas::parse("[improve]\nmerge = [\"ui/panels/*/\", \"crates/mm-text-*/\"]\nhold = [\"crates/mm-*-api/\"]\n")
+                .unwrap();
+        areas.improve_verdict(&[file.to_owned()])
+    }
+
+    #[test]
+    fn unnormalized_paths_are_held() {
+        for f in [
+            "ui/panels/../../Cargo.toml",
+            "ui/panels/./a/b.ts",
+            "ui/panels//a.ts",
+            "ui\\panels\\a\\b.ts",
+            "/ui/panels/a/b.ts",
+        ] {
+            assert_ne!(verdict(f), ImproveVerdict::Merge, "{f}");
+        }
+        assert_eq!(verdict("ui/panels/a/b.ts"), ImproveVerdict::Merge);
+    }
+
+    #[test]
+    fn hold_ignores_ascii_case() {
+        assert_ne!(
+            verdict("crates/mm-text-API/src/lib.rs"),
+            ImproveVerdict::Merge
+        );
+        assert_eq!(
+            verdict("crates/mm-text-glyphon/src/lib.rs"),
+            ImproveVerdict::Merge
+        );
+    }
 
     #[test]
     fn directory_pattern_covers_children_only() {

@@ -1,4 +1,4 @@
-//! 起票 → 回 → 囲い → 取り込み / PR 止め → 返事、の通し。`claude -p` は決まった差分を書く偽物にする。
+//! 起票 → 回 → 囲い → 取り込み / PR 止め → 返事、の通し。`claude -p` は決まった差分を書くモックにする。
 
 use std::sync::Arc;
 
@@ -111,7 +111,7 @@ fn pull_request_carries_only_the_round_commit_on_origin_upstream() {
     assert_eq!(
         fx.diff_names("origin/main", &branch),
         vec!["mm/core/engine.txt".to_owned()],
-        "取り込み先の先行分は PR に載らない"
+        "本線の先行分は PR に載らない"
     );
 }
 

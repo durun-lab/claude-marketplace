@@ -1,4 +1,4 @@
-//! PR までで止めるときの PR の作り方。[`Forge`] を差し替えられる層にし、本物は [`GhForge`]（`git push` と `gh pr create`）。
+//! PR までで止めるときの PR の作り方。[`Forge`] を差し替えられる層にし、実際の実装は [`GhForge`]（`git push` と `gh pr create`）。
 
 use std::path::Path;
 use std::process::Command;
@@ -10,13 +10,13 @@ use crate::proc::run;
 
 /// 開く PR。
 pub struct PullRequest<'a> {
-    /// 根。
+    /// ルート。
     pub repo: &'a Path,
     /// 回のブランチ。
     pub branch: &'a str,
-    /// 取り込む先。
+    /// 本線。
     pub base: &'a str,
-    /// 題。
+    /// タイトル。
     pub title: &'a str,
     /// 本文。
     pub body: &'a str,

@@ -45,6 +45,7 @@ mm-nodes-basic = { path = "crates/mm-nodes-basic" }
 mm-nodes-cef = { path = "crates/mm-nodes-cef" }
 mm-nodes-genai = { path = "crates/mm-nodes-genai" }
 mm-nodes-hlsl = { path = "crates/mm-nodes-hlsl" }
+mm-nodes-lottie = { path = "crates/mm-nodes-lottie" }
 mm-ops = { path = "crates/mm-ops" }
 mm-pack = { path = "crates/mm-pack" }
 mm-render = { path = "crates/mm-render" }
@@ -81,6 +82,9 @@ cosmic-text = { version = "0.19", default-features = false, features = ["std", "
 # 日本語の文節の切れ目（BudouX の Rust 版。Chromium の `word-break: auto-phrase` の元になった分け方）。
 budoux = "0.1.1"
 glyphon = { version = "0.12", default-features = false }
+# mm-nodes-lottie。Lottie の読み込み（velato、vello の連携は切る）と CPU の 2D の描画（vello_cpu）。
+velato = { version = "0.12", default-features = false }
+vello_cpu = { version = "0.3", default-features = false, features = ["std", "u8_pipeline"] }
 # 書体のファイルの名前と太さを読む（CEF のホストの `@font-face`、パックの検査）。fontdb と同じバージョン。
 ttf-parser = { version = "0.25", default-features = false, features = ["std"] }
 # プレビューの音の出力（mm-audio-cpal）。

@@ -1,7 +1,7 @@
-//! 回の実装を任せる相手。[`Agent`] を差し替えられる層にし、本物は [`ClaudeCli`]（`claude -p`）、試験は決まった差分を書く偽物にする。
+//! 回の実装を任せる相手。[`Agent`] を差し替えられる層にし、実際の実装は [`ClaudeCli`]（`claude -p`）、テストは決まった差分を書くモックにする。
 //!
 //! `claude -p` の区切りは Stop フックで取る。フックが最後の発言と会話ログの場所を回のフォルダーの `stop.json` に書くので、
-//! アプリが途中で落ちても、次に起きたときに回を終えられる。
+//! アプリが途中でクラッシュしても、次に起きたときに回を終えられる。
 
 use std::fs::{File, OpenOptions};
 use std::io::Write;
@@ -17,6 +17,7 @@ use serde_json::Value;
 use crate::config::Settings;
 use crate::files::read_json;
 use crate::proc::kill_tree;
+use crate::time::now_ms;
 
 /// Stop フックが書くファイル。
 pub const STOP_FILE: &str = "stop.json";
@@ -36,7 +37,7 @@ const MS_PER_SEC: u64 = 1000;
 pub struct AgentRequest<'a> {
     /// セッションの ID（UUID）。
     pub session_id: &'a str,
-    /// 同じセッションを続けるか（使用制限の後と、印を書かずに止まったとき）。
+    /// 同じセッションを続けるか（使用制限の後と、完了のマーカーを書かずに止まったとき）。
     pub resume: bool,
     /// 頼む文。
     pub prompt: &'a str,
@@ -46,10 +47,14 @@ pub struct AgentRequest<'a> {
     pub run_dir: &'a Path,
     /// 読ませるフォルダー（要望のファイル）。
     pub read_dirs: &'a [PathBuf],
-    /// モデル、予算、時間の上限。
+    /// モデル、effort、予算（回の残り）。
     pub settings: &'a Settings,
+    /// この呼び出しの時間の上限（回の残り）。過ぎたら木ごと止める。
+    pub wall: Duration,
     /// 子プロセスを起こしたら pid を渡す（すぐ止める手段が使う）。
     pub on_spawn: &'a (dyn Fn(u32) + Sync),
+    /// セッションの累計の費用（ドル）が分かったら渡す。回は予算の残りを次の呼び出しに渡す。
+    pub on_cost: &'a (dyn Fn(f64) + Sync),
 }
 
 /// 1 回の呼び出しの終わり方。
@@ -78,7 +83,7 @@ pub trait Agent: Send + Sync {
     fn run(&self, req: &AgentRequest<'_>) -> AgentEnd;
 }
 
-/// `claude -p` を起こす本物。
+/// `claude -p` を起こす実際の実装。
 #[derive(Clone, Debug)]
 pub struct ClaudeCli {
     /// 実行ファイル。
@@ -111,8 +116,25 @@ struct StopHook {
     last_assistant_message: Option<String>,
 }
 
-/// Stop フックの設定。標準入力の JSON をそのまま `stop.json` に書く。Windows でも Claude Code はフックを Git Bash で走らせる。
-pub fn stop_hook_settings(run_dir: &Path) -> String {
+/// 回の `claude -p` に拒否させるコマンド。回のブランチ以外の参照（本線の `local/movie-maker` など）を動かすと
+/// 囲いの検査を通らずに取り込まれるので、ブランチを切り替える・参照を書く・遠隔へ出す操作を止める。
+/// 確認の要る操作は `--permission-prompts none` で拒否されるが、auto のモードが通しうるものをここで決まった形で拒否する。
+pub const DENIED_COMMANDS: &[&str] = &[
+    "Bash(gh:*)",
+    "Bash(git -C:*)",
+    "Bash(git branch:*)",
+    "Bash(git checkout:*)",
+    "Bash(git push:*)",
+    "Bash(git switch:*)",
+    "Bash(git symbolic-ref:*)",
+    "Bash(git tag:*)",
+    "Bash(git update-ref:*)",
+    "Bash(git worktree:*)",
+];
+
+/// 回の `claude -p` の設定。Stop フックは標準入力の JSON をそのまま `stop.json` に書く
+/// （Windows でも Claude Code はフックを Git Bash で実行する）。[`DENIED_COMMANDS`] を拒否させる。
+pub fn run_settings(run_dir: &Path) -> String {
     let file = run_dir
         .join(STOP_FILE)
         .to_string_lossy()
@@ -121,6 +143,7 @@ pub fn stop_hook_settings(run_dir: &Path) -> String {
     serde_json::json!({
         "hooks": { "Stop": [{ "hooks": [{ "type": "command", "command": format!("cat > '{file}'") }] }] },
         "env": { "BASH_DEFAULT_TIMEOUT_MS": BASH_TIMEOUT_MS.to_string() },
+        "permissions": { "deny": DENIED_COMMANDS },
     })
     .to_string()
 }
@@ -149,9 +172,9 @@ impl ClaudeCli {
             .map(str::to_owned)
             .to_vec();
         args.extend(["--permission-mode".into(), self.permission_mode.clone()]);
-        // 確認の要る操作は誰も答えないので断る。
+        // 確認の要る操作は誰も答えないので拒否する。
         args.extend(["--permission-prompts".into(), "none".into()]);
-        args.extend(["--settings".into(), stop_hook_settings(req.run_dir)]);
+        args.extend(["--settings".into(), run_settings(req.run_dir)]);
         for d in req.read_dirs {
             args.extend(["--add-dir".into(), d.to_string_lossy().into_owned()]);
         }
@@ -194,25 +217,39 @@ impl ClaudeCli {
         if stop_path.exists() {
             std::fs::remove_file(&stop_path)?;
         }
+        let started = now_ms();
         let mut child = self.spawn(req)?;
-        let limit = Duration::from_secs(u64::from(req.settings.wall_minutes) * SECS_PER_MIN);
-        let (status, timed_out) = wait_with_deadline(&mut child, limit)?;
+        let (status, timed_out) = wait_with_deadline(&mut child, req.wall)?;
+        let out: Value = read_json(&req.run_dir.join(OUT_FILE))
+            .ok()
+            .flatten()
+            .unwrap_or(Value::Null);
+        if let Some(total) = out["total_cost_usd"].as_f64() {
+            (req.on_cost)(total);
+        }
         let stop: StopHook = read_json(&stop_path).ok().flatten().unwrap_or_default();
         let transcript = stop
             .transcript_path
             .clone()
             .or_else(|| find_transcript(req.session_id));
-        if let Some(resets_at) = transcript.as_deref().and_then(usage_limit) {
+        // 前の呼び出しの使用制限が会話ログの最後に残っていても、明ける時刻はこの呼び出しより前なので数えない。
+        let limit = transcript.as_deref().and_then(usage_limit);
+        if let Some(resets_at) = limit.filter(|t| *t > started) {
             return Ok(AgentEnd::UsageLimit { resets_at });
         }
         if timed_out {
             let reason = format!(
-                "回の時間の上限 {} 分を超えたので止めた",
-                req.settings.wall_minutes
+                "回の時間の上限を超えたので止めた（この呼び出しの残り {} 分）",
+                req.wall.as_secs() / SECS_PER_MIN
             );
             return Ok(AgentEnd::Failed { reason });
         }
-        Ok(finish(req.run_dir, status, stop.last_assistant_message))
+        Ok(finish(
+            req.run_dir,
+            &out,
+            status,
+            stop.last_assistant_message,
+        ))
     }
 }
 
@@ -225,11 +262,12 @@ impl Agent for ClaudeCli {
 }
 
 /// 終了の状態と出力から終わり方を決める。Stop の時点の最後の発言を優先し、無ければ `--output-format json` の `result` を使う。
-fn finish(run_dir: &Path, status: ExitStatus, hook_message: Option<String>) -> AgentEnd {
-    let out: Value = read_json(&run_dir.join(OUT_FILE))
-        .ok()
-        .flatten()
-        .unwrap_or(Value::Null);
+fn finish(
+    run_dir: &Path,
+    out: &Value,
+    status: ExitStatus,
+    hook_message: Option<String>,
+) -> AgentEnd {
     if out["is_error"].as_bool() == Some(true) {
         let reason = format!(
             "claude -p のエラー（{}）: {}",
@@ -255,7 +293,7 @@ fn finish(run_dir: &Path, status: ExitStatus, hook_message: Option<String>) -> A
     }
 }
 
-/// 終わるまで待つ。`limit` を過ぎたら木ごと止める。見張りはタイマー 1 つで、終わったら起こして畳む。
+/// 終わるまで待つ。`limit` を過ぎたら木ごと止める。見張りはタイマー 1 つで、終わったら起こして片付ける。
 fn wait_with_deadline(child: &mut Child, limit: Duration) -> Result<(ExitStatus, bool)> {
     let (tx, rx) = mpsc::channel::<()>();
     let pid = child.id();
@@ -272,7 +310,7 @@ fn wait_with_deadline(child: &mut Child, limit: Duration) -> Result<(ExitStatus,
     Ok((status?, timed_out))
 }
 
-/// Stop フックが残した最後の発言。回を動かしていたプロセスが落ちた後に、回を区切れるかを見るのに使う。
+/// Stop フックが残した最後の発言。回を動かしていたプロセスがクラッシュした後に、回を区切れるかを見るのに使う。
 pub fn stop_message(run_dir: &Path) -> Option<String> {
     let stop: StopHook = read_json(&run_dir.join(STOP_FILE)).ok().flatten()?;
     stop.last_assistant_message.filter(|m| !m.trim().is_empty())
@@ -296,7 +334,7 @@ pub fn find_transcript(session_id: &str) -> Option<PathBuf> {
 }
 
 /// 会話ログが使用制限で終わっていれば、明ける時刻（ミリ秒）。
-/// Claude Code は断られたときに合成の発言を足し、`apiError` と `apiErrorParams.rate_limit_info.resetsAt`（秒）を添える。
+/// Claude Code は拒否されたときに合成の発言を足し、`apiError` と `apiErrorParams.rate_limit_info.resetsAt`（秒）を添える。
 pub fn usage_limit(transcript: &Path) -> Option<u64> {
     let text = std::fs::read_to_string(transcript).ok()?;
     let mut limit = None;
@@ -332,8 +370,22 @@ mod tests {
 
     #[test]
     fn stop_hook_writes_to_run_dir_with_forward_slashes() {
-        let s = stop_hook_settings(Path::new(r"C:\data\runs\r1"));
+        let s = run_settings(Path::new(r"C:\data\runs\r1"));
         assert!(s.contains("cat > 'C:/data/runs/r1/stop.json'"), "{s}");
+    }
+
+    #[test]
+    fn run_settings_deny_moving_other_refs() {
+        let v: Value = serde_json::from_str(&run_settings(Path::new("/r"))).unwrap();
+        let deny: Vec<&str> = v["permissions"]["deny"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        for rule in ["Bash(git push:*)", "Bash(git update-ref:*)", "Bash(gh:*)"] {
+            assert!(deny.contains(&rule), "{rule}");
+        }
     }
 
     #[test]
@@ -351,7 +403,9 @@ mod tests {
             run_dir: Path::new("runs/r42"),
             read_dirs: &[],
             settings: &settings,
+            wall: Duration::from_secs(1),
             on_spawn: &|_| {},
+            on_cost: &|_| {},
         };
         let env = cli.child_env(&req);
         assert!(env.contains(&("CARGO_TARGET_DIR".into(), "t".into())));

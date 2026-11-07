@@ -31,7 +31,7 @@
 | `tauri-app/` | 最小の Tauri 2。WebView が 200ms ごとに Tauri のコマンドを呼び、コマンドが `subsecond::call` の中で `ops-sample` を呼んで同じ形の 1 行を出す |
 | `scripts/` | `measure.sh`（マーカー文字列を書き換えた時刻から、新しいマーカー文字列が出るまで）、`repeat.sh`（繰り返し）、`baseline.sh`（`cargo build` の増分と再起動） |
 
-測り方は[計装](../17-instrumentation.md)の考え方に合わせ、時計を 1 つにそろえる。保存の代わりに `sed` でマーカー文字列を書き換えた時刻 T0 と、アプリ自身が出した TICK の epoch ms の T1 の差を取る（ファイル監視の待ち、再ビルド、リンク、パッチの読み込み、次の呼び出しまで全部入る）。
+計測の仕方は[計装](../17-instrumentation.md)の考え方に合わせ、時計を 1 つにそろえる。保存の代わりに `sed` でマーカー文字列を書き換えた時刻 T0 と、アプリ自身が出した TICK の epoch ms の T1 の差を取る（ファイル監視の待ち、再ビルド、リンク、パッチの読み込み、次の呼び出しまで全部入る）。
 
 ## 実測
 
@@ -88,7 +88,7 @@
 
 ## 本体のアプリでの実測（段階 7）
 
-`apps/movie-maker` の feature `hotpatch` に入れた（手順は [apps/movie-maker/README.md](../../../apps/movie-maker/README.md#rust-の関数の差し替え開発のときだけ)）。測り方は上と同じ（マーカー文字列の書き換えから、アプリが出した TICK まで）。差し替えの入口は、操作の適用（`mm-ops` の `apply_transaction`）と IPC のハンドラー（`sync_ack`）。各 5 回の中央値。
+`apps/movie-maker` の feature `hotpatch` に入れた（手順は [apps/movie-maker/README.md](../../../apps/movie-maker/README.md#rust-の関数の差し替え開発のときだけ)）。計測の仕方は上と同じ（マーカー文字列の書き換えから、アプリが出した TICK まで）。ホットパッチの呼び出し箇所は、操作の適用（`mm-ops` の `apply_transaction`）と IPC のハンドラー（`sync_ack`）。各 5 回の中央値。
 
 | 変えた所 | `CARGO_INCREMENTAL=0` | `CARGO_INCREMENTAL=1` |
 |---|---|---|

@@ -1,5 +1,5 @@
 //! 実物の `claude -p` での通し。フィクスチャのリポジトリで小さな要望を直させ、取り込みと返事まで確かめる。
-//! 費用がかかるので既定では走らせない。`cargo nextest run -p mm-improve --run-ignored only real_claude` で 1 回だけ回す。
+//! 費用がかかるので既定では実行しない。`cargo nextest run -p mm-improve --run-ignored only real_claude` で 1 回だけ回す。
 
 use std::sync::Arc;
 
@@ -13,7 +13,7 @@ const BUDGET_USD: f64 = 1.0;
 const WALL_MINUTES: u32 = 15;
 
 #[test]
-#[ignore = "実物の claude -p を呼び費用がかかる。手で 1 回だけ走らせる"]
+#[ignore = "実物の claude -p を呼び費用がかかる。手で 1 回だけ実行する"]
 fn real_claude_fixes_a_typo_and_replies() {
     let fx = Fixture::new();
     let imp = Improver::new(

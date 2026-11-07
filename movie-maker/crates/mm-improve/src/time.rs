@@ -64,7 +64,7 @@ pub fn short_hex() -> String {
     format!("{:02x}{:02x}", b[0], b[1])
 }
 
-/// `claude -p --session-id` に渡す UUID（版 4）。
+/// `claude -p --session-id` に渡す UUID（バージョン 4）。
 pub fn uuid_v4() -> String {
     let mut b = random_bytes::<16>();
     b[6] = (b[6] & 0x0f) | 0x40;

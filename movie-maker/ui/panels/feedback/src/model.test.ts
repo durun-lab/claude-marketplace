@@ -18,7 +18,7 @@ const item = (over: Partial<FeedbackItem>): FeedbackItem => ({ ...(replied as Fe
 describe("stageOf", () => {
   it("保存された状態と回と最後の返事から 5 つの状態を決める", () => {
     const run = { id: "r1", items: ["a"], startedAt: 0, phase: "agent" as const, limitResetsAt: null };
-    const rejected = { at: 1, runId: "r0", text: "落ちた", outcome: { kind: "rejected" as const, reason: "cargo check" } };
+    const rejected = { at: 1, runId: "r0", text: "通らなかった", outcome: { kind: "rejected" as const, reason: "cargo check" } };
     expect(stageOf(item({ status: "done" }), null)).toBe("landed");
     expect(stageOf(item({ status: "held" }), null)).toBe("held");
     expect(stageOf(item({ id: "a", status: "pending", replies: [] }), status({ run }))).toBe("inRun");
@@ -43,7 +43,7 @@ describe("文の組み立て", () => {
   it("見出しは回、待機、OFF、未対応の順に出す", () => {
     const run = { id: "r1", items: ["a", "b"], startedAt: 0, phase: "gate" as const, limitResetsAt: null };
     expect(headline(status({ run, running: true }), 120_000)).toBe("Run r1: checking on 2 (2m ago)");
-    expect(headline(status({ waiting: "検査で落ちた" }), 0)).toBe("Waiting: 検査で落ちた");
+    expect(headline(status({ waiting: "検査に通らなかった" }), 0)).toBe("Waiting: 検査に通らなかった");
     const off = status({ pending: 2 });
     off.settings.enabled = false;
     expect(headline(off, 0)).toBe("Off. 2 pending");
