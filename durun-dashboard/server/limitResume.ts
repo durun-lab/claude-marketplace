@@ -6,7 +6,6 @@ import path from 'node:path';
 import { claudeLogin, requestAuth } from './auth.ts';
 import { findTranscript, readLiveSessions, summarizeLog } from './claude.ts';
 import { continueStopped } from './deliver.ts';
-import { resumeImprover } from './improve.ts';
 import { state, touch } from './store.ts';
 
 // リセットの時刻ちょうどに頼むと、まだ断られることがあるので、少し待ってから続けさせる。
@@ -95,14 +94,12 @@ export const checkLimit = (sessionId: string, online = false): void => {
   }
   meta.limitResumedAt = at;
   touch();
-  if (state.improve.run?.sessionId === sessionId) return resumeImprover();
   continueStopped(sessionId, meta.cwd).catch((e: Error) => console.error(`${sessionId} に続きを頼めません: ${e.message}`));
 };
 
 /** 起動したときに呼ぶ。サーバーが止まっている間に止まったセッションと、制限が明けたり通信が戻ったりしたセッションを拾う。 */
 export const checkLimits = (): void => {
   for (const id of readLiveSessions().keys()) checkLimit(id);
-  if (state.improve.run) checkLimit(state.improve.run.sessionId);
 };
 
 /**

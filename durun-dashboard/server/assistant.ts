@@ -63,7 +63,7 @@ const stateOf = (snap: Snapshot) => ({
     fiveHour: snap.rateLimits.fiveHour && { usedPercent: snap.rateLimits.fiveHour.usedPercent, resetsAt: localTime(snap.rateLimits.fiveHour.resetsAt) },
     sevenDay: snap.rateLimits.sevenDay && { usedPercent: snap.rateLimits.sevenDay.usedPercent, resetsAt: localTime(snap.rateLimits.sevenDay.resetsAt) },
   },
-  improve: { enabled: snap.improve.enabled, running: snap.improve.running, current: snap.improve.current, pending: snap.improve.pending },
+  improve: { enabled: !!snap.improve.workflow?.enabled, running: !!snap.improve.workflow?.running, current: snap.improve.workflow?.current, pending: snap.improve.pending },
 });
 
 const SPEAKER: Record<AssistantMessage['role'], string> = { human: '人間', dolphin: 'イルカ' };

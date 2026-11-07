@@ -8,8 +8,8 @@ import { tempDir } from './tmp.ts';
 const dataDir = tempDir('durun-dashboard-errors-');
 process.env.DURUN_DASHBOARD_DATA_DIR = dataDir;
 const { recordError, recordSlow } = await import('../server/errors.ts');
-const { nextImprovement } = await import('../server/improve.ts');
-const { ensureSession, state } = await import('../server/store.ts');
+const { finishItems } = await import('../server/improve.ts');
+const { state } = await import('../server/store.ts');
 const { platform } = await import('../server/platform.ts');
 
 const feedbackDir = path.join(dataDir, 'feedback');
@@ -66,12 +66,8 @@ test('要望に対応した後に再発したら、回数と最長をその後�
   const message = 'session/overview の画面を固めた「FrameRequestCallback」の処理（見込み 0.5 秒）';
   recordSlow('client', message, 10453);
   const [item = ''] = pending();
-  // 改善のセッションが、この要望に対応したと書いて止まる。
-  const transcript = path.join(dataDir, 'wave.jsonl');
-  fs.writeFileSync(transcript, `${JSON.stringify({ type: 'assistant', message: { content: [{ type: 'text', text: '直しました。' }] } })}\n`);
-  ensureSession('wave', dataDir).transcriptPath = transcript;
-  state.improve.run = { sessionId: 'wave', pid: process.pid, items: [item], startedAt: 0 };
-  nextImprovement('wave', `直しました。\n対応した要望:\n${item}`);
+  // 改善要望のウェーブが、この要望に対応したと書いて止まる。
+  finishItems('wave', `直しました。\n対応した要望:\n${item}`);
 
   const since = Date.now();
   recordSlow('client', message, 800);

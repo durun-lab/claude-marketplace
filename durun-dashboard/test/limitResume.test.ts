@@ -14,7 +14,6 @@ process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
 const { summarizeLog } = await import('../server/claude.ts');
 const { answerOffline, checkLimit, onTranscriptChange, setAutoContinue } = await import('../server/limitResume.ts');
 const { answerAuth, authRequests } = await import('../server/auth.ts');
-const { ensureImprover, improveState, nextImprovement } = await import('../server/improve.ts');
 const { ensureSession, state } = await import('../server/store.ts');
 const { platform } = await import('../server/platform.ts');
 const sessionsDir = path.join(tmp, 'claude', 'sessions');
@@ -101,29 +100,6 @@ test('制限が明けたセッションには、前置きを付けずに「続�
   await new Promise((r) => setTimeout(r, 300));
   assert.equal(received.length, 1);
   await new Promise((resolve) => server.close(resolve));
-});
-
-test('使用制限で止まった改善のウェーブは区切らずに待ち、制限が明けたら同じセッションに「続けて」と頼んで続ける', async () => {
-  const bin = tempDir('durun-dashboard-bin-');
-  const argsFile = path.join(bin, 'args');
-  useFakeClaude(bin, `fs.writeFileSync(${js(argsFile)}, lines(args));`);
-  const resetsAt = toSecond(Date.now() - 2 * MINUTE);
-  transcriptOf('wave', [limited(Date.now() - HOUR, resetsAt)]);
-  // プロセスは制限で終わっている。
-  state.improve.run = { sessionId: 'wave', pid: 0, items: [], summary: '2 件の要望のウェーブ', startedAt: 0 };
-
-  nextImprovement('wave', "You've hit your session limit · resets 2:50pm (Asia/Tokyo)");
-  ensureImprover();
-  assert.equal(state.improve.run?.sessionId, 'wave');
-  assert.equal(state.improve.error, undefined);
-  assert.deepEqual([improveState().running, improveState().current, improveState().limitResetsAt], [false, '2 件の要望のウェーブ', resetsAt]);
-
-  checkLimit('wave');
-  await until(() => fs.existsSync(argsFile));
-  const args = fs.readFileSync(argsFile, 'utf8').trim().split('\n');
-  assert.deepEqual(args.slice(0, 3), ['-p', '--resume', 'wave']);
-  assert.equal(args.at(-1), '続けて');
-  assert.equal(state.improve.run?.sessionId, 'wave');
 });
 
 /** Claude Code が、応答の途中でスリープしたときなどに会話ログへ残す合成の発言。 */
