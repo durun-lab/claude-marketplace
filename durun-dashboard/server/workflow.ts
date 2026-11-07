@@ -1,12 +1,13 @@
 // ワークフローアプリ。Claude Code のルーティンのように、トリガーでセッションを動かす。ルーティンと違い、手元のダッシュボードで動く。
 // 定義は workflows.json に置き、人間とエージェントが書く。ダッシュボードは書き換えを読み直してすぐ使い、ON と OFF の切り替えだけを書き込む。
-// 動きは 1 分ごとに確かめる。時刻のトリガーはその間に過ぎた時刻で、レビュー依頼のトリガーは GitHub の Inbox に新しく現れた PR で動く。
+// 動きは 1 分ごとに確かめる。時刻のトリガーはその間に過ぎた時刻で、レビュー依頼のトリガーは GitHub の Inbox に新しく現れた PR で、メンションのトリガーは Slack の検索に新しく現れた発言で動く。
 import fs from 'node:fs';
 import path from 'node:path';
 import { EFFORT_LEVELS, MODELS, type WorkflowDef, type WorkflowInfo, type WorkflowState, type WorkflowTrigger } from '../shared/types.ts';
 import { readLiveSessions } from './claude.ts';
 import { COMPACT_COMMAND, compactSession, sendMessage, startTrackedSession } from './deliver.ts';
 import { githubInbox } from './integrations.ts';
+import { slackMentions } from './slack.ts';
 import { DATA_DIR, newId, persist, state, touch, type WorkflowRun } from './store.ts';
 
 export const WORKFLOWS_FILE = path.join(DATA_DIR, 'workflows.json');
@@ -17,6 +18,7 @@ const DAY_MS = 24 * 60 * 60_000;
 const SEEN_KEPT = 500;
 const MARK = '[durun-dashboard ワークフロー]';
 const DIRECT_SECTION = 'Needs your review';
+const MENTION_ERROR = 'Slack のメンションを読めません';
 const ID_PATTERN = /^[\w-]+$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 // 溜まったイベントを 1 つの依頼にまとめるときの区切り。
@@ -28,6 +30,7 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 
 const triggerOf = (raw: unknown): WorkflowTrigger => {
   if (isObject(raw) && raw.kind === 'github-review') return { kind: 'github-review' };
+  if (isObject(raw) && raw.kind === 'slack-mention') return { kind: 'slack-mention' };
   if (isObject(raw) && raw.kind === 'schedule' && typeof raw.at === 'string' && TIME_PATTERN.test(raw.at)) {
     const days = Array.isArray(raw.days) ? raw.days.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6) : undefined;
     return { kind: 'schedule', at: raw.at, ...(days?.length ? { days } : {}) };
@@ -200,6 +203,32 @@ const checkReviews = async (list: WorkflowDef[]): Promise<void> => {
   }
 };
 
+/** メンションのトリガーを持つワークフローに、新しく届いたメンションを積む。初めて読んだときに届いていたメンションでは動かない。 */
+const checkMentions = async (list: WorkflowDef[]): Promise<void> => {
+  if (!list.length) return;
+  const mentions = await slackMentions();
+  for (const w of list) {
+    const run = runOf(w.id);
+    const fresh = run.seenMentions ? mentions.filter((m) => !run.seenMentions?.includes(m.url)) : [];
+    // 検索の結果は新しい順なので、古いものから積む。
+    for (const m of fresh.reverse()) enqueue(w, `Slack で自分へのメンションが届きました（${m.channel}）:
+${m.text}
+${m.url}`);
+    run.seenMentions = [...new Set([...mentions.map((m) => m.url), ...(run.seenMentions ?? [])])].slice(0, SEEN_KEPT);
+    if (run.error?.startsWith(MENTION_ERROR)) run.error = undefined;
+  }
+};
+
+/** kind のトリガーを持つワークフローについて check を動かし、読めなければ理由をそれぞれに残す。 */
+const checkEvents = async (active: WorkflowDef[], kind: WorkflowTrigger['kind'], label: string, check: (list: WorkflowDef[]) => Promise<void>): Promise<void> => {
+  const list = active.filter((w) => w.triggers.some((t) => t.kind === kind));
+  try {
+    await check(list);
+  } catch (e) {
+    for (const w of list) runOf(w.id).error = `${label}: ${(e as Error).message}`;
+  }
+};
+
 const tick = async (): Promise<void> => {
   const now = Date.now();
   const from = state.workflowCheckedAt ?? now;
@@ -209,11 +238,8 @@ const tick = async (): Promise<void> => {
     const due = w.triggers.find((t): t is Extract<WorkflowTrigger, { kind: 'schedule' }> => t.kind === 'schedule' && scheduleDue(t, from, now));
     if (due) enqueue(w, `時刻のトリガー（${due.at}）で動きました。`);
   }
-  try {
-    await checkReviews(active.filter((w) => w.triggers.some((t) => t.kind === 'github-review')));
-  } catch (e) {
-    for (const w of active) if (w.triggers.some((t) => t.kind === 'github-review')) runOf(w.id).error = `レビュー依頼を読めません: ${(e as Error).message}`;
-  }
+  await checkEvents(active, 'github-review', 'レビュー依頼を読めません', checkReviews);
+  await checkEvents(active, 'slack-mention', MENTION_ERROR, checkMentions);
   for (const w of active) dispatch(w);
   persist();
 };
@@ -259,6 +285,7 @@ const consultPrompt = (target: WorkflowDef | undefined): string => `${MARK} 人�
 - triggers: 次の配列
   - { "kind": "schedule", "at": "09:00", "days": [1, 2, 3, 4, 5] }: 時刻で動く。days は 0 が日曜で、省くと毎日
   - { "kind": "github-review" }: GitHub で自分へのレビュー依頼が新しく届いたときに動く
+  - { "kind": "slack-mention" }: Slack で自分へのメンションが新しく届いたときに動く。Claude Code の /mcp で Slack に接続している必要がある
 - mode: "new" はイベントごとに新しいセッションを起動する。"continue" は 1 つのセッションを引き継いでイベントをチャットに送り、セッションが無いかアーカイブされていたら新しく起動する
 - compact: mode が "continue" のとき、true なら、イベントを送る前に毎回前回までの会話を compact する
 - maxSessions: mode が "new" のとき、同時に動かすセッションの上限（既定 1）。上限を超えたイベントは、空くまで待たせる
