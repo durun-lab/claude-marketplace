@@ -11,6 +11,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use mm_ops::{Op, Transaction};
+use mm_types::Params;
 use serde::Deserialize;
 use serde_json::{json, Map, Value};
 
@@ -18,6 +19,7 @@ use crate::comments::ListQuery;
 use crate::core::{Caller, Core, ServeError};
 use crate::frames::{parse_time, FrameRequest};
 use crate::http::{blocking, error_body, AppState};
+use crate::kinds::KindQuery;
 use crate::mcp_tools::{tools, COMMON_ARGS};
 
 /// 応じられる MCP の仕様の日付。先頭が最新で、要求が無いか知らない日付のときに返す（仕様の版の交渉）。
@@ -169,6 +171,15 @@ async fn run_tool(
             Ok(vec![text(&view)])
         }
         "frame" => frame(core, args).await,
+        "kinds" => {
+            let a: KindsArgs = parse_args(args)?;
+            let query = KindQuery {
+                kind: a.kind,
+                params: a.params.unwrap_or_default(),
+            };
+            let kinds = blocking(move || core.kinds(&query)).await?;
+            Ok(vec![text(&json!({ "kinds": kinds }))])
+        }
         op if tools().op_names.contains(op) => {
             let (txn, responds_to) = op_transaction(op, args)?;
             let change = blocking(move || core.apply(txn, &caller, responds_to)).await?;
@@ -187,6 +198,13 @@ struct TransactionArgs {
     ops: Vec<Op>,
     base_version: Option<u64>,
     responds_to: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct KindsArgs {
+    kind: Option<String>,
+    params: Option<Params>,
 }
 
 #[derive(Deserialize)]

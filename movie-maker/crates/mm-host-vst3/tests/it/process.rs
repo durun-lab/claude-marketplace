@@ -91,7 +91,7 @@ fn reset_は遅延の中身を消す() {
     assert_eq!(&b.samples[..2], &[0.0, 0.0]);
 }
 
-/// 全体の長さで 64 フレームごとに gain を変える点の列のうち、`[start, start + len)` の分（区間の先頭からの位置）。
+/// 全体の長さで 64 フレームごとに gain を変える点の並びのうち、`[start, start + len)` の分（区間の先頭からの位置）。
 fn ramp_points(start: usize, len: usize) -> Vec<ParamPoint> {
     let first = start / 64 * 64;
     (first..start + len)
@@ -133,7 +133,7 @@ fn 分け方に依らず同じサンプルになる() {
 }
 
 #[test]
-fn ステレオでないブロックは断る() {
+fn ステレオでないブロックは拒否する() {
     let mut effect = start(GAIN);
     let mut mono = AudioBlock::silence(RATE, 1, 16);
     assert!(effect.process(&mut mono, &at_start(&[])).is_err());

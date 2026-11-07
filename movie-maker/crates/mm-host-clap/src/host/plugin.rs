@@ -8,6 +8,7 @@ use std::path::Path;
 
 use clack_extensions::audio_ports::{AudioPortFlags, AudioPortInfoBuffer, PluginAudioPorts};
 use clack_extensions::params::{ParamInfoBuffer, ParamInfoFlags, PluginParams};
+use clack_host::entry::LibraryEntry;
 use clack_host::plugin::PluginDescriptor;
 use clack_host::prelude::*;
 
@@ -39,10 +40,16 @@ impl HostHandlers for MmHost {
 
 /// `.clap` のファイルを読み込む。
 pub fn load(path: &Path) -> Result<PluginEntry, String> {
-    // SAFETY: 共有ライブラリを読み込み、`clap_entry` の init を呼ぶ。プラグインのコードはこのプロセスで動き、
-    // クラッシュはこのプロセスだけを止める（モジュールの冒頭）。
-    unsafe { PluginEntry::load(path) }
-        .map_err(|e| format!("{} を読み込めない: {e}", path.display()))
+    // 依存の DLL の探し方を絞るため、clack-host の `PluginEntry::load` を使わずに自分で読み込んで渡す。
+    // SAFETY: 共有ライブラリを読み込む。プラグインのコードはこのプロセスで動き、クラッシュはこのプロセスだけを止める。
+    let library = unsafe { mm_host_pipe::load_library(path) }?;
+    let bundle = CString::new(path.to_string_lossy().into_owned()).map_err(|e| e.to_string())?;
+    // SAFETY: CLAP の規約の `clap_entry` を読み、その init を呼ぶ。クラッシュはこのプロセスだけを止める。
+    let entry = unsafe { LibraryEntry::load_from_library(library) }
+        .map_err(|e| format!("{} に clap_entry が無い: {e}", path.display()))?;
+    // SAFETY: 同上。
+    unsafe { PluginEntry::load_from(entry, &bundle) }
+        .map_err(|e| format!("{} を初期化できない: {e}", path.display()))
 }
 
 /// インスタンスを作る。

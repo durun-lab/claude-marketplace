@@ -8,6 +8,8 @@ pub enum Container {
     Mp4,
     /// ProRes と DNxHR の置き場。
     Mov,
+    /// 配信の区間。MPEG-TS（HLS の区間）。
+    MpegTs,
 }
 
 impl Container {
@@ -16,6 +18,7 @@ impl Container {
         match self {
             Container::Mp4 => "mp4",
             Container::Mov => "mov",
+            Container::MpegTs => "mpegts",
         }
     }
 }
@@ -85,6 +88,8 @@ pub enum Rate {
     Quality(&'static str, &'static str),
     /// 1 画素 1 フレームあたりのビット数。大きさと fps から目標のビットレートを決める。2 パスはこちら。
     BitsPerPixel(f64),
+    /// 目標のビットレートと上限は実行時に `StreamOutput` で渡る（配信の区間）。
+    Stream,
     /// コーデックの設定（ProRes と DNxHR の profile）で決まる。
     Profile,
 }

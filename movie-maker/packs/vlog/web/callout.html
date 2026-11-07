@@ -86,6 +86,8 @@
     const tail = ['up', 'side'].includes(data.tail) ? data.tail : 'down';
     const text = document.getElementById('text');
     fill(text, colors, fonts, data, tail);
+    // 折り返しの幅は使える幅（画面の幅 - left）で変わるので、前の呼び出しの置き場所を戻してから測る。
+    text.style.left = text.style.top = '0px';
     const w = text.offsetWidth, h = text.offsetHeight;
     const tx = Number(data.x) || 0, ty = Number(data.y) || 0;
     const right = (data.side || 'right') !== 'left';

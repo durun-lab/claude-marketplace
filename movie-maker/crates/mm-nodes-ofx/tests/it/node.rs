@@ -1,4 +1,4 @@
-//! 種類として描く試験（`mm_testkit::node::Harness`、CPU の画像）。契約、値の受け渡し、パラメータの一覧、置き場所の決まり、期待画像。
+//! 種類として描くテスト（`mm_testkit::node::Harness`、CPU の画像）。契約、値の受け渡し、パラメータの一覧、置き場所の決まり、期待画像。
 //!
 //! 期待画像（`fixtures/golden/cpu/ofx-gain.png`）の更新:
 //! `MM_GOLDEN_UPDATE=1 MM_GOLDEN_BACKEND=cpu cargo test -p mm-nodes-ofx --test it node::`
@@ -62,8 +62,10 @@ fn render_with(
 }
 
 #[test]
-fn 試験のプラグインで契約を満たす() {
+fn テストのプラグインで契約を満たす() {
     let Some(exe) = host() else { return };
+    // 真だとレンダラーがバンドルをデコーダーで開こうとして、そのレイヤーが描けない。
+    assert!(!kind(&exe).decodes_asset());
     // プラグインを指さない既定値は入力をそのまま返す（恒等）ので、どの場合も入力を渡す。
     for p in [
         params(GAIN, GAIN_ID, &[]),

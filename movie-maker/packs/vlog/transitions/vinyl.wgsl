@@ -22,7 +22,8 @@ fn overlay(uv: vec2<f32>, p: f32) -> vec4<f32> {
     let rd = rDisc(p);
     let rl = rLabel(p);
     // 盤の影
-    var c = paint(vec3<f32>(0.0), 0.5 * glow(r - rd, 40.0) * step(rd, r) * (1.0 - win(p, 0.8, 0.95)));
+    // 盤が無い間（半径 0）は影も出さず、進み具合 0 のコマを前の場面のままにする。
+    var c = paint(vec3<f32>(0.0), 0.5 * glow(r - rd, 40.0) * step(rd, r) * sat(rd / 40.0) * (1.0 - win(p, 0.8, 0.95)));
     // 盤（ラベルと縁の間）: 黒、溝、回る光
     let disc = fill(r - rd) * (1.0 - fill(r - rl));
     let grooves = 0.5 + 0.5 * sin(r * 1.6);

@@ -121,6 +121,7 @@ fn エンコーダーの失敗は最初のエラーで止まる() {
         codec: "sample".into(),
         output_path: temp("fail.json"),
         audio: None,
+        stream: None,
     };
     let control = ExportControl::default();
     let plan = Plan {

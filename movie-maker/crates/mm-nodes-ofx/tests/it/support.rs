@@ -1,5 +1,5 @@
-//! 試験の部品。ホストは `mm-host-ofx` の実行ファイル（`target/<profile>/mm-host-ofx`）、プラグインは `mm-host-ofx` の
-//! `build.rs` が作る試験のプラグイン。実行ファイルが無ければスキップし、`MM_REQUIRE_OFX` があれば失敗にする。
+//! テストの部品。ホストは `mm-host-ofx` の実行ファイル（`target/<profile>/mm-host-ofx`）、プラグインは `mm-host-ofx` の
+//! `build.rs` が作るテストのプラグイン。実行ファイルが無ければスキップし、`MM_REQUIRE_OFX` があれば失敗にする。
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -9,7 +9,7 @@ use mm_host_ofx::{describe_bundle, OfxLauncher, TEST_PLUGINS};
 use mm_nodes_ofx::{Describe, OfxKind, OfxPlugin, BUNDLE_PARAM, PLUGIN_PARAM};
 use mm_types::{ParamValue, Params};
 
-/// 試験の Gain（`mm-host-ofx/tests/plugins/gain.c`）。
+/// テストの Gain（`mm-host-ofx/tests/plugins/gain.c`）。
 pub const GAIN: &str = "MmTestGain.ofx.bundle";
 pub const GAIN_ID: &str = "mm.test.Gain";
 /// OpenFX の公式のサンプルの Invert。
@@ -50,7 +50,7 @@ pub fn describe(exe: PathBuf) -> Describe {
     })
 }
 
-/// 試験のプラグインの置き場所を OpenFX の置き場所にした種類。
+/// テストのプラグインの置き場所を OpenFX の置き場所にした種類。
 pub fn kind(exe: &Path) -> OfxKind {
     kind_in(exe, PathBuf::from(TEST_PLUGINS))
 }

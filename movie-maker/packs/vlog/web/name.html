@@ -97,7 +97,7 @@
 
   window.mmSetTime = (t, data) => {
     applyTheme(data.theme || {});
-    const x = Number(data.x) || DEFAULT_X, y = Number(data.y) || DEFAULT_Y;
+    const x = Number(data.x ?? DEFAULT_X), y = Number(data.y ?? DEFAULT_Y);
     const left = data.side === 'left';
     const arrow = data.arrow === false || data.arrow === 'false' ? '' : `<div class="arrow">${ARROW_L}</div>`;
     const run = RUN_FROM - RUN_SPAN * (((Math.max(0, t) / RUN_PERIOD) % 1));

@@ -1,9 +1,12 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
-import type { MediaInvoke, MediaListen, Op } from "@mm/sdk";
+import type { Comment, CommentEvent, CommentState, MediaInvoke, MediaListen, Op } from "@mm/sdk";
 
 /** 提案が追加・決定されたことを知らせる Tauri のイベント名。アプリの `review_ipc.rs` と同じ。 */
 export const PROPOSALS_CHANGED_EVENT = "mm:proposals-changed";
+
+/** コメントの追加・返信・状態の変化を知らせる Tauri のイベント名。中身は `CommentEvent`。 */
+export const COMMENTS_CHANGED_EVENT = "mm:comments-changed";
 
 export type ProposalState = "pending" | "approved" | "rejected";
 
@@ -75,6 +78,14 @@ export interface ReviewApi {
   /** Program に提案を適用したフレームを出す。`id` が `null` で元のフレームに戻す。 */
   preview: (id: number | null, ops: number[] | null) => Promise<void>;
   onChanged: (handler: (change: ProposalsChanged) => void) => Promise<() => void>;
+  /** 全部のコメント（書いた順）。モバイルが書いたものも入る。 */
+  comments: () => Promise<Comment[]>;
+  replyComment: (id: string, text: string) => Promise<Comment>;
+  /** `fresh` は Claude の対応でだけなるので決められない。 */
+  setCommentState: (id: string, state: Exclude<CommentState, "fresh">) => Promise<Comment>;
+  /** 再生位置を秒で動かす（`transport` の `seek`）。 */
+  seek: (seconds: number) => Promise<void>;
+  onCommentsChanged: (handler: (event: CommentEvent) => void) => Promise<() => void>;
 }
 
 /** Tauri の失敗（文字列）を、理由を持つ Error にする。 */
@@ -102,5 +113,12 @@ export const createIpcReviewApi = (
       await run("review_preview", { id, ops });
     },
     onChanged: (handler) => listen(PROPOSALS_CHANGED_EVENT, (e) => handler(e.payload as ProposalsChanged)),
+    comments: () => run("review_comments"),
+    replyComment: (id, text) => run("review_comment_reply", { id, text }),
+    setCommentState: (id, state) => run("review_comment_state", { id, value: state }),
+    seek: async (seconds) => {
+      await run("transport", { action: "seek", value: seconds });
+    },
+    onCommentsChanged: (handler) => listen(COMMENTS_CHANGED_EVENT, (e) => handler(e.payload as CommentEvent)),
   };
 };
