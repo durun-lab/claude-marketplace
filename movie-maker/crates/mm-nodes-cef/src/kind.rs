@@ -13,6 +13,7 @@ use crate::cache::{Cached, FrameCache, FrameKey};
 use crate::gpu::{copy_into, Converter};
 use crate::hosts::{Delivery, HostPages};
 use crate::page::{FrameRequest, Page, DATA_PARAM, HTML_PARAM, STATIC_PARAM};
+use crate::transfer::rec1886_from_srgb_linear;
 use crate::{mock, KIND_ID, KIND_VERSION};
 
 /// 描き手。
@@ -214,7 +215,10 @@ impl WebCefKind {
 /// CPU の画像の応答を画像にする。共有テクスチャが来たらハンドルを閉じて誤りにする。
 fn cpu_image(frame: SharedFrame) -> Result<RgbaImage> {
     match frame {
-        SharedFrame::Cpu { size, data } => RgbaImage::from_raw(size, data),
+        SharedFrame::Cpu { size, mut data } => {
+            rec1886_from_srgb_linear(&mut data);
+            RgbaImage::from_raw(size, data)
+        }
         SharedFrame::SharedTexture { handle, fence, .. } => {
             close_handles(handle, fence.map(|f| f.handle));
             Err(MmError::Internal(
