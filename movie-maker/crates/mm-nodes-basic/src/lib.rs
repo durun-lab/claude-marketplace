@@ -6,6 +6,7 @@
 //! - `text`: 文字。シェーピングと描画は `FrameCx::services` のインターフェースに任せ、同じパラメータの結果は覚える。
 //! - `composition`、`sequence`: 入れ子とカットの並び。内容の展開はレンダラーが行い、種類自身は透明を返す。
 //! - `shader.wgsl`: 利用者が書いた WGSL のフラグメントシェーダー。
+//! - `blur.gaussian`: ガウスぼかし（効果）。
 //! - `color.adjust`、`color.cdl`、`color.lut`、`color.convert`: 線形の光の上の色の処理（効果）。
 //! - `transition.dissolve`: カットの境のクロスディゾルブ。
 //! - `transition.wgsl`: 利用者が書いた WGSL で前後のカットを混ぜるトランジション。
@@ -13,6 +14,7 @@
 //! 画像の大きさは `cx.size`（画布）にそろえる。例外は 2 つで、レンダラーはどちらも `cx.region` の矩形に置く:
 //! `text` は `cx.region` の分だけの画布を返し、`footage` の GPU のフレームは素材のままの大きさで返す。
 
+mod blur;
 mod color;
 mod color_lut;
 mod composition;
@@ -31,6 +33,7 @@ use std::sync::Arc;
 
 use mm_node_api::NodeKind;
 
+pub use blur::{GaussianBlurKind, BLUR_RADIUS_PARAM};
 pub use color::{ColorAdjustKind, ColorCdlKind};
 pub use color_lut::{ColorConvertKind, ColorLutKind, LUT_PARAM};
 pub use composition::{CompositionKind, COMPOSITION_PARAM};
@@ -55,6 +58,7 @@ pub fn all_kinds() -> Vec<Arc<dyn NodeKind>> {
         Arc::new(CompositionKind),
         Arc::new(SequenceKind),
         Arc::new(ShaderWgslKind::default()),
+        Arc::new(GaussianBlurKind::default()),
         Arc::new(ColorAdjustKind::default()),
         Arc::new(ColorCdlKind::default()),
         Arc::new(ColorLutKind::default()),
