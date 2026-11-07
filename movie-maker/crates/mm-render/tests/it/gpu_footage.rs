@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use mm_audio_api::AudioBlock;
 use mm_decode_api::{DecodedFrame, Decoder, DecoderFactory, GpuContextRef, MediaInfo};
-use mm_doc::{Asset, Composition, Layer, Node, Project};
+use mm_doc::{Asset, Composition, Effect, Layer, Node, Project};
 use mm_gpu::{GpuFrameTexture, WgpuGpu};
 use mm_node_api::{FrameRef, GpuHelper, Quality};
 use mm_nodes_basic::all_kinds;
@@ -23,6 +23,8 @@ use mm_types::{
 
 /// f16 の丸めと面積平均の誤差の許容。
 const TOLERANCE: f32 = 3e-3;
+/// 素材の大きさでぼかしてから縮める GPU の経路と、画布の大きさでぼかす CPU の経路の差の許容。
+const BLUR_TOLERANCE: f32 = 2e-2;
 
 /// 160x160 の画布に収めた 320x180 の素材の矩形の上端と下端（y）。
 const BOX_TOP: u32 = 35;
@@ -142,11 +144,19 @@ fn project(size: Size) -> Project {
 }
 
 fn render(ctx: &Arc<GpuContext>, decoders: Arc<dyn DecoderFactory>, size: Size) -> Arc<RgbaImage> {
+    render_project(ctx, decoders, &project(size), size)
+}
+
+fn render_project(
+    ctx: &Arc<GpuContext>,
+    decoders: Arc<dyn DecoderFactory>,
+    p: &Project,
+    size: Size,
+) -> Arc<RgbaImage> {
     let mut nodes = MapRegistry::default();
     for kind in all_kinds() {
         nodes.insert(kind);
     }
-    let p = project(size);
     let mut r = WgpuRenderer::new(
         ctx.clone(),
         decoders,
@@ -155,7 +165,7 @@ fn render(ctx: &Arc<GpuContext>, decoders: Arc<dyn DecoderFactory>, size: Size) 
     );
     let frame = r
         .render_frame(&RenderRequest {
-            project: &p,
+            project: p,
             composition: &Id::new("main"),
             time: RationalTime::from_frames(1, Rational::integer(30)).expect("表せる"),
             size,
@@ -172,6 +182,26 @@ fn render(ctx: &Arc<GpuContext>, decoders: Arc<dyn DecoderFactory>, size: Size) 
     let kept = 1 + r.frame_cache_stats().entries;
     assert_eq!(r.texture_count(), kept, "借用したフレームは提出の後に返す");
     img
+}
+
+#[test]
+fn 素材の大きさのままのフレームにも効果の半径をレイヤーの座標で掛ける() {
+    let Some(ctx) = gpu() else { return };
+    // 320x180 の素材を 160x90 に収める。GPU のフレームは 320 の幅のまま効果に渡る。
+    let size = Size::new(160, 90);
+    let mut p = project(size);
+    p.compositions[0].layers[0].effects.push(Effect {
+        id: Id::new("blur"),
+        node: Node::new("blur.gaussian", 1).with_param("radius", ParamValue::Number(4.0)),
+        enabled: true,
+    });
+    let cpu = render_project(&ctx, Arc::new(SampleDecoderFactory::default()), &p, size);
+    let got = render_project(&ctx, Arc::new(GpuSampleFactory), &p, size);
+    // 素材は一色なので、ぼかしは縁の透明への広がりにだけ出る。半径を素材の画素で数えると縁の幅が半分になる。
+    let edge = |img: &RgbaImage| img.pixel(2, 45).a;
+    assert!(edge(&cpu) < 0.9, "縁が透明へ薄くなる: {}", edge(&cpu));
+    let diff = got.max_diff(&cpu).expect("同じ大きさ");
+    assert!(diff <= BLUR_TOLERANCE, "CPU の経路との差 {diff}");
 }
 
 #[test]

@@ -18,6 +18,8 @@ use mm_types::{MmError, ParamValue, Params, RationalTime, Rgba, RgbaImage, Size}
 const SIZE: Size = Size::new(48, 27);
 /// 入力の f16 への丸めと、式の f32 と f16 の差を見込んだ許容。
 const TOLERANCE: f32 = 5e-3;
+/// 大きいぼかしを縮めた画像で掛ける GPU の経路と、縮めない CPU の経路の差の許容。
+const SHRUNK_TOLERANCE: f32 = 2e-2;
 
 fn gpu() -> Option<Arc<GpuContext>> {
     match GpuContext::shared(&GpuRequest::default()) {
@@ -111,6 +113,18 @@ fn blur_gaussian_は_gpu_と_cpu_で一致する() {
     check(
         &GaussianBlurKind::default(),
         &[(BLUR_RADIUS_PARAM, ParamValue::Number(2.5))],
+    );
+}
+
+#[test]
+fn blur_gaussian_は大きい半径を縮めて掛けても_cpu_の経路に近い() {
+    let Some(ctx) = gpu() else { return };
+    let kind = GaussianBlurKind::default();
+    let params = params_of(&kind, &[(BLUR_RADIUS_PARAM, ParamValue::Number(12.0))]);
+    let diff = gpu_cpu_diff(&ctx, &kind, &params);
+    assert!(
+        diff <= SHRUNK_TOLERANCE,
+        "縮めて掛けた GPU と CPU の差 {diff}"
     );
 }
 
