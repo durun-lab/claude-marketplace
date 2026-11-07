@@ -15,7 +15,7 @@ import { answerAuth, loginClaude } from './auth.ts';
 import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
 import { bump, saveCache } from './cache.ts';
-import { CLAUDE_DIR, borrowSkills, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readLiveSessions, readSubagents, saveLogSummaries, summarizeLog } from './claude.ts';
+import { CLAUDE_DIR, borrowSkills, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readLiveSessions, forgetStat, readSubagents, saveLogSummaries, summarizeLog, trustWatchedDir } from './claude.ts';
 import { allowPermission, allowPermissions, answerCommand, runCommands, answerQuestion, archiveSession, compactSession, discardSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, retryRemovals, sendMessage, sendQueued, SessionStateError, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
@@ -45,7 +45,7 @@ import { MAX_SENTENCES, priorReadings, proofread, revise, summarizeProof } from 
 import { parseProof } from './proofText.ts';
 import { recordRateLimits } from './rateLimits.ts';
 import { searchSessions, warmSearch } from './search.ts';
-import { badgeUrls, buildSnapshot, conversationOf, renameTheme, warmLogs } from './snapshot.ts';
+import { badgeUrls, buildSnapshot, conversationOf, onLogWarmed, renameTheme, warmLogs } from './snapshot.ts';
 import { DATA_DIR, newId, onChange, save, state, touch } from './store.ts';
 import { type Conversation, explainTerm, peekReplies, sessionGlossary, suggestTitle, summarize, summaryText, termKey } from './suggest.ts';
 import { hasJev } from './jev.ts';
@@ -1538,7 +1538,11 @@ const server = http.createServer(async (req, res) => {
 
 const watch = (target: string, recursive: boolean, onEvent: (file: string | null) => void): void => {
   try {
-    fs.watch(target, { recursive }, (_, file) => onEvent(file));
+    fs.watch(target, { recursive }, (_, file) => {
+      forgetStat(target, file);
+      onEvent(file);
+    });
+    trustWatchedDir(target, recursive);
   } catch {
     // まだ存在しないディレクトリは監視しない。Claude Code を一度使えば作られる。
   }
@@ -1546,6 +1550,7 @@ const watch = (target: string, recursive: boolean, onEvent: (file: string | null
 
 fs.mkdirSync(STATUSLINE_DIR, { recursive: true });
 onChange(scheduleBroadcast);
+onLogWarmed(scheduleBroadcast);
 // 保留したメッセージは、セッションが入力待ちになったときと、質問への回答や前のメッセージの配信で状態が変わったときに送る。
 onChange(flushQueue);
 // アーカイブ待ちのセッションは、入力待ちか停止になったときにアーカイブする。作業中かどうかはセッションのファイルに出る。

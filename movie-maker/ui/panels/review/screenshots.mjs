@@ -14,6 +14,10 @@ export default async (browser, { dist }) => {
     await page.getByRole("button", { name: "Proposed" }).first().click();
     await page.mouse.move(0, 0);
     await page.screenshot({ path: `${outDir}review-${theme}.png` });
+    await page.getByRole("button", { name: /^Comments/ }).click();
+    await page.getByRole("button", { name: "Reply" }).nth(1).click();
+    await page.mouse.move(0, 0);
+    await page.screenshot({ path: `${outDir}review-comments-${theme}.png` });
     await page.close();
   }
 };

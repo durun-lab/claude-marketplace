@@ -26,8 +26,8 @@ impl Bundle {
     pub fn open(path: &Path) -> Result<Self, String> {
         let binary =
             bundle_binary(path).ok_or_else(|| format!("{} はバンドルでない", path.display()))?;
-        let lib = load_library(&binary)
-            .map_err(|e| format!("{} を読み込めない: {e}", binary.display()))?;
+        // SAFETY: プラグインの共有ライブラリの初期化を実行する。クラッシュしてもこのプロセスだけが止まる。
+        let lib = unsafe { mm_host_pipe::load_library(&binary) }?;
         Ok(Self {
             path: path.to_path_buf(),
             binary,
@@ -58,29 +58,6 @@ impl Bundle {
                 .collect())
         }
     }
-}
-
-/// 共有ライブラリを読み込む。Windows では依存の DLL をバンドルのフォルダーとシステムのフォルダーから探し、
-/// カレントや `PATH` の同じ名前の DLL を読まない。
-#[cfg(windows)]
-fn load_library(binary: &Path) -> Result<libloading::Library, String> {
-    use libloading::os::windows::{
-        Library, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR,
-    };
-    // LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR は完全なパスでないと受けない。
-    let binary = std::path::absolute(binary).map_err(|e| e.to_string())?;
-    let flags = LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS;
-    // SAFETY: プラグインの共有ライブラリの初期化を実行する。クラッシュしてもこのプロセスだけが止まる。
-    unsafe { Library::load_with_flags(&binary, flags) }
-        .map(Into::into)
-        .map_err(|e| e.to_string())
-}
-
-/// 共有ライブラリを読み込む。
-#[cfg(not(windows))]
-fn load_library(binary: &Path) -> Result<libloading::Library, String> {
-    // SAFETY: プラグインの共有ライブラリの初期化を実行する。クラッシュしてもこのプロセスだけが止まる。
-    unsafe { libloading::Library::new(binary) }.map_err(|e| e.to_string())
 }
 
 /// 1 つのプラグイン（`OfxPlugin` のコピー）。

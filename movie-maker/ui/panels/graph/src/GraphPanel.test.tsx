@@ -3,7 +3,7 @@ import { render } from "preact";
 import { act } from "preact/test-utils";
 import type { Keyframe, Op, Param } from "@mm/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { GraphPanel } from "./GraphPanel.tsx";
+import { GraphPanel, SETTLE_TIMEOUT_MS } from "./GraphPanel.tsx";
 import { fitView, xOf, yOf } from "./view.ts";
 
 const host = document.createElement("div");
@@ -119,6 +119,49 @@ describe("GraphPanel のドラッグ", () => {
     if (op.op === "setEase") {
       expect(op.bezier?.x1).toBeCloseTo(0.25, 6);
       expect(op.bezier?.y1).toBeCloseTo(0.8, 6);
+    }
+  });
+});
+
+describe("GraphPanel の離した直後", () => {
+  const curve = () => host.querySelector("path")?.getAttribute("d");
+
+  it("離した後、操作の結果が届くまでは動かした後の曲線を保つ（元に戻って見えない）", () => {
+    mount(vi.fn());
+    const before = curve();
+    pointer(key("key 2.000s x"), "pointerdown", xOf(view, 2), yOf(view, 1));
+    pointer(svg(), "pointermove", xOf(view, 1.5), yOf(view, 0.5));
+    const moved = curve();
+    pointer(svg(), "pointerup", xOf(view, 1.5), yOf(view, 0.5));
+    expect(curve()).toBe(moved);
+    expect(curve()).not.toBe(before);
+    expect(svg()?.getAttribute("data-dragging")).toBe("false");
+  });
+
+  it("新しいパラメータが届いたらそちらを描く", () => {
+    mount(vi.fn());
+    pointer(key("key 2.000s x"), "pointerdown", xOf(view, 2), yOf(view, 1));
+    pointer(svg(), "pointermove", xOf(view, 1.5), yOf(view, 0.5));
+    pointer(svg(), "pointerup", xOf(view, 1.5), yOf(view, 0.5));
+    const next: Param = { ...param, keyframes: [num(0, 0, "bezier"), num(1, 1)] };
+    act(() => mount(vi.fn(), undefined, next));
+    const fresh = document.createElement("div");
+    render(<GraphPanel target={target} param={next} fps={10} width={W} height={H} onOp={vi.fn()} />, fresh);
+    expect(curve()).toBe(fresh.querySelector("path")?.getAttribute("d"));
+  });
+
+  it("結果が届かなくても、しばらくしたら届いているパラメータに戻る", () => {
+    vi.useFakeTimers();
+    try {
+      mount(vi.fn());
+      const before = curve();
+      pointer(key("key 2.000s x"), "pointerdown", xOf(view, 2), yOf(view, 1));
+      pointer(svg(), "pointermove", xOf(view, 1.5), yOf(view, 0.5));
+      pointer(svg(), "pointerup", xOf(view, 1.5), yOf(view, 0.5));
+      act(() => void vi.advanceTimersByTime(SETTLE_TIMEOUT_MS));
+      expect(curve()).toBe(before);
+    } finally {
+      vi.useRealTimers();
     }
   });
 });

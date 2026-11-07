@@ -9,7 +9,12 @@ use mm_types::{ParamValue, Params, Rational, RationalTime, TimeRange};
 use crate::{plugin_path, signal, DELAY, EXE, GAIN, P_CRASH, P_GAIN, RATE, TIMEOUT};
 
 fn kind() -> ClapEffectKind {
-    ClapEffectKind::new(Some(EXE.into())).with_timeout(TIMEOUT)
+    ClapEffectKind::new(Some(EXE.into()))
+        .with_timeout(TIMEOUT)
+        .with_roots(vec![plugin_path()
+            .parent()
+            .expect("テストのプラグインのフォルダー")
+            .to_path_buf()])
 }
 
 fn frame_time(frame: u64) -> RationalTime {

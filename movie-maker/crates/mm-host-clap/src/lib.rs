@@ -47,6 +47,34 @@ impl PluginStandard for Clap {
     const HOST_STEM: &'static str = "mm-host-clap";
     const HOST_ENV: &'static str = HOST_ENV;
     const LINK_PREFIX: &'static str = "mm-clap";
+    const EXTENSION: &'static str = "clap";
+
+    fn plugin_dirs() -> Vec<PathBuf> {
+        plugin_dirs()
+    }
+}
+
+/// 追加の置き場所を並べる環境変数（CLAP の `entry.h`。区切りは OS の `PATH` と同じ）。
+pub const PLUGIN_PATH_ENV: &str = "CLAP_PATH";
+
+/// CLAP の置き場所。`CLAP_PATH` を先に、OS ごとの既定のフォルダー（`entry.h`）を後に。
+pub fn plugin_dirs() -> Vec<PathBuf> {
+    let extra = std::env::var_os(PLUGIN_PATH_ENV).unwrap_or_default();
+    let mut dirs: Vec<PathBuf> = std::env::split_paths(&extra)
+        .filter(|p| !p.as_os_str().is_empty())
+        .collect();
+    if cfg!(windows) {
+        if let Some(common) = std::env::var_os("COMMONPROGRAMFILES") {
+            dirs.push(PathBuf::from(common).join("CLAP"));
+        }
+        if let Some(local) = std::env::var_os("LOCALAPPDATA") {
+            dirs.push(PathBuf::from(local).join("Programs/Common/CLAP"));
+        }
+    } else if let Some(home) = std::env::var_os("HOME") {
+        dirs.push(PathBuf::from(home).join(".clap"));
+        dirs.push(PathBuf::from("/usr/lib/clap"));
+    }
+    dirs
 }
 
 /// 1 つの CLAP のプラグインのインスタンス。

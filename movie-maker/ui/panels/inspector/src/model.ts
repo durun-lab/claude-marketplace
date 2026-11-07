@@ -133,10 +133,11 @@ export const describeLayer = (layer: Layer, hints: ParamHints = DEFAULT_HINTS): 
       ],
     });
   }
+  // マスクは最後に並べ、その下の追加のボタン（InspectorPanel）と同じ所にまとめる。
   return [
     ...sections,
-    ...(layer.masks ?? []).map((m) => maskSection(m, hints)),
     ...(layer.effects ?? []).map((e) => effectSection(e, hints)),
+    ...(layer.masks ?? []).map((m) => maskSection(m, hints)),
   ].filter((s) => s.rows.length > 0 || s.maskId !== undefined);
 };
 

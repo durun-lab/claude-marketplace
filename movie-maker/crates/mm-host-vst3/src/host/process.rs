@@ -1,7 +1,7 @@
-//! 音のブロックの処理。共有メモリのチャンネルごとの配列を、そのまま主のバスの入れ物として `IAudioProcessor::process` に渡す。
+//! 音のブロックの処理。共有メモリのチャンネルごとの配列を、そのまま主のバスのバッファーとして `IAudioProcessor::process` に渡す。
 //!
 //! 位置の情報は、テンポ 120、4/4 拍子、止まっている状態で、時刻 0 を毎回渡す。空の `processContext` で
-//! 落ちるプラグインを避けつつ、始めた位置で結果が変わらないようにするため（CLAP の `steady_time` を渡さないのと同じ）。
+//! クラッシュするプラグインを避けつつ、始めた位置で結果が変わらないようにするため（CLAP の `steady_time` を渡さないのと同じ）。
 //! 主でないバス（サイドチェインなど）には無音の入力と捨てる出力を渡す。
 
 use vst3::ComWrapper;
@@ -20,7 +20,7 @@ const TEMPO: f64 = 120.0;
 /// 位置の情報の拍子。
 const TIME_SIG: (int32, int32) = (4, 4);
 
-/// 1 つの向きのバスの入れ物。主でないバスのチャンネルは `scratch` を指す。
+/// 1 つの向きのバスのバッファー。主でないバスのチャンネルは `scratch` を指す。
 struct BusBuffers {
     buses: Buses,
     pointers: Vec<Vec<*mut Sample32>>,
@@ -59,7 +59,7 @@ impl BusBuffers {
         }
     }
 
-    /// 主のバスを `main` の配列に向け、入れ物の列を作り直す。`silent` なら主でないバスを無音にする。
+    /// 主のバスを `main` の配列に向け、バッファーの並びを作り直す。`silent` なら主でないバスを無音にする。
     fn bind(&mut self, main: &mut [[f32; MAX_FRAMES]; CHANNELS], frames: usize, silent: bool) {
         if let Some(m) = self.buses.main {
             for (p, ch) in self.pointers[m].iter_mut().zip(main.iter_mut()) {
@@ -88,7 +88,7 @@ impl BusBuffers {
     }
 }
 
-/// 活性にしたインスタンスと、処理に使い回す入れ物。
+/// 活性にしたインスタンスと、処理に使い回すバッファー。
 pub struct Processing {
     instance: Instance,
     inputs: BusBuffers,
@@ -154,7 +154,7 @@ impl Plugin for Processing {
             outputEvents: events,
             processContext: &mut self.context,
         };
-        // SAFETY: 入れ物と COM の部品は全部 self が持ち、この呼び出しの間生きている。
+        // SAFETY: バッファーと COM の部品は全部 self が持ち、この呼び出しの間生きている。
         check(
             unsafe { self.instance.processor.process(&mut data) },
             "process",

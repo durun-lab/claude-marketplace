@@ -35,7 +35,8 @@ export const FadeRows = ({ layer, onOp }: { layer: Layer; onOp: (op: Op) => void
               value={Number(fadeSeconds(fade).toFixed(FADE_DIGITS))}
               onChange={(e) => {
                 const n = e.currentTarget.valueAsNumber;
-                if (Number.isFinite(n)) onOp(setFadeDurationOp(layer, edge, n));
+                const op = Number.isFinite(n) ? setFadeDurationOp(layer, edge, n) : null;
+                if (op) onOp(op);
               }}
             />
             <select

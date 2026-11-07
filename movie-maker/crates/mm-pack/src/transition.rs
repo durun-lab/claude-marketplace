@@ -20,6 +20,19 @@ const TRANSITION_KIND: &str = "transition.wgsl";
 const TRANSITION_KIND_VERSION: u32 = 1;
 /// 共通のコードのファイルの名前の頭。
 const SHARED_PREFIX: &str = "_";
+/// `transition.wgsl` の数のパラメータ（`p0`..`p7`）の数と、巻き戻しの倍率のパラメータ。
+/// ノードは知らない名前のパラメータを黙って捨てるので、展開で弾いて書き損じを残さない。
+const NUMBER_PARAMS: usize = 8;
+const REWIND_PARAM: &str = "rewind";
+
+/// `transition.wgsl` が読むパラメータの名前か。
+fn is_known_param(key: &str) -> bool {
+    key == REWIND_PARAM
+        || key
+            .strip_prefix('p')
+            .and_then(|n| n.parse::<usize>().ok())
+            .is_some_and(|n| n < NUMBER_PARAMS && key.len() == 2)
+}
 
 /// パックのトランジション。名前 → 共通のコードを前に付けた WGSL。
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -85,10 +98,27 @@ pub(crate) fn transition_op(pack: &Pack, env: &Env, step: &TransitionStep) -> Re
     let mut node = Node::new(TRANSITION_KIND, TRANSITION_KIND_VERSION)
         .with_param("code", ParamValue::Text(code.clone()));
     for (key, raw) in &step.params {
+        if !is_known_param(key) {
+            return Err(MmError::InvalidArgument(format!(
+                "transition の {key} は transition.wgsl に無い（p0..p{}、{REWIND_PARAM}）",
+                NUMBER_PARAMS - 1
+            )));
+        }
         let text = env.fill_text(raw)?;
-        let value: f64 = text.trim().parse().map_err(|_| {
-            MmError::InvalidArgument(format!("transition の {key} は数にする: {text}"))
-        })?;
+        let value = text
+            .trim()
+            .parse::<f64>()
+            .ok()
+            .filter(|v| v.is_finite())
+            .ok_or_else(|| {
+                MmError::InvalidArgument(format!("transition の {key} は数にする: {text}"))
+            })?;
+        // 倍率が 0 以下だとレンダラーは逆再生をやめ、絵だけの巻き戻しになる。
+        if key == REWIND_PARAM && value <= 0.0 {
+            return Err(MmError::InvalidArgument(format!(
+                "transition の {REWIND_PARAM} は正にする: {text}"
+            )));
+        }
         node = node.with_param(key, ParamValue::Number(value));
     }
     let transition = Transition { node, duration };

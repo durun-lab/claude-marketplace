@@ -7,6 +7,8 @@ export interface CutTransition {
   kind: string | null;
   /** 長さ（秒）。 */
   duration: number;
+  /** ノードの数のパラメータ（`p0`..`p7`、`rewind`）。置き直すときに乱数の種と巻き戻しの倍率を保つ。 */
+  params: Record<string, number>;
 }
 
 /** sequence のカット 1 つ（アプリの `transition_cuts`）。時間は秒。 */
@@ -29,8 +31,11 @@ export interface TransitionApi {
   cuts: () => Promise<TransitionState>;
   /** パックのトランジションの名前。 */
   kinds: () => Promise<string[]>;
-  /** カットの頭に `kind` を `duration` 秒で置く。置いてあれば差し替える（`setTransition` 1 回）。 */
-  set: (cut: string, kind: string, duration: number) => Promise<void>;
+  /**
+   * カットの頭に `kind` を `duration` 秒で置く。置いてあれば差し替える（`setTransition` 1 回）。
+   * `params` は今のトランジションの数のパラメータで、乱数の種と巻き戻しの倍率を引き継ぐ。
+   */
+  set: (cut: string, kind: string, duration: number, params?: Record<string, number>) => Promise<void>;
   /** カットの頭のトランジションを外す（`setTransition` 1 回）。 */
   remove: (cut: string) => Promise<void>;
 }
@@ -40,6 +45,22 @@ export const DEFAULT_PACK_DIR = "packs/vlog";
 
 /** マクロ `transition`（`packs/vlog/macros/transition.json`）の名前。 */
 const TRANSITION_MACRO = "transition";
+/** 巻き戻しは逆再生の倍率が要るので、同じ名前の専用のマクロ（`packs/vlog/macros/rewind.json`）で置く。 */
+const REWIND = "rewind";
+/** マクロの引数に当たるノードのパラメータ: `transition` の `seed` は `p0`、`rewind` の `speed` は `rewind`。 */
+const SEED_PARAM = "p0";
+const SPEED_PARAM = "rewind";
+
+/** 種類ごとのマクロと引数。今の乱数の種と正の倍率だけを引き継ぎ、無ければマクロの既定に任せる。 */
+const macroFor = (cut: string, kind: string, duration: number, params: Record<string, number>) => {
+  const dur = String(duration);
+  if (kind === REWIND) {
+    const speed = params[SPEED_PARAM];
+    return { name: REWIND, args: { cut, dur, ...(speed !== undefined && speed > 0 ? { speed: String(speed) } : {}) } };
+  }
+  const seed = params[SEED_PARAM];
+  return { name: TRANSITION_MACRO, args: { cut, kind, dur, ...(seed !== undefined ? { seed: String(seed) } : {}) } };
+};
 
 /** Tauri の invoke と同じ形の関数。テストで差し替える。 */
 export type TransitionInvoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
@@ -63,8 +84,8 @@ export const createIpcTransitionApi = (
   return {
     cuts: () => run("transition_cuts", { dir }),
     kinds: () => run("pack_transitions", { dir }),
-    set: async (cut, kind, duration) => {
-      await run("pack_apply", { dir, name: TRANSITION_MACRO, args: { cut, kind, dur: String(duration) } });
+    set: async (cut, kind, duration, params = {}) => {
+      await run("pack_apply", { dir, ...macroFor(cut, kind, duration, params) });
     },
     remove: async (cut) => {
       const result = await transport.send({ op: "setTransition", cut, transition: null });

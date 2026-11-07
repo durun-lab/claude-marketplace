@@ -45,7 +45,9 @@ fn カットの頭の位置と_トランジションの種類と長さが出る(
     let pack = vlog();
     let code = pack.transitions.code["whip"].clone();
     let mut second = cut("k2", 10, 13);
-    second.transition_in = Some(transition(&code, RationalTime::new(7, 10).unwrap()));
+    let mut whip = transition(&code, RationalTime::new(7, 10).unwrap());
+    whip.node = whip.node.with_param("p0", ParamValue::Number(3.0));
+    second.transition_in = Some(whip);
     let mut third = cut("k3", 20, 22);
     third.transition_in = Some(transition("fn mm_transition() {}", secs(1)));
     let state = cuts_of(
@@ -61,6 +63,11 @@ fn カットの頭の位置と_トランジションの種類と長さが出る(
     let named = state.cuts[1].transition.as_ref().unwrap();
     assert_eq!(named.kind.as_deref(), Some("whip"));
     assert!((named.duration - 0.7).abs() < 1e-9);
+    assert_eq!(
+        named.params.get("p0"),
+        Some(&3.0),
+        "乱数の種を置き直しで保てるように返す"
+    );
     assert_eq!(state.cuts[2].transition.as_ref().unwrap().kind, None);
 }
 

@@ -987,7 +987,7 @@ export type TranslateStatus = { runtime: boolean; model: boolean; installing: bo
 
 // ─── アプリ「ムービーメーカー」 ──────────────────────────────────
 
-/** movie-maker の `GET /events` の change。mm-serve が送った生の値。actor は `gui`（人間）、`mcp`、`cli` など。 */
+/** movie-maker の `GET /events` の change。mm-serve が送った生の値。actor は `gui`、`mobile`（人間）、`mcp`、`cli` など。 */
 export type MmChange = {
   version: number;
   txn_id: number;
@@ -1031,6 +1031,8 @@ export type MovieMakerView = {
   /** 最近開いたプロジェクトのフォルダー。新しい順。 */
   recent: string[];
   hasStore: boolean;
+  /** モバイル版の URL（tailnet での名前から作る）。Tailscale が動いていなければ無い。 */
+  mobileUrl?: string;
   link: { status: MmLinkStatus; message?: string; port?: number; version?: number; undoDepth?: number };
   log: MmLogEntry[];
   logFile?: string;

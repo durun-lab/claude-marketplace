@@ -143,13 +143,17 @@ fn project_info(
 
 /// 書き手として開いた `project.mmdb` を `Core` に渡し、HTTP サーバーを起動する。サーバーを起動できなくても、
 /// IPC の操作は `Core` を通して保存する。
-fn start_serve(shared: &Shared, store: Option<mm_store::Store>) -> Option<Server> {
+fn start_serve(
+    shared: &Shared,
+    store: Option<mm_store::Store>,
+    mobile_cache: std::path::PathBuf,
+) -> Option<Server> {
     let store = store?;
     let config = mm_runtime::RuntimeConfig {
         present: false,
         ..crate::win::playback::runtime_config()
     };
-    let frames = match EngineFrames::spawn(config) {
+    let frames = match EngineFrames::spawn(config, mobile_cache) {
         Ok(f) => Some(Arc::new(f) as Arc<dyn FrameSource>),
         Err(e) => {
             tracing::warn!("フレームの描画を始められない（GET /frame は使えない）: {e}");
@@ -190,6 +194,7 @@ fn forward_changes(app: &tauri::AppHandle, shared: &Arc<Shared>) {
     if let Err(e) = started {
         tracing::warn!("提案の通知を受けるスレッドを始められない: {e}");
     }
+    review_ipc::forward_comments(app, core);
 }
 
 fn fail(message: &str) -> ! {
@@ -210,7 +215,8 @@ pub fn run() {
         .unwrap_or_else(|e| fail(&e.to_string()));
 
     let shared = Arc::new(Shared::new());
-    let server = start_serve(&shared, opened.store.take());
+    let mobile_cache = media::project_cache_dir(&args.project).join("mobile");
+    let server = start_serve(&shared, opened.store.take(), mobile_cache);
     if args.play_test.is_some() {
         shared.collect_series();
     }
@@ -446,6 +452,8 @@ mod tests {
             ("media_list", Panel::Media),
             ("mixer_state", Panel::Mixer),
             ("pack_apply", Panel::Pack),
+            ("review_comment_reply", Panel::Review),
+            ("review_comments", Panel::Review),
             ("review_undo", Panel::Review),
             ("source_open", Panel::Source),
             ("edit_action", Panel::Source),

@@ -1,7 +1,10 @@
 import { useState } from "preact/hooks";
 import type { ReviewApi } from "./api.ts";
+import { filterCounts } from "./commentModel.ts";
+import { CommentsView } from "./CommentsView.tsx";
 import { DecidedCard, PendingCard } from "./ProposalCard.tsx";
-import { useReview } from "./useReview.ts";
+import { useComments } from "./useComments.ts";
+import { useReview, type ReviewState } from "./useReview.ts";
 
 export interface ReviewPanelProps {
   api: ReviewApi;
@@ -13,15 +16,14 @@ export interface ReviewPanelProps {
   nowMs?: number;
 }
 
-/** Claude が出した編集の提案を、承認、却下する。保留中が上、決定済みが下（畳める）。 */
-export const ReviewPanel = ({ api, refreshKey = 0, active = true, nowMs }: ReviewPanelProps) => {
-  const review = useReview(api, refreshKey, active);
+type Tab = "proposals" | "comments";
+
+const Proposals = ({ review, nowMs }: { review: ReviewState; nowMs: number }) => {
   const [showDecided, setShowDecided] = useState(true);
-  const now = nowMs ?? Date.now();
   const pending = review.proposals?.filter((p) => p.state === "pending") ?? [];
   const decided = review.proposals?.filter((p) => p.state !== "pending") ?? [];
   return (
-    <section class="mm-review" aria-label="Review">
+    <>
       {review.error && (
         <p class="mm-review-error" role="alert">
           {review.error}
@@ -31,7 +33,7 @@ export const ReviewPanel = ({ api, refreshKey = 0, active = true, nowMs }: Revie
       {pending.length > 0 && (
         <ul class="mm-review-list" aria-label="Pending proposals">
           {pending.map((p) => (
-            <PendingCard key={p.id} proposal={p} review={review} nowMs={now} />
+            <PendingCard key={p.id} proposal={p} review={review} nowMs={nowMs} />
           ))}
         </ul>
       )}
@@ -44,12 +46,35 @@ export const ReviewPanel = ({ api, refreshKey = 0, active = true, nowMs }: Revie
           {showDecided && (
             <ul class="mm-review-list" aria-label="Decided proposals">
               {decided.map((p) => (
-                <DecidedCard key={p.id} proposal={p} review={review} nowMs={now} />
+                <DecidedCard key={p.id} proposal={p} review={review} nowMs={nowMs} />
               ))}
             </ul>
           )}
         </div>
       )}
+    </>
+  );
+};
+
+/** Claude の編集の提案（承認、却下）と、人とモバイルのコメント（返信、状態）を 1 つのパネルで扱う。 */
+export const ReviewPanel = ({ api, refreshKey = 0, active = true, nowMs }: ReviewPanelProps) => {
+  const review = useReview(api, refreshKey, active);
+  const comments = useComments(api);
+  const [tab, setTab] = useState<Tab>("proposals");
+  const now = nowMs ?? Date.now();
+  const pendingCount = review.proposals?.filter((p) => p.state === "pending").length ?? 0;
+  const fresh = filterCounts(comments.comments ?? []).fresh;
+  return (
+    <section class="mm-review" aria-label="Review">
+      <div class="mm-review-tabs" role="group" aria-label="Review view">
+        <button type="button" class="mm-review-seg" aria-pressed={tab === "proposals"} onClick={() => setTab("proposals")}>
+          Proposals {pendingCount}
+        </button>
+        <button type="button" class="mm-review-seg" aria-pressed={tab === "comments"} onClick={() => setTab("comments")}>
+          Comments {fresh > 0 ? `${fresh} fresh` : (comments.comments?.length ?? 0)}
+        </button>
+      </div>
+      {tab === "proposals" ? <Proposals review={review} nowMs={now} /> : <CommentsView state={comments} nowMs={now} />}
     </section>
   );
 };
