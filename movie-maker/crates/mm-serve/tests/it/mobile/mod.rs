@@ -1,6 +1,7 @@
 //! 人の待ち受け（モバイル版）の結合テスト。`tailscale serve` の代わりに、tailnet での名前の `Host` と
 //! `Tailscale-User-Login` を自分で付けて送る。
 
+mod assets;
 mod comments;
 mod events;
 mod guard;
