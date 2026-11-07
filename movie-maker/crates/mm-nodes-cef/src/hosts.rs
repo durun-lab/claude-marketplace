@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use mm_host_api::{HostLauncher, HostProcess, HostRequest, HostResponse, HostSpec, SharedFrame};
+use mm_text_api::{fonts_fingerprint, FontFile};
 use mm_types::{GpuAdapterId, MmError, Result};
 
 use crate::page::FrameRequest;
@@ -43,6 +44,8 @@ pub struct HostPages {
     executable: PathBuf,
     /// 新しく使った順。
     slots: Vec<Slot>,
+    /// プロジェクトの書体。ページを読み込むときに `Prepare` の `fonts` で渡す。
+    fonts: Vec<FontFile>,
 }
 
 impl HostPages {
@@ -52,6 +55,15 @@ impl HostPages {
             launcher,
             executable,
             slots: Vec::new(),
+            fonts: Vec::new(),
+        }
+    }
+
+    /// プロジェクトの書体の組を入れ替える。組が変わったら、読み込んだページを書体ごと読み直させるためにホストを止める。
+    pub fn set_fonts(&mut self, fonts: &[FontFile]) {
+        if fonts_fingerprint(fonts) != fonts_fingerprint(&self.fonts) {
+            self.fonts = fonts.to_vec();
+            self.slots.clear();
         }
     }
 
@@ -182,7 +194,7 @@ impl HostPages {
             }
         };
         let prepare = HostRequest::Prepare {
-            params: serde_json::json!({ "html": req.page.html }),
+            params: serde_json::json!({ "html": req.page.html, "fonts": self.fonts }),
         };
         match host.request(&prepare, PREPARE_TIMEOUT)? {
             HostResponse::Prepared => Ok(Slot {

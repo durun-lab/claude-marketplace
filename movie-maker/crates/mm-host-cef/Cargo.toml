@@ -21,7 +21,9 @@ required-features = ["cef"]
 mm-host-api = { workspace = true }
 mm-host-pipe = { workspace = true }
 mm-types = { workspace = true }
+serde = { workspace = true }
 serde_json = { workspace = true }
+ttf-parser = { workspace = true }
 cef = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
 pollster = { workspace = true, optional = true }

@@ -11,6 +11,7 @@
 //! シェーパーとレンダラーは別々に作れる。フォントの読み込みは重いので、同じプロセスでは
 //! [`TextEngine`] を共有して両方を取り出すと速い。
 
+mod fonts;
 mod glyph_ids;
 mod gpu;
 mod layout;
@@ -26,11 +27,30 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use cosmic_text::{FontSystem, SwashCache};
 use mm_gpu::GpuContext;
 
-use mm_text_api::{ShapedText, TextRasterizer, TextShaper, TextStyle};
+use mm_text_api::{FontFile, ShapedText, TextRasterizer, TextShaper, TextStyle};
 use mm_types::{MmError, Rect, Result, RgbaImage};
 
 pub(crate) struct Inner {
     pub(crate) fonts: Mutex<(FontSystem, SwashCache)>,
+    project: Mutex<fonts::ProjectFonts>,
+}
+
+impl Inner {
+    fn new() -> Self {
+        Self {
+            fonts: Mutex::new((FontSystem::new(), SwashCache::new())),
+            project: Mutex::new(fonts::ProjectFonts::default()),
+        }
+    }
+
+    /// プロジェクトの書体の組に入れ替える。シェーパーとレンダラーが同じ `Inner` なら 2 回目は何もしない。
+    pub(crate) fn use_fonts(&self, list: &[FontFile]) -> Result<()> {
+        let mut project = lock(&self.project)?;
+        let mut fonts = lock(&self.fonts)?;
+        let (fs, cache) = &mut *fonts;
+        project.replace(fs, cache, list);
+        Ok(())
+    }
 }
 
 pub(crate) fn lock<T>(m: &Mutex<T>) -> Result<MutexGuard<'_, T>> {
@@ -45,13 +65,16 @@ pub struct TextEngine {
 }
 
 impl TextEngine {
-    /// OS にあるフォントを読み込んで作る。
+    /// OS にあるフォントを読み込んで作る。プロジェクトの書体は [`TextEngine::use_fonts`] で足す。
     pub fn new() -> Self {
         Self {
-            inner: Arc::new(Inner {
-                fonts: Mutex::new((FontSystem::new(), SwashCache::new())),
-            }),
+            inner: Arc::new(Inner::new()),
         }
+    }
+
+    /// プロジェクトの書体の組に入れ替える（シェーパーとレンダラーの `use_fonts` と同じ）。
+    pub fn use_fonts(&self, fonts: &[FontFile]) -> Result<()> {
+        self.inner.use_fonts(fonts)
     }
 
     /// シェーパー。
@@ -123,6 +146,10 @@ impl TextShaper for CosmicShaper {
         }
         Ok(shaped)
     }
+
+    fn use_fonts(&self, fonts: &[FontFile]) -> Result<()> {
+        self.inner.use_fonts(fonts)
+    }
 }
 
 /// 1 行目のふりがなの分だけ上に、縁取りの分だけ四方に広げる。CSS で描く実装がこの中に収まる。
@@ -174,5 +201,9 @@ impl TextRasterizer for CpuRasterizer {
         let mut fonts = lock(&self.inner.fonts)?;
         let (fs, cache) = &mut *fonts;
         Ok(raster::draw(fs, cache, shaped, style, scale))
+    }
+
+    fn use_fonts(&self, fonts: &[FontFile]) -> Result<()> {
+        self.inner.use_fonts(fonts)
     }
 }

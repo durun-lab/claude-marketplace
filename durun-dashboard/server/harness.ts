@@ -104,7 +104,8 @@ const memoriesOf = async (claudeDir: string): Promise<HarnessItem[]> => {
       const source = path.basename(project).replace(/^-Users-[^-]+-[^-]+-?/, '') || path.basename(project);
       let files: string[];
       try {
-        files = (await fs.readdir(dir)).filter((f) => f.endsWith('.md'));
+        // readdir の順は OS で違うので、いつも読まれる索引を先に、残りを名前順に並べる。
+        files = (await fs.readdir(dir)).filter((f) => f.endsWith('.md')).sort((a, b) => Number(b === 'MEMORY.md') - Number(a === 'MEMORY.md') || a.localeCompare(b));
       } catch {
         return [];
       }

@@ -1,11 +1,14 @@
-//! `mm pack`: パック（docs/design/13-vlog-pack.md）の検査、マクロの一覧、マクロの展開と適用。
+//! `mm pack`: パック（docs/design/13-vlog-pack.md）の検査、マクロの一覧、マクロの展開と適用、書体の取得。
 //! 適用は `mm op --txn` と同じ経路を通るので、アプリが書き手なら HTTP で転送し、取り消しは `mm undo`。
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
-use mm_pack::{check, expand, Pack};
+use mm_pack::{
+    check, copy_fonts, expand, font_asset_ops, font_files, CachedFont, Curl, FetchReport,
+    FontCache, Pack,
+};
 use mm_runtime::{Backend, Engine, RuntimeConfig};
 use mm_types::{MmError, Result};
 
@@ -50,6 +53,9 @@ pub enum PackCommand {
         #[arg(long = "var", value_parser = parse_var)]
         vars: Vec<(String, String)>,
     },
+    /// パックの書体の目録（`fonts/fonts.json`）の書体を配布元から取り、ハッシュを照らしてユーザーのキャッシュに置く。
+    /// `apply` も足りない書体を取るので、先に取っておきたいとき（オフラインで作業する前など）に使う。
+    FetchFonts { pack: PathBuf },
     /// マクロを展開して 1 つのトランザクションとして適用する。
     /// `mm pack apply <dir> packs/vlog caption --var id=c1 --var text=やあ --var at=1.5`
     Apply {
@@ -70,15 +76,12 @@ pub fn run(command: PackCommand) -> Result<()> {
     match command {
         PackCommand::Check { pack } => run_check(&pack),
         PackCommand::List { pack, json } => list(&pack, json),
+        PackCommand::FetchFonts { pack } => fetch_fonts(&pack),
         PackCommand::Expand { pack, name, vars } => {
-            let engine = text_engine()?;
+            let pack = Pack::load(&pack)?;
+            let engine = text_engine(&ensure_fonts(&pack))?;
             let args = vars.into_iter().collect();
-            let txn = expand(
-                &Pack::load(&pack)?,
-                &name,
-                &args,
-                &*engine.services().text_shaper,
-            )?;
+            let txn = expand(&pack, &name, &args, &*engine.services().text_shaper)?;
             println!("{}", serde_json::to_string_pretty(&txn)?);
             Ok(())
         }
@@ -90,21 +93,98 @@ pub fn run(command: PackCommand) -> Result<()> {
             base,
         } => {
             let args: BTreeMap<String, String> = vars.into_iter().collect();
-            let engine = text_engine()?;
+            let pack = Pack::load(&pack)?;
+            let fonts = ensure_fonts(&pack);
+            let engine = text_engine(&fonts)?;
             let shaper = &*engine.services().text_shaper;
-            let mut txn = expand(&Pack::load(&pack)?, &name, &args, shaper)?;
+            let mut txn = expand(&pack, &name, &args, shaper)?;
+            txn.ops.splice(0..0, import_fonts(&pack, &fonts, &dir)?);
             txn.base_version = base;
             apply_txn(&dir, txn)
         }
     }
 }
 
-/// プレートの大きさを測るための、文字だけ実際の実装（フォントを読む CPU の実装）を選んだエンジン。描くときと同じ字の幅になる。
-fn text_engine() -> Result<Engine> {
-    mm_runtime::assemble(&RuntimeConfig {
+/// プレートの大きさを測るための、文字だけ実際の実装（フォントを読む CPU の実装）を選んだエンジン。
+/// パックの書体を読み込むので、描くときと同じ字の幅になる。
+fn text_engine(fonts: &[CachedFont]) -> Result<Engine> {
+    let engine = mm_runtime::assemble(&RuntimeConfig {
         text: Backend::Cpu,
         ..RuntimeConfig::sample()
-    })
+    })?;
+    engine
+        .services()
+        .text_shaper
+        .use_fonts(&font_files(fonts))?;
+    Ok(engine)
+}
+
+/// `mm pack fetch-fonts`。取れなかった書体があれば誤りで終わる（取れたものはキャッシュに残る）。
+fn fetch_fonts(dir: &Path) -> Result<()> {
+    let pack = Pack::load(dir)?;
+    let cache = FontCache::user()?;
+    let report = cache.fetch(&pack.fonts, &Curl);
+    println!(
+        "書体: 取った {}、キャッシュにあった {}（{}）",
+        report.fetched,
+        report.cached,
+        cache.dir().display()
+    );
+    print_failed(&report);
+    if report.failed.is_empty() {
+        return Ok(());
+    }
+    Err(MmError::NotFound(format!(
+        "書体 {} 件を取れなかった",
+        report.failed.len()
+    )))
+}
+
+/// キャッシュにある書体を返す。足りなければ取る。取れなくても止めずに、OS の書体で描くと伝えて進む。
+fn ensure_fonts(pack: &Pack) -> Vec<CachedFont> {
+    if pack.fonts.is_empty() {
+        return Vec::new();
+    }
+    let cache = match FontCache::user() {
+        Ok(cache) => cache,
+        Err(e) => {
+            eprintln!("書体を使わずに進む（OS の書体で描く）: {e}");
+            return Vec::new();
+        }
+    };
+    let have = cache.resolve(&pack.fonts);
+    if have.len() == pack.fonts.len() {
+        return have;
+    }
+    eprintln!("書体を配布元から取る（{}）", cache.dir().display());
+    let report = cache.fetch(&pack.fonts, &Curl);
+    if !report.failed.is_empty() {
+        print_failed(&report);
+        eprintln!("取れなかった書体は OS の書体で描く。`mm pack fetch-fonts` で取り直せる");
+    }
+    cache.resolve(&pack.fonts)
+}
+
+fn print_failed(report: &FetchReport) {
+    for (file, reason) in &report.failed {
+        eprintln!("  {file}: {reason}");
+    }
+}
+
+/// 書体をプロジェクトのフォルダーの `fonts/` に写し、まだ素材に無いものを足す操作を返す。
+/// JSON のプロジェクトはその JSON のあるフォルダーに写す（素材の相対パスの基準と同じ）。
+fn import_fonts(pack: &Pack, fonts: &[CachedFont], dir: &Path) -> Result<Vec<mm_ops::Op>> {
+    if fonts.is_empty() {
+        return Ok(Vec::new());
+    }
+    let project = mm_store::load_project(dir)?;
+    let base = if dir.is_dir() {
+        dir
+    } else {
+        dir.parent().unwrap_or(Path::new("."))
+    };
+    copy_fonts(fonts, &pack.dir, base)?;
+    Ok(font_asset_ops(fonts, &project))
 }
 
 fn run_check(dir: &Path) -> Result<()> {

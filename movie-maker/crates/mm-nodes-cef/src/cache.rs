@@ -122,7 +122,7 @@ mod tests {
         };
         let mut params = mm_types::Params::new();
         params.set(HTML_PARAM, ParamValue::Text("<p>x</p>".into()));
-        let page = Page::read(&params).unwrap();
+        let page = Page::read_with(&params, false).unwrap();
         let texture = old.device.create_texture(&wgpu::TextureDescriptor {
             label: None,
             size: wgpu::Extent3d {

@@ -1,12 +1,13 @@
 //! `web.cef` の種類。
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError, Weak};
 
 use mm_gpu::{GpuContext, WgpuGpu};
 use mm_host_api::{HostLauncher, SharedFrame};
 use mm_node_api::{Cost, FrameCx, FrameRef, GpuTexture, Isolation, NodeKind, Traits};
+use mm_text_api::FontFile;
 use mm_types::{MmError, ParamSchema, ParamSpec, ParamType, ParamValue, Params, Result, RgbaImage};
 
 use crate::cache::{Cached, FrameCache, FrameKey};
@@ -37,6 +38,8 @@ pub struct WebCefKind {
     cache: Mutex<FrameCache>,
     converter: Mutex<Option<Converter>>,
     device: Mutex<DeviceGeneration>,
+    /// プロジェクトに書体があるか。ページの CSP で書体の起点を許すかを決める。
+    has_fonts: AtomicBool,
     drawn: AtomicU64,
     hits: AtomicU64,
 }
@@ -71,6 +74,7 @@ impl WebCefKind {
             cache: Mutex::new(FrameCache::default()),
             converter: Mutex::new(None),
             device: Mutex::new(DeviceGeneration::default()),
+            has_fonts: AtomicBool::new(false),
             drawn: AtomicU64::new(0),
             hits: AtomicU64::new(0),
         }
@@ -363,7 +367,8 @@ impl NodeKind for WebCefKind {
 
     fn render(&self, cx: &mut FrameCx<'_>) -> Result<FrameRef> {
         let _span = tracing::info_span!("nodes_cef.render").entered();
-        let page = Page::read(cx.params).filter(|_| cx.size.area() > 0);
+        let page = Page::read_with(cx.params, self.has_fonts.load(Ordering::Relaxed))
+            .filter(|_| cx.size.area() > 0);
         let Some(page) = page else {
             return Ok(FrameRef::Transparent { size: cx.size });
         };
@@ -380,6 +385,16 @@ impl NodeKind for WebCefKind {
             }
         }
         self.render_cpu(&req, key)
+    }
+
+    /// ホストに渡す書体を入れ替え、前の書体で描いたフレームを捨てる。
+    fn use_fonts(&self, fonts: &[FontFile]) -> Result<()> {
+        if let Some(mut hosts) = self.hosts() {
+            hosts.set_fonts(fonts);
+        }
+        self.has_fonts.store(!fonts.is_empty(), Ordering::Relaxed);
+        *self.cache() = FrameCache::default();
+        Ok(())
     }
 }
 

@@ -20,8 +20,10 @@
 //! （1 行目は `bounds` を上に広げ、2 行目以降はその行から下を下げる）。親文字の幅と行の幅はふりがなの長さで変えない。
 //! 描く実装はふりがなを親文字の上の中央に描き、描けない実装は親文字だけを描く。
 
+mod fonts;
 mod ruby;
 
+pub use fonts::{declared_family, fonts_fingerprint, is_font_path, FontFile, FONTS_DIR};
 pub use ruby::{has_ruby, parse_ruby, RubySpan, RUBY_SCALE};
 
 use serde::{Deserialize, Serialize};
@@ -203,6 +205,11 @@ pub trait TextShaper: Send + Sync {
     fn id(&self) -> &'static str;
     /// 文字列を行に組む。
     fn shape(&self, text: &str, style: &TextStyle) -> Result<ShapedText>;
+    /// プロジェクトの書体の組を使う（前の組と入れ替える）。同じ名前の OS の書体より優先する。
+    /// 読めないファイルは飛ばして OS の書体に任せる。書体を読み込まない実装は何もしない。
+    fn use_fonts(&self, _fonts: &[FontFile]) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// 描画。`scale` は画面上の倍率。
@@ -211,6 +218,10 @@ pub trait TextRasterizer: Send + Sync {
     fn id(&self) -> &'static str;
     /// シェーピングの結果を `scale` 倍で描く。画像の原点は `shaped.bounds` の左上。
     fn rasterize(&self, shaped: &ShapedText, style: &TextStyle, scale: f32) -> Result<RgbaImage>;
+    /// プロジェクトの書体の組を使う（[`TextShaper::use_fonts`] と同じ約束）。
+    fn use_fonts(&self, _fonts: &[FontFile]) -> Result<()> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]

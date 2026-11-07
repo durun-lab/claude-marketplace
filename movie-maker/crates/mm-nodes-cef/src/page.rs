@@ -16,6 +16,7 @@ pub const STATIC_PARAM: &str = "static";
 /// 倍率は CSS の `zoom` で掛けるので、ページは 1 倍の画素で組めばプレビューの縮小でも同じ見た目になる。
 /// 先頭の CSP は、パックやプロジェクトの HTML がネットワークとローカルのファイルを読まないようにする
 /// （外の資源は画素を決定的でなくし、ファイルの中身を画面に出せてしまう）。資源は `data:` と `blob:` で埋め込む。
+/// プロジェクトに書体があるときだけ、ホストが書体を配る `FONT_ORIGIN` も `font-src` に足す（[`prelude`]）。
 const PRELUDE: &str = "<meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; \
 script-src 'unsafe-inline' 'unsafe-eval'; style-src 'unsafe-inline'; img-src data: blob:; \
 font-src data:; media-src data: blob:; base-uri 'none'; form-action 'none'\">\
@@ -27,6 +28,19 @@ document.documentElement.style.zoom = String(q.scale || 1);\
 return user ? user(t, q.data || {}) : undefined; }; },\
 set(f) { user = f; } });\
 })();</script>";
+
+/// 前置きの `font-src` の指定。
+const FONT_SRC: &str = "font-src data:;";
+
+/// 前置き。`fonts` が真なら、`font-src` にホストが書体を配る起点を足す。
+fn prelude(fonts: bool) -> std::borrow::Cow<'static, str> {
+    if fonts {
+        let with = format!("font-src data: {};", mm_host_api::FONT_ORIGIN);
+        PRELUDE.replacen(FONT_SRC, &with, 1).into()
+    } else {
+        PRELUDE.into()
+    }
+}
 
 /// 前置きを差し込む位置の目印。前にあるものほど優先する。
 const ANCHORS: [&str; 3] = ["<head", "<html", "<!doctype"];
@@ -48,7 +62,8 @@ pub struct Page {
 
 impl Page {
     /// パラメータから読む。HTML が空なら `None`（何も描かない）。
-    pub fn read(params: &Params) -> Option<Self> {
+    /// `fonts` が真なら、ホストが配るプロジェクトの書体を読めるページにする。
+    pub fn read_with(params: &Params, fonts: bool) -> Option<Self> {
         let raw = params.get(HTML_PARAM).and_then(ParamValue::as_text)?;
         if raw.trim().is_empty() {
             return None;
@@ -57,7 +72,7 @@ impl Page {
             Some(ParamValue::Json(v)) => v.clone(),
             _ => serde_json::Value::Object(Default::default()),
         };
-        let html = inject(raw);
+        let html = inject_prelude(raw, &prelude(fonts));
         Some(Self {
             hash: hash_of(&html),
             data_text: data.to_string(),
@@ -110,14 +125,18 @@ fn tag_end(lower: &str, tag: &str) -> Option<usize> {
 /// `<head>` の直後（無ければ `<html>`、`<!doctype>` の直後、どれも無ければ先頭）に前置きを差し込む。
 /// doctype より前に差し込むと Chromium が互換モードで組むので、先頭は最後の手段にする。
 pub fn inject(html: &str) -> String {
+    inject_prelude(html, PRELUDE)
+}
+
+fn inject_prelude(html: &str, prelude: &str) -> String {
     let lower = html.to_ascii_lowercase();
     let at = ANCHORS
         .iter()
         .find_map(|tag| tag_end(&lower, tag))
         .unwrap_or(0);
-    let mut out = String::with_capacity(html.len() + PRELUDE.len());
+    let mut out = String::with_capacity(html.len() + prelude.len());
     out.push_str(&html[..at]);
-    out.push_str(PRELUDE);
+    out.push_str(prelude);
     out.push_str(&html[at..]);
     out
 }
@@ -182,10 +201,27 @@ mod tests {
     }
 
     #[test]
+    fn 書体があるときだけ前置きは書体をホストが配る起点から読ませる() {
+        assert!(PRELUDE.contains(FONT_SRC));
+        let with = prelude(true);
+        assert!(with.contains(&format!("font-src data: {};", mm_host_api::FONT_ORIGIN)));
+        assert_eq!(
+            with.replacen(mm_host_api::FONT_ORIGIN, "", 1).len(),
+            PRELUDE.len() + 1
+        );
+        let mut p = Params::new();
+        p.set(HTML_PARAM, ParamValue::Text("<p>x</p>".into()));
+        assert_ne!(
+            Page::read_with(&p, true).unwrap().hash,
+            Page::read_with(&p, false).unwrap().hash
+        );
+    }
+
+    #[test]
     fn 空の_html_はページにしない() {
         let mut p = Params::new();
         p.set(HTML_PARAM, ParamValue::Text("  ".into()));
-        assert_eq!(Page::read(&p), None);
+        assert_eq!(Page::read_with(&p, false), None);
     }
 
     /// serde_json の `preserve_order` が依存のどこかで有効になると、同じ値でも書いた順でキーが変わる。
@@ -196,7 +232,7 @@ mod tests {
             DATA_PARAM,
             ParamValue::Json(serde_json::from_str(r#"{"b": 1, "a": {"d": 2, "c": 3}}"#).unwrap()),
         );
-        let page = Page::read(&p).unwrap();
+        let page = Page::read_with(&p, false).unwrap();
         assert_eq!(page.data_text, r#"{"a":{"c":3,"d":2},"b":1}"#);
     }
 
@@ -205,7 +241,7 @@ mod tests {
         let mut p = Params::new();
         p.set(HTML_PARAM, ParamValue::Text("<p>x</p>".into()))
             .set(STATIC_PARAM, ParamValue::Bool(true));
-        let page = Page::read(&p).unwrap();
+        let page = Page::read_with(&p, false).unwrap();
         assert_eq!(page.time(RationalTime::seconds(3)), RationalTime::ZERO);
     }
 }

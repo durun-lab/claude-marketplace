@@ -6,6 +6,8 @@
 //!   ルビ（親文字の上の中央に absolute で置き、行の幅を変えない。高さはシェーパーが行の上に空けた場所に収める。
 //!   注記はシェーパーと同じ `mm_text_api::parse_ruby` で読む）。
 //! - 文字は `ShapedText::text` から取る。元の文字列を持たない行組みの結果は `Unsupported`。
+//! - 書体: プロジェクトの書体（`use_fonts`）を `Prepare` の `fonts` でホストに渡す。ホストが `@font-face` を差し込み、
+//!   `font-family` の名前でプロジェクトの書体を引く（無い名前は OS の書体）。
 //! - 画像は CPU の経路（RGBA f32、premultiplied、線形）で受ける。文字の画布は小さく、`text` の種類がキャッシュするので、
 //!   共有テクスチャの経路を使わない。
 //! - 続けて時間切れになったホストは止めて捨て、次の描画で起こし直す。
@@ -15,11 +17,11 @@
 mod page;
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use mm_host_api::{HostLauncher, HostProcess, HostRequest, HostResponse, HostSpec, SharedFrame};
-use mm_text_api::{ShapedText, TextRasterizer, TextStyle};
+use mm_text_api::{fonts_fingerprint, FontFile, ShapedText, TextRasterizer, TextStyle};
 use mm_types::{MmError, RationalTime, Result, RgbaImage, Size};
 
 pub use page::{css_color, page_params};
@@ -38,6 +40,8 @@ pub struct CefRasterizer {
     launcher: Arc<dyn HostLauncher>,
     executable: PathBuf,
     slot: Mutex<HostSlot>,
+    /// プロジェクトの書体。ホストを起こすときにページと一緒に渡す。
+    fonts: Mutex<Vec<FontFile>>,
 }
 
 /// 起こしたホストと、続けて時間切れになった回数。
@@ -82,6 +86,7 @@ impl CefRasterizer {
             launcher,
             executable,
             slot: Mutex::new(HostSlot::default()),
+            fonts: Mutex::new(Vec::new()),
         }
     }
 
@@ -95,6 +100,11 @@ impl CefRasterizer {
         })
     }
 
+    /// 書体の組のロック。組は 1 回の代入で入れ替えるだけなので、パニックの後も中身はそのまま使える。
+    fn fonts(&self) -> MutexGuard<'_, Vec<FontFile>> {
+        self.fonts.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
     fn start(&self) -> Result<Box<dyn HostProcess>> {
         let spec = HostSpec {
             executable: self.executable.clone(),
@@ -104,8 +114,9 @@ impl CefRasterizer {
             client_pid: None,
         };
         let mut host = self.launcher.spawn(&spec)?;
+        let fonts = self.fonts().clone();
         let prepare = HostRequest::Prepare {
-            params: serde_json::json!({ "html": PAGE }),
+            params: serde_json::json!({ "html": PAGE, "fonts": fonts }),
         };
         match host.request(&prepare, PREPARE_TIMEOUT)? {
             HostResponse::Prepared => Ok(host),
@@ -179,6 +190,20 @@ impl TextRasterizer for CefRasterizer {
                 other.size()
             ))),
         }
+    }
+
+    /// 組が変わったら、次の描画でページを書体ごと読み直すよう、ホストを止める。
+    /// 描画はホストのロックの中で書体のロックを取るので、ここでは書体のロックを放してからホストのロックを取る。
+    fn use_fonts(&self, fonts: &[FontFile]) -> Result<()> {
+        {
+            let mut held = self.fonts();
+            if fonts_fingerprint(fonts) == fonts_fingerprint(&held) {
+                return Ok(());
+            }
+            *held = fonts.to_vec();
+        }
+        self.slot().discard();
+        Ok(())
     }
 }
 

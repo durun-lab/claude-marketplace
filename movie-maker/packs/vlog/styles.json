@@ -1,6 +1,7 @@
 {
   "caption": {
     "size": 50,
+    "font": "body",
     "color": "white",
     "position": [960, 958],
     "anchor": [0.5, 1.0],
@@ -10,6 +11,7 @@
   },
   "label": {
     "size": 38,
+    "font": "body",
     "color": "ink",
     "position": [1872, 48],
     "anchor": [1.0, 0.0],
@@ -23,6 +25,7 @@
   },
   "note": {
     "size": 40,
+    "font": "body",
     "color": "ink",
     "position": [960, 48],
     "anchor": [0.5, 0.0],
@@ -37,6 +40,7 @@
   },
   "telop": {
     "size": 44,
+    "font": "body",
     "color": "ink",
     "position": [64, 200],
     "anchor": [0.0, 0.0],
@@ -50,6 +54,7 @@
   },
   "section": {
     "size": 32,
+    "font": "body",
     "color": "ink",
     "position": [64, 40],
     "anchor": [0.0, 0.0],

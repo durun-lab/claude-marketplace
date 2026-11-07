@@ -8,7 +8,7 @@ import { formatReview } from '../server/deliver.ts';
 import { countChecks, gitDiff, inRepo, parseDiff, repoFile, parseIncluded, resolveRange } from '../server/integrations.ts';
 import { latestMemory, toMemoryStatus, toMemoryUsage } from '../server/memory.ts';
 import { type BranchView, type MemoryStatus, WORKTREE } from '../shared/types.ts';
-import { arrangeThemes, renameTheme, stoppedStatus, toBgTask } from '../server/snapshot.ts';
+import { arrangeThemes, renameTheme, stoppedStatus, subagentRunning, toBgTask } from '../server/snapshot.ts';
 import { tempDir } from './tmp.ts';
 
 test('summarizeLog は、会話ログに載った skills の一覧を、後から届いた分も含めて名前ごとに集め、説明の書き出しを添える', () => {
@@ -460,4 +460,28 @@ test('borrowSkills は、一覧を持つセッションのうち、同じディ�
   assert.deepEqual([...borrowSkills('/elsewhere', sources).keys()], ['other']);
   assert.deepEqual([...borrowSkills(undefined, sources).keys()], ['other']);
   assert.deepEqual([...borrowSkills('/repo', []).keys()], []);
+});
+
+test('subagentRunning は、文章で返し終えたサブエージェントも、届いた通知に答えている間と、自分のバックグラウンドのタスクを待つ間は作業中とみなす', () => {
+  const dir = tempDir('durun-dashboard-subagent-');
+  const at = (min: number): string => new Date(Date.UTC(2026, 0, 1, 0, min)).toISOString();
+  const usage = { input_tokens: 1, output_tokens: 1 };
+  const reply = (id: string, min: number, content: unknown[]): string => JSON.stringify({ type: 'assistant', timestamp: at(min), message: { id, usage, content } });
+  const user = (min: number, content: unknown): string => JSON.stringify({ type: 'user', timestamp: at(min), message: { content } });
+  const logOf = (...lines: string[]) => {
+    const file = path.join(dir, `${lines.length}-${Math.random()}.jsonl`);
+    fs.writeFileSync(file, `${lines.join('\n')}\n`);
+    return summarizeLog(file, true);
+  };
+  const now = Date.UTC(2026, 0, 1, 0, 3);
+  const done = logOf(reply('m1', 0, [{ type: 'text', text: '返しました' }]));
+  const woken = logOf(reply('m1', 0, [{ type: 'text', text: '返しました' }]), user(2, '[SYSTEM NOTIFICATION] タスクが終わりました'));
+  const tooling = logOf(reply('m1', 0, [{ type: 'tool_use', id: 't1', name: 'Bash', input: {} }]));
+  const handback = logOf(reply('m1', 0, [{ type: 'tool_use', id: 't1', name: 'SubagentHandback', input: {} }]), user(1, [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }]));
+  assert.deepEqual([done, woken, tooling, handback].map((log) => subagentRunning(log, true, new Set(), now)), [false, true, true, false]);
+  // 答えの無いまま長く経った通知は、届いた後に止まったとみなす。
+  assert.equal(subagentRunning(woken, true, new Set(), now + 10 * 60_000), false);
+  assert.equal(subagentRunning(tooling, false, new Set(), now), false);
+  done.bgTasks.set('b1', { id: 'b1', kind: 'shell', command: 'sleep 9', description: '', status: 'running' });
+  assert.equal(subagentRunning(done, true, new Set(['b1']), now), true);
 });

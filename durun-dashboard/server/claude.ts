@@ -135,6 +135,8 @@ export type LogSummary = {
   /** これまでに居たブランチ。最後に居た順に並べるので、今のブランチが末尾になる。 */
   branches: Set<string>;
   model?: string;
+  /** 最後の user エントリが持つ権限モード。 */
+  permissionMode?: string;
   contextTokens: number;
   lastUsageId?: string;
   lastUsage?: TokenTotals;
@@ -146,6 +148,8 @@ export type LogSummary = {
   lastMessageAt?: number;
   /** 最後の assistant エントリが呼んだツール。文章だけで終わっていれば undefined。 */
   lastToolUse?: string;
+  /** 最後の user エントリ（依頼、ツールの結果、通知）に、まだ文章で答えていない。サブエージェントは返し終えた後も通知で起こされて続ける。 */
+  unanswered?: boolean;
   /** 最後に AskUserQuestion で尋ねた質問と、尋ねた時刻 */
   lastQuestions?: AskedQuestion[];
   lastQuestionsAt?: number;
@@ -213,6 +217,8 @@ type LogEntry = {
   timestamp?: string;
   cwd?: string;
   gitBranch?: string;
+  /** user エントリが持つ、そのときの権限モード。 */
+  permissionMode?: string;
   aiTitle?: string;
   lastPrompt?: string;
   totalCostUSD?: number;
@@ -369,7 +375,7 @@ const applyAssistant = (s: LogSummary, e: LogEntry, ts: number | undefined): voi
   // 思考だけのエントリは次の行動の前触れなので、作業中かどうかの判定を変えない。
   const tool = blocks.findLast((b) => b.type === 'tool_use');
   if (tool) s.lastToolUse = tool.name;
-  else if (blocks.some((b) => b.type === 'text' && b.text?.trim())) s.lastToolUse = undefined;
+  else if (blocks.some((b) => b.type === 'text' && b.text?.trim())) Object.assign(s, { lastToolUse: undefined, unanswered: false });
   if (tool?.name === ASK_TOOL) Object.assign(s, { lastQuestions: toQuestions(tool.input?.questions), lastQuestionsAt: ts });
   for (const b of blocks) {
     if (b.type === 'text' && b.text?.trim()) {
@@ -514,6 +520,8 @@ const applyLine = (s: LogSummary, line: string, includeSidechain: boolean): void
   s.loginExpiredAt = loginExpiredOf(e, ts);
   if (e.type === 'assistant') applyAssistant(s, e, ts);
   else {
+    if (e.permissionMode) s.permissionMode = e.permissionMode;
+    s.unanswered = true;
     applyBgResult(s, e);
     const content = e.message?.content;
     applyNotifications(s, typeof content === 'string' ? content : (content ?? []).map((b) => (b.type === 'text' ? (b.text ?? '') : '')).join('\n'));

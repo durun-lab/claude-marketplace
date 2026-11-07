@@ -10,6 +10,7 @@ publish.workspace = true
 mm-types = { workspace = true }
 mm-node-api = { workspace = true }
 mm-host-api = { workspace = true }
+mm-text-api = { workspace = true }
 mm-gpu = { workspace = true }
 wgpu = { workspace = true }
 serde_json = { workspace = true }
