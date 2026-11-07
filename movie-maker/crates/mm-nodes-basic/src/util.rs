@@ -4,7 +4,7 @@ use mm_node_api::NodeKind;
 use mm_types::{MmError, Params, Result, Rgba, RgbaImage, Size};
 
 /// シェーダーへ渡す数を引く。無いか、NaN・無限大（f32 にして溢れる値も）なら `fallback`。
-/// NaN は `clamp` や `max` を素通りし、GPU の上で全画素を NaN にするため、ここで既定値に落とす。
+/// NaN は `clamp` や `max` を素通りし、GPU の上で全画素を NaN にするため、ここで既定値にする。
 pub(crate) fn finite_number(params: &Params, name: &str, fallback: f64) -> f32 {
     let value = params.number_or(name, fallback) as f32;
     if value.is_finite() {
@@ -96,7 +96,7 @@ mod tests {
     }
 
     #[test]
-    fn 有限でない数は既定値に落とす() {
+    fn 有限でない数は既定値にする() {
         let mut params = Params::new();
         params
             .set("nan", mm_types::ParamValue::Number(f64::NAN))

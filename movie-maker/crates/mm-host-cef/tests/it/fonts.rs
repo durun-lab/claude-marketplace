@@ -1,11 +1,11 @@
 //! `Prepare` の `fonts` の書体で描く（実機の CEF）。テスト用の書体（fixtures/fonts）で描いた画素が、書体が無いときの置き換えと違い、
-//! 書体のファイルが無くても落ちずに置き換えで描くことを確かめる。
+//! 書体のファイルが無くても失敗せずに置き換えで描くことを確かめる。
 #![cfg(all(feature = "cef", windows))]
 
 use std::path::Path;
 
 use mm_host_api::{HostProcess, HostRequest, HostResponse, SharedFrame, FONT_ORIGIN};
-use mm_host_cef::PipeHost;
+use mm_host_cef::CefLauncher;
 use mm_types::{RationalTime, Size};
 
 use crate::serve::{host_exe, render, spec, TIMEOUT};
@@ -32,7 +32,7 @@ fn font(rel: &str) -> serde_json::Value {
 /// `fonts` を渡してページを読み、1 枚を CPU の画像で描く。
 fn draw(fonts: serde_json::Value) -> Vec<f32> {
     let exe = host_exe().expect("CEF");
-    let mut host = PipeHost::start(spec(&exe, None)).expect("ホストを起こせる");
+    let mut host = CefLauncher::start(spec(&exe, None)).expect("ホストを起こせる");
     let req = HostRequest::Prepare {
         params: serde_json::json!({ "html": page(), "fonts": fonts }),
     };

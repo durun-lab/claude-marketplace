@@ -158,7 +158,7 @@ impl PassTimer {
     }
 
     /// 頼んだ読み取りの完了を待ってから、全部の GPU の時間（ナノ秒）を古い順に返す。
-    /// 描画を止めて結果を確定させたい所（試験、書き出しの終わり）が使う。
+    /// 描画を止めて結果を確定させたい所（テスト、書き出しの終わり）が使う。
     pub fn collect_all(&self) -> Vec<u64> {
         self.collect_with(wgpu::PollType::wait_indefinitely())
     }

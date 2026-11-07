@@ -19,7 +19,7 @@ pub(crate) struct ProjectFonts {
 }
 
 impl ProjectFonts {
-    /// `fonts` の組に入れ替える。同じ組なら何もしない。読めないファイルは飛ばす（OS の書体で描く）。
+    /// `fonts` の組に入れ替える。同じ組なら何もしない。読めないファイルはスキップする（OS の書体で描く）。
     pub(crate) fn replace(
         &mut self,
         fs: &mut FontSystem,

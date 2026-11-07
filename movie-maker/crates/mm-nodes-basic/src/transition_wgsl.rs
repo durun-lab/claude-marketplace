@@ -77,7 +77,7 @@ struct Uniform {
 }
 
 impl Uniform {
-    /// パラメータから作る。有限でない数は既定値に落とし、進み具合は 0..1、長さは 0 以上に収める。
+    /// パラメータから作る。有限でない数は既定値にし、進み具合は 0..1、長さは 0 以上に収める。
     fn of(params: &Params, size: Size, scale: f32) -> Self {
         Self {
             size,
@@ -251,7 +251,7 @@ mod tests {
     }
 
     #[test]
-    fn 有限でない数は既定値に落としてシェーダーへ渡す() {
+    fn 有限でない数は既定値にしてシェーダーへ渡す() {
         let p = params(&[
             (TRANSITION_PROGRESS_PARAM, f64::NAN),
             (TRANSITION_DURATION_PARAM, f64::INFINITY),

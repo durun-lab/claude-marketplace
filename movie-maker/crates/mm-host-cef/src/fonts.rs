@@ -126,7 +126,7 @@ struct Table {
 }
 
 impl FontTable {
-    /// `fonts` に入れ替え、ページに差し込む CSS を返す。読めないファイルは飛ばし、そのページは OS の書体で描く。
+    /// `fonts` に入れ替え、ページに差し込む CSS を返す。読めないファイルはスキップし、そのページは OS の書体で描く。
     pub fn replace(&self, fonts: &[PageFont]) -> String {
         let mut table = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         table.paths.clear();
@@ -228,7 +228,7 @@ mod tests {
     }
 
     #[test]
-    fn 読めないファイルは飛ばして空の_css_にする() {
+    fn 読めないファイルはスキップして空の_css_にする() {
         let table = FontTable::default();
         let css = table.replace(&[PageFont {
             path: "無い/None.ttf".into(),

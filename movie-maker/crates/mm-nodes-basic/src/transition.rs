@@ -18,7 +18,7 @@ pub const TRANSITION_PROGRESS_PARAM: &str = "progress";
 /// `progress` の既定。
 const DEFAULT_PROGRESS: f64 = 0.5;
 
-/// 進み具合を 0..1 で引く。有限でなければ既定値に落とす（NaN は clamp を素通りする）。
+/// 進み具合を 0..1 で引く。有限でなければ既定値にする（NaN は clamp を素通りする）。
 fn progress_of(params: &Params) -> f32 {
     finite_number(params, TRANSITION_PROGRESS_PARAM, DEFAULT_PROGRESS).clamp(0.0, 1.0)
 }
@@ -175,7 +175,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn 有限でない進み具合は既定値に落とす() {
+    fn 有限でない進み具合は既定値にする() {
         let mut p = Params::new();
         p.set(TRANSITION_PROGRESS_PARAM, ParamValue::Number(f64::NAN));
         assert_eq!(progress_of(&p), DEFAULT_PROGRESS as f32);
