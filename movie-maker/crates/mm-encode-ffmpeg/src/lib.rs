@@ -5,7 +5,7 @@
 //! | `EncodeSettings::codec` | 中身 | コンテナ |
 //! |---|---|---|
 //! | `h264`、`libx264` | libx264、CRF 18、AAC | MP4 |
-//! | `h264_ts` | libx264 の目標のビットレート（`set_stream_output` で渡す）、AAC。キーフレームは固定の間隔、B フレームなし、時刻は指定の秒から | MPEG-TS |
+//! | `h264_ts` | libx264 の目標のビットレート（`EncodeSettings::stream` で渡す）、AAC。キーフレームは固定の間隔、B フレームなし、時刻は映像も音も指定の秒から | MPEG-TS |
 //! | `h264_2pass` | libx264 の 2 パス（目標のビットレートは大きさと fps から決める）、AAC | MP4 |
 //! | `prores_422hq`（`prores`、`prores_ks`） | ProRes 422 HQ、10 ビット 4:2:2、24 ビット PCM | MOV |
 //! | `prores_4444` | ProRes 4444、10 ビット 4:4:4、24 ビット PCM | MOV |

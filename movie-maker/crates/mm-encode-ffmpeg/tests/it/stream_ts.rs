@@ -17,8 +17,8 @@ const VIDEO_BIT_RATE: u32 = 350_000;
 const AUDIO_BIT_RATE: u32 = 64_000;
 /// 目標のビットレートからの許容ずれ（割合）。
 const RATE_TOLERANCE: f64 = 0.2;
-/// 時刻の始まりの許容ずれ（秒）。
-const START_TOLERANCE: f64 = 0.05;
+/// 時刻の始まりの許容ずれ（秒）。TS の 90 kHz の刻みと、`output_ts_offset` の 6 桁の丸めの分。
+const START_TOLERANCE: f64 = 0.001;
 /// 区間の始まりの秒（3 つ目の区間）。
 const START_SECS: i64 = 8;
 
@@ -77,11 +77,16 @@ fn probe_lines(path: &Path, args: &[&str]) -> Vec<String> {
 
 /// 映像のパケットの (表示時刻の秒, バイト数, キーフレームか)。
 fn video_packets(path: &Path) -> Vec<(f64, u64, bool)> {
+    packets(path, "v:0")
+}
+
+/// `stream`（`v:0`、`a:0`）のパケットの (表示時刻の秒, バイト数, キーフレームか)。
+fn packets(path: &Path, stream: &str) -> Vec<(f64, u64, bool)> {
     probe_lines(
         path,
         &[
             "-select_streams",
-            "v:0",
+            stream,
             "-show_entries",
             "packet=pts_time,size,flags",
             "-of",
@@ -101,7 +106,6 @@ fn video_packets(path: &Path) -> Vec<(f64, u64, bool)> {
 fn write_segment(path: &Path, stream: StreamOutput, seconds: i64) {
     let size = Size::new(640, 360);
     let mut enc = FfmpegEncoderFactory.create().unwrap();
-    enc.set_stream_output(stream).unwrap();
     enc.begin(&EncodeSettings {
         size,
         fps: Rational::integer(FPS as u32),
@@ -111,6 +115,7 @@ fn write_segment(path: &Path, stream: StreamOutput, seconds: i64) {
             sample_rate: RATE,
             channels: 2,
         }),
+        stream: Some(stream),
     })
     .unwrap();
     let frames: Vec<RgbaImage> = (0..seconds * FPS)
@@ -205,19 +210,47 @@ fn キーフレームは区間の先頭に入り間隔は固定で途中に入�
 #[test]
 fn ビットレートの指定は配信の区間のコーデックにだけ要る() {
     let path = out_path("misuse.mp4");
-    let settings = |codec: &str| EncodeSettings {
+    let settings = |codec: &str, stream: Option<StreamOutput>| EncodeSettings {
         size: Size::new(64, 64),
         fps: Rational::integer(FPS as u32),
         codec: codec.into(),
         output_path: path.clone(),
         audio: None,
+        stream,
     };
     let mut enc = FfmpegEncoderFactory.create().unwrap();
     assert!(
-        enc.begin(&settings("h264_ts")).is_err(),
+        enc.begin(&settings("h264_ts", None)).is_err(),
         "指定なしの h264_ts"
     );
     let mut enc = FfmpegEncoderFactory.create().unwrap();
-    enc.set_stream_output(stream_output(0, None)).unwrap();
-    assert!(enc.begin(&settings("h264")).is_err(), "h264 に指定");
+    assert!(
+        enc.begin(&settings("h264", Some(stream_output(0, None))))
+            .is_err(),
+        "h264 に指定"
+    );
+}
+
+/// 区間ごとに別に符号化して並べるので、音が区間の始まりより前（AAC の前置きの分）に出ると前の区間と重なる。
+#[test]
+fn 区間の音と映像は始まりの秒からそろって始まる() {
+    for start in [0, START_SECS] {
+        let path = out_path(&format!("av_start_{start}.ts"));
+        write_segment(&path, stream_output(start, None), SEGMENT_SECS);
+        let first = |stream: &str| {
+            packets(&path, stream)
+                .iter()
+                .map(|p| p.0)
+                .fold(f64::INFINITY, f64::min)
+        };
+        let (video, audio) = (first("v:0"), first("a:0"));
+        assert!(
+            (video - start as f64).abs() <= START_TOLERANCE,
+            "最初の映像の時刻 {video}（指定 {start}）"
+        );
+        assert!(
+            (audio - start as f64).abs() <= START_TOLERANCE,
+            "最初の音の時刻 {audio}（指定 {start}）"
+        );
+    }
 }

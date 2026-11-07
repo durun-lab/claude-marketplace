@@ -46,7 +46,6 @@ impl VideoTrack {
         settings: &EncodeSettings,
         spec: &CodecSpec,
         pass: &Pass,
-        stream: Option<&StreamOutput>,
         global_header: bool,
     ) -> Result<Self> {
         let size = settings.size;
@@ -68,15 +67,7 @@ impl VideoTrack {
         let codec = encoder::find_by_name(spec.encoder)
             .ok_or_else(|| MmError::Unsupported(format!("{} が無い FFmpeg", spec.encoder)))?;
         let encoder_tb = Rational::new(den, num);
-        let opened = open_encoder(
-            codec,
-            settings,
-            spec,
-            pass,
-            stream,
-            encoder_tb,
-            global_header,
-        )?;
+        let opened = open_encoder(codec, settings, spec, pass, encoder_tb, global_header)?;
         let mut stream_index = None;
         let mut stream_tb = encoder_tb;
         if let Some(output) = output {
@@ -179,6 +170,7 @@ impl VideoTrack {
             self.encoder_tb,
             self.stream_tb,
             1,
+            false,
         )
     }
 }
@@ -270,7 +262,6 @@ fn open_encoder(
     settings: &EncodeSettings,
     spec: &CodecSpec,
     pass: &Pass,
-    stream: Option<&StreamOutput>,
     time_base: Rational,
     global_header: bool,
 ) -> Result<codec::encoder::video::Encoder> {
@@ -294,9 +285,9 @@ fn open_encoder(
             enc.set_bit_rate(target_bit_rate(size, settings.fps.to_f64(), *bpp));
         }
         Rate::Stream => {
-            let stream = stream.ok_or_else(|| {
+            let stream = settings.stream.as_ref().ok_or_else(|| {
                 MmError::InvalidArgument(
-                    "配信の区間のコーデックには set_stream_output が要る".into(),
+                    "配信の区間のコーデックには EncodeSettings::stream が要る".into(),
                 )
             })?;
             stream_rate_options(&mut options, stream);
