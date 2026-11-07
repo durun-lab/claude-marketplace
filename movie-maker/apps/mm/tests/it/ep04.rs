@@ -2,7 +2,7 @@
 //! （`docs/design/11-testing.md` の「実データ」と「ep04 の再現の結果」）。
 //!
 //! 前の書き出しは確認用の 720p（geneva の `outputs.draft`）なので、取り込んだ `draft` のレンダーターゲットで書き出す。
-//! 素材はリポジトリに入れない。`MM_EP04_DIR` に回のフォルダーを渡したときだけ実行し、無ければ何もせず通る。
+//! 素材はリポジトリに入れない。`MM_EP04_DIR` にエピソードのフォルダーを渡したときだけ実行し、無ければ何もせず通る。
 //! 既定は ep04 の特徴の出る区間だけを書き出し、`MM_EP04_FULL=1` で全体を書き出す。
 //! 巻き戻しのトランジション（geneva のマークアップ）は `web.cef` で描くので、CEF の無い環境（`CEF_PATH` が無い）では
 //! その区間を飛ばす。
@@ -11,7 +11,7 @@ use std::path::PathBuf;
 
 use crate::replay::{self, Limits};
 
-/// 回のフォルダーを渡す環境変数。
+/// エピソードのフォルダーを渡す環境変数。
 const ENV_DIR: &str = "MM_EP04_DIR";
 /// 全体を書き出す環境変数。
 const ENV_FULL: &str = "MM_EP04_FULL";
@@ -57,18 +57,15 @@ const WINDOWS: [(f64, &str, bool); 10] = [
 ];
 
 /// 区間ごとの平均の SSIM の下限。考え方は ep03 と同じ（前の書き出しも movie-maker の書き出しも H.264 を通るので一致しない）。
-/// 再現の区間は 0.980〜0.989 だった。
+/// 再現の区間は 0.974〜0.989 だった（最も低いのは `web.cef` で描く巻き戻しの区間）。
 const SSIM_MEAN_MIN: f64 = 0.97;
 /// 1 フレームの SSIM の下限。ep03 と同じく、60 fps の収録で 1/60 秒違うフレームを選ぶ所を見込む。
-/// 再現の区間の最小は 0.946（聴き比べの区間の画面の切り替わり）。
+/// 再現の区間の最小は 0.931（巻き戻しの区間のマークアップの出入り）。
 const SSIM_FRAME_MIN: f64 = 0.85;
-/// 区間ごとの平均の PSNR の下限（dB）。再現の区間は 34.5〜41.7 dB だった。
+/// 全体の書き出しの 1 フレームの SSIM の下限。ep03 と同じく、区間に入らない収録のスクロールを見込む。
+const SSIM_FRAME_MIN_FULL: f64 = 0.80;
+/// 区間ごとの平均の PSNR の下限（dB）。再現の区間は 33.1〜41.7 dB だった（最も低いのは巻き戻しの区間）。
 const PSNR_MEAN_MIN: f64 = 33.0;
-/// 巻き戻しの区間（`web.cef` で描く）の平均の SSIM と PSNR の下限。`web.cef` は暗い色を明るく描き（地の #06090d が
-/// (16, 20, 24)。同じ色の PNG は (6, 7, 12)）、0.6 秒覆う暗い地の全面で差が出る。再現は 0.953 と 31.6 dB
-/// （マークアップを除くと 0.847 と 16.7 dB）。色が直ったら上の下限に寄せる。
-const SSIM_MEAN_MIN_CEF: f64 = 0.94;
-const PSNR_MEAN_MIN_CEF: f64 = 29.0;
 /// 音の差の下限（dB）。考え方は ep03 と同じ。再現の区間は 19.6〜29.8 dB だった。
 const SNR_MIN_DB: f64 = 15.0;
 /// 50 ms ごとの大きさの差の平均の上限（dB）。再現の区間は 0.26 dB 以下。
@@ -85,20 +82,15 @@ const PEAK_MAX_DBFS: f64 = 0.0;
 /// 変換できない要素として認める一覧（種類、数）。増えたら変換か movie-maker の機能を見直す。
 const KNOWN_GAPS: [(&str, u64); 0] = [];
 
-/// 閾値。`cef` は `web.cef` で描く所を含む区間（全体の書き出しも含む）。
-fn limits(cef: bool) -> Limits {
+fn limits(full: bool) -> Limits {
     Limits {
-        ssim_mean_min: if cef {
-            SSIM_MEAN_MIN_CEF
+        ssim_mean_min: SSIM_MEAN_MIN,
+        ssim_frame_min: if full {
+            SSIM_FRAME_MIN_FULL
         } else {
-            SSIM_MEAN_MIN
+            SSIM_FRAME_MIN
         },
-        ssim_frame_min: SSIM_FRAME_MIN,
-        psnr_mean_min: if cef {
-            PSNR_MEAN_MIN_CEF
-        } else {
-            PSNR_MEAN_MIN
-        },
+        psnr_mean_min: PSNR_MEAN_MIN,
         snr_min_db: SNR_MIN_DB,
         envelope_max_db: ENVELOPE_MAX_DB,
         lag_max_ms: LAG_MAX_MS,
@@ -107,10 +99,10 @@ fn limits(cef: bool) -> Limits {
     }
 }
 
-/// 区間（秒）と、`web.cef` で描く所を含むか。`full` なら全体 1 つ。CEF が無ければ CEF の要る区間を飛ばす。
-fn windows(duration: f64, full: bool, cef: bool) -> Vec<((f64, f64), bool)> {
+/// 区間（秒）。`full` なら全体 1 つ。CEF が無ければ CEF の要る区間を飛ばす。
+fn windows(duration: f64, full: bool, cef: bool) -> Vec<(f64, f64)> {
     if full {
-        return vec![((0.0, duration), true)];
+        return vec![(0.0, duration)];
     }
     WINDOWS
         .iter()
@@ -121,7 +113,7 @@ fn windows(duration: f64, full: bool, cef: bool) -> Vec<((f64, f64), bool)> {
             }
             !skip
         })
-        .map(|(start, _, needs_cef)| (replay::window(*start, WINDOW_SECONDS), *needs_cef))
+        .map(|(start, _, _)| replay::window(*start, WINDOW_SECONDS))
         .collect()
 }
 
@@ -147,8 +139,9 @@ fn ep04_を再現すると前の書き出しと一致する() {
     );
     let full = std::env::var(ENV_FULL).is_ok_and(|v| v == "1");
     let cef = std::env::var_os(ENV_CEF).is_some();
+    let limits = limits(full);
     let mut failed = Vec::new();
-    for (i, (range, uses_cef)) in windows(duration, full, cef).into_iter().enumerate() {
+    for (i, range) in windows(duration, full, cef).into_iter().enumerate() {
         let out = work.path().join(format!("w{i}.mp4"));
         replay::render(&project, &out, (!full).then_some(range), Some(TARGET));
         let (p, s) = replay::compare(&out, &reference, range, work.path());
@@ -158,7 +151,7 @@ fn ep04_を再現すると前の書き出しと一致する() {
             "区間のフレーム数"
         );
         replay::report(range, &p, &s);
-        failed.extend(replay::misses(range, &p, &s, &limits(uses_cef), full));
+        failed.extend(replay::misses(range, &p, &s, &limits, full));
     }
     assert!(failed.is_empty(), "閾値を割った: {failed:#?}");
 }

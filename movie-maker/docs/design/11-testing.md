@@ -19,7 +19,7 @@
 | Claude の操作経路 | HTTP と MCP の操作が CLI と同じ結果。プロジェクトのデータを直接開く経路とアプリに頼む経路で同じ。拒否する操作（ロック、費用のかかる操作）が拒否される | `mm-serve/tests/` | `httpmock`（同期と非同期の両方がある）[67]、`assert_cmd` | 保存ごと |
 | UI の計算 | wgpu サーフェス上の UI の計算（端のつまみ、範囲、スナップ、刃）は純関数。WebView の画面の計算（Story の選択、Review の範囲） | `mm-ui-layout` の `#[cfg(test)]`、`ui/panels/*/test/` | `cargo test`、proptest。WebView は `node --test` と `@testing-library/preact`（DOM は jsdom。happy-dom は `getByRole` が失敗する報告がある）[68] | 保存ごと |
 | UI（WebView と wgpu） | 主な流れを実際のウィンドウで通す。素材を足す → Story で選ぶ → Timeline に置く → 再生 → 書き出し。再生中に WebView を更新してもサーフェスがクラッシュしない。キーの振り分け（J/K/L がどちらにフォーカスがあっても効く） | `apps/movie-maker/tests/e2e/` | WebView2 は Playwright で CDP から叩く（`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=<port>` で起動し `chromium.connectOverCDP`。並列は worker ごとにポートと `WEBVIEW2_USER_DATA_FOLDER` を分ける）[61]。wgpu のサーフェスは Rust の側で入力を注入する関数（`mm-ui-wgpu` の `inject_input`）を持ち、サーフェスの画像は期待画像の層で比べる。tauri-driver + msedgedriver は WebView2 のバージョンと合わせる手間があるので採らない [61] | 夜間。`ui/` か `apps/` を変えた PR |
-| 実データ | 終わった回（ep03）と制作中の回（ep04）を再現して、前の書き出しと比べる（フレームの差、音の差、長さ）。geneva のタイムライン（`timeline.json`）を `mm geneva` で取り込み、`mm render` で書き出す。長さはフレーム数の一致、映像は区間ごとの SSIM の平均 0.97 以上・1 フレームの最小 0.85 以上（全体は 0.80 以上）・PSNR の平均 33 dB 以上、音は倍率を合わせた後の SNR 15 dB 以上・50 ms ごとの大きさの差の平均 0.5 dB 以下・ずれ 2 ms 以下・サンプルのピーク 0 dBFS 以下、全体の書き出しはラウドネスの差 1 dB 以下。閾値の根拠はテストの定数のコメント。ep04 の `web.cef` で描く区間は SSIM の平均 0.94・PSNR の平均 29 dB。結果は下の[ep03 の再現の結果](#ep03-の再現の結果)と[ep04 の再現の結果](#ep04-の再現の結果) | `apps/mm/tests/it/ep03.rs`、`ep04.rs`（共通の手順は `replay/`）、`fixtures/ep03/expected.json`、`fixtures/ep04/expected.json`（入力と前の書き出しの SHA-256、フレーム数。素材は外。下の「フィクスチャの素材」） | `mm geneva`、`mm render`、FFmpeg の `ssim` と `psnr` のフィルター、音は PCM に戻して数える。`MM_EP03_DIR`、`MM_EP04_DIR` が無ければスキップする。既定は 6 か所（ep04 は特徴の出る 10 か所）の 4 秒、`MM_EP03_FULL=1`、`MM_EP04_FULL=1` で全体 | 夜間。段階 5 から |
+| 実データ | 終わったエピソード（ep03）と制作中のエピソード（ep04）を再現して、前の書き出しと比べる（フレームの差、音の差、長さ）。geneva のタイムライン（`timeline.json`）を `mm geneva` で取り込み、`mm render` で書き出す。長さはフレーム数の一致、映像は区間ごとの SSIM の平均 0.97 以上・1 フレームの最小 0.85 以上（全体は 0.80 以上）・PSNR の平均 33 dB 以上、音は倍率を合わせた後の SNR 15 dB 以上・50 ms ごとの大きさの差の平均 0.5 dB 以下・ずれ 2 ms 以下・サンプルのピーク 0 dBFS 以下、全体の書き出しはラウドネスの差 1 dB 以下。閾値の根拠はテストの定数のコメント。結果は下の[ep03 の再現の結果](#ep03-の再現の結果)と[ep04 の再現の結果](#ep04-の再現の結果) | `apps/mm/tests/it/ep03.rs`、`ep04.rs`（共通の手順は `replay/`）、`fixtures/ep03/expected.json`、`fixtures/ep04/expected.json`（入力と前の書き出しの SHA-256、フレーム数。素材は外。下の「フィクスチャの素材」） | `mm geneva`、`mm render`、FFmpeg の `ssim` と `psnr` のフィルター、音は PCM に戻して数える。`MM_EP03_DIR`、`MM_EP04_DIR` が無ければスキップする。既定は 6 か所（ep04 は特徴の出る 10 か所）の 4 秒、`MM_EP03_FULL=1`、`MM_EP04_FULL=1` で全体 | 夜間。段階 5 から |
 | 性能 | 予算（[計装の予算の表](17-instrumentation.md#予算の表)）を超えたら失敗させる。測るのは、描画の 1 フレーム、デコードとシーク、操作の適用、キャッシュのヒット率、書き出しの fps、起動 | `benches/`（ワークスペースの別クレート `mm-bench`） | divan（`#[divan::bench]` と `args`）[60] で基礎の層、通しは `mm perf run`（[計装](17-instrumentation.md#claude-が読む)）。比較は `mm perf compare`。criterion にも `--baseline` の比較があるが [60]、通しの数字は同じツール（`mm perf`）で取ってそろえる | push 前（基礎）、夜間（通し）、自動の改善の回の前後 |
 | 長時間の耐久 | 8 時間の再生とスクラブのくり返し、書き出しのくり返し、ホストのクラッシュと復帰のくり返しで、メモリと VRAM が増え続けない、ハンドルが漏れない、キャッシュの大きさが上限に収まる | `mm-testkit` の `soak` の実行ファイル | `mm perf soak --hours 8`。メモリは[計装](17-instrumentation.md)の数（RSS、VRAM、ハンドル数）を 1 分おきに記録し、最初の 1 時間と最後の 1 時間の中央値を比べる。ヒープの中身を追うときは `dhat` のテストモード（`Profiler::builder().testing()`、release で、同時に 1 つ）[64] | 夜間（週 1 で 8 時間、ほかの夜は 1 時間） |
 | ファズ | `versions/` の JSON（`mm import`）、操作の引数の JSON、壊した `project.mmdb`、付属ファイルの JSON、OTIO の読み、字幕（SRT、VTT）、シェーダーの文字列、デコーダーに渡す壊れた動画でクラッシュしない | `fuzz/`（`cargo fuzz` の目標） | cargo-fuzz + `arbitrary` [59]。cargo-fuzz の README は Unix 系だけと書くが、rust-fuzz の book に Windows（MSVC の ASan）の章がある [59]。CI では Linux で回し、手元の Windows は試して動けば使う | 夜間（各目標 10 分）。壊れた入力は `fuzz/corpus/` に残し、見つけたものは単体テストに加える |
@@ -69,7 +69,7 @@
 | `fixtures/golden/<バックエンド>/` | 期待画像（320x180 の PNG、sRGB の 8 bit、灰色の市松の上に重ねたもの）。バックエンドは `warp`、`rtx`（NVIDIA。D3D12 でも Vulkan でも同じ名前）、`lavapipe`。アダプターから `mm_testkit::golden::backend_name` が決める | `cargo xtask golden-update --backend rtx`。更新したら PNG を目で見て承認してからコミットする。RTX の期待画像は手元で更新する。フォルダーが無いバックエンドのテストはスキップする（`MM_REQUIRE_GOLDEN` で失敗にできる） |
 | `fixtures/audio/` | EBU の loudness test set（利用条件がある。リポジトリに入れず、取り方を書く）[69]、ミキサーのテスト用の信号 | ダウンロード。テスト用の信号は `mm-testkit` が生成 |
 | `fixtures/ep03/` | `expected.json`: ep03 の geneva のタイムラインと前の書き出し（`render/ep03_final.mp4`）の SHA-256、フレーム数、fps。素材は `D:/dev/DTM_Vlog/ep03/`（`MM_EP03_DIR`）にあり、プロジェクトのデータ（約 9 MB）はテストのたびに `mm geneva` で作る | 段階 5。OTIO は変形、切り抜き、キーフレーム、音量を持てないので、geneva のタイムラインから直に変換する |
-| `fixtures/ep04/` | `expected.json`: ep04 の geneva のタイムラインと前の書き出し（確認用の 720p、`render/ep04_draft.mp4`）の SHA-256、フレーム数、fps。素材は `D:/dev/DTM_Vlog/ep04/`（`MM_EP04_DIR`）。制作中の回なので、回の作業でタイムラインか書き出しが変わったらハッシュを測り直す | 段階 6 |
+| `fixtures/ep04/` | `expected.json`: ep04 の geneva のタイムラインと前の書き出し（確認用の 720p、`render/ep04_draft.mp4`）の SHA-256、フレーム数、fps。素材は `D:/dev/DTM_Vlog/ep04/`（`MM_EP04_DIR`）。制作中のエピソードなので、エピソードの作業でタイムラインか書き出しが変わったらハッシュを測り直す | 段階 6 |
 
 ## ep03 の再現の結果
 
@@ -97,7 +97,7 @@
 | フェードが dB の直線だけ | 振幅の直線のフェードを 8 区間の折れ線の音量で近似していた | 音のフェード（`LayerAudio.fade_in`、`fade_out`。振幅の直線、等パワー、dB の直線） |
 | `mm render --range` がマイクロ秒に丸める | 1/30 秒の境界を小数で渡すと 1 フレーム前から始まる | 区間の端がフレームの境界から 1/1000 フレーム以内なら境に合わせる（`mm-export`） |
 
-残り: UI の Inspector に切り抜き、マスク、音のフェードの欄が無い（Inspector の欄はパスごとに手で並べているため）。操作と MCP では使える。
+残り: 無し。切り抜き、角丸の矩形のマスク、音のフェードは Inspector の入力欄でも編集できる（段階 6）。
 
 違いとして残すもの: 60 fps の OBS の収録（mkv の ms 単位の丸め）は、movie-maker が CFR の格子で、geneva が PTS でフレームを選ぶので、3 フレームに 1 回 1/60 秒違うフレームになる〔推。SSIM が 3 フレームおきに下がる形から〕。
 
@@ -105,9 +105,9 @@
 
 2026-11-07 に計測した（[進め方](15-roadmap.md)の段階 6 の終わりの条件「ep04 を movie-maker で作れる」）。テストは上の[層の一覧](#層の一覧)の「実データ」（`apps/mm/tests/it/ep04.rs`）。
 
-- 入力: ep04（作曲Vlog #4）は制作中で、比べたのは粗編集 v4 の確認用の書き出し `D:/dev/DTM_Vlog/ep04/render/ep04_draft.mp4`（720p、47,182 フレーム、1,572.7 秒）。`timeline.json` の 5 分後に書き出されていて、同じ版。geneva はタイムラインの `outputs.draft`（高さ 720）で本編を縮めて書く。
+- 入力: ep04（作曲Vlog #4）は制作中で、比べたのは粗編集 v4 の確認用の書き出し `D:/dev/DTM_Vlog/ep04/render/ep04_draft.mp4`（720p、47,182 フレーム、1,572.7 秒）。`timeline.json` の 5 分後に書き出されていて、同じバージョン。geneva はタイムラインの `outputs.draft`（高さ 720）で本編を縮めて書く。
 - 取り込み: 素材 5,461（収録の mkv 21、音 45、PNG 5,395）、レイヤー 7,218、入れ子のコンポジション 0、`gaps` は空。ep03 に無い要素のうち、Claude の吹き出し、作業の画面の枠と札、見出しの ToDo、聴き比べの札、締めの札は geneva が PNG の連番に焼いた重ね絵で、PNG のまま取り込む。DAW の音の gain（`daw` の 355 クリップ）と曲のダッキング（`bed` の 24 クリップ）は音量のキーフレームで、ep03 で足した機能のまま再現する。歌詞のカラオケは v4 の並びにまだ無い。
-- 結果（4 秒の区間を 10 か所。フック、巻き戻し、見出しの ToDo、作業の画面の枠と札、Claude の吹き出し、聴き比べ、ミックスの札、ハモリの出し入れ、到達点の曲、締めの札）: 長さはフレーム数で一致。PNG と映像だけの 9 か所は、SSIM の平均 0.980〜0.989、1 フレームの最小 0.946、PSNR の平均 34.5〜41.7 dB。音は 10 か所とも SNR 19.6〜29.8 dB、50 ms ごとの大きさの差の平均 0.06〜0.26 dB、ずれ 0 ms、サンプルのピーク -1.03 dBFS 以下。巻き戻しの区間（25.0 秒から、`web.cef`）は SSIM の平均 0.953、最小 0.861、PSNR 31.6 dB（マークアップを除いたままだと 0.847、0.537、16.7 dB）。
+- 結果（4 秒の区間を 10 か所。フック、巻き戻し、見出しの ToDo、作業の画面の枠と札、Claude の吹き出し、聴き比べ、ミックスの札、ハモリの出し入れ、到達点の曲、締めの札）: 長さはフレーム数で一致。PNG と映像だけの 9 か所は、SSIM の平均 0.980〜0.989、1 フレームの最小 0.946、PSNR の平均 34.5〜41.7 dB。音は 10 か所とも SNR 19.6〜29.8 dB、50 ms ごとの大きさの差の平均 0.06〜0.26 dB、ずれ 0 ms、サンプルのピーク -1.03 dBFS 以下。巻き戻しの区間（25.0 秒から、`web.cef`）は SSIM の平均 0.974、最小 0.931、PSNR 33.1 dB（マークアップを除いたままだと 0.847、0.537、16.7 dB）で、ほかの区間と同じ閾値で比べる。
 - 全体の書き出しは計っていない（`MM_EP04_FULL=1`）。
 
 足りなかった機能（足したもの）:
@@ -125,7 +125,7 @@
 | 見出しの ToDo（158.6 秒） | `card`（`no=2`） | PNG 0.986 / 0.988、部品 0.936 / 0.770 | PNG のまま。紙が小さく右下へずれ、字が細い |
 | 巻き戻し（26.0 秒） | `rewind`（`transitions/rewind.wgsl`） | — | 試せない。トランジションは sequence のカットの境に置くもので、`mm geneva` はコンポジションのレイヤーにする。代わりに元のマークアップを `web.cef` で描く |
 
-残り: `web.cef` は暗い色を明るく描く（#06090d の地が (16, 20, 24)、#16222d が (35, 44, 56)。同じ色の PNG は (6, 7, 12) と (21, 33, 44)）。CEF に `force-color-profile=srgb` を渡しても変わらない。巻き戻しの区間の差の大部分はこれで、パックの部品の色にも効く。部品の書体の埋め込みは並行の担当（`feature/movie-maker-pack-fonts`）。部品で置き換えるには `edit.yaml` の文と置き場所が要り、`mm geneva` はタイムラインの PNG しか見ない。
+残り: 部品の書体の埋め込みは並行の担当（`feature/movie-maker-pack-fonts`）。部品で置き換えるには `edit.yaml` の文と置き場所が要り、`mm geneva` はタイムラインの PNG しか見ない。
 
 ## GPU の要るテストの扱い
 
