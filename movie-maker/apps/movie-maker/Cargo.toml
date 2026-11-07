@@ -23,6 +23,7 @@ mm-ops = { workspace = true }
 # Tauri のコマンド pack_list と pack_apply。パックのマクロを展開して適用する。
 mm-pack = { workspace = true }
 mm-serve = { workspace = true }
+mm-improve = { workspace = true }
 mm-ingest = { workspace = true }
 mm-ingest-api = { workspace = true }
 mm-export = { workspace = true }

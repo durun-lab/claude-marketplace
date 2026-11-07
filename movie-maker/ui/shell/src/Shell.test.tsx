@@ -3,6 +3,7 @@ import { render } from "preact";
 import { act } from "preact/test-utils";
 import type { Layer } from "@mm/sdk";
 import type { DeliverApi } from "../../panels/deliver/src/api.ts";
+import type { FeedbackApi } from "../../panels/feedback/src/api.ts";
 import type { MediaApi } from "../../panels/media/src/api.ts";
 import type { MixerApi } from "../../panels/mixer/src/api.ts";
 import type { TransitionApi } from "../../panels/transition/src/api.ts";
@@ -73,6 +74,25 @@ const fakeReview = (): ReviewApi => ({
   reopen: vi.fn(),
   undo: vi.fn(),
   preview: vi.fn().mockResolvedValue(undefined),
+  onChanged: vi.fn().mockResolvedValue(() => {}),
+});
+
+const fakeFeedback = (): FeedbackApi => ({
+  status: vi.fn().mockResolvedValue({
+    settings: { enabled: false, model: null, effort: null, budgetUsd: 5, wallMinutes: 60, perfThreshold: 0.05 },
+    running: false,
+    run: null,
+    pending: 0,
+    waiting: null,
+    last: null,
+  }),
+  list: vi.fn().mockResolvedValue([]),
+  get: vi.fn(),
+  submit: vi.fn(),
+  settings: vi.fn(),
+  stop: vi.fn(),
+  capture: vi.fn(),
+  reportError: vi.fn().mockResolvedValue(undefined),
   onChanged: vi.fn().mockResolvedValue(() => {}),
 });
 
@@ -177,6 +197,18 @@ describe("Shell の右の列", () => {
     expect([panels[0]?.hidden, panels[1]?.hidden]).toEqual([true, false]);
     expect(host.querySelector(".mm-review")).not.toBeNull();
     expect(review.list).toHaveBeenCalled();
+  });
+
+  it("Feedback を渡すと右の列の最後にタブが出て、開くと状態と一覧を読む", async () => {
+    const feedback = fakeFeedback();
+    act(() => render(<Shell sendOp={vi.fn()} apis={{ feedback }} />, host));
+    const tabs = host.querySelectorAll(".mm-shell-right-tabs .mm-shell-tab");
+    expect([...tabs].map((t) => t.textContent)).toEqual(["Inspector", "Feedback"]);
+    click(tabs[1]);
+    await act(() => new Promise<void>((ok) => setTimeout(ok, 0)));
+    expect(host.querySelector(".mm-feedback")).not.toBeNull();
+    expect(feedback.status).toHaveBeenCalled();
+    expect(feedback.list).toHaveBeenCalledWith("all");
   });
 });
 

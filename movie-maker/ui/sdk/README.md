@@ -104,6 +104,23 @@ Deliver パネル（`ui/panels/deliver`）が使う Tauri のコマンド。ハ�
 
 レンダーターゲットの欄は `RENDER_TARGET_SCHEMA`（`ops.json` の `$defs.RenderTarget` から作る生成物）から Deliver が入力欄を作る。`RenderTarget` に欄が増えたら、`ops.json` を作り直して `pnpm build` を回すだけで画面に出る。
 
+## Feedback のコマンド
+
+Feedback パネル（`ui/panels/feedback`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/win/feedback_ipc.rs`、型は `ui/panels/feedback/src/api.ts`（`createIpcFeedbackApi` が呼ぶ）。中身は `mm_improve::Improver` の公開 API で、JSON は camelCase。失敗は `Err(String)`（作業ツリーが見つからず自動の改善を使えないときも）。
+
+| コマンド | 引数 | 成功 |
+|---|---|---|
+| `feedback_status` | なし | `ImproveStatus`（`settings`、`running`、`run`、`pending`、`waiting`、`last`） |
+| `feedback_list` | `{ filter }`（`all` / `pending` / `done`。省くと `all`） | `FeedbackItem[]`（新しい順、返事つき） |
+| `feedback_get` | `{ id }` | `FeedbackItem` |
+| `feedback_submit` | `{ feedback: { text, targets, context } }` | `FeedbackItem`。アプリが `context.app`（開いているプロジェクト）を添え、回を起こす |
+| `feedback_settings` | `{ patch: { enabled?, model?, effort?, budgetUsd?, wallMinutes?, perfThreshold? } }` | `ImproveStatus` |
+| `feedback_stop` | なし | `ImproveStatus`。OFF にし、動いている回を木ごと止める。要望は未対応に残る |
+| `feedback_capture` | なし | ウィンドウのスクリーンショット（PNG）のパス。指した部品の `screenshot` に入れる |
+| `feedback_report_error` | `{ error: { message, stack?, where? } }` | `null`。画面の例外を自動の起票に回す（出どころはアプリが `webview` に決める） |
+
+Tauri のイベント `mm:feedback-changed`（中身なし）が、起票、設定の変更、回の始めと終わりに届く。
+
 ## Mixer のコマンド
 
 Mixer パネル（`ui/panels/mixer`）が使う Tauri のコマンドとイベント。型は `ui/panels/mixer/src/api.ts`（`createIpcMixerApi` が呼ぶ）。失敗は `Err(String)`。

@@ -1,0 +1,290 @@
+/* 値は全部 theme の変数から取り、ここでは色や寸法を持たない。影は使わず border と角丸で区切る。 */
+.mm-feedback {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-md);
+  min-height: 0;
+  font-family: var(--mm-font-family);
+  font-size: var(--mm-font-size-base);
+  color: var(--mm-color-text);
+}
+
+.mm-feedback-bar,
+.mm-feedback-composer,
+.mm-feedback-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-sm);
+  padding: var(--mm-space-md);
+  border: var(--mm-border-width) solid var(--mm-color-border);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-color-surface);
+}
+
+.mm-feedback-bar-row,
+.mm-feedback-actions,
+.mm-feedback-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mm-space-sm);
+}
+
+.mm-feedback-switch {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-xs);
+  font-weight: 700;
+}
+
+.mm-feedback-field {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: var(--mm-space-xs);
+  min-width: 0;
+  color: var(--mm-color-text-muted);
+  font-size: var(--mm-font-size-sm);
+}
+
+.mm-feedback-field input,
+.mm-feedback-text {
+  min-width: 0;
+  padding: var(--mm-space-xs) var(--mm-space-sm);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-sm);
+  background: var(--mm-color-bg);
+  color: var(--mm-color-text);
+  font: inherit;
+}
+
+.mm-feedback-field input {
+  flex: 1 1 0;
+  width: 0;
+}
+
+.mm-feedback-text {
+  min-height: calc(var(--mm-font-size-base) * 5);
+  resize: vertical;
+}
+
+.mm-feedback-headline,
+.mm-feedback-meta,
+.mm-feedback-kind,
+.mm-feedback-empty,
+.mm-feedback-pickbar {
+  margin: 0;
+  color: var(--mm-color-text-muted);
+  font-size: var(--mm-font-size-sm);
+  overflow-wrap: anywhere;
+}
+
+.mm-feedback-headline[data-running="true"] {
+  color: var(--mm-color-text);
+  font-weight: 700;
+}
+
+.mm-feedback-button,
+.mm-feedback-seg {
+  padding: var(--mm-space-xs) var(--mm-space-md);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  background: var(--mm-gradient-button);
+  color: var(--mm-color-text);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mm-feedback-button {
+  border-radius: var(--mm-radius-md);
+}
+
+.mm-feedback-button:disabled {
+  color: var(--mm-color-task-link-disabled);
+  cursor: default;
+}
+
+.mm-feedback-button[aria-pressed="true"] {
+  border-color: var(--mm-color-accent);
+  font-weight: 700;
+}
+
+.mm-feedback-send {
+  margin-left: auto;
+}
+
+.mm-feedback-send:not(:disabled) {
+  border-color: var(--mm-color-accent);
+  color: var(--mm-color-task-link);
+  font-weight: 700;
+}
+
+.mm-feedback-stop {
+  margin-left: auto;
+}
+
+.mm-feedback-stop:not(:disabled) {
+  border-color: var(--mm-color-danger);
+  color: var(--mm-color-danger);
+  font-weight: 700;
+}
+
+.mm-feedback-filters {
+  display: flex;
+}
+
+.mm-feedback-seg:first-child {
+  border-radius: var(--mm-radius-md) 0 0 var(--mm-radius-md);
+}
+
+.mm-feedback-seg + .mm-feedback-seg {
+  margin-left: calc(var(--mm-border-width) * -1);
+}
+
+.mm-feedback-seg:last-child {
+  border-radius: 0 var(--mm-radius-md) var(--mm-radius-md) 0;
+}
+
+.mm-feedback-seg[aria-pressed="true"] {
+  border-color: var(--mm-color-accent);
+  background: var(--mm-color-accent);
+  color: var(--mm-color-accent-text);
+  font-weight: 700;
+}
+
+.mm-feedback-button:focus-visible,
+.mm-feedback-seg:focus-visible,
+.mm-feedback-chip-remove:focus-visible,
+.mm-feedback-switch input:focus-visible,
+.mm-feedback-field input:focus-visible,
+.mm-feedback-text:focus-visible {
+  outline: var(--mm-stroke-focus) solid var(--mm-color-focus);
+  outline-offset: var(--mm-size-focus-offset);
+}
+
+.mm-feedback-chips,
+.mm-feedback-list,
+.mm-feedback-replies {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-sm);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.mm-feedback-list {
+  gap: var(--mm-space-md);
+}
+
+.mm-feedback-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-xs);
+  padding: var(--mm-space-xs) var(--mm-space-sm);
+  border: var(--mm-border-width) solid var(--mm-color-accent);
+  border-radius: var(--mm-radius-sm);
+  font-size: var(--mm-font-size-sm);
+}
+
+.mm-feedback-chip-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mm-feedback-chip-remove {
+  padding: 0 var(--mm-space-xs);
+  border: none;
+  background: none;
+  color: var(--mm-color-text-muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.mm-feedback-highlight {
+  position: fixed;
+  z-index: 1000;
+  border: var(--mm-stroke-focus) solid var(--mm-color-accent);
+  border-radius: var(--mm-radius-sm);
+  pointer-events: none;
+}
+
+.mm-feedback-card[data-stage="inRun"] {
+  border-color: var(--mm-color-accent);
+}
+
+.mm-feedback-badge {
+  padding: 0 var(--mm-space-sm);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-sm);
+  font-size: var(--mm-font-size-sm);
+  font-weight: 700;
+}
+
+.mm-feedback-badge[data-stage="inRun"] {
+  border-color: var(--mm-color-accent);
+  color: var(--mm-color-accent);
+}
+
+.mm-feedback-badge[data-stage="landed"] {
+  border-color: var(--mm-color-meter-ok);
+  color: var(--mm-color-meter-ok);
+}
+
+.mm-feedback-badge[data-stage="held"] {
+  border-color: var(--mm-color-meter-warn);
+  color: var(--mm-color-meter-warn);
+}
+
+.mm-feedback-badge[data-stage="sentBack"] {
+  border-color: var(--mm-color-danger);
+  color: var(--mm-color-danger);
+}
+
+.mm-feedback-when {
+  margin-left: auto;
+}
+
+.mm-feedback-card-text,
+.mm-feedback-reply-text {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.mm-feedback-reply {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-xs);
+  padding-left: var(--mm-space-sm);
+  border-left: var(--mm-stroke-focus) solid var(--mm-color-border-strong);
+}
+
+.mm-feedback-reply[data-outcome="landed"] {
+  border-left-color: var(--mm-color-meter-ok);
+}
+
+.mm-feedback-reply[data-outcome="pullRequest"] {
+  border-left-color: var(--mm-color-meter-warn);
+}
+
+.mm-feedback-reply[data-outcome="rejected"] {
+  border-left-color: var(--mm-color-danger);
+}
+
+.mm-feedback-meta a {
+  color: var(--mm-color-task-link);
+}
+
+.mm-feedback-error {
+  margin: 0;
+  padding: var(--mm-space-sm);
+  border: var(--mm-border-width) solid var(--mm-color-danger);
+  border-radius: var(--mm-radius-sm);
+  color: var(--mm-color-danger);
+  font-size: var(--mm-font-size-sm);
+  overflow-wrap: anywhere;
+}

@@ -8,6 +8,8 @@ mod deliver;
 mod deliver_ipc;
 mod edit;
 mod edit_actions;
+mod feedback;
+mod feedback_ipc;
 mod history;
 mod ipc;
 mod keys;
