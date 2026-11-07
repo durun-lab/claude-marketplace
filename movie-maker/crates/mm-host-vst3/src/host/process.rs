@@ -37,17 +37,16 @@ impl BusBuffers {
             .iter()
             .enumerate()
             .map(|(i, n)| {
-                let n = if Some(i) == main {
-                    CHANNELS
-                } else {
-                    (*n).max(0) as usize
-                };
-                (0..n)
+                if Some(i) == main {
+                    // 主のバスは処理のたびに共有メモリの配列へ向け直す（bind）。
+                    return vec![std::ptr::null_mut(); CHANNELS];
+                }
+                (0..(*n).max(0))
                     .map(|_| {
-                        scratch.push(vec![0.0; MAX_FRAMES]);
-                        scratch
-                            .last_mut()
-                            .map_or(std::ptr::null_mut(), |s| s.as_mut_ptr())
+                        let mut channel = vec![0.0; MAX_FRAMES];
+                        let ptr = channel.as_mut_ptr();
+                        scratch.push(channel);
+                        ptr
                     })
                     .collect()
             })
