@@ -19,3 +19,26 @@ ep04 から、この形で作れるかを試す。
 `web.cef` を使わずに作れる分（色と書体の決まり、文字のスタイル、エピソードのテンプレート、マクロ、ダッキングの設定）は `packs/vlog` にあり、読み込みと検査と展開は `crates/mm-pack`、使う経路は `mm pack` とアプリの `pack_list`・`pack_apply`。中身と、段階 6 に回すものの一覧は [packs/vlog/README.md](../../packs/vlog/README.md)。
 
 `web.cef` の部品は `packs/vlog/web/*.html` に置き、マクロの `web` 手順がレイヤーにする（テーマの色と書体はページの `data.theme` で渡す）。部品の一覧は同じ README の「web の部品」、書き方は「web の部品の書き方」。時刻で中身が変わる部品（歌詞、図解の cues、読む窓、Claude の吹き出し）は `animated: true` で、レイヤーの始まりからの秒 `t` と `data` だけで画面を決める。
+
+## 書体
+
+パックの書体を、OS に入っていない PC でも、プロジェクトを別の PC に移しても、同じ画素で描く。`web.cef`（ページの CSS）と `text`（cosmic-text と swash、glyphon）の両方が同じファイルを使う。
+
+### 先行事例
+
+| 事例 | 書体の持ち方 | 採ったこと |
+|---|---|---|
+| After Effects、Premiere、DaVinci Resolve | OS に入った書体を名前で引く。プロジェクトは書体を持たず、無い PC では置き換えて警告する（AE の「ファイルを収集」も書体は集めない） | 無ければ落ちずに置き換える |
+| Unity、Godot | 書体のファイルをプロジェクトの資産として取り込み、資産として配る | 書体を素材（`assets`）にする |
+| Remotion | `public/` に書体を置き、`staticFile` の URL を `@font-face` で宣言し、読み込みを待ってから描く（`delayRender`） | `@font-face` で宣言し、読み込みを待つ |
+| Google Fonts の CSS API | ファイルの中の名前によらず、`METADATA.pb` の family の名前で `@font-face` を宣言する（M PLUS Rounded 1c のファイルの中の名前は `Rounded Mplus 1c`） | family の名前を外で決める |
+| CEF の scheme handler | 決めた scheme と名前の要求に、アプリが答える（`CefRegisterSchemeHandlerFactory`） | 書体のファイルをホストが配る |
+
+### 新しい設計
+
+- 置き場所: パックは `fonts/<family>/` に書体とライセンスの文を置く。フォルダーの名前が family の名前で、テーマ（`theme.json` の `fonts`）と CSS はこの名前で書く。`mm pack check` は、テーマの書体のフォルダーとライセンスの文が揃っているかを見る。
+- 取り込み: パックを適用すると（`mm pack apply`）、`fonts/` をプロジェクトのフォルダーへ写し、まだ無い書体を素材として足す（`addAsset`。場所は `fonts/<family>/<ファイル>` の相対パス、`contentHash` は中身の BLAKE3）。プロジェクトのフォルダーごと移せば書体も付いていく。スキーマは変えない（拡張子 `ttf`、`otf`、`ttc` の素材を書体として扱う）。
+- 渡し方: レンダラーがフレームごとにプロジェクトの書体の素材を集め、組が変わったときだけ、文字の実装（`TextShaper::use_fonts`、`TextRasterizer::use_fonts`）とノードの種類（`NodeKind::use_fonts`）に渡す。組の指紋（`contentHash` と family の名前）をフレームのキャッシュのキーに入れる。
+- `text`: fontdb に読み込み、フォルダーの名前を family の名前として足す。同じ family の OS の書体は外す（PC ごとに入っている版で画素が変わらないように）。`text` の種類に `font`（family の名前）を足し、パックの文字のスタイルは `font` に書体の役（`body` など）を書く。
+- `web.cef`: ページの HTML に書体を埋めない（3 書体で 25 MB あり、HTML はレイヤーごとにコピーされる）。ホストは `Prepare` の `fonts` から `@font-face` をページに差し込み、ファイルを `https://mm-font.invalid/<contentHash>` の URL で配る（scheme handler）。CSP の `font-src` と、ホストの要求の決まり（`policy`）は、この起点だけを足して許す。Chromium は使う family と太さのファイルだけを取りに来る。ホストは時刻を反映したあと書体の読み込みを待ち、待ったときは時刻をもう一度反映する（文字の幅を測って枠を組む吹き出しが、置き換えの書体の幅のまま描かないように）。
+- 無いとき: 書体のファイルが読めなければ飛ばし、その family は OS の書体で描く。描画は止めない。

@@ -9,6 +9,8 @@
 //! - `macros/*.json` と `templates/*.json`: 引数を受けて操作の列を作る手順（[`MacroDef`]）。テンプレートは
 //!   空のプロジェクトに適用するテンプレート（コンポジション、レンダーターゲット）で、形はマクロと同じ。
 //! - `web/*.html`: HTML と CSS の部品。`web` 手順（[`WebStep`]）が `web.cef` のレイヤーにする。
+//! - `fonts/<family>/*.ttf`: テーマが指す書体とライセンスの文。適用するとプロジェクトの `fonts/` に写して素材にする
+//!   （[`copy_fonts`]、[`font_asset_ops`]）。フォルダーの名前が family の名前。
 //! - `transitions/*.wgsl`: WGSL のトランジション。`transition` 手順（[`TransitionStep`]）がカットの頭に
 //!   `transition.wgsl` のトランジションとして置く。`_` で始まるファイルは共通のコード（[`Transitions`]）。
 //!
@@ -18,6 +20,7 @@
 mod args;
 mod check;
 mod expand;
+mod fonts;
 mod layout;
 mod macros;
 mod pack;
@@ -30,6 +33,7 @@ mod web;
 pub use args::{parse_time, ArgValue};
 pub use check::{check, Report};
 pub use expand::expand;
+pub use fonts::{copy_fonts, font_asset_ops, font_files, PackFont};
 pub use layout::EstimateShaper;
 pub use macros::{
     MacroDef, MacroKind, MacroSummary, ParamDef, ParamType, Step, TextStep, TransitionStep, WebStep,

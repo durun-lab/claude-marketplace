@@ -38,6 +38,7 @@ pub fn check(pack: &Pack) -> Report {
     let mut report = Report::default();
     check_manifest(pack, &mut report);
     check_theme(pack, &mut report);
+    check_fonts(pack, &mut report);
     for (name, style) in &pack.styles {
         check_style(pack, name, style, &mut report);
     }
@@ -86,6 +87,33 @@ fn check_theme(pack: &Pack, report: &mut Report) {
     }
 }
 
+/// テーマの書体がパックの `fonts/<family>/` にあり、family ごとにライセンスの文があるか。
+/// 書体を持たないパックは OS の書体で描くので、`fonts/` が空なら見ない。
+fn check_fonts(pack: &Pack, report: &mut Report) {
+    if pack.fonts.is_empty() {
+        return;
+    }
+    for (role, family) in &pack.theme.fonts {
+        if !pack.fonts.iter().any(|f| f.family == *family) {
+            report.push(format!(
+                "theme.json: 書体 {role}（{family}）のファイルが fonts/{family}/ に無い"
+            ));
+        }
+    }
+    let mut families: Vec<&std::path::Path> =
+        pack.fonts.iter().filter_map(|f| f.path.parent()).collect();
+    families.dedup();
+    for dir in families
+        .into_iter()
+        .filter(|d| !crate::fonts::has_license(d))
+    {
+        report.push(format!(
+            "{}: ライセンスの文（OFL.txt など）が無い",
+            dir.display()
+        ));
+    }
+}
+
 fn check_style(pack: &Pack, name: &str, s: &TextStyleSpec, report: &mut Report) {
     let at = |what: &str| format!("styles.json の {name}: {what}");
     let mut colors = vec![s.color.as_str()];
@@ -106,6 +134,9 @@ fn check_style(pack: &Pack, name: &str, s: &TextStyleSpec, report: &mut Report) 
     }
     if s.size <= 0.0 {
         report.push(at("size は正にする"));
+    }
+    if let Some(Err(e)) = s.font.as_deref().map(|r| pack.theme.font(r)) {
+        report.push(at(&e.to_string()));
     }
     if s.anchor.iter().any(|a| !(0.0..=1.0).contains(a)) {
         report.push(at("anchor は 0..1"));

@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use clap::Subcommand;
-use mm_pack::{check, expand, Pack};
+use mm_pack::{check, copy_fonts, expand, font_asset_ops, font_files, Pack};
 use mm_runtime::{Backend, Engine, RuntimeConfig};
 use mm_types::{MmError, Result};
 
@@ -71,14 +71,10 @@ pub fn run(command: PackCommand) -> Result<()> {
         PackCommand::Check { pack } => run_check(&pack),
         PackCommand::List { pack, json } => list(&pack, json),
         PackCommand::Expand { pack, name, vars } => {
-            let engine = text_engine()?;
+            let pack = Pack::load(&pack)?;
+            let engine = text_engine(&pack)?;
             let args = vars.into_iter().collect();
-            let txn = expand(
-                &Pack::load(&pack)?,
-                &name,
-                &args,
-                &*engine.services().text_shaper,
-            )?;
+            let txn = expand(&pack, &name, &args, &*engine.services().text_shaper)?;
             println!("{}", serde_json::to_string_pretty(&txn)?);
             Ok(())
         }
@@ -90,21 +86,45 @@ pub fn run(command: PackCommand) -> Result<()> {
             base,
         } => {
             let args: BTreeMap<String, String> = vars.into_iter().collect();
-            let engine = text_engine()?;
+            let pack = Pack::load(&pack)?;
+            let engine = text_engine(&pack)?;
             let shaper = &*engine.services().text_shaper;
-            let mut txn = expand(&Pack::load(&pack)?, &name, &args, shaper)?;
+            let mut txn = expand(&pack, &name, &args, shaper)?;
+            txn.ops.splice(0..0, import_fonts(&pack, &dir)?);
             txn.base_version = base;
             apply_txn(&dir, txn)
         }
     }
 }
 
-/// プレートの大きさを測るための、文字だけ実際の実装（フォントを読む CPU の実装）を選んだエンジン。描くときと同じ字の幅になる。
-fn text_engine() -> Result<Engine> {
-    mm_runtime::assemble(&RuntimeConfig {
+/// プレートの大きさを測るための、文字だけ実際の実装（フォントを読む CPU の実装）を選んだエンジン。
+/// パックの書体を読み込むので、描くときと同じ字の幅になる。
+fn text_engine(pack: &Pack) -> Result<Engine> {
+    let engine = mm_runtime::assemble(&RuntimeConfig {
         text: Backend::Cpu,
         ..RuntimeConfig::sample()
-    })
+    })?;
+    engine
+        .services()
+        .text_shaper
+        .use_fonts(&font_files(&pack.fonts))?;
+    Ok(engine)
+}
+
+/// パックの書体をプロジェクトのフォルダーの `fonts/` に写し、まだ素材に無いものを足す操作を返す。
+/// JSON のプロジェクトはその JSON のあるフォルダーに写す（素材の相対パスの基準と同じ）。
+fn import_fonts(pack: &Pack, dir: &Path) -> Result<Vec<mm_ops::Op>> {
+    if pack.fonts.is_empty() {
+        return Ok(Vec::new());
+    }
+    let project = mm_store::load_project(dir)?;
+    let base = if dir.is_dir() {
+        dir
+    } else {
+        dir.parent().unwrap_or(Path::new("."))
+    };
+    copy_fonts(&pack.fonts, base)?;
+    font_asset_ops(&pack.fonts, &project)
 }
 
 fn run_check(dir: &Path) -> Result<()> {

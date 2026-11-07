@@ -53,6 +53,14 @@ impl Theme {
         };
         parse_hex(hex)
     }
+
+    /// 書体の役（`body` など）の family の名前。
+    pub fn font(&self, role: &str) -> Result<&str> {
+        self.fonts
+            .get(role)
+            .map(String::as_str)
+            .ok_or_else(|| MmError::NotFound(format!("theme の書体 {role}")))
+    }
 }
 
 /// `#RRGGBB` か `#RRGGBBAA`（sRGB、straight のアルファ）を線形の premultiplied にする。

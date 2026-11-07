@@ -8,6 +8,7 @@ use mm_types::{MmError, Result};
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 
+use crate::fonts::{read_fonts, PackFont};
 use crate::macros::{MacroDef, MacroKind};
 use crate::style::TextStyleSpec;
 use crate::theme::Theme;
@@ -49,6 +50,8 @@ pub struct Pack {
     pub pages: BTreeMap<String, String>,
     /// `transitions/*.wgsl`。`transition` 手順が `transition.wgsl` のトランジションにする。
     pub transitions: Transitions,
+    /// `fonts/<family>/` の書体。適用するとプロジェクトの素材になる（[`crate::font_asset_ops`]）。
+    pub fonts: Vec<PackFont>,
 }
 
 impl Pack {
@@ -72,6 +75,7 @@ impl Pack {
             macros,
             pages: read_pages(&dir.join("web"))?,
             transitions: Transitions::load(&dir.join("transitions"))?,
+            fonts: read_fonts(&dir.join(mm_text_api::FONTS_DIR))?,
         })
     }
 

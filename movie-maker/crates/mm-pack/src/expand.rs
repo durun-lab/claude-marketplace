@@ -110,7 +110,14 @@ impl<'a> TextInput<'a> {
 fn text_ops(pack: &Pack, input: &TextInput<'_>, shaper: &dyn TextShaper) -> Result<Vec<Value>> {
     let style = input.style;
     let color = pack.theme.color(&style.color)?;
-    let bounds = shaper.shape(&input.text, &text_style(style, color))?.bounds;
+    let font = style
+        .font
+        .as_deref()
+        .map(|r| pack.theme.font(r))
+        .transpose()?;
+    let bounds = shaper
+        .shape(&input.text, &text_style(style, color, font))?
+        .bounds;
     let padding = style.plate.as_ref().map_or([0.0, 0.0], |p| p.padding);
     let block = [f64::from(bounds.width), f64::from(bounds.height)];
     let spot = place(block, padding, style.position, style.anchor);
@@ -135,7 +142,10 @@ fn text_ops(pack: &Pack, input: &TextInput<'_>, shaper: &dyn TextShaper) -> Resu
         }
         layers.push(frame.layer(format!("{}{PLATE_SUFFIX}", input.id), node));
     }
-    let node = text_node(style, &input.text, color, &spot);
+    let mut node = text_node(style, &input.text, color, &spot);
+    if let Some(family) = font {
+        node = node.with_param("font", ParamValue::Text(family.to_owned()));
+    }
     layers.push(frame.layer(input.id.clone(), node));
     layers
         .into_iter()
@@ -147,13 +157,16 @@ fn text_ops(pack: &Pack, input: &TextInput<'_>, shaper: &dyn TextShaper) -> Resu
 }
 
 /// `text` の種類が描くときと同じスタイル（字の大きさ、色、折り返しの幅、中央揃え、行の高さの既定）。
-fn text_style(style: &TextStyleSpec, color: mm_types::Rgba) -> TextStyle {
+/// 測るときのスタイル。書体は描くとき（`text` の `font`）と同じ family にする。
+fn text_style(style: &TextStyleSpec, color: mm_types::Rgba, font: Option<&str>) -> TextStyle {
+    let defaults = TextStyle::default();
     TextStyle {
+        font_family: font.map_or(defaults.font_family.clone(), str::to_owned),
         size_px: style.size as f32,
         color,
         max_width: style.max_width.map(|w| w as f32),
         align: TextAlign::Center,
-        ..TextStyle::default()
+        ..defaults
     }
 }
 
