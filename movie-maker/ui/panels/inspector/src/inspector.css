@@ -19,6 +19,10 @@
 }
 
 .mm-insp-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--mm-space-sm);
   margin: 0;
   padding: var(--mm-space-xs) var(--mm-space-md);
   border: var(--mm-border-width) solid var(--mm-color-task-body-border);
@@ -27,6 +31,17 @@
   color: var(--mm-color-task-title-text);
   font-size: var(--mm-font-size-sm);
   font-weight: 700;
+}
+
+/* 長さ（数）は狭く、曲線の名前は切れない幅にする。 */
+.mm-insp-fade {
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+}
+
+/* マスクの追加と削除のボタン。 */
+.mm-insp-maskbtn {
+  padding: 0 var(--mm-space-sm);
+  color: var(--mm-color-text);
 }
 
 .mm-insp-body {
@@ -56,6 +71,8 @@
 }
 
 .mm-insp-value {
+  display: grid;
+  gap: var(--mm-space-xs);
   min-width: 0;
 }
 
@@ -116,4 +133,66 @@
   border: var(--mm-border-width) solid var(--mm-color-accent);
   background: var(--mm-color-accent);
   transform: rotate(45deg) scale(0.7);
+}
+
+/* 名前を押すと Graph に出す。見た目は行の名前のまま。 */
+.mm-insp-pick {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mm-insp-pick:focus-visible,
+.mm-insp-kfbtn:focus-visible,
+.mm-insp-kfinterp:focus-visible {
+  outline: var(--mm-stroke-focus) solid var(--mm-color-focus);
+  outline-offset: var(--mm-size-focus-offset);
+}
+
+.mm-insp-row[data-selected="true"] .mm-insp-label {
+  color: var(--mm-color-accent);
+  font-weight: 700;
+}
+
+/* キーフレームナビゲーター: 前へ、再生位置のキー、次へ、補間。 */
+.mm-insp-kfnav {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-xs);
+}
+
+.mm-insp-kfbtn {
+  flex: none;
+  min-width: 1.8em;
+  padding: 0 var(--mm-space-xs);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-sm);
+  background: var(--mm-gradient-button);
+  color: var(--mm-color-text);
+  font: inherit;
+  line-height: 1.6;
+  cursor: pointer;
+}
+
+.mm-insp-kfbtn:disabled {
+  color: var(--mm-color-text-muted);
+  cursor: default;
+}
+
+.mm-insp-kftoggle[aria-pressed="true"] {
+  color: var(--mm-color-accent);
+}
+
+.mm-insp-kfinterp {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0 var(--mm-space-xs);
+  border: var(--mm-border-width) solid var(--mm-color-border-strong);
+  border-radius: var(--mm-radius-sm);
+  background: var(--mm-color-surface);
+  color: var(--mm-color-text);
+  font: inherit;
 }

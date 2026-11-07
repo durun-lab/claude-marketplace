@@ -99,6 +99,56 @@
       ]
     },
     {
+      "description": "レイヤーにマスクを足す。",
+      "type": "object",
+      "properties": {
+        "index": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint",
+          "minimum": 0
+        },
+        "layer": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "mask": {
+          "$ref": "#/$defs/Mask"
+        },
+        "op": {
+          "type": "string",
+          "const": "addMask"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "layer",
+        "mask"
+      ]
+    },
+    {
+      "description": "レイヤーからマスクを外す。",
+      "type": "object",
+      "properties": {
+        "mask": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "removeMask"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "mask"
+      ]
+    },
+    {
       "description": "レイヤーの重なりの位置を変える。",
       "type": "object",
       "properties": {
@@ -256,6 +306,34 @@
         "target",
         "time",
         "interpolation"
+      ]
+    },
+    {
+      "description": "キーフレームの時刻と中身を置き直す（外すと置くを 1 つにする）。",
+      "type": "object",
+      "properties": {
+        "from": {
+          "description": "動かすキーフレームの今の時刻。",
+          "$ref": "#/$defs/RationalTime"
+        },
+        "keyframe": {
+          "description": "置き直した後のキーフレーム（時刻、値、区間の形）。",
+          "$ref": "#/$defs/Keyframe"
+        },
+        "op": {
+          "type": "string",
+          "const": "moveKeyframe"
+        },
+        "target": {
+          "$ref": "#/$defs/ParamRef"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "target",
+        "from",
+        "keyframe"
       ]
     },
     {
@@ -636,6 +714,96 @@
       "required": [
         "op",
         "layer"
+      ]
+    },
+    {
+      "description": "レイヤーの音の設定（送り先のバス、音量、パン、ミュート、ソロ）を置く・外す。",
+      "type": "object",
+      "properties": {
+        "audio": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LayerAudio"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "layer": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "setLayerAudio"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "layer"
+      ]
+    },
+    {
+      "description": "コンポジションのミキサーの設定（バスの音量、マスター、ダッキング）を置く・外す。",
+      "type": "object",
+      "properties": {
+        "composition": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "mixer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CompMixer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "op": {
+          "type": "string",
+          "const": "setMixer"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "composition"
+      ]
+    },
+    {
+      "description": "カットの頭のトランジションを置く・差し替える・外す。",
+      "type": "object",
+      "properties": {
+        "cut": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "setTransition"
+        },
+        "transition": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Transition"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "cut"
       ]
     },
     {
@@ -1550,6 +1718,37 @@
       "description": "色空間の名前。OCIO の名前をそのまま持つ（`bt709`、`srgb`、`lin_rec709` など）。",
       "type": "string"
     },
+    "CompMixer": {
+      "description": "コンポジションのミキサーの設定。既定は全部 0 dB でダッキングなし。",
+      "type": "object",
+      "properties": {
+        "buses": {
+          "description": "役割ごとのバス。載っていない役割は 0 dB。",
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/MixerBus"
+          }
+        },
+        "ducking": {
+          "description": "ダッキング。`None` で無効。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Ducking"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "master_db": {
+          "description": "マスターの音量（dB）。",
+          "type": "number",
+          "format": "double",
+          "default": 0.0
+        }
+      },
+      "additionalProperties": false
+    },
     "Composition": {
       "description": "コンポジション。大きさ、fps、長さ、レイヤーの重なり、マーカー。",
       "type": "object",
@@ -1584,6 +1783,17 @@
             "$ref": "#/$defs/Marker"
           }
         },
+        "mixer": {
+          "description": "ミキサーの設定。`None` は既定（全部 0 dB、ダッキングなし）。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CompMixer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "width": {
           "type": "integer",
           "format": "uint32",
@@ -1598,6 +1808,52 @@
         "duration",
         "layers"
       ]
+    },
+    "Crop": {
+      "description": "切り抜き。レイヤーの画像の縁から内側へ削る幅（画素）。\nDaVinci Resolve の Inspector の Cropping と Premiere Pro の Crop と同じく上下左右を別々に持ち、どれもキーフレームできる。\n無い辺は削らない。",
+      "type": "object",
+      "properties": {
+        "bottom": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Param"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "left": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Param"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "right": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Param"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "top": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Param"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      }
     },
     "CubicBezier": {
       "description": "進み具合 `p ∈ [0,1]` を曲げる 3 次ベジェ。`(0,0)` と `(1,1)` を端とし、制御点が `(x1,y1)`、`(x2,y2)`。\n`x1`、`x2` は `[0,1]` に収める（時間が単調になる）。",
@@ -1844,6 +2100,52 @@
         }
       }
     },
+    "Ducking": {
+      "description": "ダッキング。`trigger` のバスが鳴っている間、`targets` のバスを `reduction_db` だけ下げる。",
+      "type": "object",
+      "properties": {
+        "attack_ms": {
+          "description": "下がりきるまでの時間（ms）。",
+          "type": "number",
+          "format": "double"
+        },
+        "reduction_db": {
+          "description": "下げる量（dB）。0 以下。",
+          "type": "number",
+          "format": "double"
+        },
+        "release_ms": {
+          "description": "戻りきるまでの時間（ms）。",
+          "type": "number",
+          "format": "double"
+        },
+        "targets": {
+          "description": "下げられるバスの役割（例: `bgm`）。",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "threshold_db": {
+          "description": "鳴っていると見なす大きさ（dBFS）。",
+          "type": "number",
+          "format": "double"
+        },
+        "trigger": {
+          "description": "鳴ると他を下げるバスの役割（例: `voice`）。",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "trigger",
+        "targets",
+        "reduction_db",
+        "threshold_db",
+        "attack_ms",
+        "release_ms"
+      ]
+    },
     "Ease": {
       "description": "`Linear` の進み具合に掛けるイージングの型。",
       "oneOf": [
@@ -1903,6 +2205,43 @@
       "required": [
         "id",
         "node"
+      ]
+    },
+    "Fade": {
+      "description": "音のフェード。DaVinci Resolve と Final Cut Pro のクリップのフェードのハンドルと同じく、音量のキーフレームとは別に\nレイヤーの先頭（`fade_in`）と末尾（`fade_out`）に持ち、音量に掛ける。",
+      "type": "object",
+      "properties": {
+        "curve": {
+          "$ref": "#/$defs/FadeCurve",
+          "default": "linear"
+        },
+        "duration": {
+          "description": "フェードの長さ（コンポジションの時間）。正。",
+          "$ref": "#/$defs/RationalTime"
+        }
+      },
+      "required": [
+        "duration"
+      ]
+    },
+    "FadeCurve": {
+      "description": "フェードの曲線。進み具合 `p`（無音の側が 0、鳴る側が 1）から振幅の倍率を決める。",
+      "oneOf": [
+        {
+          "description": "振幅の直線（`p`）。geneva と Final Cut Pro の Linear。",
+          "type": "string",
+          "const": "linear"
+        },
+        {
+          "description": "等パワー（`sin(p π/2)`）。重なった 2 つのフェードの和の大きさが保たれる。Final Cut Pro の +3dB。",
+          "type": "string",
+          "const": "equal_power"
+        },
+        {
+          "description": "dB の直線。-60 dB から 0 dB まで、`p = 0` だけ無音。",
+          "type": "string",
+          "const": "db"
+        }
       ]
     },
     "Framing": {
@@ -2015,6 +2354,10 @@
         "blend": {
           "$ref": "#/$defs/BlendMode",
           "default": "normal"
+        },
+        "crop": {
+          "description": "切り抜き。変形の前のレイヤーの画像に掛ける。",
+          "$ref": "#/$defs/Crop"
         },
         "effects": {
           "description": "効果の列。上から順に掛ける。",
@@ -2155,8 +2498,34 @@
       "description": "レイヤーの音の設定。",
       "type": "object",
       "properties": {
+        "fade_in": {
+          "description": "先頭のフェード。音量に掛ける。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Fade"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "fade_out": {
+          "description": "末尾のフェード。音量に掛ける。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Fade"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "gain_db": {
           "$ref": "#/$defs/Param"
+        },
+        "mute": {
+          "description": "鳴らさない。プレビューと書き出しの両方に効く。",
+          "type": "boolean"
         },
         "pan": {
           "$ref": "#/$defs/Param"
@@ -2164,6 +2533,10 @@
         "role": {
           "description": "役割（`voice`、`bgm`、`se`）。ミキサーのバスとダッキングが見る。",
           "type": "string"
+        },
+        "solo": {
+          "description": "ソロ。同じコンポジションにソロのレイヤーが 1 つでもあれば、ソロでないレイヤーは鳴らさない。",
+          "type": "boolean"
         }
       },
       "required": [
@@ -2201,12 +2574,19 @@
       ]
     },
     "Mask": {
-      "description": "マスク。形はベジェの頂点の列を `Json` のパラメータで持つ（段階 1 は型だけ）。",
+      "description": "マスク。形は角丸の矩形（`rect`）か、ベジェの頂点の列（`path`。型だけで、レンダラーは描かない）。\n座標はレイヤーの座標で、変形と一緒に動く（After Effects のレイヤーのマスクと同じ）。",
       "type": "object",
       "properties": {
         "feather": {
-          "description": "ぼかしの幅（画素）。",
-          "$ref": "#/$defs/Param"
+          "description": "ぼかしの幅（画素）。縁を中心にこの幅で 0 から 1 へ移る。",
+          "$ref": "#/$defs/Param",
+          "default": {
+            "keyframes": [],
+            "value": {
+              "type": "number",
+              "value": 0.0
+            }
+          }
         },
         "id": {
           "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
@@ -2221,18 +2601,40 @@
           "default": "add"
         },
         "opacity": {
-          "$ref": "#/$defs/Param"
+          "$ref": "#/$defs/Param",
+          "default": {
+            "keyframes": [],
+            "value": {
+              "type": "number",
+              "value": 1.0
+            }
+          }
         },
         "path": {
-          "description": "頂点の列（コンポジションの画素）。キーフレームで形を動かせる。",
-          "$ref": "#/$defs/Param"
+          "description": "頂点の列。キーフレームで形を動かせる。`rect` があれば使わない。",
+          "$ref": "#/$defs/Param",
+          "default": {
+            "keyframes": [],
+            "value": {
+              "type": "json",
+              "value": []
+            }
+          }
+        },
+        "rect": {
+          "description": "角丸の矩形。あれば形はこれで決まる。",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/MaskRect"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
-        "id",
-        "path",
-        "feather",
-        "opacity"
+        "id"
       ]
     },
     "MaskMode": {
@@ -2244,12 +2646,56 @@
         "intersect"
       ]
     },
+    "MaskRect": {
+      "description": "角丸の矩形のマスクの形。DaVinci Resolve（Fusion）の Rectangle Mask と geneva の `mask` の `rect` に合わせ、\n位置・大きさ・角の半径をパラメータで持つ（どれもキーフレームできる）。",
+      "type": "object",
+      "properties": {
+        "position": {
+          "description": "矩形の左上（Vec2）。",
+          "$ref": "#/$defs/Param"
+        },
+        "radius": {
+          "description": "角の半径（Number）。短い辺の半分で頭打ちにする。",
+          "$ref": "#/$defs/Param",
+          "default": {
+            "keyframes": [],
+            "value": {
+              "type": "number",
+              "value": 0.0
+            }
+          }
+        },
+        "size": {
+          "description": "矩形の幅と高さ（Vec2）。",
+          "$ref": "#/$defs/Param"
+        }
+      },
+      "required": [
+        "position",
+        "size"
+      ]
+    },
     "MatteKind": {
       "description": "マットに使う成分。",
       "type": "string",
       "enum": [
         "alpha",
         "luma"
+      ]
+    },
+    "MixerBus": {
+      "description": "バス 1 本の設定。",
+      "type": "object",
+      "properties": {
+        "gain_db": {
+          "description": "バスの音量（dB）。",
+          "type": "number",
+          "format": "double"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "gain_db"
       ]
     },
     "Node": {

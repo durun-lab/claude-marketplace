@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use mm_doc::{Asset, Composition, Layer, LayerAudio, Node, Param, Project, RenderTarget};
+use mm_doc::{Asset, Composition, Layer, LayerAudio, Node, Project, RenderTarget};
 use mm_node_api::Services;
 use mm_types::{
     AssetId, ColorSpace, CompositionId, Id, ParamValue, Rational, RationalTime, RenderTargetId,
@@ -73,15 +73,16 @@ pub fn vertical_project(
         fps: Some(media.fps),
         timebase_offset: RationalTime::ZERO,
     });
-    project.compositions.push(Composition {
-        id: comp_id.clone(),
-        width: media.size.width,
-        height: media.size.height,
-        fps: media.fps,
-        duration,
-        layers: vec![footage, text],
-        markers: Vec::new(),
-    });
+    project.compositions.push(
+        Composition::new(
+            comp_id.clone(),
+            media.size.width,
+            media.size.height,
+            media.fps,
+            duration,
+        )
+        .with_layers(vec![footage, text]),
+    );
     project.render_targets.push(RenderTarget {
         id: target_id.clone(),
         composition: comp_id.clone(),
@@ -99,11 +100,7 @@ pub fn vertical_project(
 /// 素材を `in_point` から `duration` だけ切り、音を `voice` の役割で付けたレイヤー。
 fn footage_layer(asset_id: &AssetId, in_point: RationalTime, duration: RationalTime) -> Layer {
     Layer {
-        audio: Some(LayerAudio {
-            role: "voice".into(),
-            gain_db: Param::constant(ParamValue::Number(0.0)),
-            pan: Param::constant(ParamValue::Number(0.0)),
-        }),
+        audio: Some(LayerAudio::new("voice")),
         ..Layer::new(
             "l-footage",
             Node::new("footage", SAMPLE_KIND_VERSION)

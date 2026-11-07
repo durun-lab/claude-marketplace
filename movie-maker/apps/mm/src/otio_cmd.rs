@@ -1,5 +1,5 @@
 //! `mm otio export` / `mm otio import`: sequence と OpenTimelineIO（`.otio`）の変換。
-//! 取り込みは素材と sequence を足す操作として 1 つのトランザクションで当て、`mm undo` で取り消せる。
+//! 取り込みは素材と sequence を足す操作として 1 つのトランザクションで適用し、`mm undo` で取り消せる。
 
 use std::path::{Path, PathBuf};
 
@@ -11,6 +11,25 @@ use mm_types::{Id, MmError, Result};
 use crate::commands::{actor, cli_context, finish, now_ms, op_error, open_target, Target};
 use crate::project::load_project;
 use crate::remote;
+
+/// `mm otio`。上の段の登録は `main.rs` の 1 行。
+#[derive(clap::Subcommand)]
+pub enum Cmd {
+    /// sequence と OpenTimelineIO（`.otio`）の変換。取り込みは操作として当てる（取り消せる）。
+    Otio {
+        #[command(subcommand)]
+        command: OtioCommand,
+    },
+}
+
+impl Cmd {
+    /// サブコマンドを実行する。
+    pub fn run(self) -> Result<()> {
+        match self {
+            Self::Otio { command } => run(command),
+        }
+    }
+}
 
 /// トランザクションの名前。
 const TXN_NAME: &str = "OTIO の取り込み";

@@ -15,6 +15,8 @@
 //! - デバイスが消えたら（`GpuContext::is_lost`）、次のフレームの前にコンテキストとその上の全部を作り直す。
 
 mod audio;
+mod audio_gain;
+mod clip;
 mod compose;
 mod crossfade;
 mod effects;

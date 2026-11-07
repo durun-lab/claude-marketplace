@@ -7,7 +7,7 @@
 | 2 | レンダラー（`footage`、`solid`、`image`、`composition`、`sequence`、`text`、`shader.wgsl`、`color.*`）、OCIO、ミキサー、プレビュー、フレームのキャッシュ。`mm perf` の `playback` と `scrub`、WebView の時計の補正、予算の自動の起票 | 入れ子のコンポジションをウィンドウで通して再生できる。期待画像のテストが通る。性能の回帰のゲートが CI で動いている | レンダラーと `mm-nodes-basic` ‖ `mm-cache-fs` ‖ `mm-ui-wgpu` ‖ 取り込み（`mm-ingest`、`tools/`） ‖ `Inspector`（スキーマから作る所） |
 | 3 | `Media`、`Story`、`Source`、`Timeline` と取り込み | 長い素材から話題を切り出して並べ、そのまま再生できる | 各パネルは別々（`story`、`media`、`Timeline`） ‖ 書き出し（`mm-export`） ‖ `mm-serve` |
 | 4 | `Inspector`、`Graph`、`Mixer`、`Deliver`、書き出し（並行、音、ラウドネス、字幕、チャプター、ProRes）、本編とショートの参照 | 1 つのプロジェクトから本編とショートを書き出せ、プレビューと一致する | パネルごと ‖ エンコード（nvenc と ffmpeg） ‖ `mm-host-cef`（段階 6 の準備） |
-| 5 | `Review`、MCP と対応のトランザクション、OTIO、ep03 の再現、durun-dashboard の API | Claude が MCP で同じ編集をでき、承認・却下できる。ep03 の再現が前の書き出しと一致する | `review` パネル ‖ MCP ‖ OTIO（`mm-doc` への変換） ‖ `packs/vlog` |
+| 5 | `Review`、MCP と対応のトランザクション、OTIO、ep03 の再現、durun-dashboard の API | Claude が MCP で同じ編集をでき、承認・却下できる。ep03 の再現が前の書き出しと一致する（2026-11-07 にテストの閾値を満たした。[結果と足りない機能](11-testing.md#ep03-の再現の結果)） | `review` パネル ‖ MCP ‖ OTIO（`mm-doc` への変換） ‖ `packs/vlog` |
 | 6 | `web.cef` と vlog のパック、ep04 | ep04 を movie-maker で作れる | `mm-nodes-cef` と `mm-text-cef` ‖ パック ‖ `mm-host-ofx`（段階 8 の準備） |
 | 7 | 自動の改善（worktree の囲い、Feedback、subsecond） | 要望を起票すると、自動で直って返事が付く | `mm-improve` ‖ `feedback` パネル ‖ `areas.toml` の検査 |
 | 8 | `ofx`、VST3、CLAP、`lottie`、`gen.ai`、HLSL、HDR | 種類を足すだけで使える | 全部が別の実装のクレート。互いに独立 |
@@ -51,7 +51,7 @@
 | 条件 | 判定 | 残り |
 |---|---|---|
 | 難所の数字と可否がこの設計書に戻っている（[計装の予算の表](17-instrumentation.md#予算の表)の〔推〕が実測に置き換わっている） | 難所に当たる行は満たした。5 つの可否と数字は上の表と [spikes/](spikes/) に戻り、予算の表は 26 行のうち 5 行を実測に置き換えた（CEF、起動、デコード 1080p が達成、デコード 4K と書き出しが超過）。6 行は条件が違う参考値だけを足し、15 行は〔推〕のまま | 超過の 2 行は段階 1（デコードの実素材）と段階 4（NVENC）で測り直す。残りの行は、測る対象（操作、キャッシュ、取り込み、保存など）が段階 1 以降で出来るので、そこで置き換える。ウィンドウの 150% の DPI などは人が確かめる |
-| 書き出した MP4 が再生できる | 機械的には満たした。`mm render` の出力を、統合テスト（`apps/mm/tests/render.rs`）が ffprobe と `mm-decode-ffmpeg` で読み直す（PR #15） | 人が再生ソフトで見た記録が無い。書き出しは libx264 と CPU のリードバックで、NVENC は未接続 |
+| 書き出した MP4 が再生できる | 機械的には満たした。`mm render` の出力を、統合テスト（`apps/mm/tests/it/render.rs`）が ffprobe と `mm-decode-ffmpeg` で読み直す（PR #15） | 人が再生ソフトで見た記録が無い。書き出しは libx264 と CPU のリードバックで、NVENC は未接続 |
 | インターフェースが固定されている | 未了。API クレートの最初のバージョンと `mm-testkit` のモックの実装はあるが、試作でインターフェースの変更が必要と分かった | インターフェースの変更を RFC で決めて直す（別の担当が進めている）。決まった方針は `GpuHelper` トレイトで wgpu を囲うこと。ほかに、NVDEC のフレームの受け渡しと GPU のコンテキストと寿命と同期（`mm-decode-api`）、CEF のホストへの GPU の指定と共有ハンドルの受け渡し（`mm-host-api`）、`TransformProgram` のテクスチャの置き場所（`mm-color-api`）、`Engine` から実装の一式を取り出す関数 |
 
 縦の 1 本（素材を切って文字を載せ、音を付けて書き出す）、`mm-trace`、`mm perf run` の `startup` と `export` は動いている（PR #15）。

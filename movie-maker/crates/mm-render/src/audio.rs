@@ -3,11 +3,12 @@
 
 use mm_audio_api::{AudioBlock, MixInput, Mixer, MixerConfig};
 use mm_doc::{Composition, Layer, SEQUENCE_KIND, SEQUENCE_PARAM};
-use mm_eval::{evaluate_audio, place_cuts, source_time};
+use mm_eval::{any_solo, audible, evaluate_audio, place_cuts, source_time};
 use mm_node_api::{audio_frames_in, AudioCx, NodeKind};
-use mm_render_api::AudioRequest;
-use mm_types::{CompositionId, Id, Params, RationalTime, Result, TimeRange};
+use mm_render_api::{mixer_config, AudioRequest, TrackLevel};
+use mm_types::{CompositionId, Id, LayerId, Params, RationalTime, Result, TimeRange};
 
+use crate::audio_gain::apply_gain_envelope;
 use crate::layers::{evaluate, MAX_DEPTH, NESTED_KIND, NESTED_PARAM};
 use crate::renderer::WgpuRenderer;
 use crate::sequence::cut_layer;
@@ -16,8 +17,16 @@ use crate::sequence::cut_layer;
 pub(crate) struct AudioStream {
     mixer: Box<dyn Mixer>,
     composition: CompositionId,
+    /// ミキサーを作った設定。Mixer で設定が変わったら作り直す。
+    config: MixerConfig,
     /// 直前の区間の終わり。次の区間がここから始まれば続き、離れていればシーク。
     next_start: RationalTime,
+}
+
+/// ミキサーに渡す入力と、それぞれを出したレイヤー（メーターの値をレイヤーに戻すため）。
+struct CompInputs {
+    layers: Vec<LayerId>,
+    inputs: Vec<MixInput>,
 }
 
 /// 1 回の `render_audio` の入力に加えて、混ぜる区間とコンポジションの深さ。
@@ -40,51 +49,75 @@ impl WgpuRenderer {
             range: req.range,
             depth: 0,
         };
-        let inputs = self.comp_inputs(&scope)?;
-        let mut stream = self.take_stream(req)?;
-        let result = stream
-            .mixer
-            .mix(&inputs, audio_frames_in(req.range, req.sample_rate));
+        let comp_inputs = self.comp_inputs(&scope)?;
+        let config = mixer_config(comp.mixer.as_ref(), true);
+        let mut stream = self.take_stream(req, config)?;
+        let result = stream.mixer.mix(
+            &comp_inputs.inputs,
+            audio_frames_in(req.range, req.sample_rate),
+        );
+        // 混ぜられなかった区間のピークは途中までの値なので、メーターに出さない。
+        self.audio_levels = match &result {
+            Ok(_) => comp_inputs
+                .layers
+                .into_iter()
+                .zip(stream.mixer.input_peaks().iter().copied())
+                .map(|(layer, peak)| TrackLevel { layer, peak })
+                .collect(),
+            Err(_) => Vec::new(),
+        };
         stream.next_start = req.range.end;
         self.audio = Some(stream);
         result
     }
 
-    /// 持ち越しのミキサーを取り出す。続きでなければ作り直す。
-    fn take_stream(&mut self, req: &AudioRequest<'_>) -> Result<AudioStream> {
+    /// 持ち越しのミキサーを取り出す。続きでないか、設定が変わっていれば作り直す。
+    fn take_stream(&mut self, req: &AudioRequest<'_>, config: MixerConfig) -> Result<AudioStream> {
         let kept = self.audio.take().filter(|s| {
             s.composition == *req.composition
                 && s.next_start == req.range.start
+                && s.config == config
                 && s.mixer.sample_rate() == req.sample_rate
                 && s.mixer.channels() == req.channels
         });
         match kept {
             Some(stream) => Ok(stream),
             None => Ok(AudioStream {
-                mixer: self.new_mixer(req.sample_rate, req.channels)?,
+                mixer: self.new_mixer(req.sample_rate, req.channels, &config)?,
                 composition: req.composition.clone(),
+                config,
                 next_start: req.range.start,
             }),
         }
     }
 
-    fn new_mixer(&self, sample_rate: u32, channels: u16) -> Result<Box<dyn Mixer>> {
-        self.mixers
-            .create(sample_rate, channels, &MixerConfig::default())
+    fn new_mixer(
+        &self,
+        sample_rate: u32,
+        channels: u16,
+        config: &MixerConfig,
+    ) -> Result<Box<dyn Mixer>> {
+        self.mixers.create(sample_rate, channels, config)
     }
 
     /// コンポジションの区間に鳴るレイヤーの音を、区間の先頭に置いた入力として集める。
-    fn comp_inputs(&mut self, scope: &AudioScope<'_>) -> Result<Vec<MixInput>> {
-        let mut inputs = Vec::new();
-        for layer in &scope.comp.layers {
+    /// ミュートのレイヤーと、ソロがあるときのソロでないレイヤーは混ぜない。
+    fn comp_inputs(&mut self, scope: &AudioScope<'_>) -> Result<CompInputs> {
+        let mut out = CompInputs {
+            layers: Vec::new(),
+            inputs: Vec::new(),
+        };
+        let solo = any_solo(&scope.comp.layers);
+        for layer in scope.comp.layers.iter().filter(|l| audible(l, solo)) {
             let Some(overlap) = layer.range()?.intersect(&scope.range) else {
                 continue;
             };
             if let Some(input) = self.layer_audio(scope, layer, overlap)? {
-                inputs.push(input);
+                out.layers.push(layer.id.clone());
+                out.inputs.push(input);
             }
         }
-        Ok(inputs)
+        Ok(out)
     }
 
     fn layer_audio(
@@ -107,7 +140,7 @@ impl WgpuRenderer {
             SEQUENCE_KIND => self.sequence_audio(scope, &params, source_range)?,
             _ => Some(self.node_audio(req, kind.as_ref(), &params, overlap, source_range)?),
         };
-        let Some(block) = block else {
+        let Some(mut block) = block else {
             return Ok(None);
         };
         let offset = audio_frames_in(
@@ -115,7 +148,10 @@ impl WgpuRenderer {
             req.sample_rate,
         );
         let total = audio_frames_in(scope.range, req.sample_rate);
-        let (role, gain_db, pan) = mix_settings(layer, overlap.start);
+        let (role, mut gain_db, pan) = mix_settings(layer, overlap.start);
+        if apply_gain_envelope(&mut block, layer, overlap.start)? {
+            gain_db = 0.0;
+        }
         Ok(Some(MixInput {
             block: place_block(&block, offset, total),
             role,
@@ -171,15 +207,14 @@ impl WgpuRenderer {
             .iter()
             .map(|p| cut_layer(&seq.cuts[p.index], p))
             .collect();
-        let cuts = Composition {
-            id: Id::new(name),
-            width: scope.comp.width,
-            height: scope.comp.height,
-            fps: scope.comp.fps,
-            duration: scope.comp.duration,
-            layers,
-            markers: Vec::new(),
-        };
+        let cuts = Composition::new(
+            Id::new(name),
+            scope.comp.width,
+            scope.comp.height,
+            scope.comp.fps,
+            scope.comp.duration,
+        )
+        .with_layers(layers);
         self.mix_range(scope, &cuts, source_range).map(Some)
     }
 
@@ -193,7 +228,7 @@ impl WgpuRenderer {
         ok
     }
 
-    /// コンポジション `comp` の `range` を、ダッキングなしの別のミキサーで 1 本に混ぜる。
+    /// コンポジション `comp` の `range` を、そのバスとマスターの設定を持ちダッキングの無い別のミキサーで 1 本に混ぜる。
     fn mix_range(
         &mut self,
         scope: &AudioScope<'_>,
@@ -206,9 +241,10 @@ impl WgpuRenderer {
             depth: scope.depth + 1,
             ..*scope
         };
-        let inputs = self.comp_inputs(&inner)?;
+        let inputs = self.comp_inputs(&inner)?.inputs;
         let frames = audio_frames_in(range, scope.req.sample_rate);
-        let mut mixer = self.new_mixer(scope.req.sample_rate, scope.req.channels)?;
+        let config = mixer_config(comp.mixer.as_ref(), false);
+        let mut mixer = self.new_mixer(scope.req.sample_rate, scope.req.channels, &config)?;
         mixer.mix(&inputs, frames)
     }
 

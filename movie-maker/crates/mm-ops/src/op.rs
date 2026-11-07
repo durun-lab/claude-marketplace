@@ -76,6 +76,10 @@ define_ops! {
     AddLayer => "addLayer",
     /// レイヤーを外す。
     RemoveLayer => "removeLayer",
+    /// レイヤーにマスクを足す。
+    AddMask => "addMask",
+    /// レイヤーからマスクを外す。
+    RemoveMask => "removeMask",
     /// レイヤーの重なりの位置を変える。
     MoveLayer => "moveLayer",
     /// パラメータの固定の値を置く。
@@ -88,6 +92,8 @@ define_ops! {
     RemoveKeyframe => "removeKeyframe",
     /// キーフレームの補間とイージングを変える。
     SetEase => "setEase",
+    /// キーフレームの時刻と中身を置き直す（外すと置くを 1 つにする）。
+    MoveKeyframe => "moveKeyframe",
     /// 親のレイヤーを付ける・外す。
     ParentLayer => "parentLayer",
     /// カットへの接続を付ける・外す。
@@ -116,6 +122,12 @@ define_ops! {
     SetReframe => "setReframe",
     /// sequence のレイヤーの字幕の置き場所を置く・外す。
     SetCaption => "setCaption",
+    /// レイヤーの音の設定（送り先のバス、音量、パン、ミュート、ソロ）を置く・外す。
+    SetLayerAudio => "setLayerAudio",
+    /// コンポジションのミキサーの設定（バスの音量、マスター、ダッキング）を置く・外す。
+    SetMixer => "setMixer",
+    /// カットの頭のトランジションを置く・差し替える・外す。
+    SetTransition => "setTransition",
     /// レンダーターゲットを足す。
     AddRenderTarget => "addRenderTarget",
     /// レンダーターゲットを外す。

@@ -43,6 +43,8 @@ body {
 .mm-shell-tabs {
   display: flex;
   flex: none;
+  /* 左の列は狭く 5 つのタブが 1 行に入らないので、はみ出して隠れる代わりに折り返す。 */
+  flex-wrap: wrap;
   gap: var(--mm-space-xs);
 }
 
@@ -62,6 +64,11 @@ body {
   background: var(--mm-color-accent);
   color: var(--mm-color-accent-text);
   font-weight: 700;
+}
+
+/* 折り返す左の列は 1 行に 3 つまでにし、2 行目の 1 つだけが列の幅に伸びる形を避ける。 */
+.mm-shell-tabs:not(.mm-shell-right-tabs) > .mm-shell-tab {
+  flex-basis: 30%;
 }
 
 .mm-shell-tab:focus-visible {
@@ -90,6 +97,13 @@ body {
 
 .mm-shell-right-tabs {
   margin-bottom: var(--mm-space-md);
+}
+
+/* Inspector のタブは Inspector と Graph を縦に並べる。 */
+.mm-shell-right-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-md);
 }
 
 .mm-shell-right-body[hidden] {

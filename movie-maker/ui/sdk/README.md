@@ -35,7 +35,7 @@ Rust の側は `#[tauri::command] fn apply_op(op: mm_ops::Op, ...) -> Result<_, 
 
 ## Media のコマンド
 
-Media パネル（`ui/panels/media`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/media_ipc.rs`、型は `src/media.ts`（`createIpcMediaApi` が呼ぶ）。失敗は `Err(String)`。
+Media パネル（`ui/panels/media`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/media_ipc.rs`、型は `ui/panels/media/src/api.ts`（`createIpcMediaApi` が呼ぶ）。失敗は `Err(String)`。
 
 | コマンド | 引数 | 成功 |
 |---|---|---|
@@ -60,7 +60,7 @@ Media パネル（`ui/panels/media`）が使う Tauri のコマンド。ハン�
 
 ## Story のコマンド
 
-Story パネル（`ui/panels/story`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/story_ipc.rs`、型は `src/story.ts`（`createIpcStoryApi` が呼ぶ）。時刻の `RationalTime` は `{ num, den }`（素材の時間軸）。失敗は `Err(String)`。
+Story パネル（`ui/panels/story`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/story_ipc.rs`、型は `ui/panels/story/src/api.ts`（`createIpcStoryApi` が呼ぶ）。時刻の `RationalTime` は `{ num, den }`（素材の時間軸）。失敗は `Err(String)`。
 
 | コマンド | 引数 | 成功 |
 |---|---|---|
@@ -79,7 +79,7 @@ Story と Media は素材を選んだとき、DOM のイベント `mm:asset-sele
 
 ## Deliver のコマンド
 
-Deliver パネル（`ui/panels/deliver`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/deliver_ipc.rs`、型は `src/deliver.ts`（`createIpcDeliverApi` が呼ぶ）。時間は秒。失敗は `Err(String)`。
+Deliver パネル（`ui/panels/deliver`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/deliver_ipc.rs`、型は `ui/panels/deliver/src/api.ts`（`createIpcDeliverApi` が呼ぶ）。時間は秒。失敗は `Err(String)`。
 
 | コマンド | 引数 | 成功 |
 |---|---|---|
@@ -104,9 +104,22 @@ Deliver パネル（`ui/panels/deliver`）が使う Tauri のコマンド。ハ�
 
 レンダーターゲットの欄は `RENDER_TARGET_SCHEMA`（`ops.json` の `$defs.RenderTarget` から作る生成物）から Deliver が入力欄を作る。`RenderTarget` に欄が増えたら、`ops.json` を作り直して `pnpm build` を回すだけで画面に出る。
 
+## Mixer のコマンド
+
+Mixer パネル（`ui/panels/mixer`）が使う Tauri のコマンドとイベント。型は `ui/panels/mixer/src/api.ts`（`createIpcMixerApi` が呼ぶ）。失敗は `Err(String)`。
+
+| コマンド | 引数 | 成功 |
+|---|---|---|
+| `mixer_state` | なし | いま開いているコンポジションの `MixerState`。`composition`、`mixer`（`ops.ts` の `CompMixer`、既定は `null`）、`tracks[]`（`layer`、`kind`、`label`、`audio`（`LayerAudio`、既定は `null`）、`animated`）、`roles`（バスの選択肢） |
+| `apply_ops` | `{ ops: Op[] }` | `()`。Mixer が送る操作は 2 つで、どちらも変えた後の全体を置く。`setLayerAudio`（レイヤーの `LayerAudio` 全体）と `setMixer`（コンポジションの `CompMixer` 全体）。1 回の操作が取り消し 1 回で、フェーダーはドラッグを離したときに 1 回だけ送る |
+
+音量とパンにキーフレームのあるトラック（`animated`）は、フェーダーで固定の値に置くとキーフレームを消すので、Mixer は触らせない（ミュート、ソロ、バスは触れる）。
+
+メーターは Tauri のイベント `mm:mixer-meters`（`MIXER_METERS_EVENT`）で、再生位置の通知と同じ間隔で `MixerMeters`（`t`、`playing`、`tracks[]`（`layer`、`peak_db`）、`master`（`peak_db` の L と R、`true_peak_db`、`short_term_lufs`、`integrated_lufs`））を受ける。無音と測れない値は `null`。受けた値は state に入れず、パネルが rAF で棒の DOM を直接書き換える（ピークホールドは UI 側で 1.5 秒）。`playing: false` を受けたら棒は少しずつ下がる。
+
 ## Review のコマンド
 
-Review パネル（`ui/panels/review`）が使う Tauri のコマンド。型は `src/review.ts`（`createIpcReviewApi` が呼ぶ）。失敗は `Err(String)`。提案（`Proposal`）は 1 つのトランザクション（操作の列）で、保留中はプロジェクトのデータに入っていない。
+Review パネル（`ui/panels/review`）が使う Tauri のコマンド。型は `ui/panels/review/src/api.ts`（`createIpcReviewApi` が呼ぶ）。失敗は `Err(String)`。提案（`Proposal`）は 1 つのトランザクション（操作の並び）で、保留中はプロジェクトのデータに入っていない。
 
 | コマンド | 引数 | 成功 |
 |---|---|---|
@@ -115,8 +128,19 @@ Review パネル（`ui/panels/review`）が使う Tauri のコマンド。型は
 | `review_reject` | `{ id }` | `Proposal`。データは変わらない |
 | `review_reopen` | `{ id }` | `Proposal`。却下したものを保留に戻す |
 | `review_undo` | `{ id }` | `Proposal`。承認で適用したトランザクションが取り消しのスタックの一番上のときだけ取り消す |
-| `review_preview` | `{ id, ops }` | `null`。Program に提案を当てた絵を出す。`id: null` で元の絵に戻す |
+| `review_preview` | `{ id, ops }` | `null`。Program に提案を適用したフレームを出す。`id: null` で元のフレームに戻す |
 
 `Proposal` の `applied` は適用したトランザクションが今も取り消されていないこと、`undoable` はそれが取り消しのスタックの一番上にあること、`conflict` は保留中で提案の後の編集と触る所が重なる ID（あれば承認できない）。
 
 Tauri のイベント `mm:proposals-changed`（`{ id, state }`）が提案の追加・決定のたびに届く。取り消しで `applied` と `undoable` が変わるので、`mm:doc-changed` でも一覧を読み直す。
+
+## Transition のコマンド
+
+Transition パネル（`ui/panels/transition`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/win/transition_ipc.rs` と `pack_ipc.rs`、型は `ui/panels/transition/src/api.ts`（`createIpcTransitionApi` が呼ぶ）。`dir` はパックのフォルダー（既定 `packs/vlog`）。失敗は `Err(String)`。
+
+| コマンド | 引数 | 成功 |
+|---|---|---|
+| `transition_cuts` | `{ dir }` | 開いているコンポジションの sequence の `{ sequence, cuts: [{ id, start, duration, transition }] }`（秒）。`transition` は `{ kind, duration }` か `null`。`kind` は `dir` のパックのコードと一致した名前で、一致しなければ `null` |
+| `pack_transitions` | `{ dir }` | パックの `transitions/` の名前（名前の順） |
+| `pack_apply` | `{ dir, name: "transition", args: { cut, kind, dur } }` | 置く・差し替える。`setTransition` 1 回で、取り消し 1 回で戻る |
+| `apply_op` | `{ op: { op: "setTransition", cut, transition: null } }` | 外す |

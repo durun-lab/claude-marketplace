@@ -1,5 +1,5 @@
 //! 書き出しの途中でデバイスの消失を知らされても、先行していた古いデバイスのリードバックを待ち続けず、
-//! エラーで返ること。共有のコンテキストを差し替えるので、ほかのテストと同じプロセスに置かない（この binary だけ）。
+//! エラーで返ること。共有のコンテキストを差し替えるので、ほかのテストと同じプロセスに置かない（別の実行ファイル。docs/ci.md）。
 //! GPU が無い環境ではスキップし、`MM_REQUIRE_GPU` があれば失敗にする。
 
 use std::sync::mpsc;
@@ -69,15 +69,16 @@ fn project() -> Project {
         RationalTime::seconds(2),
     );
     let mut p = Project::new();
-    p.compositions.push(Composition {
-        id: Id::new("main"),
-        width: SIZE.width,
-        height: SIZE.height,
-        fps: Rational::integer(30),
-        duration: RationalTime::seconds(2),
-        layers: vec![layer],
-        markers: Vec::new(),
-    });
+    p.compositions.push(
+        Composition::new(
+            Id::new("main"),
+            SIZE.width,
+            SIZE.height,
+            Rational::integer(30),
+            RationalTime::seconds(2),
+        )
+        .with_layers(vec![layer]),
+    );
     p
 }
 

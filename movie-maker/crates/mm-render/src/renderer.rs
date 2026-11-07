@@ -6,7 +6,7 @@ use std::sync::Arc;
 use mm_audio_api::{AudioBlock, MixerFactory};
 use mm_decode_api::{DecoderFactory, Encoder};
 use mm_node_api::{FrameRef, GpuHelper, GpuTexture, Services};
-use mm_render_api::{AudioRequest, RangeRequest, RenderRequest, Renderer};
+use mm_render_api::{AudioRequest, RangeRequest, RenderRequest, Renderer, TrackLevel};
 use mm_types::{CompositionId, RationalTime, Result, TimeRange};
 
 use crate::audio::AudioStream;
@@ -35,6 +35,8 @@ pub struct WgpuRenderer {
     pub(crate) cache: RenderCache,
     pub(crate) errors: Vec<String>,
     pub(crate) audio: Option<AudioStream>,
+    /// 直前の `render_audio` のトラックのメーターの値。
+    pub(crate) audio_levels: Vec<TrackLevel>,
     outputs: VecDeque<u64>,
     /// デバイスが消えて作り直した回数。
     recoveries: u32,
@@ -62,6 +64,7 @@ impl WgpuRenderer {
             cache: RenderCache::new(FrameCacheConfig::default()),
             errors: Vec::new(),
             audio: None,
+            audio_levels: Vec::new(),
             outputs: VecDeque::new(),
             recoveries: 0,
             export: None,
@@ -142,7 +145,17 @@ impl WgpuRenderer {
     /// GPU の時間はスパンの開閉で測れないため、測った長さをそのままスパン `render.gpu_frame` の
     /// 分布に載せ、直近の値をゲージ `render.gpu_frame_us` にも出す。
     fn report_gpu_time(&mut self) {
-        for ns in self.timer.collect() {
+        Self::report(self.timer.collect());
+    }
+
+    /// 頼んだ GPU の時間の読み取りが終わるまで待ち、全部を `mm-trace` に載せる。
+    /// 通常の描画は待たないので、最後の数フレームの分は次の描画まで載らない。結果を確定させたい所で呼ぶ。
+    pub fn flush_gpu_time(&mut self) {
+        Self::report(self.timer.collect_all());
+    }
+
+    fn report(times_ns: Vec<u64>) {
+        for ns in times_ns {
             mm_trace::record_span("render.gpu_frame", std::time::Duration::from_nanos(ns));
             mm_trace::gauge!("render.gpu_frame_us", ns / 1_000);
         }
@@ -245,6 +258,10 @@ impl Renderer for WgpuRenderer {
     fn render_audio(&mut self, req: &AudioRequest<'_>) -> Result<AudioBlock> {
         let _span = tracing::info_span!("render.audio", comp = %req.composition).entered();
         self.mix_audio(req)
+    }
+
+    fn audio_levels(&self) -> Vec<TrackLevel> {
+        self.audio_levels.clone()
     }
 
     fn invalidate(&mut self, composition: &CompositionId, _range: TimeRange) {

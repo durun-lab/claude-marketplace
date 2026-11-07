@@ -1,7 +1,13 @@
 // @vitest-environment jsdom
 import { render } from "preact";
 import { act } from "preact/test-utils";
-import type { DeliverApi, Layer, MediaApi, ReviewApi, StoryApi } from "@mm/sdk";
+import type { Layer } from "@mm/sdk";
+import type { DeliverApi } from "../../panels/deliver/src/api.ts";
+import type { MediaApi } from "../../panels/media/src/api.ts";
+import type { MixerApi } from "../../panels/mixer/src/api.ts";
+import type { TransitionApi } from "../../panels/transition/src/api.ts";
+import type { ReviewApi } from "../../panels/review/src/api.ts";
+import type { StoryApi } from "../../panels/story/src/api.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LAYER_SELECTED_EVENT, Shell } from "./Shell.tsx";
 
@@ -54,6 +60,12 @@ const fakeDeliver = (): DeliverApi => ({
   onProgress: vi.fn().mockResolvedValue(() => {}),
 });
 
+const fakeMixer = (): MixerApi => ({
+  state: vi.fn().mockResolvedValue({ composition: "main", mixer: null, tracks: [], roles: ["voice", "bgm", "sfx"] }),
+  applyOps: vi.fn().mockResolvedValue(undefined),
+  onMeters: vi.fn().mockResolvedValue(() => {}),
+});
+
 const fakeReview = (): ReviewApi => ({
   list: vi.fn().mockResolvedValue([]),
   approve: vi.fn(),
@@ -77,7 +89,7 @@ describe("Shell の左の列", () => {
   });
 
   it("タブで Tasks と Media を切り替え、どちらも作ったまま残す", () => {
-    act(() => render(<Shell sendOp={vi.fn()} media={fakeMedia()} />, host));
+    act(() => render(<Shell sendOp={vi.fn()} apis={{ media: fakeMedia() }} />, host));
     const panels = host.querySelectorAll<HTMLElement>(".mm-shell-left-body");
     expect([panels[0]?.hidden, panels[1]?.hidden]).toEqual([false, true]);
     click(host.querySelectorAll(".mm-shell-tab")[1]);
@@ -87,7 +99,7 @@ describe("Shell の左の列", () => {
 
   it("Story を渡すと Story のタブが出て、開くたびに読み直す", async () => {
     const story = fakeStory();
-    act(() => render(<Shell sendOp={vi.fn()} media={fakeMedia()} story={story} />, host));
+    act(() => render(<Shell sendOp={vi.fn()} apis={{ media: fakeMedia(), story }} />, host));
     const tabs = host.querySelectorAll(".mm-shell-tab");
     expect([...tabs].map((t) => t.textContent)).toEqual(["Tasks", "Media", "Story"]);
     const panels = host.querySelectorAll<HTMLElement>(".mm-shell-left-body");
@@ -100,7 +112,7 @@ describe("Shell の左の列", () => {
   });
 
   it("Deliver を渡すとタブが出て、Tasks の書き出しの項目から開ける", async () => {
-    act(() => render(<Shell sendOp={vi.fn()} deliver={fakeDeliver()} />, host));
+    act(() => render(<Shell sendOp={vi.fn()} apis={{ deliver: fakeDeliver() }} />, host));
     const tabs = host.querySelectorAll(".mm-shell-tab");
     expect([...tabs].map((t) => t.textContent)).toEqual(["Tasks", "Deliver"]);
     const panels = host.querySelectorAll<HTMLElement>(".mm-shell-left-body");
@@ -113,6 +125,39 @@ describe("Shell の左の列", () => {
   });
 });
 
+describe("Shell の Mixer タブ", () => {
+  it("Mixer を渡すと Mixer のタブが出て、開くと Mixer のパネルを見せる", async () => {
+    const mixer = fakeMixer();
+    act(() => render(<Shell sendOp={vi.fn()} apis={{ mixer }} />, host));
+    const tabs = host.querySelectorAll(".mm-shell-tab");
+    expect([...tabs].map((t) => t.textContent)).toEqual(["Tasks", "Mixer"]);
+    const panels = host.querySelectorAll<HTMLElement>(".mm-shell-left-body");
+    click(tabs[1]);
+    await act(() => new Promise<void>((ok) => setTimeout(ok, 0)));
+    expect(panels[1]?.hidden).toBe(false);
+    expect(host.querySelector(".mm-mixer")).not.toBeNull();
+    expect(mixer.state).toHaveBeenCalled();
+  });
+});
+
+describe("Shell の Transition タブ", () => {
+  it("Transition を渡すとタブが出て、開くとカットを読む", async () => {
+    const transition: TransitionApi = {
+      cuts: vi.fn().mockResolvedValue({ sequence: null, cuts: [] }),
+      kinds: vi.fn().mockResolvedValue([]),
+      set: vi.fn(),
+      remove: vi.fn(),
+    };
+    act(() => render(<Shell sendOp={vi.fn()} apis={{ transition }} />, host));
+    const tabs = host.querySelectorAll(".mm-shell-tab");
+    expect([...tabs].map((t) => t.textContent)).toEqual(["Tasks", "Transition"]);
+    click(tabs[1]);
+    await act(() => new Promise<void>((ok) => setTimeout(ok, 0)));
+    expect(host.querySelector(".mm-tr")).not.toBeNull();
+    expect(transition.cuts).toHaveBeenCalled();
+  });
+});
+
 describe("Shell の右の列", () => {
   it("Review を渡さないときはタブを出さず Inspector だけ", () => {
     act(() => render(<Shell sendOp={vi.fn()} />, host));
@@ -122,7 +167,7 @@ describe("Shell の右の列", () => {
 
   it("Review を渡すと Inspector と Review のタブで切り替え、どちらも作ったまま残す", async () => {
     const review = fakeReview();
-    act(() => render(<Shell sendOp={vi.fn()} review={review} />, host));
+    act(() => render(<Shell sendOp={vi.fn()} apis={{ review }} />, host));
     const tabs = host.querySelectorAll(".mm-shell-right-tabs .mm-shell-tab");
     expect([...tabs].map((t) => t.textContent)).toEqual(["Inspector", "Review"]);
     const panels = host.querySelectorAll<HTMLElement>(".mm-shell-right-body");
@@ -145,7 +190,7 @@ describe("Shell の外からの変更", () => {
     });
     const story = fakeStory();
     const media = fakeMedia();
-    act(() => render(<Shell sendOp={vi.fn()} media={media} story={story} listen={listen} />, host));
+    act(() => render(<Shell sendOp={vi.fn()} apis={{ media, story }} listen={listen} />, host));
     await act(() => new Promise<void>((ok) => setTimeout(ok, 0)));
     expect(listen.mock.calls[0]?.[0]).toBe("mm:doc-changed");
     const before = [vi.mocked(story.overview).mock.calls.length, vi.mocked(media.list).mock.calls.length];
@@ -160,7 +205,7 @@ describe("Shell の外からの変更", () => {
 
   it("Tasks の取り込みの項目は Media を開いてファイルの選択を始める", async () => {
     const media = fakeMedia();
-    act(() => render(<Shell sendOp={vi.fn()} media={media} />, host));
+    act(() => render(<Shell sendOp={vi.fn()} apis={{ media }} />, host));
     click(host.querySelector(".mm-tasks-link"));
     await act(() => new Promise<void>((ok) => setTimeout(ok, 0)));
     expect(host.querySelectorAll<HTMLElement>(".mm-shell-left-body")[1]?.hidden).toBe(false);

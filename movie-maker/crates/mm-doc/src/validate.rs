@@ -6,7 +6,7 @@ use mm_types::{Id, LayerId, MmError, ParamValue, Result};
 
 use crate::node::{Node, NESTED_KIND, NESTED_PARAM, SEQUENCE_KIND, SEQUENCE_PARAM};
 use crate::param::{Interpolation, Param};
-use crate::{Composition, Cut, Layer, Project, Sequence};
+use crate::{Composition, Cut, Layer, Mask, Project, Sequence};
 
 fn invalid(msg: String) -> MmError {
     MmError::InvalidArgument(msg)
@@ -140,6 +140,11 @@ fn validate_composition(project: &Project, comp: &Composition) -> Result<()> {
         }
         last_marker = Some(m.time);
     }
+    if let Some(mixer) = &comp.mixer {
+        mixer
+            .check()
+            .map_err(|e| invalid(format!("コンポジション {} のミキサー: {e}", comp.id)))?;
+    }
     // 親とトラックマットの先を ID の集合で引く（レイヤー数の 2 乗にしない）。
     let ids: HashSet<&str> = comp.layers.iter().map(|l| l.id.as_str()).collect();
     for layer in &comp.layers {
@@ -181,6 +186,7 @@ fn validate_layer(project: &Project, ids: &HashSet<&str>, layer: &Layer) -> Resu
         validate_keyframes(&format!("レイヤー {id}"), param)?;
     }
     validate_framing(layer)?;
+    validate_fades(layer)?;
     for node in layer.nodes() {
         validate_node(project, &format!("レイヤー {id}"), node)?;
     }
@@ -197,6 +203,24 @@ fn validate_framing(layer: &Layer) -> Result<()> {
         ))),
         None => Ok(()),
     }
+}
+
+/// 音のフェードの長さは正。長さ 0 のフェードは「無い」と区別がつかないので `None` で表す。
+fn validate_fades(layer: &Layer) -> Result<()> {
+    let Some(audio) = &layer.audio else {
+        return Ok(());
+    };
+    let bad = [&audio.fade_in, &audio.fade_out]
+        .into_iter()
+        .flatten()
+        .any(|f| f.duration <= mm_types::RationalTime::ZERO);
+    if bad {
+        return Err(invalid(format!(
+            "レイヤー {} の音のフェードの長さが正でない",
+            layer.id
+        )));
+    }
+    Ok(())
 }
 
 /// 親の鎖をたどって循環を見つける。
@@ -242,13 +266,11 @@ fn validate_time_remap(id: &LayerId, remap: &crate::TimeRemap) -> Result<()> {
 
 /// レイヤーが直接持つパラメータ（ノードの種類のパラメータは [`validate_node`]）。
 fn layer_params(layer: &Layer) -> impl Iterator<Item = &Param> {
-    let masks = layer
-        .masks
-        .iter()
-        .flat_map(|m| [&m.path, &m.feather, &m.opacity]);
+    let masks = layer.masks.iter().flat_map(Mask::params);
     let audio = layer.audio.iter().flat_map(|a| [&a.gain_db, &a.pan]);
     std::iter::once(&layer.opacity)
         .chain(layer.transform.params())
+        .chain(layer.crop.params())
         .chain(masks)
         .chain(audio)
         .chain(layer.framing.params())
