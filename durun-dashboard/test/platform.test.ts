@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import type { ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import type { IncomingMessage } from 'node:http';
+import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fillCallerPid } from '../server/callerPid.ts';
@@ -463,4 +464,21 @@ test('翻訳アプリの llama-server は、どの OS でも llama.cpp のパッ
   const base = 'C:\\Users\\me\\AppData\\Local\\Microsoft\\WinGet\\Packages';
   const exe = `${base}\\ggml.llamacpp_Microsoft.Winget.Source_8wekyb3d8bbwe\\llama-server.exe`;
   assert.deepEqual(platformFor('win32').toolCandidates('llama-server', { LOCALAPPDATA: 'C:\\Users\\me\\AppData\\Local' }, wingetDirs([exe])), [exe]);
+});
+
+test('setProcessPriority は、Windows では通常へも戻し、Mac と Linux では下げるだけにする', () => {
+  const calls: [number, number][] = [];
+  const set = (pid: number, priority: number) => void calls.push([pid, priority]);
+  assert.equal(platformFor('win32').setProcessPriority(10, 'low', set), true);
+  assert.equal(platformFor('win32').setProcessPriority(10, 'normal', set), true);
+  assert.equal(platformFor('darwin').setProcessPriority(11, 'idle', set), true);
+  assert.equal(platformFor('other').setProcessPriority(12, 'normal', set), false);
+  assert.deepEqual(calls, [[10, os.constants.priority.PRIORITY_BELOW_NORMAL], [10, os.constants.priority.PRIORITY_NORMAL], [11, os.constants.priority.PRIORITY_LOW]]);
+});
+
+test('setProcessPriority は、終わったプロセスに掛けられなかったら false を返す', () => {
+  const set = () => {
+    throw new Error('ESRCH');
+  };
+  assert.equal(platformFor('win32').setProcessPriority(10, 'idle', set), false);
 });

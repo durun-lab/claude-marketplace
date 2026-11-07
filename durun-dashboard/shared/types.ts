@@ -489,6 +489,8 @@ export type Snapshot = {
   learn?: LearnState;
   /** 自動継続モード。スリープや通信の途切れで止まったセッションを、確認のダイアログを出さずに続けさせる。Claude のログインが切れて止まったセッションも、ログインが戻ったら続けさせる。前に受け取ったスナップショットには無いことがある。 */
   autoContinue?: boolean;
+  /** エージェントのプロセスの優先度。前に受け取ったスナップショットには無いことがある。 */
+  agentPriority?: AgentPriority;
   /** 人間に確かめている認証。求めた順。前に受け取ったスナップショットには無いことがある。 */
   auth?: AuthRequest[];
   /** 通知領域に出す、ダッシュボードからの Claude のログイン。前に受け取ったスナップショットには無いことがある。 */
@@ -750,6 +752,10 @@ export type FeedbackTarget = {
 };
 
 /** サーバーが動いている OS。version は「Windows 11 Home」のような OS の名前、release はカーネルの版。 */
+/** エージェントのプロセスの優先度。low と idle は、ゲームやほかの作業に CPU を先に回す。 */
+export const AGENT_PRIORITIES = ['normal', 'low', 'idle'] as const;
+export type AgentPriority = (typeof AGENT_PRIORITIES)[number];
+
 export type HostOs = { platform: string; version: string; release: string; arch: string };
 
 /** 改善要望を送ったときの画面の状態。 */

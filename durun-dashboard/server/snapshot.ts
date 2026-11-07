@@ -424,6 +424,7 @@ export const buildSnapshot = (): Snapshot => {
     improve: improveState(),
     learn: learnState(),
     autoContinue: !!state.autoContinue,
+    agentPriority: state.agentPriority ?? 'normal',
     auth: authRequests(),
     claudeLogin: claudeLoginState(),
     jiraRefreshedAt: jiraRefreshedAt(),
