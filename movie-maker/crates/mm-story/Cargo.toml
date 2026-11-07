@@ -1,0 +1,23 @@
+[package]
+name = "mm-story"
+description = "Story の読み出し。文字起こしの単語、話題、選別、範囲の時刻、全文検索を、画面に依らない形で組み立てる。デスクトップのアプリとモバイル向けの HTTP が使う"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+mm-types = { workspace = true }
+mm-doc = { workspace = true }
+mm-eval = { workspace = true }
+mm-ingest = { workspace = true }
+mm-ingest-api = { workspace = true }
+mm-store = { workspace = true }
+serde = { workspace = true }
+
+[dev-dependencies]
+mm-ops = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true
