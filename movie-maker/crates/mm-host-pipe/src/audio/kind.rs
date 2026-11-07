@@ -194,9 +194,9 @@ impl<S: PluginStandard> NodeKind for PluginEffectKind<S> {
             };
             instances.insert(cx.instance.to_owned(), instance);
         }
-        let instance = instances.get_mut(cx.instance).ok_or_else(|| {
-            MmError::Internal(format!("{} の効果のインスタンスが無い", S::NAME))
-        })?;
+        let instance = instances
+            .get_mut(cx.instance)
+            .ok_or_else(|| MmError::Internal(format!("{} の効果のインスタンスが無い", S::NAME)))?;
         run(instance, cx, block)
     }
 }

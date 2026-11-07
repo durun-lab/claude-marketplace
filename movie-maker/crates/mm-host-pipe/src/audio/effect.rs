@@ -14,8 +14,8 @@ use mm_host_api::{HostProcess, HostRequest, HostResponse, HostSpec};
 use mm_types::{MmError, Result};
 
 use super::block::{
-    object_names, unique_link, Block, Command, Event, Mapping, ParamEvent, Process, Wake,
-    CHANNELS, MAX_EVENTS, MAX_FRAMES,
+    object_names, unique_link, Block, Command, Event, Mapping, ParamEvent, Process, Wake, CHANNELS,
+    MAX_EVENTS, MAX_FRAMES,
 };
 use super::desc::{PluginDesc, PrepareParams};
 use super::PluginStandard;
@@ -121,7 +121,10 @@ impl<S: PluginStandard> AudioEffect<S> {
         match host.request(&req, self.spec.default_timeout)? {
             HostResponse::Prepared => {}
             HostResponse::Error { message } => {
-                return Err(MmError::Internal(format!("{} の Prepare: {message}", S::NAME)))
+                return Err(MmError::Internal(format!(
+                    "{} の Prepare: {message}",
+                    S::NAME
+                )))
             }
             other => {
                 return Err(MmError::Internal(format!(

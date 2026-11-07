@@ -29,6 +29,7 @@ mm-nodes-ofx = { workspace = true }
 mm-host-cef = { workspace = true }
 mm-host-clap = { workspace = true }
 mm-host-ofx = { workspace = true }
+mm-host-vst3 = { workspace = true }
 mm-text-cef = { workspace = true }
 mm-text-glyphon = { workspace = true }
 mm-color-lut = { workspace = true }

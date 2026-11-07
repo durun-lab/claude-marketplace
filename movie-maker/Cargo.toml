@@ -38,6 +38,7 @@ mm-host-cef = { path = "crates/mm-host-cef" }
 mm-host-clap = { path = "crates/mm-host-clap" }
 mm-host-ofx = { path = "crates/mm-host-ofx" }
 mm-host-pipe = { path = "crates/mm-host-pipe" }
+mm-host-vst3 = { path = "crates/mm-host-vst3" }
 mm-improve = { path = "crates/mm-improve" }
 mm-ingest = { path = "crates/mm-ingest" }
 mm-ingest-api = { path = "crates/mm-ingest-api" }
@@ -120,6 +121,8 @@ libloading = "0.8"
 # mm-host-clap が CLAP のプラグイン（.clap）を読み込むホストのライブラリ。
 clack-host = "0.2"
 clack-extensions = { version = "0.2", features = ["audio-ports", "clack-host", "params"] }
+# mm-host-vst3 の VST3 のバインディング（coupler-rs。生成済みで SDK は要らない）。テストのプラグインもこれで書く。
+vst3 = "0.3"
 # apps/movie-maker（ウィンドウの試作）が使う。
 tauri = { version = "2", features = ["unstable"] }
 tauri-build = "2"
