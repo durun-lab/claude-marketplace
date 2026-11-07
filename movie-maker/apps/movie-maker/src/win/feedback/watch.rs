@@ -31,6 +31,7 @@ const THROTTLE: Duration = Duration::from_secs(10);
 /// ホストの種類（`mm-host-pipe` の `PipeKind::name`）と、起票の出どころ。
 const HOSTS: &[(&str, ErrorSource)] = &[
     ("host_cef", ErrorSource::HostCef),
+    ("host_clap", ErrorSource::HostAudio),
     ("host_ofx", ErrorSource::HostOfx),
 ];
 

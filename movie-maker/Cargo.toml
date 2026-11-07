@@ -118,7 +118,7 @@ clack-extensions = { version = "0.2", features = ["audio-ports", "clack-host", "
 tauri = { version = "2", features = ["unstable"] }
 tauri-build = "2"
 # apps/movie-maker の `hotpatch` feature（開発のときだけ）。dx serve --hotpatch のパッチを受け、subsecond を再輸出する。
-# バージョンは dx（dioxus-cli）と同じにする。
+# 版は dx（dioxus-cli）と同じにする。
 dioxus-devtools = "=0.7.10"
 # apps/movie-maker の Media パネルが開くファイルの選択ダイアログ。
 rfd = { version = "0.15", default-features = false }

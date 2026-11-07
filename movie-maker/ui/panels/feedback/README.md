@@ -33,7 +33,7 @@
 | アプリの panic | 起動時に入れる panic のフック。場所とバックトレースを添える |
 | 画面の例外 | 上の見張り |
 | 予算を超えた遅い処理 | 計装の `Layer`（`feedback/watch.rs`）。予算は [17-instrumentation.md](../../../docs/design/17-instrumentation.md#予算の表) のうち 1 回ごとに測れる行（`preview.render_frame` 16.7 ms、`render.gpu_frame` 6 ms、`decode.seek` 150 ms）。起動から 10 秒は数えない |
-| ホストのクラッシュ | ホストとの接続（`mm-host-pipe`）が数えるカウンタ `<ホストの種類>.crash`（`host_cef.crash`、`host_ofx.crash`。名前は `mm_trace::names::host_crash_counter`）。応答の途中で出力が閉じた、応答が読めない、要求の合間に終わっていた、起動直後の Ping に答えない、を数え、こちらから止めたホストは数えない |
+| ホストのクラッシュ | ホストとの接続（`mm-host-pipe`）が数えるカウンタ `<ホストの種類>.crash`（`host_cef.crash`、`host_clap.crash`、`host_ofx.crash`。名前は `mm_trace::names::host_crash_counter`）。応答の途中で出力が閉じた、応答が読めない、要求の合間に終わっていた、起動直後の Ping に答えない、を数え、こちらから止めたホストは数えない |
 
 同じものは `mm-improve` が 1 件にまとめて回数と最長を数える。記録はファイルの読み書きなので、同じスパンかホストは 10 秒に 1 回だけ送る。
 
