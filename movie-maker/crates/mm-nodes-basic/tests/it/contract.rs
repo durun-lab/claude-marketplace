@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use mm_nodes_basic::{
     ColorAdjustKind, ColorCdlKind, ColorConvertKind, ColorLutKind, CompositionKind, DissolveKind,
-    FootageKind, ImageKind, SequenceKind, SolidKind, TextKind,
+    FootageKind, GaussianBlurKind, ImageKind, SequenceKind, SolidKind, TextKind, BLUR_RADIUS_PARAM,
 };
 use mm_testkit::decode::SampleMedia;
 use mm_testkit::node::{contract, NodeFixture};
@@ -76,6 +76,24 @@ fn composition_は契約を満たす() {
 #[test]
 fn sequence_は契約を満たす() {
     contract(|| Arc::new(SequenceKind), &NodeFixture::default());
+}
+
+#[test]
+fn blur_gaussian_は既定値で恒等として契約を満たす() {
+    contract(
+        || Arc::new(GaussianBlurKind::default()),
+        &effect_fixture(Params::new()),
+    );
+}
+
+#[test]
+fn blur_gaussian_は半径を付けても契約を満たす() {
+    let mut params = Params::new();
+    params.set(BLUR_RADIUS_PARAM, ParamValue::Number(3.0));
+    contract(
+        || Arc::new(GaussianBlurKind::default()),
+        &effect_fixture(params),
+    );
 }
 
 #[test]

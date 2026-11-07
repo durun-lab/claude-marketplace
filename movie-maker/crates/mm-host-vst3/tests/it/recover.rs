@@ -16,7 +16,7 @@ fn クラッシュは_host_crashed_で返り_次の処理で起こし直す() {
     let mut block = signal(128, 0);
     let err = effect
         .process(&mut block, &at_start(&[(P_CRASH, 1.0)]))
-        .expect_err("落ちるはず");
+        .expect_err("クラッシュするはず");
     assert!(matches!(err, MmError::HostCrashed(_)), "{err:?}");
     assert!(!effect.is_alive());
 

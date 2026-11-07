@@ -8,12 +8,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use mm_doc::Project;
-use mm_node_api::Quality;
+use mm_node_api::{NodeRegistry, Quality};
 use mm_runtime::{Engine, RuntimeConfig};
 use mm_stream::{StreamConfig, Streamer};
 use mm_types::transfer::linear_to_code8;
 use mm_types::RgbaImage;
 use mm_types::{CompositionId, Id, MmError, RationalTime, Result, Rgba, Size};
+
+use crate::kinds::{describe_kinds, KindInfo, KindQuery};
 
 /// 描くフレームの指定。
 #[derive(Debug, Clone, PartialEq)]
@@ -40,6 +42,13 @@ pub trait FrameSource: Send + Sync {
     /// モバイルの映像の配信。描画に `Streamer` を使う実装だけが返す。
     fn streamer(&self) -> Option<Arc<Streamer>> {
         None
+    }
+
+    /// 描画に使うノードの種類の定義。種類の一覧を持たない実装は `Unsupported`。
+    fn kinds(&self, _query: &KindQuery) -> Result<Vec<KindInfo>> {
+        Err(MmError::Unsupported(
+            "この描画はノードの種類の一覧を持たない".into(),
+        ))
     }
 }
 
@@ -77,6 +86,13 @@ impl FrameSource for EngineFrames {
 
     fn streamer(&self) -> Option<Arc<Streamer>> {
         Some(self.streamer.clone())
+    }
+
+    fn kinds(&self, query: &KindQuery) -> Result<Vec<KindInfo>> {
+        let query = query.clone();
+        self.streamer.with_engine(move |engine| {
+            describe_kinds(engine.registry() as &dyn NodeRegistry, &query)
+        })
     }
 }
 

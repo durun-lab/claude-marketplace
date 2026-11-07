@@ -161,6 +161,13 @@ const LinkChips = ({ v }: { v: MovieMakerView }) => (
   <div class="fl-links">
     {v.install.path ? <Chip tone="ok" title={v.install.path}>入っている{v.install.commit ? `（${v.install.commit}${v.install.features?.length ? `、${v.install.features.join('、')}` : ''}）` : ''}</Chip> : <Chip tone="muted">入っていない</Chip>}
     {v.link.status === 'connected' ? <Chip tone="ok" title={`127.0.0.1:${v.link.port}`}>movie-maker とつながっている（version {v.link.version ?? '?'}）</Chip> : <Chip tone="muted">movie-maker とつながっていない</Chip>}
+    {v.mobileUrl ? (
+      <a class="mm-mobile-link" href={v.mobileUrl} target="_blank" rel="noopener noreferrer" title="スマホで開く。初回は movie-maker の登録の符号で端末を登録します">
+        モバイル版を開く: {v.mobileUrl}
+      </a>
+    ) : (
+      <Chip tone="muted" title="tailscale status で tailnet での名前が読めると出ます">モバイル版の URL なし（Tailscale が動いていません）</Chip>
+    )}
   </div>
 );
 

@@ -1,6 +1,6 @@
 // Review パネルをモックの API で動かすページ。スクリーンショット用で、アプリには載せない。
 import { render } from "preact";
-import type { Op, RationalTime } from "@mm/sdk";
+import type { Comment, CommentState, Op, RationalTime } from "@mm/sdk";
 import type { Proposal, ProposalOp, ProposalScope, ReviewApi } from "../src/api.ts";
 import { followTheme } from "../../../shell/src/followTheme.ts";
 import { ReviewPanel } from "../src/index.ts";
@@ -95,6 +95,56 @@ const replace = (id: number, over: Partial<Proposal>): Proposal => {
   return next.find((p) => p.id === id) as Proposal;
 };
 
+const comment = (id: string, over: Partial<Comment>): Comment => ({
+  id,
+  comp: "main",
+  at: sec(150),
+  text: "",
+  drawing: [],
+  author: { kind: "mobile", name: "Pixel 9" },
+  replies: [],
+  state: "open" as CommentState,
+  created_ms: NOW_MS - 10 * MINUTE_MS,
+  ...over,
+});
+
+let comments: Comment[] = [
+  comment("c-12", {
+    at: sec(150),
+    text: "The title appears too late.",
+    state: "fresh",
+    created_ms: NOW_MS - 30 * MINUTE_MS,
+    responded_txn: 9,
+    replies: [
+      { id: "r1", author: { kind: "mcp", name: "claude" }, text: "Moved it 0.4s earlier. Please check.", created_ms: NOW_MS - 3 * MINUTE_MS },
+    ],
+  }),
+  comment("c-13", {
+    at: null,
+    range: { in: sec(400), out: sec(650) },
+    text: "Music is too loud here.",
+    drawing: [{ kind: "rect", points: [[0.1, 0.1], [0.5, 0.4]] }],
+  }),
+  comment("c-14", {
+    at: sec(900),
+    text: "Crop looks tight",
+    drawing: [{ kind: "stroke", points: [[0.2, 0.2], [0.4, 0.3], [0.6, 0.2]] }],
+    created_ms: NOW_MS - 2 * HOUR_MS,
+  }),
+  comment("c-15", {
+    at: sec(1250),
+    text: "Typo in the lower third.",
+    author: { kind: "gui", name: "app" },
+    state: "done",
+    created_ms: NOW_MS - 5 * HOUR_MS,
+  }),
+];
+
+const replaceComment = (id: string, change: (c: Comment) => Comment): Comment => {
+  comments = comments.map((c) => (c.id === id ? change(c) : c));
+  return comments.find((c) => c.id === id) as Comment;
+};
+
 const api: ReviewApi = {
   list: async () => proposals,
   approve: async (id, picked) => ({
@@ -106,6 +156,15 @@ const api: ReviewApi = {
   undo: async (id) => replace(id, { applied: false, undoable: false }),
   preview: async (id, picked) => console.debug("preview", id, picked),
   onChanged: async () => () => undefined,
+  comments: async () => comments,
+  replyComment: async (id, text) =>
+    replaceComment(id, (c) => ({
+      ...c,
+      replies: [...c.replies, { id: `r${c.replies.length + 1}`, author: { kind: "gui", name: "app" }, text, created_ms: NOW_MS }],
+    })),
+  setCommentState: async (id, state) => replaceComment(id, (c) => ({ ...c, state })),
+  seek: async (seconds) => console.debug("seek", seconds),
+  onCommentsChanged: async () => () => undefined,
 };
 
 followTheme(document.documentElement, location.search, matchMedia.bind(window));

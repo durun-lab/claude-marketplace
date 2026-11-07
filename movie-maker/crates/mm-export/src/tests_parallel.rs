@@ -64,6 +64,7 @@ fn settings_of(media: &SampleMedia) -> EncodeSettings {
         codec: "sample".into(),
         output_path: temp("unused.json"),
         audio: None,
+        stream: None,
     }
 }
 

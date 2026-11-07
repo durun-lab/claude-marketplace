@@ -23,15 +23,18 @@ const label = (t: CutTransition): string => `${t.kind ?? "custom"} ${t.duration.
 const useTransitions = (api: TransitionApi, refreshKey: number) => {
   const [state, setState] = useState<TransitionState | null>(null);
   const [kinds, setKinds] = useState<string[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  // 読み込みの失敗は次に読めたら消え、操作の失敗は次の操作まで残すので、別々に持つ。
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
       const [next, names] = await Promise.all([api.cuts(), api.kinds()]);
       setState(next);
       setKinds(names);
+      setLoadError(null);
     } catch (e) {
-      setError(message(e));
+      setLoadError(message(e));
     }
   }, [api]);
 
@@ -43,15 +46,15 @@ const useTransitions = (api: TransitionApi, refreshKey: number) => {
     async (send: () => Promise<void>) => {
       try {
         await send();
-        setError(null);
+        setSendError(null);
       } catch (e) {
-        setError(message(e));
+        setSendError(message(e));
       }
       await load();
     },
     [load],
   );
-  return { state, kinds, error, run };
+  return { state, kinds, error: sendError ?? loadError, run };
 };
 
 /** カットを幅（長さに比例）で並べた帯。境のトランジションは、カットの頭に印と名前を出す。 */
@@ -80,7 +83,7 @@ interface EditorProps {
   cut: TransitionCut;
   first: boolean;
   kinds: string[];
-  onSet: (kind: string, duration: number) => void;
+  onSet: (kind: string, duration: number, params?: Record<string, number>) => void;
   onRemove: () => void;
 }
 
@@ -91,11 +94,11 @@ const Editor = ({ cut, first, kinds, onSet, onRemove }: EditorProps) => {
   const duration = tr?.duration ?? DEFAULT_DURATION;
   const pick = (next: string) => {
     if (next === NONE) onRemove();
-    else if (next !== CUSTOM) onSet(next, duration);
+    else if (next !== CUSTOM) onSet(next, duration, tr?.params);
   };
   const resize = (text: string) => {
     const n = Number(text);
-    if (tr?.kind && Number.isFinite(n) && n > 0 && n !== tr.duration) onSet(tr.kind, n);
+    if (tr?.kind && Number.isFinite(n) && n >= DURATION_MIN && n !== tr.duration) onSet(tr.kind, n, tr.params);
   };
   return (
     <div class="mm-tr-editor">
@@ -153,7 +156,7 @@ export const TransitionPanel = ({ api, refreshKey = 0 }: TransitionPanelProps) =
           cut={current}
           first={current === cuts[0]}
           kinds={kinds}
-          onSet={(kind, duration) => void run(() => api.set(current.id, kind, duration))}
+          onSet={(kind, duration, params) => void run(() => api.set(current.id, kind, duration, params))}
           onRemove={() => void run(() => api.remove(current.id))}
         />
       )}

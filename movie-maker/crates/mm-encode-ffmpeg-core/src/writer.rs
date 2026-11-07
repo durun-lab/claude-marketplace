@@ -45,6 +45,7 @@ pub fn can_open(spec: &CodecSpec) -> bool {
         codec: spec.encoder.to_owned(),
         output_path: PathBuf::new(),
         audio: None,
+        stream: None,
     };
     VideoTrack::open(None, &settings, spec, &Pass::Single, false).is_ok()
 }
@@ -157,18 +158,24 @@ impl FfmpegEncoder {
             .flags()
             .contains(format::Flags::GLOBAL_HEADER);
         let video = VideoTrack::open(Some(&mut output), settings, spec, pass, global_header)?;
+        let stream = settings.stream.as_ref();
         let audio = settings
             .audio
             .as_ref()
-            .map(|a| AudioTrack::open(&mut output, a, spec.audio, global_header))
+            .map(|a| AudioTrack::open(&mut output, a, spec.audio, stream, global_header))
             .transpose()?;
         let subtitles = extras::open(&mut output, extras)?;
         let mut options = ff::Dictionary::new();
         if spec.container == Container::Mp4 {
             options.set("movflags", "+faststart");
         }
-        // B フレームの遅れと AAC の前置きは muxer の edit list が吸収する。時刻をずらす指定（avoid_negative_ts）を
-        // 付けると、パケットだけがずれてヘッダーのチャプターが映像より早くなる。
+        if let Some(stream) = stream {
+            // B フレームを使わず、AAC の前置きのパケットも捨てるので、負の時刻が無く offset がそのまま最初の時刻になる。
+            let offset = stream.start_offset.to_f64();
+            options.set("output_ts_offset", &format!("{offset:.6}"));
+        }
+        // MP4 と MOV では、B フレームの遅れと AAC の前置きは muxer の edit list が吸収する。時刻をずらす指定
+        // （avoid_negative_ts）を付けると、パケットだけがずれてヘッダーのチャプターが映像より早くなる。
         output
             .write_header_with(options)
             .map_err(|e| MmError::Internal(format!("ヘッダーの書き込み: {e}")))?;
@@ -204,6 +211,13 @@ impl Encoder for FfmpegEncoder {
         }
         init()?;
         let spec = self.spec_of(settings)?;
+        let is_stream = spec.container == Container::MpegTs;
+        if is_stream != settings.stream.is_some() {
+            return Err(MmError::InvalidArgument(format!(
+                "EncodeSettings::stream は配信の区間のコーデックにだけ要る（コーデック {}）",
+                settings.codec
+            )));
+        }
         if !encoder_available(spec.encoder) {
             return Err(MmError::Unsupported(format!(
                 "{} が無い FFmpeg",
@@ -376,6 +390,8 @@ fn push_nv12_analysis(a: &mut Analysis, frames: &[Nv12Frame]) -> Result<()> {
 /// エンコーダーから出たパケットを全部出力に書く。`output` が無ければ捨てる（2 パスの 1 回目）。
 /// `duration` はエンコーダーの時間の単位での 1 パケットの長さで、0 以外なら上書きする
 /// （libx264 は入れず、最後のフレームの長さが muxer に伝わらないため）。
+/// `drop_priming` は時刻 0 までに終わるパケットを捨てる。区間ごとに符号化する MPEG-TS では、AAC の前置きが
+/// 前の区間の終わりと重なり、区間 0 では負の時刻が muxer に全部のストリームを後ろへずらさせるため。
 pub(crate) fn drain_packets(
     encoder: &mut codec::encoder::Encoder,
     mut output: Option<&mut Output>,
@@ -383,6 +399,7 @@ pub(crate) fn drain_packets(
     from: Rational,
     to: Rational,
     duration: i64,
+    drop_priming: bool,
 ) -> Result<()> {
     let mut packet = Packet::empty();
     loop {
@@ -391,6 +408,9 @@ pub(crate) fn drain_packets(
                 let Some(output) = output.as_deref_mut() else {
                     continue;
                 };
+                if drop_priming && ends_by_zero(&packet) {
+                    continue;
+                }
                 packet.set_stream(stream_index);
                 if duration > 0 {
                     packet.set_duration(duration);
@@ -405,4 +425,11 @@ pub(crate) fn drain_packets(
             Err(e) => return Err(MmError::Internal(format!("エンコード: {e}"))),
         }
     }
+}
+
+/// パケットが時刻 0 までに終わるか（エンコーダーの時間の単位）。
+fn ends_by_zero(packet: &Packet) -> bool {
+    packet
+        .pts()
+        .is_some_and(|pts| pts.saturating_add(packet.duration()) <= 0)
 }

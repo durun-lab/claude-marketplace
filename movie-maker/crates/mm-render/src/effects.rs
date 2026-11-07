@@ -55,6 +55,8 @@ pub(crate) struct NodeRun<'a> {
     pub inputs: &'a [GpuTexture],
     /// 出力の大きさ（画素）。
     pub size: Size,
+    /// 種類に渡す倍率（`FrameCx::scale`）。入力の画像の画素が、レイヤーの座標の 1 画素あたり何画素か。
+    pub scale: f32,
 }
 
 impl WgpuRenderer {
@@ -92,7 +94,7 @@ impl WgpuRenderer {
             params: run.params,
             size: run.size,
             region: run.size.to_rect(),
-            scale: cx.size.width as f32 / cx.comp.width as f32,
+            scale: run.scale,
             quality: cx.quality,
             inputs: &mut inputs,
             footage: None,
@@ -142,6 +144,7 @@ impl WgpuRenderer {
                 params: &params,
                 inputs: &[input],
                 size: image.size,
+                scale: texel_scale(&image, cx),
             };
             let Some(out) = self.run_node(encoder, cx, &run)? else {
                 return Ok(None);
@@ -152,5 +155,15 @@ impl WgpuRenderer {
             image.texture = out;
         }
         Ok(Some(image))
+    }
+}
+
+/// レイヤーの画像の画素が、レイヤーの座標の 1 画素あたり何画素か。撮影素材の GPU のフレームは素材の大きさのまま
+/// なので、描く先の倍率と違うことがある（4K の素材を 1080p に収めれば 2）。
+fn texel_scale(image: &LayerImage, cx: &CompCx<'_>) -> f32 {
+    if image.place.width > 0.0 {
+        image.size.width as f32 / image.place.width
+    } else {
+        cx.comp_to_out()
     }
 }

@@ -1,4 +1,4 @@
-//! 共有メモリの往復の遅れ。README の数字はこの試験の出力（`--no-capture`）から取る。
+//! 共有メモリの往復の遅れ。README の数字はこのテストの出力（`--no-capture`）から取る。
 
 use std::time::{Duration, Instant};
 

@@ -1,6 +1,8 @@
 //! Transition パネルのアプリ側の処理。開いているコンポジションの sequence のカットを、トランジションの種類と長さつきで返す。
 //! Tauri のコマンドは `transition_ipc.rs`、名前と引数の形は `ui/sdk/README.md` の「Transition のコマンド」。
 
+use std::collections::BTreeMap;
+
 use mm_doc::{Project, Transition};
 use mm_pack::Pack;
 use mm_types::{CompositionId, RationalTime};
@@ -25,6 +27,17 @@ pub struct TransitionRow {
     /// パックのトランジションの名前。パックのコードと一致しなければ `None`（パックに無い、書き換えた）。
     pub kind: Option<String>,
     pub duration: f64,
+    /// ノードの数のパラメータ（`p0`..`p7`、`rewind`）の値。置き直すときに乱数の種や巻き戻しの倍率を保つ。
+    pub params: BTreeMap<String, f64>,
+}
+
+/// トランジションのノードの、固定の値の数のパラメータ。
+fn number_params(tr: &Transition) -> BTreeMap<String, f64> {
+    tr.node
+        .params
+        .iter()
+        .filter_map(|(k, p)| p.value.as_number().map(|v| (k.clone(), v)))
+        .collect()
 }
 
 /// 開いているコンポジションの sequence とそのカット。sequence が無ければ `sequence` は `None`。
@@ -72,6 +85,7 @@ pub fn cuts_of(
             transition: cut.transition_in.as_ref().map(|tr| TransitionRow {
                 kind: kind_of(tr, pack),
                 duration: tr.duration.to_f64(),
+                params: number_params(tr),
             }),
         });
         if cut.enabled {
