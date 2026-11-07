@@ -36,7 +36,7 @@ VST3 SDK は 3.8.0（2025 年 10 月）から MIT になった。このクレー
 | REAPER、Bitwig のプラグインの隔離 | 別プロセスで動かし、落ちたプラグインだけを止める〔推〕 | `mm-host-clap` と同じ |
 | VST3 のホストのオートメーション（Cubase など） | パラメータを正規化した値（0..1）で書き、`IParameterChanges` のサンプルの位置つきの点で渡す〔推〕 | パラメータは正規化した値で持ち、格子の点を `IParamValueQueue` の点にする |
 
-新しく決めたこと:
+新しく決めたこと（RFC 0139）:
 
 - 種類 `audio.vst3` のパラメータ `param.<id>` は VST3 の `ParamID` の正規化した値（0..=1）。CLAP は plain value だが、VST3 は `IParameterChanges` が正規化した値を運び、plain value への変換（`normalizedParamToPlain`）は編集の部品の仕事で処理のスレッドで呼べないため。範囲の外の値は 0..=1 に収める。
 - `plugin_id` はクラスの ID の 32 桁の 16 進。並びはプラグインのソースの `FUID (a, b, c, d)` と同じで、`moduleinfo.json` の `CID` と同じ文字になる。空ならバンドルの最初の Audio Module Class。

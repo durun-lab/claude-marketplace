@@ -1,4 +1,4 @@
-# RFC: VST3 のホスト（mm-host-vst3）と、音のプラグインのホストの共通部分（mm_host_pipe::audio）
+# RFC 0139: VST3 のホスト（mm-host-vst3）と、音のプラグインのホストの共通部分（mm_host_pipe::audio）
 
 状態: 提案
 
