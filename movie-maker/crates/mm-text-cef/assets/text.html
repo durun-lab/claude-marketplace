@@ -6,16 +6,32 @@
 <!--
   mm-text-cef の描画のページ。行ごとの文字と位置（1 倍の画素）を受け、行の中は折り返さずに描く。
   行組みはシェーパーが済ませているので、ここでは書体、縁取り、ルビだけを CSS で付ける。
+  ふりがなは <ruby> を使わず、親文字の上の中央に absolute で置く。<ruby> は幅を親文字とふりがなの長い方にするので、
+  親文字の幅だけで組んだシェーパーの行より伸びる。高さはシェーパーが行の上に空けたふりがなの場所（style.ruby）に収める。
 -->
 <style>
   html, body { margin: 0; background: transparent; overflow: hidden; }
   .line { position: absolute; white-space: pre; margin: 0; padding: 0; }
-  rt { line-height: 1; }
+  .rb { position: relative; display: inline-block; }
+  .rt { position: absolute; left: 50%; bottom: 100%; transform: translateX(-50%); white-space: pre; }
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script>
+  const rubyOf = (seg, line, s) => {
+    const rb = document.createElement('span');
+    rb.className = 'rb';
+    rb.style.height = line.h + 'px';
+    rb.append(seg.text);
+    const rt = document.createElement('span');
+    rt.className = 'rt';
+    Object.assign(rt.style, { fontSize: s.ruby + 'px', lineHeight: s.ruby + 'px', height: s.ruby + 'px' });
+    rt.textContent = seg.ruby;
+    rb.append(rt);
+    return rb;
+  };
+
   const lineOf = (line, s) => {
     const div = document.createElement('div');
     div.className = 'line';
@@ -28,13 +44,7 @@
       div.style.paintOrder = 'stroke fill';
     }
     for (const seg of line.segments) {
-      if (seg.ruby == null) { div.append(seg.text); continue; }
-      const ruby = document.createElement('ruby');
-      ruby.append(seg.text);
-      const rt = document.createElement('rt');
-      rt.textContent = seg.ruby;
-      ruby.append(rt);
-      div.append(ruby);
+      div.append(seg.ruby == null ? seg.text : rubyOf(seg, line, s));
     }
     return div;
   };

@@ -16,12 +16,13 @@
 //!
 //! ルビは青空文庫の注記で文字列に書く（`｜親文字《ふりがな》`、漢字の並びの直後の `《ふりがな》`）。
 //! 区切りは [`parse_ruby`] で読み、シェーパーとレンダラーが同じ区切りになるようにする。注記を読む実装は
-//! 親文字だけを組んで親文字の中では折り返さず、ふりがなの分だけ `bounds` を上に広げる。
-//! 描く実装はふりがなを親文字の上に描き、描けない実装は親文字だけを描く。
+//! 親文字だけを組んで親文字の中では折り返さず、ルビを含む行の上にふりがなの高さの分を空ける
+//! （1 行目は `bounds` を上に広げ、2 行目以降はその行から下を下げる）。親文字の幅と行の幅はふりがなの長さで変えない。
+//! 描く実装はふりがなを親文字の上の中央に描き、描けない実装は親文字だけを描く。
 
 mod ruby;
 
-pub use ruby::{has_ruby, parse_ruby, RubySpan};
+pub use ruby::{has_ruby, parse_ruby, RubySpan, RUBY_SCALE};
 
 use serde::{Deserialize, Serialize};
 
@@ -60,6 +61,21 @@ pub struct TextStroke {
     pub color: Rgba,
     /// 字の外側に出る縁の太さ（1 倍の画素）。
     pub width_px: f32,
+}
+
+impl TextStroke {
+    /// 縁の太さの上限（1 倍の画素）。シェーパーは縁の分だけ `bounds` を広げるので、上限が無いと
+    /// 確保できない大きさの画像になる。
+    pub const MAX_WIDTH_PX: f32 = 64.0;
+
+    /// 描く太さ。有限でない値と負の値は 0、上限を超える値は上限にする。
+    pub fn clamped_width(&self) -> f32 {
+        if self.width_px.is_finite() {
+            self.width_px.clamp(0.0, Self::MAX_WIDTH_PX)
+        } else {
+            0.0
+        }
+    }
 }
 
 /// 行を折り返してよい位置。
@@ -211,6 +227,19 @@ mod tests {
         assert_eq!(s.intern_face(face.clone()), 0);
         assert_eq!(s.intern_face(face), 0);
         assert_eq!(s.faces.len(), 1);
+    }
+
+    #[test]
+    fn 縁の太さは有限で上限までにする() {
+        let stroke = |width_px| TextStroke {
+            color: Rgba::BLACK,
+            width_px,
+        };
+        assert_eq!(stroke(4.0).clamped_width(), 4.0);
+        assert_eq!(stroke(1e9).clamped_width(), TextStroke::MAX_WIDTH_PX);
+        assert_eq!(stroke(f32::INFINITY).clamped_width(), 0.0);
+        assert_eq!(stroke(f32::NAN).clamped_width(), 0.0);
+        assert_eq!(stroke(-3.0).clamped_width(), 0.0);
     }
 
     #[test]

@@ -4,8 +4,8 @@
 //! - [`GlyphonRasterizer`]（`glyphon`）: glyphon（wgpu）のグリフの atlas とパイプラインで描く。
 //!
 //! シェーパーはルビの注記を外して親文字だけを組み、`LineBreak::Phrase` なら文節（BudouX）の中で折らない。
-//! 縁取りとふりがなの分だけ `bounds` を広げる。描画は縁取りを描く（glyphon も縁があるときは CPU の経路）。
-//! ふりがなは描かない（CSS で描く `mm-text-cef` が描く）。
+//! 縁取りの分だけ `bounds` を四方に広げ、ルビを含む行の上にふりがなの場所を空ける（`room`）。
+//! 描画は縁取りを描く（glyphon も縁があるときは CPU の経路）。ふりがなは描かない（CSS で描く `mm-text-cef` が描く）。
 //!
 //! `ShapedText` がフォントの名前とグリフの番号を持つので、描画は行組みをやり直さずグリフを引くだけ。
 //! シェーパーとレンダラーは別々に作れる。フォントの読み込みは重いので、同じプロセスでは
@@ -16,6 +16,7 @@ mod gpu;
 mod layout;
 mod markup;
 mod raster;
+mod room;
 mod stroke;
 
 pub use gpu::GlyphonRasterizer;
@@ -115,25 +116,23 @@ impl TextShaper for CosmicShaper {
         let mut shaped = layout::to_shaped(fs, &buffer, &prepared, style);
         shaped.text = text.to_string();
         if !shaped.bounds.is_empty() {
+            let room_above = prepared.has_ruby && room::make_room(&mut shaped, style);
             // 送り幅と行の高さの矩形に、グリフのインクの張り出しを足す（斜体、アクセント、絵文字）。
             let ink = raster::ink_bounds(fs, cache, &shaped, style);
-            shaped.bounds = widen(shaped.bounds.union(&ink), style, prepared.has_ruby);
+            shaped.bounds = widen(shaped.bounds.union(&ink), style, room_above);
         }
         Ok(shaped)
     }
 }
 
-/// ふりがなの大きさの、親文字に対する割合（CSS の `ruby` の既定の 50%）。
-const RUBY_SHARE: f32 = 0.5;
-
-/// ふりがなの分だけ上に、縁取りの分だけ四方に広げる。CSS で描く実装がこの中に収まる。
-fn widen(bounds: Rect, style: &TextStyle, has_ruby: bool) -> Rect {
-    let ruby = if has_ruby {
-        style.size_px * RUBY_SHARE
+/// 1 行目のふりがなの分だけ上に、縁取りの分だけ四方に広げる。CSS で描く実装がこの中に収まる。
+fn widen(bounds: Rect, style: &TextStyle, room_above: bool) -> Rect {
+    let ruby = if room_above {
+        room::ruby_height(style)
     } else {
         0.0
     };
-    let stroke = style.stroke.map_or(0.0, |s| s.width_px.max(0.0));
+    let stroke = style.stroke.map_or(0.0, |s| s.clamped_width());
     Rect::new(
         bounds.x - stroke,
         bounds.y - stroke - ruby,
