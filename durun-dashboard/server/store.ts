@@ -167,6 +167,8 @@ type State = {
   autoContinue?: boolean;
   /** エージェントのプロセスの優先度。無ければ通常。 */
   agentPriority?: AgentPriority;
+  /** ムービーメーカーで最近開いたプロジェクトのフォルダー。新しい順。 */
+  mmRecentProjects?: string[];
   /** 学習アプリ。pid は提案を作っている学習のセッションのもの。 */
   learn: LearnSettings & { runs: LearnRun[]; pid?: number; error?: string };
   /** ワークフローごとの動き。定義は workflows.json にある。 */
