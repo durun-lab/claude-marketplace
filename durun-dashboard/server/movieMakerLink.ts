@@ -57,13 +57,28 @@ export const findLink = (projectDir: string, tokenDir: string | undefined, alive
   return { pid: info.pid, port: info.http_port, token };
 };
 
-/** change を送ったのが人間か。mm-serve は WebView とサーフェスの操作を `gui` で送り、HTTP の操作経路（mcp、cli）は人間ではない。 */
-export const isHuman = (change: MmChange): boolean => change.actor === 'gui';
+/** 人間の操作として mm-serve が送る actor。WebView とサーフェスの操作は `gui`、スマホの PWA の操作は `mobile`。HTTP の操作経路（mcp、cli）は人間ではない。 */
+const HUMAN_ACTORS = new Set(['gui', 'mobile']);
+
+/** change を送ったのが人間か。 */
+export const isHuman = (change: MmChange): boolean => HUMAN_ACTORS.has(change.actor);
+
+/** モバイル版の待ち受けの tailnet 上の HTTPS のポート。movie-maker の MOBILE_HTTPS_PORT と同じ。 */
+const MOBILE_HTTPS_PORT = 8443;
+
+/**
+ * モバイル版の URL。tailnet での名前は `tailscale status --json` の Self.DNSName で、movie-maker の MobileServer::url と同じ元から作る。
+ * 証明書が出る `*.ts.net` の完全な名前だけを使う（短い名前と IP では HTTPS にならない）。
+ */
+export const mobileUrl = (tailnetHosts: string[]): string | undefined => {
+  const host = tailnetHosts.find((h) => h.endsWith('.ts.net'));
+  return host ? `https://${host}:${MOBILE_HTTPS_PORT}/m/` : undefined;
+};
 
 /** フックとツールで返す、1 件の生の値。 */
 export const changeLine = (change: MmChange): string => JSON.stringify(change);
 
-export const CHANGE_FORMAT = '1 行に 1 件、movie-maker の GET /events の change のまま。kind は apply、undo、redo で、undo と redo の of は戻した元のトランザクション。actor の gui は人間、mcp と cli はエージェント';
+export const CHANGE_FORMAT = '1 行に 1 件、movie-maker の GET /events の change のまま。kind は apply、undo、redo で、undo と redo の of は戻した元のトランザクション。actor の gui と mobile は人間（mobile はスマホから）、mcp と cli はエージェント';
 
 /** 人間の操作を、フックの additionalContext の文にする。limit を超えた分は数だけ添える。 */
 export const hookText = (changes: MmChange[], limit: number): string | undefined => {

@@ -1,0 +1,75 @@
+/* Watch: 映像は上に固定し、下の一覧だけが動く。 */
+.screen.watch { padding: 0; overflow: hidden; }
+.stage { position: relative; aspect-ratio: 16 / 9; background: #000; flex: none; }
+.stage video, .stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.draw { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.draw.editing { pointer-events: auto; touch-action: none; cursor: crosshair; }
+.draw * { vector-effect: non-scaling-stroke; }
+.shape { fill: none; stroke: #ff3b6b; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.shape.draft { stroke-dasharray: 6 4; }
+circle.shape { fill: #ff3b6b; }
+.stage .play {
+  position: absolute; inset: 0; margin: auto; width: 64px; height: 64px; border: 0; border-radius: 50%;
+  background: rgb(0 0 0 / 0.55); display: grid; place-items: center;
+}
+.stage .play svg { width: 32px; height: 32px; fill: #fff; }
+.overlay { position: absolute; inset: 0; margin: 0; display: grid; place-items: center; color: #fff; background: rgb(0 0 0 / 0.6); }
+
+.scrub { display: flex; align-items: center; gap: 10px; padding: 0 12px; background: var(--surface); border-bottom: 1px solid var(--line); flex: none; }
+.clock { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 34px; text-align: center; }
+.track { position: relative; flex: 1; height: var(--tap); touch-action: none; }
+.track i { position: absolute; }
+.track .rail { left: 0; right: 0; top: 50%; height: 4px; margin-top: -2px; border-radius: 2px; background: var(--line); }
+.track .played { left: 0; top: 50%; height: 4px; margin-top: -2px; border-radius: 2px; background: var(--accent); }
+.track .cut { top: 12px; bottom: 12px; width: 2px; margin-left: -1px; background: var(--muted); }
+.track .mark { top: 6px; width: 8px; height: 8px; margin-left: -4px; border-radius: 50%; background: #ff3b6b; }
+.track .head { top: 50%; width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: var(--accent); border: 2px solid var(--surface); }
+
+.chips { display: flex; gap: 8px; padding: 8px 12px; flex: none; }
+.chipbtn {
+  min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 22px;
+  background: var(--surface); color: var(--text); font: inherit; font-size: 14px; font-weight: 600;
+}
+.chipbtn.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.chipbtn:disabled { opacity: 0.4; }
+.chipbtn b { font-weight: 600; opacity: 0.7; margin-left: 2px; }
+
+.screen .list { flex: 1; min-height: 0; padding-top: 4px; }
+button.item.tap { width: 100%; text-align: left; font: inherit; color: inherit; display: block; min-height: 44px; }
+button.item.tap.selected { border-color: var(--accent); }
+.item .when { font-variant-numeric: tabular-nums; font-size: 13px; font-weight: 600; color: var(--accent); }
+.item p { margin: 2px 0 6px; }
+
+.dock { flex: none; display: flex; gap: 10px; padding: 10px 16px; border-top: 1px solid var(--line); background: var(--surface); }
+button.big { min-height: 56px; flex: 1; font-size: 17px; }
+.dock.two button:last-child { flex: 2; }
+button.secondary {
+  min-height: var(--tap); padding: 0 20px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface); color: var(--text); font: inherit; font-weight: 600;
+}
+button.secondary:disabled { opacity: 0.4; }
+
+.sheet { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px 16px; overflow: hidden; }
+.thread .replies { flex: 1; min-height: 0; overflow-y: auto; }
+.sheet-title { margin: 0; font-weight: 600; }
+.sheet textarea {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--surface); color: var(--text); font: inherit; font-size: 16px; resize: none;
+}
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.row.actions { margin-top: auto; flex-wrap: nowrap; }
+.row.actions > * { flex: 1; min-height: 56px; }
+.row.reply input { flex: 1; width: auto; }
+.thread-head { display: flex; gap: 12px; align-items: center; padding: 8px 16px; flex: none; }
+.thread-head .link { margin: 0 0 0 auto; }
+.thread-head .back { margin: 0; }
+.replies { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.replies li { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 8px 12px; }
+.replies p { margin: 2px 0 0; }
+
+/* 横にしたら映像だけを全画面にする。 */
+@media (orientation: landscape) and (max-height: 500px) {
+  .screen.watch .stage { position: fixed; inset: 0; z-index: 10; aspect-ratio: auto; }
+  .screen.watch > :not(.stage) { display: none; }
+  .tabs, .bar { display: none; }
+}

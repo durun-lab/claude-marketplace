@@ -69,6 +69,7 @@
 <script>
   // 囲む枠と札の間をあける幅、枠の角丸、札の高さの半分（しっぽの向きを決める）。7_mix の marks と同じ。
   const PAD = 8, RING_RADIUS = 14, TAG_HALF = 32;
+  const TAILS = ['up', 'dn', 'lf', 'rt'];
   // 矢印の矢じりの根元までの長さの上限と、点線の先の札の大きさ。
   const HEAD_BACK = 16, MIN_CHEVRON = 90;
   const COLORS = { white: 'dry', blue: 'rev', yellow: 'duck', new: 'duck' };
@@ -116,7 +117,9 @@
     const [p] = points(d.pts), box = rect(d.box);
     if (!p) return '';
     let tl = box ? tailSide(d.text, p, box) : '';
-    if (d.tail && d.tail !== 'auto') tl = d.tail === 'none' ? '' : d.tail;
+    // 向きは CSS の規則のある 4 つだけを受け、ほかの値（綴りの違い、壊れた文字）は自動に任せる。
+    if (d.tail === 'none') tl = '';
+    else if (TAILS.includes(d.tail)) tl = d.tail;
     const ic = d.color === 'new' ? `<span class="ic">${ICON.ok}</span>` : '';
     return `${box && d.ring !== false && d.ring !== 'false' ? ring(box) : ''}`
       + `<div class="tag${d.color === 'new' ? ' new' : ''}" style="left:${p[0]}px;top:${p[1]}px">`

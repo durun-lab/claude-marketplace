@@ -2,28 +2,26 @@ import { useState } from "preact/hooks";
 import type { Controller } from "./controller.ts";
 import { useStore } from "./hooks.ts";
 import { PairScreen, codeFromSearch, guessDeviceName } from "./pairing/PairScreen.tsx";
-import { CommentsScreen } from "./screens/CommentsScreen.tsx";
-import { Frame } from "./screens/Frame.tsx";
+import { ProposalsScreen } from "./proposals/ProposalsScreen.tsx";
+import { StoryScreen } from "./story/StoryScreen.tsx";
 import { StatusChip } from "./StatusChip.tsx";
+import { WatchScreen } from "./watch/WatchScreen.tsx";
+import type { Attach } from "./watch/usePlayback.ts";
 
-export const TABS = ["Watch", "Story", "Comments", "Proposals"] as const;
+export const TABS = ["Watch", "Story", "Proposals"] as const;
 export type Tab = (typeof TABS)[number];
 
-const ROLES: Record<Exclude<Tab, "Comments">, string> = {
-  Watch: "Low-bitrate playback and comments pinned to a time.",
-  Story: "Pick, reject and reorder transcript ranges.",
-  Proposals: "Compare before and after, then approve or reject.",
-};
-
 export interface AppProps {
+  /** 映像のつなぎ方。テストとデモが差し替える。 */
+  attach?: Attach;
   controller: Controller;
   search?: string;
   userAgent?: string;
   initialTab?: Tab;
 }
 
-/** 下のタブ 4 つ、上の接続の表示、未登録なら登録の画面。 */
-export const App = ({ controller, search = "", userAgent = "", initialTab = "Comments" }: AppProps) => {
+/** 下のタブ 3 つ、上の接続の表示、未登録なら登録の画面。 */
+export const App = ({ controller, search = "", userAgent = "", initialTab = "Watch", attach }: AppProps) => {
   const { connection } = controller;
   const snap = useStore(connection.subscribe, connection.get);
   const pending = useStore(controller.outbox.subscribe, controller.outbox.list);
@@ -31,10 +29,12 @@ export const App = ({ controller, search = "", userAgent = "", initialTab = "Com
   const body =
     snap.state === "unpaired" ? (
       <PairScreen controller={controller} initialCode={codeFromSearch(search)} initialName={guessDeviceName(userAgent)} />
-    ) : tab === "Comments" ? (
-      <CommentsScreen controller={controller} />
+    ) : tab === "Watch" ? (
+      <WatchScreen controller={controller} attach={attach} />
+    ) : tab === "Story" ? (
+      <StoryScreen controller={controller} />
     ) : (
-      <Frame title={tab} role={ROLES[tab]} project={snap.project} />
+      <ProposalsScreen controller={controller} />
     );
   return (
     <div class="app">

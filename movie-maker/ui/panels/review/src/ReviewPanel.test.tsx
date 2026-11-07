@@ -44,6 +44,11 @@ const fakeApi = (list: Proposal[], over: Partial<ReviewApi> = {}): ReviewApi => 
   undo: vi.fn().mockResolvedValue(list[0]),
   preview: vi.fn().mockResolvedValue(undefined),
   onChanged: vi.fn().mockResolvedValue(() => undefined),
+  comments: vi.fn().mockResolvedValue([]),
+  replyComment: vi.fn().mockResolvedValue(null),
+  setCommentState: vi.fn().mockResolvedValue(null),
+  seek: vi.fn().mockResolvedValue(undefined),
+  onCommentsChanged: vi.fn().mockResolvedValue(() => undefined),
   ...over,
 });
 

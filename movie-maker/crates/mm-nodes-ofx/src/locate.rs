@@ -3,7 +3,7 @@
 //! 中のバンドルと、プロジェクトの素材のバンドルだけにする。シンボリックリンクとジャンクションで外へ出られないよう、
 //! 実体のパスに直してから置き場所の中かを確かめる。
 
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 
 use mm_types::{MmError, Result};
 
@@ -18,38 +18,14 @@ pub fn is_bundle_name(path: &Path) -> bool {
 }
 
 /// パラメータ `bundle` の名前を、置き場所 `roots` の中のバンドルの実体のパスにする。
-/// 相対の名前は `roots` の順に探し、`..` やドライブを含む名前は断る。絶対パスは置き場所の中だけを受ける。
+/// 相対の名前は `roots` の順に探し、`..` やドライブを含む名前は拒否する。絶対パスは置き場所の中だけを受ける。
 pub fn resolve_named(roots: &[PathBuf], name: &str) -> Result<PathBuf> {
-    let path = Path::new(name);
-    if !is_bundle_name(path) {
-        return Err(MmError::InvalidArgument(format!(
-            "{name} はバンドル（*{BUNDLE_SUFFIX}）でない"
-        )));
-    }
-    let candidates: Vec<PathBuf> = if path.is_absolute() {
-        vec![path.to_path_buf()]
-    } else if path.components().all(|c| matches!(c, Component::Normal(_))) {
-        roots.iter().map(|r| r.join(path)).collect()
-    } else {
-        return Err(MmError::InvalidArgument(format!(
-            "{name} は置き場所からの相対の名前でない（.. やドライブは使えない）"
-        )));
-    };
-    let real_roots: Vec<PathBuf> = roots.iter().filter_map(|r| r.canonicalize().ok()).collect();
-    let found = candidates
-        .iter()
-        .filter_map(|c| c.canonicalize().ok())
-        .find(|c| c.is_dir());
-    let Some(real) = found else {
-        return Err(MmError::NotFound(format!(
-            "バンドル {name} が OpenFX の置き場所 {roots:?} に無い"
-        )));
-    };
-    if real_roots.iter().any(|r| real.starts_with(r)) && is_bundle_name(&real) {
+    let real = mm_host_pipe::resolve_in_roots(roots, name, is_bundle_name)?;
+    if real.is_dir() {
         Ok(real)
     } else {
         Err(MmError::InvalidArgument(format!(
-            "{} は OpenFX の置き場所 {roots:?} の外",
+            "{} はバンドルのフォルダーでない",
             real.display()
         )))
     }

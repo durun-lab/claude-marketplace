@@ -1,14 +1,14 @@
 //! ep03（DTM_Vlog の作曲Vlog #3）を `mm geneva` で取り込み、`mm render` で書き出して前の書き出しと比べる
 //! （`docs/design/11-testing.md` の「実データ」）。
 //!
-//! 素材はリポジトリに入れない。`MM_EP03_DIR` に回のフォルダー（`timeline.json` と `render/ep03_final.mp4` がある所）を
+//! 素材はリポジトリに入れない。`MM_EP03_DIR` にエピソードのフォルダー（`timeline.json` と `render/ep03_final.mp4` がある所）を
 //! 渡したときだけ実行し、無ければ何もせず通る。既定は全体に散らした区間だけを書き出し、`MM_EP03_FULL=1` で全体を書き出す。
 
 use std::path::PathBuf;
 
 use crate::replay::{self, Limits};
 
-/// 回のフォルダーを渡す環境変数。
+/// エピソードのフォルダーを渡す環境変数。
 const ENV_DIR: &str = "MM_EP03_DIR";
 /// 全体を書き出す環境変数。
 const ENV_FULL: &str = "MM_EP03_FULL";

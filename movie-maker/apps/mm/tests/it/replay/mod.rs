@@ -1,4 +1,4 @@
-//! 終わった回（DTM_Vlog の geneva のタイムライン）を `mm geneva` で取り込み、`mm render` で書き出して
+//! 終わったエピソード（DTM_Vlog の geneva のタイムライン）を `mm geneva` で取り込み、`mm render` で書き出して
 //! 前の書き出しと比べる手順（`docs/design/11-testing.md` の「実データ」）。回ごとの区間と閾値は `ep03.rs`、`ep04.rs` が持つ。
 
 pub mod measure;
@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 
 use measure::{Picture, Sound};
 
-/// 区間の始まりをそろえる刻み（1 秒あたりの数）。区間を変えると前の回の数字と比べられないので、0.1 秒の格子に保つ。
+/// 区間の始まりをそろえる刻み（1 秒あたりの数）。区間を変えると前に計った数字と比べられないので、0.1 秒の格子に保つ。
 const WINDOW_GRID: f64 = 10.0;
 
 /// 区間ごとの閾値。根拠は回ごとのテストの定数のコメント。

@@ -52,6 +52,7 @@ fn write(codec: &str, path: &Path) {
         codec: codec.into(),
         output_path: path.to_owned(),
         audio: None,
+        stream: None,
     };
     enc.begin(&settings).unwrap();
     let frames: Vec<RgbaImage> = (0..FRAMES).map(|_| patch_frame()).collect();

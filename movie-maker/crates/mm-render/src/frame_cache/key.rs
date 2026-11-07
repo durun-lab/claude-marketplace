@@ -2,8 +2,8 @@
 //! （入れ子の先、シーケンス、効果）の指紋から作る。
 //!
 //! 画素を変えうる外の入力は全部キーに入れる: 評価済みのパラメータ、素材の `contentHash`（効果が参照する
-//! LUT などの素材も）、種類の指紋（`NodeKind::cache_fingerprint`。`ofx` のプラグインの印）、色の変換の設定の指紋
-//! （`ColorTransform::config_fingerprint`）、素材ごとに選ばれたデコーダーの実装（`Decoder::backend_id`）。`contentHash` が空の素材（まだ取り込んでいない）に頼る画像は覚えない。
+//! LUT などの素材も）、種類の指紋（`NodeKind::cache_fingerprint`。`ofx` のプラグインのスタンプ）、色の変換の設定の指紋
+//! （`ColorTransform::config_fingerprint`）、素材ごとに選ばれたデコーダーの実装（`Decoder::backend_id`）。`contentHash` が空の素材（まだ取り込んでいない）に頼る画像はキャッシュしない。
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -216,7 +216,7 @@ impl Walk<'_> {
         Some(params)
     }
 
-    /// 種類の指紋（`NodeKind::cache_fingerprint`）を指紋に入れる。引けなければ `None`（覚えない）。
+    /// 種類の指紋（`NodeKind::cache_fingerprint`）を指紋に入れる。引けなければ `None`（キャッシュしない）。
     fn kind_fingerprint(&mut self, kind: &dyn NodeKind, params: &Params) -> Option<()> {
         let project = self.env.project;
         let asset_path = |id: &AssetId| project.asset(id).ok().map(|a| PathBuf::from(&a.path));

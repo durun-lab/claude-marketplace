@@ -11,3 +11,5 @@ mod contract;
 mod hdr;
 #[cfg(feature = "ffmpeg")]
 mod roundtrip;
+#[cfg(feature = "ffmpeg")]
+mod stream_ts;

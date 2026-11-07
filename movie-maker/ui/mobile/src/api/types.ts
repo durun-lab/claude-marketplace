@@ -1,4 +1,6 @@
-import type { RationalTime } from "@mm/sdk";
+import type { Comment, CommentState, NewComment } from "@mm/sdk";
+
+export type { CommentState };
 
 /** `GET /m/api/project` の応答。素材のパスは含まれない。 */
 export interface ProjectInfo {
@@ -6,26 +8,15 @@ export interface ProjectInfo {
   compositions: { id: string; name: string }[];
   sequences: { id: string; name: string }[];
   open_composition: string | null;
+  /** 開いているコンポジションのカットの境（秒）。スクラブの棒の目盛りに使う。 */
+  cuts?: number[];
 }
 
-/** コメントの状態。`fresh` は Claude が対応を適用した直後。 */
-export type CommentState = "open" | "fresh" | "done" | "wontfix";
-
-/** `GET /m/api/comments` の 1 件。 */
-export interface CommentItem {
-  id: string;
-  text: string;
-  state: CommentState;
-  at: RationalTime | null;
-  author: string;
-}
+/** `GET /m/api/comments` の 1 件。型は ui/sdk の `Comment`。 */
+export type CommentItem = Comment;
 
 /** `POST /m/api/comments` の本文。`client_id` は再送で二重に書かれないための端末側の ID。 */
-export interface CommentDraft {
-  client_id: string;
-  text: string;
-  at: RationalTime | null;
-}
+export type CommentDraft = NewComment & { client_id: string };
 
 /** 端末の登録に成功したときの応答。資格そのものはクッキーで届き、ここには含まれない。 */
 export interface PairResult {

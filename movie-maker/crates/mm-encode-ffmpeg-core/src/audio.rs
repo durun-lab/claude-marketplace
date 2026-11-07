@@ -5,12 +5,12 @@ use ff::format::sample::{Sample, Type};
 use ff::{codec, encoder, frame, ChannelLayout, Rational};
 use ffmpeg_next as ff;
 use mm_audio_api::AudioBlock;
-use mm_decode_api::AudioStreamInfo;
+use mm_decode_api::{AudioStreamInfo, StreamOutput};
 use mm_types::{MmError, Result};
 
 use crate::spec::AudioCodec;
 
-/// AAC のビットレート（bit/s）。
+/// AAC の既定のビットレート（bit/s）。
 const BIT_RATE: usize = 192_000;
 /// フレームの大きさが決まっていない PCM を送る 1 回のサンプル数（チャンネルあたり）。
 const PCM_CHUNK: usize = 4096;
@@ -30,14 +30,18 @@ pub struct AudioTrack {
     pending: Vec<f32>,
     /// エンコーダーに渡したサンプル数。次のフレームの PTS。
     sent: i64,
+    /// 時刻 0 より前で終わるパケット（AAC の前置き）を捨てるか。edit list の無い MPEG-TS の区間で使う。
+    drop_priming: bool,
 }
 
 impl AudioTrack {
-    /// 出力にストリームを足し、音のエンコーダーを開く。
+    /// 出力にストリームを足し、音のエンコーダーを開く。`stream_output` があれば配信の区間のビットレートで書き、
+    /// AAC の前置きのパケットを捨てる。
     pub fn open(
         output: &mut Output,
         info: &AudioStreamInfo,
         kind: AudioCodec,
+        stream_output: Option<&StreamOutput>,
         global_header: bool,
     ) -> Result<Self> {
         let (codec_id, label) = match kind {
@@ -59,7 +63,7 @@ impl AudioTrack {
         enc.set_channel_layout(ChannelLayout::default(i32::from(info.channels)));
         enc.set_format(sample_format(kind));
         if kind == AudioCodec::Aac {
-            enc.set_bit_rate(BIT_RATE);
+            enc.set_bit_rate(stream_output.map_or(BIT_RATE, |s| s.audio_bit_rate as usize));
         }
         enc.set_time_base(time_base);
         if global_header {
@@ -83,6 +87,7 @@ impl AudioTrack {
             codec_kind: kind,
             pending: Vec::new(),
             sent: 0,
+            drop_priming: stream_output.is_some(),
         })
     }
 
@@ -174,6 +179,7 @@ impl AudioTrack {
             self.time_base,
             self.stream_tb,
             0,
+            self.drop_priming,
         )
     }
 }
@@ -224,7 +230,7 @@ mod tests {
             sample_rate: 48_000,
             channels: 2,
         };
-        let track = AudioTrack::open(&mut output, &info, AudioCodec::Aac, true).unwrap();
+        let track = AudioTrack::open(&mut output, &info, AudioCodec::Aac, None, true).unwrap();
         assert_eq!(private_int(&track, c"aac_pns"), 0);
     }
 }

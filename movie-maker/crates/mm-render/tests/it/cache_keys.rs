@@ -75,7 +75,7 @@ impl NodeKind for Noisy {
 /// `Fingerprinted` の指紋。0 なら引けない（`None`）。
 static FINGERPRINT: AtomicU64 = AtomicU64::new(1);
 
-/// パラメータの外の指紋を持つ種類（`ofx` のプラグインの印の代わり）。入力があればそのまま返し、無ければ単色。
+/// パラメータの外の指紋を持つ種類（`ofx` のプラグインのスタンプの代わり）。入力があればそのまま返し、無ければ単色。
 struct Fingerprinted;
 
 impl NodeKind for Fingerprinted {
@@ -223,7 +223,7 @@ fn 入れ子の中の効果の素材の中身が変わったら入れ子を描�
 }
 
 #[test]
-fn 種類の指紋が変われば別のキーにし_引けなければ覚えない() {
+fn 種類の指紋が変われば別のキーにし_引けなければキャッシュしない() {
     let Some(ctx) = gpu() else { return };
     let source = || {
         let mut p = Project::new();
@@ -237,7 +237,7 @@ fn 種類の指紋が変われば別のキーにし_引けなければ覚えな�
     FINGERPRINT.store(1, Ordering::SeqCst);
     render(&mut r, &source());
     render(&mut r, &source());
-    assert_eq!(entries(&r), 1, "同じ指紋なら当たる");
+    assert_eq!(entries(&r), 1, "同じ指紋ならヒットする");
     FINGERPRINT.store(2, Ordering::SeqCst);
     render(&mut r, &source());
     assert_eq!(entries(&r), 2, "レイヤーの種類の指紋が変われば別のキー");
@@ -255,7 +255,11 @@ fn 種類の指紋が変われば別のキーにし_引けなければ覚えな�
     );
     FINGERPRINT.store(0, Ordering::SeqCst);
     render(&mut r, &p);
-    assert_eq!(entries(&r), 3, "指紋を引けない効果を含む入れ子は覚えない");
+    assert_eq!(
+        entries(&r),
+        3,
+        "指紋を引けない効果を含む入れ子はキャッシュしない"
+    );
     FINGERPRINT.store(1, Ordering::SeqCst);
 }
 

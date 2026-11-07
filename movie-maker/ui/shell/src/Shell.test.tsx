@@ -75,6 +75,11 @@ const fakeReview = (): ReviewApi => ({
   undo: vi.fn(),
   preview: vi.fn().mockResolvedValue(undefined),
   onChanged: vi.fn().mockResolvedValue(() => {}),
+  comments: vi.fn().mockResolvedValue([]),
+  replyComment: vi.fn(),
+  setCommentState: vi.fn(),
+  seek: vi.fn().mockResolvedValue(undefined),
+  onCommentsChanged: vi.fn().mockResolvedValue(() => {}),
 });
 
 const fakeFeedback = (): FeedbackApi => ({

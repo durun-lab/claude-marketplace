@@ -12,11 +12,11 @@ use mm_types::ParamValue;
 
 use crate::common::{editor_with_layer, genai, genai_node};
 
-/// 子のプロセスで走らせる試験の名前。
-const CHILD_TEST: &str = "gate::子_回の印の下では承認できない";
+/// 子のプロセスで実行するテストの名前。
+const CHILD_TEST: &str = "gate::子_回の環境変数の下では承認できない";
 
 #[test]
-fn mcp_の経路からは承認できず_cli_からはできる() {
+fn claude_の経路からは承認できず_アプリからはできる() {
     let dir = tempfile::tempdir().unwrap();
     let (gen, _) = genai(&media_dir(dir.path()));
     let (ed, layer) = editor_with_layer(genai_node(&[]));
@@ -25,7 +25,14 @@ fn mcp_の経路からは承認できず_cli_からはできる() {
         gen.approve(&q, Entry::Mcp),
         Err(GenError::Forbidden(_))
     ));
-    assert_eq!(gen.approve(&q, Entry::Cli).unwrap().entry(), Entry::Cli);
+    assert!(matches!(
+        gen.approve(&q, Entry::Cli),
+        Err(GenError::Forbidden(_))
+    ));
+    assert_eq!(
+        gen.approve(&q, Entry::WebView).unwrap().entry(),
+        Entry::WebView
+    );
 }
 
 #[test]
@@ -73,6 +80,22 @@ fn 見積もりが承認した上限を超えたら生成しない() {
 }
 
 #[test]
+fn 見積もりが有限でなければ見積もりの工程で拒否する() {
+    let dir = tempfile::tempdir().unwrap();
+    let broken = Arc::new(FakeProvider::new().with_prices(FakePrices {
+        per_image_usd: f64::NAN,
+        ..FakePrices::default()
+    }));
+    let gen = GenAi::new(
+        media_dir(dir.path()),
+        Providers::new().with(broken.clone()).unwrap(),
+    );
+    let (ed, layer) = editor_with_layer(genai_node(&[]));
+    assert!(gen.quote(ed.project(), &layer).is_err());
+    assert_eq!(broken.calls(), 0);
+}
+
+#[test]
 fn 自動の改善の回の中では承認も生成もできない() {
     let dir = tempfile::tempdir().unwrap();
     let (gen, fake) = genai(&media_dir(dir.path()));
@@ -95,30 +118,33 @@ fn 自動の改善の回の中では承認も生成もできない() {
 }
 
 #[test]
-fn 回の印の名前は_mm_improve_が渡すものと同じ() {
+fn 回の環境変数の名前は_mm_improve_が渡すものと同じ() {
     assert_eq!(IMPROVE_ROUND_ENV, mm_improve::ROUND_ENV);
 }
 
-/// 環境変数はプロセスの全体に効くので、印を付けた子のプロセスでこの試験の片割れを走らせる。
+/// 環境変数はプロセスの全体に効くので、環境変数を付けた子のプロセスでこのテストの片割れを実行する。
 #[test]
-fn 回の印の環境変数があれば承認できない() {
-    let exe = std::env::current_exe().unwrap();
-    let out = Command::new(exe)
-        .args([CHILD_TEST, "--exact", "--nocapture"])
-        .env(IMPROVE_ROUND_ENV, "r-child")
-        .output()
-        .unwrap();
-    let stdout = String::from_utf8_lossy(&out.stdout);
-    assert!(out.status.success(), "{stdout}");
-    assert!(
-        stdout.contains("1 passed"),
-        "子の試験が走っていない: {stdout}"
-    );
+fn 回の環境変数があれば承認できない() {
+    // 空の値で上書きしても環境変数は外れない。
+    for round in ["r-child", ""] {
+        let exe = std::env::current_exe().unwrap();
+        let out = Command::new(exe)
+            .args([CHILD_TEST, "--exact", "--nocapture"])
+            .env(IMPROVE_ROUND_ENV, round)
+            .output()
+            .unwrap();
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert!(out.status.success(), "{round:?}: {stdout}");
+        assert!(
+            stdout.contains("1 passed"),
+            "子のテストが実行されていない（{round:?}）: {stdout}"
+        );
+    }
 }
 
-/// 子のプロセスの片割れ。印が無いとき（普通の実行）は何もしない。
+/// 子のプロセスの片割れ。環境変数が無いとき（普通の実行）は何もしない。
 #[test]
-fn 子_回の印の下では承認できない() {
+fn 子_回の環境変数の下では承認できない() {
     if current_round().is_none() {
         return;
     }

@@ -23,7 +23,7 @@ pub struct OfxPlugin {
 /// バンドルの実体のパスを describe して、描ける効果を返す関数。組み立てがホストの実行ファイルで作って渡す。
 pub type Describe = Arc<dyn Fn(&Path) -> Result<Vec<OfxPlugin>> + Send + Sync>;
 
-/// 1 つのバンドルの describe の結果。失敗も覚え、壊れたプラグインを毎フレーム読み込み直さない。
+/// 1 つのバンドルの describe の結果。失敗もキャッシュし、壊れたプラグインを毎フレーム読み込み直さない。
 #[derive(Clone)]
 struct Entry {
     stamp: u64,
@@ -45,7 +45,7 @@ impl Catalog {
         }
     }
 
-    /// バンドルの効果の一覧と、バンドルの中身の印。中身が変わっていなければ前の結果を返す。
+    /// バンドルの効果の一覧と、バンドルの中身のスタンプ。中身が変わっていなければ前の結果を返す。
     pub fn plugins(&self, bundle: &Path) -> Result<(Arc<Vec<OfxPlugin>>, u64)> {
         let stamp = stamp(bundle);
         let cached = self
@@ -102,7 +102,7 @@ impl std::fmt::Debug for Catalog {
     }
 }
 
-/// バンドルの中身の印。`Contents/<アーキテクチャ>/` の直下のファイルの名前、大きさ、更新時刻から作る。
+/// バンドルの中身のスタンプ。`Contents/<アーキテクチャ>/` の直下のファイルの名前、大きさ、更新時刻から作る。
 /// 共有ライブラリを差し替えると変わり、describe とホストを作り直す。
 pub fn stamp(bundle: &Path) -> u64 {
     let mut files: Vec<(PathBuf, u64, Option<std::time::SystemTime>)> = Vec::new();
@@ -160,18 +160,18 @@ mod tests {
 
         std::fs::write(arch.join("A.ofx"), b"22").unwrap();
         let (_, s3) = catalog.plugin(&bundle, "").unwrap();
-        assert_ne!(s1, s3, "共有ライブラリが変われば印も変わる");
+        assert_ne!(s1, s3, "共有ライブラリが変わればスタンプも変わる");
         assert_eq!(calls.load(Ordering::SeqCst), 2, "変わったら引き直す");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
-    fn 失敗も覚えて繰り返さない() {
+    fn 失敗もキャッシュして繰り返さない() {
         let calls = Arc::new(AtomicUsize::new(0));
         let c = calls.clone();
         let catalog = Catalog::new(Arc::new(move |_: &Path| {
             c.fetch_add(1, Ordering::SeqCst);
-            Err(MmError::HostCrashed("落ちた".into()))
+            Err(MmError::HostCrashed("クラッシュした".into()))
         }));
         let bundle = Path::new("無い.ofx.bundle");
         assert!(catalog.plugins(bundle).is_err());

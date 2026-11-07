@@ -238,6 +238,33 @@ fn 検査は壊したマクロの参照を捕まえる() {
 }
 
 #[test]
+fn 検査は_transition_wgsl_に無いパラメータを捕まえる() {
+    let errors = check_broken("macros/transition.json", |v| {
+        v["steps"][0]["transition"]["params"] = serde_json::json!({"seed": "{{seed}}"});
+    });
+    assert!(
+        mentions(&errors, "seed は transition.wgsl に無い"),
+        "{errors:?}"
+    );
+}
+
+#[test]
+fn 数の引数の_nan_と無限大と_巻き戻しの_0_以下の倍率を拒む() {
+    let pack = vlog();
+    for seed in ["NaN", "inf", "-infinity"] {
+        let got = expand_est(&pack, "transition", &args(&[("cut", "c2"), ("seed", seed)]));
+        assert!(got.is_err(), "seed={seed} を通さない");
+    }
+    for speed in ["0", "-2"] {
+        let got = expand_est(&pack, "rewind", &args(&[("cut", "c2"), ("speed", speed)]));
+        let Err(e) = got else {
+            panic!("speed={speed} を通さない")
+        };
+        assert!(e.to_string().contains("rewind は正にする"), "{e}");
+    }
+}
+
+#[test]
 fn 検査は適用できない例を捕まえる() {
     let errors = check_broken("macros/note.json", |v| {
         v["params"]["comp"]["default"] = "nowhere".into();

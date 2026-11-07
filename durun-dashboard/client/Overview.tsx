@@ -155,16 +155,20 @@ const AgentSection = ({ title, count, empty, children }: { title: string; count?
   </section>
 );
 
-/** 実行中のものを並べ、終わったものは件数だけを出して畳む。 */
+/**
+ * 実行中のものを並べ、終わったものは件数だけを出して畳む。
+ * 長く続くセッションでは終わったものが数百件たまり、スナップショットが届くたびの描画を重くするので、畳んでいる間は行を作らない。
+ */
 const RunningThenDone = <T,>({ list, running, row }: { list: T[]; running: (item: T) => boolean; row: (item: T) => ComponentChildren }) => {
+  const [open, setOpen] = useState(false);
   const done = list.filter((item) => !running(item));
   return (
     <>
       <ul class="subagents">{list.filter(running).map(row)}</ul>
       {done.length > 0 && (
-        <details class="agent-done">
+        <details class="agent-done" onToggle={(e) => setOpen(e.currentTarget.open)}>
           <summary>終わったもの <span class="count-pill">{done.length}</span></summary>
-          <ul class="subagents">{done.map(row)}</ul>
+          {open && <ul class="subagents">{done.map(row)}</ul>}
         </details>
       )}
     </>

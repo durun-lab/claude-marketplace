@@ -52,19 +52,24 @@ fn project_with_store(dir: &std::path::Path, burn_in: bool) -> (Project, Composi
 }
 
 fn player(project: &Project, comp: CompositionId, dir: &std::path::Path) -> Player {
+    player_in(Arc::new(Shared::new()), project, comp, dir)
+}
+
+/// `shared` を共有する再生。アプリと同じく `Core` を置いた `Shared` を渡せる。
+fn player_in(
+    shared: Arc<Shared>,
+    project: &Project,
+    comp: CompositionId,
+    dir: &std::path::Path,
+) -> Player {
     let options = PlayerOptions {
         no_audio: true,
         config: Some(RuntimeConfig::sample()),
         store_dir: Some(dir.join("store")),
     };
-    Player::new(
-        Arc::new(Shared::new()),
-        Arc::new(project.clone()),
-        comp,
-        options,
-    )
-    .expect("再生を始める")
-    .0
+    Player::new(shared, Arc::new(project.clone()), comp, options)
+        .expect("再生を始める")
+        .0
 }
 
 fn text_layers(project: &Project, comp: &CompositionId) -> usize {
@@ -92,6 +97,65 @@ fn 焼き込むレンダーターゲットがあるとプレビューは書き�
     assert!(
         Arc::ptr_eq(&shown, &player.shown_project()),
         "元が同じ間は作り直さない"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// 書き手として `project.mmdb` を開いた `Core` を置いた `Shared`（アプリと同じ形）。
+fn shared_with_core(dir: &std::path::Path) -> (Arc<Shared>, Arc<mm_serve::Core>) {
+    let shared = Arc::new(Shared::new());
+    let core = mm_serve::Core::new(Store::open(&dir.join("store"), 0).unwrap(), None);
+    let _ = shared.core.set(core.clone());
+    (shared, core)
+}
+
+#[test]
+fn 文字起こしを取り込み直すとプロジェクトのデータが同じでも字幕を作り直す() {
+    let dir = std::env::temp_dir().join(format!("mm_preview_retranscribe_{}", std::process::id()));
+    let (project, comp) = project_with_store(&dir, true);
+    let (shared, core) = shared_with_core(&dir);
+    let mut player = player_in(shared, &project, comp, &dir);
+    let before = player.shown_project();
+    let words = [("さようなら。", 3)].map(|(text, at)| WordInput {
+        segment: 0,
+        start: seconds(at),
+        end: RationalTime::new(i128::from(at) * 1000 + 800, 1000).unwrap(),
+        text: text.into(),
+    });
+    let input = TranscriptInput {
+        producer: "test".into(),
+        language: "ja".into(),
+        words: words.to_vec(),
+    };
+    let hash = project.assets[0].content_hash.clone();
+    core.put_transcript(&Id::new("clip"), &hash, &input)
+        .unwrap();
+    let after = player.shown_project();
+    assert!(!Arc::ptr_eq(&before, &after), "単語が変わったので作り直す");
+    assert_ne!(before, after);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn 文字起こしに関係の無い保存では字幕を作り直さない() {
+    let dir = std::env::temp_dir().join(format!("mm_preview_unrelated_{}", std::process::id()));
+    let (project, comp) = project_with_store(&dir, true);
+    let (shared, core) = shared_with_core(&dir);
+    let mut player = player_in(shared, &project, comp.clone(), &dir);
+    let before = player.shown_project();
+    let comment = mm_store::NewComment {
+        comp: comp.to_string(),
+        client_id: None,
+        at: Some(seconds(1)),
+        range: None,
+        text: "ここ".into(),
+        drawing: Vec::new(),
+    };
+    core.add_comment(&comment, &mm_serve::Caller::webview())
+        .unwrap();
+    assert!(
+        Arc::ptr_eq(&before, &player.shown_project()),
+        "コメントの保存では使い回す"
     );
     let _ = std::fs::remove_dir_all(&dir);
 }

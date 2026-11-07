@@ -199,6 +199,11 @@ impl NodeKind for ShaderHlslKind {
         }
     }
 
+    /// `asset` は HLSL の源のファイルで、デコーダーでは開けない。パスを引いて自分で読む。
+    fn decodes_asset(&self) -> bool {
+        false
+    }
+
     fn migrate(&self, old: serde_json::Value, from: u32) -> Result<Params> {
         if from != KIND_VERSION {
             return Err(MmError::Unsupported(format!(

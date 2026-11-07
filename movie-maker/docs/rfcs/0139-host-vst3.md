@@ -9,7 +9,7 @@
 
 ## 決めたこと
 
-### 口（`mm-*-api`）
+### インターフェース（`mm-*-api`）
 
 変えない。音の効果は RFC 0133 の `NodeKind::process_audio`、`AudioEffectCx`、`AUDIO_PARAM_STEP` をそのまま使う。
 
@@ -34,6 +34,6 @@
 ## 影響
 
 - API クレートとプロジェクトのデータは変わらない。
-- `mm-host-clap` の共有メモリの先頭の印が `MMCL` から `MMAU` に変わる。アプリとホストは同じビルドで作るので、互いの版がずれることは無い。
+- `mm-host-clap` の共有メモリの先頭のマジックが `MMCL` から `MMAU` に変わる。アプリとホストは同じビルドで作るので、互いのバージョンがずれることは無い。
 - `mm-host-pipe` を使う `mm-host-cef`、`mm-host-ofx`、`mm-nodes-ofx` のビルドに `mm-node-api` が加わる（すでに依存の木にある）。
 - `mm-runtime` の wgpu のレジストリの種類が 1 つ増える（`assemble_real` に名前の確かめを 1 行足した）。

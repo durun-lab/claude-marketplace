@@ -9,12 +9,15 @@ publish.workspace = true
 [dependencies]
 mm-types = { workspace = true }
 mm-doc = { workspace = true }
+mm-eval = { workspace = true }
 mm-ops = { workspace = true }
 mm-store = { workspace = true }
+mm-stream = { workspace = true }
 mm-story = { workspace = true }
 mm-node-api = { workspace = true }
 mm-runtime = { workspace = true }
 axum = { workspace = true }
+blake3 = { workspace = true }
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
 getrandom = { workspace = true }
@@ -26,6 +29,8 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# kinds のテストに登録する種類。
+mm-testkit = { workspace = true }
 
 [lints]
 workspace = true
