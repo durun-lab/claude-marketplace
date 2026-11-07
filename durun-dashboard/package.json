@@ -10,7 +10,7 @@
     "build": "node server/build.ts",
     "start": "node server/start.ts",
     "check": "tsc --noEmit",
-    "test": "node --test test/*.test.ts",
+    "test": "node --import ./test/setup.ts --test test/*.test.ts",
     "install-statusline": "node server/setup.ts install",
     "uninstall-statusline": "node server/setup.ts uninstall"
   },
