@@ -2,6 +2,7 @@ import type { Platform } from "../controller.ts";
 import type { EventSourceLike } from "../connection.ts";
 import type { CommentItem, ProjectInfo } from "../api/types.ts";
 import { MOBILE_HEADER } from "../api/http.ts";
+import { createMockStory, type MockStory } from "../story/mockStory.ts";
 
 /** デモとテストの母艦。母艦の API が出来るまで、12-mobile.md の「HTTP の形」の応答を手元で返す。 */
 export const MOCK_PAIR_CODE = "ABCD2345";
@@ -16,6 +17,7 @@ export interface MockServer {
   setOnline: (online: boolean) => void;
   setPaired: (paired: boolean) => void;
   comments: CommentItem[];
+  story: MockStory;
   /** 母艦が受けた書き込みの要求（パスと本文）。 */
   writes: { path: string; body: unknown; header: string | null }[];
 }
@@ -52,6 +54,8 @@ const pair = (req: Request1, setPaired: () => void): Response => {
 };
 
 const api = (server: MockServer, req: Request1): Response => {
+  const story = server.story.handle(req);
+  if (story) return story;
   if (req.path === "/m/api/project") return json(HTTP_OK, PROJECT);
   if (req.path === "/m/api/comments" && req.method === "GET") return json(HTTP_OK, server.comments);
   if (req.path === "/m/api/comments") {
@@ -75,6 +79,7 @@ export const createMockServer = (init: { paired: boolean; online: boolean; comme
   const sources = new Set<EventSourceLike>();
   const server: MockServer = {
     comments: init.comments ?? [],
+    story: createMockStory(),
     writes: [],
     setOnline: (v) => {
       online = v;

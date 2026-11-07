@@ -38,6 +38,9 @@ importers:
       '@mm/sdk':
         specifier: workspace:*
         version: link:../sdk
+      '@mm/story':
+        specifier: workspace:*
+        version: link:../panels/story
       preact:
         specifier: ^10.27.0
         version: 10.29.8

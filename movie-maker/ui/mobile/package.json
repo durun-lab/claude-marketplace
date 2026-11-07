@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@mm/sdk": "workspace:*",
+    "@mm/story": "workspace:*",
     "preact": "^10.27.0"
   }
 }

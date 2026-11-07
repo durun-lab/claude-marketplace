@@ -4,6 +4,7 @@ import { useStore } from "./hooks.ts";
 import { PairScreen, codeFromSearch, guessDeviceName } from "./pairing/PairScreen.tsx";
 import { CommentsScreen } from "./screens/CommentsScreen.tsx";
 import { Frame } from "./screens/Frame.tsx";
+import { StoryScreen } from "./story/StoryScreen.tsx";
 import { StatusChip } from "./StatusChip.tsx";
 
 export const TABS = ["Watch", "Story", "Comments", "Proposals"] as const;
@@ -31,6 +32,8 @@ export const App = ({ controller, search = "", userAgent = "", initialTab = "Com
   const body =
     snap.state === "unpaired" ? (
       <PairScreen controller={controller} initialCode={codeFromSearch(search)} initialName={guessDeviceName(userAgent)} />
+    ) : tab === "Story" ? (
+      <StoryScreen controller={controller} />
     ) : tab === "Comments" ? (
       <CommentsScreen controller={controller} />
     ) : (
