@@ -2,6 +2,9 @@
 
 mod fonts;
 mod golden;
+mod pack_args;
+mod placement;
+mod theme_colors;
 mod transitions;
 mod vlog;
 mod vlog_episode_parts;

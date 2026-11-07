@@ -16,12 +16,12 @@ test('定義を読み、省いた項目は既定にする', () => {
   assert.deepEqual(workflows, [{ id: 'daily', name: 'daily', enabled: true, cwd, prompt: '朝の確認', triggers: [{ kind: 'schedule', at: '09:00' }], mode: 'new' }]);
 });
 
-test('引き継ぐモードと同時数とレビュー依頼のトリガーを読む', () => {
-  const { workflows } = parseWorkflows(JSON.stringify({ workflows: [def({ mode: 'continue', compact: true, maxSessions: 3, triggers: [{ kind: 'github-review' }, { kind: 'schedule', at: '18:30', days: [1, 5, 9] }] })] }));
+test('引き継ぐモードと同時数と、レビュー依頼とメンションと改善要望のトリガーを読む', () => {
+  const { workflows } = parseWorkflows(JSON.stringify({ workflows: [def({ mode: 'continue', compact: true, maxSessions: 3, triggers: [{ kind: 'github-review' }, { kind: 'slack-mention' }, { kind: 'feedback' }, { kind: 'schedule', at: '18:30', days: [1, 5, 9] }] })] }));
   assert.equal(workflows[0]?.mode, 'continue');
   assert.equal(workflows[0]?.maxSessions, 3);
   assert.equal(workflows[0]?.compact, true);
-  assert.deepEqual(workflows[0]?.triggers, [{ kind: 'github-review' }, { kind: 'schedule', at: '18:30', days: [1, 5] }]);
+  assert.deepEqual(workflows[0]?.triggers, [{ kind: 'github-review' }, { kind: 'slack-mention' }, { kind: 'feedback' }, { kind: 'schedule', at: '18:30', days: [1, 5] }]);
 });
 
 test('compact は引き継ぐモードでだけ読む', () => {

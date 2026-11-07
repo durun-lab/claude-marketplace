@@ -1,29 +1,20 @@
-// 改善要望を保存し、自動で実装する設定なら claude -p を起動して、たまった要望を 1 つのウェーブとして対応させる。
-// セッションは要望の全体を見て計画を立て、似た作業をまとめて進める。ウェーブを終えたら一区切りとし、残りと新しい要望は次のセッションで計画し直す。
-// OFF にすると、対応中のウェーブを終えたところで止まる。
-// 失敗したときと、済んだ要望が無いまま終わったときは、ON のまま待機する。新しい要望が届くか、人間が続けると再開する。
-// 使用制限で止まったときはウェーブを区切らず、制限が明けたら同じセッションで続ける。
-import { randomUUID } from 'node:crypto';
+// 改善要望を保存し、対応を終えた要望を済みにする。要望への対応は、「改善要望が届いたとき」のトリガーを持つワークフローが動かす。
+// ウェーブの区切りは、セッションの最後の発言の「対応した要望:」で読む。読み方の約束はここに置き、ワークフローの prompt は人間が直せるようにする。
 import fs from 'node:fs';
 import path from 'node:path';
-import type { ImproveSettings, ImproveState } from '../shared/types.ts';
-import { findTranscript, isAlive, listDir, readJson, summarizeLog, type UsageLimit } from './claude.ts';
-import { CONTINUE_PROMPT } from './deliver.ts';
-import { claudeCommand, hostOs } from './platform.ts';
-import { launchDetached } from './run.ts';
-import { DATA_DIR, ensureSession, newId, state, touch, type ImproveRun } from './store.ts';
+import { listDir, readJson } from './claude.ts';
+import { hostOs } from './platform.ts';
+import { DATA_DIR, type LegacyImprove, newId, state, touch } from './store.ts';
 
 const ROOT = path.join(import.meta.dirname, '..');
 const FEEDBACK_DIR = path.join(DATA_DIR, 'feedback');
 const DONE_DIR = path.join(FEEDBACK_DIR, 'done');
-const LOG_FILE = path.join(DATA_DIR, 'improve.log');
 const SUMMARY_CHARS = 120;
-const DONE_MARK = '対応した要望:';
-const BASH_TIMEOUT_MS = 2 * 60 * 1000;
-const MAX_NUDGES = 2;
-// main はマージキューを通さないと変えられないので、手元ではこのブランチにコミットしてダッシュボードにすぐ反映する。
+export const DONE_MARK = '対応した要望:';
+// main はマージキューを通さないと変えられないので、手元ではこのブランチにマージしてダッシュボードにすぐ反映する。
 const LOCAL_BRANCH = 'local/dashboard';
-const NUDGE_PROMPT = `ウェーブの途中でターンが終わりました。バックグラウンドに移したコマンドがあれば、その結果を読んで作業を続けてください。ターンを終えるとセッションも終わるので、テストなどの長いコマンドは終わるまで待ってください。ウェーブを終えたら、最後に「${DONE_MARK}」の行と、対応を終えた要望のファイル名を書いて止まってください。`;
+// 手元のチェックアウトには並行するセッションの書きかけがあるので、実装はリポジトリの外から切り離した worktree で進める。
+const WORKTREES = path.join(ROOT, '..', '.worktrees');
 
 /** 未対応の要望。ファイル名が時刻から始まるので、名前順が古い順になる。 */
 export const pendingItems = (): string[] => listDir(FEEDBACK_DIR).filter((f) => f.endsWith('.json')).sort();
@@ -31,20 +22,39 @@ export const pendingItems = (): string[] => listDir(FEEDBACK_DIR).filter((f) => 
 const summaryOf = (item: string): string =>
   String(readJson<{ text: string }>(path.join(FEEDBACK_DIR, item))?.text ?? '').replace(/\s+/g, ' ').slice(0, SUMMARY_CHARS);
 
-const promptFor = (items: string[]): string => `[durun-dashboard] 人間がダッシュボードの画面から送った改善要望が ${items.length} 件たまっています。全体を見て作業計画を立て、1 つのウェーブとして実装してください。
+/** ワークフローのイベントとして渡す、たまった要望の一覧と、ウェーブを区切る印の書き方。 */
+export const feedbackEvent = (items: string[]): string => `人間がダッシュボードの画面から送った改善要望が ${items.length} 件たまっています。
 - 要望は次のファイルです（古い順）。text が要望で、targets は人間が画面上で指した要素です。selector のクラス名から、描画しているコンポーネントを探せます。context は送ったときの画面の状態です。context.snapshot は大きいので、必要なところだけ読んでください。
-${items.map((item) => `  - ${path.relative(ROOT, path.join(FEEDBACK_DIR, item))}: ${summaryOf(item)}`).join('\n')}
+${items.map((item) => `  - ${path.join(FEEDBACK_DIR, item)}: ${summaryOf(item)}`).join('\n')}
+- 終えたら、最後に「${DONE_MARK}」の行を置き、続けて対応を終えた要望のファイル名を 1 行に 1 つずつ書いて止まってください。残りの要望は、次のウェーブで計画し直します。`;
+
+const IMPROVE_PROMPT = `全体を見て作業計画を立て、1 つのウェーブとして実装してください。
 - まず全体を読み、似た作業や同じ場所を触る要望をまとめて、このウェーブで対応する要望と順番を決めてください。一度に仕上げられる量にとどめ、残りは次のウェーブに回してください。
-- ダッシュボードは起動済みで、コードを変えると画面とサーバーに自動で反映されます。pnpm start は実行しないでください。
-- ダッシュボードは手元専用のブランチ ${LOCAL_BRANCH} で動いています。実装を始める前に、${LOCAL_BRANCH} にいることを確かめ、git pull origin main で main を取り込んでください。
-- まとまりごとに pnpm check と pnpm test を通し、自分が変更したファイルだけを 1 つのコミットにして ${LOCAL_BRANCH} にコミットしてください。コードレビューは依頼せず、そのまま次のまとまりへ進んでください。
-- main は直接 push できません。すべてのまとまりを終えたら、origin/main から fix/dashboard-improve-<日時> のブランチを作り、このウェーブのコミットを cherry-pick して push し、PR を作って gh pr merge --auto でマージキューに載せてください。${LOCAL_BRANCH} は push しないでください。
+- ダッシュボードは起動済みで、${LOCAL_BRANCH} のコードが変わると画面とサーバーに自動で反映されます。pnpm start は実行しないでください。
+- ダッシュボードは手元専用のブランチ ${LOCAL_BRANCH} のチェックアウト（${ROOT}）で動いています。ここには並行するセッションの書きかけがあるので、このチェックアウトでは実装せず、書きかけにも触らないでください。
+- 実装を始める前に git fetch origin main を実行し、git worktree add ${WORKTREES}/improve-<日時> -b fix/dashboard-improve-<日時> origin/main で worktree を作ってください。worktree の durun-dashboard で pnpm install を実行してから、そこで実装します。Bash の作業ディレクトリはコールをまたいで保たれないので、毎回 cd <絶対パス> && を付けるか git -C を使ってください。
+- まとまりごとに worktree で pnpm check と pnpm test を通し、1 つのコミットにしてください。コードレビューは依頼せず、そのまま次のまとまりへ進んでください。
+- main は直接 push できません。すべてのまとまりを終えたら、ブランチを push -u し、PR を作って gh pr merge --auto でマージキューに載せてください。
+- 続けて、${ROOT} で ${LOCAL_BRANCH} にいることを確かめ、git merge --no-edit fix/dashboard-improve-<日時> でこのウェーブを取り込んでください。衝突したら両方の意図を残して解消してください。${LOCAL_BRANCH} は push しないでください。取り込んだら git worktree remove で worktree を片付けてください。
 - 判断に迷う点は ask_human で人間に聞いてください。
-- 終えたら、まとまりごとに何をどう変えたかを 2、3 行で書いてください。最後に「${DONE_MARK}」の行を置き、続けて対応を終えた要望のファイル名を 1 行に 1 つずつ書いて止まってください。残りの要望は、次のウェーブで計画し直します。`;
+- 終えたら、まとまりごとに何をどう変えたかを 2、3 行で書いてください。`;
+
+/** 自動実装の設定から、同じ動きをするワークフローの定義を作る。workflows.json にそのまま書く。 */
+export const improveWorkflow = (id: string, legacy: LegacyImprove) => ({
+  id,
+  name: '改善要望の対応',
+  enabled: legacy.enabled === true,
+  cwd: ROOT,
+  prompt: IMPROVE_PROMPT,
+  triggers: [{ kind: 'feedback' }],
+  mode: 'new',
+  ...(legacy.model ? { model: legacy.model } : {}),
+  ...(legacy.effort ? { effort: legacy.effort } : {}),
+});
 
 // 済んだ要望は、何をしたか（セッションの最後の発言）を先頭に置いて done/ へ移す。
 // その要望を起票したエラーや遅い処理の記録は、回数と最長を数え直す。再発して起票し直す要望に、直す前の原因で長かった回を混ぜないため。
-const finishItem = (item: string, sessionId: string, result: string | undefined): void => {
+const finishItem = (item: string, sessionId: string, result: string): void => {
   const file = path.join(FEEDBACK_DIR, item);
   fs.mkdirSync(DONE_DIR, { recursive: true });
   fs.writeFileSync(path.join(DONE_DIR, item), JSON.stringify({ result, sessionId, doneAt: new Date().toISOString(), ...readJson(file) }, null, 2));
@@ -52,133 +62,23 @@ const finishItem = (item: string, sessionId: string, result: string | undefined)
   for (const r of Object.values(state.errors)) if (r.item === item) Object.assign(r, { count: 0, slowestMs: undefined, slowestLoad: undefined });
 };
 
-const lastLogLine = (): string => {
-  try {
-    return fs.readFileSync(LOG_FILE, 'utf8').trim().split('\n').pop() ?? '';
-  } catch {
-    return '';
-  }
-};
-
-/** 起動を頼み、pid をまだ受け取っていない改善のセッション。 */
-const launching = new Set<string>();
-
-const alive = (run: ImproveRun): boolean => launching.has(run.sessionId) || (run.pid > 0 && isAlive(run.pid));
-
-const limitOf = (run: ImproveRun): UsageLimit | undefined => {
-  const transcript = state.sessions[run.sessionId]?.transcriptPath ?? findTranscript(run.sessionId);
-  return transcript ? summarizeLog(transcript).limit : undefined;
-};
-
-/** 最後の発言の「対応した要望:」より後に名前がある要望を、対応を終えたものとみなす。拡張子を省いて書かれても拾う。 */
-const doneItems = (message: string | undefined, pending: string[]): string[] => {
+/**
+ * 最後の発言の「対応した要望:」より後に名前がある要望を済みにし、その数を返す。拡張子を省いて書かれても拾う。
+ * 印が無ければ、ウェーブはまだ終わっていないので undefined を返す。
+ */
+export const finishItems = (sessionId: string, message: string | undefined): number | undefined => {
   const at = message?.lastIndexOf(DONE_MARK) ?? -1;
-  return at < 0 ? [] : pending.filter((item) => message?.includes(item.replace(/\.json$/, ''), at));
-};
-
-/** 最後の発言を渡されなければ会話ログから読む。プロセスが終わった後なら、会話ログは書き終わっている。 */
-const lastMessageOf = (sessionId: string, lastMessage: string | undefined): string | undefined => {
-  const transcript = state.sessions[sessionId]?.transcriptPath;
-  return lastMessage || (transcript ? summarizeLog(transcript).lastMessage : undefined);
-};
-
-/** 対応を終えた要望を済みにする。1 件も済まなかったときは、同じ計画を繰り返さないよう待機する。 */
-const finishWave = (sessionId: string, result: string | undefined): void => {
-  const done = doneItems(result, pendingItems());
-  for (const item of done) finishItem(item, sessionId, result);
-  if (!done.length) state.improve.error = `改善のセッションが、対応を終えた要望を「${DONE_MARK}」に書かずに止まりました。`;
-};
-
-/** 改善のセッションが応答を終えたか、止まったときに呼ぶ。失敗したときは、同じ失敗を繰り返さないよう待機する。 */
-const endRun = (sessionId: string, failure?: string, lastMessage?: string): void => {
-  const run = state.improve.run;
-  if (run?.sessionId !== sessionId) return;
-  // 使用制限で止まったウェーブは区切らない。制限が明けたら、limitResume.ts が resumeImprover で続けさせる。
-  if (limitOf(run)) return;
-  const result = failure ? undefined : lastMessageOf(sessionId, lastMessage);
-  // -p はバックグラウンドのコマンドを待たずにターンを終えると終了する。印が無ければ、プロセスが終わってから同じセッションに続きを頼む。
-  if (!failure && !result?.includes(DONE_MARK) && (run.nudges ?? 0) < MAX_NUDGES) {
-    if (alive(run)) return;
-    run.nudges = (run.nudges ?? 0) + 1;
-    launch(run, ['--resume', run.sessionId], NUDGE_PROMPT);
-    return touch();
-  }
-  state.improve.run = undefined;
-  if (failure) state.improve.error = `改善のセッションが止まりました（${failure}）。${lastLogLine()}`;
-  else finishWave(sessionId, result);
+  if (!message || at < 0) return undefined;
+  const done = pendingItems().filter((item) => message.includes(item.replace(/\.json$/, ''), at));
+  for (const item of done) finishItem(item, sessionId, message);
   touch();
-  ensureImprover();
+  return done.length;
 };
 
-/**
- * 改善のセッションを -p で動かす。session は、新しく始めるか続けるかを決める引数。
- * 混んだマシンでは起動に数秒かかるので、フックや API の応答を止めないよう別のスレッドで起動し、起動したら pid を覚える。
- */
-const launch = (run: ImproveRun, session: string[], prompt: string): void => {
-  const { model, effort } = state.improve;
-  const args = [
-    '-p', ...session,
-    // 可変長の引数なので、プロンプトを飲み込まないよう後ろに別のオプションを置く。
-    // 人間の確認を待たずに進めるよう、コードレビューの依頼は使わせない。
-    '--allowedTools', 'mcp__plugin_durun-dashboard_durun-dashboard', '--disallowedTools', 'mcp__plugin_durun-dashboard_durun-dashboard__request_review',
-    // 人が見ていない間も止まらないよう、確認の要る操作は auto モードに判断させ、それでも確認が要るものは断る。
-    '--permission-mode', 'auto', '--permission-prompts', 'none',
-    // 入力を待ち続けるコマンドがあっても、人が見ていないまま長く止まらないよう、Bash を 2 分でバックグラウンドへ移させる。
-    // ユーザー設定の既定タイムアウトは対話向けに長いことがあるので、ここで上書きする。
-    '--settings', JSON.stringify({ env: { BASH_DEFAULT_TIMEOUT_MS: String(BASH_TIMEOUT_MS) } }),
-    ...(model ? ['--model', model] : []),
-    ...(effort ? ['--effort', effort] : []),
-    prompt,
-  ];
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  const { sessionId } = run;
-  const claude = claudeCommand(args);
-  launching.add(sessionId);
-  // サーバーがコードの変更で再起動しても止まらないよう、別のプロセスグループで動かし、出力はファイルに流す。
-  launchDetached(claude.file, claude.args, { cwd: ROOT, log: LOG_FILE }, (code, error) => endRun(sessionId, error ?? (code ? `終了コード ${code}` : undefined))).then(
-    (pid) => {
-      launching.delete(sessionId);
-      run.pid = pid;
-      touch();
-    },
-    (e: Error) => {
-      launching.delete(sessionId);
-      endRun(sessionId, e.message);
-    },
-  );
-};
+const listeners = new Set<() => void>();
 
-const startRun = (items: string[]): void => {
-  const sessionId = randomUUID();
-  Object.assign(ensureSession(sessionId, ROOT), { title: '改善要望の対応', improver: true });
-  state.improve.run = { sessionId, pid: 0, items, summary: `${items.length} 件の要望のウェーブ`, startedAt: Date.now() };
-  launch(state.improve.run, ['--session-id', sessionId], promptFor(items));
-  touch();
-};
-
-/** 使用制限で止まったウェーブを、同じセッションに続きを頼んで続ける。 */
-export const resumeImprover = (): void => {
-  const run = state.improve.run;
-  if (!run || alive(run)) return;
-  launch(run, ['--resume', run.sessionId], CONTINUE_PROMPT);
-  touch();
-};
-
-/** 自動実装が有効で待機中でもなく、未対応の要望があり、改善のセッションが動いていなければ起動する。待機の理由は error に残っている。 */
-export const ensureImprover = (): void => {
-  const run = state.improve.run;
-  // サーバーが再起動した後は終了を受け取れないので、プロセスが消えていたら終わったとみなす。
-  if (run && !alive(run)) return endRun(run.sessionId);
-  const items = pendingItems();
-  if (!run && state.improve.enabled && !state.improve.error && items.length) startRun(items);
-};
-
-/**
- * 改善のセッションが応答を終えたとき（Stop）に呼ぶ。ウェーブはここで区切り、次のウェーブは新しいセッションで計画し直させる。
- * プロセスの終了を待たないのは、ウェーブの途中でサーバーが再起動していると、終了を受け取れないため。
- * 最後の発言は、フックが渡すものを使う。Stop の時点では、最後の発言が会話ログにまだ書かれていないことがある。
- */
-export const nextImprovement = (sessionId: string, lastMessage?: string): void => endRun(sessionId, undefined, lastMessage);
+/** 要望が届いたときに呼ぶ処理を足す。 */
+export const onFeedback = (fn: () => void): void => void listeners.add(fn);
 
 export const saveFeedback = (text: string, targets: unknown[], context: object): string => {
   const createdAt = new Date().toISOString();
@@ -188,34 +88,8 @@ export const saveFeedback = (text: string, targets: unknown[], context: object):
   // 画面の状態は大きいので最後に置き、ファイルの先頭で要望と指した要素を読めるようにする。
   // OS はサーバーで足すので、エラーから起票した要望にも載る。
   fs.writeFileSync(file, JSON.stringify({ createdAt, text, targets, context: { os: hostOs(), ...context } }, null, 2));
-  // 待機中なら、新しい要望を機に再開する。
-  if (state.improve.enabled) state.improve.error = undefined;
-  // 未対応の数が変わるので、起動しないときも画面を更新させる。
+  // 未対応の数が変わるので、ワークフローが動かないときも画面を更新させる。
   touch();
-  ensureImprover();
+  for (const fn of listeners) fn();
   return path.relative(ROOT, file);
-};
-
-export const updateImprove = (patch: Partial<ImproveSettings>): void => {
-  if (patch.enabled) state.improve.error = undefined;
-  Object.assign(state.improve, patch);
-  touch();
-  ensureImprover();
-};
-
-export const improveState = (): ImproveState => {
-  const { enabled, model, effort, run, error } = state.improve;
-  const running = !!run && alive(run);
-  const limit = run && !running ? limitOf(run) : undefined;
-  return {
-    enabled,
-    model,
-    effort,
-    running,
-    sessionId: run?.sessionId,
-    current: running || limit ? run?.summary : undefined,
-    limitResetsAt: limit?.resetsAt,
-    pending: pendingItems().filter((f) => !run?.items?.includes(f)).length,
-    error,
-  };
 };

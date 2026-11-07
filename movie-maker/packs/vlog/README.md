@@ -70,7 +70,7 @@ mm pack apply ep04 packs/vlog rewind --var cut=c20 --var speed=3
 ```
 
 - 種類は `transitions/<名前>.wgsl`。DTM_Vlog の WebGL2 のトランジション 19 種（boot、dip、dissolve、filter、flash、glitch、hex、leak、liquid、pianoroll、punch、slice、spectrum、stars、stepseq、vinyl、warp、waveform、whip）と、巻き戻し（rewind）。
-- `_prelude.wgsl` は全部の前に付く共通のコードで、元の `engine.js` の GLSL の小道具と、`index.html` の合成（マット、重ねる絵、映像の動き、シャッターの間のモーションブラー）を移したもの。合成は元と同じく sRGB の値で行う。
+- `_prelude.wgsl` は全部の前に付く共通のコードで、元の `engine.js` の GLSL の小道具と、`index.html` の合成（マット、重ねる絵、映像の動き、シャッターの間のモーションブラー）を移したもの。合成は元と同じく 8 bit の符号化値（書き出しと同じ Rec.1886 の式）の空間で行う。
 - 元と違う所: 乱数の表（`data`）はセルの番号のハッシュで作るので並びが変わる。効果音（`sfx`）は移さない。前後の場面のぼかしはミップではなく円盤のタップの平均。巻き戻しの時刻の表示（t0 → t7）は文字が要るので描かない。
 - 置き直すと差し替わる。外すのは操作 `setTransition`（`transition: null`）。
 - 元のコードは DTM_Vlog の自作で、gl-transitions のコードは含まない。小道具のうち `hash11`、`hash21`、`hash22` は Dave Hoskins の Hash without Sine（MIT）、`sdBox`、`sdSeg`、`sdHex` は Inigo Quilez の 2D の距離関数（MIT）と同じ形。

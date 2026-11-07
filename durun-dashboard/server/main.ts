@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
-import { AGENT_PRIORITIES, type AgentPriority, type AssistantMessage, type BranchView, PR_REVIEW_EVENTS, type PrReviewEvent, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, GITHUB_LIST_MAX, type Glossary, type GithubSearch, type HarnessToggle, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PERMISSION_MODES, PR_URL, type ImproveSettings, JIRA_LIST_MAX, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type SlackConversation, type TextSaveResult } from '../shared/types.ts';
+import { AGENT_PRIORITIES, type AgentPriority, type AssistantMessage, type BranchView, PR_REVIEW_EVENTS, type PrReviewEvent, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, GITHUB_LIST_MAX, type Glossary, type GithubSearch, type HarnessToggle, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PERMISSION_MODES, PR_URL, JIRA_LIST_MAX, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type SlackConversation, type TextSaveResult } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
@@ -25,7 +25,7 @@ import { recordError, recordSlow } from './errors.ts';
 import { faviconOf } from './favicon.ts';
 import { UpstreamError } from './haiku.ts';
 import { handleHook, holdPermission, type HookInput } from './hooks.ts';
-import { ensureImprover, saveFeedback, updateImprove } from './improve.ts';
+import { saveFeedback } from './improve.ts';
 import { applyAgentPriority, setAgentPriority } from './agentPriority.ts';
 import { learnNow, noteActivity, updateLearn } from './reflect.ts';
 import { consultWorkflow, runWorkflow, setWorkflowEnabled, startWorkflows } from './workflow.ts';
@@ -1140,16 +1140,6 @@ const fork = async (id: string, body: unknown): Promise<{ sessionId: string }> =
   }
 };
 
-const improveSettings = (body: unknown): Partial<ImproveSettings> => {
-  const patch = {
-    enabled: flag(body, 'enabled'),
-    model: oneOf(body, 'model', MODELS),
-    effort: oneOf(body, 'effort', EFFORT_LEVELS),
-  };
-  // 送られなかった項目は、今の設定を undefined で消さないよう外す。
-  return Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined));
-};
-
 const proofSentences = (text: string): ReturnType<typeof parseProof> => {
   const sentences = parseProof(text);
   if (!sentences.length) throw new HttpError(400, 'text is required');
@@ -1325,7 +1315,6 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/translate\/install$/, () => installTranslate(), 10 * 60_000],
   [/^\/api\/translate$/, (_, b) => translate(field<string>(b, 'text', 'string'), field<string>(b, 'target', 'string')), READER_MS],
   [/^\/api\/assistant$/, async (_, b) => askDolphin(await logsReady.then(buildSnapshot), toMessages(b), await focusOf(b)), HAIKU_MS],
-  [/^\/api\/improve$/, (_, b) => updateImprove(improveSettings(b))],
   [/^\/api\/learn$/, (_, b) => updateLearn({ scheduled: field<boolean>(b, 'scheduled', 'boolean') })],
   [/^\/api\/learn\/run$/, () => learnNow()],
   [/^\/api\/workflows\/consult$/, (_, b) => consultWorkflow(optionalString(b, 'id'))],
@@ -1587,7 +1576,6 @@ watch(path.join(ROOT, 'public'), false, scheduleBroadcast);
 // 起動したときにも読む。次に書かれるまで待つと、前から残っていた状態まで、そのとき書かれたものとみなしてしまう。
 mergeClaudePrCache(path.join(CLAUDE_DIR, PR_CACHE_FILE));
 watch(CLAUDE_DIR, false, (file) => file === PR_CACHE_FILE && mergeClaudePrCache(path.join(CLAUDE_DIR, PR_CACHE_FILE)));
-ensureImprover();
 startWorkflows();
 // 作業の無いまま再起動しても、前の作業の振り返りを逃さない。
 noteActivity();

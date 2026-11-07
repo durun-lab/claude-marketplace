@@ -142,7 +142,12 @@ fn text_ops(pack: &Pack, input: &TextInput<'_>, shaper: &dyn TextShaper) -> Resu
         }
         layers.push(frame.layer(format!("{}{PLATE_SUFFIX}", input.id), node));
     }
-    let mut node = text_node(style, &input.text, color, &spot);
+    // `text` は画像の左上を `position` に `bounds` の位置を足して決めるので、字の塊の左上が `text_origin` に来るよう引いておく
+    let position = [
+        spot.text_origin[0] - f64::from(bounds.x),
+        spot.text_origin[1] - f64::from(bounds.y),
+    ];
+    let mut node = text_node(style, &input.text, color, position);
     if let Some(family) = font {
         node = node.with_param("font", ParamValue::Text(family.to_owned()));
     }
@@ -198,12 +203,12 @@ impl Frame {
     }
 }
 
-fn text_node(style: &TextStyleSpec, text: &str, color: mm_types::Rgba, spot: &Placement) -> Node {
+fn text_node(style: &TextStyleSpec, text: &str, color: mm_types::Rgba, position: [f64; 2]) -> Node {
     Node::new("text", KIND_VERSION)
         .with_param("text", ParamValue::Text(text.to_string()))
         .with_param("size", ParamValue::Number(style.size))
         .with_param("color", ParamValue::Color(color))
-        .with_param("position", ParamValue::Vec2(spot.text_origin))
+        .with_param("position", ParamValue::Vec2(position))
         .with_param(
             "max_width",
             ParamValue::Number(style.max_width.unwrap_or(0.0)),
@@ -211,7 +216,8 @@ fn text_node(style: &TextStyleSpec, text: &str, color: mm_types::Rgba, spot: &Pl
         .with_param("align", ParamValue::Text("center".into()))
 }
 
-/// 出る・消える動き（秒）の不透明度。動きの長さの和が出ている長さを超えるときは動かさない。
+/// 出る・消える動き（秒）の不透明度。動きの長さの和が出ている長さを超えるときは、超えた秒数を添えて `InvalidArgument`
+/// にする（動きが黙って消えない）。
 pub(crate) fn fade(
     fade_in: f64,
     fade_out: f64,
@@ -224,8 +230,15 @@ pub(crate) fn fade(
     }
     let fade_in = millis(fade_in)?;
     let fade_out = millis(fade_out)?;
-    if fade_in.checked_add(fade_out)? > dur {
-        return Ok(constant);
+    let total = fade_in.checked_add(fade_out)?;
+    if total > dur {
+        return Err(MmError::InvalidArgument(format!(
+            "出る動き {}s と消える動き {}s の和が長さ {}s を {}s 超える",
+            fade_in.to_f64(),
+            fade_out.to_f64(),
+            dur.to_f64(),
+            total.checked_sub(dur)?.to_f64()
+        )));
     }
     let end = at.checked_add(dur)?;
     let key =

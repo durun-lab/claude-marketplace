@@ -236,9 +236,7 @@ type MenuProps = { onSearch: () => void; onEdit?: () => void };
  * 名前の左のボタンで開くメニュー。外を押すか Esc で閉じるよう、popover で開く。
  * リンクは popovertarget で閉じられないので、項目を押したら、ここでまとめて閉じる。
  */
-// 押すたびに通常、低め、アイドルの順に選び直す。
 const PRIORITY_LABEL: Record<AgentPriority, string> = { normal: '通常', low: '低め', idle: 'アイドル' };
-const nextPriority = (p: AgentPriority): AgentPriority => AGENT_PRIORITIES[(AGENT_PRIORITIES.indexOf(p) + 1) % AGENT_PRIORITIES.length] ?? 'normal';
 
 const AppMenu = ({ onSearch, onEdit, docs, autoContinue, agentPriority }: MenuProps & { docs: DocMeta[]; autoContinue: boolean; agentPriority: AgentPriority }) => {
   const light = useLightMode();
@@ -361,6 +359,14 @@ const AppMenu = ({ onSearch, onEdit, docs, autoContinue, agentPriority }: MenuPr
                     ))}
                   </div>
                 </div>
+                <div class="app-menu-sub">
+                  <div class="app-menu-item" tabindex={0} aria-haspopup="true" title="エージェントのプロセスの優先度。低めやアイドルにすると、ゲームやほかの作業に CPU を先に回す">優先度: {PRIORITY_LABEL[agentPriority]}<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
+                  <div class="app-menu-submenu" role="group" aria-label="優先度">
+                    {AGENT_PRIORITIES.map((p) => (
+                      <button key={p} class="app-menu-item" aria-pressed={agentPriority === p} onClick={() => void attempt('エージェントの優先度の切り替え', () => api.agentPriority(p))}>{PRIORITY_LABEL[p]}</button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
             <div class="app-menu-sub">
@@ -396,9 +402,6 @@ const AppMenu = ({ onSearch, onEdit, docs, autoContinue, agentPriority }: MenuPr
           </button>
           <button class="app-menu-item" aria-pressed={autoContinue} title="スリープや通信の途切れで止まったセッションを、確認のダイアログを出さずに、API に届くようになったら続けさせる。Claude のログインが切れて止まったセッションも、ログインが戻ったら続けさせる" onClick={() => void attempt('自動継続モードの切り替え', () => api.autoContinue(!autoContinue))}>
             <svg class="app-menu-foot-icon is-green" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.5v9l7-4.5z" /></svg>自動継続モード
-          </button>
-          <button class="app-menu-item" aria-pressed={agentPriority !== 'normal'} title="エージェントのプロセスの優先度。低めやアイドルにすると、ゲームやほかの作業に CPU を先に回す。押すたびに通常、低め、アイドルの順に切り替わる" onClick={() => void attempt('エージェントの優先度の切り替え', () => api.agentPriority(nextPriority(agentPriority)))}>
-            <svg class="app-menu-foot-icon is-orange" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 13h2V9H3zM7 13h2V6H7zM11 13h2V3h-2z" /></svg>優先度: {PRIORITY_LABEL[agentPriority]}
           </button>
         </div>
       </div>
@@ -499,8 +502,8 @@ const MemoryTray = () => {
 
 /** XP のスキンでだけ見せる、通知領域の改善要望。右下に浮かぶボタンの代わりに置く。電球のアイコンにし、改善中は右下に矢印が回るバッジを重ねる。 */
 const FeedbackTray = ({ improve, onClick }: { improve?: ImproveState; onClick: () => void }) =>
-  improve?.running ? (
-    <button class="fb-tray is-running" title={improve.current ? `改善中: ${improve.current}` : '改善中'} aria-label="改善中" onClick={onClick} />
+  improve?.workflow?.running ? (
+    <button class="fb-tray is-running" title={improve.workflow.current ? `改善中: ${improve.workflow.current}` : '改善中'} aria-label="改善中" onClick={onClick} />
   ) : (
     <button class="fb-tray" title="改善要望" aria-label="改善要望" onClick={onClick} />
   );

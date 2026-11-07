@@ -1,5 +1,5 @@
 import type {
-  AgentPriority, CdMeta, AssistantMessage, TranslateStatus, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, GithubSearch, Glossary, Harness, HarnessToggle, ImproveSettings, InboxSection, PrReviewEvent, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, SlackChannel, SlackConversation, TextSaveResult,
+  AgentPriority, CdMeta, AssistantMessage, TranslateStatus, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, GithubSearch, Glossary, Harness, HarnessToggle, InboxSection, PrReviewEvent, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, SlackChannel, SlackConversation, TextSaveResult,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -205,7 +205,6 @@ export const api = {
   prComment: (url: string, body: string) => postJson<{ url: string }>('/api/pr/comment', { url, body }),
   feedback: (text: string, targets: FeedbackTarget[], context: FeedbackContext) =>
     postJson<{ path: string }>('/api/feedback', { text, targets, context }),
-  improve: (patch: Partial<ImproveSettings>) => postJson('/api/improve', patch),
   learn: (scheduled: boolean) => postJson('/api/learn', { scheduled }),
   learnNow: () => postJson('/api/learn/run', {}),
   workflowConsult: (id?: string) => postJson<{ sessionId: string }>('/api/workflows/consult', { id }),

@@ -6,7 +6,7 @@ import { test } from 'node:test';
 
 // slack.ts は cache.ts を通して、import した時点でデータの置き場所を読む。本物のデータに触れないよう、一時ディレクトリに向けてから読み込む。
 process.env.DURUN_DASHBOARD_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-slack-'));
-const { parseSlackChannels, parseSlackMessages, slackKeyOf, slackLinksIn, slackTargetOf, teamIdIn } = await import('../server/slack.ts');
+const { parseSlackChannels, parseSlackMentions, parseSlackMessages, slackKeyOf, slackLinksIn, slackTargetOf, teamIdIn } = await import('../server/slack.ts');
 
 test('Slack のリンクから、メッセージならそのスレッドを、返信なら thread_ts の親を、チャンネルならチャンネルを読む先にする', () => {
   assert.deepEqual(slackTargetOf('https://example.slack.com/archives/C0AAA/p1700000000123456'), { channel: 'C0AAA', thread: '1700000000.123456', domain: 'example' });
@@ -94,4 +94,21 @@ test('Slack のアプリの状態から、ドメインに合うワークスペ�
   assert.equal(teamIdIn(state, 'missing'), undefined);
   assert.equal(teamIdIn(undefined, 'example'), undefined);
   assert.equal(teamIdIn('not json', 'example'), undefined);
+});
+
+test('検索の結果から、自分へのメンションを含む発言だけを、リンクとチャンネルと本文にして読む', () => {
+  const text = [
+    '# Search Results for: ',
+    '',
+    '## Messages (3 results)',
+    '(3 results)',
+    '1. #thanks - : <https://ws.slack.com/archives/C1/p1?thread_ts=1.2&amp;cid=C1> 2026-10-22 18:52:00 JST',
+    '2. #dev - 岡: 見ておいて <@U9|別の人>',
+    '<https://ws.slack.com/archives/C2/p2> 2026-10-22 18:50:57 JST',
+    '3. #times - : 私がやりました <@U1|Naoki> &amp; <https://example.com|資料>',
+    '<https://ws.slack.com/archives/C3/p3?thread_ts=3.4&amp;cid=C3> 2026-10-22 12:41:18 JST',
+  ].join('\n');
+  assert.deepEqual(parseSlackMentions(text, 'U1'), [
+    { url: 'https://ws.slack.com/archives/C3/p3?thread_ts=3.4&cid=C3', channel: '#times', text: ': 私がやりました @Naoki & [資料](https://example.com)' },
+  ]);
 });

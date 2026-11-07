@@ -92,15 +92,24 @@ const Steps = ({ steps }: { steps: MmStep[] }) => {
   );
 };
 
-/** プロジェクトのフォルダー。入力して「開く」で、サーバーのつなぐ先を切り替える。 */
-const ProjectField = ({ project }: { project?: string }) => {
+/** プロジェクトのフォルダー。入力するか最近開いたものから選んで、サーバーのつなぐ先を切り替える。 */
+const ProjectField = ({ project, recent }: { project?: string; recent: string[] }) => {
   const [draft, setDraft] = useState(project ?? '');
   useEffect(() => setDraft(project ?? ''), [project]);
-  const open = () => void attempt('プロジェクトの切り替え', () => api.mmProject(draft.trim() || undefined));
+  const open = (dir: string) => void attempt('プロジェクトの切り替え', () => api.mmProject(dir.trim() || undefined));
+  const others = recent.filter((p) => p !== project);
   return (
-    <form class="inline-field mm-project" onSubmit={(e) => (e.preventDefault(), open())}>
+    <form class="inline-field mm-project" onSubmit={(e) => (e.preventDefault(), open(draft))}>
       プロジェクト
       <input class="input input-sm" value={draft} placeholder="D:\videos\ep04（project.mmdb のあるフォルダー）" onInput={(e) => setDraft(e.currentTarget.value)} />
+      {others.length > 0 && (
+        <select class="input input-sm mm-recent" aria-label="最近開いたプロジェクト" value="" onChange={(e) => open(e.currentTarget.value)}>
+          <option value="" disabled>最近開いた</option>
+          {others.map((p) => (
+            <option key={p} value={p}>{p}</option>
+          ))}
+        </select>
+      )}
       <button class="btn btn-sm" type="submit" disabled={draft.trim() === (project ?? '')}>
         開く
       </button>
@@ -196,7 +205,7 @@ export const MovieMakerFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot 
                 ))}
               </select>
             </label>
-            <ProjectField project={project} />
+            <ProjectField project={project} recent={v?.recent ?? []} />
             <LinkChips v={v} />
             <Steps steps={mmSteps(v)} />
             {(v.install.busy || v.install.output.length > 0) && <pre class="fl-pre mm-output">{v.install.output.join('\n')}</pre>}

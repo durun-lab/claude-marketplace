@@ -4,5 +4,6 @@ mod contract;
 mod fonts;
 mod gpu;
 mod markup;
+mod patches;
 mod render;
 mod stroke;

@@ -11,8 +11,9 @@ use mm_types::{Id, RationalTime};
 use crate::args::{referenced_names, Env};
 use crate::expand::expand;
 use crate::layout::EstimateShaper;
-use crate::macros::{MacroDef, MacroKind, Step, WebStep};
+use crate::macros::{MacroDef, MacroKind, ParamFormat, ParamType, Step, WebStep};
 use crate::pack::{Pack, FORMAT};
+use crate::param_format::validate;
 use crate::style::TextStyleSpec;
 
 /// 書体の配布元の URL の頭。取るときも HTTPS だけを許す（[`crate::Curl`]）。
@@ -48,8 +49,10 @@ pub fn check(pack: &Pack) -> Report {
     }
     check_mixer(pack, &mut report);
     check_names(pack, &mut report);
+    check_page_colors(pack, &mut report);
     for def in &pack.macros {
         check_references(pack, def, &mut report);
+        check_params(def, &mut report);
     }
     if report.ok() {
         apply_examples(pack, &mut report);
@@ -261,6 +264,51 @@ fn check_web(pack: &Pack, w: &WebStep) -> Vec<String> {
         ));
     }
     errors
+}
+
+/// 引数の定義が噛み合うか。選べる値と書式は文の引数だけに付け、既定の値は型と書式に合う。
+fn check_params(def: &MacroDef, report: &mut Report) {
+    for (name, p) in &def.params {
+        let at = |what: &str| format!("{}: 引数 {name}: {what}", def.name);
+        if (!p.choices.is_empty() || p.format.is_some()) && p.ty != ParamType::Text {
+            report.push(at("choices と format は type が text の引数だけ"));
+        }
+        if p.format == Some(ParamFormat::List) && p.choices.is_empty() {
+            report.push(at("format が list なら choices が要る"));
+        }
+        if let Some(Err(e)) = p.default.as_deref().map(|d| validate(p, d)) {
+            report.push(at(&format!("既定の値が誤り: {e}")));
+        }
+    }
+}
+
+/// ページに色を直に書かない（色はテーマから引く）。
+fn check_page_colors(pack: &Pack, report: &mut Report) {
+    for (name, html) in &pack.pages {
+        if let Some(found) = find_literal_color(html) {
+            report.push(format!(
+                "web/{name}.html: 色 {found} を直に書かない（theme.json の色を引く）"
+            ));
+        }
+    }
+}
+
+/// 16 進の色（`#` に続く 3、4、6、8 桁の 16 進だけの語）か、`rgb(`、`rgba(`、`hsl(`、`hsla(` の最初の 1 つ。
+fn find_literal_color(html: &str) -> Option<String> {
+    const FUNCS: [&str; 4] = ["rgb(", "rgba(", "hsl(", "hsla("];
+    for (i, _) in html.match_indices('#') {
+        let word: String = html[i + 1..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+            .collect();
+        if matches!(word.len(), 3 | 4 | 6 | 8) && word.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Some(format!("#{word}"));
+        }
+    }
+    FUNCS
+        .iter()
+        .find(|f| html.contains(**f))
+        .map(|f| (*f).to_string())
 }
 
 /// カットに掛けるマクロ（`transition`）の例が引く、2 つのカット `c1`、`c2` の sequence `check`。

@@ -1,7 +1,8 @@
 //! Program のビューアー。エンジンが返した線形の画像（`RgbaImage`）を Rgba16Float で持ち、
-//! 書き出しと同じ Rec.1886（べき 2.4）の表示の式で画面に出す。
+//! 書き出しと同じ Rec.1886 の表示の式（`mm_types::transfer`）で画面に出す。
 
 use half::f16;
+use mm_types::transfer::TRANSFER_WGSL;
 use mm_types::RgbaImage;
 use mm_ui_layout::Rect;
 
@@ -30,7 +31,7 @@ fn vs(@builtin(vertex_index) vi: u32) -> Out {
 fn fs(in: Out) -> @location(0) vec4<f32> {
   let c = textureSample(tex, samp, in.uv);
   // 線形の光を Rec.1886 の表示の値にする。premultiplied のまま黒の上に置く。
-  let rgb = pow(max(c.rgb, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.4));
+  let rgb = mm_linear_to_bt1886_3(max(c.rgb, vec3<f32>(0.0)));
   return vec4<f32>(rgb, 1.0);
 }
 "#;
@@ -259,7 +260,7 @@ fn pipeline(
 ) -> wgpu::RenderPipeline {
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("ui program"),
-        source: wgpu::ShaderSource::Wgsl(SHADER.into()),
+        source: wgpu::ShaderSource::Wgsl(format!("{TRANSFER_WGSL}{SHADER}").into()),
     });
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some("ui program"),

@@ -14,7 +14,6 @@ use crate::cache::{Cached, FrameCache, FrameKey};
 use crate::gpu::{copy_into, Converter};
 use crate::hosts::{FrameTransport, HostPages};
 use crate::page::{FrameRequest, Page, DATA_PARAM, HTML_PARAM, STATIC_PARAM};
-use crate::transfer::rec1886_from_srgb_linear;
 use crate::{mock, KIND_ID, KIND_VERSION};
 
 /// 移行できる最も古いバージョン。パラメータの形は 1 から変わっていない（上げたのは画素が変わったため）。
@@ -264,10 +263,7 @@ impl WebCefKind {
 /// CPU の画像の応答を画像にする。共有テクスチャが来たらハンドルを閉じて誤りにする。
 fn cpu_image(frame: SharedFrame) -> Result<RgbaImage> {
     match frame {
-        SharedFrame::Cpu { size, mut data } => {
-            rec1886_from_srgb_linear(&mut data);
-            RgbaImage::from_raw(size, data)
-        }
+        SharedFrame::Cpu { size, data } => RgbaImage::from_raw(size, data),
         SharedFrame::SharedTexture { handle, fence, .. } => {
             close_handles(handle, fence.map(|f| f.handle));
             Err(MmError::Internal(

@@ -9,7 +9,7 @@
     "who": {"type": "text", "default": "どぅるんの", "description": "名乗りの帯の文"},
     "series": {"type": "text", "default": "作曲Vlog", "description": "題字"},
     "sub": {"type": "text", "description": "リボンの文（初音ミク × J-core）"},
-    "cta": {"type": "text", "default": "true", "description": "false なら誘いの札を出さない"},
+    "cta": {"type": "bool", "default": "true", "description": "false なら誘いの札を出さない"},
     "cta_y": {"type": "number", "default": "560", "description": "誘いの札の上端（縦の画面の画素）"},
     "title_x": {"type": "number", "default": "110", "description": "名乗りの帯の左上の x（縦の画面の画素）"},
     "title_y": {"type": "number", "default": "880", "description": "名乗りの帯の左上の y（縦の画面の画素）"},

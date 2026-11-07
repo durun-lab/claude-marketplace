@@ -5,9 +5,8 @@ use ff::software::scaling::{Context as Scaler, Flags};
 use ff::{ffi, frame};
 use ffmpeg_next as ff;
 use mm_decode_ffmpeg_core::matrix::{is_full_range, Matrix};
+use mm_types::transfer::code8_table;
 use mm_types::{MmError, Result, RgbaImage, Size};
-
-use crate::transfer::decode_table;
 
 /// 変換器の作り直しが要るかを決める、入力の性質。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,7 +40,7 @@ impl Default for RgbaConverter {
         Self {
             scaler: None,
             out: None,
-            linear: decode_table(),
+            linear: code8_table(),
         }
     }
 }

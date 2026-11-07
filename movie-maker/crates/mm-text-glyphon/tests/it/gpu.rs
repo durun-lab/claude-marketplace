@@ -8,12 +8,13 @@ use mm_gpu::GpuContext;
 use mm_testkit::text::contract;
 use mm_text_api::{ShapedText, TextAlign, TextRasterizer, TextShaper, TextStyle};
 use mm_text_glyphon::TextEngine;
+use mm_types::transfer::linear_to_code8;
 use mm_types::{Rgba, RgbaImage};
 
-/// CPU との最大差の許容。色を sRGB の 8 bit に丸めることと f16 の丸めで、1% 未満に収まる。
+/// CPU との最大差の許容。被覆率の f16 の丸めとラスタライザの違いで、1% 未満に収まる。
 const TOLERANCE: f32 = 0.01;
 
-fn gpu() -> Option<Arc<GpuContext>> {
+pub(crate) fn gpu() -> Option<Arc<GpuContext>> {
     match GpuContext::shared(&mm_gpu::GpuRequest::default()) {
         Ok(ctx) => Some(ctx),
         Err(e) if std::env::var_os("MM_REQUIRE_GPU").is_some() => {
@@ -26,17 +27,7 @@ fn gpu() -> Option<Arc<GpuContext>> {
     }
 }
 
-fn to_srgb8(v: f32) -> u8 {
-    let c = v.clamp(0.0, 1.0);
-    let s = if c <= 0.003_130_8 {
-        c * 12.92
-    } else {
-        1.055 * c.powf(1.0 / 2.4) - 0.055
-    };
-    (s * 255.0).round() as u8
-}
-
-/// 背景の上に重ねて sRGB の PNG にする。
+/// 背景の上に重ねて、書き出しと同じ符号化値の PNG にする。
 fn write_png(path: &std::path::Path, img: &RgbaImage, bg: Rgba) {
     let mut out = Vec::new();
     let mut enc = png::Encoder::new(&mut out, img.width(), img.height());
@@ -47,7 +38,7 @@ fn write_png(path: &std::path::Path, img: &RgbaImage, bg: Rgba) {
     for y in 0..img.height() {
         for x in 0..img.width() {
             let p = bg.over(img.pixel(x, y));
-            raw.extend_from_slice(&[to_srgb8(p.r), to_srgb8(p.g), to_srgb8(p.b)]);
+            raw.extend_from_slice(&[p.r, p.g, p.b].map(linear_to_code8));
         }
     }
     writer.write_image_data(&raw).expect("PNG の本体");

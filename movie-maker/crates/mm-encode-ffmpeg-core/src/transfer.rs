@@ -1,8 +1,6 @@
-//! Rec.1886 の表示の式（べき 2.4）。線形から 8 ビットの符号化値へ。
-//!
-//! 式は `mm-color-lut` の `linear_to_bt1886` と同じ。実装どうしを依存させないため複製している。
+//! Rec.1886 の表示の式（`mm_types::transfer`）で、線形から 8 ビットと 16 ビットの符号化値へ丸める表。
 
-const GAMMA: f32 = 2.4;
+use mm_types::transfer::{bt1886_to_linear, linear_to_bt1886};
 
 /// ルックアップテーブルの分解能。1 ステップが符号化値の半分の幅より細かくなる暗部の下限（`DARK_LIMIT`）から上で、
 /// 符号化値の丸めと一致する。
@@ -22,7 +20,7 @@ pub struct EncodeTable {
 
 impl EncodeTable {
     pub fn new() -> Self {
-        let bounds = std::array::from_fn(|c| ((c as f32 + 0.5) / 255.0).powf(GAMMA));
+        let bounds = std::array::from_fn(|c| bt1886_to_linear((c as f32 + 0.5) / 255.0));
         let lut = (0..LUT_SIZE)
             .map(|i| search(&bounds, (i as f32 + 0.5) / (LUT_SIZE - 1) as f32))
             .collect();
@@ -78,7 +76,7 @@ fn exact16(linear: f32) -> u16 {
     if linear.is_nan() {
         return 0;
     }
-    (linear.clamp(0.0, 1.0).powf(1.0 / GAMMA) * 65535.0).round() as u16
+    (linear_to_bt1886(linear.clamp(0.0, 1.0)) * 65535.0).round() as u16
 }
 
 fn search(bounds: &[f32; 255], linear: f32) -> u8 {
@@ -99,7 +97,7 @@ mod tests {
     fn 符号化値の線形を戻すと元の符号化値になる() {
         let table = EncodeTable::new();
         for code in 0..=255u32 {
-            let linear = (code as f32 / 255.0).powf(GAMMA);
+            let linear = mm_types::transfer::code8_to_linear(code as u8);
             assert_eq!(u32::from(table.encode(linear)), code);
         }
     }
@@ -109,7 +107,7 @@ mod tests {
         let table = EncodeTable::new();
         let mut v = 1.0e-7f32;
         while v < 1.0 {
-            let exact = (v.powf(1.0 / GAMMA) * 255.0).round() as i32;
+            let exact = i32::from(mm_types::transfer::linear_to_code8(v));
             let got = i32::from(table.encode(v));
             assert!((got - exact).abs() <= 1, "線形 {v}: 式 {exact} 表 {got}");
             v *= 1.003;

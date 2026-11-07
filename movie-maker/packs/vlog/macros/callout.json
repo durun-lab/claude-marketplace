@@ -9,8 +9,8 @@
     "name": {"type": "text", "optional": true, "description": "道具の名前（Splice など）。サファイアの題字の書体で文の前に置く"},
     "x": {"type": "number", "description": "しっぽが指す点の x（コンポジションの画素）"},
     "y": {"type": "number", "description": "しっぽが指す点の y（コンポジションの画素）"},
-    "side": {"type": "text", "default": "right", "description": "吹き出しを置く側。right は指す点の右、left は左"},
-    "tail": {"type": "text", "default": "down", "description": "しっぽの向き。down は吹き出しが点の上、up は点の下、side は点の横（縦の真ん中を合わせる）"},
+    "side": {"type": "text", "choices": ["right", "left"], "default": "right", "description": "吹き出しを置く側。right は指す点の右、left は左"},
+    "tail": {"type": "text", "choices": ["down", "up", "side"], "default": "down", "description": "しっぽの向き。down は吹き出しが点の上、up は点の下、side は点の横（縦の真ん中を合わせる）"},
     "at": {"type": "time", "description": "出る時刻（コンポジションの秒）"},
     "dur": {"type": "time", "default": "3", "description": "出ている長さ（秒）"},
     "cut": {"type": "id", "optional": true, "description": "接続するカット"}

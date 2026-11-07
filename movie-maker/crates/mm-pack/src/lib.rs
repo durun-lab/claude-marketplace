@@ -26,6 +26,7 @@ mod fonts;
 mod layout;
 mod macros;
 mod pack;
+mod param_format;
 mod sticker;
 mod style;
 mod theme;
@@ -39,7 +40,8 @@ pub use font_cache::{Curl, Fetch, FetchReport, FontCache, CACHE_ENV};
 pub use fonts::{copy_fonts, font_asset_ops, font_files, CachedFont, PackFont};
 pub use layout::EstimateShaper;
 pub use macros::{
-    MacroDef, MacroKind, MacroSummary, ParamDef, ParamType, Step, TextStep, TransitionStep, WebStep,
+    MacroDef, MacroKind, MacroSummary, ParamDef, ParamFormat, ParamType, Step, TextStep,
+    TransitionStep, WebStep,
 };
 pub use pack::{Manifest, Pack, FORMAT};
 pub use style::{PlateSpec, Shadow, Stroke, TextStyleSpec};
