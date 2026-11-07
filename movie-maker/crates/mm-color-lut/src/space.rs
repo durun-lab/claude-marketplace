@@ -1,9 +1,7 @@
 //! `mm-color-lut` が知る色空間を、伝達関数と原色に分けて持つ。
 
 use mm_color_api::{REC2020_TO_REC709, REC709_TO_REC2020};
-use mm_types::{ColorSpace, MmError, Result};
-
-use crate::transfer;
+use mm_types::{transfer, ColorSpace, MmError, Result};
 
 /// 3x3 行列（行ごと）。
 pub(crate) type Matrix = [[f32; 3]; 3];

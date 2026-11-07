@@ -158,7 +158,7 @@ fn 色空間の変換は色の変換の実装を使う() {
     let p = project(vec![comp("main", SMALL, 2, vec![l])], vec![]);
     let mut r = renderer(&ctx);
     let img = render_at(&mut r, &p, "main", seconds(0), SMALL);
-    let encoded = 1.055 * 0.2_f32.powf(1.0 / 2.4) - 0.055;
+    let encoded = mm_types::transfer::linear_to_srgb(0.2);
     assert_pixel(&img, 1, 1, Rgba::new(encoded, encoded, encoded, 1.0));
 }
 

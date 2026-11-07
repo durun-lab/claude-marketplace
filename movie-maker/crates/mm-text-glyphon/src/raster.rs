@@ -6,6 +6,7 @@ use cosmic_text::fontdb::{Weight, ID};
 use cosmic_text::{CacheKey, CacheKeyFlags, FontSystem, SwashCache, SwashContent};
 
 use mm_text_api::{FaceRef, ShapedText, TextStroke, TextStyle};
+use mm_types::transfer::code8_to_linear;
 use mm_types::{Rect, Rgba, RgbaImage, Size};
 
 use crate::stroke::Coverage;
@@ -19,16 +20,6 @@ pub(crate) fn raster_size(shaped: &ShapedText, scale: f32) -> Size {
         (shaped.bounds.width * scale).ceil() as u32,
         (shaped.bounds.height * scale).ceil() as u32,
     )
-}
-
-/// sRGB の 8 bit を線形にする。色つきのグリフ（絵文字）は sRGB で来るため。
-fn srgb_to_linear(v: u8) -> f32 {
-    let c = f32::from(v) / 255.0;
-    if c <= 0.04045 {
-        c / 12.92
-    } else {
-        ((c + 0.055) / 1.055).powf(2.4)
-    }
 }
 
 /// グリフの 1 画素の色。Mask は文字色にカバレッジを掛け、Color はグリフの色そのまま。
@@ -46,10 +37,11 @@ fn pixel_color(content: SwashContent, data: &[u8], index: usize, color: Rgba) ->
         SwashContent::Color => {
             let px = data.get(index * 4..index * 4 + 4)?;
             let a = f32::from(px[3]) / 255.0;
+            // 絵文字の 8 bit の色も素材の画素と同じ式で線形にし、書き出しで同じ値に戻す
             Some(Rgba::from_straight(
-                srgb_to_linear(px[0]),
-                srgb_to_linear(px[1]),
-                srgb_to_linear(px[2]),
+                code8_to_linear(px[0]),
+                code8_to_linear(px[1]),
+                code8_to_linear(px[2]),
                 a,
             ))
         }
