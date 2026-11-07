@@ -21,6 +21,7 @@ mod compose;
 mod crossfade;
 mod effects;
 mod export;
+mod fonts;
 mod frame_cache;
 mod kind_cache;
 mod layers;

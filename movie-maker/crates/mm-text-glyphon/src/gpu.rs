@@ -13,7 +13,7 @@ use glyphon::{
 };
 use half::f16;
 use mm_gpu::{map_blocking, GpuContext, FRAME_FORMAT};
-use mm_text_api::{ShapedText, TextRasterizer, TextStyle};
+use mm_text_api::{FontFile, ShapedText, TextRasterizer, TextStyle};
 use mm_types::{MmError, Result, Rgba, RgbaImage, Size};
 
 use crate::glyph_ids::{GlyphIds, IdsExhausted, MAX_GLYPH_IDS};
@@ -393,6 +393,10 @@ impl TextRasterizer for GlyphonRasterizer {
             return Ok(raster::draw(fs, cache, shaped, style, scale));
         }
         self.draw(shaped, style, scale, size)
+    }
+
+    fn use_fonts(&self, fonts: &[FontFile]) -> Result<()> {
+        self.inner.use_fonts(fonts)
     }
 }
 

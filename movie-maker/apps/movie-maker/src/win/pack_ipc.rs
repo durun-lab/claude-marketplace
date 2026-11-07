@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use mm_pack::{expand, MacroSummary, Pack};
+use mm_pack::{expand, font_files, FontCache, MacroSummary, Pack};
 use mm_runtime::{Backend, RuntimeConfig};
 
 use crate::win::edit::{submit, EditOutcome};
@@ -43,14 +43,21 @@ pub async fn pack_apply(
     let shared = state.shared.clone();
     tauri::async_runtime::spawn_blocking(move || {
         let pack = Pack::load(&PathBuf::from(dir)).map_err(|e| e.to_string())?;
-        // プレートの大きさは、描くときと同じフォントで文字を組んで測る（GPU は要らない）。
+        // プレートの大きさは、描くときと同じフォント（キャッシュにあるパックの書体）で文字を組んで測る（GPU は要らない）。
+        // 取るのは `mm pack fetch-fonts` と `mm pack apply` に任せ、アプリはキャッシュに無ければ OS の書体で測る。
         let engine = mm_runtime::assemble(&RuntimeConfig {
             text: Backend::Cpu,
             ..RuntimeConfig::sample()
         })
         .map_err(|e| e.to_string())?;
-        let txn = expand(&pack, &name, &args, &*engine.services().text_shaper)
+        let shaper = &*engine.services().text_shaper;
+        let fonts = FontCache::user()
+            .map(|cache| cache.resolve(&pack.fonts))
+            .unwrap_or_default();
+        shaper
+            .use_fonts(&font_files(&fonts))
             .map_err(|e| e.to_string())?;
+        let txn = expand(&pack, &name, &args, shaper).map_err(|e| e.to_string())?;
         submit(&shared, txn.ops)
     })
     .await

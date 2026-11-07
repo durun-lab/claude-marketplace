@@ -1,0 +1,46 @@
+{
+  "fonts": [
+    {
+      "family": "Dela Gothic One",
+      "file": "DelaGothicOne-Regular.ttf",
+      "url": "https://raw.githubusercontent.com/google/fonts/86aced91de05cd4f96a06838124cca45be337b2b/ofl/delagothicone/DelaGothicOne-Regular.ttf",
+      "blake3": "9a9a01f4a78c8b086a8dfc05b7361462416b3fcd1da250858d55b9ca224935db"
+    },
+    {
+      "family": "M PLUS Rounded 1c",
+      "file": "MPLUSRounded1c-Black.ttf",
+      "url": "https://raw.githubusercontent.com/google/fonts/86aced91de05cd4f96a06838124cca45be337b2b/ofl/mplusrounded1c/MPLUSRounded1c-Black.ttf",
+      "blake3": "6cd7e262eaa98d9e66d1c7102b747308914b4a017e3df832c24eb905761d54a4"
+    },
+    {
+      "family": "M PLUS Rounded 1c",
+      "file": "MPLUSRounded1c-Bold.ttf",
+      "url": "https://raw.githubusercontent.com/google/fonts/86aced91de05cd4f96a06838124cca45be337b2b/ofl/mplusrounded1c/MPLUSRounded1c-Bold.ttf",
+      "blake3": "63db2f860f46a030435703cbd701aa3884429c76f8e487e6ab42561157d21aee"
+    },
+    {
+      "family": "M PLUS Rounded 1c",
+      "file": "MPLUSRounded1c-ExtraBold.ttf",
+      "url": "https://raw.githubusercontent.com/google/fonts/86aced91de05cd4f96a06838124cca45be337b2b/ofl/mplusrounded1c/MPLUSRounded1c-ExtraBold.ttf",
+      "blake3": "7cf90d61502393a92089fa1384967afa148d8101bfc1cb7c872e9cfdf125b561"
+    },
+    {
+      "family": "M PLUS Rounded 1c",
+      "file": "MPLUSRounded1c-Medium.ttf",
+      "url": "https://raw.githubusercontent.com/google/fonts/86aced91de05cd4f96a06838124cca45be337b2b/ofl/mplusrounded1c/MPLUSRounded1c-Medium.ttf",
+      "blake3": "63d499649e33072ef1162c939a08769ecc7c8e3db988fe2ea5217f44cc9a247a"
+    },
+    {
+      "family": "M PLUS Rounded 1c",
+      "file": "MPLUSRounded1c-Regular.ttf",
+      "url": "https://raw.githubusercontent.com/google/fonts/86aced91de05cd4f96a06838124cca45be337b2b/ofl/mplusrounded1c/MPLUSRounded1c-Regular.ttf",
+      "blake3": "c67cacd32ce704b156bdf4406f77e727fac67489b57ee7e099b58a22039b9410"
+    },
+    {
+      "family": "Mochiy Pop One",
+      "file": "MochiyPopOne-Regular.ttf",
+      "url": "https://raw.githubusercontent.com/google/fonts/86aced91de05cd4f96a06838124cca45be337b2b/ofl/mochiypopone/MochiyPopOne-Regular.ttf",
+      "blake3": "b05ad26474c9862bc649046bb06feb1cf0451549ad935b25a3d23da944859d6b"
+    }
+  ]
+}
