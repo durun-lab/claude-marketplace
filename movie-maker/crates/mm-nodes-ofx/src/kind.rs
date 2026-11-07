@@ -205,6 +205,11 @@ impl NodeKind for OfxKind {
         }
     }
 
+    /// `asset` はバンドルのフォルダーかその中のファイルで、デコーダーでは開けない。パスを引いて自分で読む。
+    fn decodes_asset(&self) -> bool {
+        false
+    }
+
     /// プラグインは時刻を読めるので時間で変わると申告し、同じ入力なら同じ画素と見なす。
     fn traits(&self) -> Traits {
         Traits {

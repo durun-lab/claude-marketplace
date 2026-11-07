@@ -1,6 +1,7 @@
 //! HLSL → SPIR-V（DXC）→ WGSL（naga）の変換と、そのキャッシュ。
 //!
-//! キャッシュは DXC の版と全文のハッシュで引き、失敗も覚える（毎フレーム DXC を起こさない）。並行の書き出しは
+//! キャッシュは DXC の版と全文のハッシュで引き、源の失敗も覚える（毎フレーム DXC を起こさない）。
+//! DXC を起こせない失敗と時間切れ（`Stage::Run`）は一過性なので覚えない。並行の書き出しは
 //! ワーカーごとに組み立てるので、キャッシュはプロセスで 1 つにする。
 
 use std::collections::HashMap;
@@ -23,6 +24,8 @@ const MAX_ENTRIES: usize = 64;
 /// 変換で失敗した段。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stage {
+    /// DXC を起こせないか、期限までに終わらない。
+    Run,
     /// DXC が HLSL を SPIR-V にできなかった。
     Dxc,
     /// naga が SPIR-V を読めないか、WGSL にできなかった。
@@ -41,6 +44,7 @@ pub struct ConvertError {
 impl fmt::Display for ConvertError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let stage = match self.stage {
+            Stage::Run => "DXC を走らせられない",
             Stage::Dxc => "DXC が HLSL を SPIR-V にできない",
             Stage::Naga => "naga が SPIR-V を WGSL にできない",
         };
@@ -86,6 +90,9 @@ pub fn convert(dxc: &Dxc, code: &str, label: &str, inputs: usize) -> Converted {
         ok = result.is_ok(),
         "HLSL を WGSL に変換した"
     );
+    if matches!(&result, Err(e) if e.stage == Stage::Run) {
+        return result;
+    }
     let mut guard = lock();
     if guard.len() >= MAX_ENTRIES {
         guard.clear();
@@ -99,12 +106,7 @@ fn lock() -> MutexGuard<'static, Cache> {
 }
 
 fn convert_uncached(dxc: &Dxc, source: &str, label: &str, inputs: usize) -> Converted {
-    let spirv = dxc
-        .compile(&DxcJob { source, inputs })
-        .map_err(|diagnostics| ConvertError {
-            stage: Stage::Dxc,
-            diagnostics,
-        })?;
+    let spirv = dxc.compile(&DxcJob { source, inputs })?;
     spirv_to_wgsl(&spirv, label)
         .map(Arc::from)
         .map_err(|d| ConvertError {

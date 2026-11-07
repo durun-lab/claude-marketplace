@@ -64,6 +64,8 @@ fn render_with(
 #[test]
 fn 試験のプラグインで契約を満たす() {
     let Some(exe) = host() else { return };
+    // 真だとレンダラーがバンドルをデコーダーで開こうとして、そのレイヤーが描けない。
+    assert!(!kind(&exe).decodes_asset());
     // プラグインを指さない既定値は入力をそのまま返す（恒等）ので、どの場合も入力を渡す。
     for p in [
         params(GAIN, GAIN_ID, &[]),
