@@ -316,9 +316,10 @@ movie-maker/
 | 領域 | 自動の回 | 中身 |
 |---|---|---|
 | `ui/panels/*`、`ui/theme` | 書いて取り込む（検査が通れば） | 画面の直し。esbuild のバンドルし直しとリロードだけで反映 |
-| `crates/mm-ops`、`mm-eval`、`mm-store` | 書いて取り込む | 操作の追加と直し、配置の計算。性質テストが守る |
+| `crates/mm-eval`、`mm-store` | 書いて取り込む | 配置の計算と保存。性質テストが守る |
 | `crates/mm-nodes-*`、`mm-text-*`、`mm-color-lut`、`mm-audio-dsp` | 書いて取り込む | ノードの種類の追加、文字と色と音の実装。契約テストと期待画像が守る |
 | `crates/mm-testkit`、`mm-bench`、`mm-pack`、`fixtures/`、`fuzz/`、`packs/`、`tools/` | 書いて取り込む | フィクスチャとベンチとパックと外のツール。期待画像（`fixtures/golden/`）の更新だけは PR までで止める（人が見る） |
+| `crates/mm-ops` | PR までで止める | 操作の層。性質テストが守っても、プロジェクトのデータを壊す変更を人の目なしに本線へ入れない |
 | `crates/mm-trace` | PR までで止める | 計装の決まりと出力の形。変えると比較の相手が変わる |
 | `crates/mm-*-api`、`mm-types`、`mm-doc`（スキーマの移行）、`mm-runtime` | PR までで止める | インターフェースの変更、プロジェクトのデータの形、組み立て。RFC が要る |
 | `crates/mm-render`、`mm-decode-*`、`mm-encode-*`、`mm-host-*`、`mm-color-ocio`、`mm-export` | PR までで止める | GPU と unsafe なバックエンド、別プロセス、書き出しの一致。期待画像で機械が検査しても人が見る |

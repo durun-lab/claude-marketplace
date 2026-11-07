@@ -335,7 +335,6 @@ reshape = "integration"
 merge = [
   "ui/panels/*/",
   "ui/theme/",
-  "crates/mm-ops/",
   "crates/mm-eval/",
   "crates/mm-store/",
   "crates/mm-nodes-*/",
@@ -350,8 +349,12 @@ merge = [
   "packs/",
   "tools/",
 ]
-# `merge` の中でも人が見るもの。インターフェース（mm-text-api など）と期待画像。
+# 人が見るもの。`merge` に入れても PR までで止める。インターフェース（mm-text-api など）、期待画像、
+# 操作の層、レンダラー、スキーマの移行（プロジェクトのデータや描画を壊す変更を、人の目なしに本線へ入れない）。
 hold = [
   "crates/mm-*-api/",
+  "crates/mm-doc/src/migrations/",
+  "crates/mm-ops/",
+  "crates/mm-render/",
   "fixtures/golden/",
 ]
