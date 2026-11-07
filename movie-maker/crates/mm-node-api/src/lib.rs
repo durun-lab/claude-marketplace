@@ -251,7 +251,7 @@ pub trait NodeKind: Send + Sync {
     /// パラメータの定義。UI の入力フィールドと MCP の引数はここから作る。
     fn params(&self) -> ParamSchema;
     /// このパラメータの組のときの定義。パラメータで一覧が変わる種類（`ofx` はバンドルとプラグインで変わる）が上書きし、
-    /// `params()` の後ろに選んだものの分を足して返す。既定は `params()`。
+    /// `params()` の後ろに選んだものの分を足して返す。既定は `params()`（RFC 0132）。
     fn params_for(&self, params: &Params) -> ParamSchema {
         let _ = params;
         self.params()
