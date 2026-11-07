@@ -9,6 +9,7 @@
 //! - [`FrameSource`]: `GET /frame` の描画。[`EngineFrames`] が専用のスレッドの `Engine` で描く。
 
 mod client;
+mod comments;
 mod core;
 mod frames;
 mod http;
@@ -21,6 +22,7 @@ mod story_http;
 mod transcripts;
 
 pub use client::{Client, EventStream, Response, SseEvent};
+pub use comments::CommentEvent;
 pub use core::{now_ms, Caller, Change, ChangeOf, Core, ProjectView, ServeError};
 pub use frames::{encode_png, parse_time, render_png, EngineFrames, FrameRequest, FrameSource};
 pub use review::{Approval, ProposalEvent, ProposalOpView, ProposalView};

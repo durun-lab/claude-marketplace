@@ -77,6 +77,10 @@ Story と Media は素材を選んだとき、DOM のイベント `mm:asset-sele
 
 編集は `apply_op` で送る。パネルが使う操作は `addTopic`、`removeTopic`、`cutWords`（Delete）、`deleteWords`（Hide と Restore）、`fixTranscript`、`rate`、`tag`、`insertTopics`。単語をクリックしたときの再生位置の移動は `transport`（`{ action: "seek", value: 秒 }`）で、`story_timeline_time` が返した位置に動かす。
 
+## コメントの型
+
+`src/comments.ts`（`@mm/sdk` から型だけ export）。`Comment`、`NewComment`、`CommentQuery`、`CommentEvent`。HTTP の `/comments`（デスクトップの待ち受けと、人の待ち受けの `/m/api/comments`）の本体と応答の形で、仕様は `docs/design/12-mobile.md`。
+
 ## Deliver のコマンド
 
 Deliver パネル（`ui/panels/deliver`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/deliver_ipc.rs`、型は `ui/panels/deliver/src/api.ts`（`createIpcDeliverApi` が呼ぶ）。時間は秒。失敗は `Err(String)`。

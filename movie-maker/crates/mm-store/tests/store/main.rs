@@ -1,6 +1,7 @@
 //! `mm-store` の結合テスト。
 
 mod basic;
+mod comments;
 mod common;
 mod crash;
 mod export;
