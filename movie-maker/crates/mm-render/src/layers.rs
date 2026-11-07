@@ -12,6 +12,7 @@ use mm_eval::{evaluate_opacity, node_params_at, source_time};
 use mm_node_api::{FrameCx, NodeKind, NodeRegistry, Quality};
 use mm_types::{AssetId, CompositionId, Id, MmError, Params, RationalTime, Rect, Result, Size};
 
+use crate::blend::{self, BlendPass};
 use crate::clip::Clip;
 use crate::compose::DrawItem;
 use crate::effects::FrameList;
@@ -63,6 +64,7 @@ pub(crate) struct Prepared {
     opacity: f32,
     taps: [f32; 2],
     clip: Clip,
+    passes: &'static [BlendPass],
 }
 
 /// レイヤーの画像のテクスチャと、コンポジションの画素での置き場所。
@@ -154,6 +156,7 @@ impl WgpuRenderer {
                     opacity: p.opacity,
                     taps: p.taps,
                     clip: p.clip,
+                    passes: p.passes,
                 })
             })
             .collect();
@@ -200,6 +203,13 @@ impl WgpuRenderer {
                 .into_iter()
                 .map(|e| format!("layer {}: {e}", layer.id)),
         );
+        let passes = blend::passes(layer.blend).unwrap_or_else(|| {
+            self.errors.push(format!(
+                "layer {}: 合成モード {:?} は描けないので normal で重ねる",
+                layer.id, layer.blend
+            ));
+            &[BlendPass::Over]
+        });
         let out = (cx.size.width as f32, cx.size.height as f32);
         Ok(Some(Prepared {
             texture: image.texture,
@@ -213,6 +223,7 @@ impl WgpuRenderer {
             opacity,
             taps: minify_taps(&image, &transform, cx.comp_to_out()),
             clip,
+            passes,
         }))
     }
 

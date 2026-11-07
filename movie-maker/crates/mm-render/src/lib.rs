@@ -17,6 +17,7 @@
 mod audio;
 mod audio_effects;
 mod audio_gain;
+mod blend;
 mod clip;
 mod compose;
 mod crossfade;

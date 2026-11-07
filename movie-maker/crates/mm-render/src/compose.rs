@@ -1,10 +1,11 @@
-//! レイヤーの合成。下から順に、変形した四角形を premultiplied の source-over で重ねる。
+//! レイヤーの合成。下から順に、変形した四角形を premultiplied のまま、レイヤーの合成モードで重ねる。
 
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
 use mm_gpu::{GpuContext, FRAME_FORMAT};
 
+use crate::blend::BlendPass;
 use crate::clip::{Clip, MaskUniform, MAX_MASKS};
 
 /// 重ねる 1 枚。
@@ -17,6 +18,8 @@ pub struct DrawItem<'a> {
     pub taps: [f32; 2],
     /// 切り抜きとマスク。
     pub clip: Clip,
+    /// 重ねる描画の並び（合成モード。`crate::blend::passes`）。
+    pub passes: &'static [BlendPass],
 }
 
 /// シェーダーの `Item` と同じフィールド順（256 バイト）。
@@ -40,23 +43,21 @@ const _: () = assert!(std::mem::size_of::<ItemUniform>() == 128 + 32 * MAX_MASKS
 
 /// 合成のパイプライン。
 pub struct Compositor {
-    pipeline: wgpu::RenderPipeline,
+    /// `BlendPass::ALL` の順のパイプライン。
+    pipelines: Vec<wgpu::RenderPipeline>,
     layout: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
 }
-
-const OVER: wgpu::BlendComponent = wgpu::BlendComponent {
-    src_factor: wgpu::BlendFactor::One,
-    dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-    operation: wgpu::BlendOperation::Add,
-};
 
 impl Compositor {
     /// パイプラインを作る。
     pub fn new(ctx: &GpuContext) -> Self {
         let device = &ctx.device;
         let layout = bind_group_layout(device);
-        let pipeline = create_pipeline(device, &layout);
+        let pipelines = BlendPass::ALL
+            .iter()
+            .map(|p| create_pipeline(device, &layout, p.state()))
+            .collect();
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("mm-render layer sampler"),
             mag_filter: wgpu::FilterMode::Linear,
@@ -64,7 +65,7 @@ impl Compositor {
             ..Default::default()
         });
         Self {
-            pipeline,
+            pipelines,
             layout,
             sampler,
         }
@@ -98,10 +99,16 @@ impl Compositor {
             timestamp_writes,
             ..Default::default()
         });
-        pass.set_pipeline(&self.pipeline);
-        for group in &bind_groups {
+        let mut current = None;
+        for (item, group) in items.iter().zip(&bind_groups) {
             pass.set_bind_group(0, group, &[]);
-            pass.draw(0..6, 0..1);
+            for p in item.passes {
+                if current != Some(*p) {
+                    pass.set_pipeline(&self.pipelines[p.index()]);
+                    current = Some(*p);
+                }
+                pass.draw(0..6, 0..1);
+            }
         }
     }
 
@@ -186,7 +193,11 @@ fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
     })
 }
 
-fn create_pipeline(device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> wgpu::RenderPipeline {
+fn create_pipeline(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    blend: wgpu::BlendState,
+) -> wgpu::RenderPipeline {
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("mm-render compose"),
         source: wgpu::ShaderSource::Wgsl(
@@ -218,10 +229,7 @@ fn create_pipeline(device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> wgp
             compilation_options: Default::default(),
             targets: &[Some(wgpu::ColorTargetState {
                 format: FRAME_FORMAT,
-                blend: Some(wgpu::BlendState {
-                    color: OVER,
-                    alpha: OVER,
-                }),
+                blend: Some(blend),
                 write_mask: wgpu::ColorWrites::ALL,
             })],
         }),
