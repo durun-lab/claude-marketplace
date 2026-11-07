@@ -1,5 +1,5 @@
 //! 画像の受け渡し。入力と結果を共有メモリ（`mm_host_pipe::shm`）に置き、パイプの JSON には区画の名前だけを書く
-//! （`mm-host-ofx` の `RenderParams::shared`）。画像を JSON の数の列にすると、1080p の往復に release で 1.6 s かかるため。
+//! （`mm-host-ofx` の `RenderParams::shared`）。画像を JSON の数の配列にすると、1080p の往復に release で 1.6 s かかるため。
 //! 共有メモリを作れない環境（Windows のほか）では、画像を JSON に入れて渡す。
 
 use mm_host_api::{HostRequest, SharedFrame};

@@ -1,4 +1,4 @@
-//! 生成の頼み。`gen.ai` のパラメータから作り、同じ頼みを同じ鍵（BLAKE3）にする。
+//! 生成の頼み。`gen.ai` のパラメータから作り、同じ頼みを同じキー（BLAKE3）にする。
 
 use serde::{Deserialize, Serialize};
 
@@ -61,7 +61,7 @@ impl Media {
     }
 }
 
-/// 生成の頼み。種類に関係しない値は 0 に揃え、変えても鍵が変わらないようにする。
+/// 生成の頼み。種類に関係しない値は 0 に揃え、変えてもキーが変わらないようにする。
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GenRequest {
@@ -114,7 +114,7 @@ impl GenRequest {
             .unwrap_or(RationalTime::ZERO)
     }
 
-    /// 頼みの鍵。提供元の版（モデルの名前）を混ぜ、モデルを変えたら別の素材にする。
+    /// 頼みのキー。提供元のバージョン（モデルの名前）を混ぜ、モデルを変えたら別の素材にする。
     pub fn key(&self, revision: &str) -> String {
         let mut h = blake3::Hasher::new();
         h.update(revision.as_bytes());

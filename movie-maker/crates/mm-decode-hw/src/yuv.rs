@@ -1,7 +1,7 @@
 //! YUV 4:2:0（NV12 と P010）から、線形の RGB への変換の係数と WGSL。
 //!
 //! CPU の経路（`mm-decode-ffmpeg`）と同じく、符号化値に伝達特性の式（SDR は Rec.1886、HDR は PQ と HLG。
-//! `mm_types::transfer`）を当てて線形にし、Rec.2020 の原色なら作業色空間（Rec.709）の原色に直す。
+//! `mm_types::transfer`）を適用して線形にし、Rec.2020 の原色なら作業色空間（Rec.709）の原色に直す。
 //! 10 bit は符号語のまま f32 で扱い、8 bit に下げない。色差は左寄せ（MPEG-2 の配置）の位置から線形に補間する。
 
 use ffmpeg_next as ff;

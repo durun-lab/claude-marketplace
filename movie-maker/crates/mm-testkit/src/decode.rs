@@ -356,6 +356,7 @@ pub fn encoder_contract(
             sample_rate: DEFAULT_SAMPLE_RATE,
             channels: DEFAULT_CHANNELS,
         }),
+        stream: None,
     };
     assert!(enc.push_frames(&[]).is_err(), "begin の前は拒否する");
     enc.begin(&settings).expect("begin");

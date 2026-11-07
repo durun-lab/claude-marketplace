@@ -1,4 +1,4 @@
-//! 試験の部品。`gen.ai` のレイヤーを置いたプロジェクト、偽の提供元、生成した PNG を読む素材の供給元。
+//! テストの部品。`gen.ai` のレイヤーを置いたプロジェクト、モックの提供元、生成した PNG を読む素材の供給元。
 
 use std::path::Path;
 use std::sync::Arc;
@@ -20,7 +20,7 @@ pub const HEIGHT: f64 = 18.0;
 const FPS: u32 = 30;
 const SECONDS: i64 = 5;
 
-/// 偽の提供元 1 つの `GenAi` と、その提供元（呼んだ回数を見る）。
+/// モックの提供元 1 つの `GenAi` と、その提供元（呼んだ回数を見る）。
 pub fn genai(media_dir: &Path) -> (GenAi, Arc<FakeProvider>) {
     let fake = Arc::new(FakeProvider::new());
     let providers = Providers::new().with(fake.clone()).expect("1 つ");
@@ -121,7 +121,7 @@ impl FrameSource for PngSource {
     }
 }
 
-/// 偽の提供元の色（不透明）。
+/// モックの提供元の色（不透明）。
 pub fn fake_color(tint: [u8; 3]) -> Rgba {
     let c = |b: u8| f32::from(b) / f32::from(u8::MAX);
     Rgba::new(c(tint[0]), c(tint[1]), c(tint[2]), 1.0)

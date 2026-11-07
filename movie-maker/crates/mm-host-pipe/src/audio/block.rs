@@ -52,7 +52,7 @@ pub struct ParamEvent {
     pub value: f64,
 }
 
-/// 共有メモリの中身。音は CLAP と VST3 の処理の入れ物と同じく、チャンネルごとに分けて（planar）持つ。
+/// 共有メモリの中身。音は CLAP と VST3 の処理のバッファーと同じく、チャンネルごとに分けて（planar）持つ。
 #[repr(C)]
 pub struct Block {
     magic: u32,
@@ -156,7 +156,7 @@ fn truncate_utf8(s: &str, limit: usize) -> &[u8] {
 
 pub use crate::shm::{object_names, unique_link, Event, Process, Wake};
 
-/// 音のブロックの共有メモリ。名前つきの区画（[`crate::shm::Mapping`]）を [`Block`] の大きさで写し、先頭を使う。
+/// 音のブロックの共有メモリ。名前つきの区画（[`crate::shm::Mapping`]）を [`Block`] の大きさでマップし、先頭を使う。
 pub struct Mapping(crate::shm::Mapping);
 
 impl Mapping {
@@ -183,7 +183,7 @@ impl Mapping {
     /// 中身。番を持っている間だけ使う（相手は自分の番の間しか書かない）。
     pub fn block(&mut self) -> &mut Block {
         // SAFETY: Block は repr(C) で整数、浮動小数、その配列だけを持ち、どのビット列も正しい値。
-        // 大きさは Block で写し、並び（8 バイト）は写しの先頭の 4 KiB 境界が満たす。
+        // 大きさは Block でマップし、並び（8 バイト）はマップの先頭の 4 KiB 境界が満たす。
         unsafe { self.0.get_mut::<Block>() }
     }
 }
@@ -202,7 +202,7 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn 作った側の印と版を開いた側が確かめる() {
+    fn 作った側のマジックとバージョンを開いた側が確かめる() {
         let name = unique_link("mm-audio-test");
         let mut made = Mapping::create(&name).expect("作れる");
         made.block().set_info(b"{}").expect("書ける");

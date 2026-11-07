@@ -24,15 +24,15 @@ const find = (id: string): TransitionCut => {
   return cut;
 };
 if (placed) {
-  find("k2").transition = { kind: "whip", duration: 0.7 };
-  find("k4").transition = { kind: "liquid", duration: 1.2 };
+  find("k2").transition = { kind: "whip", duration: 0.7, params: { p0: 1 } };
+  find("k4").transition = { kind: "liquid", duration: 1.2, params: { p0: 1 } };
 }
 
 const api: TransitionApi = {
   cuts: async () => structuredClone({ sequence: "main", cuts }),
   kinds: async () => KINDS,
-  set: async (cut, kind, duration) => {
-    find(cut).transition = { kind, duration };
+  set: async (cut, kind, duration, params = {}) => {
+    find(cut).transition = { kind, duration, params };
   },
   remove: async (cut) => {
     find(cut).transition = null;

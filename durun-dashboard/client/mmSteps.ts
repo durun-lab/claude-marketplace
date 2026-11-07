@@ -36,9 +36,11 @@ export const mmSteps = (v: MovieMakerView): MmStep[] => {
 /** 変更の通知を文にする。取り消しとやり直しは、戻した元のトランザクションと、それをした人の種類を添える。 */
 export const describeMmChange = (c: MmChange): string => {
   const touched = c.touched.length ? `（${c.touched.length} か所）` : '';
-  if (c.kind === 'apply') return `${c.name}${touched}`;
+  const mobile = c.actor === 'mobile' ? '（モバイル）' : '';
+  if (c.kind === 'apply') return `${c.name}${touched}${mobile}`;
   const verb = c.kind === 'undo' ? '取り消し' : 'やり直し';
-  return c.of ? `${verb}: ${c.of.name}（${c.of.actor === 'gui' ? '人間' : 'エージェント'}の操作）` : verb;
+  const who = c.of?.actor === 'mobile' ? 'モバイルの' : c.of?.actor === 'gui' ? '人間の' : 'エージェントの';
+  return c.of ? `${verb}: ${c.of.name}（${who}操作）` : verb;
 };
 
 export const describeMmEntry = (e: MmLogEntry): string => (e.who === 'you' ? describeMmChange(e.change) : `${e.tool}${e.ok ? '' : '（失敗）'}`);
