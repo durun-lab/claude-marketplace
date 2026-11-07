@@ -149,10 +149,21 @@ fn mm_decode(c: vec3<f32>) -> vec3<f32> {
 
 fn mm_color(c: vec3<f32>) -> vec3<f32> {
     let span = max(u.c.xyz - u.b.xyz, vec3<f32>(1e-6));
-    let looked = mm_decode(mm_lut_sample((mm_encode(c) - u.b.xyz) / span));
+    let e = mm_encode(c);
+    let inside = clamp(e, u.b.xyz, u.c.xyz);
+    let looked = mm_decode(mm_lut_sample((inside - u.b.xyz) / span) + (e - inside));
     return mix(c, looked, u.a.x);
 }
 ";
+
+/// LUT を CPU で引く。定義域の外へ出た分（1 を超えるハイライト、広色域の負の値）は端の値に足して持ち越し、切らない。
+/// GPU の `LUT_BODY_WGSL` の `mm_color` と同じ式。
+fn sample_carrying(lut: &Lut, enc: [f32; 3]) -> [f32; 3] {
+    let inside: [f32; 3] =
+        std::array::from_fn(|i| enc[i].clamp(lut.domain_min[i], lut.domain_max[i]));
+    let looked = lut.sample(inside);
+    std::array::from_fn(|i| looked[i] + enc[i] - inside[i])
+}
 
 impl NodeKind for ColorLutKind {
     fn id(&self) -> &'static str {
@@ -223,7 +234,7 @@ impl NodeKind for ColorLutKind {
             lut: Some(lut),
             cpu: Box::new(move |rgb| {
                 let enc = rgb.map(|c| encoding.encode(c));
-                let looked = cpu_lut.sample(enc).map(|c| encoding.decode(c));
+                let looked = sample_carrying(&cpu_lut, enc).map(|c| encoding.decode(c));
                 std::array::from_fn(|i| rgb[i] + (looked[i] - rgb[i]) * intensity)
             }),
         };
@@ -296,9 +307,11 @@ fn shader_program(program: TransformProgram) -> Result<Option<Program>> {
             wgsl: format!("{source}\nfn mm_color(c: vec3<f32>) -> vec3<f32> {{ return mm_color_transform(c); }}\n"),
             lut: None,
         }),
-        TransformProgram::Lut3d { size, data } => Some(Program {
+        TransformProgram::Lut3d { size, data, shaper } => Some(Program {
             wgsl: format!(
-                "{LUT_WGSL}\nfn mm_color(c: vec3<f32>) -> vec3<f32> {{ return mm_lut_sample(c); }}\n"
+                "{}\n{LUT_WGSL}\nfn mm_color(c: vec3<f32>) -> vec3<f32> {{ return mm_lut_sample({}); }}\n",
+                transfer::TRANSFER_WGSL,
+                shaper.wgsl("c")
             ),
             lut: Some(Arc::new(Lut::new(size, data, [0.0; 3], [1.0; 3])?)),
         }),

@@ -147,8 +147,14 @@ fn parse_rate(text: &str) -> Option<Rational> {
     Rational::new(n, d).ok()
 }
 
-/// 原色で決める。PQ と HLG の伝達特性は色空間の名前に出さず、デコーダー側が拒否する（RFC 0007）。
+/// HDR（PQ と HLG）は伝達特性の名前、SDR は原色で決める。デコーダーが名乗る名前（`mm-decode-ffmpeg-core` の
+/// `color_space_of`）と同じ。
 fn color_space_of(s: &Value) -> ColorSpace {
+    match s["color_transfer"].as_str() {
+        Some("smpte2084") => return ColorSpace::bt2100_pq(),
+        Some("arib-std-b67") => return ColorSpace::bt2100_hlg(),
+        _ => {}
+    }
     match s["color_primaries"].as_str() {
         Some("bt2020") => ColorSpace::bt2020(),
         Some("smpte170m" | "bt470bg" | "smpte240m") => ColorSpace::bt601(),
@@ -222,6 +228,24 @@ mod tests {
         j["streams"][0]["avg_frame_rate"] = json!("2997/100");
         let p = parse_probe(&j, Path::new("a.mp4")).unwrap();
         assert_eq!(p.video.unwrap().fps, None);
+    }
+
+    #[test]
+    fn hdr_は伝達特性で_sdr_は原色で色空間を決める() {
+        let mut j = sample();
+        j["streams"][0]["color_primaries"] = json!("bt2020");
+        let space = |j: &Value| {
+            parse_probe(j, Path::new("a.mp4"))
+                .unwrap()
+                .video
+                .unwrap()
+                .color_space
+        };
+        assert_eq!(space(&j), ColorSpace::bt2020());
+        j["streams"][0]["color_transfer"] = json!("smpte2084");
+        assert_eq!(space(&j), ColorSpace::bt2100_pq());
+        j["streams"][0]["color_transfer"] = json!("arib-std-b67");
+        assert_eq!(space(&j), ColorSpace::bt2100_hlg());
     }
 
     #[test]

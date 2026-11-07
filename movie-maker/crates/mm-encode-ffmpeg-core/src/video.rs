@@ -1,9 +1,9 @@
-//! 映像のトラック: 線形の RGBA の f32 → エンコーダーの画素形式（Rec.709、tv レンジ）→ エンコーダー。
-//! レンダラーが GPU で作った NV12 は、NV12 を受けるコーデックならそのまま送る。
+//! 映像のトラック: 線形の RGBA の f32 → エンコーダーの画素形式（SDR は Rec.709、HDR は Rec.2020 の PQ か HLG。
+//! tv レンジ）→ エンコーダー。レンダラーが GPU で作った NV12 は、NV12 を受けるコーデックならそのまま送る。
 
 use std::path::PathBuf;
 
-use ff::color::{Range, Space, TransferCharacteristic};
+use ff::color::{Primaries, Range, Space, TransferCharacteristic};
 use ff::format::context::Output;
 use ff::format::Pixel;
 use ff::software::scaling::{Context as Scaler, Flags};
@@ -12,8 +12,8 @@ use ffmpeg_next as ff;
 use mm_decode_api::{EncodeSettings, Nv12Frame};
 use mm_types::{MmError, Result, RgbaImage, Size};
 
-use crate::spec::{CodecSpec, Rate, VideoInput};
-use crate::transfer::{EncodeTable, EncodeTable16};
+use crate::fill::{Encoding, Prepared};
+use crate::spec::{CodecSpec, OutputSignal, Rate, VideoInput};
 
 /// 何回目の映像か。2 パスの 1 回目は出力に書かず統計だけを取る。
 #[derive(Debug, Clone)]
@@ -35,9 +35,8 @@ pub struct VideoTrack {
     size: Size,
     next_pts: i64,
     input: VideoInput,
-    /// 線形 → 符号化値。スケーラーに渡す前にエンコードし直す。8 ビットは NV12 向け、16 ビットは 10 ビットの YUV 向け。
-    table8: EncodeTable,
-    table16: Option<EncodeTable16>,
+    /// 線形 → 符号化値。スケーラーに渡す前にエンコードし直す。
+    encoding: Encoding,
 }
 
 impl VideoTrack {
@@ -80,17 +79,17 @@ impl VideoTrack {
             stream.set_time_base(encoder_tb);
             stream_tb = stream.time_base();
         }
+        let encoding = Encoding::for_spec(spec);
         Ok(Self {
             encoder: opened,
-            scaler: make_scaler(size, spec.input)?,
+            scaler: make_scaler(size, spec, encoding.pixel())?,
             stream_index,
             encoder_tb,
             stream_tb,
             size,
             next_pts: 0,
             input: spec.input,
-            table8: EncodeTable::new(),
-            table16: spec.input.is_high_bit_depth().then(EncodeTable16::new),
+            encoding,
         })
     }
 
@@ -115,23 +114,17 @@ impl VideoTrack {
             ));
         }
         let (w, h) = (self.size.width, self.size.height);
-        let rgba = match &self.table16 {
-            Some(t16) => {
-                let mut f = frame::Video::new(Pixel::RGBA64LE, w, h);
-                fill_rgba64(&mut f, image, t16);
-                f
-            }
-            None => {
-                let mut f = frame::Video::new(Pixel::RGBA, w, h);
-                fill_rgba(&mut f, image, &self.table8);
-                f
+        let yuv = match self.encoding.prepare(image) {
+            Prepared::Yuv(yuv) => yuv,
+            Prepared::Rgba(rgba) => {
+                // エンコーダーが参照を持ち続けるので、フレームごとに新しい YUV の領域を使う
+                let mut yuv = frame::Video::new(self.pixel(), w, h);
+                self.scaler
+                    .run(&rgba, &mut yuv)
+                    .map_err(|e| MmError::Internal(format!("YUV への変換: {e}")))?;
+                yuv
             }
         };
-        // エンコーダーが参照を持ち続けるので、フレームごとに新しい YUV の領域を使う
-        let mut yuv = frame::Video::new(self.pixel(), w, h);
-        self.scaler
-            .run(&rgba, &mut yuv)
-            .map_err(|e| MmError::Internal(format!("YUV への変換: {e}")))?;
         self.send(output, yuv)
     }
 
@@ -186,6 +179,7 @@ fn pixel_of(input: VideoInput) -> Pixel {
         VideoInput::Nv12 => Pixel::NV12,
         VideoInput::Yuv422p8 => Pixel::YUV422P,
         VideoInput::Yuv422p10 => Pixel::YUV422P10LE,
+        VideoInput::Yuv420p10 => Pixel::YUV420P10LE,
         VideoInput::Yuv444p10 => Pixel::YUV444P10LE,
     }
 }
@@ -204,25 +198,42 @@ fn target_bit_rate(size: Size, fps: f64, bits_per_pixel: f64) -> usize {
     (f64::from(size.width) * f64::from(size.height) * fps * bits_per_pixel) as usize
 }
 
-/// 画の大きさ、画素形式、時間の単位、色（Rec.709・tv レンジ）を書く。
+/// 画の大きさ、画素形式、時間の単位、色（信号の原色、伝達特性、行列。tv レンジ）を書く。
 fn describe_picture(
     enc: &mut codec::encoder::video::Video,
     size: Size,
-    input: VideoInput,
+    spec: &CodecSpec,
     time_base: Rational,
 ) {
     enc.set_width(size.width);
     enc.set_height(size.height);
-    enc.set_format(pixel_of(input));
+    enc.set_format(pixel_of(spec.input));
     enc.set_time_base(time_base);
     enc.set_frame_rate(Some(Rational::new(
         time_base.denominator(),
         time_base.numerator(),
     )));
-    enc.set_colorspace(Space::BT709);
+    let (space, primaries, trc) = match spec.signal {
+        OutputSignal::Sdr => (
+            Space::BT709,
+            Primaries::BT709,
+            TransferCharacteristic::BT709,
+        ),
+        OutputSignal::Pq => (
+            Space::BT2020NCL,
+            Primaries::BT2020,
+            TransferCharacteristic::SMPTE2084,
+        ),
+        OutputSignal::Hlg => (
+            Space::BT2020NCL,
+            Primaries::BT2020,
+            TransferCharacteristic::ARIB_STD_B67,
+        ),
+    };
+    enc.set_colorspace(space);
     enc.set_color_range(Range::MPEG);
-    enc.set_color_primaries(ff::color::Primaries::BT709);
-    enc.set_color_transfer_characteristic(TransferCharacteristic::BT709);
+    enc.set_color_primaries(primaries);
+    enc.set_color_transfer_characteristic(trc);
 }
 
 /// パス（1 パス、2 パスの 1 回目と 2 回目）とグローバルヘッダーのフラグ、統計ファイルのオプション。
@@ -244,7 +255,7 @@ fn pass_options(pass: &Pass, global_header: bool) -> (codec::Flags, ff::Dictiona
     (flags, options)
 }
 
-/// エンコーダーを Rec.709・tv レンジで開く。スレッド数は自動（0）にする。
+/// エンコーダーを信号の色・tv レンジで開く。スレッド数は自動（0）にする。
 fn open_encoder(
     codec: ff::Codec,
     settings: &EncodeSettings,
@@ -264,7 +275,7 @@ fn open_encoder(
         .encoder()
         .video()
         .map_err(|e| MmError::Internal(format!("映像のエンコーダー: {e}")))?;
-    describe_picture(&mut enc, size, spec.input, time_base);
+    describe_picture(&mut enc, size, spec, time_base);
     let (flags, mut options) = pass_options(pass, global_header);
     enc.set_flags(flags);
     match &spec.rate {
@@ -289,59 +300,35 @@ fn too_large(what: &str) -> MmError {
     MmError::InvalidArgument(format!("{what} が大きすぎる"))
 }
 
-fn make_scaler(size: Size, input: VideoInput) -> Result<Scaler> {
-    let source = if input.is_high_bit_depth() {
-        Pixel::RGBA64LE
-    } else {
-        Pixel::RGBA
-    };
+fn make_scaler(size: Size, spec: &CodecSpec, source: Pixel) -> Result<Scaler> {
     let mut scaler = Scaler::get(
         source,
         size.width,
         size.height,
-        pixel_of(input),
+        pixel_of(spec.input),
         size.width,
         size.height,
         Flags::BICUBIC | Flags::ACCURATE_RND | Flags::FULL_CHR_H_INT,
     )
     .map_err(|e| MmError::Internal(format!("swscale: {e}")))?;
-    // RGB は フルレンジ、YUV は Rec.709 の tv レンジ
+    // RGB は フルレンジ、YUV は信号の行列（SDR は Rec.709、HDR は Rec.2020 の非定輝度）の tv レンジ
+    let matrix = if spec.signal.is_hdr() {
+        ffi::SWS_CS_BT2020
+    } else {
+        ffi::SWS_CS_ITU709
+    };
     unsafe {
-        let bt709 = ffi::sws_getCoefficients(ffi::SWS_CS_ITU709);
-        ffi::sws_setColorspaceDetails(scaler.as_mut_ptr(), bt709, 1, bt709, 0, 0, 1 << 16, 1 << 16);
+        let coeffs = ffi::sws_getCoefficients(matrix);
+        ffi::sws_setColorspaceDetails(
+            scaler.as_mut_ptr(),
+            coeffs,
+            1,
+            coeffs,
+            0,
+            0,
+            1 << 16,
+            1 << 16,
+        );
     }
     Ok(scaler)
-}
-
-/// 線形の f32 の画素を Rec.1886 の 8 ビットにエンコードして RGBA のフレームへコピーする。
-/// アルファは使わず不透明として書く（premultiplied なので黒の上に置いた色と同じ）。
-fn fill_rgba(dst: &mut frame::Video, image: &RgbaImage, table: &EncodeTable) {
-    let width = image.width() as usize;
-    let stride = dst.stride(0);
-    let data = dst.data_mut(0);
-    for (y, row) in image.data().chunks_exact(width * 4).enumerate() {
-        let out = &mut data[y * stride..y * stride + width * 4];
-        for (o, px) in out.chunks_exact_mut(4).zip(row.chunks_exact(4)) {
-            o[0] = table.encode(px[0]);
-            o[1] = table.encode(px[1]);
-            o[2] = table.encode(px[2]);
-            o[3] = 255;
-        }
-    }
-}
-
-/// `fill_rgba` の 16 ビットにしたもの（リトルエンディアン）。
-fn fill_rgba64(dst: &mut frame::Video, image: &RgbaImage, table: &EncodeTable16) {
-    let width = image.width() as usize;
-    let stride = dst.stride(0);
-    let data = dst.data_mut(0);
-    for (y, row) in image.data().chunks_exact(width * 4).enumerate() {
-        let out = &mut data[y * stride..y * stride + width * 8];
-        for (o, px) in out.chunks_exact_mut(8).zip(row.chunks_exact(4)) {
-            for c in 0..3 {
-                o[c * 2..c * 2 + 2].copy_from_slice(&table.encode(px[c]).to_le_bytes());
-            }
-            o[6..8].copy_from_slice(&u16::MAX.to_le_bytes());
-        }
-    }
 }

@@ -14,6 +14,8 @@ mod cut_words;
 mod ep03;
 #[cfg(feature = "ffmpeg")]
 mod ep04;
+#[cfg(feature = "ffmpeg")]
+mod hdr;
 mod lut_cache;
 #[cfg(feature = "ffmpeg")]
 mod preview_frame;

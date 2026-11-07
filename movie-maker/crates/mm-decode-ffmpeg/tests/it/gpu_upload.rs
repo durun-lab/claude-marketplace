@@ -10,6 +10,7 @@ use mm_decode_api::{DecodedFrame, DecoderFactory};
 use mm_decode_ffmpeg::{FfmpegCpuDecoderFactory, FfmpegDecoderFactory};
 use mm_gpu::{GpuContext, GpuRequest, WgpuGpu};
 use mm_node_api::GpuHelper;
+use mm_testkit::hdr::{self, HdrKind};
 use mm_types::{RationalTime, RgbaImage};
 
 /// 色差の補間（CPU は bicubic、GPU は双線形）と f16 の丸めの差の許容。番号の矩形は輝度だけなので十分に小さい。
@@ -65,4 +66,41 @@ fn gpu_に上げたフレームは_cpu_の経路と同じ画素になる() {
     let first = on_gpu.next_frame().expect("デコード").expect("ある");
     assert_eq!(first.index, 0);
     assert_eq!(common::read_frame_number(&download(&mut helper, &first)), 0);
+}
+
+/// 10 bit の PQ と HLG を 16 bit のプレーンのまま上げ、シェーダーで 1 を超える線形の光にする。
+#[test]
+fn hdr_の素材は_gpu_に上げても_1_を超える線形の光になる() {
+    let request = GpuRequest {
+        optional_features: GpuRequest::default().optional_features
+            | wgpu::Features::TEXTURE_FORMAT_16BIT_NORM,
+        ..GpuRequest::default()
+    };
+    let ctx = match GpuContext::with(&request) {
+        Ok(ctx) => ctx,
+        Err(e) if std::env::var_os("MM_REQUIRE_GPU").is_some() => panic!("GPU を作れない: {e}"),
+        Err(_) => return,
+    };
+    if !ctx
+        .device
+        .features()
+        .contains(wgpu::Features::TEXTURE_FORMAT_16BIT_NORM)
+    {
+        eprintln!("16 bit の正規化テクスチャが無いのでスキップする");
+        return;
+    }
+    let mut helper = WgpuGpu::new(ctx.clone());
+    for kind in [HdrKind::Pq, HdrKind::Hlg] {
+        let path = hdr::fixture(&common::fixtures(), kind);
+        let mut dec = FfmpegDecoderFactory
+            .open(&path, Some(ctx.as_ref()))
+            .expect("開ける");
+        let frame = dec.next_frame().expect("デコード").expect("ある");
+        let image = download(&mut helper, &frame);
+        hdr::check_bands(&image, kind, "GPU").unwrap();
+        eprintln!(
+            "GPU に上げた {kind:?} の帯の最大の相対の差 {:e}",
+            hdr::max_relative_error(&image, kind)
+        );
+    }
 }

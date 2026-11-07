@@ -14,6 +14,7 @@ pub mod decode_vfr;
 pub mod fixtures;
 pub mod golden;
 pub mod gpu;
+pub mod hdr;
 pub mod host;
 pub mod ingest;
 pub mod node;

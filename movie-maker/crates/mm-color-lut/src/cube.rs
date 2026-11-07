@@ -1,6 +1,6 @@
 //! `.cube` の 3D LUT（Adobe / Resolve の形）の読み込みと、CPU での三線形補間。
 
-use mm_color_api::TransformProgram;
+use mm_color_api::{LutShaper, TransformProgram};
 use mm_types::{MmError, Result};
 
 /// `TransformProgram::Lut3d` に入れられる最大の一辺。メモリの暴走を防ぐ。
@@ -75,6 +75,7 @@ impl Cube3d {
         Ok(TransformProgram::Lut3d {
             size: self.size,
             data: self.data.clone(),
+            shaper: LutShaper::None,
         })
     }
 
