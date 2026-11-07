@@ -176,6 +176,8 @@ export type Usage = {
   model?: string;
   /** statusline 由来。statusline を描いたことのないセッションでは分からない。 */
   effort?: string;
+  /** 会話ログ由来の権限モード。依頼を受けたことのないセッションでは分からない。 */
+  permissionMode?: string;
   contextTokens: number;
   contextWindow: number;
   contextPercent: number;
@@ -405,6 +407,8 @@ export type MemoryStatus = MemoryPressure | MemoryUsage;
 /** 画面から始めるセッションと、改善要望を実装するセッションに選べるモデルと effort。どちらも空なら Claude Code の設定に従う。 */
 export const MODELS = ['fable', 'opus', 'sonnet'] as const;
 export const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
+/** 送信欄で選び直せる権限モード。 */
+export const PERMISSION_MODES = ['auto', 'acceptEdits'] as const;
 
 /** 有効・無効を切り替える settings.json のキー。key はキーの中の項目（CLAUDE.md の絶対パス、スキル名、プラグインの id）。 */
 export type HarnessToggle = { setting: 'claudeMdExcludes' | 'skillOverrides' | 'enabledPlugins' | 'disableAllHooks' | 'autoMemoryEnabled'; key?: string; enabled: boolean };

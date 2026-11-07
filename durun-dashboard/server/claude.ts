@@ -135,6 +135,8 @@ export type LogSummary = {
   /** これまでに居たブランチ。最後に居た順に並べるので、今のブランチが末尾になる。 */
   branches: Set<string>;
   model?: string;
+  /** 最後の user エントリが持つ権限モード。 */
+  permissionMode?: string;
   contextTokens: number;
   lastUsageId?: string;
   lastUsage?: TokenTotals;
@@ -215,6 +217,8 @@ type LogEntry = {
   timestamp?: string;
   cwd?: string;
   gitBranch?: string;
+  /** user エントリが持つ、そのときの権限モード。 */
+  permissionMode?: string;
   aiTitle?: string;
   lastPrompt?: string;
   totalCostUSD?: number;
@@ -516,6 +520,7 @@ const applyLine = (s: LogSummary, line: string, includeSidechain: boolean): void
   s.loginExpiredAt = loginExpiredOf(e, ts);
   if (e.type === 'assistant') applyAssistant(s, e, ts);
   else {
+    if (e.permissionMode) s.permissionMode = e.permissionMode;
     s.unanswered = true;
     applyBgResult(s, e);
     const content = e.message?.content;
