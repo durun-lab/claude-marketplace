@@ -2,9 +2,9 @@
 
 use crate::common::{cut, layer};
 use mm_doc::{
-    CutId, Effect, Layer, LayerAudio, Mask, MaskRect, MatteKind, Node, Param, Project,
-    TimeKeyframe, TimeRemap, TrackMatte, Transition, NESTED_KIND, NESTED_PARAM, SEQUENCE_KIND,
-    SEQUENCE_PARAM,
+    CutId, Effect, Fade, FadeCurve, Layer, LayerAudio, Mask, MaskMode, MaskRect, MatteKind, Node,
+    Param, Project, TimeKeyframe, TimeRemap, TrackMatte, Transition, NESTED_KIND, NESTED_PARAM,
+    SEQUENCE_KIND, SEQUENCE_PARAM,
 };
 use mm_types::{Id, LayerId, ParamValue, RationalTime};
 use proptest::prelude::*;
@@ -156,10 +156,25 @@ pub fn build_node(spec: &NodeSpec, p: &Project) -> Node {
 }
 
 fn mask_for(id: &str) -> Mask {
-    Mask::rect(
+    let seed = id.bytes().fold(0u8, u8::wrapping_add);
+    varied_mask(
         format!("{id}-mk"),
         MaskRect::new([0.0, 0.0], [16.0, 9.0], 2.0),
+        seed,
     )
+}
+
+/// 種で組み合わせ方（0 足す、1 引く、2 重なり）、反転、ぼかしを変えた矩形のマスク。
+pub fn varied_mask(id: String, rect: MaskRect, seed: u8) -> Mask {
+    let mut m = Mask::rect(id, rect);
+    m.mode = match seed % 3 {
+        0 => MaskMode::Add,
+        1 => MaskMode::Subtract,
+        _ => MaskMode::Intersect,
+    };
+    m.inverted = seed & 4 != 0;
+    m.feather = Param::constant(ParamValue::Number(f64::from(seed >> 3 & 3) * 2.0));
+    m
 }
 
 fn remap() -> TimeRemap {
@@ -220,7 +235,22 @@ pub fn layer_audio(seed: u8) -> Option<LayerAudio> {
         gain_db: Param::constant(ParamValue::Number(-f64::from(seed % 24))),
         mute: seed % 2 == 1,
         solo: seed >= 4,
+        fade_in: fade_for(seed, 1),
+        fade_out: fade_for(seed, 2),
         ..LayerAudio::new(role)
+    })
+}
+
+/// 種からフェードを作る。`salt` で先頭と末尾の出方を変える。4 通りに 1 通りは付けず、曲線は種で選ぶ。
+fn fade_for(seed: u8, salt: u8) -> Option<Fade> {
+    let v = seed.wrapping_mul(salt.wrapping_add(7)).wrapping_add(salt);
+    (!v.is_multiple_of(4)).then(|| Fade {
+        duration: RationalTime::new(i128::from(v % 8) + 1, 4).expect("表せる"),
+        curve: match v / 4 % 3 {
+            0 => FadeCurve::Linear,
+            1 => FadeCurve::EqualPower,
+            _ => FadeCurve::Db,
+        },
     })
 }
 

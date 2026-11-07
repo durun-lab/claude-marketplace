@@ -2,7 +2,7 @@
 //!
 //! CEF の NT ハンドルはコールバックの間だけ有効で、テクスチャは CEF が次のフレームに使い回す。
 //! そのためコールバックの中でコピーを終える。別プロセスへ渡すときは、コピー先を D3D12 の共有ヒープに作り、
-//! その NT ハンドルを相手のプロセスへ `DuplicateHandle` する（Chromium の GPU プロセスがブラウザへ渡すのと同じ型）。
+//! その NT ハンドルを相手のプロセスへ `DuplicateHandle` する（Chromium の GPU プロセスがブラウザーのプロセスへ渡すのと同じ型）。
 //! フレームごとに新しいテクスチャを作るので、渡したテクスチャをホストが書き換えることは無い。
 
 use cef::AcceleratedPaintInfo;
@@ -58,7 +58,7 @@ unsafe fn wrap(
     usage: wgpu::TextureUsages,
 ) -> wgpu::Texture {
     let desc = descriptor(size, usage);
-    // SAFETY: 呼ぶ側の約束どおり、形式と大きさは desc と一致する。
+    // SAFETY: 呼び出し側の前提どおり、形式と大きさは desc と一致する。
     unsafe {
         let hal = wgpu::hal::dx12::Device::texture_from_raw(
             resource,
@@ -185,7 +185,7 @@ pub unsafe fn import(
         depth_or_array_layers: 1,
     };
     let handle = HANDLE(info.shared_texture_handle);
-    // SAFETY: 呼ぶ側の約束どおりコールバックの中。
+    // SAFETY: 呼び出し側の前提どおりコールバックの中。
     let source = unsafe { open_cef(device, handle, size)? };
     let target = if share {
         create_shared(device, size)?

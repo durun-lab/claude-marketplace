@@ -46,7 +46,7 @@ fn add_mask(id: &str, index: Option<usize>) -> Op {
     .into()
 }
 
-/// 操作の列を 1 つのトランザクションで適用し、取り消して元に戻ることを確かめる。
+/// 操作の並びを 1 つのトランザクションで適用し、取り消して元に戻ることを確かめる。
 fn apply_and_undo(before: &Project, ops: Vec<Op>) -> Editor {
     let mut ed = Editor::new(before.clone());
     let ctx = OpContext::human();
@@ -107,6 +107,25 @@ fn マスクの位置が数を超えると拒否する() {
         &OpContext::human(),
     );
     assert!(r.is_err());
+}
+
+#[test]
+fn 矩形の大きさを数にすると拒否してレイヤーを変えない() {
+    let mut p = project();
+    p.compositions[0].layers[0].masks.push(Mask::rect(
+        "m1",
+        MaskRect::new([0.0, 0.0], [10.0, 10.0], 0.0),
+    ));
+    let mut ed = Editor::new(p.clone());
+    let set: Op = SetParam {
+        target: ParamRef::layer(&Id::new("l1"), "masks.m1.rect.size"),
+        value: ParamValue::Number(10.0),
+        keyframes: None,
+    }
+    .into();
+    let r = ed.apply(Transaction::new("bad", vec![set]), &OpContext::human());
+    assert!(r.is_err(), "型の違う矩形の大きさは拒否する");
+    assert_eq!(canon(ed.project()), canon(&p));
 }
 
 #[test]

@@ -1,5 +1,5 @@
 //! プロジェクトの書体（`use_fonts`）。テスト用に数文字を切り出した書体（fixtures/fonts）で、
-//! 名前で引けることと、無いときに落ちないことを確かめる。
+//! 名前で引けることと、無いときに失敗しないことを確かめる。
 
 use std::path::PathBuf;
 
@@ -70,7 +70,7 @@ fn プロジェクトの書体で描いた画素は置き換えの書体と違�
 }
 
 #[test]
-fn 書体のファイルが無くても落ちずに置き換わる() {
+fn 書体のファイルが無くても失敗せずに置き換わる() {
     let engine = TextEngine::new();
     let baseline = engine.shaper().shape("おと", &style()).unwrap();
     let missing = pack_font("無い/None-Regular.ttf");

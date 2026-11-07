@@ -1,7 +1,7 @@
 //! プロジェクトの書体を fontdb に読み込む。
 //!
 //! 同じ family の OS の書体は外しておく。fontdb は同じ名前のフェイスが複数あると読み込みの順で選ぶので、
-//! 外さないと PC ごとに入っている版で画素が変わる。組を入れ替えるときは、外した OS の書体を戻してから読み直す。
+//! 外さないと PC ごとに入っているバージョンで画素が変わる。組を入れ替えるときは、外した OS の書体を戻してから読み直す。
 
 use std::collections::BTreeSet;
 use std::sync::Arc;
@@ -19,7 +19,7 @@ pub(crate) struct ProjectFonts {
 }
 
 impl ProjectFonts {
-    /// `fonts` の組に入れ替える。同じ組なら何もしない。読めないファイルは飛ばす（OS の書体で描く）。
+    /// `fonts` の組に入れ替える。同じ組なら何もしない。読めないファイルはスキップする（OS の書体で描く）。
     pub(crate) fn replace(
         &mut self,
         fs: &mut FontSystem,
@@ -35,7 +35,7 @@ impl ProjectFonts {
         self.loaded = load_files(db, fonts);
         self.hidden = hide_same_family(db, &self.loaded);
         self.fingerprint = fingerprint;
-        // グリフの画像はフェイスの ID で覚えている。外した ID は使われなくなるだけだが、まとめて捨てる。
+        // グリフの画像はフェイスの ID でキャッシュしている。外した ID は使われなくなるだけだが、まとめて捨てる。
         *cache = SwashCache::new();
     }
 
@@ -74,7 +74,7 @@ fn load_files(db: &mut Database, fonts: &[FontFile]) -> Vec<ID> {
     ids
 }
 
-/// フェイスに family の名前を足す。fontdb はフェイスを書き換えられないので、名前を足した写しと入れ替える。
+/// フェイスに family の名前を足す。fontdb はフェイスを書き換えられないので、名前を足したコピーと入れ替える。
 fn alias(db: &mut Database, id: ID, family: Option<&str>) -> ID {
     let Some(family) = family else {
         return id;

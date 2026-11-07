@@ -8,6 +8,7 @@ mod footage_reuse;
 mod frame_cache;
 mod golden;
 mod gpu_footage;
+mod mask;
 mod nested;
 mod node_kinds;
 mod scene;

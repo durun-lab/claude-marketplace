@@ -13,6 +13,11 @@ use super::pixels::Depth;
 use super::plugin::{Bundle, Described, Plugin};
 use super::render::Instance;
 
+/// 描く大きさの 1 辺の上限。D3D12 のテクスチャの 1 辺の上限と同じ。
+const MAX_SIDE: u32 = 16_384;
+/// 描く大きさの画素の数の上限（8K UHD）。入力と出力の RGBA f32 を確保する前に、確保できない大きさを断る。
+const MAX_PIXELS: u64 = 7680 * 4320;
+
 /// 読み込んだ 1 つのプラグインとインスタンス。捨てるときは DestroyInstance、Unload の順に呼ぶ。
 struct Session {
     instance: Option<Instance>,
@@ -84,6 +89,7 @@ impl Server {
     fn prepare(&mut self, params: serde_json::Value) -> Result<(), String> {
         let params: PrepareParams = serde_json::from_value(params)
             .map_err(|e| format!("Prepare の params が読めない: {e}"))?;
+        check_frame_rate(params.frame_rate)?;
         self.session.take();
         let bundle = ManuallyDrop::new(Bundle::open(&params.bundle)?);
         let plugin = pick(bundle.plugins()?, params.plugin.as_deref())?;
@@ -121,6 +127,7 @@ impl Server {
         size: Size,
         params: serde_json::Value,
     ) -> Result<SharedFrame, String> {
+        check_size(size)?;
         let params: RenderParams = serde_json::from_value(params)
             .map_err(|e| format!("RenderFrame の params が読めない: {e}"))?;
         let instance = self
@@ -133,6 +140,29 @@ impl Server {
     }
 }
 
+/// 時刻をフレームの番号に直すフレームレートは、正の有限の数だけを受ける。
+fn check_frame_rate(rate: f64) -> Result<(), String> {
+    if rate.is_finite() && rate > 0.0 {
+        Ok(())
+    } else {
+        Err(format!("frame_rate {rate} は正の有限の数でない"))
+    }
+}
+
+/// 描く大きさは幅と高さが 1 以上で、上限（`MAX_SIDE`、`MAX_PIXELS`）以下だけを受ける。
+fn check_size(size: Size) -> Result<(), String> {
+    let (w, h) = (size.width, size.height);
+    if w == 0 || h == 0 {
+        return Err(format!("{w}x{h} は描けない（幅と高さは 1 以上）"));
+    }
+    if w > MAX_SIDE || h > MAX_SIDE || u64::from(w) * u64::from(h) > MAX_PIXELS {
+        return Err(format!(
+            "{w}x{h} は大きすぎる（1 辺 {MAX_SIDE}、画素の数 {MAX_PIXELS} まで）"
+        ));
+    }
+    Ok(())
+}
+
 /// `id` のプラグイン。`None` なら最初の画像の効果。
 fn pick(plugins: Vec<Plugin>, id: Option<&str>) -> Result<Plugin, String> {
     let ids: Vec<String> = plugins.iter().map(|p| p.id.clone()).collect();
@@ -141,4 +171,27 @@ fn pick(plugins: Vec<Plugin>, id: Option<&str>) -> Result<Plugin, String> {
         .filter(Plugin::is_image_effect)
         .find(|p| id.is_none_or(|id| p.id == id))
         .ok_or_else(|| format!("プラグイン {id:?} が無い（あるのは {ids:?}）"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 幅か高さが_0_か上限を超える大きさは断る() {
+        for (w, h) in [(0, 0), (0, 4), (4, 0), (MAX_SIDE + 1, 1), (8192, 8192)] {
+            assert!(check_size(Size::new(w, h)).is_err(), "{w}x{h}");
+        }
+        for (w, h) in [(1, 1), (1920, 1080), (7680, 4320), (MAX_SIDE, 1)] {
+            assert!(check_size(Size::new(w, h)).is_ok(), "{w}x{h}");
+        }
+    }
+
+    #[test]
+    fn フレームレートは正の有限の数だけを受ける() {
+        for rate in [0.0, -30.0, f64::NAN, f64::INFINITY] {
+            assert!(check_frame_rate(rate).is_err(), "{rate}");
+        }
+        assert!(check_frame_rate(29.97).is_ok());
+    }
 }

@@ -34,7 +34,7 @@ pub fn plugin_dirs() -> Vec<PathBuf> {
         .collect()
 }
 
-/// `dirs` の下のバンドル（`*.ofx.bundle`）を名前の順で並べる。読めないフォルダーは飛ばす。
+/// `dirs` の下のバンドル（`*.ofx.bundle`）を名前の順で並べる。読めないフォルダーはスキップする。
 pub fn find_bundles(dirs: &[PathBuf]) -> Vec<PathBuf> {
     let mut found = Vec::new();
     for dir in dirs {

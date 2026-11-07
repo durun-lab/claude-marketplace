@@ -10,11 +10,18 @@ use mm_types::{
 };
 
 use crate::gpu_pass::{input_texture, Pass, PassCache};
-use crate::util::migrate_same_version;
+use crate::util::{finite_number, migrate_same_version};
 use crate::KIND_VERSION;
 
 /// 進み具合のパラメータの名前。レンダラーが書く。
 pub const TRANSITION_PROGRESS_PARAM: &str = "progress";
+/// `progress` の既定。
+const DEFAULT_PROGRESS: f64 = 0.5;
+
+/// 進み具合を 0..1 で引く。有限でなければ既定値にする（NaN は clamp を素通りする）。
+fn progress_of(params: &Params) -> f32 {
+    finite_number(params, TRANSITION_PROGRESS_PARAM, DEFAULT_PROGRESS).clamp(0.0, 1.0)
+}
 
 const DISSOLVE_WGSL: &str = r"
 struct U { a: vec4<f32> }
@@ -118,7 +125,7 @@ impl NodeKind for DissolveKind {
                 min: Some(0.0),
                 max: Some(1.0),
             },
-            ParamValue::Number(0.5),
+            ParamValue::Number(DEFAULT_PROGRESS),
         )])
     }
 
@@ -141,14 +148,11 @@ impl NodeKind for DissolveKind {
     }
 
     fn is_identity(&self, cx: &FrameCx<'_>) -> bool {
-        cx.params.number_or(TRANSITION_PROGRESS_PARAM, 0.5) <= 0.0
+        progress_of(cx.params) <= 0.0
     }
 
     fn render(&self, cx: &mut FrameCx<'_>) -> Result<FrameRef> {
-        let progress = cx
-            .params
-            .number_or(TRANSITION_PROGRESS_PARAM, 0.5)
-            .clamp(0.0, 1.0) as f32;
+        let progress = progress_of(cx.params);
         let t = cx.time;
         let from = cx.inputs.frame(0, t)?;
         let to = cx.inputs.frame(1, t)?;
@@ -163,5 +167,21 @@ impl NodeKind for DissolveKind {
         }
         let (a, b) = (cx.gpu.download(&from)?, cx.gpu.download(&to)?);
         Ok(FrameRef::cpu(mix_images(&a, &b, progress)?))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 有限でない進み具合は既定値にする() {
+        let mut p = Params::new();
+        p.set(TRANSITION_PROGRESS_PARAM, ParamValue::Number(f64::NAN));
+        assert_eq!(progress_of(&p), DEFAULT_PROGRESS as f32);
+        p.set(TRANSITION_PROGRESS_PARAM, ParamValue::Number(f64::INFINITY));
+        assert_eq!(progress_of(&p), DEFAULT_PROGRESS as f32);
+        p.set(TRANSITION_PROGRESS_PARAM, ParamValue::Number(-2.0));
+        assert_eq!(progress_of(&p), 0.0);
     }
 }

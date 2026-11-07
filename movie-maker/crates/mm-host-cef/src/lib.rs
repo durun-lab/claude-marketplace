@@ -27,15 +27,13 @@ pub fn host_main(sandbox: *mut std::ffi::c_void) -> std::process::ExitCode {
 }
 
 pub mod fonts;
-mod job;
 mod launcher;
 mod locate;
 pub mod pixel;
 pub mod policy;
 
-pub use launcher::{
-    remove_work_dir, CefLauncher, PipeHost, CEF_PATH_ENV, SERVE_COMMAND, SPEC_ENV, WORK_DIR_ENV,
-};
+pub use launcher::{CefLauncher, CEF_PATH_ENV, WORK_DIR_ENV};
 pub use locate::{
     find_host, probe_reply, supports_cef, HOST_ENV, PROBE_COMMAND, PROBE_REPLY, PROBE_SANDBOX,
 };
+pub use mm_host_pipe::{remove_work_dir, PipeHost, SERVE_COMMAND, SPEC_ENV};
