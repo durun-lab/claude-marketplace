@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { FeedbackContext, FeedbackTarget, ImproveState, Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
-import { ImproveOptions, ImproveStatus } from './Improve.tsx';
+import { ImproveStatus } from './Improve.tsx';
 import { toast } from './toast.tsx';
 import { onSubmitKey } from './ui.tsx';
 
@@ -141,7 +141,6 @@ type PanelProps = {
 
 const FeedbackPanel = (p: PanelProps) => {
   const area = useRef<HTMLTextAreaElement>(null);
-  const [options, setOptions] = useState(false);
   // 開いたらすぐ書けるようにする。要素を選ぶクリックは押下を止めているので、フォーカスは textarea に残る。
   useEffect(() => area.current?.focus(), []);
   const empty = !p.text.trim() && p.targets.length === 0;
@@ -149,12 +148,8 @@ const FeedbackPanel = (p: PanelProps) => {
     <section class="card fb-panel" aria-label="改善要望">
       <header class="fb-head">
         <h2 class="fb-title">改善要望</h2>
-        {p.improve && (
-          <button class="fb-icon" aria-label="自動実装の設定" aria-expanded={options} onClick={() => setOptions((v) => !v)}>⚙︎</button>
-        )}
         <button class="fb-icon" aria-label="閉じる" onClick={p.onClose}>×</button>
       </header>
-      {options && p.improve && <ImproveOptions improve={p.improve} />}
       <textarea
         ref={area}
         class="input"
@@ -185,7 +180,7 @@ export const Feedback = ({ snapshot, open, setOpen }: FeedbackProps) => {
   const [targets, setTargets] = useState<FeedbackTarget[]>([]);
   const [busy, setBusy] = useState(false);
   const improve = snapshot?.improve;
-  const running = !!improve?.running;
+  const running = !!improve?.workflow?.running;
   const pick = (el: Element) => {
     const target = toTarget(el);
     setTargets((list) => (list.some((t) => t.selector === target.selector) ? list : [...list, target]));
@@ -208,7 +203,7 @@ export const Feedback = ({ snapshot, open, setOpen }: FeedbackProps) => {
       {!open && (
         <button
           class={`fb-trigger${running ? ' is-running' : ''}`}
-          title={running ? improve?.current : '改善要望'}
+          title={running ? improve?.workflow?.current : '改善要望'}
           aria-label={running ? undefined : '改善要望'}
           onClick={() => setOpen(true)}
         >
