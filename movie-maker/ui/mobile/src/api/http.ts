@@ -1,3 +1,5 @@
+import { errorMessage } from "./errors.ts";
+
 /** 人の待ち受けのパスの根。`GET /m/` の画面と API が同じオリジンで同じ根の下にある。 */
 export const MOBILE_ROOT = "/m";
 export const API_ROOT = `${MOBILE_ROOT}/api`;
@@ -11,14 +13,17 @@ export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>
 const SERVER_ERROR = 500;
 const TOO_MANY_REQUESTS = 429;
 
-/** `status` が 0 のときは通信そのものの失敗（圏外、PC が止まっている）。 */
+/**
+ * `status` が 0 のときは通信そのものの失敗（圏外、PC が止まっている）。
+ * `message` は `code` から引いた画面向けの英語で、PC の日本語の `message` は `detail` に残す。
+ */
 export class ApiError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
-    message: string,
+    readonly detail = "",
   ) {
-    super(message);
+    super(errorMessage(code, status));
     this.name = "ApiError";
   }
 }
@@ -42,7 +47,7 @@ export interface Api {
 const failure = async (res: Response): Promise<ApiError> => {
   const body: unknown = await res.json().catch(() => null);
   const err = (body as { error?: { code?: string; message?: string } } | null)?.error;
-  return new ApiError(res.status, err?.code ?? "http", err?.message ?? (res.statusText || `HTTP ${res.status}`));
+  return new ApiError(res.status, err?.code ?? "http", err?.message ?? res.statusText);
 };
 
 const call = async <T>(fetcher: FetchLike, path: string, init: RequestInit): Promise<T> => {

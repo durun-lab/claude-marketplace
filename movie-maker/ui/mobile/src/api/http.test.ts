@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { errorMessage } from "./errors.ts";
 import { ApiError, MOBILE_HEADER, createApi, isRetryable, type FetchLike } from "./http.ts";
 import { createMobileTransport } from "./transport.ts";
 
@@ -16,9 +17,9 @@ describe("createApi", () => {
     expect(post?.credentials).toBe("same-origin");
   });
 
-  it("PC の失敗は status と code つきの ApiError にする", async () => {
+  it("PC の失敗は status と code つきの ApiError にし、画面の文言は code から英語で引く", async () => {
     const api = createApi(async () => ok({ error: { code: "not_latest", message: "stale" } }, 409));
-    await expect(api.post("/m/api/undo", {})).rejects.toMatchObject({ status: 409, code: "not_latest", message: "stale" });
+    await expect(api.post("/m/api/undo", {})).rejects.toMatchObject({ status: 409, code: "not_latest", detail: "stale", message: errorMessage("not_latest", 409) });
   });
 
   it("通信の失敗は status 0 で、再送できる失敗に数える", async () => {
@@ -46,6 +47,6 @@ describe("createMobileTransport", () => {
   it("403 not_on_mobile は error の文字列で返す", async () => {
     const api = createApi(async () => ok({ error: { code: "not_on_mobile", message: "not on mobile" } }, 403));
     const res = await createMobileTransport(api, () => 1).send({ op: "trim" } as never);
-    expect(res).toEqual({ ok: false, error: "not on mobile" });
+    expect(res).toEqual({ ok: false, error: errorMessage("not_on_mobile", 403) });
   });
 });

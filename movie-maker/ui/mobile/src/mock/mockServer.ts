@@ -51,7 +51,7 @@ interface Request1 {
 
 const pair = (req: Request1, setPaired: () => void): Response => {
   if ((req.body as { code?: string } | null)?.code !== MOCK_PAIR_CODE) {
-    return errorBody(HTTP_UNAUTHORIZED, "invalid_code", "The code is wrong or has expired.");
+    return errorBody(HTTP_UNAUTHORIZED, "pairing_wrong_code", "登録の符号が違う");
   }
   setPaired();
   return json(HTTP_OK, { device_name: (req.body as { device_name: string }).device_name });
@@ -64,7 +64,7 @@ const createComment = (server: MockServer, body: Record<string, unknown>): Respo
   const dup = clientId ? server.comments.find((c) => c.client_id === clientId) : undefined;
   if (dup) return json(HTTP_OK, dup);
   if (!body.text && !(body.drawing as unknown[] | undefined)?.length) {
-    return errorBody(HTTP_BAD_REQUEST, "invalid", "A comment needs text or a drawing.");
+    return errorBody(HTTP_BAD_REQUEST, "bad_request", "本文か描き込みが要る");
   }
   const comment = {
     id: `m${server.comments.length + 1}`,
@@ -90,7 +90,7 @@ const commentAction = (server: MockServer, req: Request1, id: string, action: st
   if (action === "replies") {
     comment.replies.push({ id: `r${comment.replies.length + 1}`, author: MOBILE_AUTHOR, text: body.text ?? "", created_ms: Date.now() });
   } else if (body.state === "fresh") {
-    return errorBody(HTTP_BAD_REQUEST, "invalid_state", "fresh is set by a response.");
+    return errorBody(HTTP_BAD_REQUEST, "bad_request", "fresh は人からは決められない");
   } else if (body.state) {
     comment.state = body.state;
   }
@@ -199,8 +199,8 @@ export const createMockServer = (init: {
         const req = readRequest(path, reqInit);
         if (req.method === "POST") server.writes.push({ path, body: req.body, header: req.header });
         if (path === "/m/pair") return pair(req, () => (paired = true));
-        if (!paired) return errorBody(HTTP_UNAUTHORIZED, "unauthorized", "Device is not paired.");
-        if (req.method === "POST" && req.header !== "1") return errorBody(HTTP_FORBIDDEN, "forbidden", "Missing header.");
+        if (!paired) return errorBody(HTTP_UNAUTHORIZED, "no_device", "端末の資格が無い");
+        if (req.method === "POST" && req.header !== "1") return errorBody(HTTP_FORBIDDEN, "missing_mobile_header", "X-MM-Mobile が無い");
         return api(server, req);
       },
     },
