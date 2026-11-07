@@ -11,6 +11,7 @@ use mm_doc::{Interpolation, Keyframe, Layer, LayerAudio, Node, Param, Transform}
 use mm_types::{Id, MmError, ParamValue, Rational, RationalTime, Result};
 use serde_json::Value;
 
+use super::html;
 use super::media::Media;
 use super::report::{Gap, Report};
 use super::shape;
@@ -23,6 +24,8 @@ pub const FIT_NONE: &str = "none";
 /// 撮影素材と静止画のノードの種類と、素材のパラメータ。
 const FOOTAGE_KIND: &str = "footage";
 const IMAGE_KIND: &str = "image";
+/// geneva のマークアップの source の種類。
+const HTML_KIND: &str = "html";
 const ASSET_PARAM: &str = "asset";
 const KIND_VERSION: u32 = 1;
 
@@ -105,6 +108,9 @@ fn convert_clip(
     note_gaps(&mut ctx.report, clip);
     let source = clip.get("source").cloned().unwrap_or(Value::Null);
     let kind = source.get("kind").and_then(Value::as_str).unwrap_or("");
+    if kind == HTML_KIND {
+        return html_layer(ctx, id, clip, timing);
+    }
     let asset = source.get("asset").and_then(Value::as_str).unwrap_or("");
     let (is_video, size) = match (kind, ctx.media.get(asset).and_then(|m| m.size)) {
         ("video", Some(size)) => (true, size),
@@ -124,6 +130,18 @@ fn convert_clip(
             None => ctx.report.add(Gap::Mask),
         }
     }
+    layer.opacity = opacity_param(ctx, clip, timing.start)?;
+    Ok(Some(layer))
+}
+
+/// `html` の source を `web.cef` のレイヤーにする。描けない形なら数えて除く。
+fn html_layer(ctx: &mut Ctx<'_>, id: &str, clip: &Value, timing: &Timing) -> Result<Option<Layer>> {
+    let Some((node, transform)) = html::convert(clip, ctx.frame)? else {
+        ctx.report.add(Gap::Source);
+        return Ok(None);
+    };
+    let mut layer = Layer::new(id, node, timing.start, RationalTime::ZERO, timing.duration);
+    layer.transform = transform;
     layer.opacity = opacity_param(ctx, clip, timing.start)?;
     Ok(Some(layer))
 }
