@@ -28,12 +28,13 @@ slow-timeout = { period = "60s" }
 path = "junit-quarantine.xml"
 
 # CEF のホストは 1 つで数百 MB と複数のプロセスを使う。CPU が詰まると Prepare や起動の Ping が時間切れになるので、
-# CEF を起こすテストの同時の数を絞る（nextest の test-groups。profile を継ぐ設定の overrides は default のものが全部に効く）。
+# CEF を起こす結合テスト（tests/it）の同時の数を絞る。単体テストはモックなので絞らない
+# （nextest の test-groups。default の overrides はほかの profile にも効く）。
 [test-groups.cef-host]
 max-threads = 2
 
 [[profile.default.overrides]]
-filter = "package(mm-host-cef) | package(mm-nodes-cef) | package(mm-text-cef)"
+filter = "(package(mm-host-cef) | package(mm-nodes-cef) | package(mm-text-cef)) & kind(test)"
 test-group = "cef-host"
 
 # GPU でデコードするテストは 4K の素材で VRAM と CUDA のコンテキストを使う。ワークスペース全体を回すと
