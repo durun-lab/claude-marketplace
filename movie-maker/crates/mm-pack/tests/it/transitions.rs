@@ -278,3 +278,89 @@ fn 同じ小道具の関数を複数のトランジションに写さない() {
         }
     }
 }
+
+/// 目に見える差とみなす、sRGB の 8 bit の段数。
+const EDGE_LEVELS: u8 = 16;
+/// 端のコマで、トランジションの無いコマと目に見えて違ってよい値（画素のチャンネル）の割合の上限。
+/// 残るのはグリッチの映像のずれで 0.25 % まで（大きさ 0 の形は `fill_sized` で漏れない）。
+/// 盤の影（vinyl）、ブロックの残り（glitch）、開いたままのシャッター（pianoroll）は 0.4〜3.4 % になる。
+const EDGE_SHARE_MAX: f64 = 0.003;
+
+/// 2 枚の sRGB の 8 bit のうち、`EDGE_LEVELS` を超えて違う値の割合。透明な所は市松の地になるので、透けると差に出る。
+fn visible_share(a: &RgbaImage, b: &RgbaImage) -> f64 {
+    let (a, b) = (to_srgb8(a), to_srgb8(b));
+    let n = a
+        .iter()
+        .zip(&b)
+        .filter(|(x, y)| x.abs_diff(**y) > EDGE_LEVELS)
+        .count();
+    n as f64 / a.len() as f64
+}
+
+#[test]
+fn vlog_のトランジションは境の両端で前と次の場面そのものになる() {
+    let Some(ctx) = gpu() else { return };
+    let pack = Pack::load(&vlog_dir()).expect("packs/vlog を読める");
+    let mut stage = Stage::new(ctx);
+    let size = Size::new(192, 108);
+    let base = base_project();
+    let mut failed = Vec::new();
+    // 巻き戻しは出ていくカットを逆向きに描くので、端でもトランジションの無いコマと時刻が違う。
+    for name in selected(&pack).into_iter().filter(|n| n != "rewind") {
+        let p = project_with(&pack, &name);
+        for progress in [0.0, 1.0] {
+            let d = visible_share(
+                &stage.render(&p, progress, size),
+                &stage.render(&base, progress, size),
+            );
+            if d > EDGE_SHARE_MAX {
+                failed.push(format!("{name} の {progress}: {:.3} %", d * 100.0));
+            }
+        }
+    }
+    assert!(failed.is_empty(), "端で絵が跳ねる: {failed:#?}");
+}
+
+/// カット b の頭のトランジション。
+fn transition_of(p: &Project) -> Option<&mm_doc::Transition> {
+    let (_, cut) = p.cut(&Id::new("b")).expect("カット b がある");
+    cut.transition_in.as_ref()
+}
+
+fn expand_with(pack: &Pack, name: &str, pairs: &[(&str, &str)]) -> Transaction {
+    let args = pairs
+        .iter()
+        .map(|(k, v)| (k.to_string(), v.to_string()))
+        .collect();
+    expand(pack, name, &args, &EstimateShaper).expect("展開できる")
+}
+
+#[test]
+fn トランジションは置き直すと差し替わり_取り消し_1_回で前に戻る() {
+    let pack = Pack::load(&vlog_dir()).expect("packs/vlog を読める");
+    let ctx = OpContext::human();
+    let mut editor = Editor::new(base_project());
+    let whip = expand_with(
+        &pack,
+        "transition",
+        &[("cut", "b"), ("kind", "whip"), ("seed", "3")],
+    );
+    editor.apply(whip, &ctx).expect("置ける");
+    let placed = editor.project().clone();
+    let tr = transition_of(&placed).expect("置いた");
+    assert_eq!(
+        tr.node.text_param("code"),
+        pack.transitions.code.get("whip").map(String::as_str)
+    );
+    assert_eq!(tr.node.params["p0"].value, ParamValue::Number(3.0));
+    let rewind = expand_with(&pack, "rewind", &[("cut", "b"), ("speed", "2")]);
+    editor.apply(rewind, &ctx).expect("差し替えられる");
+    let tr = transition_of(editor.project()).expect("差し替えた");
+    assert_eq!(tr.node.params["rewind"].value, ParamValue::Number(2.0));
+    assert!(
+        !tr.node.params.contains_key("p0"),
+        "前の種類のパラメータを残さない"
+    );
+    editor.undo(&ctx).expect("取り消せる");
+    assert_eq!(editor.project(), &placed, "取り消し 1 回で whip に戻る");
+}

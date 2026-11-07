@@ -206,10 +206,12 @@ fn mm_transition(uv: vec2<f32>) -> vec4<f32> {
     let ub = box_uv(screen, m.b);
     // 重ねる絵とマットは、コマの中心を挟んでシャッターの開いている間の時刻と、画素の中の位置をずらして平均する。
     let frames = max(2.0, uDur * FPS);
+    // 境の両端ではシャッターを閉じ、進み具合 0 と 1 のコマが前と次の場面そのものになるようにする。
+    let edge = sat(min(p, 1.0 - p) * frames * 2.0 / max(SHUTTER, 1e-3));
     var o = vec4<f32>(0.0);
     var mk = 0.0;
     for (var s = 0; s < MM_SAMPLES; s++) {
-        let ts = (f32(s) + 0.5) / f32(MM_SAMPLES) - 0.5;
+        let ts = ((f32(s) + 0.5) / f32(MM_SAMPLES) - 0.5) * edge;
         let jit = vec2<f32>(halton(s + 1, 2), halton(s + 1, 3)) - 0.5;
         let po = sat(p + ts * SHUTTER / frames);
         uT = po * uDur;
@@ -225,7 +227,8 @@ fn mm_transition(uv: vec2<f32>) -> vec4<f32> {
     }
     o /= f32(MM_SAMPLES);
     mk /= f32(MM_SAMPLES);
-    var col = vec4<f32>(0.0);
+    // 地は元の COMP と同じ不透明の黒。場面をずらしたり消したりした所に、下のレイヤーを透かさない。
+    var col = vec4<f32>(0.0, 0.0, 0.0, 1.0);
     let va = view_uv(ua);
     let vb = view_uv(ub);
     col = mix(col, scene(false, va, m.a.blur), inside(va) * m.a.op);
