@@ -233,12 +233,16 @@ pub fn relay_change(shared: &Shared, change: &mm_serve::Change) {
 }
 
 /// `Core` の変更を受けるスレッドを始める。変更ごとに [`relay_change`] でデータを置き直してから `notify` を呼ぶ。
-/// JSON のプロジェクト（`Core` が無い）では何もしない。
+/// JSON のプロジェクト（`Core` が無い）では、再生スレッドが操作を適用するたびに `notify` を呼ぶ
+/// （データは適用の中で置き直し済み）。
 pub fn watch_changes(
     shared: &Arc<Shared>,
     mut notify: impl FnMut(&mm_serve::Change) + Send + 'static,
 ) -> std::io::Result<()> {
     let Some(core) = shared.core.get() else {
+        // 口は Sync を要るので Mutex で包む。呼ぶのは再生スレッドだけで競合しない。
+        let notify = std::sync::Mutex::new(notify);
+        shared.on_json_edit(move |change| (notify.lock().expect("notify"))(change));
         return Ok(());
     };
     let shared = shared.clone();

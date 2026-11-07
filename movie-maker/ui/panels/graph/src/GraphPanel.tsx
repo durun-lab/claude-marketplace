@@ -25,6 +25,8 @@ const HANDLE_RADIUS = 4;
 const COMPONENT_NAMES = ["x", "y", "z"];
 /** 読み上げの名前に出す秒の桁。 */
 const LABEL_DIGITS = 3;
+/** 離した後、操作の結果が届かなくても動かした後の曲線を見せ続ける上限（ms）。拒否された操作の曲線を残さない。 */
+export const SETTLE_TIMEOUT_MS = 1500;
 
 export interface GraphPanelProps {
   /** 描くパラメータの指し方。操作の `target` になる。 */
@@ -88,6 +90,15 @@ const commitOp = (target: ParamRef, d: Drag): Op | null => {
 
 const useDrag = (props: GraphPanelProps, svg: { current: SVGSVGElement | null }) => {
   const [drag, setDrag] = useState<Drag | null>(null);
+  // 離した直後は、操作の結果（新しい param）が届くまで動かした後の曲線を保つ。すぐ戻すと元の位置へ跳ね返って見える。
+  const [held, setHeld] = useState<Drag | null>(null);
+  const paramKey = JSON.stringify(props.param);
+  useEffect(() => setHeld(null), [paramKey]);
+  useEffect(() => {
+    if (!held) return;
+    const timer = setTimeout(() => setHeld(null), SETTLE_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [held]);
   const fps = props.fps ?? DEFAULT_FPS;
   const start = (grab: Grab, view: View, e: PointerEvent) => {
     if (!props.param) return;
@@ -108,6 +119,7 @@ const useDrag = (props: GraphPanelProps, svg: { current: SVGSVGElement | null })
     if (!drag) return;
     const op = props.target && commitOp(props.target, drag);
     setDrag(null);
+    setHeld(op ? drag : null);
     props.onPreview?.(null);
     if (op) props.onOp(op);
   };
@@ -124,7 +136,7 @@ const useDrag = (props: GraphPanelProps, svg: { current: SVGSVGElement | null })
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [dragging, onPreview]);
-  return { drag, start, move, end };
+  return { drag: drag ?? held, active: dragging, start, move, end };
 };
 
 interface LayerProps {
@@ -200,7 +212,7 @@ export const GraphPanel = (props: GraphPanelProps) => {
   const width = props.width ?? DEFAULT_WIDTH;
   const height = props.height ?? DEFAULT_HEIGHT;
   const svg = useRef<SVGSVGElement>(null);
-  const { drag, start, move, end } = useDrag(props, svg);
+  const { drag, active, start, move, end } = useDrag(props, svg);
   if (!param || !props.target) return <Message label={label} text="Select a parameter in the Inspector" />;
   const comps = numbersOf(param.value)?.length ?? 0;
   if (comps === 0) return <Message label={label} text="This parameter has no curve" />;
@@ -219,7 +231,7 @@ export const GraphPanel = (props: GraphPanelProps) => {
         viewBox={`0 0 ${width} ${height}`}
         width={width}
         height={height}
-        data-dragging={drag !== null}
+        data-dragging={active}
         onPointerMove={move}
         onPointerUp={end}
         onPointerCancel={end}

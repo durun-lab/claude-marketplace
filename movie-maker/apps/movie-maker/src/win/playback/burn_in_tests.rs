@@ -97,6 +97,35 @@ fn 焼き込むレンダーターゲットがあるとプレビューは書き�
 }
 
 #[test]
+fn 文字起こしを取り込み直すとプロジェクトのデータが同じでも字幕を作り直す() {
+    let dir = std::env::temp_dir().join(format!("mm_preview_retranscribe_{}", std::process::id()));
+    let (project, comp) = project_with_store(&dir, true);
+    let mut player = player(&project, comp.clone(), &dir);
+    let before = player.shown_project();
+    let words = [("さようなら。", 3)].map(|(text, at)| WordInput {
+        segment: 0,
+        start: seconds(at),
+        end: RationalTime::new(i128::from(at) * 1000 + 800, 1000).unwrap(),
+        text: text.into(),
+    });
+    let input = TranscriptInput {
+        producer: "test".into(),
+        language: "ja".into(),
+        words: words.to_vec(),
+    };
+    let hash = project.assets[0].content_hash.clone();
+    let mut store = Store::open(&dir.join("store"), 0).unwrap();
+    store
+        .put_transcript(&Id::new("clip"), &hash, &input)
+        .unwrap();
+    drop(store);
+    let after = player.shown_project();
+    assert!(!Arc::ptr_eq(&before, &after), "単語が変わったので作り直す");
+    assert_ne!(before, after);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn 焼き込まない設定のプレビューは字幕を足さない() {
     let dir = std::env::temp_dir().join(format!("mm_preview_plain_{}", std::process::id()));
     let (project, comp) = project_with_store(&dir, false);
