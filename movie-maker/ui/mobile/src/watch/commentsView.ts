@@ -29,7 +29,7 @@ export const countByFilter = (items: CommentItem[]): Record<Filter, number> => {
 
 export interface DraftInput {
   comp: string;
-  /** 止めている絵の時刻（秒）。 */
+  /** 止めているフレームの時刻（秒）。 */
   time: number;
   text: string;
   /** 範囲の始めと終わり（秒）。終わりがまだなら時刻のコメントにする。 */
@@ -59,10 +59,15 @@ export const nextStates = (state: CommentState): { label: string; to: Exclude<Co
         { label: "Won't fix", to: "wontfix" },
       ];
 
-/** SSE の `comment`（`{ id, state }`）を一覧に当てる。知らない ID なら null（読み直す合図）。 */
-export const applyCommentEvent = (items: CommentItem[], event: unknown): CommentItem[] | null => {
-  const e = event as { id?: string; state?: CommentState } | null;
-  if (!e?.id || !e.state) return null;
-  if (!items.some((c) => c.id === e.id)) return null;
-  return items.map((c) => (c.id === e.id ? { ...c, state: e.state as CommentState } : c));
+/**
+ * SSE の `comment`（`{ id, state }`）のコメントの ID。読めなければ null。
+ * 返信でも同じ通知が来て `state` は変わらないので、中身は通知から作らず 1 件を読み直す。
+ */
+export const commentEventId = (event: unknown): string | null => {
+  const id = (event as { id?: unknown } | null)?.id;
+  return typeof id === "string" && id !== "" ? id : null;
 };
+
+/** 読み直したコメントを一覧に入れる。知っている ID は置き換え、新しいものは末尾（書いた順）に足す。 */
+export const upsertComment = (items: CommentItem[], next: CommentItem): CommentItem[] =>
+  items.some((c) => c.id === next.id) ? items.map((c) => (c.id === next.id ? next : c)) : [...items, next];

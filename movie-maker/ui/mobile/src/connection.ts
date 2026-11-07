@@ -34,7 +34,7 @@ export interface Connection {
   start: () => Promise<void>;
   /** SSE の `comment`、`proposal` を受けるたびに `fn` を呼ぶ。中身は JSON を読んだ値で、読めなければ null。 */
   onEvent: (type: EventType, fn: (data: unknown) => void) => () => void;
-  /** 画面から見た最後の版。操作の `base_version` に使う。 */
+  /** 画面から見た最後のバージョン。操作の `base_version` に使う。 */
   version: () => number;
 }
 
@@ -70,7 +70,7 @@ const createEventHub = () => {
 const forwardEvents = (es: EventSourceLike, hub: ReturnType<typeof createEventHub>): void =>
   FORWARD_EVENTS.forEach((t) => es.addEventListener(t, (ev) => hub.emit(t, parseData(ev.data))));
 
-/** 母艦との接続の状態を持つ。SSE の切断と圏外は `offline`、401 は `unpaired`。 */
+/** PC との接続の状態を持つ。SSE の切断と圏外は `offline`、401 は `unpaired`。 */
 export const createConnection = (deps: ConnectionDeps): Connection => {
   const setTimer = deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
   let snap: ConnectionSnapshot = { state: "checking", project: null };

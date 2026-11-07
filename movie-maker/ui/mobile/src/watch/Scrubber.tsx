@@ -17,7 +17,7 @@ export interface ScrubberProps {
   onSeek: (seconds: number) => void;
 }
 
-/** カットの境とコメントの印の付いたスクラブの棒。押して引くとシークする。 */
+/** カットの境とコメントのマーカーの付いたスクラブの棒。押して引くとシークする。 */
 export const Scrubber = ({ time, duration, cuts, comments, onSeek }: ScrubberProps) => {
   const bar = useRef<HTMLDivElement>(null);
   const seekTo = (e: PointerEvent): void => {

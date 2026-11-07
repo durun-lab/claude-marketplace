@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { CommentItem } from "../api/types.ts";
-import { applyCommentEvent, buildDraft, countByFilter, DEFAULT_FILTERS, nextStates, visibleComments } from "./commentsView.ts";
+import { buildDraft, commentEventId, countByFilter, DEFAULT_FILTERS, nextStates, upsertComment, visibleComments } from "./commentsView.ts";
 import { composeReducer, emptyCompose } from "./compose.ts";
 import { chooseEngine } from "./hls.ts";
 import { fractionOf, markFractions, timeAt } from "./scrub.ts";
@@ -36,10 +36,13 @@ describe("コメントの一覧", () => {
     expect(nextStates("fresh").map((s) => s.to)).toEqual(["done", "wontfix"]);
   });
 
-  it("SSE の comment は知っている ID の状態を直し、知らない ID は読み直しの合図（null）にする", () => {
-    expect(applyCommentEvent(items, { id: "a", state: "done" })?.find((c) => c.id === "a")?.state).toBe("done");
-    expect(applyCommentEvent(items, { id: "zz", state: "done" })).toBeNull();
-    expect(applyCommentEvent(items, null)).toBeNull();
+  it("SSE の comment は ID だけを読み、読み直したコメントで置き換えるか末尾に足す", () => {
+    expect(commentEventId({ id: "a", state: "done" })).toBe("a");
+    expect(commentEventId(null)).toBeNull();
+    expect(commentEventId({ id: 3 })).toBeNull();
+    const next = { ...comment("a", "done", 1), text: "edited" };
+    expect(upsertComment(items, next).find((c) => c.id === "a")?.text).toBe("edited");
+    expect(upsertComment(items, comment("zz", "open", 0)).at(-1)?.id).toBe("zz");
   });
 
   it("時刻と範囲の表記", () => {
@@ -56,7 +59,7 @@ describe("送信する本文", () => {
     expect(buildDraft({ ...base, text: "  " })).toBeNull();
   });
 
-  it("描き込みだけでも送れる。時刻は止めている絵", () => {
+  it("描き込みだけでも送れる。時刻は止めているフレーム", () => {
     const shapes = [rectShape([0.1, 0.1], [0.5, 0.5])];
     expect(buildDraft({ ...base, text: "", shapes })).toEqual({ comp: "c1", drawing: shapes, at: { num: 4500, den: 1000 } });
   });

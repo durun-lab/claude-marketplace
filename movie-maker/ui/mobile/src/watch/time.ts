@@ -21,7 +21,7 @@ export const mmss = (seconds: number): string => {
   return `${Math.floor(whole / SECONDS_PER_MINUTE)}:${s}`;
 };
 
-/** コメントの頭の時刻（秒）。範囲なら始め。 */
+/** コメントの先頭の時刻（秒）。範囲なら始め。 */
 export const commentStart = (c: CommentItem): number => {
   if (c.range) return toSeconds(c.range.in);
   return c.at ? toSeconds(c.at) : 0;

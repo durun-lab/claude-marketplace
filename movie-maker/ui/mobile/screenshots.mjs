@@ -1,5 +1,5 @@
 // dist/ を /m/ で配り、iPhone（WebKit）と Android（Chromium）の端末の設定でスクリーンショットを撮る。
-// 偽の母艦のデモ（demo.html）で画面を撮り、index.html では Service Worker とマニフェストが働くことを確かめる。
+// 偽の PC のデモ（demo.html）で画面を撮り、index.html では Service Worker とマニフェストが働くことを確かめる。
 // playwright は repo の依存にせず、PLAYWRIGHT_DIR（playwright を入れた場所）から読む。
 // 使い方: pnpm build && PLAYWRIGHT_DIR=/d/dev/pw node screenshots.mjs
 import { createReadStream } from "node:fs";
@@ -17,7 +17,7 @@ const DIST = fileURLToPath(new URL("./dist/", import.meta.url));
 const OUT = fileURLToPath(new URL("./screenshots/", import.meta.url));
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".webmanifest": "application/manifest+json" };
 
-// 母艦の映像の配信の偽物。HLS と提案の短い動画は demo/media の実物、コマは前後で色の違う SVG。
+// PC の映像の配信の偽物。HLS と提案の短い動画は demo/media の実物、フレームは前後で色の違う SVG。
 const MEDIA = fileURLToPath(new URL("./demo/media/", import.meta.url));
 const MEDIA_TYPES = { ".m3u8": "application/vnd.apple.mpegurl", ".m4s": "video/iso.segment", ".mp4": "video/mp4" };
 const frameSvg = (query) => {

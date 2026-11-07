@@ -4,7 +4,10 @@ import type { Proposal } from "./api.ts";
 export const sortProposals = (items: Proposal[]): Proposal[] =>
   [...items].sort((a, b) => b.at_ms - a.at_ms || b.id - a.id);
 
-/** 前後のコマを見る時刻（秒）。触る範囲の最初の始め。範囲が無ければ 0。 */
+/**
+ * 前後のフレームを見る時刻（秒）。触る範囲の最初の始め。範囲が無ければ 0。
+ * 範囲はシーケンスの時間軸で、シーケンスのレイヤーがコンポジションの 0 秒から始まるときだけコンポジションの時刻と一致する。
+ */
 export const frameTime = (p: Proposal): number => p.scope.sequences[0]?.start ?? 0;
 
 /** 承認に渡す操作の番号。全部を選んでいれば null（提案の全体）。 */

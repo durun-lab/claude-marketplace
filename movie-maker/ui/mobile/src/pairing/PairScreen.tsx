@@ -12,7 +12,7 @@ export const normalizeCode = (raw: string): string =>
 /** QR の URL に入った符号（`?code=`）を読む。 */
 export const codeFromSearch = (search: string): string => normalizeCode(new URLSearchParams(search).get("code") ?? "");
 
-/** 端末の名前の初期値。母艦の端末の一覧で見分けるための名前。 */
+/** 端末の名前の初期値。PC の端末の一覧で見分けるための名前。 */
 export const guessDeviceName = (ua: string): string => {
   if (/iPhone/.test(ua)) return "iPhone";
   if (/iPad/.test(ua)) return "iPad";

@@ -1,4 +1,4 @@
-import { describeScope, relativeTime } from "../../../panels/review/src/model.ts";
+import { describeScope, relativeTime } from "@mm/review/src/model.ts";
 import type { Proposal } from "./api.ts";
 import { stateLabel } from "./view.ts";
 

@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { App } from "./App.tsx";
 import { createController } from "./controller.ts";
 import { MOCK_PAIR_CODE, createMockServer } from "./mock/mockServer.ts";
+import { createMemoryStore } from "./outbox/store.ts";
 import { codeFromSearch, guessDeviceName, normalizeCode } from "./pairing/PairScreen.tsx";
 import "./testing/stubMedia.ts";
 
@@ -18,11 +19,10 @@ afterEach(() => render(null, host));
 
 const setup = (init: { paired: boolean; online: boolean }, search = "") => {
   const server = createMockServer(init);
-  const memory = new Map<string, string>();
   const controller = createController({
     ...server.platform,
     onNetworkBack: () => undefined,
-    storage: { getItem: (k) => memory.get(k) ?? null, setItem: (k, v) => void memory.set(k, v) },
+    outboxStore: createMemoryStore(),
   });
   const mount = () => act(() => render(<App controller={controller} search={search} userAgent="iPhone" />, host));
   return { server, controller, mount };
@@ -60,7 +60,7 @@ describe("App", () => {
     expect(host.querySelector("[role=tab]")).not.toBeNull();
   });
 
-  it("間違った符号は母艦の文言を出し、登録の画面に留まる", async () => {
+  it("間違った符号は PC の文言を出し、登録の画面に留まる", async () => {
     const { controller, mount } = setup({ paired: false, online: true });
     await mount();
     await act(() => controller.connection.start());
@@ -74,7 +74,7 @@ describe("App", () => {
 });
 
 describe("App のコメント", () => {
-  it("圏外で書いたコメントは送信待ちに入り、再接続で母艦に届く", async () => {
+  it("圏外で書いたコメントは送信待ちに入り、再接続で PC に届く", async () => {
     const { controller, server, mount } = setup({ paired: true, online: true });
     await mount();
     await act(() => controller.connection.start());

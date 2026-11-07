@@ -25,7 +25,7 @@ const DrawTools = ({ state, dispatch }: { state: Compose; dispatch: (a: ComposeA
 
 export interface ComposeSheetProps {
   state: Compose;
-  /** 止めている絵の時刻（秒）。 */
+  /** 止めているフレームの時刻（秒）。 */
   time: number;
   canSend: boolean;
   dispatch: (a: ComposeAction) => void;
@@ -33,7 +33,7 @@ export interface ComposeSheetProps {
   onSend: () => void;
 }
 
-/** 止めた絵に対するコメントの入力。文字は OS の音声入力でも入る。下の 3 分の 1 に送信を置く。 */
+/** 止めたフレームに対するコメントの入力。文字は OS の音声入力でも入る。下の 3 分の 1 に送信を置く。 */
 export const ComposeSheet = ({ state, time, canSend, dispatch, onCancel, onSend }: ComposeSheetProps) => (
   <form
     class="sheet compose"

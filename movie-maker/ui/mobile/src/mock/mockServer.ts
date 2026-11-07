@@ -4,7 +4,7 @@ import type { CommentItem, CommentState, ProjectInfo } from "../api/types.ts";
 import type { Proposal } from "../proposals/api.ts";
 import { MOBILE_HEADER } from "../api/http.ts";
 
-/** デモとテストの母艦。母艦の API が出来るまで、12-mobile.md の「HTTP の形」の応答を手元で返す。 */
+/** デモとテストの偽の PC。人の待ち受けの API が出来るまで、12-mobile.md の「HTTP の形」の応答を手元で返す。 */
 export const MOCK_PAIR_CODE = "ABCD2345";
 
 const HTTP_OK = 200;
@@ -20,9 +20,9 @@ export interface MockServer {
   project: ProjectInfo;
   comments: CommentItem[];
   proposals: Proposal[];
-  /** 母艦が受けた書き込みの要求（パスと本文）。 */
+  /** PC が受けた書き込みの要求（パスと本文）。 */
   writes: { path: string; body: unknown; header: string | null }[];
-  /** 母艦から SSE のイベントを流す。 */
+  /** PC から SSE のイベントを流す。 */
   emit: (type: string, data: unknown) => void;
 }
 
@@ -97,6 +97,11 @@ const commentAction = (server: MockServer, req: Request1, id: string, action: st
   return json(HTTP_OK, comment);
 };
 
+const oneComment = (server: MockServer, id: string): Response => {
+  const comment = server.comments.find((c) => c.id === id);
+  return comment ? json(HTTP_OK, comment) : errorBody(HTTP_NOT_FOUND, "not_found", id);
+};
+
 const decide = (server: MockServer, id: number, action: string, body: { ops?: number[] }): Response => {
   const p = server.proposals.find((x) => x.id === id);
   if (!p) return errorBody(HTTP_NOT_FOUND, "not_found", String(id));
@@ -115,13 +120,16 @@ const undoLast = (server: MockServer): Response => {
 };
 
 const COMMENT_PATH = /^\/m\/api\/comments\/([^/]+)\/(replies|state)$/;
-const PROPOSAL_PATH = /^\/m\/api\/proposals\/(\d+)\/(approve|reject|reopen)$/;
+const ONE_COMMENT = /^\/m\/api\/comments\/([^/]+)$/;
+const PROPOSAL_PATH =/^\/m\/api\/proposals\/(\d+)\/(approve|reject|reopen)$/;
 
 const api = (server: MockServer, req: Request1): Response => {
   const { path, method } = req;
   if (path === "/m/api/project") return json(HTTP_OK, server.project);
   if (path === "/m/api/comments" && method === "GET") return json(HTTP_OK, { comments: server.comments });
   if (path === "/m/api/comments") return createComment(server, req.body as Record<string, unknown>);
+  const one = method === "GET" ? ONE_COMMENT.exec(path) : null;
+  if (one) return oneComment(server, decodeURIComponent(one[1] ?? ""));
   const c = COMMENT_PATH.exec(path);
   if (c) return commentAction(server, req, decodeURIComponent(c[1] ?? ""), c[2] ?? "");
   if (path === "/m/api/proposals") return json(HTTP_OK, { proposals: server.proposals });

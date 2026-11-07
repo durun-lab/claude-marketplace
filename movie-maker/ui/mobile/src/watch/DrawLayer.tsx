@@ -20,7 +20,7 @@ export interface Editing {
 }
 
 /**
- * 止めた絵の上に重ねる描き込みの面。座標は 0〜1 に正規化し、絵の大きさが変わっても位置が合う。
+ * 止めたフレームの上に重ねる描き込みの面。座標は 0〜1 に正規化し、表示の大きさが変わっても位置が合う。
  * `editing` を渡すと指で描ける。渡さなければ見るだけで、タッチは下の映像へ通す。
  */
 export const DrawLayer = ({ shapes, editing }: { shapes: CommentShape[]; editing?: Editing }) => {

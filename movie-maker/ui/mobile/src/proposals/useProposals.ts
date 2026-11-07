@@ -28,7 +28,7 @@ const useProposalList = ({ api, connection }: Controller) => {
 
 /**
  * 提案の一覧と、決める操作。確認の画面は出さず、決めた直後の 5 秒だけ `Undo` を出す。
- * 承認の `Undo` は全体の直前のときだけ効き、効かなければ母艦の理由を出す。
+ * 承認の `Undo` は全体の直前のときだけ効き、効かなければ PC の理由を出す。
  */
 export const useProposals = (controller: Controller) => {
   const { api } = controller;

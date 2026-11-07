@@ -2,20 +2,20 @@ import { render, type ComponentChild } from "preact";
 import { act } from "preact/test-utils";
 import { createController } from "../controller.ts";
 import { createMockServer } from "../mock/mockServer.ts";
+import { createMemoryStore } from "../outbox/store.ts";
 import "./stubMedia.ts";
 
 type MockInit = Parameters<typeof createMockServer>[0];
 
-/** 画面のテストの土台。偽の母艦につないだ controller と、描画・操作の関数。 */
+/** 画面のテストの土台。偽の PC につないだ controller と、描画・操作の関数。 */
 export const createHarness = (init: Partial<MockInit> = {}) => {
   const host = document.createElement("div");
   document.body.append(host);
   const server = createMockServer({ paired: true, online: true, ...init });
-  const memory = new Map<string, string>();
   const controller = createController({
     ...server.platform,
     onNetworkBack: () => undefined,
-    storage: { getItem: (k) => memory.get(k) ?? null, setItem: (k, v) => void memory.set(k, v) },
+    outboxStore: createMemoryStore(),
   });
   const settle = (): Promise<void> => act(() => new Promise<void>((r) => setImmediate(r)));
   const buttons = (): HTMLElement[] => [...host.querySelectorAll<HTMLElement>("button")];
@@ -35,7 +35,7 @@ export const createHarness = (init: Partial<MockInit> = {}) => {
       render(null, host);
       host.remove();
     },
-    /** 文言の頭が合うボタンを押す。 */
+    /** 文言の先頭が合うボタンを押す。 */
     press: async (text: string): Promise<void> => {
       const button = buttons().find((b) => b.textContent?.trim().startsWith(text)) ?? buttons().find((b) => b.textContent?.includes(text));
       if (!button) throw new Error(`button not found: ${text}`);

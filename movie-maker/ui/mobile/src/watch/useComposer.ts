@@ -7,11 +7,11 @@ import type { Editing } from "./DrawLayer.tsx";
 
 interface Source {
   comp: string;
-  /** 止めている絵の時刻（秒）。 */
+  /** 止めているフレームの時刻（秒）。 */
   time: number;
 }
 
-/** コメントを書く流れ。開く、描く、送る（送信待ちの列へ）、閉じる。 */
+/** コメントを書く流れ。開く、描く、送る（送信待ちのキューへ）、閉じる。 */
 export const useComposer = (controller: Controller, { comp, time }: Source) => {
   const [state, dispatch] = useReducer(composeReducer, undefined, emptyCompose);
   const [composing, setComposing] = useState(false);

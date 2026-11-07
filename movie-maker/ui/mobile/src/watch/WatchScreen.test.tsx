@@ -24,14 +24,26 @@ describe("Watch の一覧", () => {
 
   it("SSE の comment で状態が変わると一覧に反映する", async () => {
     await open();
+    const k2 = h.server.comments.find((c) => c.id === "k2");
+    if (k2) k2.state = "done";
     h.server.emit("comment", { id: "k2", state: "done" });
     await h.settle();
     expect(h.texts(".item .state")).toEqual(["fresh", "open"]);
   });
+
+  it("SSE の comment で、状態の変わらない返信もそのコメントを読み直して出す", async () => {
+    await open();
+    const k3 = h.server.comments.find((c) => c.id === "k3");
+    k3?.replies.push({ id: "r9", author: { kind: "mcp", name: "claude" }, text: "Done in proposal 3.", created_ms: 1 });
+    h.server.emit("comment", { id: "k3", state: k3?.state });
+    await h.settle();
+    await h.press("0:05");
+    expect(h.host.querySelector(".thread")?.textContent).toContain("Done in proposal 3.");
+  });
 });
 
 describe("スレッド", () => {
-  it("開くと返信が見え、返信と状態を母艦に送る", async () => {
+  it("開くと返信が見え、返信と状態を PC に送る", async () => {
     await open();
     await h.press("0:05");
     expect(h.host.querySelector(".thread")?.textContent).toContain("Proposal 2 stretches the zoom");
@@ -54,7 +66,7 @@ describe("スレッド", () => {
 });
 
 describe("コメントを書く", () => {
-  it("止めた絵に文字と範囲を付けて送る。送信待ちの列を通り、client_id が付く", async () => {
+  it("止めたフレームに文字と範囲を付けて送る。送信待ちのキューを通り、client_id が付く", async () => {
     await open({ comments: [] });
     await h.press("Comment");
     await h.type("textarea", "Cut here");

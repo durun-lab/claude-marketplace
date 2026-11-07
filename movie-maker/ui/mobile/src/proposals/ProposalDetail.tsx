@@ -1,11 +1,13 @@
 import { useState } from "preact/hooks";
-import { approveLabel, describeOp, describeScope } from "../../../panels/review/src/model.ts";
+import { approveLabel, describeOp, describeScope } from "@mm/review/src/model.ts";
 import type { Proposal } from "./api.ts";
 import { FrameCompare } from "./FrameCompare.tsx";
 import { allOps, approvalOps, canApprove } from "./view.ts";
 
 export interface ProposalDetailProps {
   proposal: Proposal;
+  /** 前後のフレームを描くコンポジション（Watch と同じ）。 */
+  comp?: string;
   onBack: () => void;
   onApprove: (ops: number[] | null) => Promise<boolean>;
   onReject: () => Promise<boolean>;
@@ -43,7 +45,7 @@ const Dock = ({ p, selected, props }: { p: Proposal; selected: Set<number>; prop
   );
 };
 
-/** 提案 1 件。前後のコマ、操作の一覧（選べば一部だけ承認）、下の 3 分の 1 に `Reject` と `Approve`。 */
+/** 提案 1 件。前後のフレーム、操作の一覧（選べば一部だけ承認）、下の 3 分の 1 に `Reject` と `Approve`。 */
 export const ProposalDetail = (props: ProposalDetailProps) => {
   const p = props.proposal;
   const [selected, setSelected] = useState(() => allOps(p));
@@ -62,7 +64,7 @@ export const ProposalDetail = (props: ProposalDetailProps) => {
         </button>
         <b>{p.name}</b>
       </header>
-      <FrameCompare proposal={p} ops={approvalOps(p, selected)} />
+      <FrameCompare proposal={p} ops={approvalOps(p, selected)} comp={props.comp} />
       <div class="scroll">
         {(p.conflict?.length ?? 0) > 0 && <p class="error">Overlaps later edits: {p.conflict?.join(", ")}</p>}
         <ul class="ops">

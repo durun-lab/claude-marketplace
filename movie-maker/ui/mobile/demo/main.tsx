@@ -1,10 +1,11 @@
-// 偽の母艦で PWA を動かすページ。スクリーンショットと手元の確認用で、母艦には載せない。
+// 偽の PC で PWA を動かすページ。スクリーンショットと手元の確認に使う。
 // ?state=unpaired|online|queued（圏外で送信待ちが 2 件）、?tab=Watch|Story|Proposals、?code=ABCD2345
 // ?view=compose|thread|detail で、Watch の書く欄・スレッド、Proposals の 1 件の画面を開いた状態にする。
 import { render } from "preact";
 import { App, TABS, type Tab } from "../src/App.tsx";
 import { createController } from "../src/controller.ts";
 import { createMockServer } from "../src/mock/mockServer.ts";
+import { createMemoryStore } from "../src/outbox/store.ts";
 import { mountPoint } from "../src/root.ts";
 import { demoComments, demoProposals } from "./fixtures.ts";
 import "../src/app.css";
@@ -13,7 +14,6 @@ const params = new URLSearchParams(location.search);
 const state = params.get("state") ?? "online";
 const tab = TABS.find((t): t is Tab => t === params.get("tab"));
 
-const memory = new Map<string, string>();
 const server = createMockServer({
   paired: state !== "unpaired",
   online: state !== "queued",
@@ -24,7 +24,7 @@ const server = createMockServer({
 const controller = createController({
   ...server.platform,
   onNetworkBack: () => undefined,
-  storage: { getItem: (k) => memory.get(k) ?? null, setItem: (k, v) => void memory.set(k, v) },
+  outboxStore: createMemoryStore(),
 });
 if (state === "queued") {
   controller.outbox.add({ comp: "c1", at: { num: 4200, den: 1000 }, text: "Check the color of the sky here." });

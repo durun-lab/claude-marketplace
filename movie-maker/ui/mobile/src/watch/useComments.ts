@@ -2,15 +2,12 @@ import { useCallback, useEffect, useState } from "preact/hooks";
 import type { CommentItem, CommentState } from "../api/types.ts";
 import type { Controller } from "../controller.ts";
 import { useStore } from "../hooks.ts";
-import { applyCommentEvent } from "./commentsView.ts";
-import { listComments, replyToComment, setCommentState } from "./commentsApi.ts";
-
-const replaceItem = (items: CommentItem[], next: CommentItem): CommentItem[] =>
-  items.map((c) => (c.id === next.id ? next : c));
+import { commentEventId, upsertComment } from "./commentsView.ts";
+import { getComment, listComments, replyToComment, setCommentState } from "./commentsApi.ts";
 
 /**
- * 母艦のコメントの一覧。つながったとき、送信待ちが減ったとき、SSE の `comment` で更新する。
- * 返信と状態は、母艦が返した最新のコメントで置き換える。
+ * PC のコメントの一覧。つながったとき、送信待ちが減ったときに全体を、SSE の `comment` でその 1 件を読み直す。
+ * 返信と状態は、PC が返した最新のコメントで置き換える。
  */
 export const useComments = (controller: Controller) => {
   const { api, connection, outbox } = controller;
@@ -27,19 +24,17 @@ export const useComments = (controller: Controller) => {
   useEffect(
     () =>
       connection.onEvent("comment", (event) => {
-        setItems((now) => {
-          const patched = applyCommentEvent(now, event);
-          if (!patched) load();
-          return patched ?? now;
-        });
+        const id = commentEventId(event);
+        if (!id) return load();
+        getComment(api, id).then((c) => setItems((now) => upsertComment(now, c)), load);
       }),
-    [connection, load],
+    [api, connection, load],
   );
   const run = useCallback(async (call: () => Promise<CommentItem>): Promise<void> => {
     try {
       const next = await call();
       setError(null);
-      setItems((now) => replaceItem(now, next));
+      setItems((now) => upsertComment(now, next));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }

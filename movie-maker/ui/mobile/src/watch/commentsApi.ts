@@ -7,6 +7,9 @@ const COMMENTS = `${API_ROOT}/comments`;
 export const listComments = async (api: Api): Promise<CommentItem[]> =>
   (await api.get<{ comments: CommentItem[] }>(COMMENTS)).comments;
 
+/** コメント 1 件（返信を含む）。 */
+export const getComment = (api: Api, id: string): Promise<CommentItem> => api.get(`${COMMENTS}/${encodeURIComponent(id)}`);
+
 /** スレッドに返信する。成功なら更新後のコメント。 */
 export const replyToComment = (api: Api, id: string, text: string): Promise<CommentItem> =>
   api.post(`${COMMENTS}/${encodeURIComponent(id)}/replies`, { text });

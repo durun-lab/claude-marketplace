@@ -24,7 +24,7 @@ export interface AppProps {
   initialTab?: Tab;
 }
 
-/** 下のタブ 4 つ、上の接続の表示、未登録なら登録の画面。 */
+/** 下のタブ 3 つ、上の接続の表示、未登録なら登録の画面。 */
 export const App = ({ controller, search = "", userAgent = "", initialTab = "Watch", attach }: AppProps) => {
   const { connection } = controller;
   const snap = useStore(connection.subscribe, connection.get);

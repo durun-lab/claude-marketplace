@@ -34,11 +34,11 @@ describe("Proposals の一覧", () => {
 });
 
 describe("提案の 1 件", () => {
-  it("前後のコマは時刻と提案の ID で引き、押すと切り替わる。Play は短い動画に替える", async () => {
+  it("前後のフレームは時刻と提案の ID で引き、押すと切り替わる。Play は短い動画に替える", async () => {
     await open();
     await h.press("Slow the zoom");
     const imgs = [...h.host.querySelectorAll("img")].map((i) => i.getAttribute("src"));
-    expect(imgs).toEqual([frameUrl(4), frameUrl(4, { proposal: 2 })]);
+    expect(imgs).toEqual([frameUrl(4, { comp: "c1" }), frameUrl(4, { comp: "c1", proposal: 2 })]);
     expect(h.host.querySelector("img.show")?.getAttribute("alt")).toBe("After");
     await h.press("Before");
     expect(h.host.querySelector("img.show")?.getAttribute("alt")).toBe("Before");

@@ -11,7 +11,7 @@ export interface Support {
 
 /**
  * 再生の方法を選ぶ。iOS の Safari は HLS をそのまま再生する（MSE は iPhone に無い）。
- * Android の Chrome は直接の再生の対応が版でまちまちなので、MSE の上の hls.js に揃える。
+ * Android の Chrome は直接の再生の対応がバージョンでまちまちなので、MSE の上の hls.js に揃える。
  */
 export const chooseEngine = ({ nativeHls, mse, ios }: Support): Engine => {
   if (ios && nativeHls) return "native";
