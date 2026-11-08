@@ -5,11 +5,11 @@ import { test } from 'node:test';
 import { tempDir } from './tmp.ts';
 
 // 読んだ PR を覚えるファイルは、実際の状態に触れないよう一時ディレクトリに置いてから読み込む。
-// 古くなったバッジの PR を、マージ済みと開いているものの 2 つ覚えさせておく。
+// 古くなったバッジの PR を、マージ済みと開いているものを覚えさせておく。
 const dataDir = tempDir('durun-dashboard-pr-');
 process.env.DURUN_DASHBOARD_DATA_DIR = dataDir;
 const pr = (n: number, state: string) => ({ value: { url: `https://github.com/o/r/pull/${n}`, number: n, title: 't', state }, at: Date.now() - 60 * 60_000 });
-fs.writeFileSync(path.join(dataDir, 'cache.json'), JSON.stringify({ 'pr-badge:https://github.com/o/r/pull/1': pr(1, 'MERGED'), 'pr-badge:https://github.com/o/r/pull/2': pr(2, 'OPEN') }));
+fs.writeFileSync(path.join(dataDir, 'cache.json'), JSON.stringify({ 'pr-badge:https://github.com/o/r/pull/1': pr(1, 'MERGED'), 'pr-badge:https://github.com/o/r/pull/2': pr(2, 'OPEN'), 'pr-badge:https://github.com/o/r/pull/3': pr(3, 'OPEN') }));
 const { badgePr, prPending, refreshPr } = await import('../server/integrations.ts');
 const { refreshing } = await import('../server/cache.ts');
 
@@ -30,4 +30,12 @@ test('badgePr は、古くなった PR を裏で読み直すが、マージ済�
   assert.equal(refreshing('pr-badge:https://github.com/o/r/pull/2'), false);
   assert.equal(badgePr('https://github.com/o/r/pull/2')?.state, 'OPEN');
   assert.equal(refreshing('pr-badge:https://github.com/o/r/pull/2'), true);
+});
+
+test('アーカイブしていないセッションの PR は詳細も裏で先に読み、keep を渡した PR は読まない', (t) => {
+  t.mock.method(console, 'error', () => {});
+  badgePr('https://github.com/o/r/pull/3', true);
+  assert.equal(refreshing('pr-v2:https://github.com/o/r/pull/3'), false);
+  badgePr('https://github.com/o/r/pull/3');
+  assert.equal(refreshing('pr-v2:https://github.com/o/r/pull/3'), true);
 });
