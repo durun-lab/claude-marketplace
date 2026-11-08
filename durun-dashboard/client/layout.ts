@@ -166,3 +166,10 @@ const migrate = ({ id, x, y, w, h, settings = {} }: SavedBefore): Placement => {
 
 /** 保存していた配置を読む。前の形のものは、升目の数を 2 倍にし、「タブ」のウィジェットを、選んでいた種類を重ねた枠に直す。 */
 export const fromSaved = (saved: (Placement | SavedBefore)[]): Layout => saved.map((p) => ('tabs' in p ? p : migrate(p)));
+
+/** names に無い名前にする。base が使われていれば「base (2)」「base (3)」と番号を付ける。 */
+export const uniqueName = (names: string[], base: string): string => {
+  let name = base;
+  for (let n = 2; names.includes(name); n++) name = `${base} (${n})`;
+  return name;
+};

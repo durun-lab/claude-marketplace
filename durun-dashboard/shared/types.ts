@@ -549,7 +549,15 @@ export type Snapshot = {
   assets: { js: number; css: number };
   /** ゴミ箱に入っているセッション。前に受け取ったスナップショットには無いことがある。 */
   trash?: TrashItem[];
+  /** ホームのダッシュボードの一覧と配置。まだ一度も保存していなければ無い。前に受け取ったスナップショットにも無いことがある。 */
+  dashboards?: Dashboards;
 };
+
+export type DashboardEntry = { id: string; name: string };
+/** ホームのダッシュボード。layouts は id ごとの配置で、編集していないダッシュボードの分は無く、初期配置で開く。 */
+export type Dashboards = { list: DashboardEntry[]; layouts: Record<string, unknown[]> };
+/** まだ一度も保存していないときの一覧。最初のダッシュボードの id は空文字にする。 */
+export const FIRST_DASHBOARDS: Dashboards = { list: [{ id: '', name: 'ダッシュボード' }], layouts: {} };
 
 /**
  * アーカイブしたのに、作業ツリーに人間の手当てが要るものが残り、Claude Code の一覧から消せなかったセッション。
