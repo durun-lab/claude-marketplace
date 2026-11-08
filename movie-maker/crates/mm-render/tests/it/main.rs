@@ -2,6 +2,7 @@
 
 mod audio_effects;
 mod blend;
+mod cache_carry;
 mod cache_keys;
 mod common;
 mod contract;

@@ -5,10 +5,9 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
-use std::time::SystemTime;
 
 use mm_color_api::{ColorTransform, TransformProgram};
-use mm_node_api::{FrameCx, FrameRef, InputSchema, InputSpec, NodeKind, Traits};
+use mm_node_api::{file_digest, FrameCx, FrameRef, InputSchema, InputSpec, NodeKind, Traits};
 use mm_types::{
     transfer, AssetId, ColorSpace, MmError, ParamSchema, ParamSpec, ParamType, ParamValue, Params,
     Result,
@@ -83,10 +82,10 @@ impl Encoding {
     }
 }
 
-/// 読んだ LUT と、読んだ時のファイルの更新時刻。
+/// 読んだ LUT と、読んだ時のファイルの中身のハッシュ。
 struct Loaded {
     path: PathBuf,
-    modified: Option<SystemTime>,
+    digest: String,
     lut: Arc<Lut>,
 }
 
@@ -104,24 +103,26 @@ impl std::fmt::Debug for ColorLutKind {
 }
 
 impl ColorLutKind {
-    /// `path` の LUT。更新時刻が同じなら読み直さない。
+    /// `path` の LUT。中身のハッシュが同じなら読み直さない。種類の指紋と同じ値で覚え、フレームのキャッシュの
+    /// キーと違う中身の LUT で描かない（更新時刻の刻みの中の書き換えも見分ける）。
     fn load(&self, path: &Path) -> Result<Arc<Lut>> {
         let path = path.to_path_buf();
-        let modified = std::fs::metadata(&path)?.modified().ok();
+        let digest = file_digest(&path)
+            .ok_or_else(|| MmError::NotFound(format!("LUT {} を読めない", path.display())))?;
         let mut guard = self
             .loaded
             .lock()
             .map_err(|_| MmError::Internal("LUT のキャッシュが壊れた".into()))?;
         if let Some(l) = guard
             .as_ref()
-            .filter(|l| l.path == path && l.modified == modified)
+            .filter(|l| l.path == path && l.digest == digest)
         {
             return Ok(l.lut.clone());
         }
         let lut = Arc::new(Lut::parse_cube(&std::fs::read_to_string(&path)?)?);
         *guard = Some(Loaded {
             path,
-            modified,
+            digest,
             lut: lut.clone(),
         });
         Ok(lut)
@@ -209,13 +210,20 @@ impl NodeKind for ColorLutKind {
         Traits::PIXEL
     }
 
-    /// 定義域の外の値を端の値に足して持ち越す作り方のバージョン。画素の作り方を変えたら上げ、キャッシュした画像を引かない。
+    /// 定義域の外の値を端の値に足して持ち越す作り方のバージョンと、LUT のファイルの中身のハッシュ。
+    /// 画素の作り方を変えたらバージョンを上げる。LUT は取り込んだ後に書き換えられうる（`contentHash` は取り込み時の値）。
     fn cache_fingerprint(
         &self,
-        _params: &Params,
-        _asset_path: &dyn Fn(&AssetId) -> Option<PathBuf>,
+        params: &Params,
+        asset_path: &dyn Fn(&AssetId) -> Option<PathBuf>,
     ) -> Option<String> {
-        Some(LUT_PIXEL_VERSION.into())
+        match lut_asset(params) {
+            Some(id) => Some(format!(
+                "{LUT_PIXEL_VERSION}|{}",
+                file_digest(&asset_path(id)?)?
+            )),
+            None => Some(LUT_PIXEL_VERSION.into()),
+        }
     }
 
     fn migrate(&self, old: serde_json::Value, from: u32) -> Result<Params> {
@@ -415,5 +423,46 @@ mod tests {
     fn 画素の作り方のバージョンをフレームのキャッシュの指紋に出す() {
         let fp = ColorLutKind::default().cache_fingerprint(&Params::new(), &|_| None);
         assert_eq!(fp.as_deref(), Some(LUT_PIXEL_VERSION));
+    }
+
+    #[test]
+    fn lut_のファイルを書き換えると指紋が変わり_読めなければキャッシュしない() {
+        let dir = std::env::temp_dir().join(format!("mm-color-lut-fp-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("一時フォルダー");
+        let path = dir.join("a.cube");
+        let mut params = Params::new();
+        params.set(LUT_PARAM, ParamValue::AssetRef(AssetId::new("lut")));
+        let kind = ColorLutKind::default();
+        let fp = |p: &Path| kind.cache_fingerprint(&params, &|_| Some(p.to_path_buf()));
+        std::fs::write(&path, "LUT_3D_SIZE 2\n").expect("書ける");
+        let first = fp(&path).expect("読める");
+        assert!(first.starts_with(LUT_PIXEL_VERSION));
+        std::fs::write(&path, "LUT_3D_SIZE 3\n").expect("書ける");
+        assert_ne!(fp(&path), Some(first), "中身が変われば別の指紋");
+        assert_eq!(fp(&dir.join("none.cube")), None);
+    }
+
+    #[test]
+    fn 更新時刻の刻みの中で書き換えた_lut_も読み直す() {
+        let dir = std::env::temp_dir().join(format!("mm-color-lut-load-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).expect("一時フォルダー");
+        let path = dir.join("same-time.cube");
+        // 2 回の書き込みが同じ刻みに入った形。更新の直後なので、中身のハッシュは読み直して作る。
+        let at = std::time::SystemTime::now();
+        let write = |domain: &str| {
+            let body = format!(
+                "LUT_3D_SIZE 2\nDOMAIN_MAX {domain}\n{}",
+                "0 0 0\n".repeat(8)
+            );
+            std::fs::write(&path, body).expect("書ける");
+            let file = std::fs::File::options().write(true).open(&path);
+            file.and_then(|f| f.set_modified(at))
+                .expect("更新時刻を戻せる");
+        };
+        let kind = ColorLutKind::default();
+        write("1 1 1");
+        assert_eq!(kind.load(&path).expect("読める").domain_max, [1.0; 3]);
+        write("2 2 2");
+        assert_eq!(kind.load(&path).expect("読める").domain_max, [2.0; 3]);
     }
 }

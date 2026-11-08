@@ -1,7 +1,9 @@
 //! 種類の振る舞い: 時刻からフレームへの写像、決定性、覚え、置き方、壊れた素材。
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
+use mm_node_api::NodeKind;
 use mm_nodes_lottie::LottieKind;
 use mm_types::{MmError, ParamValue, Params, RationalTime, RgbaImage, Size};
 
@@ -109,4 +111,50 @@ fn 壊れた_json_と無いファイルは誤りを返す() {
         SIZE,
     );
     assert!(missing.is_err());
+}
+
+#[test]
+fn 素材の_json_を書き換えると指紋が変わり_読めなければキャッシュしない() {
+    let dir = std::env::temp_dir().join(format!("mm-nodes-lottie-fp-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("一時フォルダー");
+    let path = dir.join("anim.json");
+    let json = std::fs::read_to_string(fixture("shapes.json")).expect("読める");
+    std::fs::write(&path, &json).expect("書ける");
+    let kind = LottieKind::default();
+    let p = params_for(&path);
+    let fp = || kind.cache_fingerprint(&p, &|id| Some(PathBuf::from(id.as_str())));
+    let first = fp().expect("読める");
+    assert_eq!(fp(), Some(first.clone()), "同じ中身なら同じ指紋");
+    std::fs::write(&path, json.replacen("\"fr\"", " \"fr\"", 1)).expect("書ける");
+    assert_ne!(fp(), Some(first), "中身が変われば別の指紋");
+    std::fs::remove_file(&path).expect("消せる");
+    assert_eq!(fp(), None, "読めない素材はキャッシュしない");
+    let empty = kind.cache_fingerprint(&Params::new(), &|_| None);
+    assert_eq!(empty, Some(String::new()), "素材が無ければ指紋も無い");
+}
+
+#[test]
+fn 更新時刻の刻みの中で書き換えた_json_も読み直して描く() {
+    let dir = std::env::temp_dir().join(format!("mm-nodes-lottie-tick-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("一時フォルダー");
+    let path = dir.join("tick.json");
+    let json = std::fs::read_to_string(fixture("shapes.json")).expect("読める");
+    // 2 回の書き込みが同じ刻みに入った形。大きさも同じにして、更新時刻と大きさでは見分けられなくする。
+    let at = std::time::SystemTime::now();
+    let write = |body: &str| {
+        std::fs::write(&path, body).expect("書ける");
+        let file = std::fs::File::options().write(true).open(&path);
+        file.and_then(|f| f.set_modified(at))
+            .expect("更新時刻を戻せる");
+    };
+    let kind = LottieKind::default();
+    let p = params_for(&path);
+    write(&json);
+    let before = render_at(&kind, &p, RationalTime::ZERO, SIZE).expect("描ける");
+    write(&json.replace(
+        r#""o": { "a": 0, "k": 100 }"#,
+        r#""o": { "a": 0, "k":  10 }"#,
+    ));
+    let after = render_at(&kind, &p, RationalTime::ZERO, SIZE).expect("描ける");
+    assert_ne!(*before, *after, "前の中身のアニメーションで描かない");
 }

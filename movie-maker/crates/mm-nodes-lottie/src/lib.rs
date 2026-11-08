@@ -13,7 +13,7 @@ use std::sync::{Mutex, PoisonError};
 use velato::Composition;
 use vello_cpu::kurbo::Affine;
 
-use mm_node_api::{Cost, FrameCx, FrameRef, NodeKind, Traits};
+use mm_node_api::{file_digest, Cost, FrameCx, FrameRef, NodeKind, Traits};
 use mm_types::{
     AssetId, MmError, ParamSchema, ParamSpec, ParamType, ParamValue, Params, Result, Size,
 };
@@ -129,6 +129,19 @@ impl NodeKind for LottieKind {
 
     fn decodes_asset(&self) -> bool {
         false
+    }
+
+    /// 素材の JSON の中身のハッシュ。素材は取り込んだ後に書き換えられうる（`contentHash` は取り込み時の値）。
+    /// 素材のファイルを読めなければ `None`（描けないのでキャッシュしない）。
+    fn cache_fingerprint(
+        &self,
+        params: &Params,
+        asset_path: &dyn Fn(&AssetId) -> Option<PathBuf>,
+    ) -> Option<String> {
+        match animation_asset(params) {
+            Some(id) => file_digest(&asset_path(id)?),
+            None => Some(String::new()),
+        }
     }
 
     fn migrate(&self, old: serde_json::Value, from: u32) -> Result<Params> {
