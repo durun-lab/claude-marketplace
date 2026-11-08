@@ -208,6 +208,46 @@ fn パラメータを変えたレイヤーだけ描き直す() {
 }
 
 #[test]
+fn 有効と無効を切り替えると描き直し_戻すと覚えた画像が出る() {
+    let Some(ctx) = gpu() else { return };
+    let mut f = fixture(&ctx, true, FrameCacheConfig::default());
+    let mut p = project(vec![comp(
+        "main",
+        vec![counting("a", 0.5), counting("b", 0.25)],
+    )]);
+    let on = render(&mut f, &p, 0);
+    assert_eq!(renders(&f), 2);
+    p.compositions[0].layers[1].enabled = false;
+    let off = render(&mut f, &p, 0);
+    assert_ne!(*on, *off, "無効にしたら古い絵が出てはいけない");
+    p.compositions[0].layers[1].enabled = true;
+    let back = render(&mut f, &p, 0);
+    assert_eq!(*on, *back);
+}
+
+#[test]
+fn 入れ子の中の無効のレイヤーは入れ子の画像を覚えるのを妨げない() {
+    let Some(ctx) = gpu() else { return };
+    let entries = |inner: Vec<Layer>| {
+        let mut f = fixture(&ctx, true, FrameCacheConfig::default());
+        let p = project(vec![
+            comp("main", vec![nested("n", "inner")]),
+            comp("inner", inner),
+        ]);
+        render(&mut f, &p, 0);
+        f.renderer.frame_cache_stats().entries
+    };
+    let mut unknown = counting("x", 0.0);
+    unknown.source = Node::new("missing", 1);
+    unknown.enabled = false;
+    assert_eq!(
+        entries(vec![counting("in", 0.5), unknown]),
+        entries(vec![counting("in", 0.5)]),
+        "種類を引けない無効のレイヤーがあっても入れ子の画像を覚える"
+    );
+}
+
+#[test]
 fn 触ったレイヤーに頼った画像だけ捨てる() {
     let Some(ctx) = gpu() else { return };
     let mut f = fixture(&ctx, true, FrameCacheConfig::default());
