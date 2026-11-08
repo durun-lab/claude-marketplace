@@ -3,9 +3,10 @@
 use crate::common;
 
 use common::{canon, project, quarters, secs};
-use mm_doc::{Cut, Layer, Node, Project, Sequence};
+use mm_doc::{Cut, Interpolation, Layer, Node, Project, Sequence, TimeKeyframe, TimeRemap};
 use mm_ops::*;
 use mm_types::{Id, ParamValue, Rgba};
+use proptest::prelude::*;
 
 fn apply(p: &mut Project, op: impl Into<Op>) -> OpResult<Applied> {
     op.into().apply(p, &OpContext::human())
@@ -127,4 +128,57 @@ fn 撮影素材のレイヤーの端は素材の外へ動かせない() {
 fn trim_layer_の_touches_は素材を含める() {
     let p = project_with_footage_layer();
     assert!(touches(&p, trim(Edge::Out, 1)).contains(&"a1".to_owned()));
+}
+
+#[test]
+fn 素材の長さが無いレイヤーの端は長さを残す限り縛らない() {
+    let mut p = project();
+    let solid = |edge, by| TrimLayer {
+        layer: Id::new("l2"),
+        edge,
+        by: secs(by),
+    };
+    apply(&mut p, solid(Edge::In, -30)).unwrap();
+    apply(&mut p, solid(Edge::Out, 60)).unwrap();
+    let before = canon(&p);
+    // l2 は 94 秒の長さになった。全部を縮めると長さが 0 になるので拒否する。
+    assert!(apply(&mut p, solid(Edge::Out, -94)).is_err());
+    assert!(apply(&mut p, solid(Edge::In, 94)).is_err());
+    assert_eq!(canon(&p), before);
+}
+
+#[test]
+fn タイムリマップのあるレイヤーはアウト点だけ動かせる() {
+    let mut p = project_with_footage_layer();
+    let key = |t| TimeKeyframe {
+        time: secs(t),
+        source: secs(t),
+        interpolation: Interpolation::Linear,
+    };
+    p.layer_mut(&Id::new("lf")).unwrap().time_remap = Some(TimeRemap {
+        keyframes: vec![key(0), key(10)],
+    });
+    assert!(apply(&mut p, trim(Edge::In, 1)).is_err());
+    apply(&mut p, trim(Edge::Out, -1)).unwrap();
+}
+
+proptest! {
+    #[test]
+    fn 撮影素材のレイヤーの端は通れば素材の内側に収まり_拒否なら変えない(
+        out in any::<bool>(),
+        q in -100i64..100,
+    ) {
+        let mut p = project_with_footage_layer();
+        let before = canon(&p);
+        let edge = if out { Edge::Out } else { Edge::In };
+        let op = TrimLayer { layer: Id::new("lf"), edge, by: quarters(q) };
+        if let Ok(applied) = apply(&mut p, op) {
+            let l = p.layer(&Id::new("lf")).unwrap().1;
+            prop_assert!(l.in_point >= secs(0) && l.out_point <= secs(20));
+            prop_assert!(l.in_point < l.out_point);
+            apply(&mut p, applied.inverse).unwrap();
+        }
+        // 拒否したときも、通して逆操作で戻したときも、元と同じになる。
+        prop_assert_eq!(canon(&p), before);
+    }
 }
