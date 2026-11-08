@@ -15,6 +15,7 @@ use crate::audio::AudioStream;
 use crate::compose::Compositor;
 use crate::export::ExportPipe;
 use crate::frame_cache::{FrameCacheConfig, MemoStats, RenderCache};
+use crate::input_tone::InputTonePass;
 use crate::layers::CompCx;
 use crate::matte::MattePass;
 use crate::source::SourcePool;
@@ -47,6 +48,8 @@ pub struct WgpuRenderer {
     pub(crate) export: Option<ExportPipe>,
     /// トラックマットを掛けるパス。最初のトラックマットで作る。
     pub(crate) matte: Option<MattePass>,
+    /// HDR の素材の入力の側のトーンマップのパス。最初に掛けるときに作る。
+    pub(crate) input_tone: Option<InputTonePass>,
     /// 文字の実装とノードの種類に渡した、プロジェクトの書体の組の指紋（`crate::fonts`）。
     pub(crate) fonts: String,
 }
@@ -76,6 +79,7 @@ impl WgpuRenderer {
             recoveries: 0,
             export: None,
             matte: None,
+            input_tone: None,
             fonts: String::new(),
         }
     }
@@ -143,6 +147,7 @@ impl WgpuRenderer {
         self.sources.clear();
         self.export = None;
         self.matte = None;
+        self.input_tone = None;
     }
 
     /// 持っているテクスチャの数。漏れの検査に使う。

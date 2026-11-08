@@ -23,6 +23,11 @@ export type CaptionPlacement = {
   /** 字幕の帯の幅（Number）。これを超える行は折り返す。 */
   "width": Param;
 };
+/** プロジェクトの色の設定。既定（全部が既定値）は保存しない。 */
+export type ColorConfig = {
+  /** タイムラインの作業の明るさ。 */
+  "working_range"?: WorkingRange;
+};
 /** 色空間の名前。OCIO の名前をそのまま持つ（`bt709`、`srgb`、`lin_rec709` など）。 */
 export type ColorSpace = string;
 /** コンポジションのミキサーの設定。既定は全部 0 dB でダッキングなし。 */
@@ -446,6 +451,8 @@ export type Transition = {
   "duration": RationalTime;
   "node": Node;
 };
+/** タイムラインの作業の明るさ。Resolve のタイムラインの色空間、Premiere Pro のシーケンスの作業色空間に当たる。 */
+export type WorkingRange = "sdr" | "hdr";
 
 /** 素材を足す。 */
 export type AddAssetOp = {
@@ -657,6 +664,11 @@ export type SetMixerOp = {
   "composition": string;
   "mixer"?: CompMixer | null;
   "op": "setMixer";
+};
+/** プロジェクトの色の設定（タイムラインの作業の明るさ）を置き換える。 */
+export type SetColorConfigOp = {
+  "color_config"?: ColorConfig;
+  "op": "setColorConfig";
 };
 /** カットの先頭のトランジションを置く・差し替える・外す。 */
 export type SetTransitionOp = {
@@ -924,6 +936,7 @@ export type Op =
   | SetCaptionOp
   | SetLayerAudioOp
   | SetMixerOp
+  | SetColorConfigOp
   | SetTransitionOp
   | AddRenderTargetOp
   | RemoveRenderTargetOp
@@ -997,6 +1010,7 @@ export const OP_NAMES: readonly OpName[] = [
   "setCaption",
   "setLayerAudio",
   "setMixer",
+  "setColorConfig",
   "setTransition",
   "addRenderTarget",
   "removeRenderTarget",

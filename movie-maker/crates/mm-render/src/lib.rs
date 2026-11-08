@@ -3,6 +3,7 @@
 //! - `WgpuRenderer`: コンポジションと時刻からフレームを作る。レイヤーを下から順に、位置・拡大・回転・
 //!   不透明度をかけて `Rgba16Float`（premultiplied）に重ねる。入れ子は別のテクスチャに描いてから重ねる。
 //!   入力のフレーム（ノードの種類やデコーダーが返す画像）は線形の premultiplied という契約で、レンダラーは色空間を変換しない。
+//!   例外は作業の明るさが SDR のプロジェクトの HDR の素材で、効果と合成の前に SDR に収める（`input_tone.rs`）。
 //! - GPU のコンテキストと `GpuHelper` の wgpu 実装は `mm-gpu`（共通実装）から使う。デコーダーが返す
 //!   GPU のフレームは `import` で借用し、合成の `submit` の前に待ちを登録し、後に返す。
 //! - 計測: `render.frame` などの CPU のスパンと、パスごとの GPU の時間（wgpu のタイムスタンプ）を
@@ -26,6 +27,7 @@ mod effects;
 mod export;
 mod fonts;
 mod frame_cache;
+mod input_tone;
 mod kind_cache;
 mod layers;
 mod matte;

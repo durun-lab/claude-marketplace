@@ -22,7 +22,9 @@ use mm_render_api::FrameCacheKey;
 use mm_types::{Rect, Size};
 
 use disk::Spiller;
-pub(crate) use key::{kind_key, nested_key, unopened_decoder, KeyEnv, Keyed, NestedKeyInput};
+pub(crate) use key::{
+    asset_of, kind_key, nested_key, unopened_decoder, KeyEnv, Keyed, NestedKeyInput,
+};
 pub use memo::MemoStats;
 use memo::{Dropped, Evicted, Memo, Weighted};
 

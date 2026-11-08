@@ -199,6 +199,7 @@ impl WgpuRenderer {
         if !image.cached {
             temps.push(image.texture);
         }
+        let image = self.tone_map_input(encoder, cx, (kind.as_ref(), &params), image, temps)?;
         let Some(image) = self.apply_effects(encoder, cx, layer, image, temps)? else {
             return Ok(None);
         };
@@ -242,7 +243,7 @@ impl WgpuRenderer {
         params: &Params,
         transform: &LayerTransform,
     ) -> Result<Option<LayerImage>> {
-        let color = self.config_fingerprint();
+        let color = self.key_color(cx.project);
         let Self {
             sources,
             decoders,
@@ -376,7 +377,7 @@ impl WgpuRenderer {
         if !self.cache.enabled() {
             return None;
         }
-        let color = self.config_fingerprint();
+        let color = self.key_color(child.project);
         let unopened = frame_cache::unopened_decoder(self.decoders.as_ref());
         let decoder = |id: &AssetId| {
             self.sources

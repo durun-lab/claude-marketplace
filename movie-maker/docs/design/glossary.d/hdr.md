@@ -7,4 +7,4 @@
 | HLG | ARIB STD-B67（BT.2100）の伝達関数。表示の上限 1000 cd/m² の OOTF をチャンネルごとに掛けて線形にする | `bt2100_hlg`、`transfer::hlg_to_linear` |
 | シェーパー | 3D LUT を引く前に入力に掛ける 1D の曲線。線形の光を PQ で 0..1 の格子に収め、1 を超える値を切らない | `LutShaper`、`TransformProgram::Lut3d.shaper` |
 | 書き出しの信号 | 書き出す映像の原色と伝達関数（SDR の Rec.709、HDR の Rec.2020 の PQ と HLG） | `OutputSignal`、`hevc_pq`、`hevc_hlg` |
-| SDR のトーンマップ | HDR の線形を SDR に収める BT.2390 の EETF。プレビュー、SDR の書き出し、`mm frame` と `GET /frame` の PNG が同じ素材の上限の明るさで掛ける。それが 1 なら恒等 | `tonemap::bt2390_to_sdr`、`tone_map_peak`、`Ui::set_hdr_peak`、`EncodeSettings::source_peak`、`encode_png` |
+| SDR のトーンマップ | HDR の線形を SDR に収める BT.2390 の EETF。タイムラインの作業の明るさが SDR なら入力の側のトーンマップとして、HDR なら合成の後にプレビュー、SDR の書き出し、`mm frame` と `GET /frame` の PNG、モバイルの静止画が同じ素材の上限の明るさで掛ける。それが 1 なら恒等 | `tonemap::bt2390_to_sdr`、`tone_map_peak`、`input_tone_map_peak`、`Ui::set_hdr_peak`、`EncodeSettings::source_peak`、`encode_png` |

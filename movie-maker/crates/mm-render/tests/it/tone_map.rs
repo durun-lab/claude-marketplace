@@ -1,6 +1,7 @@
-//! HDR の素材があるとき、GPU の NV12 の書き出しがプレビューと同じトーンマップを通ること。プレビューに渡る
-//! 線形のフレームに `bt2390_to_sdr`（`TONEMAP_WGSL` と同じ値。`mm-color-lut` の GPU の試験が確かめる）を掛けた
-//! 画素と、書き出した NV12 の画素を比べる。帯の値は HDR の素材のフィクスチャ（`mm_testkit::hdr`）の線形の値。
+//! タイムラインの作業の明るさが HDR で HDR の素材があるとき、GPU の NV12 の書き出しがプレビューと同じ合成の後の
+//! トーンマップを通ること。プレビューに渡る線形のフレームに `bt2390_to_sdr`（`TONEMAP_WGSL` と同じ値。
+//! `mm-color-lut` の GPU の試験が確かめる）を掛けた画素と、書き出した NV12 の画素を比べる。帯の値は HDR の素材の
+//! フィクスチャ（`mm_testkit::hdr`）の線形の値。作業の明るさが SDR の入力の側のトーンマップは `input_tone.rs`。
 //! GPU が無い環境ではスキップし、`MM_REQUIRE_GPU` があれば失敗にする。
 
 use crate::common;
@@ -8,7 +9,7 @@ use crate::common;
 use common::{comp, gpu, layer, project, registry, render_at, renderer, seconds, shader};
 use mm_audio_api::AudioBlock;
 use mm_decode_api::{EncodeReport, EncodeSettings, Encoder, Nv12Frame};
-use mm_doc::{Asset, Project};
+use mm_doc::{Asset, Project, WorkingRange};
 use mm_node_api::Quality;
 use mm_render_api::{tone_map_peak, RangeRequest, Renderer};
 use mm_testkit::fixtures::SAMPLE_ASSET_PATH;
@@ -19,9 +20,9 @@ use mm_types::{ColorSpace, Id, Rational, RationalTime, Result, RgbaImage, Size, 
 
 /// 帯 1 つの幅（画素）。色差の 2x2 が帯をまたがない偶数。
 const BAND: u32 = 16;
-const SIZE: Size = Size::new(BAND * hdr::BANDS.len() as u32, 8);
+pub(crate) const SIZE: Size = Size::new(BAND * hdr::BANDS.len() as u32, 8);
 /// NV12 の符号語の許容。f16 の中間と GPU の `pow` の丸めの分。
-const CODE_TOLERANCE: i32 = 1;
+pub(crate) const CODE_TOLERANCE: i32 = 1;
 
 /// PQ の素材のフィクスチャの帯の線形の値を、横に並べて出すシェーダー。
 fn bands_shader() -> String {
@@ -42,24 +43,30 @@ fn bands_project(hdr: bool) -> Project {
     shader_project(&bands_shader(), hdr)
 }
 
-/// WGSL の `mm_main` を全面に描くコンポジション `main`。`hdr` なら PQ の素材を置かずに足す。
+/// WGSL の `mm_main` を全面に描く、作業の明るさが HDR のコンポジション `main`。`hdr` なら PQ の素材を置かずに足す。
 fn shader_project(wgsl: &str, hdr: bool) -> Project {
     let mut p = project(
         vec![comp("main", SIZE, 1, vec![layer("fill", shader(wgsl), 1)])],
         vec![],
     );
+    p.color_config.working_range = WorkingRange::Hdr;
     if hdr {
-        p.assets.push(Asset {
-            id: Id::new("pq"),
-            path: SAMPLE_ASSET_PATH.into(),
-            content_hash: "pq00000000000000".into(),
-            color_space: ColorSpace::bt2100_pq(),
-            duration: seconds(1),
-            fps: Some(Rational::integer(30)),
-            timebase_offset: RationalTime::ZERO,
-        });
+        p.assets.push(pq_asset());
     }
     p
+}
+
+/// PQ の素材（`SampleDecoderFactory` が開く）。
+pub(crate) fn pq_asset() -> Asset {
+    Asset {
+        id: Id::new("pq"),
+        path: SAMPLE_ASSET_PATH.into(),
+        content_hash: "pq00000000000000".into(),
+        color_space: ColorSpace::bt2100_pq(),
+        duration: seconds(1),
+        fps: Some(Rational::integer(30)),
+        timebase_offset: RationalTime::ZERO,
+    }
 }
 
 /// NV12 を受けて溜めるエンコーダー。
@@ -94,7 +101,7 @@ impl Encoder for Nv12Capture {
 }
 
 /// 線形の RGB を SDR のトーンマップ、Rec.1886、Rec.709 の tv レンジの (Y, Cb, Cr) の符号語にする（一様な帯の値）。
-fn expected_yuv(rgb: [f32; 3], peak: f32) -> [i32; 3] {
+pub(crate) fn expected_yuv(rgb: [f32; 3], peak: f32) -> [i32; 3] {
     let e = bt2390_to_sdr(rgb, peak).map(|c| linear_to_bt1886(c.clamp(0.0, 1.0)));
     let y = 0.2126 * e[0] + 0.7152 * e[1] + 0.0722 * e[2];
     let (cb, cr) = ((e[2] - y) / 1.8556, (e[0] - y) / 1.5748);
@@ -110,7 +117,7 @@ fn yuv_at(frame: &Nv12Frame, band: u32) -> [i32; 3] {
     [luma, frame.uv[c], frame.uv[c + 1]].map(i32::from)
 }
 
-fn export_nv12(r: &mut mm_render::WgpuRenderer, p: &Project) -> Nv12Frame {
+pub(crate) fn export_nv12(r: &mut mm_render::WgpuRenderer, p: &Project) -> Nv12Frame {
     let nodes = registry();
     let id = Id::new("main");
     let fps = Rational::integer(30);
@@ -200,14 +207,14 @@ const WHITE_AND_HIGHLIGHT: &str = "fn mm_main(uv: vec2<f32>) -> vec4<f32> {
 ";
 
 /// 書き出した Y の 8 bit の符号化値（左の 1/4 と右の 1/4 の中央）。
-fn white_and_highlight_luma(frame: &Nv12Frame) -> (i32, i32) {
+pub(crate) fn white_and_highlight_luma(frame: &Nv12Frame) -> (i32, i32) {
     let row = (SIZE.height / 2 * SIZE.width) as usize;
     let at = |x: u32| i32::from(frame.y[row + x as usize]);
     (at(SIZE.width / 4), at(SIZE.width * 3 / 4))
 }
 
-/// HDR の素材が無ければ SDR の白は 235 のまま（今までと同じ）で、ハイライトも白に切る。HDR の素材があると白は
-/// 肩の中で 214 に下がり、ハイライトは白と 235 の間に別の明るさで残る。引き換えは `03-data-model.md` の「色」。
+/// 作業の明るさが HDR のとき、HDR の素材が無ければ SDR の白は 235 のままで、ハイライトも白に切る。HDR の素材があると
+/// 白は肩の中で 214 に下がり、ハイライトは白と 235 の間に別の明るさで残る。引き換えは `03-data-model.md` の「色」。
 #[test]
 fn sdr_の白は_hdr_の素材が無ければ_235_あれば_214_でハイライトは白の上に残る() {
     let Some(ctx) = gpu() else { return };

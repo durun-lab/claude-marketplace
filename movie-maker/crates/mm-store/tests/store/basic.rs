@@ -32,6 +32,19 @@ fn 書いたプロジェクトのデータと操作は開き直しても残る()
 }
 
 #[test]
+fn 色の設定は開き直しても残る() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut p = project_with(1);
+    p.color_config.working_range = mm_doc::WorkingRange::Hdr;
+    Store::create(tmp.path(), &p, NOW)
+        .unwrap()
+        .close(NOW)
+        .unwrap();
+    let s = Store::open(tmp.path(), NOW).unwrap();
+    assert_eq!(s.project().color_config, p.color_config);
+}
+
+#[test]
 fn 取り消しとやり直しは位置を動かし_バージョンと記録を進める() {
     let tmp = tempfile::tempdir().unwrap();
     let mut p = project_with(3);

@@ -13,6 +13,7 @@ mod footage_reuse;
 mod frame_cache;
 mod golden;
 mod gpu_footage;
+mod input_tone;
 mod mask;
 mod matte;
 mod nested;

@@ -777,6 +777,26 @@
       ]
     },
     {
+      "description": "プロジェクトの色の設定（タイムラインの作業の明るさ）を置き換える。",
+      "type": "object",
+      "properties": {
+        "color_config": {
+          "$ref": "#/$defs/ColorConfig",
+          "default": {
+            "working_range": "sdr"
+          }
+        },
+        "op": {
+          "type": "string",
+          "const": "setColorConfig"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op"
+      ]
+    },
+    {
       "description": "カットの先頭のトランジションを置く・差し替える・外す。",
       "type": "object",
       "properties": {
@@ -1713,6 +1733,18 @@
         "position",
         "width"
       ]
+    },
+    "ColorConfig": {
+      "description": "プロジェクトの色の設定。既定（全部が既定値）は保存しない。",
+      "type": "object",
+      "properties": {
+        "working_range": {
+          "description": "タイムラインの作業の明るさ。",
+          "$ref": "#/$defs/WorkingRange",
+          "default": "sdr"
+        }
+      },
+      "additionalProperties": false
     },
     "ColorSpace": {
       "description": "色空間の名前。OCIO の名前をそのまま持つ（`bt709`、`srgb`、`lin_rec709` など）。",
@@ -3380,6 +3412,21 @@
       "required": [
         "node",
         "duration"
+      ]
+    },
+    "WorkingRange": {
+      "description": "タイムラインの作業の明るさ。Resolve のタイムラインの色空間、Premiere Pro のシーケンスの作業色空間に当たる。",
+      "oneOf": [
+        {
+          "description": "HDR の素材を入力の側で SDR の白（線形 1.0）に収める。SDR の文字や画像の白は SDR の書き出しで白のまま。",
+          "type": "string",
+          "const": "sdr"
+        },
+        {
+          "description": "HDR の素材を 1 を超える値のまま合成する。SDR の出力（プレビュー、SDR の書き出し、PNG）は合成の後で収める。",
+          "type": "string",
+          "const": "hdr"
+        }
       ]
     }
   }

@@ -126,6 +126,8 @@ define_ops! {
     SetLayerAudio => "setLayerAudio",
     /// コンポジションのミキサーの設定（バスの音量、マスター、ダッキング）を置く・外す。
     SetMixer => "setMixer",
+    /// プロジェクトの色の設定（タイムラインの作業の明るさ）を置き換える。
+    SetColorConfig => "setColorConfig",
     /// カットの先頭のトランジションを置く・差し替える・外す。
     SetTransition => "setTransition",
     /// レンダーターゲットを足す。
