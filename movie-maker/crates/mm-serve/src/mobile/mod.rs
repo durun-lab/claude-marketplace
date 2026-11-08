@@ -5,6 +5,7 @@
 //! 発行元の名前は登録した端末の名前。パスは全部 `/m` の下に置く。
 
 mod assets;
+mod clip;
 mod cuts;
 mod devices;
 mod guard;
@@ -150,6 +151,7 @@ pub(crate) fn router(state: Arc<MobileState>) -> Router {
     });
     Router::new()
         .merge(assets::routes())
+        .merge(clip::routes())
         .merge(media::routes())
         .merge(ops::routes())
         .merge(pair::routes())

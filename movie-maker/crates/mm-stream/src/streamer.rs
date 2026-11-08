@@ -1,7 +1,7 @@
 //! 配信のインターフェース。描画のスレッド、プレイリストとキーの表、静止画のフレームのキャッシュ、先読みを持つ。
 
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 
@@ -11,11 +11,12 @@ use mm_types::{MmError, Result};
 
 use crate::audio::{ensure_audio, respond, AudioRequest};
 use crate::cache::{touch, CacheDir};
+use crate::clip::{render_clip, ClipPlan, ClipRequest};
 use crate::frames::{render_webp, StillCache, StillKey, StillRequest};
 use crate::hls::{master_playlist, HlsRequest, Plan};
-use crate::key::{segment_key, KeyEnv, SegmentKey};
+use crate::key::{clip_key, segment_key, ClipKey, KeyEnv, SegmentKey};
 use crate::listing::{Listing, Listings};
-use crate::payload::{Payload, IMMUTABLE, REVALIDATE};
+use crate::payload::{ranged_file, Payload, IMMUTABLE, REVALIDATE};
 use crate::quality::HlsQuality;
 use crate::segment::render_segment;
 use crate::worker::{lock, run, SegJob, Slot, Urgent, Worker};
@@ -24,6 +25,8 @@ use crate::worker::{lock, run, SegJob, Slot, Urgent, Worker};
 const DEFAULT_PREFETCH: u64 = 2;
 /// 区間のディスクのキャッシュの上限の既定（バイト）。360p の 1 時間が約 250 MB なので、約 8 時間分。
 const DEFAULT_CACHE_LIMIT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
+/// 提案の区間の短い動画のディスクのキャッシュの上限（バイト）。1 本 数 MB なので、百本ほど。
+const CLIP_CACHE_LIMIT_BYTES: u64 = 256 * 1024 * 1024;
 
 /// 配信の設定。
 #[derive(Debug, Clone)]
@@ -69,6 +72,8 @@ struct Shared {
     /// キーの計算に使う種類のレジストリと実装の名前。最初のプレイリストで `Engine` からコピーする。
     keying: Mutex<Option<Arc<Keying>>>,
     audio: Mutex<()>,
+    /// 作っている短い動画のキーごとの錠。同じ動画への Range の要求が重なっても 1 回だけ作る。
+    clips: Mutex<HashMap<ClipKey, Arc<Mutex<()>>>>,
 }
 
 struct Keying {
@@ -90,6 +95,7 @@ impl Streamer {
             inflight: Mutex::default(),
             keying: Mutex::default(),
             audio: Mutex::new(()),
+            clips: Mutex::default(),
         });
         let thread = shared.clone();
         let (runtime, limit) = (config.runtime, config.cache_limit_bytes);
@@ -259,6 +265,60 @@ impl Streamer {
             ensure_audio(project, req, &self.shared.cache)?
         };
         respond(&path, &hash, range)
+    }
+
+    /// 提案の区間の短い動画（MP4）。`project` は提案を適用したもの。無ければ作り終えるまで待ち、`Range` に答える。
+    /// `ETag` はキー（提案の操作、範囲、範囲に掛かるものの指紋）なので、中身が同じ間は端末の手元のものが使える。
+    pub fn clip(
+        &self,
+        project: &Project,
+        version: u64,
+        req: &ClipRequest,
+        range: Option<&str>,
+    ) -> Result<Payload> {
+        let plan = ClipPlan::new(project, req)?;
+        let keying = self.keying()?;
+        let env = KeyEnv {
+            project,
+            nodes: &keying.registry,
+            backends: &keying.backends,
+            version,
+        };
+        let key = clip_key(&env, &plan, &req.ops)?;
+        let path = self.shared.cache.clip(key);
+        for _ in 0..2 {
+            self.ensure_clip(key, &path, project, &plan, &req.touched)?;
+            touch(&path);
+            match ranged_file(&path, "video/mp4", &format!("\"{key}\""), range) {
+                // 読む前にキャッシュの上限で捨てられたら、もう一度作る。
+                Err(MmError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                other => return other,
+            }
+        }
+        Err(MmError::Internal(format!(
+            "短い動画 {key} を作っても読めない"
+        )))
+    }
+
+    /// 短い動画が無ければ描画のスレッドで作る。同じキーの要求は錠で待ち、先の要求が作ったものを使う。
+    fn ensure_clip(
+        &self,
+        key: ClipKey,
+        path: &Path,
+        project: &Project,
+        plan: &ClipPlan,
+        touched: &[String],
+    ) -> Result<()> {
+        let gate = lock(&self.shared.clips).entry(key).or_default().clone();
+        let _one_at_a_time = lock(&gate);
+        if !path.exists() {
+            let (project, plan) = (project.clone(), plan.clone());
+            let (out, touched) = (path.to_path_buf(), touched.to_vec());
+            self.with_engine(move |e| render_clip(e, &project, &plan, &out, &touched))?;
+            self.shared.cache.evict_clips(CLIP_CACHE_LIMIT_BYTES);
+        }
+        lock(&self.shared.clips).remove(&key);
+        Ok(())
     }
 
     /// このバージョンの `req` の区間の割り方とキー。同じバージョンなら前に作ったものを返す。

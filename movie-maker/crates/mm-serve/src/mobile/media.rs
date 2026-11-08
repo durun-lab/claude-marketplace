@@ -179,7 +179,7 @@ async fn audio(
     Ok(respond(payload))
 }
 
-fn streamer(st: &MobileState) -> Result<Arc<Streamer>, MobileError> {
+pub(super) fn streamer(st: &MobileState) -> Result<Arc<Streamer>, MobileError> {
     st.core.streamer().ok_or_else(|| {
         MobileError::Serve(ServeError::Unavailable(
             "この待ち受けは映像の配信を持たない".into(),
@@ -188,7 +188,7 @@ fn streamer(st: &MobileState) -> Result<Arc<Streamer>, MobileError> {
 }
 
 /// 描画は長いので、非同期の実行環境をふさがないよう別のスレッドで実行する。
-async fn run<T: Send + 'static>(
+pub(super) async fn run<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, MmError> + Send + 'static,
 ) -> Result<T, MobileError> {
     tokio::task::spawn_blocking(f)
@@ -222,7 +222,7 @@ fn not_found(message: &str) -> MobileError {
 }
 
 /// `Payload` をそのまま HTTP の応答にする。
-fn respond(payload: Payload) -> Response {
+pub(super) fn respond(payload: Payload) -> Response {
     let mut res = Response::new(Body::from(payload.body));
     *res.status_mut() = StatusCode::from_u16(payload.status).unwrap_or(StatusCode::OK);
     for (name, value) in payload.headers {
@@ -237,14 +237,14 @@ fn respond(payload: Payload) -> Response {
 }
 
 /// `If-None-Match` が応答の `ETag` と同じか。
-fn matches_etag(headers: &HeaderMap, payload: &Payload) -> bool {
+pub(super) fn matches_etag(headers: &HeaderMap, payload: &Payload) -> bool {
     let sent = headers
         .get(header::IF_NONE_MATCH)
         .and_then(|v| v.to_str().ok());
     matches!((sent, payload.header("ETag")), (Some(a), Some(b)) if a == b)
 }
 
-fn not_modified(payload: &Payload) -> Response {
+pub(super) fn not_modified(payload: &Payload) -> Response {
     let mut res = respond(Payload {
         status: StatusCode::NOT_MODIFIED.as_u16(),
         headers: payload.headers.clone(),

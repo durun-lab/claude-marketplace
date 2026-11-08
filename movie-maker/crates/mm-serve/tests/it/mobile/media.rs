@@ -48,7 +48,7 @@ fn gpu_config() -> Option<RuntimeConfig> {
     })
 }
 
-fn ffmpeg_config() -> Option<RuntimeConfig> {
+pub(super) fn ffmpeg_config() -> Option<RuntimeConfig> {
     usable(RuntimeConfig {
         decode: Backend::Ffmpeg,
         encode: Backend::Ffmpeg,
@@ -57,7 +57,7 @@ fn ffmpeg_config() -> Option<RuntimeConfig> {
 }
 
 /// ffmpeg の CLI で、動きのある映像と音の素材を作る。
-fn make_media(path: &Path) {
+pub(super) fn make_media(path: &Path) {
     let status = Command::new("ffmpeg")
         .args(["-nostdin", "-v", "error", "-y"])
         .args(["-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30"])
@@ -91,7 +91,7 @@ fn title(red: f32) -> Layer {
 }
 
 /// 素材 1 本を使うシーケンスのレイヤー（音つき）と、9〜10 秒だけの `title` を置いた 1280x720 のコンポジション。
-fn project(media: &Path) -> Project {
+pub(super) fn project(media: &Path) -> Project {
     let fps = Rational::integer(30);
     let footage =
         Node::new("footage", 1).with_param("asset", ParamValue::AssetRef(Id::new("clip")));
@@ -141,7 +141,7 @@ fn project(media: &Path) -> Project {
 }
 
 /// 描画を `EngineFrames`（`Streamer` の `Engine`）にした、Claude と人の待ち受け。
-fn stream_rig(project: &Project, config: RuntimeConfig) -> Rig {
+pub(super) fn stream_rig(project: &Project, config: RuntimeConfig) -> Rig {
     let tmp = tempfile::tempdir().unwrap();
     let dir = tmp.path().join("p");
     let store = Store::create(&dir, project, NOW).unwrap();
@@ -160,11 +160,11 @@ fn stream_rig(project: &Project, config: RuntimeConfig) -> Rig {
     }
 }
 
-fn get(r: &Rig, cookie: &str, path: &str) -> Response {
+pub(super) fn get(r: &Rig, cookie: &str, path: &str) -> Response {
     r.send(&Req::device(cookie), "GET", path, None)
 }
 
-fn get_range(r: &Rig, cookie: &str, path: &str, range: &str) -> Response {
+pub(super) fn get_range(r: &Rig, cookie: &str, path: &str, range: &str) -> Response {
     let mut headers = Req::device(cookie).headers();
     headers.push(("Range".into(), range.into()));
     Client::new(r.mobile.port(), "")
@@ -185,7 +185,7 @@ fn keys(playlist: &Response) -> Vec<String> {
         .collect()
 }
 
-fn opacity_of_title(value: f64, base_version: i64) -> Value {
+pub(super) fn opacity_of_title(value: f64, base_version: i64) -> Value {
     json!({
         "op": {"op": "setParam", "target": {"layer": "title", "path": "opacity"},
                "value": {"type": "number", "value": value}},
@@ -193,12 +193,13 @@ fn opacity_of_title(value: f64, base_version: i64) -> Value {
     })
 }
 
-const MEDIA_PATHS: [&str; 5] = [
+const MEDIA_PATHS: [&str; 6] = [
     "/m/api/frame?t=0",
     "/m/api/stream/main/index.m3u8",
     "/m/api/stream/main/360p.m3u8",
     "/m/api/stream/main/seg/0123456789abcdef.ts",
     "/m/api/audio/clip.m4a",
+    "/m/api/proposals/1/clip.mp4",
 ];
 
 #[test]

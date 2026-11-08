@@ -62,6 +62,38 @@ fn on_layer(
     })
 }
 
+/// 提案の区間の短い動画の範囲（コンポジション、始まりと終わりの秒）。`comp`（省くと最初に見つかったコンポジション）の上の、
+/// `comp_spans` と触るレイヤーの見えている区間を全部含む範囲。どちらも無ければ `None`。
+pub(super) fn clip_span(
+    project: &Project,
+    scope: &ProposalScope,
+    comp: Option<&str>,
+) -> Option<(String, f64, f64)> {
+    let spans = comp_spans(project, scope)
+        .into_iter()
+        .map(|s| (s.comp, s.start, s.end));
+    let layers = scope.layers.iter().filter_map(|r| {
+        let c = project
+            .compositions
+            .iter()
+            .find(|c| c.id.as_str() == r.comp)?;
+        let range = c
+            .layers
+            .iter()
+            .find(|l| l.id.as_str() == r.id)?
+            .range()
+            .ok()?;
+        Some((r.comp.clone(), range.start.to_f64(), range.end.to_f64()))
+    });
+    let all: Vec<(String, f64, f64)> = spans.chain(layers).collect();
+    let want = comp.map_or_else(|| all.first().map(|s| s.0.clone()), |c| Some(c.to_owned()))?;
+    all.into_iter()
+        .filter(|s| s.0 == want)
+        .map(|s| (s.1, s.2))
+        .reduce(|a, b| (a.0.min(b.0), a.1.max(b.1)))
+        .map(|(start, end)| (want, start, end))
+}
+
 /// 提案の応答の JSON に `comp_spans` を足す。
 pub(super) fn with_comp_spans(project: &Project, view: &ProposalView) -> Result<Value, ServeError> {
     let spans = comp_spans(project, &view.scope);
@@ -151,6 +183,24 @@ mod tests {
         let spans = comp_spans(&project(), &scope(0.0, 12.0));
         assert_eq!((spans[0].start, spans[0].end), (5.0, 9.0));
         assert!(comp_spans(&project(), &scope(0.0, 1.0)).is_empty());
+    }
+
+    #[test]
+    fn 短い動画の範囲はシーケンスの範囲と触るレイヤーの区間を合わせる() {
+        let p = project();
+        assert_eq!(
+            clip_span(&p, &scope(4.0, 6.0), None),
+            Some(("main".into(), 6.0, 7.0))
+        );
+        let mut both = scope(4.0, 6.0);
+        both.layers.push(mm_ops::LayerRef {
+            comp: "main".into(),
+            id: "l".into(),
+        });
+        // レイヤー l は 5〜9 秒に見える。
+        assert_eq!(clip_span(&p, &both, None), Some(("main".into(), 5.0, 9.0)));
+        assert_eq!(clip_span(&p, &both, Some("other")), None);
+        assert_eq!(clip_span(&p, &ProposalScope::default(), None), None);
     }
 
     #[test]
