@@ -170,8 +170,9 @@ const CHECKER_DARK: f32 = 0.18;
 const CHECKER_LIGHT: f32 = 0.26;
 
 /// 線形の premultiplied の画像を、灰色の市松の上に重ねた 8 bit の PNG にする。
-/// 書き出しと同じ Rec.1886 の符号化値にするので、16 進の色は PNG でも同じ値になる。`source_peak`（`tone_map_peak`）が
-/// 1 を超えるときは、プレビューと SDR の書き出しと同じ BT.2390 の EETF で白に収める。1 以下は掛けない。
+/// 書き出しと同じ Rec.1886 の符号化値にするので、16 進の色は PNG でも同じ値になる。`source_peak` は素材の上限の明るさ
+/// （`tone_map_peak`）。書き出しと同じく premultiplied の RGB（黒の上に置いた値）に SDR のトーンマップを掛けてから
+/// 市松を足すので、市松は素材の上限の明るさに依らず、不透明な所は書き出しと同じ値になる。
 pub fn encode_png(image: &RgbaImage, source_peak: f32) -> Result<Vec<u8>> {
     let mut rgb = Vec::with_capacity(image.size().area() * 3);
     for y in 0..image.height() {
@@ -264,6 +265,19 @@ mod tests {
             assert_eq!(png[band * 3..band * 3 + 3], want, "帯 {band}");
             compressed |= want != linear.map(linear_to_code8);
         }
-        assert!(compressed, "上限を超える帯が白に収まる");
+        assert!(compressed, "トーンマップの肩に入る帯が曲がる");
+    }
+
+    #[test]
+    fn hdr_の素材があっても市松は変わらず_半透明は書き出しの値に市松を足す() {
+        let peak = hdr_source_peak(&[ColorSpace::bt2100_pq()]);
+        let half = Rgba::new(1.5, 0.5, 0.1, 0.5);
+        let mut img = RgbaImage::filled(Size::new(2, 1), Rgba::TRANSPARENT);
+        img.set_pixel(1, 0, half);
+        let png = decode(&encode_png(&img, peak).unwrap());
+        assert_eq!(png[0..3], [linear_to_code8(CHECKER_DARK); 3], "透明");
+        let want = bt2390_to_sdr([half.r, half.g, half.b], peak)
+            .map(|c| linear_to_code8(c + CHECKER_DARK * (1.0 - half.a)));
+        assert_eq!(png[3..6], want, "半透明");
     }
 }
