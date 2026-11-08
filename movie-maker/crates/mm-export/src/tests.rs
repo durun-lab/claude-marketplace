@@ -54,10 +54,10 @@ fn 出力先を上書きして書き出し工程ごとのスパンが出る() {
     let snap = metrics.snapshot();
     assert_eq!(snap.spans["export.run"].count, 1);
     assert_eq!(snap.spans["export.render"].count, frames);
-    assert_eq!(
-        snap.spans["export.encode"].count,
-        frames.div_ceil(EXPORT_BATCH_FRAMES as u64)
-    );
+    assert_eq!(snap.spans["export.readback"].count, frames);
+    assert_eq!(snap.spans["export.queue_wait"].count, frames);
+    // エンコードの工程は別のスレッドでも、呼んだ側の購読者に集まる
+    assert_eq!(snap.spans["export.encode"].count, frames);
     assert_eq!(snap.counters["export.frames"], frames as f64);
     let _ = std::fs::remove_dir_all(temp("dir"));
 }

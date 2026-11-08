@@ -21,7 +21,7 @@ use crate::listing::{Listing, Listings};
 use crate::payload::{Payload, IMMUTABLE, REVALIDATE};
 use crate::quality::HlsQuality;
 use crate::segment::render_segment;
-use crate::worker::{lock, run, SegJob, Slot, Urgent, Worker};
+use crate::worker::{lock, run, Interleave, SegJob, Slot, Urgent, Worker};
 
 /// 先読みする区間の数の既定。
 const DEFAULT_PREFETCH: u64 = 2;
@@ -104,8 +104,8 @@ impl Streamer {
         std::thread::Builder::new()
             .name("stream-render".into())
             .spawn(move || {
-                run(&thread.worker, &runtime, |engine, job| {
-                    let result = build(&thread.cache, engine, job, limit);
+                run(&thread.worker, &runtime, |engine, job, urgent| {
+                    let result = build(&thread.cache, engine, job, limit, urgent);
                     let mut inflight = lock(&thread.inflight);
                     if inflight
                         .get(&job.key)
@@ -120,7 +120,7 @@ impl Streamer {
         Ok(Self { shared })
     }
 
-    /// 配信の描画のスレッドの `Engine` で `job` を実行し、結果を待つ。区間を描いている間は、その終わりまで待つ。
+    /// 配信の描画のスレッドの `Engine` で `job` を実行し、結果を待つ。区間を描いている間は、描いているフレームの終わりまで待つ。
     /// `mm-serve` の `GET /frame` もこれで描くと、`Engine` を配信と共有できる。
     pub fn with_engine<R, F>(&self, job: F) -> Result<R>
     where
@@ -388,12 +388,18 @@ pub(crate) fn backend_label(role: &str, name: &str, decoders: &[&str]) -> String
 }
 
 /// 区間を作ってキャッシュに置き、上限を超えた分を捨てる。先に同じキーの区間ができていれば何もしない。
-fn build(cache: &CacheDir, engine: &mut Engine, job: &SegJob, limit: u64) -> Result<()> {
+fn build(
+    cache: &CacheDir,
+    engine: &mut Engine,
+    job: &SegJob,
+    limit: u64,
+    urgent: Interleave<'_>,
+) -> Result<()> {
     let path = cache.segment(job.key);
     if path.exists() {
         return Ok(());
     }
-    render_segment(engine, &job.project, &job.plan, job.index, &path)?;
+    render_segment(engine, &job.project, &job.plan, job.index, &path, urgent)?;
     cache.evict_segments(limit);
     Ok(())
 }

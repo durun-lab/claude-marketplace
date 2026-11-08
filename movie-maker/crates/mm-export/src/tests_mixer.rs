@@ -128,10 +128,19 @@ fn exported(engine: &mut Engine, project: &Project, comp: &CompositionId) -> Aud
         parallel_min_frames: None,
         pass: PassPosition { index: 1, of: 1 },
     };
-    passes::render_video_and_audio(engine, project, &plan, &settings, range, &mut Discard)
-        .unwrap()
-        .unwrap()
-        .1
+    let mut between = |_: &mut Engine| {};
+    passes::render_video_and_audio(
+        engine,
+        project,
+        &plan,
+        &settings,
+        range,
+        &mut Discard,
+        &mut between,
+    )
+    .unwrap()
+    .unwrap()
+    .1
 }
 
 /// プレビューと同じく 0.1 秒ずつ混ぜてつないだ音。

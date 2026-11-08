@@ -2,8 +2,12 @@
 //!
 //! インターフェースの実装を選ぶのは mm-runtime だけという契約のため、このクレートは実装を知らず、`Engine` から
 //! レンダラーとエンコーダーを取り出して使う（[`Engine::renderer`]、[`Engine::encoders`]）。
-//! 工程ごとの時間はスパン `export.render`（1 フレームの描画とリードバック）と `export.encode`（1 バッチの送信）に
-//! 出す。
+//! 1 つのレンダラーで描くときは、描画の工程（`Engine` を持つ）とエンコードの工程（`Engine` を持たない別のスレッド）を
+//! 上限のある受け渡しのキューでつなぐ（`stages`）。描画の工程はフレームを 1 つ描くごとに `Engine` を呼び出し側に渡せる
+//! （[`export_run_interleaved`]）。
+//! 工程ごとの時間はスパン `export.render`（描画の工程の 1 フレーム。描画、NV12 への変換の提出、リードバック）、
+//! `export.readback`（そのうちリードバックの待ちとコピー）、`export.queue_wait`（受け渡しのキューが満ちて待った時間）、
+//! `export.encode`（エンコードの工程の 1 回の送信）に出す。
 //!
 //! - レンダーターゲットごと（[`export_targets`]）、範囲の指定（[`ExportOptions::range`]）、
 //!   sequence のまま（[`ExportOptions::sequence`]）の書き出し。
@@ -26,6 +30,7 @@ mod parallel;
 mod passes;
 mod run;
 mod sequence;
+mod stages;
 mod subtitle_format;
 pub mod verify;
 
@@ -43,7 +48,7 @@ pub use chapters::{chapter_marks, youtube_description};
 pub use control::{ExportControl, ExportProgress, ProgressFn};
 pub use deliver::DeliveryReport;
 pub use mm_decode_api::StreamOutput;
-pub use run::export_run;
+pub use run::{export_run, export_run_interleaved};
 pub use subtitle_format::{srt, vtt};
 pub use verify::{verify_output, Expected, Verification};
 
@@ -53,7 +58,7 @@ use passes::{export_frames, export_passes, PassPosition, Plan};
 #[cfg(test)]
 use run::check_container;
 
-/// エンコーダーに一度に送るフレームの数。インターフェースの呼び出しを毎フレームにしない。
+/// 並行の書き出しで、エンコーダーに一度に送るフレームの数。チャンクの受け取りでインターフェースの呼び出しを毎フレームにしない。
 pub const EXPORT_BATCH_FRAMES: usize = 8;
 /// 取り消しでエンコーダーの送信を止めたときのエラーの文言。呼び出しの内側だけで使い、外へは出さない。
 const CANCELLED_MARK: &str = "書き出しの取り消し";
@@ -237,3 +242,6 @@ mod tests_burn_in;
 
 #[cfg(test)]
 mod tests_mixer;
+
+#[cfg(test)]
+mod tests_stages;

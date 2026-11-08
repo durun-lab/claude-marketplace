@@ -1,4 +1,5 @@
 //! 映像を描いてエンコーダーに送る工程。2 パスのコーデックは同じ描画を 2 回通し、並行の描画は別のエンジンで描く。
+//! 1 つのレンダラーで描くときは、描画の工程とエンコードの工程に分けて流す（`stages`）。
 //! 音は映像と同じ取り消しで止まるよう、短い区間ずつ混ぜてつなぐ。
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -7,16 +8,13 @@ use std::time::{Duration, Instant};
 use mm_audio_api::AudioBlock;
 use mm_decode_api::{EncodeReport, EncodeSettings, Encoder, ExtraTracks, Nv12Frame};
 use mm_doc::Project;
-use mm_node_api::Quality;
-use mm_render_api::RangeRequest;
 use mm_runtime::{Engine, RuntimeConfig};
 use mm_types::{
     CompositionId, MmError, RationalTime, RenderTargetId, Result, RgbaImage, TimeRange,
 };
 
-use crate::{
-    is_cancel_error, parallel, ExportControl, ExportProgress, CANCELLED_MARK, EXPORT_BATCH_FRAMES,
-};
+use crate::stages::{export_staged, Between, Draw};
+use crate::{is_cancel_error, parallel, ExportControl, ExportProgress, CANCELLED_MARK};
 
 /// 音を一度に混ぜる長さ（秒）。取り消しを確かめる間隔で、ミキサーは続きの区間で状態を持ち越すのでつなぎ目は出ない。
 const AUDIO_CHUNK: RationalTime = RationalTime::seconds(10);
@@ -62,13 +60,14 @@ pub(crate) fn frames_in(range: TimeRange, settings: &EncodeSettings) -> usize {
 }
 
 /// 映像を描く手段。並行の描画は別のエンジンを組むので、設定だけでよい。
+/// 1 つのエンジンで描くときは、フレームの間にそのエンジンを渡す先も持つ。
 pub(crate) enum Drawer<'a> {
-    Engine(&'a mut Engine),
+    Engine(&'a mut Engine, Between<'a>),
     Workers(&'a RuntimeConfig),
 }
 
 /// 映像をエンコーダーに送り、音を混ぜる。並行の描画なら音を映像と同時に混ぜる。取り消されたら `None`。
-/// 送った映像のフレームの数と、混ぜた音を返す。
+/// 送った映像のフレームの数と、混ぜた音を返す。`between` は 1 つのエンジンで描くときだけ、フレームの間に呼ぶ。
 pub(crate) fn render_video_and_audio(
     engine: &mut Engine,
     project: &Project,
@@ -76,6 +75,7 @@ pub(crate) fn render_video_and_audio(
     settings: &EncodeSettings,
     audio_range: TimeRange,
     encoder: &mut dyn Encoder,
+    between: Between<'_>,
 ) -> Result<Option<(usize, AudioBlock)>> {
     let (video, audio) = if plan.concurrent(settings) {
         // 並行の描画は別のエンジンを使うので、呼び出し側のエンジンは映像と同時に音を混ぜられる。
@@ -109,7 +109,7 @@ pub(crate) fn render_video_and_audio(
         })
     } else {
         let video = export_passes_with(
-            &mut Drawer::Engine(&mut *engine),
+            &mut Drawer::Engine(&mut *engine, between),
             project,
             plan,
             settings,
@@ -195,7 +195,7 @@ pub(crate) fn export_passes(
     encoder: &mut dyn Encoder,
 ) -> Result<usize> {
     export_passes_with(
-        &mut Drawer::Engine(engine),
+        &mut Drawer::Engine(engine, &mut |_| {}),
         project,
         plan,
         settings,
@@ -229,8 +229,7 @@ fn export_passes_with(
     Ok(frames)
 }
 
-/// 区間を描き、レンダラーの `export_range`（`EXPORT_BATCH_FRAMES` ずつ、または GPU で YUV にした経路）で
-/// エンコーダーに送る。送ったフレームの数を返す。
+/// 区間を描いてエンコーダーに送る。送ったフレームの数を返す。
 #[cfg(test)]
 pub(crate) fn export_frames(
     engine: &mut Engine,
@@ -239,8 +238,21 @@ pub(crate) fn export_frames(
     settings: &EncodeSettings,
     encoder: &mut dyn Encoder,
 ) -> Result<usize> {
+    export_frames_interleaved(engine, project, plan, settings, encoder, &mut |_| {})
+}
+
+/// `export_frames` で、フレームの間に `between` へエンジンを渡す。
+#[cfg(test)]
+pub(crate) fn export_frames_interleaved(
+    engine: &mut Engine,
+    project: &Project,
+    plan: &Plan<'_>,
+    settings: &EncodeSettings,
+    encoder: &mut dyn Encoder,
+    between: Between<'_>,
+) -> Result<usize> {
     export_frames_with(
-        &mut Drawer::Engine(engine),
+        &mut Drawer::Engine(engine, between),
         project,
         plan,
         settings,
@@ -248,8 +260,8 @@ pub(crate) fn export_frames(
     )
 }
 
-/// `export_frames` の本体。レンダラーは区間を一息に描くので、1 フレームの描画の時間はフレームが出てくる間隔で測り
-/// `export.render` に載せる。エンコーダーが失敗したらそこで描画を止め、その `Err` をそのまま返す。
+/// `export_frames` の本体。1 フレームの描画の時間を `export.render` に載せる。
+/// エンコーダーが失敗したら描画を止め、その `Err` をそのまま返す。
 fn export_frames_with(
     drawer: &mut Drawer<'_>,
     project: &Project,
@@ -262,7 +274,7 @@ fn export_frames_with(
         inner: encoder,
         control: plan.control,
     };
-    let engine = match drawer {
+    match drawer {
         Drawer::Workers(config) => {
             let job = parallel::ParallelJob {
                 project,
@@ -273,35 +285,23 @@ fn export_frames_with(
                 config: (*config).clone(),
                 chunk_frames: None,
             };
-            return parallel::export_parallel(&job, &mut metered, &mut |_, elapsed| {
+            parallel::export_parallel(&job, &mut metered, &mut |_, elapsed| {
                 progress.frame(elapsed)
-            });
+            })
         }
-        Drawer::Engine(engine) => engine,
-    };
-    let registry = engine.registry().clone();
-    let mut last = Instant::now();
-    engine.renderer().export_range(
-        &RangeRequest {
-            project,
-            composition: plan.composition,
-            range: plan.range,
-            fps: settings.fps,
-            size: settings.size,
-            quality: Quality::Full,
-            nodes: &registry,
-        },
-        &mut metered,
-        EXPORT_BATCH_FRAMES,
-        &mut |_index| {
-            progress.frame(last.elapsed());
-            last = Instant::now();
-        },
-    )
+        Drawer::Engine(engine, between) => {
+            let draw = Draw {
+                project,
+                plan,
+                settings,
+            };
+            export_staged(engine, &draw, &mut metered, &mut progress, &mut **between)
+        }
+    }
 }
 
 /// 進み具合の数え。2 パスでは 2 回分を全体として数える。
-struct Progress<'a> {
+pub(crate) struct Progress<'a> {
     plan: &'a Plan<'a>,
     started: Instant,
     done: u64,
@@ -319,7 +319,7 @@ impl<'a> Progress<'a> {
     }
 
     /// 1 フレーム送った。描画の時間を `export.render` に載せ、進み具合を知らせる。
-    fn frame(&mut self, elapsed: Duration) {
+    pub(crate) fn frame(&mut self, elapsed: Duration) {
         mm_trace::record_span("export.render", elapsed);
         self.done += 1;
         self.plan.control.report(&ExportProgress {

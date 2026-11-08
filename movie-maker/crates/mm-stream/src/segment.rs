@@ -8,12 +8,13 @@ use std::fs;
 use std::path::Path;
 
 use mm_doc::{Project, RenderTarget};
-use mm_export::{export_project, ExportOptions, StreamOutput};
+use mm_export::{export_run_interleaved, ExportOptions, ExportOutcome, StreamOutput};
 use mm_runtime::Engine;
 use mm_types::{CompositionId, Id, MmError, Rational, RenderTargetId, Result, TimeRange};
 
 use crate::hls::Plan;
 use crate::quality::AUDIO_BITS_PER_SECOND;
+use crate::worker::Interleave;
 
 /// 書き出しに使うレンダーターゲットの ID。
 const TARGET_ID: &str = "mm-stream";
@@ -21,12 +22,14 @@ const TARGET_ID: &str = "mm-stream";
 const STREAM_CODEC: &str = "h264_ts";
 
 /// 区間 `index` を作って `out` に置く。一時ファイルは `mm-export` が同じ場所の `<キー>.partial.ts` に置き、完成してから置き換える。
+/// フレームを 1 つ描くごとに `urgent` を呼び、急ぎの仕事を区間の途中に挟む。
 pub(crate) fn render_segment(
     engine: &mut Engine,
     project: &Project,
     plan: &Plan,
     index: u64,
     out: &Path,
+    urgent: Interleave<'_>,
 ) -> Result<()> {
     let span = tracing::info_span!("stream.segment", composition = %plan.composition, index);
     let _g = span.enter();
@@ -50,7 +53,11 @@ pub(crate) fn render_segment(
         stream: Some(stream_output(plan, range)?),
         ..ExportOptions::default()
     };
-    export_project(engine, &project, &options).map(|_| ())
+    match export_run_interleaved(engine, &project, &options, urgent)? {
+        ExportOutcome::Completed(_) => Ok(()),
+        // 取り消しのフラグを渡していないので来ないが、来たら区間が無いことをエラーで返す
+        ExportOutcome::Cancelled => Err(MmError::Internal("区間の書き出しが取り消された".into())),
+    }
 }
 
 /// 区間の書き方。キーフレームは区間の長さごと、時刻は区間の始まりの秒から。
