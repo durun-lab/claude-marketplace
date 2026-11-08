@@ -1,3 +1,6 @@
+/** 登録の応答の後に資格が効かなかった（端末がクッキーを保存しなかった）ときの、画面だけの code。 */
+export const PAIRING_NOT_KEPT = "pairing_not_kept";
+
 /**
  * PC の失敗の `code` から、画面に出す英語の文言を引く。PC の `message` は日本語のログ向けなので画面に出さない。
  * code は `mm-serve` の人の待ち受け（`mobile/`）と `ServeError` の応答、通信の失敗（`network`）。
@@ -21,6 +24,8 @@ const MESSAGES: Record<string, string> = {
   not_found: "The PC could not find it. Reload and try again.",
   not_latest: "Someone edited after this, so it can't be undone here.",
   not_on_mobile: "This change can't be applied from the phone. Turn on Decide on PC to send it as a proposal.",
+  [PAIRING_NOT_KEPT]:
+    "The PC paired this device, but this browser did not keep the sign-in cookie. Allow cookies for this site (turn off Block All Cookies), make a new code on the PC, and pair again.",
   pairing_unavailable: "The code has expired or was already used. Make a new code on the PC.",
   pairing_wrong_code: "That code is wrong. Check the code on the PC and try again.",
   unavailable: "The PC is busy. Try again in a moment.",

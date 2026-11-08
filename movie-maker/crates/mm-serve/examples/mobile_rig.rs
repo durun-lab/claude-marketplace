@@ -1,12 +1,12 @@
-//! モバイル版の通しの確認（`ui/mobile/e2e/`）が立てる PC の側。本物の `Core`、Claude の待ち受け、人の待ち受けを
+//! モバイル版の通しの確認（`ui/mobile/e2e/`）が立てる PC の側。実際の `Core`、Claude の待ち受け、人の待ち受けを
 //! フィクスチャのプロジェクトで始め、標準出力に 1 行の JSON で待ち受けを知らせる。
 //!
 //! 標準入力の 1 行ごとに応える。`code` は PC のアプリの Devices の「Add device」と同じ `Devices::issue_code`
 //! で登録の符号を出し、`devices` は登録した端末の一覧を出す。標準入力が閉じたら止める。
 //!
-//! 使い方: `cargo run -p mm-testkit --example mobile_rig --features mm-runtime/ffmpeg -- \
+//! 使い方: `cargo run -p mm-serve --example mobile_rig --features mm-runtime/ffmpeg -- \
 //!   --project fixtures/projects/mobile/project.json --transcript fixtures/ingest/transcript-ja.json \
-//!   --assets ui/mobile/dist --work <空のフォルダー>`
+//!   --assets ui/mobile/dist --work <空のフォルダー> --port 0`（`--port 0` は空いているポートで待つ）
 //!
 //! `Server::start` はトークンを `%LOCALAPPDATA%\movie-maker\` に置くので、呼ぶ側は `LOCALAPPDATA` を差し替える。
 
@@ -21,7 +21,7 @@ use mm_serve::{
 use mm_store::Store;
 use serde_json::{json, Value};
 
-/// 試験の `Host` に許す tailnet での名前の既定。
+/// テストの `Host` に許す tailnet での名前の既定。
 const DEFAULT_HOST: &str = "desk.tail1234.ts.net";
 /// 文字起こしの付属ファイルの置き場（プロジェクトのフォルダーからの相対）。`mm-story` がここを読む。
 const TRANSCRIPT_DIR: &str = "cache/ingest";
@@ -82,7 +82,7 @@ fn create_store(args: &Args, dir: &Path) -> Result<Store, String> {
     Store::create(dir, &project, mm_serve::now_ms()).map_err(|e| e.to_string())
 }
 
-/// アプリと同じ実際の実装でコマと HLS を描く。組めなければコマと映像の道だけ使えないまま続ける。
+/// アプリと同じ実際の実装でフレームと HLS を描く。組めなければフレームと映像の配信だけ使えないまま続ける。
 fn frames(dir: &Path) -> Option<Arc<dyn FrameSource>> {
     let config = RuntimeConfig {
         present: false,
@@ -91,7 +91,7 @@ fn frames(dir: &Path) -> Option<Arc<dyn FrameSource>> {
     match EngineFrames::spawn(config, dir.join("cache/mobile")) {
         Ok(f) => Some(Arc::new(f)),
         Err(e) => {
-            eprintln!("描画を始められない（コマと HLS は使えない）: {e}");
+            eprintln!("描画を始められない（フレームと HLS は使えない）: {e}");
             None
         }
     }

@@ -22,11 +22,5 @@ mm-ingest-api = { workspace = true }
 serde_json = { workspace = true }
 png = { workspace = true }
 
-# モバイル版の通しの確認が立てる PC の側（examples/mobile_rig.rs）。
-[dev-dependencies]
-mm-runtime = { workspace = true }
-mm-serve = { workspace = true }
-mm-store = { workspace = true }
-
 [lints]
 workspace = true

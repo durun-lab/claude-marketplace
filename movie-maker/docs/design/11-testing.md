@@ -171,49 +171,56 @@
 
 ## モバイル版の通しの確認
 
-段階 9 の終わりの条件（出先で Story とコメントと操作の発行ができる）を、本物の `mm-serve` を相手に Playwright で通す（[モバイル版](12-mobile.md)）。
+段階 9 の終わりの条件（出先で Story とコメントと操作の発行ができる）を、実際の `mm-serve` を相手に Playwright で通す（[モバイル版](12-mobile.md)）。
 端末の設定は iPhone 14（WebKit）と Pixel 7（Chromium）。
-`tailscale serve` の代わりに、中継（`ui/mobile/e2e/pc.mjs`）が自己署名の HTTPS で受け、`Host` を tailnet での名前に、`Origin` を `https://<tailnet での名前>:8443` に替え、`Tailscale-User-Login` を付けて 127.0.0.1:7338 へ流す。
+`tailscale serve` の代わりに、中継（`ui/mobile/e2e/pc.mjs`）が自己署名の HTTPS で受け、`Host` を tailnet での名前に替え、`Tailscale-User-Login` を付けて人の待ち受けへ流す。
+`Origin` は中継自身のオリジンのときだけ `https://<tailnet での名前>:8443` に替え、ほかのオリジンはそのまま流して守り（`guard.rs`）に拒否させる。
+人の待ち受けは空いているポートで待つので、PC で movie-maker が 7338 で動いていても回せる。
 
 | 置き場所 | 中身 |
 |---|---|
-| `crates/mm-testkit/examples/mobile_rig.rs` | PC の側。フィクスチャから `project.mmdb` を作り、アプリと同じ実際の実装の `EngineFrames`、Claude の待ち受け、人の待ち受けを始める。標準入力の `code` で `Devices::issue_code`（Devices の「Add device」と同じ）を呼ぶ |
+| `crates/mm-serve/examples/mobile_rig.rs` | PC の側。フィクスチャから `project.mmdb` を作り、アプリと同じ実際の実装の `EngineFrames`、Claude の待ち受け、人の待ち受けを始める。標準入力の `code` で `Devices::issue_code`（Devices の「Add device」と同じ）を呼ぶ |
 | `fixtures/projects/mobile/project.json` | 8 秒の 640x360（動く見出しと直す対象の字幕）と、文字起こし（`fixtures/ingest/transcript-ja.json`）の付く素材 1 つ |
-| `ui/mobile/e2e/flow.mjs` | 手順。1 登録（QR の URL）、2 Watch（プレイリストと TS の区間。Chromium は hls.js で再生）と描き込みつきのコメント、3 MCP の `comments` と `propose`（`responds_to`）、4 Proposals で前後のフレームを見て承認し、別の画面に SSE でコメントの `fresh` が届く、5 Story の `Keep` と「Decide on PC」の提案、6 `setOffline` で書いたコメントが IndexedDB に入り、戻ると 1 回だけ届く |
+| `ui/mobile/e2e/flow.mjs` | 手順。1 登録（端末がクッキーを保存しないと画面が知らせ、同じ名前で登録し直せる。続けて QR の URL で登録）、2 Watch（プレイリストと TS の配信の区間。Chromium は hls.js で再生）と描き込みつきのコメント、3 MCP の `comments` と `propose`（`responds_to`）、4 Proposals で前後のフレームを見て承認し、別の画面に SSE でコメントの `fresh` が届く、5 Story の `Keep` と「Decide on PC」の提案、6 `setOffline` で書いたコメントが送信待ちのキュー（IndexedDB）に入り、戻ると 1 回だけ届く |
 
-WebKit の Windows 版は HLS を再生できないので、WebKit はプレイリストと区間が取れるところまでを確かめる。
+WebKit の Windows 版は HLS を再生できないので、WebKit はプレイリストと配信の区間が取れるところまでを確かめる。
+配信の区間の大きさは回ごとに少し違う（符号化が決定的でない）。区間のキーは出力でなく入力から作るので、キャッシュの当たり外れは変わらない。テストは大きさでなく、TS の同期バイトと区間の数を確かめる。
 回すのは段階の締めと、`mm-serve` の人の待ち受け、`mm-stream`、`ui/mobile` を変えた PR。
 
 ```sh
-# PC の側（FFmpeg ありの設定。HLS の区間の符号化に要る）
+# PC の側（FFmpeg ありの設定。配信の区間の符号化に要る）
 cd movie-maker
 export CARGO_TARGET_DIR=E:/dev/mmt/mobile-e2e CARGO_INCREMENTAL=0
 export FFMPEG_DIR=D:/dev/ffmpeg-dev/ffmpeg-n9.0-latest-win64-gpl-shared-9.0 LIBCLANG_PATH="C:/Program Files/LLVM/bin"
-cargo build -p mm-testkit --example mobile_rig --features mm-runtime/ffmpeg
-# PWA と通し。7338 を本物のアプリが使っていたら止めておく。LOCALAPPDATA は MM_E2E_WORK の下に差し替わる
+cargo build -p mm-serve --example mobile_rig --features mm-runtime/ffmpeg
+# PWA と通し。LOCALAPPDATA は MM_E2E_WORK の下に差し替わる
 cd ui/mobile && pnpm build
 PATH="$PATH:$FFMPEG_DIR/bin" PLAYWRIGHT_DIR=/d/dev/pw \
   MM_RIG=$CARGO_TARGET_DIR/debug/examples/mobile_rig.exe MM_E2E_WORK=E:/dev/mmt/mobile-e2e-work \
   MM_E2E_REPEAT=3 node e2e/run.mjs
 ```
 
-`MM_E2E_TARGETS=iphone` か `android` で片方だけ回す。落ちた手順の画面は `MM_E2E_WORK` の `<端末>-failed.png` に残る。
+`MM_E2E_TARGETS=iphone` か `android` で片方だけ回す。
+通った回の作業のフォルダー（`MM_E2E_WORK` の `rig-*`）は消す。失敗した回はフォルダーと、失敗した手順の画面（`<端末>-failed.png`）を残す。
 
 ### 実機での確かめ方
 
 Playwright の端末の設定は WebKit と Chromium の描画を通すだけで、iOS の Safari の HLS の再生、ホーム画面の Web アプリ、指の操作、4G/5G の回線は実機でしか確かめられない。
 iPhone の Safari と Android の Chrome で、それぞれ次を行う。
 
-1. PC で movie-maker を起動し、[設定の手順](12-mobile.md#設定の手順)の 2〜3 で `tailscale serve --bg --https=8443 http://127.0.0.1:7338` を確かめる。スマホは Wi-Fi を切り、モバイルの回線で tailnet につなぐ。
-2. Devices の「Add device」の QR をカメラで読み、Pair を押す。PC の端末の一覧に名前と Tailscale のアカウントが出る。iPhone は共有のメニューからホーム画面に置き、ホーム画面から開いて、登録の画面が出たら新しい符号を手で入れる。
-3. Watch で再生する（iPhone は Safari のそのままの再生、Android は hls.js）。一時停止して `Comment`、`Draw` で字幕を丸で囲み、送る。PC の Review にそのコメントが出る。
-4. claude.ai/code のセッションで「モバイルのコメントに対応して」と頼む。Claude が `comments` で読み、`propose` で提案を出す。
-5. Proposals で提案を開き、`Before` と `After` を押して見比べ、`Approve` を押す。Watch に戻るとコメントが `fresh` になっている。PC の画面にも変更が入る。
-6. Story で素材を開き、単語を 2 つ押して範囲を選び、`Keep` を押す。続けて `Decide on PC` を入れて別の範囲で `Keep` を押し、PC の Review に提案が届くことを見る。
-7. 機内モードにして `Comment` で書く。上に `1 queued` が出る。機内モードを切ると送られ、PC に 1 件だけ届く。
-8. 横にして映像が全画面になること、押す所が親指で届くこと、画面を隠して戻ると読み直されることを見る。終わったら PC の Devices で登録を外す。
+前提: スマホに Tailscale のアプリを入れ、PC と同じアカウントで tailnet に入っている。PC の Claude Code のセッションが movie-maker の MCP につながっている（[HTTP サーバー](05-ops.md#http-サーバー)）。
 
-気づいたことは、端末、OS とブラウザーの版、手順の番号を添えて PR かコメントに書く。
+1. PC で movie-maker を起動してプロジェクトを開き、[設定の手順](12-mobile.md#設定の手順)の 2〜3 で `tailscale serve status` が `:8443` から `http://127.0.0.1:7338` に向いていることを確かめる。スマホは Wi-Fi を切り、モバイルの回線で Tailscale をつなぐ。
+2. PC の Devices パネルで「Add device」を押し、QR をスマホのカメラで読んで開き、`Pair` を押す。Watch の画面に替わり、PC の端末の一覧に名前と Tailscale のアカウントが出る。登録の画面に「did not keep the sign-in cookie」と出たら、Safari の設定の「すべての Cookie をブロック」を切り、PC で符号を出し直して同じ名前で登録し直す。
+3. iPhone だけ: Safari の共有ボタンから「ホーム画面に追加」を押し、ホーム画面のアイコンから開く。登録の画面が出たら（Safari とクッキーが分かれる）、PC で符号を出し直し、名前を `iPhone Home` のように Safari の登録と別にして入れる。
+4. Watch で再生する（iPhone は Safari のそのままの再生、Android は hls.js）。一時停止して `Comment` を押し、文を書き、`Draw` で字幕を丸で囲み、`Send` を押す。PC の Review にそのコメントが出る。
+5. PC の Claude Code のセッションで「モバイルのコメントに対応して」と頼む（スマホの claude.ai/code からでもよい）。Claude が `comments` で読み、`propose` で提案を出す。
+6. Proposals で提案を開き、`Before` と `After` を押して見比べ、`Approve` を押す。Watch に戻るとコメントの状態が `fresh` になっている。PC の画面にも変更が入る。
+7. Story で素材を開き、単語を 2 つ押して範囲を選び、`Keep` を押す。続けて `Decide on PC` のチェックを入れ、別の範囲を選んで `Keep` を押す。PC の Review に提案が届く。
+8. 機内モードにして `Comment` で書き、`Send` を押す。上に `1 queued` が出る。機内モードを切り、Tailscale がつながると送られ、PC に 1 件だけ届く。
+9. 横にして映像が全画面になること、押す所が親指で届くこと、ほかのアプリに切り替えて戻ると読み直されることを見る。終わったら PC の Devices で、この確かめ方で登録した端末を全部外す。
+
+気づいたことは、端末、OS とブラウザーのバージョン、手順の番号を添えて PR かコメントに書く。
 
 ## GPU の要るテストの扱い
 

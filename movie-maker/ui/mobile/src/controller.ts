@@ -1,5 +1,6 @@
 import type { Transport } from "@mm/sdk";
-import { API_ROOT, PAIR_PATH, createApi, type Api, type FetchLike } from "./api/http.ts";
+import { PAIRING_NOT_KEPT } from "./api/errors.ts";
+import { API_ROOT, ApiError, PAIR_PATH, UNAUTHORIZED, createApi, type Api, type FetchLike } from "./api/http.ts";
 import { createMobileTransport } from "./api/transport.ts";
 import type { CommentDraft, PairResult } from "./api/types.ts";
 import { createConnection, type Connection, type EventSourceLike } from "./connection.ts";
@@ -36,7 +37,7 @@ export const createController = (platform: Platform): Controller => {
   const outbox = createOutbox(platform.outboxStore);
   const flush = async (): Promise<void> => {
     await outbox.flush(sendDraft(api));
-    // 電波の弱い所では SSE が開いたまま送信だけ落ちる。接続を確かめ直し、`offline` から戻る時にまた送る
+    // 電波の弱い所では SSE が開いたまま送信だけ失敗する。接続を確かめ直し、`offline` から戻る時にまた送る
     if (outbox.list().some((c) => !c.error)) await connection.refresh();
   };
   platform.onNetworkBack(() => void flush());
@@ -54,6 +55,8 @@ export const createController = (platform: Platform): Controller => {
     pair: async (code, deviceName) => {
       const res = await api.post<PairResult>(PAIR_PATH, { code, device_name: deviceName });
       await connection.start();
+      // クッキーを保存しない端末では PC の登録だけが済む。資格が効いたかを読み直しの結果で確かめて知らせる
+      if (connection.get().state === "unpaired") throw new ApiError(UNAUTHORIZED, PAIRING_NOT_KEPT);
       return res;
     },
     comment: async (draft) => {

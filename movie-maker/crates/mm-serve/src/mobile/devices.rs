@@ -67,6 +67,20 @@ struct DeviceRecord {
     paired_at_ms: i64,
     /// 端末の資格の BLAKE3（16 進）。
     hash: String,
+    /// 資格がまだ一度も使われていない。端末がクッキーを保存しなかった登録は、名前を塞がず期限で一覧から消える。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    unused: bool,
+}
+
+impl DeviceRecord {
+    /// 一覧に残る登録か。資格を一度も使わないまま符号の期限（`ttl_ms`）を過ぎた登録は無いものとみなす。
+    fn live(&self, now_ms: i64, ttl_ms: i64) -> bool {
+        !self.unused || now_ms.saturating_sub(self.paired_at_ms) <= ttl_ms
+    }
+
+    fn same_name(&self, name: &str) -> bool {
+        self.name.to_lowercase() == name.to_lowercase()
+    }
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -131,8 +145,7 @@ impl Devices {
             .iter()
             .map(|b| char::from(CODE_ALPHABET[usize::from(b & CODE_MASK)]))
             .collect();
-        let ttl_ms = i64::try_from(self.ttl.as_millis()).unwrap_or(i64::MAX);
-        let expires_at_ms = now_ms().saturating_add(ttl_ms);
+        let expires_at_ms = now_ms().saturating_add(self.ttl_ms());
         self.lock()?.pending = Some(Pending {
             code: code.clone(),
             deadline: Instant::now() + self.ttl,
@@ -157,20 +170,9 @@ impl Devices {
             return Ok(Err(e));
         }
         let name = name.trim();
-        if name.is_empty()
-            || name.chars().count() > NAME_MAX_CHARS
-            || name.chars().any(char::is_control)
-        {
-            return Ok(Err(PairError::BadName));
-        }
-        // 取り消し（undo）で出した端末を見分けるのも画面の表示も名前なので、大文字と小文字の違いだけの名前も同じとみなす。
-        if st
-            .file
-            .devices
-            .iter()
-            .any(|d| d.name.to_lowercase() == name.to_lowercase())
-        {
-            return Ok(Err(PairError::NameTaken));
+        let now = now_ms();
+        if let Err(e) = make_room(&mut st.file.devices, name, now, self.ttl_ms()) {
+            return Ok(Err(e));
         }
         st.pending = None;
         let credential = random_hex(CREDENTIAL_BYTES)?;
@@ -178,8 +180,9 @@ impl Devices {
             id: random_hex(DEVICE_ID_BYTES)?,
             name: name.to_owned(),
             login: login.to_owned(),
-            paired_at_ms: now_ms(),
+            paired_at_ms: now,
             hash: hash_credential(&credential),
+            unused: true,
         };
         st.file.devices.push(record.clone());
         if let Err(e) = self.save(&st.file) {
@@ -189,21 +192,41 @@ impl Devices {
         Ok(Ok((info(&record), credential)))
     }
 
-    /// 資格（クッキーの値）の端末。無いか登録を外した端末なら `None`。
+    /// 資格（クッキーの値）の端末。無いか登録を外した端末なら `None`。初めて使われた資格は `unused` のフラグを下ろす。
     pub(crate) fn find(&self, credential: &str) -> Result<Option<DeviceInfo>, ServeError> {
         let hash = hash_credential(credential);
-        let st = self.lock()?;
-        Ok(st
+        let (now, ttl_ms) = (now_ms(), self.ttl_ms());
+        let mut st = self.lock()?;
+        let Some(pos) = st.file.devices.iter().position(|d| {
+            d.live(now, ttl_ms) && constant_time_eq(d.hash.as_bytes(), hash.as_bytes())
+        }) else {
+            return Ok(None);
+        };
+        if st.file.devices[pos].unused {
+            st.file.devices[pos].unused = false;
+            if let Err(e) = self.save(&st.file) {
+                st.file.devices[pos].unused = true;
+                return Err(e);
+            }
+        }
+        Ok(Some(info(&st.file.devices[pos])))
+    }
+
+    /// 登録した端末の一覧（登録した順）。資格を一度も使わないまま期限を過ぎた登録は出さない。
+    pub fn list(&self) -> Result<Vec<DeviceInfo>, ServeError> {
+        let (now, ttl_ms) = (now_ms(), self.ttl_ms());
+        Ok(self
+            .lock()?
             .file
             .devices
             .iter()
-            .find(|d| constant_time_eq(d.hash.as_bytes(), hash.as_bytes()))
-            .map(info))
+            .filter(|d| d.live(now, ttl_ms))
+            .map(info)
+            .collect())
     }
 
-    /// 登録した端末の一覧（登録した順）。
-    pub fn list(&self) -> Result<Vec<DeviceInfo>, ServeError> {
-        Ok(self.lock()?.file.devices.iter().map(info).collect())
+    fn ttl_ms(&self) -> i64 {
+        i64::try_from(self.ttl.as_millis()).unwrap_or(i64::MAX)
     }
 
     /// 端末の登録を外す。以後その資格の要求は 401 で、開いている SSE も閉じる。無い ID なら `false`。
@@ -238,6 +261,28 @@ impl Devices {
         mm_store::write_private_file(&self.path, &bytes)
             .map_err(|e| ServeError::Internal(format!("端末の一覧を書けない: {e}")))
     }
+}
+
+/// 名前を確かめ、期限を過ぎた登録と、同じ名前で資格を使っていない登録を外す。
+fn make_room(
+    devices: &mut Vec<DeviceRecord>,
+    name: &str,
+    now_ms: i64,
+    ttl_ms: i64,
+) -> Result<(), PairError> {
+    if name.is_empty()
+        || name.chars().count() > NAME_MAX_CHARS
+        || name.chars().any(char::is_control)
+    {
+        return Err(PairError::BadName);
+    }
+    // 取り消し（undo）で出した端末を見分けるのも画面の表示も名前なので、大文字と小文字の違いだけの名前も同じとみなす。
+    // 資格を一度も使っていない登録は操作を出していないので、同じ名前の登録し直しで置き換える。
+    if devices.iter().any(|d| !d.unused && d.same_name(name)) {
+        return Err(PairError::NameTaken);
+    }
+    devices.retain(|d| d.live(now_ms, ttl_ms) && !d.same_name(name));
+    Ok(())
 }
 
 /// 符号を確かめる。違えば数え、期限か回数を超えたら消す。合った符号は登録を決めてから消す。
@@ -336,5 +381,56 @@ mod tests {
         assert!(text.contains(&hash_credential(&credential)));
         let reopened = Devices::open(tmp.path().join("devices.json"), PAIRING_TTL).unwrap();
         assert_eq!(reopened.find(&credential).unwrap().unwrap().name, "phone");
+    }
+
+    fn pair_new(d: &Devices, name: &str) -> String {
+        let code = d.issue_code().unwrap().code;
+        d.pair(&code, name, "me@x").unwrap().unwrap().1
+    }
+
+    #[test]
+    fn 資格を使わなかった登録は同じ名前の登録し直しで置き換わる() {
+        let (_tmp, d) = devices(PAIRING_TTL);
+        let lost = pair_new(&d, "phone");
+        let kept = pair_new(&d, "Phone");
+        assert_eq!(d.list().unwrap().len(), 1);
+        assert!(d.find(&lost).unwrap().is_none());
+        assert_eq!(d.find(&kept).unwrap().unwrap().name, "Phone");
+        let code = d.issue_code().unwrap().code;
+        assert_eq!(
+            d.pair(&code, "phone", "me@x").unwrap().unwrap_err(),
+            PairError::NameTaken
+        );
+    }
+
+    #[test]
+    fn 資格を使わないまま期限を過ぎた登録は無いものとみなす() {
+        let (_tmp, d) = devices(PAIRING_TTL);
+        let stale = pair_new(&d, "phone");
+        let used = pair_new(&d, "tablet");
+        assert!(d.find(&used).unwrap().is_some());
+        let past = i64::try_from(PAIRING_TTL.as_millis()).unwrap() + 1;
+        for r in &mut d.lock().unwrap().file.devices {
+            r.paired_at_ms -= past;
+        }
+        let names: Vec<_> = d.list().unwrap().into_iter().map(|i| i.name).collect();
+        assert_eq!(names, ["tablet"]);
+        assert!(d.find(&stale).unwrap().is_none());
+        assert!(d.find(&used).unwrap().is_some());
+    }
+
+    #[test]
+    fn 未使用のフラグはファイルに残り_フラグの無い古い記録は使ったものとみなす() {
+        let (tmp, d) = devices(PAIRING_TTL);
+        let path = tmp.path().join("devices.json");
+        let credential = pair_new(&d, "phone");
+        assert!(std::fs::read_to_string(&path).unwrap().contains("unused"));
+        d.find(&credential).unwrap().unwrap();
+        assert!(!std::fs::read_to_string(&path).unwrap().contains("unused"));
+        let old =
+            r#"{"devices":[{"id":"a","name":"old","login":"me@x","paired_at_ms":0,"hash":"h"}]}"#;
+        std::fs::write(&path, old).unwrap();
+        let reopened = Devices::open(path, PAIRING_TTL).unwrap();
+        assert_eq!(reopened.list().unwrap().len(), 1);
     }
 }

@@ -1,12 +1,12 @@
 // 通しの確認の手順。12-mobile.md の主な流れ（コメント → Claude の propose → モバイルで承認）と、
-// 登録、再生、Story、送信待ちの列を、1 つの端末の設定で順に通す。
+// 登録、再生、Story、送信待ちのキューを、1 つの端末の設定で順に通す。
 import assert from "node:assert/strict";
 import { TAILNET_LOGIN } from "./pc.mjs";
 
 /** 区間の符号化を待つ上限。区間は見られたときに PC の GPU で描いて符号化する。 */
 const MEDIA_TIMEOUT_MS = 90_000;
 const UI_TIMEOUT_MS = 30_000;
-/** MPEG-TS の同期バイト。区間の先頭がこれなら TS として読める。 */
+/** MPEG-TS の同期バイト。配信の区間の先頭がこれなら TS として読める。 */
 const TS_SYNC_BYTE = 0x47;
 /** 再生が進んだと見なす位置（秒）。 */
 const PLAYED_SECONDS = 1;
@@ -16,7 +16,32 @@ const PROPOSAL_NAME = "Fix the caption";
 
 const item = (page, text) => page.locator(".list li").filter({ hasText: text });
 
-/** 1. PC の Devices の符号（`Devices::issue_code`）を QR の URL で開き、登録する。 */
+const isPairPost = (route) => route.request().method() === "POST" && new globalThis.URL(route.request().url()).pathname === "/m/pair";
+
+/**
+ * 1a. 端末がクッキーを保存しないと、PC の登録だけが済む。画面が知らせることを確かめ、資格を使わなかった登録を残す
+ * （次の手順が同じ名前で登録し直せることを確かめる）。`route.fetch` は文脈のクッキーに入れるので、応答の前に消す。
+ */
+export const pairWithoutCookie = async ({ page, context, pc, relay }) => {
+  const { code } = await pc.ask("code");
+  const dropCookie = async (route) => {
+    if (!isPairPost(route)) return route.continue();
+    const res = await route.fetch();
+    await context.clearCookies();
+    const headers = Object.fromEntries(Object.entries(res.headers()).filter(([k]) => k !== "set-cookie"));
+    return route.fulfill({ response: res, headers });
+  };
+  await page.route("**/m/pair", dropCookie);
+  await page.goto(`${relay.origin}/m/pair?code=${code}`);
+  await page.getByRole("button", { name: "Pair" }).click();
+  await page.getByRole("alert").filter({ hasText: "did not keep the sign-in cookie" }).waitFor({ timeout: UI_TIMEOUT_MS });
+  await page.unroute("**/m/pair", dropCookie);
+  const { devices } = await pc.ask("devices");
+  assert.equal(devices.length, 1, "PC の登録は済んでいる");
+  return "pairing without the cookie is reported on the screen";
+};
+
+/** 1b. PC の Devices の符号（`Devices::issue_code`）を QR の URL で開き、同じ名前で登録し直す。 */
 export const pair = async ({ page, context, pc, relay, deviceName }) => {
   const { code, url } = await pc.ask("code");
   assert.match(url, /\/m\/pair\?code=/);
@@ -37,7 +62,7 @@ export const pair = async ({ page, context, pc, relay, deviceName }) => {
 };
 
 /**
- * プレイリストと先頭の区間を、画面と同じ資格（クッキー）で取る。親のプレイリスト（index.m3u8）があれば
+ * プレイリストと先頭の配信の区間を、画面と同じ資格（クッキー）で取る。親のプレイリスト（index.m3u8）があれば
  * 最初の画質の子をたどり、無ければ画質ごとのプレイリストを直接読む。
  */
 const fetchStream = (page) =>
@@ -118,7 +143,7 @@ const checkFrames = async (page) => {
   await page.waitForFunction(() => [...globalThis.document.querySelectorAll(".compare img")].every((i) => i.complete && i.naturalWidth > 0), null, { timeout: MEDIA_TIMEOUT_MS });
   assert.match((await imgs.nth(1).getAttribute("src")) ?? "", /proposal=/);
   await page.getByRole("button", { name: "Before", exact: true }).click();
-  assert.match((await imgs.nth(0).getAttribute("class")) ?? "", /show/);
+  await page.locator(".compare img.show[alt=Before]").waitFor({ timeout: UI_TIMEOUT_MS });
 };
 
 /** 4. モバイルの Proposals で前後を見て承認する。別の画面（同じ端末）に SSE でコメントの fresh が届く。 */
@@ -169,20 +194,26 @@ export const story = async ({ page, mcp }) => {
   return `kept a range now, proposal ${sent.id} waits on the PC`;
 };
 
-const queuedInIdb = (page) =>
-  page.evaluate(
-    () =>
+/** IndexedDB の送信待ちのキューの本文が `texts` になるまで待つ。画面を更新してから保存するので、画面の後に揃う。 */
+const waitForIdbQueue = (page, texts) =>
+  page.waitForFunction(
+    (want) =>
       new Promise((resolve, reject) => {
         const req = globalThis.indexedDB.open("mm-mobile");
         req.onerror = () => reject(req.error);
         req.onsuccess = () => {
           const all = req.result.transaction("outbox", "readonly").objectStore("outbox").getAll();
-          all.onsuccess = () => resolve(all.result.map((c) => c.text));
+          all.onsuccess = () => {
+            req.result.close();
+            resolve(JSON.stringify(all.result.map((c) => c.text)) === want);
+          };
         };
       }),
+    JSON.stringify(texts),
+    { timeout: UI_TIMEOUT_MS },
   );
 
-/** 6. 回線を切って書くと送信待ちの列（IndexedDB）に入り、つながったら送られる。 */
+/** 6. 回線を切って書くと送信待ちのキュー（IndexedDB）に入り、つながったら送られる。 */
 export const offline = async ({ page, context, mcp }) => {
   await page.getByRole("tab", { name: "Watch" }).click();
   await context.setOffline(true);
@@ -190,21 +221,22 @@ export const offline = async ({ page, context, mcp }) => {
   await page.getByLabel("Comment text").fill(OFFLINE_TEXT);
   await page.getByRole("button", { name: "Send" }).click();
   await page.locator(".item.pending").filter({ hasText: OFFLINE_TEXT }).waitFor({ timeout: UI_TIMEOUT_MS });
-  assert.deepEqual(await queuedInIdb(page), [OFFLINE_TEXT]);
+  await waitForIdbQueue(page, [OFFLINE_TEXT]);
   const before = await mcp.call("comments", {});
   assert.ok(!before.comments.some((c) => c.text === OFFLINE_TEXT), "切れている間は PC に届かない");
   await context.setOffline(false);
   await item(page, OFFLINE_TEXT).locator(".state.open").waitFor({ timeout: UI_TIMEOUT_MS });
-  assert.deepEqual(await queuedInIdb(page), []);
+  await waitForIdbQueue(page, []);
   const after = await mcp.call("comments", {});
   const sent = after.comments.filter((c) => c.text === OFFLINE_TEXT);
   assert.equal(sent.length, 1, "再送で 2 件にならない");
-  assert.ok(sent[0].client_id, "送信待ちの列の client_id が付く");
+  assert.ok(sent[0].client_id, "送信待ちのキューの client_id が付く");
   return "queued in IndexedDB while offline, sent once after reconnecting";
 };
 
 /** 順に通す手順。 */
 export const STEPS = [
+  ["1 pair without cookie", pairWithoutCookie],
   ["1 pair", pair],
   ["2 watch", watch],
   ["2 comment", comment],

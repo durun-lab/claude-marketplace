@@ -1,8 +1,8 @@
-// モバイル版の通しの確認。本物の mm-serve の人の待ち受けと Claude の待ち受けの MCP を相手に、
+// モバイル版の通しの確認。実際の mm-serve の人の待ち受けと Claude の待ち受けの MCP を相手に、
 // iPhone（WebKit）と Android（Chromium）の端末の設定で flow.mjs の手順を通す。
 // playwright は repo の依存にせず、PLAYWRIGHT_DIR（playwright を入れた場所）から読む。
 // 使い方は docs/design/11-testing.md の「モバイル版の通しの確認」。
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
 import process from "node:process";
@@ -35,35 +35,45 @@ const config = () => {
   };
 };
 
-/** 1 回の通し。PC の側、中継、ブラウザーを新しく作り、終わったら全部止める。 */
+/** 手順を順に通し、失敗した手順で止めて画面と PC のログを残す。 */
+const runSteps = async (cfg, name, cx) => {
+  const results = [];
+  for (const [step, fn] of STEPS) {
+    const started = Date.now();
+    try {
+      results.push({ step, ok: true, note: await fn(cx), ms: Date.now() - started });
+    } catch (e) {
+      await cx.page.screenshot({ path: `${cfg.workRoot}/${name}-failed.png` }).catch(() => undefined);
+      results.push({ step, ok: false, note: e.message.split("\n")[0], ms: Date.now() - started, logs: cx.pc.logs.join("").slice(-2000) });
+      break;
+    }
+  }
+  return results;
+};
+
+/** 1 回の通し。PC の側、中継、ブラウザーを新しく作り、途中で失敗しても全部止める。通った回の作業のフォルダーは消す。 */
 const runOnce = async (cfg, name, tls) => {
   const target = TARGETS[name];
   const pc = await startPc(cfg);
-  const relay = await startRelay(pc.mobile_port, tls);
-  const browser = await target.type.launch();
-  const results = [];
+  let relay = null;
+  let browser = null;
+  let results = [];
   try {
+    relay = await startRelay(pc.mobile_port, tls);
+    browser = await target.type.launch();
     // 中継の証明書は自己署名なので、証明書の誤りだけを見逃す
     const context = await browser.newContext({ ...devices[target.device], ignoreHTTPSErrors: true });
     const page = await context.newPage();
     const hlsRequests = [];
     page.on("request", (r) => /\/hls-[\w-]+\.js$/.test(r.url()) && hlsRequests.push(r.url()));
     const cx = { page, context, pc, relay, mcp: mcpClient(pc), deviceName: target.deviceName, browserName: target.type.name(), hlsRequests, state: {} };
-    for (const [step, fn] of STEPS) {
-      const started = Date.now();
-      try {
-        results.push({ step, ok: true, note: await fn(cx), ms: Date.now() - started });
-      } catch (e) {
-        await page.screenshot({ path: `${cfg.workRoot}/${name}-failed.png` }).catch(() => undefined);
-        results.push({ step, ok: false, note: e.message.split("\n")[0], ms: Date.now() - started, logs: pc.logs.join("").slice(-2000) });
-        break;
-      }
-    }
+    results = await runSteps(cfg, name, cx);
   } finally {
-    await browser.close();
-    relay.close();
+    await browser?.close();
+    relay?.close();
     await pc.stop();
   }
+  if (results.length === STEPS.length && results.every((r) => r.ok)) await rm(pc.work, { recursive: true, force: true });
   return results;
 };
 

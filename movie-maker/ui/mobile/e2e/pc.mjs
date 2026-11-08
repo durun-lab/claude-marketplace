@@ -1,5 +1,5 @@
-// 通しの確認の PC の側。本物の mm-serve（crates/mm-testkit/examples/mobile_rig.rs）を起動し、
-// tailscale serve の代わりの中継と、Claude の待ち受けの MCP を呼ぶ口を作る。
+// 通しの確認の PC の側。実際の mm-serve（crates/mm-serve/examples/mobile_rig.rs）を起動し、
+// tailscale serve の代わりの中継と、Claude の待ち受けの MCP のクライアントを作る。
 import { spawn } from "node:child_process";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { request as httpRequest } from "node:http";
@@ -7,16 +7,18 @@ import { createServer as createHttpsServer } from "node:https";
 import { join } from "node:path";
 import process from "node:process";
 import { createInterface } from "node:readline";
-import { setTimeout } from "node:timers";
+import { clearTimeout, setTimeout } from "node:timers";
 
-/** 試験の tailnet での名前と本人。mobile_rig の既定と合わせる。 */
+/** テストの tailnet での名前と本人。mobile_rig の既定と合わせる。 */
 export const TAILNET_HOST = "desk.tail1234.ts.net";
 export const TAILNET_LOGIN = "me@example.com";
 /** tailscale serve の HTTPS のポート。ブラウザーのオリジンはこれだと見なして Origin を書き換える。 */
 const SERVE_HTTPS_PORT = 8443;
-/** 人の待ち受けの決まったポート。設計（12-mobile.md）の既定。 */
-export const MOBILE_PORT = 7338;
+/** 人の待ち受けは空いているポートで待たせ、実際のアプリ（7338）や前の回と取り合わない。 */
+const ANY_PORT = 0;
 const READY_TIMEOUT_MS = 120_000;
+/** 標準入力を閉じてから止まるまでを待つ上限。過ぎたら殺す。 */
+const STOP_TIMEOUT_MS = 10_000;
 
 /** 1 行の JSON を順に受ける読み手。 */
 const lineReader = (stream) => {
@@ -36,16 +38,22 @@ const lineReader = (stream) => {
   return () => (queue.length > 0 ? Promise.resolve(queue.shift()) : new Promise((r) => waiters.push(r)));
 };
 
-const withTimeout = (p, ms, what) =>
-  Promise.race([p, new Promise((_, reject) => setTimeout(() => reject(new Error(`${what}: ${ms} ms で応答が無い`)), ms))]);
+/** 決着したら時計を外し、終わった後に node を待たせない。 */
+const withTimeout = (p, ms, what) => {
+  let timer;
+  const late = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${what}: ${ms} ms で応答が無い`)), ms);
+  });
+  return Promise.race([p, late]).finally(() => clearTimeout(timer));
+};
 
 /**
  * mobile_rig を起動し、待ち受けが整うまで待つ。`LOCALAPPDATA` は `appData` に差し替え、
- * 利用者の本物のトークンと devices.json に触れない。
+ * 利用者のトークンと devices.json に触れない。
  */
-export const startPc = async ({ exe, project, transcript, assets, workRoot, appData, port = MOBILE_PORT }) => {
+export const startPc = async ({ exe, project, transcript, assets, workRoot, appData }) => {
   const work = await mkdtemp(join(workRoot, "rig-"));
-  const args = ["--project", project, "--transcript", transcript, "--assets", assets, "--work", work, "--port", String(port)];
+  const args = ["--project", project, "--transcript", transcript, "--assets", assets, "--work", work, "--port", String(ANY_PORT)];
   const child = spawn(exe, args, { env: { ...process.env, LOCALAPPDATA: appData }, stdio: ["pipe", "pipe", "pipe"] });
   const logs = [];
   child.stderr.on("data", (d) => logs.push(String(d)));
@@ -54,15 +62,24 @@ export const startPc = async ({ exe, project, transcript, assets, workRoot, appD
   const exited = done.then((code) => Promise.reject(new Error(`mobile_rig が止まった（${code}）: ${logs.join("")}`)));
   // 起動の後に止まるのは stop の正常な終わりなので、拒否を拾わずに捨てる
   exited.catch(() => undefined);
-  const ready = await withTimeout(Promise.race([next(), exited]), READY_TIMEOUT_MS, "mobile_rig の起動");
+  // 標準入力を閉じると mobile_rig は止まる。応えなければ殺し、作業のフォルダーを消せる状態にする
+  const stop = async () => {
+    child.stdin.end();
+    await withTimeout(done, STOP_TIMEOUT_MS, "mobile_rig の停止").catch(() => {
+      child.kill();
+      return done;
+    });
+  };
+  let ready;
+  try {
+    ready = await withTimeout(Promise.race([next(), exited]), READY_TIMEOUT_MS, "mobile_rig の起動");
+  } catch (e) {
+    await stop();
+    throw e;
+  }
   const ask = async (command) => {
     child.stdin.write(`${command}\n`);
     return withTimeout(next(), READY_TIMEOUT_MS, `mobile_rig の ${command}`);
-  };
-  // 標準入力を閉じると mobile_rig は止まる。次の回が同じポートで待てるよう、止まるまで待つ
-  const stop = async () => {
-    child.stdin.end();
-    await done;
   };
   return { ...ready, work, logs, ask, stop };
 };
@@ -106,6 +123,8 @@ export const startRelay = (mobilePort, tls) =>
         },
       );
       upstream.on("error", () => res.destroy());
+      // 画面が閉じたら SSE の上流も閉じる（tailscale serve と同じく、つなぎっぱなしにしない）
+      res.on("close", () => upstream.destroy());
       req.pipe(upstream);
     });
     server.listen(0, "127.0.0.1", () => {
