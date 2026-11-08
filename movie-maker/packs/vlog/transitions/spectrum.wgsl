@@ -5,9 +5,6 @@ const SHUTTER: f32 = 0.4;
 const NBAR: f32 = 32.0;
 const BAR_W: f32 = 1920.0 / 32.0;
 
-// GLSL の mod（床関数基準）。画素の位置が負でも周期が崩れない。
-fn fmodg(x: f32, y: f32) -> f32 { return x - y * floor(x / y); }
-
 fn barH(i: f32, p: f32) -> f32 {
     let t = p * uDur;
     let dance = 0.62 + 0.38 * vnoise(vec2<f32>(i * 0.45, t * 4.5 + uSeed));
@@ -38,20 +35,21 @@ fn bar(p: f32) -> BarInfo {
 
 fn matte(uv: vec2<f32>, p: f32) -> f32 {
     if (p > 0.76) { return 1.0; }
-    return fill(bar(p).sd);
+    let b = bar(p);
+    return fill_sized(b.sd, b.h);
 }
 
 fn overlay(uv: vec2<f32>, p: f32) -> vec4<f32> {
     let env = win(p, 0.0, 0.08) * (1.0 - win(p, 0.6, 0.78));
     if (env <= 0.0) { return vec4<f32>(0.0); }
     let b = bar(p);
-    let inB = fill(b.sd);
+    let inB = fill_sized(b.sd, b.h);
     var c = paint(uShade, 0.55 * env * (1.0 - inB));
-    c = over(c, paint(uInk, 0.08 * fill(abs(fmodg(P.y, 90.0) - 45.0) - 0.6) * env * (1.0 - inB)));
+    c = over(c, paint(uInk, 0.08 * fill(abs(fmod(P.y, 90.0) - 45.0) - 0.6) * env * (1.0 - inB)));
     // バー: 下から差し色 → 2 つ目の差し色のグラデーション。LED のすき間
     let y = 1.0 - P.y / 1080.0;
     let col = mix(uA, uB, sat(y * 1.6 - 0.4));
-    let led = fill(abs(fmodg(P.y, 16.0) - 8.0) - 6.0);
+    let led = fill(abs(fmod(P.y, 16.0) - 8.0) - 6.0);
     c = over(c, paint(col, (0.14 + 0.22 * led) * inB * env * (1.0 - closeGap(p) * 0.7)));
     let tl = abs(P.y - (1080.0 - b.h));
     c = light(c, (uInk * fill(tl - 1.5) + col * glow(tl, 8.0) * 0.5) * inB * env);
