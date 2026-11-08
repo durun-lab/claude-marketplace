@@ -148,8 +148,8 @@ type OwnDevice = (
 );
 
 fn own_device(hwnd: isize) -> Result<OwnDevice, String> {
-    // レンダラーのサーフェス（mm-runtime の present）と同じく D3D12 だけで作り、Vulkan のドライバーを
-    // 読み込まない。NVIDIA と AMD の Vulkan のドライバーが同居すると、破棄のときに NVIDIA の側で落ちる。
+    // プレビューのサーフェス（`RuntimeConfig::present`）と同じく、`WGPU_BACKEND` に依らず D3D12 だけで作る。
+    // Vulkan のアダプターは子ウィンドウのサーフェスの形式を返さないことがあり、ドライバーの破棄でクラッシュもする。
     let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
     desc.backends = wgpu::Backends::DX12;
     let instance = wgpu::Instance::new(desc);

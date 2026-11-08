@@ -17,8 +17,9 @@ use mm_types::{RationalTime, RgbaImage};
 
 use mm_node_api::Quality;
 
-/// 消失させたコンテキストをプロセスの終わりまで持ち、破棄しない。NVIDIA の Vulkan ドライバーは破棄の後も
-/// 自分のスレッドが解放済みの領域に触れることがあり、プロセスの終了と重なると 0xc0000409 で落ちる。
+/// 消失させたコンテキストをプロセスの終わりまで保持し、破棄しない。`WGPU_BACKEND=vulkan` で回したときの
+/// 守りで、NVIDIA の Vulkan ドライバーは破棄の後も自分のスレッドが解放済みの領域に触れることがあり、
+/// プロセスの終了と重なると 0xc0000409 でクラッシュする（gfx-rs/wgpu#6571）。既定の D3D12 では起きない。
 static RETIRED: Mutex<Vec<Arc<GpuContext>>> = Mutex::new(Vec::new());
 
 fn keep_until_exit(ctx: &Arc<GpuContext>) {

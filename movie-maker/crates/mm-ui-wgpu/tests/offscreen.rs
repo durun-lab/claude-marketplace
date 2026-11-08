@@ -1,7 +1,6 @@
 //! `Ui` をオフスクリーンのテクスチャに描いて、画素をリードバックする。GPU が無ければスキップする（`MM_REQUIRE_GPU` があれば失敗）。
 
-use std::sync::OnceLock;
-
+use mm_gpu::{GpuContext, GpuRequest};
 use mm_types::{Rgba, RgbaImage, Size};
 use mm_ui_layout::{palette, Item, ItemKind, TimelineModel};
 use mm_ui_wgpu::{Region, Ui};
@@ -10,12 +9,11 @@ const W: u32 = 640;
 const H: u32 = 400;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
-/// プロセスで 1 つのデバイスを static に置き、破棄しない。NVIDIA の Vulkan ドライバーは破棄の後も
-/// 自分のスレッドが解放済みの領域に触れることがあり、プロセスの終了と重なると 0xc0000409 で落ちる。
+/// 既定のバックエンドの共有のコンテキストで描く。共有のコンテキストはプロセスの終わりまで破棄しないので、
+/// `WGPU_BACKEND=vulkan` で回しても、NVIDIA の Vulkan ドライバーの破棄とプロセスの終了が重ならない。
 fn gpu() -> Option<(wgpu::Device, wgpu::Queue)> {
-    static DEVICE: OnceLock<Result<(wgpu::Device, wgpu::Queue), String>> = OnceLock::new();
-    match DEVICE.get_or_init(make_device) {
-        Ok(v) => Some(v.clone()),
+    match GpuContext::shared(&GpuRequest::default()) {
+        Ok(ctx) => Some((ctx.device.clone(), ctx.queue.clone())),
         Err(e) if std::env::var_os("MM_REQUIRE_GPU").is_some() => {
             panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")
         }
@@ -24,23 +22,6 @@ fn gpu() -> Option<(wgpu::Device, wgpu::Queue)> {
             None
         }
     }
-}
-
-fn make_device() -> Result<(wgpu::Device, wgpu::Queue), String> {
-    // アプリと同じく Windows では D3D12 で描き、Vulkan のドライバーを読み込まない。
-    let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
-    if cfg!(windows) {
-        desc.backends = wgpu::Backends::DX12;
-    }
-    let instance = wgpu::Instance::new(desc);
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::HighPerformance,
-        ..Default::default()
-    }));
-    adapter.map_err(|e| e.to_string()).and_then(|a| {
-        pollster::block_on(a.request_device(&wgpu::DeviceDescriptor::default()))
-            .map_err(|e| e.to_string())
-    })
 }
 
 fn model() -> TimelineModel {

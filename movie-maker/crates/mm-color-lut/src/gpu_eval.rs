@@ -27,7 +27,10 @@ pub struct GpuEval {
 impl GpuEval {
     /// アダプターを探す。無ければ None。
     pub fn new() -> Option<Self> {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        // レンダラーと同じバックエンドで比べ、Windows では Vulkan のドライバーを読み込まない。
+        let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+        desc.backends = mm_gpu::default_backends();
+        let instance = wgpu::Instance::new(desc);
         // 内蔵 GPU より外付けの GPU の方が compute の結果が安定するので、高性能の側を選ぶ。
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,

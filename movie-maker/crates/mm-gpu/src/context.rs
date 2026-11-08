@@ -32,18 +32,18 @@ impl Default for GpuRequest {
     }
 }
 
-/// 既定に使うバックエンド。環境変数 `WGPU_BACKEND`（`vulkan`、`dx12` など）があればそれに従い、
-/// 無ければ Windows は D3D12 だけにする。Vulkan と OpenGL のローダーは入っている全部のドライバーを
-/// 読み込み、NVIDIA と AMD のドライバーが同じプロセスにあると、Instance の破棄のときに NVIDIA の
-/// ドライバーの中で落ちる（gfx-rs/wgpu#6571）。サーフェス、CEF の共有テクスチャ、d3d12va と cuvid の
-/// デコードも D3D12 の資源で受け渡す。
+/// 既定に使うバックエンド。Windows は D3D12 だけ、ほかは wgpu の既定（全部）にし、環境変数
+/// `WGPU_BACKEND`（`vulkan`、`dx12,vulkan` など）があればそれに従う（wgpu の `Backends::with_env`）。
+/// Vulkan のローダーは入っている全部のドライバーを読み込み、NVIDIA と AMD のドライバーが同じプロセスに
+/// あると、Instance の破棄のときに NVIDIA のドライバーの中でクラッシュする（gfx-rs/wgpu#6571）。
+/// プレビューのサーフェス、CEF の共有テクスチャ、d3d12va と cuvid のデコードも D3D12 の資源で受け渡す。
 pub fn default_backends() -> wgpu::Backends {
     let platform = if cfg!(windows) {
         wgpu::Backends::DX12
     } else {
         wgpu::Backends::all()
     };
-    wgpu::Backends::from_env().unwrap_or(platform)
+    platform.with_env()
 }
 
 /// GPU のコンテキスト。レンダラー、デコーダー、GpuHelper が共有する。
@@ -140,8 +140,8 @@ impl GpuContext {
                 )));
             }
         }
-        // 選んだアダプターのバックエンドが求めの範囲にあれば足りる（全バックエンドで作った後の
-        // D3D12 だけの求めが、アダプターが D3D12 なら満たされる）。
+        // 選んだアダプターのバックエンドが求めの範囲にあれば足りる（`WGPU_BACKEND` で複数を選んで作った
+        // 後の D3D12 だけの求めが、アダプターが D3D12 なら満たされる）。
         if !request
             .backends
             .contains(wgpu::Backends::from(self.backend))
@@ -239,10 +239,11 @@ impl Drop for GpuContext {
 
 /// この PC のアダプターの一覧。設定で選ぶときの候補。
 pub fn enumerate_adapters() -> Vec<GpuAdapterId> {
+    let backends = default_backends();
     let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
-    desc.backends = default_backends();
+    desc.backends = backends;
     let instance = wgpu::Instance::new(desc);
-    pollster::block_on(instance.enumerate_adapters(default_backends()))
+    pollster::block_on(instance.enumerate_adapters(backends))
         .iter()
         .map(adapter_id)
         .collect()

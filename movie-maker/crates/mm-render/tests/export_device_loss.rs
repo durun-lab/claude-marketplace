@@ -20,11 +20,13 @@ use mm_types::{Id, ParamValue, Rational, RationalTime, Rgba, Size, TimeRange};
 
 const SIZE: Size = Size::new(64, 36);
 const FRAMES: i64 = 12;
-/// 1 つの段（消失を知らせるまで、知らせてから書き出しが返るまで）で、待ち続けているとみなす秒数。
+/// 1 つの工程（消失を知らせるまで、知らせてから書き出しが返るまで、レンダラーの片付け）で、
+/// 待ち続けているとみなす秒数。
 const HANG_LIMIT: Duration = Duration::from_secs(30);
 
-/// 消失させるコンテキストをプロセスの終わりまで持ち、破棄しない。NVIDIA の Vulkan ドライバーは破棄の後も
-/// 自分のスレッドが解放済みの領域に触れることがあり、プロセスの終了と重なると 0xc0000409 で落ちる。
+/// 消失させるコンテキストをプロセスの終わりまで保持し、破棄しない。`WGPU_BACKEND=vulkan` で回したときの
+/// 守りで、NVIDIA の Vulkan ドライバーは破棄の後も自分のスレッドが解放済みの領域に触れることがあり、
+/// プロセスの終了と重なると 0xc0000409 でクラッシュする（gfx-rs/wgpu#6571）。既定の D3D12 では起きない。
 static RETIRED: OnceLock<Arc<GpuContext>> = OnceLock::new();
 
 /// NV12 を受け、`lose_after` 枚目を受けた時点でデバイスの消失を知らせ、`lost` にも送る。
@@ -101,58 +103,75 @@ fn 書き出しの途中のデバイス消失は待ち続けずエラーで返�
         }
     };
     let ctx = RETIRED.get_or_init(|| ctx).clone();
-    let (tx, rx) = mpsc::channel();
     let (lost_tx, lost_rx) = mpsc::channel();
+    let (returned_tx, returned_rx) = mpsc::channel();
+    let (cleaned_tx, cleaned_rx) = mpsc::channel();
     let worker = std::thread::spawn(move || {
-        let mut nodes = MapRegistry::default();
-        for kind in all_kinds() {
-            nodes.insert(kind);
-        }
-        let project = project();
-        let comp = Id::new("main");
-        let fps = Rational::integer(30);
-        let mut r = WgpuRenderer::new(
-            ctx.clone(),
-            Arc::new(SampleDecoderFactory::default()),
-            Arc::new(SampleMixerFactory),
-            sample_services(),
-        );
-        let mut encoder = LosingEncoder {
-            ctx,
-            pushed: 0,
-            lose_after: 2,
-            lost: lost_tx,
-        };
-        let range = TimeRange::new(
-            RationalTime::ZERO,
-            RationalTime::from_frames(FRAMES, fps).expect("表せる"),
-        )
-        .expect("範囲");
-        let result = r.export_range(
-            &RangeRequest {
-                project: &project,
-                composition: &comp,
-                range,
-                fps,
-                size: SIZE,
-                quality: Quality::Full,
-                nodes: &nodes,
-            },
-            &mut encoder,
-            1,
-            &mut |_| {},
-        );
-        let _ = tx.send((result.is_err(), r.recoveries()));
+        export_losing_device(ctx, lost_tx, &returned_tx);
+        let _ = cleaned_tx.send(());
     });
-    // 判定の時計は消失を知らせた時点から測り、レンダラーの組み立てと消失の前のフレームを含めない。
-    lost_rx
-        .recv_timeout(HANG_LIMIT)
-        .expect("消失を知らせる所まで書き出しが進まない");
-    let (is_err, recoveries) = rx
-        .recv_timeout(HANG_LIMIT)
-        .expect("古いデバイスのリードバックを待ち続けている");
-    // レンダラーの GPU の資源を片付け終えてから抜け、プロセスの終了と重ねない。
+    // 時計は工程ごとに測り、書き出しが返るまでの時計は消失を知らせた時点から始める。
+    wait(&lost_rx, "消失を知らせる所まで書き出しが進まない");
+    let (is_err, recoveries) = wait(&returned_rx, "古いデバイスのリードバックを待ち続けている");
+    // レンダラーと作り直したコンテキストを片付け終えてから抜け、ドライバーの破棄とプロセスの終了を重ねない。
+    // 片付けを知らせた後のスレッドは返るだけなので、join は待たない。
+    wait(&cleaned_rx, "レンダラーの片付けが終わらない");
     worker.join().expect("書き出しのスレッド");
     assert_eq!(recoveries, 1, "消失を見つけて作り直す");
     assert!(is_err, "先行していた古いリードバックは捨ててエラーで返す");
+}
+
+/// 2 枚目で消失を知らせる書き出しを走らせ、返った結果（エラーか、作り直した回数）を `returned` に送る。
+/// レンダラーはこの関数を抜けるときに破棄する。
+fn export_losing_device(
+    ctx: Arc<GpuContext>,
+    lost: mpsc::Sender<()>,
+    returned: &mpsc::Sender<(bool, u32)>,
+) {
+    let mut nodes = MapRegistry::default();
+    for kind in all_kinds() {
+        nodes.insert(kind);
+    }
+    let project = project();
+    let comp = Id::new("main");
+    let fps = Rational::integer(30);
+    let mut r = WgpuRenderer::new(
+        ctx.clone(),
+        Arc::new(SampleDecoderFactory::default()),
+        Arc::new(SampleMixerFactory),
+        sample_services(),
+    );
+    let mut encoder = LosingEncoder {
+        ctx,
+        pushed: 0,
+        lose_after: 2,
+        lost,
+    };
+    let range = TimeRange::new(
+        RationalTime::ZERO,
+        RationalTime::from_frames(FRAMES, fps).expect("表せる"),
+    )
+    .expect("範囲");
+    let request = RangeRequest {
+        project: &project,
+        composition: &comp,
+        range,
+        fps,
+        size: SIZE,
+        quality: Quality::Full,
+        nodes: &nodes,
+    };
+    let result = r.export_range(&request, &mut encoder, 1, &mut |_| {});
+    let _ = returned.send((result.is_err(), r.recoveries()));
+}
+
+/// 書き出しのスレッドからの知らせを `HANG_LIMIT` まで待つ。スレッドが先にパニックしたら、その旨で失敗する。
+fn wait<T>(rx: &mpsc::Receiver<T>, what: &str) -> T {
+    match rx.recv_timeout(HANG_LIMIT) {
+        Ok(v) => v,
+        Err(mpsc::RecvTimeoutError::Timeout) => panic!("{what}（{HANG_LIMIT:?} を超えた）"),
+        Err(mpsc::RecvTimeoutError::Disconnected) => {
+            panic!("{what}（書き出しのスレッドがパニックした）")
+        }
+    }
 }

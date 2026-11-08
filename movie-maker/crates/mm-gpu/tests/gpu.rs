@@ -52,7 +52,8 @@ fn shared_は合わない求めを黙って破棄しない() {
     assert!(Arc::ptr_eq(&GpuContext::shared(&same).unwrap(), &ctx));
 }
 
-/// 全バックエンドで作った後の、バックエンドを絞った求め（`decode: ffmpeg` の後の `decode: auto`）。
+/// 既定のバックエンドで作った後の、バックエンドを絞った求め（`WGPU_BACKEND` で複数を選んだときの、
+/// `decode: ffmpeg` の後の `decode: auto`）。
 #[test]
 fn shared_は選んだアダプターが求めの範囲にあれば同じコンテキストを返す() {
     let Some(ctx) = gpu() else {
@@ -75,10 +76,15 @@ fn shared_は選んだアダプターが求めの範囲にあれば同じコン�
 }
 
 /// Windows の既定は D3D12 だけで作り、Vulkan のローダーを読み込まない。NVIDIA と AMD の Vulkan
-/// ドライバーが同じプロセスにあると、Instance の破棄のときに NVIDIA のドライバーの中で落ちる。
+/// ドライバーが同じプロセスにあると、Instance の破棄のときに NVIDIA のドライバーの中でクラッシュする。
+/// `WGPU_BACKEND` でバックエンドを選んだときは既定を使わないのでスキップする。
 #[cfg(windows)]
 #[test]
 fn windows_の既定のコンテキストと一覧は_vulkan_を読み込まない() {
+    if let Some(chosen) = wgpu::Backends::from_env() {
+        eprintln!("WGPU_BACKEND で {chosen:?} を選んでいるのでスキップする");
+        return;
+    }
     let Some(ctx) = gpu() else {
         return;
     };

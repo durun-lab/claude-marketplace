@@ -16,7 +16,7 @@ half = { workspace = true }
 bytemuck = { workspace = true }
 
 [dev-dependencies]
-pollster = { workspace = true }
+mm-gpu = { workspace = true }
 mm-trace = { workspace = true }
 
 [lints]
