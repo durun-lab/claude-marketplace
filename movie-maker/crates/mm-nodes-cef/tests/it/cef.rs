@@ -156,6 +156,31 @@ fn 同じ入力なら同じ画素で_gpu_と_cpu_の経路も合う() {
     assert!(diff < TOLERANCE, "GPU と CPU の経路の差 {diff}");
 }
 
+/// キャッシュから追い出すのに使う大きさ。キャッシュの上限（384 MiB）を数枚で超える。
+const EVICTOR: Size = Size::new(3840, 2160);
+
+#[test]
+fn 同じホストで同じ時刻を描き直しても同じ画素() {
+    let Some(exe) = host() else { return };
+    let size = Size::new(640, 360);
+    let p = params(serde_json::json!({"label": "again"}), false);
+    let t = RationalTime::new(3, 2).unwrap();
+    let kind = kind(&exe);
+    let mut gpu = gpu();
+    let first = render_gpu(&kind, &mut gpu, &p, t, size);
+    for n in 10..18 {
+        render_gpu(&kind, &mut gpu, &p, RationalTime::seconds(n), EVICTOR);
+    }
+    let drawn = kind.stats().drawn;
+    let second = render_gpu(&kind, &mut gpu, &p, t, size);
+    assert_eq!(
+        kind.stats().drawn,
+        drawn + 1,
+        "キャッシュから出ていて描き直す"
+    );
+    assert_eq!(first, second, "同じホストで時刻を往復しても同じ画素");
+}
+
 #[test]
 fn デバイスを作り直しても新しいデバイスのホストで描く() {
     let Some(exe) = host() else { return };
