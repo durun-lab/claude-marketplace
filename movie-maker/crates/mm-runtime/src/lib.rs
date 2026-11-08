@@ -17,6 +17,6 @@ pub use config::{Backend, RuntimeConfig};
 pub use decode_select::{AutoDecoderFactory, GpuCandidate, SplitDecoder, WithAudio};
 pub use encode_select::AutoEncoderFactory;
 pub use engine::{Engine, EngineParts, GpuFrame};
-pub use mm_gpu::GpuContext;
+pub use mm_gpu::{select_adapter, GpuContext, GpuSelector};
 pub use mm_render_api::TrackLevel;
 pub use registry::Registry;

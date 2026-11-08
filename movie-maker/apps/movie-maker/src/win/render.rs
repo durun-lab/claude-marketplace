@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 mod acquire;
 mod sync;
 
-use mm_runtime::GpuContext;
+use mm_runtime::{select_adapter, GpuContext, GpuSelector};
 use mm_ui_layout::TimelineModel;
 use mm_ui_wgpu::Ui;
 
@@ -163,17 +163,39 @@ fn own_device(hwnd: isize) -> Result<OwnDevice, String> {
     desc.backends = wgpu::Backends::DX12;
     let instance = wgpu::Instance::new(desc);
     let surface = create_surface(&instance, hwnd)?;
-    let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-        power_preference: wgpu::PowerPreference::HighPerformance,
-        compatible_surface: Some(&surface),
-        force_fallback_adapter: false,
-        apply_limit_buckets: false,
-    }))
-    .map_err(|e| e.to_string())?;
+    let adapter = own_adapter(&instance, &surface)?;
     let (device, queue) =
         pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
             .map_err(|e| e.to_string())?;
     Ok((instance, surface, adapter, device, queue))
+}
+
+/// `MM_GPU` があればレンダラーと同じ GPU に揃え、無ければサーフェスに出せる高性能のアダプター。
+fn own_adapter(
+    instance: &wgpu::Instance,
+    surface: &wgpu::Surface<'_>,
+) -> Result<wgpu::Adapter, String> {
+    if GpuSelector::from_env()
+        .map_err(|e| e.to_string())?
+        .is_some()
+    {
+        let adapter =
+            pollster::block_on(select_adapter(instance, None)).map_err(|e| e.to_string())?;
+        if !adapter.is_surface_supported(surface) {
+            return Err(format!(
+                "MM_GPU の GPU {} はこのウィンドウに出せない",
+                adapter.get_info().name
+            ));
+        }
+        return Ok(adapter);
+    }
+    pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+        power_preference: wgpu::PowerPreference::HighPerformance,
+        compatible_surface: Some(surface),
+        force_fallback_adapter: false,
+        apply_limit_buckets: false,
+    }))
+    .map_err(|e| e.to_string())
 }
 
 fn surface_config(

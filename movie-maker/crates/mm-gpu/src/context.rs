@@ -7,13 +7,15 @@ use std::sync::{Arc, Mutex};
 use mm_decode_api::GpuContextRef;
 use mm_types::{GpuAdapterId, MmError, Result};
 
+use crate::select::select_adapter;
+
 /// 中間のテクスチャの形式。インターフェースの契約（`Rgba16Float`、premultiplied、線形）のとおり。
 pub const FRAME_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba16Float;
 
 /// コンテキストの作り方。`mm-runtime` が設定から 1 回決める。
 #[derive(Debug, Clone)]
 pub struct GpuRequest {
-    /// 使うアダプター。`None` なら高性能のアダプター。
+    /// 使うアダプター。`None` なら高性能のアダプター。環境変数 `MM_GPU` があればそちらが先（[`crate::select_adapter`]）。
     pub adapter: Option<GpuAdapterId>,
     /// あれば有効にする機能。無いアダプターでは失敗させずに外す。
     pub optional_features: wgpu::Features,
@@ -71,7 +73,7 @@ pub struct GpuContext {
 static SHARED: Mutex<Option<Arc<GpuContext>>> = Mutex::new(None);
 
 impl GpuContext {
-    /// 高性能のアダプターを選んで作る。GPU が無ければ `Err(Unsupported)`。
+    /// 高性能のアダプター（`MM_GPU` があればその GPU）で作る。GPU が無ければ `Err(Unsupported)`。
     pub fn new() -> Result<Arc<Self>> {
         Self::with(&GpuRequest::default())
     }
@@ -184,7 +186,7 @@ impl GpuContext {
         let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
         desc.backends = request.backends;
         let instance = wgpu::Instance::new(desc);
-        let adapter = pick_adapter(&instance, request.adapter.as_ref()).await?;
+        let adapter = select_adapter(&instance, request.adapter.as_ref()).await?;
         let adapter_info = adapter.get_info();
         let required_features = request.optional_features & adapter.features();
         let timestamps = required_features.contains(wgpu::Features::TIMESTAMP_QUERY);
@@ -237,50 +239,6 @@ impl Drop for GpuContext {
     }
 }
 
-/// この PC のアダプターの一覧。設定で選ぶときの候補。
-pub fn enumerate_adapters() -> Vec<GpuAdapterId> {
-    let backends = default_backends();
-    let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
-    desc.backends = backends;
-    let instance = wgpu::Instance::new(desc);
-    pollster::block_on(instance.enumerate_adapters(backends))
-        .iter()
-        .map(adapter_id)
-        .collect()
-}
-
-/// 指定のアダプターがあればそれ、無ければ高性能のアダプター。指定が見つからなければ `Unsupported`。
-async fn pick_adapter(
-    instance: &wgpu::Instance,
-    wanted: Option<&GpuAdapterId>,
-) -> Result<wgpu::Adapter> {
-    if let Some(wanted) = wanted {
-        // 保存した識別子の LUID は古いことがあるので、機種で絞ってから同じ回の LUID を優先する。
-        let mut same_model: Vec<_> = instance
-            .enumerate_adapters(wgpu::Backends::PRIMARY)
-            .await
-            .into_iter()
-            .filter(|a| adapter_id(a).matches(wanted))
-            .collect();
-        let exact = same_model
-            .iter()
-            .position(|a| adapter_id(a).is_same_instance(wanted))
-            .unwrap_or(0);
-        return if same_model.is_empty() {
-            Err(MmError::Unsupported(format!("GPU {} が無い", wanted.name)))
-        } else {
-            Ok(same_model.swap_remove(exact))
-        };
-    }
-    instance
-        .request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            ..Default::default()
-        })
-        .await
-        .map_err(|e| MmError::Unsupported(format!("GPU のアダプターが無い: {e}")))
-}
-
 /// アダプターの識別子。D3D12 では LUID も取る。
 pub fn adapter_id(adapter: &wgpu::Adapter) -> GpuAdapterId {
     let info = adapter.get_info();
@@ -310,15 +268,14 @@ fn device_removed(_device: &wgpu::Device) -> bool {
 }
 
 #[cfg(windows)]
-fn luid_of(adapter: &wgpu::Adapter) -> Option<u64> {
+pub(crate) fn luid_of(adapter: &wgpu::Adapter) -> Option<u64> {
     // DXGI の記述を読むだけで、デバイスの状態は変えない。
     let hal = unsafe { adapter.as_hal::<wgpu::hal::api::Dx12>() }?;
     let desc = unsafe { hal.raw_adapter().GetDesc1() }.ok()?;
-    let luid = desc.AdapterLuid;
-    Some(((luid.HighPart as u32 as u64) << 32) | u64::from(luid.LowPart))
+    Some(crate::select::dx12_luid(desc.AdapterLuid))
 }
 
 #[cfg(not(windows))]
-fn luid_of(_adapter: &wgpu::Adapter) -> Option<u64> {
+pub(crate) fn luid_of(_adapter: &wgpu::Adapter) -> Option<u64> {
     None
 }

@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use mm_gpu::{GpuContext, GpuRequest, WgpuGpu};
+use mm_gpu::{adapter_id, find_adapter, GpuContext, GpuRequest, GpuSelector, WgpuGpu};
 use mm_node_api::{FrameRef, GpuHelper, GpuTexture};
 use mm_types::{GpuAdapterId, MmError, Rgba, RgbaImage, Size};
 
@@ -89,7 +89,7 @@ fn windows_の既定のコンテキストと一覧は_vulkan_を読み込まな�
         return;
     };
     assert_eq!(ctx.backend(), wgpu::Backend::Dx12);
-    assert!(!mm_gpu::enumerate_adapters().is_empty());
+    assert!(!mm_gpu::enumerate_adapters().expect("一覧").is_empty());
     let own = GpuContext::new().expect("既定の求めで作れる");
     drop(own);
     assert!(
@@ -119,6 +119,49 @@ fn 保存した識別子の_luid_が古くても同じ_gpu_を選ぶ() {
     })
     .expect("LUID が古くても機種で見つかる");
     assert!(ctx2.adapter.matches(&ctx.adapter));
+}
+
+fn instance_like(ctx: &GpuContext) -> wgpu::Instance {
+    let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+    desc.backends = wgpu::Backends::from(ctx.backend());
+    wgpu::Instance::new(desc)
+}
+
+/// `MM_GPU` で速くなる理由。D3D12 では列挙が全部のアダプターにデバイスを作るので、指定に合う 1 つだけを開く。
+#[test]
+fn 指定した_gpu_だけを開き_ほかの_gpu_は開かない() {
+    let Some(ctx) = gpu() else {
+        return;
+    };
+    let instance = instance_like(&ctx);
+    let selector = match ctx.adapter.luid {
+        Some(luid) => GpuSelector::Luid(luid),
+        None => GpuSelector::Name(ctx.adapter.name.clone()),
+    };
+    let adapter = pollster::block_on(find_adapter(&instance, "試験", &selector)).expect("選べる");
+    assert!(adapter_id(&adapter).is_same_instance(&ctx.adapter));
+    let report = instance.generate_report().expect("wgpu-core の Instance");
+    assert_eq!(
+        report.hub.adapters.num_allocated, 1,
+        "開いたアダプターは 1 つ"
+    );
+}
+
+#[test]
+fn 名前の一部で選べ_合わなければ一覧を添えたエラー() {
+    let Some(ctx) = gpu() else {
+        return;
+    };
+    let instance = instance_like(&ctx);
+    let part = GpuSelector::Name(ctx.adapter.name.to_uppercase());
+    let adapter = pollster::block_on(find_adapter(&instance, "試験", &part)).expect("選べる");
+    assert!(adapter_id(&adapter).matches(&ctx.adapter));
+    let missing = GpuSelector::Name("どこにも無い GPU".into());
+    let err = pollster::block_on(find_adapter(&instance, "試験", &missing)).unwrap_err();
+    assert!(
+        matches!(&err, MmError::InvalidArgument(m) if m.contains(&ctx.adapter.name)),
+        "{err}"
+    );
 }
 
 #[test]

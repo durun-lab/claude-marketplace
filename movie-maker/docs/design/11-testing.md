@@ -228,6 +228,8 @@ iPhone の Safari と Android の Chrome で、それぞれ次を行う。
 - バックエンドを固定する。CI は D3D12 の WARP（Windows の CPU のラスタライザ。機能レベル 12_1）[62]、Linux は Vulkan の lavapipe（wgpu の CI と同じ）[62]。実機は RTX の D3D12。
 - 期待画像はバックエンドごとに持つ。バックエンドが違うと浮動小数の丸めとフィルタの実装が違う。
 - 許容差は 2 段。(1) 同じバックエンド: 輝度の SSIM 0.995 以上かつチャンネルごとの最大の差 2/255 以下（`mm_testkit::golden`。段階 2 の期待画像 10 枚の値で置いた）。(2) バックエンドをまたぐ比較（プレビューと `mm frame` の一致を RTX と WARP で）: SSIM 0.98 以上〔推〕。
+- 手元で GPU を選ぶときは環境変数 `MM_GPU`（[エンジン](06-engine.md)の GPU の選択）を使う。リポジトリには値を書かず、`MM_GPU` が無ければアプリと同じ選び方で回す。GPU が複数ある PC では、各自（エージェントも）が自分の環境で使う GPU を書くと、ほかの GPU にデバイスを作らないぶんテストが速くなる（RTX 5090 と内蔵 AMD の PC で `MM_GPU=5090` にすると、`mm-render` 46 秒が 11 秒、ワークスペース全体 95 秒が 29 秒）。nextest は 1 テスト 1 プロセスで、wgpu の D3D12 の列挙は全部の GPU にデバイスを作るため、内蔵 GPU の初期化の約 0.9 秒がテストの数だけ直列に積もる。
+- `MM_GPU` を書くときは `MM_REQUIRE_GPU=1` と合わせる。指定が合わないエラーは GPU を作れない扱いになり、`MM_REQUIRE_GPU` が無いとスキップされる。`MM_GOLDEN_BACKEND=warp` は WARP が見えている（`MM_GPU` が無いか、`MM_GPU="Basic Render"`）ときに使う。
 - NVDEC と NVENC の要るテストは夜間に実機で回す。CI では `ffmpeg` の実装で同じ契約を通す。
 - 別のクレートの実行ファイルに頼るテストは、テストの中で cargo を呼ばず、見つからなければ作り方を書いた文言で失敗する。cargo はワークスペースごとのテスト（`--workspace`）では作るが、`-p` で選んだときは依存先の実行ファイルを作らない。`mm-runtime` の `decode_auto` を `-p mm-runtime` で回すときは、同じ `CARGO_TARGET_DIR` と profile で先に `cargo build -p mm-decode-d3d12va --features d3d12va --bin mm-d3d12va-probe` を実行する（`MM_D3D12VA_PROBE` で別の場所を指してもよい）。
 - wgpu の `gpu_test!` の型（全部の GPU で回し、バックエンドごとに「失敗を期待する」を管理する）[62] を `mm-testkit` の `gpu_contract!` に取り入れる。

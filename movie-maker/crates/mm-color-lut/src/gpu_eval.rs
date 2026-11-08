@@ -31,12 +31,13 @@ impl GpuEval {
         let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
         desc.backends = mm_gpu::default_backends();
         let instance = wgpu::Instance::new(desc);
-        // 内蔵 GPU より外付けの GPU の方が compute の結果が安定するので、高性能の側を選ぶ。
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::HighPerformance,
-            ..Default::default()
-        }))
-        .ok()?;
+        // 内蔵 GPU より外付けの GPU の方が compute の結果が安定するので、既定は高性能の側を選ぶ。
+        // `MM_GPU` があればレンダラーと同じくその GPU を使い、指定の誤りは GPU 無しとしてスキップさせない。
+        let adapter = match pollster::block_on(mm_gpu::select_adapter(&instance, None)) {
+            Ok(adapter) => adapter,
+            Err(mm_types::MmError::InvalidArgument(e)) => panic!("{e}"),
+            Err(_) => return None,
+        };
         let (device, queue) =
             pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default())).ok()?;
         Some(Self {

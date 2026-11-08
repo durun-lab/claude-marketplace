@@ -30,12 +30,11 @@ fn main() -> Result<()> {
         })
         .transpose()?;
     let repeat: usize = args.next().and_then(|r| r.parse().ok()).unwrap_or(3);
-    // 名前の一部で GPU を選ぶ（`Basic Render` で WARP。GPU の無い CI の確かめ用）。
-    let gpu = args.next().and_then(|name| {
-        mm_gpu::enumerate_adapters()
-            .into_iter()
-            .find(|a| a.name.contains(&name))
-    });
+    // `MM_GPU` と同じ書き方で GPU を選ぶ（`Basic Render` で WARP。GPU の無い CI の確かめ用）。
+    let gpu = args
+        .next()
+        .map(|pattern| mm_gpu::find_adapter_id(&pattern))
+        .transpose()?;
 
     let text = std::fs::read_to_string(&project)?;
     let mut doc: mm_doc::Project = serde_json::from_str(&text)?;

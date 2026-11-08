@@ -19,7 +19,7 @@ CEF のオフスクリーン描画を、共有テクスチャで別プロセス�
 
 - `CefLauncher::spawn` は `mm-host-cef serve` を起こし、環境変数 `MM_HOST_SPEC` に `HostSpec` の JSON を、`MM_HOST_WORK_DIR` に一時フォルダーを渡す。制御は標準入出力の JSON の 1 行ずつ。
 - 一時フォルダー（CEF のキャッシュとページ）はランチャーが作り、ホストを止めた後に消す。ホストはジョブオブジェクトに入れ、kill のときは CEF の子のプロセス（GPU、レンダラー）ごと止める。
-- GPU: ホストは `HostSpec::gpu`（無ければ高性能のアダプター）で wgpu を作り、その LUID を Chromium のスイッチ `use-adapter-luid=<HighPart>,<LowPart>` で CEF の GPU プロセスにも使わせる。
+- GPU: ホストは `HostSpec::gpu`（無ければ既定の選び方。環境変数 `MM_GPU` があればその GPU）で wgpu を作り、その LUID を Chromium のスイッチ `use-adapter-luid=<HighPart>,<LowPart>` で CEF の GPU プロセスにも使わせる。
 - `client_pid` があると、フレームごとに D3D12 の共有ヒープのテクスチャを作ってコピーし、その NT ハンドルを相手のプロセスへ `DuplicateHandle` して `SharedFrame::SharedTexture` で返す。複製するハンドルは読み取りの権限（`DXGI_SHARED_RESOURCE_READ`）だけ（D3D12 の `CreateSharedHandle` は `GENERIC_ALL` しか受けないので、絞るのは複製のとき）。形式は `DXGI_FORMAT_B8G8R8A8_UNORM`（premultiplied、sRGB の符号化）、状態は COMMON、`fence` は `None`（ホストがコピーの完了を待ってから返す）。受け取った側がコピーしてハンドルを閉じる。
 - `client_pid` が無いと、CPU の画像（RGBA f32、premultiplied、線形）で返す。
 - `Prepare` の `params` は `{"html": "...", "fonts": [...]}`（`fonts` は任意。`mm_text_api::FontFile` の JSON の列）。ホストは `fonts` から `@font-face` を作って `</head>` の前に差し込み、一時フォルダーに書いたファイルとして開く。書体のファイルは `FONT_ORIGIN`（`https://mm-font.invalid/<contentHash>`）に答える scheme handler が配る（`src/host/font_scheme.rs`）。読めないファイルはスキップし、その family は OS の書体で描く。ページは `window.mmSetTime(t, params)` を定義し、時刻 `t`（秒）と `params` の関数としてだけ画面を作る。ビューポートは `RenderFrame` の `size`。
