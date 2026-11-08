@@ -42,11 +42,15 @@ describe("createIpcReviewApi のコメントとイベント", () => {
     await api.comments();
     await api.replyComment("c1", "ok");
     await api.setCommentState("c1", "done");
+    await api.focusComment("c1");
+    await api.focusComment(null);
     await api.seek(1.5);
     expect(call.mock.calls).toEqual([
       ["review_comments", undefined],
       ["review_comment_reply", { id: "c1", text: "ok" }],
       ["review_comment_state", { id: "c1", value: "done" }],
+      ["review_comment_focus", { id: "c1" }],
+      ["review_comment_focus", { id: null }],
       ["transport", { action: "seek", value: 1.5 }],
     ]);
   });

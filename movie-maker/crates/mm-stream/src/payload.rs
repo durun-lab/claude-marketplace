@@ -1,5 +1,9 @@
 //! ハンドラーに返す応答の形。HTTP のクレートの型は使わず、状態・ヘッダー・本体だけを持つ。
 
+use std::fs;
+use std::io::{Read, Seek, SeekFrom};
+use std::path::Path;
+
 use mm_types::{MmError, Result};
 
 /// キーが URL に入っていて、中身が変わらない応答の `Cache-Control`。
@@ -41,6 +45,43 @@ impl Payload {
             .iter()
             .find(|(n, _)| n.eq_ignore_ascii_case(name))
             .map(|(_, v)| v.as_str())
+    }
+}
+
+/// `path` のファイルを `Range` ヘッダーに合わせて返す（200、206、416）。毎回 `etag` で確かめさせる。
+pub(crate) fn ranged_file(
+    path: &Path,
+    content_type: &str,
+    etag: &str,
+    range: Option<&str>,
+) -> Result<Payload> {
+    let mut file = fs::File::open(path)?;
+    let len = file.metadata()?.len();
+    let base = |status: u16, body: Vec<u8>| Payload {
+        status,
+        ..Payload::ok(content_type, REVALIDATE, body)
+            .with_header("Accept-Ranges", "bytes".into())
+            .with_header("ETag", etag.to_owned())
+    };
+    match ByteRange::parse(range, len) {
+        Ok(None) => {
+            let mut body = Vec::with_capacity(len as usize);
+            file.read_to_end(&mut body)?;
+            Ok(base(200, body))
+        }
+        Ok(Some(r)) => {
+            file.seek(SeekFrom::Start(r.start))?;
+            let mut body = vec![0u8; (r.end - r.start + 1) as usize];
+            file.read_exact(&mut body)?;
+            Ok(base(206, body).with_header(
+                "Content-Range",
+                format!("bytes {}-{}/{len}", r.start, r.end),
+            ))
+        }
+        Err(MmError::InvalidArgument(_)) => {
+            Ok(base(416, Vec::new()).with_header("Content-Range", format!("bytes */{len}")))
+        }
+        Err(e) => Err(e),
     }
 }
 

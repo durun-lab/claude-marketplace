@@ -52,7 +52,7 @@ pub struct QuadRenderer {
 
 impl QuadRenderer {
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
-        let bgl = bind_group_layout(device);
+        let bgl = viewport_layout(device, "ui quads");
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("ui quads uniform"),
             size: 16,
@@ -125,9 +125,10 @@ fn instance_buffer(device: &wgpu::Device, capacity: u64) -> wgpu::Buffer {
     })
 }
 
-fn bind_group_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+/// 頂点のシェーダーがサーフェスの大きさだけを読むバインドグループの形。矩形と描き込みの線分で共有する。
+pub(crate) fn viewport_layout(device: &wgpu::Device, label: &str) -> wgpu::BindGroupLayout {
     device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("ui quads"),
+        label: Some(label),
         entries: &[wgpu::BindGroupLayoutEntry {
             binding: 0,
             visibility: wgpu::ShaderStages::VERTEX,
