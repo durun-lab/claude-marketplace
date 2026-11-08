@@ -5,11 +5,12 @@
 //! サーフェスは再生スレッドのレンダラーと同じ `GpuContext` のデバイスで作り、描いたテクスチャをリードバックせずに描く。
 //! レンダラーがデバイスを作り直したら、新しいデバイスでサーフェスと UI を作り直す。
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+mod acquire;
 mod sync;
 
 use mm_runtime::GpuContext;
@@ -21,6 +22,7 @@ use crate::win::review::drawing::DrawingSync;
 use crate::win::state::{FrameImage, PreviewFrame, Shared};
 use crate::win::surface;
 use crate::win::theme;
+use acquire::Recovery;
 use sync::{handle_input, DocSync, SourceSync};
 
 /// サーフェスを取れなかったときの待ち。再試行で CPU を回さないための間隔。
@@ -83,6 +85,8 @@ fn supervise(quit: &AtomicBool, wait: Duration, mut body: impl FnMut() -> Result
 }
 
 struct Gpu {
+    /// サーフェスを作ったインスタンス。サーフェスが Lost になったら同じインスタンスで作り直す。
+    instance: wgpu::Instance,
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -100,6 +104,17 @@ impl Gpu {
             (FrameImage::Gpu(_), None) => false,
         }
     }
+
+    /// テクスチャを取れなかったサーフェスを `recovery` のとおりに立て直す。
+    fn recover(&mut self, hwnd: isize, recovery: Recovery) -> Result<(), String> {
+        match recovery {
+            Recovery::Wait => return Ok(()),
+            Recovery::Reconfigure => {}
+            Recovery::Recreate => self.surface = create_surface(&self.instance, hwnd)?,
+        }
+        self.surface.configure(&self.device, &self.config);
+        Ok(())
+    }
 }
 
 /// レンダラーのコンテキストがあればそのデバイスで、無ければ自前のデバイスでサーフェスを作る。
@@ -111,15 +126,17 @@ fn init_gpu(
 ) -> Result<Gpu, String> {
     let shared_device = match &context {
         Some(ctx) => {
-            let surface = create_surface(ctx.instance(), hwnd)?;
+            let instance = ctx.instance().clone();
+            let surface = create_surface(&instance, hwnd)?;
             let adapter = ctx.wgpu_adapter().clone();
-            adapter
-                .is_surface_supported(&surface)
-                .then(|| (surface, adapter, ctx.device.clone(), ctx.queue.clone()))
+            adapter.is_surface_supported(&surface).then(|| {
+                let (device, queue) = (ctx.device.clone(), ctx.queue.clone());
+                (instance, surface, adapter, device, queue)
+            })
         }
         None => None,
     };
-    let (surface, adapter, device, queue) = match shared_device {
+    let (instance, surface, adapter, device, queue) = match shared_device {
         Some(parts) => parts,
         None => {
             if context.take().is_some() {
@@ -133,6 +150,7 @@ fn init_gpu(
     *shared.adapter.lock().expect("adapter") = format!("{} ({:?})", info.name, info.backend);
     let config = surface_config(&surface, &adapter)?;
     Ok(Gpu {
+        instance,
         surface,
         device,
         queue,
@@ -142,6 +160,7 @@ fn init_gpu(
 }
 
 type OwnDevice = (
+    wgpu::Instance,
     wgpu::Surface<'static>,
     wgpu::Adapter,
     wgpu::Device,
@@ -165,7 +184,7 @@ fn own_device(hwnd: isize) -> Result<OwnDevice, String> {
     let (device, queue) =
         pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
             .map_err(|e| e.to_string())?;
-    Ok((surface, adapter, device, queue))
+    Ok((instance, surface, adapter, device, queue))
 }
 
 fn surface_config(
@@ -269,11 +288,14 @@ fn run(
         source.refresh(shared, &mut view);
         drawing.refresh(shared, &mut view.ui);
         handle_input(shared, &mut view.ui, &doc);
-        if frame(shared, &view.gpu, &mut view.ui, &mut seen) {
-            failed_frames = 0;
-        } else {
-            failed_frames += 1;
-            nudge_if_lost(shared, &mut failed_frames);
+        match frame(shared, &view.gpu, &mut view.ui, &mut seen) {
+            Ok(()) => failed_frames = 0,
+            Err(recovery) => {
+                view.gpu.recover(hwnd, recovery)?;
+                std::thread::sleep(RETRY_WAIT);
+                failed_frames += 1;
+                nudge_if_lost(shared, &mut failed_frames);
+            }
         }
     }
     Ok(())
@@ -304,54 +326,12 @@ fn moved_context(shared: &Shared, gpu: &Gpu, seen: u64) -> Option<Arc<GpuContext
     }
 }
 
-/// サーフェスのテクスチャを取る口。実物は `Gpu`、試験は取得の結果を差し込む。
-trait SurfaceSource {
-    type Texture;
-    fn acquire(&self) -> Result<Self::Texture, wgpu::CurrentSurfaceTexture>;
-    fn reconfigure(&self);
-}
-
-impl SurfaceSource for Gpu {
-    type Texture = wgpu::SurfaceTexture;
-
-    fn acquire(&self) -> Result<Self::Texture, wgpu::CurrentSurfaceTexture> {
-        match self.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(t)
-            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => Ok(t),
-            other => Err(other),
-        }
-    }
-
-    fn reconfigure(&self) {
-        self.surface.configure(&self.device, &self.config);
-    }
-}
-
-/// テクスチャを取る。取れなければ数えて張り直し、`wait` 待って `None` を返す。
-/// 大きさの変更の直後の Outdated や隠れている間の Occluded は普通で、Lost も張り直して次の周で取り直す。
-fn acquire_texture<S: SurfaceSource>(
-    src: &S,
-    errors: &AtomicU64,
-    wait: Duration,
-) -> Option<S::Texture> {
-    match src.acquire() {
-        Ok(t) => Some(t),
-        Err(state) => {
-            errors.fetch_add(1, Ordering::SeqCst);
-            tracing::debug!(?state, "サーフェスを取れなかった");
-            src.reconfigure();
-            std::thread::sleep(wait);
-            None
-        }
-    }
-}
-
-/// 1 フレーム描いて present する。サーフェスを取れなければ偽。
-fn frame(shared: &Shared, gpu: &Gpu, ui: &mut Ui, seen: &mut u64) -> bool {
+/// 1 フレーム描いて present する。サーフェスを取れなければ数えて、立て直し方を返す。
+fn frame(shared: &Shared, gpu: &Gpu, ui: &mut Ui, seen: &mut u64) -> Result<(), Recovery> {
     let _span = tracing::info_span!("window.frame").entered();
-    let Some(texture) = acquire_texture(gpu, &shared.surface_errors, RETRY_WAIT) else {
-        return false;
-    };
+    let texture = acquire::classify(gpu.surface.get_current_texture()).inspect_err(|_| {
+        shared.surface_errors.fetch_add(1, Ordering::SeqCst);
+    })?;
     let uploaded = upload_frame(shared, gpu, ui, seen);
     ui.set_playhead(shared.playhead());
     let view = texture.texture.create_view(&Default::default());
@@ -364,7 +344,7 @@ fn frame(shared: &Shared, gpu: &Gpu, ui: &mut Ui, seen: &mut u64) -> bool {
     if let Some(frame_time) = uploaded {
         record_skew(shared, frame_time);
     }
-    true
+    Ok(())
 }
 
 /// 新しいフレームがあれば Program に渡して、そのフレームの時刻を返す。GPU のテクスチャはリードバックせずにそのまま渡す。
@@ -429,55 +409,69 @@ mod tests {
         assert_eq!(calls, 3, "3 回目に正常に終わるまで作り直す");
     }
 
-    /// 取得の結果を順に返す試験用のサーフェス。
-    struct Scripted {
-        results: std::cell::RefCell<Vec<wgpu::CurrentSurfaceTexture>>,
-        reconfigured: std::cell::Cell<u32>,
-    }
+    /// 試験の HWND とサーフェスの一辺（物理ピクセル）。
+    const TEST_SIZE: u32 = 64;
 
-    impl Scripted {
-        fn new(results: Vec<wgpu::CurrentSurfaceTexture>) -> Self {
-            Self {
-                results: std::cell::RefCell::new(results),
-                reconfigured: std::cell::Cell::new(0),
+    /// 試験に使う見えないトップレベルの HWND。落とすと破棄する。
+    struct TestWindow(isize);
+
+    impl TestWindow {
+        fn new() -> Self {
+            use windows::core::w;
+            use windows::Win32::UI::WindowsAndMessaging::{
+                CreateWindowExW, WINDOW_EX_STYLE, WS_OVERLAPPED,
+            };
+            let (title, size) = (w!("surface test"), TEST_SIZE as i32);
+            let hwnd = unsafe {
+                CreateWindowExW(
+                    WINDOW_EX_STYLE(0),
+                    w!("STATIC"),
+                    title,
+                    WS_OVERLAPPED,
+                    0,
+                    0,
+                    size,
+                    size,
+                    None,
+                    None,
+                    None,
+                    None,
+                )
             }
+            .expect("試験の HWND");
+            Self(hwnd.0 as isize)
         }
     }
 
-    impl SurfaceSource for Scripted {
-        type Texture = ();
-
-        fn acquire(&self) -> Result<(), wgpu::CurrentSurfaceTexture> {
-            Err(self.results.borrow_mut().remove(0))
-        }
-
-        fn reconfigure(&self) {
-            self.reconfigured.set(self.reconfigured.get() + 1);
-        }
-    }
-
-    #[test]
-    fn outdated_と_lost_は数えて張り直し次の周へ進む() {
-        use wgpu::CurrentSurfaceTexture::{Lost, Outdated};
-        for state in [Outdated, Lost] {
-            let src = Scripted::new(vec![state]);
-            let errors = AtomicU64::new(0);
-            assert!(acquire_texture(&src, &errors, Duration::ZERO).is_none());
-            assert_eq!(errors.load(Ordering::SeqCst), 1);
-            assert_eq!(src.reconfigured.get(), 1, "張り直す");
+    impl Drop for TestWindow {
+        fn drop(&mut self) {
+            use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::DestroyWindow};
+            // 試験の後片付けなので、破棄に失敗しても続ける。
+            let _ = unsafe { DestroyWindow(HWND(self.0 as *mut _)) };
         }
     }
 
     #[test]
-    fn 取得が続けて失敗しても落ちずに毎回張り直す() {
-        use wgpu::CurrentSurfaceTexture::{Lost, Occluded, Outdated, Timeout};
-        let src = Scripted::new(vec![Outdated, Lost, Lost, Timeout, Occluded]);
-        let errors = AtomicU64::new(0);
-        for _ in 0..5 {
-            assert!(acquire_texture(&src, &errors, Duration::ZERO).is_none());
+    fn 張り直しと作り直しの後もテクスチャを取って_present_できる() {
+        let window = TestWindow::new();
+        let shared = Shared::new();
+        let mut gpu = match init_gpu(&shared, window.0, None) {
+            Ok(gpu) => gpu,
+            Err(e) if std::env::var_os("MM_REQUIRE_GPU").is_some() => {
+                panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")
+            }
+            Err(e) => return eprintln!("GPU が無いのでスキップする: {e}"),
+        };
+        (gpu.config.width, gpu.config.height) = (TEST_SIZE, TEST_SIZE);
+        for recovery in [
+            Recovery::Reconfigure,
+            Recovery::Recreate,
+            Recovery::Recreate,
+        ] {
+            gpu.recover(window.0, recovery).expect("立て直せる");
+            let texture = acquire::classify(gpu.surface.get_current_texture()).expect("取れる");
+            gpu.queue.present(texture);
         }
-        assert_eq!(errors.load(Ordering::SeqCst), 5);
-        assert_eq!(src.reconfigured.get(), 5);
     }
 
     #[test]

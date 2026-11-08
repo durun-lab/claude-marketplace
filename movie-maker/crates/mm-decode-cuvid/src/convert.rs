@@ -72,7 +72,8 @@ fn layout_bytes(layout: BufferLayout, bits: u32) -> [u8; LAYOUT_BYTES] {
     out
 }
 
-/// 共有バッファを読む描画パス。束縛は 0 が YUV、1 が変換の係数、2 が配置。
+/// 共有バッファを読む描画パス。バインディングの番号は 0 が YUV、1 が変換の係数、2 が配置で、
+/// WGSL の `@binding` と `slot_bind` の番号に合わせる。
 fn yuv_pass(device: &wgpu::Device) -> YuvPass {
     let entries = [
         fragment_entry(0, storage_binding()),
@@ -104,7 +105,7 @@ fn layout_buffer(
     buffer
 }
 
-/// 1 スロット分の束縛。
+/// 1 スロット分のバインドグループ。
 fn slot_bind(
     device: &wgpu::Device,
     pass: &YuvPass,
@@ -133,7 +134,7 @@ fn slot_bind(
 }
 
 impl BufferConverter {
-    /// リングバッファのスロットごとに束縛を作る。`bits` は 1 成分のビット深度。
+    /// リングバッファのスロットごとにバインドグループを作る。`bits` は 1 成分のビット深度。
     pub fn new(queue: wgpu::Queue, ring: &SharedRing, bits: u32) -> Self {
         let device = ring.device().clone();
         let pass = yuv_pass(&device);
