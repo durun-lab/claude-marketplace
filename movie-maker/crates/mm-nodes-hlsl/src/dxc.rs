@@ -55,7 +55,11 @@ impl Dxc {
     /// 実行ファイルを試し、SPIR-V を出せれば返す。DXC は一時のフォルダーで動かすので、パスは絶対にして持つ。
     pub fn probe(path: &Path) -> Option<Self> {
         let path = std::path::absolute(path).ok()?;
-        let output = run_bounded(Command::new(&path).arg("--version"), DXC_TIMEOUT).ok()?;
+        let output = run_bounded(
+            mm_types::process::command(&path).arg("--version"),
+            DXC_TIMEOUT,
+        )
+        .ok()?;
         let version = output.stdout.trim().to_string();
         let dxc = Self { path, version };
         let probe = DxcJob {
@@ -116,7 +120,7 @@ impl Dxc {
         // BOM が無いと、DXC は源を SPIR-V に埋めるときに ASCII の外の文字（日本語のコメント）で失敗する。
         std::fs::write(&input, format!("{UTF8_BOM}{}", job.source)).map_err(io_failed)?;
         let sampler_shift = (job.inputs + 1).to_string();
-        let mut cmd = Command::new(&self.path);
+        let mut cmd = mm_types::process::command(&self.path);
         cmd.current_dir(dir.path())
             .args(["-spirv", "-T", "ps_6_0", "-HV", "2021", "-fspv-debug=line"])
             .args([

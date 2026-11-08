@@ -1,7 +1,6 @@
 //! 結合テストの共通部品。
 
 use std::path::Path;
-use std::process::Command;
 
 use mm_doc::{
     Asset, Composition, Cut, Layer, LayerAudio, Node, Project, Sequence, SEQUENCE_KIND,
@@ -57,7 +56,7 @@ pub fn streamer(config: RuntimeConfig, dir: &Path) -> Streamer {
 
 /// ffmpeg の CLI で、動きのある映像と音の素材を作る。
 pub fn make_media(path: &Path) {
-    let status = Command::new("ffmpeg")
+    let status = mm_types::process::command("ffmpeg")
         .args(["-nostdin", "-v", "error", "-y"])
         .args(["-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30"])
         .args(["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000"])
@@ -130,7 +129,7 @@ pub fn project(media: &Path, seconds: i64) -> Project {
 
 /// ffprobe の JSON（`-show_streams -show_format`）。
 pub fn probe(path: &Path) -> serde_json::Value {
-    let out = Command::new("ffprobe")
+    let out = mm_types::process::command("ffprobe")
         .args([
             "-v",
             "error",

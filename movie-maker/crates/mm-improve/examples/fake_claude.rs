@@ -6,7 +6,7 @@
 //! - `sleeper`: 眠り続ける。
 
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -57,7 +57,7 @@ fn claude() {
     // 頼む文を読み切る。書き手が詰まらないようにする。
     drop(std::io::read_to_string(std::io::stdin()));
     let me = std::env::current_exe().expect("自分の実行ファイル");
-    let child = Command::new(me)
+    let child = mm_types::process::command(me)
         .arg("sleeper")
         .stdin(Stdio::null())
         .stdout(Stdio::null())

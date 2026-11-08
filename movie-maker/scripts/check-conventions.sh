@@ -35,6 +35,17 @@ for t in crates/*/tests apps/*/tests; do
   done
 done
 
+# 子プロセスは mm_types::process::command で起動する（Windows でコンソールのウィンドウを出さない）。
+# 例外は、その関数の中身と、cargo が動かす build.rs、開発者の端末で動く xtask だけ。別名の import も拾い、コメントの行は除く。
+raw_spawn="$(grep -rnE 'Command::new|Command as ' crates apps --include='*.rs' \
+  | grep -v '^crates/mm-types/src/process.rs:' | grep -v '/build.rs:' \
+  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)"
+if [ -n "$raw_spawn" ]; then
+  printf '%s\n' "$raw_spawn" >&2
+  echo "子プロセスは Command::new でなく mm_types::process::command で起動する" >&2
+  status=1
+fi
+
 # RFC の番号は PR の番号。作業中は docs/rfcs/<題>.md で書き、PR を作ったら <PR の番号 4 桁>-<題>.md に改める。
 if [ -n "${PR_NUMBER:-}" ] && [ -n "${BASE:-}" ]; then
   want="$(printf '%04d' "$PR_NUMBER")"

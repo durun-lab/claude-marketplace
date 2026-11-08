@@ -2,7 +2,6 @@
 
 use std::f32::consts::TAU;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use mm_audio_api::AudioBlock;
 use mm_decode_api::{AudioStreamInfo, EncodeSettings, EncoderFactory, StreamOutput};
@@ -58,7 +57,7 @@ fn tone(start: usize, frames: usize) -> AudioBlock {
 
 /// ffprobe の出力（1 行 1 件）を行ごとに返す。
 fn probe_lines(path: &Path, args: &[&str]) -> Vec<String> {
-    let out = Command::new("ffprobe")
+    let out = mm_types::process::command("ffprobe")
         .args(["-v", "error"])
         .args(args)
         .arg(path)

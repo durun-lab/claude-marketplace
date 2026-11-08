@@ -5,7 +5,6 @@ use crate::common;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -28,7 +27,7 @@ fn render_stage0(name: &str) -> PathBuf {
     common::fixtures();
     let dir = std::env::temp_dir().join(format!("mm_cli_render_{}", std::process::id()));
     let out = dir.join(name);
-    let output = Command::new(env!("CARGO_BIN_EXE_mm"))
+    let output = mm_types::process::command(env!("CARGO_BIN_EXE_mm"))
         .arg("render")
         .arg(project_path())
         .arg("-o")
@@ -46,7 +45,7 @@ fn render_stage0(name: &str) -> PathBuf {
 
 /// ffprobe の `key=value` 出力を引く。
 fn probe(path: &Path, select: &str, entries: &str) -> HashMap<String, String> {
-    let out = Command::new("ffprobe")
+    let out = mm_types::process::command("ffprobe")
         .args(["-v", "error", "-count_frames", "-select_streams", select])
         .args(["-show_entries", entries, "-of", "default=nw=1"])
         .arg(path)
@@ -117,7 +116,7 @@ fn 切った区間のフレーム番号と音が読み戻せる() {
 }
 
 fn mm_ok(args: &[&str]) {
-    let out = Command::new(env!("CARGO_BIN_EXE_mm"))
+    let out = mm_types::process::command(env!("CARGO_BIN_EXE_mm"))
         .args(args)
         .output()
         .expect("mm を実行できる");
@@ -191,7 +190,7 @@ fn stage3_project(dir: &Path) -> PathBuf {
 }
 
 fn mm_stdout(args: &[&str]) -> String {
-    let out = Command::new(env!("CARGO_BIN_EXE_mm"))
+    let out = mm_types::process::command(env!("CARGO_BIN_EXE_mm"))
         .args(args)
         .output()
         .expect("mm を実行できる");

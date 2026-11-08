@@ -5,7 +5,6 @@
 //! 書体を使わずに進み、描く側は OS の書体に置き換える。
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use mm_types::{MmError, Result};
 
@@ -37,7 +36,7 @@ pub struct Curl;
 
 impl Fetch for Curl {
     fn fetch(&self, url: &str) -> Result<Vec<u8>> {
-        let output = Command::new("curl")
+        let output = mm_types::process::command("curl")
             .args(["--silent", "--show-error", "--fail", "--location"])
             .args(["--proto", "=https", "--proto-redir", "=https"])
             .args(["--max-time", &FETCH_TIMEOUT_SECS.to_string()])

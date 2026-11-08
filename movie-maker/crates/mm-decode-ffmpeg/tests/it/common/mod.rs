@@ -6,7 +6,6 @@
 
 use std::fs::OpenOptions;
 use std::path::PathBuf;
-use std::process::Command;
 use std::time::{Duration, Instant};
 
 use mm_types::RgbaImage;
@@ -57,7 +56,7 @@ fn run_generate(root: &std::path::Path) -> Result<(), String> {
         "C:/Program Files/Git/usr/bin/sh.exe",
     ];
     for sh in shells {
-        match Command::new(sh).arg(&script).status() {
+        match mm_types::process::command(sh).arg(&script).status() {
             Ok(s) if s.success() => return Ok(()),
             Ok(s) => return Err(format!("{sh} {}: {s}", script.display())),
             Err(_) => continue,

@@ -1,7 +1,5 @@
 //! 提案の区間の短い動画（`GET /m/api/proposals/{id}/clip/{key}.mp4`）と、提案の応答の `clip_url`。
 
-use std::process::Command;
-
 use mm_serve::{Client, Response};
 use serde_json::json;
 
@@ -36,7 +34,7 @@ fn clip_url(r: &Rig, cookie: &str, id: i64, query: &str) -> Option<String> {
 fn probe(r: &Rig, clip: &Response, at: f64) -> (f64, f64) {
     let path = r.tmp.path().join("clip.mp4");
     std::fs::write(&path, &clip.body).unwrap();
-    let out = Command::new("ffprobe")
+    let out = mm_types::process::command("ffprobe")
         .args([
             "-v",
             "error",
@@ -54,7 +52,7 @@ fn probe(r: &Rig, clip: &Response, at: f64) -> (f64, f64) {
         String::from_utf8_lossy(&out.stderr)
     );
     let seconds: f64 = String::from_utf8_lossy(&out.stdout).trim().parse().unwrap();
-    let frame = Command::new("ffmpeg")
+    let frame = mm_types::process::command("ffmpeg")
         .args(["-nostdin", "-v", "error", "-ss", &at.to_string(), "-i"])
         .arg(&path)
         .args(["-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])

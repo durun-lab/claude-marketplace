@@ -3,7 +3,6 @@
 //! パネルが読む形（`feedback_list` の JSON）に返事が付くまでを確かめる。
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::mpsc::{self, Receiver};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -27,7 +26,7 @@ const WAIT: Duration = Duration::from_secs(120);
 const REAL_WALL_MINUTES: u32 = 15;
 
 fn run_git(dir: &Path, args: &[&str]) {
-    let out = Command::new("git")
+    let out = mm_types::process::command("git")
         .arg("-C")
         .arg(dir)
         .args(args)
@@ -86,7 +85,7 @@ impl Fixture {
 
     fn mainline_file(&self, path: &str) -> String {
         let rev = format!("{}:mm/{path}", mm_improve::DEFAULT_MAINLINE);
-        let out = Command::new("git")
+        let out = mm_types::process::command("git")
             .arg("-C")
             .arg(&self.repo)
             .args(["show", &rev])

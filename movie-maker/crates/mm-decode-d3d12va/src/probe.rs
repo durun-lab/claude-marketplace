@@ -108,7 +108,7 @@ fn to_result(verdict: std::result::Result<(), String>) -> Result<()> {
 }
 
 fn run_exe(exe: &Path, path: &Path, luid: u64) -> Outcome {
-    let mut cmd = Command::new(exe);
+    let mut cmd = mm_types::process::command(exe);
     cmd.arg(path).arg("--luid").arg(luid.to_string());
     run_child(cmd, PROBE_TIMEOUT)
 }
@@ -193,7 +193,8 @@ mod tests {
     }
 
     fn child(mode: &str) -> Command {
-        let mut cmd = Command::new(std::env::current_exe().expect("テストの実行ファイル"));
+        let mut cmd =
+            mm_types::process::command(std::env::current_exe().expect("テストの実行ファイル"));
         cmd.args([
             "--exact",
             "probe::tests::child_helper",
@@ -236,7 +237,10 @@ mod tests {
 
     #[test]
     fn 起動できない実行ファイルは試せなかった扱いになる() {
-        let outcome = run_child(Command::new("no-such-probe-exe.exe"), PROBE_TIMEOUT);
+        let outcome = run_child(
+            mm_types::process::command("no-such-probe-exe.exe"),
+            PROBE_TIMEOUT,
+        );
         assert!(matches!(outcome, Outcome::Unavailable(_)), "{outcome:?}");
     }
 

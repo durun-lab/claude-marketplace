@@ -1,12 +1,12 @@
 //! `mm ingest` を実行ファイル越しに確かめる。ffmpeg の CLI が無い環境ではスキップする（`MM_REQUIRE_FFMPEG=1` なら失敗にする）。
 
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use super::common::{mm_ok, stdout};
 
 fn ffmpeg_available() -> bool {
-    let ok = Command::new("ffmpeg")
+    let ok = mm_types::process::command("ffmpeg")
         .arg("-version")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -21,7 +21,7 @@ fn ffmpeg_available() -> bool {
 
 /// 映像（320x180、2 秒）と音つきのフィクスチャの MP4。
 fn make_sample(out: &Path) {
-    let status = Command::new("ffmpeg")
+    let status = mm_types::process::command("ffmpeg")
         .args(["-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i"])
         .arg("testsrc2=s=320x180:r=30:d=2")
         .args(["-f", "lavfi", "-i"])

@@ -62,7 +62,7 @@ pub fn startup(args: &PerfArgs) -> Result<Vec<Item>> {
 
 /// 子プロセスを 1 回起動し、(起動から ready まで, ready から最初のフレームまで) をミリ秒で返す。
 fn probe_once(exe: &std::path::Path, project: &std::path::Path) -> Result<(f64, f64)> {
-    let mut command = Command::new(exe);
+    let mut command = mm_types::process::command(exe);
     command.arg("probe-startup").arg(project);
     run_probe(command, PROBE_TIMEOUT)
 }
@@ -209,7 +209,8 @@ mod tests {
     }
 
     fn child(mode: &str) -> Command {
-        let mut command = Command::new(std::env::current_exe().expect("テストの実行ファイル"));
+        let mut command =
+            mm_types::process::command(std::env::current_exe().expect("テストの実行ファイル"));
         command
             .args([
                 "--exact",

@@ -3,7 +3,6 @@
 
 use std::io::Read;
 use std::path::Path;
-use std::process::Command;
 
 use mm_types::{MmError, Rational, RationalTime, Result};
 use serde_json::Value;
@@ -60,7 +59,7 @@ fn png_size(path: &Path) -> Result<[u32; 2]> {
 
 fn ffprobe(path: &Path) -> Result<Media> {
     let exe = std::env::var_os(ENV_FFPROBE).unwrap_or_else(|| "ffprobe".into());
-    let out = Command::new(&exe)
+    let out = mm_types::process::command(&exe)
         .args(["-v", "error", "-of", "json", "-show_entries"])
         .arg("format=duration:stream=codec_type,width,height,r_frame_rate")
         .arg(path)

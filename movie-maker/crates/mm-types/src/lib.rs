@@ -10,6 +10,7 @@ pub mod gpu;
 pub mod id;
 pub mod image;
 pub mod param;
+pub mod process;
 #[cfg(feature = "schema")]
 mod schema;
 pub mod time;

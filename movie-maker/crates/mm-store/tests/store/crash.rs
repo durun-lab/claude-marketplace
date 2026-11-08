@@ -10,7 +10,7 @@
 use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::time::{Duration, Instant};
 
 use mm_doc::{Node, Project};
@@ -134,7 +134,7 @@ fn writing_second_backup(dir: &Path) -> bool {
 /// 子を `mode` で動かし、書き始め（WAL の確定していないフレーム。バックアップは `.tmp`）を見たら
 /// ばらけた間を置いて kill する。見ないまま子が終われば kill しない。
 fn run_round(dir: &Path, mode: &str, seed: &mut u64) -> Aftermath {
-    let mut child = Command::new(std::env::current_exe().unwrap())
+    let mut child = mm_types::process::command(std::env::current_exe().unwrap())
         .args([
             "crash::crash_child",
             "--exact",

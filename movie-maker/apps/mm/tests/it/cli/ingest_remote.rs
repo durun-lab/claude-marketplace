@@ -2,7 +2,7 @@
 //! ffmpeg の CLI が無い環境ではスキップする（`MM_REQUIRE_FFMPEG=1` なら失敗にする）。
 
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use mm_doc::Project;
 use mm_serve::{Client, Core, Server};
@@ -15,7 +15,7 @@ use super::common::{mm, stderr, stdout};
 const NOW: i64 = 1_700_000_000_000;
 
 fn ffmpeg_available() -> bool {
-    let ok = Command::new("ffmpeg")
+    let ok = mm_types::process::command("ffmpeg")
         .arg("-version")
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -29,7 +29,7 @@ fn ffmpeg_available() -> bool {
 }
 
 fn make_sample(out: &Path) {
-    let status = Command::new("ffmpeg")
+    let status = mm_types::process::command("ffmpeg")
         .args(["-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i"])
         .arg("testsrc2=s=320x180:r=30:d=2")
         .args(["-f", "lavfi", "-i"])

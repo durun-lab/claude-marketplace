@@ -199,7 +199,7 @@ pub fn remove_work_dir(dir: &Path, limit: Duration) -> bool {
 }
 
 fn command(kind: &PipeKind, spec: &HostSpec, work_dir: Option<&Path>) -> Result<Command> {
-    let mut cmd = Command::new(&spec.executable);
+    let mut cmd = mm_types::process::command(&spec.executable);
     cmd.arg(SERVE_COMMAND)
         .args(&spec.args)
         .env(SPEC_ENV, serde_json::to_string(spec)?)
