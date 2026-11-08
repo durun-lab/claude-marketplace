@@ -27,3 +27,12 @@ test('dashboardsOf は、ブラウザから引き継ぐ一覧と配置の形を�
   assert.equal(dashboardsOf({ list: [{ id: '' }], layouts: {} }), undefined);
   assert.equal(dashboardsOf({ list: [{ id: '', name: 'A' }], layouts: { '': {} } }), undefined);
 });
+
+test('putDashboard は、ホームとセッション画面の配置を同じプリセットの組として別々に保存し、省いた方を残す', () => {
+  const home = putDashboard(undefined, { id: '', layout: [{ id: 'inbox' }] });
+  const both = putDashboard(home, { id: '', sessionLayout: [{ id: 'chat' }] });
+  assert.deepEqual(both.layouts, { '': [{ id: 'inbox' }] });
+  assert.deepEqual(both.sessionLayouts, { '': [{ id: 'chat' }] });
+  const added = putDashboard(both, { id: '1', name: '作業用', layout: [], sessionLayout: [] });
+  assert.deepEqual(added.sessionLayouts, { '': [{ id: 'chat' }], 1: [] });
+});

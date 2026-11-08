@@ -5,6 +5,7 @@ import { api, attempt } from './api.ts';
 import { BOOKMARKS_ICON, BOOKMARKS_KEY, BOOKMARKS_TITLE, BookmarksIcon, openBookmarks } from './Bookmarks.tsx';
 import { CodeView } from './CodeView.tsx';
 import { Dashboard, type EditProps, type Widget, type WidgetFocus, WidgetPanel, showWidget } from './Dashboard.tsx';
+import { saveSessionLayout, useDashboards } from './dashboards.ts';
 import { unreadMessages } from './delivery.ts';
 import { SessionDocs } from './Docs.tsx';
 import { EXPLORER_ICON, EXPLORER_KEY, EXPLORER_TITLE, ExplorerIcon, openExplorer } from './Explorer.tsx';
@@ -314,6 +315,15 @@ type DashboardProps = EditProps & { s: Session; tab: SessionTab; file?: string; 
 
 export const SESSION_KEY = 'session-dashboard';
 
+/** サーバーに保存する前に、ブラウザの SESSION_KEY に保存していた配置。セッション画面を編集していないプリセットは、これで開く。 */
+const legacySessionLayout = (): unknown => {
+  try {
+    return JSON.parse(localStorage.getItem(SESSION_KEY) ?? 'null');
+  } catch {
+    return null;
+  }
+};
+
 /** セッションの画面のチャットを出し、bookmarkKey が key の発言へ移る。画面をまだ描いていなければ、描いて会話を読み込んでから移る。 */
 export const openChatAt = (sessionId: string, key: string): void => {
   if (currentSessionId() !== sessionId) location.hash = href.session(sessionId);
@@ -371,15 +381,19 @@ const useSessionData = (s: Session, snapshot: Snapshot, file?: string): SessionD
  */
 const SessionDashboard = ({ s, tab, file, snapshot, editing, onEditDone }: DashboardProps) => {
   const data = useSessionData(s, snapshot, file);
+  const { current, sessionLayouts } = useDashboards();
+  const store = { saved: sessionLayouts?.[current] ?? legacySessionLayout(), save: (layout: Layout) => saveSessionLayout(current, layout) };
   const focus = useMemo<WidgetFocus | undefined>(() => (tab === 'overview' ? undefined : { kind: tab }), [tab, file]);
   useEffect(() => {
     if (focus && !file) document.querySelector(`.widget[data-tabs~="${tab}"]`)?.scrollIntoView({ block: 'start' });
   }, [focus]);
   return (
     <Dashboard
+      key={current}
       widgets={WIDGETS}
       defaults={DEFAULT_LAYOUT}
       storageKey={SESSION_KEY}
+      store={store}
       scope={s.id}
       focus={focus}
       data={data}

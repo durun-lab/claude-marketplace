@@ -1,4 +1,4 @@
-// ホームのダッシュボードは、名前を付けて複数の配置をサーバーに保存し、メニューから切り替える。
+// ダッシュボードは、ホームとセッション画面の配置を組にしたプリセットに名前を付けてサーバーに保存し、メニューから切り替える。
 // どの端末でも同じ配置を選べるよう、一覧と配置はスナップショットで受け取り、ブラウザには選んでいるものだけを保存する。
 import { useEffect, useState } from 'preact/hooks';
 import { api, attempt } from './api.ts';
@@ -6,7 +6,7 @@ import { uniqueName } from './layout.ts';
 import { type DashboardEntry, type Dashboards, FIRST_DASHBOARDS } from '../shared/types.ts';
 
 type State = Dashboards & { current: string };
-type Input = { id: string; name?: string; layout?: unknown[] };
+type Input = { id: string; name?: string; layout?: unknown[]; sessionLayout?: unknown[] };
 
 /** ホームのウィジェットを浮かべるときの保存キー。浮かべたウィンドウは、ダッシュボードを切り替えても出したままにする。 */
 export const HOME_KEY = 'dashboard-layout';
@@ -94,7 +94,7 @@ const send = async (label: string, fn: () => Promise<Dashboards>): Promise<Dashb
 export const receiveDashboards = (d: Dashboards | undefined, fresh: boolean): void => {
   if (pending) return;
   if (d) {
-    if (JSON.stringify(d) !== JSON.stringify({ list: state.list, layouts: state.layouts })) setState({ ...state, ...d });
+    if (JSON.stringify(d) !== JSON.stringify({ list: state.list, layouts: state.layouts, sessionLayouts: state.sessionLayouts })) setState({ ...state, sessionLayouts: undefined, ...d });
     return;
   }
   const legacy = fresh && !importing ? readLegacy() : undefined;
@@ -126,21 +126,27 @@ export const switchDashboard = (id: string): void => {
   setState({ ...state, current: id });
 };
 
-/** layout の配置で、name を元に重ならない名前のダッシュボードを足して選ぶ。layout が無ければ、初期配置になる。 */
-const add = (name: string, layout: unknown[] | undefined): void => {
+/** ホームとセッション画面の配置で、name を元に重ならない名前のダッシュボードを足して選ぶ。配置が無ければ、初期配置になる。 */
+const add = (name: string, layout: unknown[] | undefined, sessionLayout: unknown[] | undefined): void => {
   const id = String(Date.now());
   const entry = { id, name: uniqueName(state.list.map((d) => d.name), name) };
-  save('ダッシュボードの作成', { ...state, list: [...state.list, entry], layouts: layout ? { ...state.layouts, [id]: layout } : state.layouts }, { ...entry, layout });
+  const next = {
+    ...state,
+    list: [...state.list, entry],
+    layouts: layout ? { ...state.layouts, [id]: layout } : state.layouts,
+    sessionLayouts: sessionLayout ? { ...state.sessionLayouts, [id]: sessionLayout } : state.sessionLayouts,
+  };
+  save('ダッシュボードの作成', next, { ...entry, layout, sessionLayout });
   switchDashboard(id);
 };
 
 /** ウィジェットを置いていないダッシュボードを作って選ぶ。 */
-export const createDashboard = (): void => add(NEW_NAME, []);
+export const createDashboard = (): void => add(NEW_NAME, [], []);
 
 /** 選んでいるダッシュボードの配置を写したものを作って選ぶ。 */
 export const duplicateDashboard = (): void => {
   const src = currentEntry();
-  add(`${src.name} のコピー`, state.layouts[src.id]);
+  add(`${src.name} のコピー`, state.layouts[src.id], state.sessionLayouts?.[src.id]);
 };
 
 /** 選んでいるダッシュボードの名前を変える。空の名前は受け付けない。 */
@@ -152,3 +158,7 @@ export const renameDashboard = (name: string): void => {
 
 /** id のダッシュボードの配置を保存する。 */
 export const saveDashboardLayout = (id: string, layout: unknown[]): void => save('配置の保存', { ...state, layouts: { ...state.layouts, [id]: layout } }, { id, layout });
+
+/** id のダッシュボードの、セッション画面の配置を保存する。 */
+export const saveSessionLayout = (id: string, sessionLayout: unknown[]): void =>
+  save('配置の保存', { ...state, sessionLayouts: { ...state.sessionLayouts, [id]: sessionLayout } }, { id, sessionLayout });
