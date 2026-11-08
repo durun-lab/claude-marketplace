@@ -371,8 +371,12 @@ impl WgpuRenderer {
             return None;
         }
         let color = self.config_fingerprint();
-        let factory = self.decoders.id();
-        let decoder = |id: &AssetId| self.sources.backend(id).unwrap_or(factory).to_owned();
+        let unopened = frame_cache::unopened_decoder(self.decoders.as_ref());
+        let decoder = |id: &AssetId| {
+            self.sources
+                .backend(id)
+                .map_or_else(|| unopened.clone(), str::to_owned)
+        };
         let env = KeyEnv {
             project: child.project,
             quality: child.quality,

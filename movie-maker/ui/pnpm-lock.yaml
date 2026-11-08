@@ -41,6 +41,9 @@ importers:
       '@mm/sdk':
         specifier: workspace:*
         version: link:../sdk
+      '@mm/story':
+        specifier: workspace:*
+        version: link:../panels/story
       hls.js:
         specifier: 1.6.15
         version: 1.6.15
@@ -53,6 +56,18 @@ importers:
         version: 6.2.6
 
   panels/deliver:
+    dependencies:
+      '@mm/sdk':
+        specifier: workspace:*
+        version: link:../../sdk
+      '@tauri-apps/api':
+        specifier: ^2.12.4
+        version: 2.12.4
+      preact:
+        specifier: ^10.27.0
+        version: 10.29.8
+
+  panels/devices:
     dependencies:
       '@mm/sdk':
         specifier: workspace:*
@@ -93,6 +108,9 @@ importers:
       '@mm/sdk':
         specifier: workspace:*
         version: link:../../sdk
+      '@tauri-apps/api':
+        specifier: ^2.12.4
+        version: 2.12.4
       preact:
         specifier: ^10.27.0
         version: 10.29.8

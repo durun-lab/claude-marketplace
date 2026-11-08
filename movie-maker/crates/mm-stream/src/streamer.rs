@@ -12,10 +12,11 @@ use mm_types::{MmError, Result};
 use crate::audio::{ensure_audio, respond, AudioRequest};
 use crate::cache::{touch, CacheDir};
 use crate::frames::{render_webp, StillCache, StillKey, StillRequest};
-use crate::hls::{HlsRequest, Plan};
+use crate::hls::{master_playlist, HlsRequest, Plan};
 use crate::key::{segment_key, KeyEnv, SegmentKey};
 use crate::listing::{Listing, Listings};
 use crate::payload::{Payload, IMMUTABLE, REVALIDATE};
+use crate::quality::HlsQuality;
 use crate::segment::render_segment;
 use crate::worker::{lock, run, SegJob, Slot, Urgent, Worker};
 
@@ -187,6 +188,31 @@ impl Streamer {
             "application/vnd.apple.mpegurl",
             REVALIDATE,
             text.into_bytes(),
+        ))
+    }
+
+    /// 画質を選ぶ親のプレイリスト（m3u8）。各画質の `BANDWIDTH` は区間のピークのビットレート
+    /// （[`HlsQuality::peak_bits_per_second`]）。画質ごとのプレイリストの URI は `variant_uri` が決める。
+    pub fn master_playlist(
+        &self,
+        project: &Project,
+        composition: &str,
+        variant_uri: &dyn Fn(HlsQuality) -> String,
+    ) -> Result<Payload> {
+        let variants = HlsQuality::ALL
+            .iter()
+            .map(|&quality| {
+                let req = HlsRequest {
+                    composition: composition.into(),
+                    quality,
+                };
+                Ok((Plan::new(project, &req)?, variant_uri(quality)))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Payload::ok(
+            "application/vnd.apple.mpegurl",
+            REVALIDATE,
+            master_playlist(&variants).into_bytes(),
         ))
     }
 

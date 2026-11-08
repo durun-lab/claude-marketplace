@@ -157,19 +157,9 @@
   const parseSegs = (s) => String(s || '').split('|').map((x) => /^(.+)@(-?[\d.]+)\+([\d.]+)$/.exec(x.trim()))
     .filter(Boolean).map((m) => ({ mark: m[1], t0: Number(m[2]), d: Number(m[3]) }));
 
-  // テーマの色を CSS 変数にして、var(--名前) の参照を返す。色は theme.json だけが持ち、ページは名前で引く。
-  const themeColors = (theme) => {
-    const out = {};
-    for (const [k, v] of Object.entries(theme.colors || {})) {
-      document.documentElement.style.setProperty(`--${k}`, v);
-      out[k] = `var(--${k})`;
-    }
-    return out;
-  };
-
   window.mmSetTime = (t, data) => {
     const theme = data.theme || {};
-    const c = themeColors(theme);
+    const c = mmThemeColors(theme);
     const fonts = theme.fonts || {};
     const win = document.getElementById('win');
     Object.assign(win.style, {
