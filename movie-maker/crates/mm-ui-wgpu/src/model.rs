@@ -80,25 +80,23 @@ pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
     }
 }
 
-/// 端のつまみで動かせる範囲。撮影素材は素材の先頭と終わりまで、ほかは縛らない（`trimLayer` の検査と同じ）。
+/// 端のつまみで動かせる範囲。`trimLayer` の検査と同じ素材の余白（`Layer::trim_room`）から作る。
+/// 素材が引けないレイヤーは長さで止めず、離したときの操作の拒否に任せる。
 fn trim_bounds(project: &Project, layer: &Layer, range: mm_types::TimeRange) -> TrimBounds {
-    let fixed_in = layer.time_remap.is_some();
-    let duration = layer
-        .footage_asset()
-        .and_then(|id| project.asset(id).ok())
-        .map(|asset| asset.duration);
-    let Some(duration) = duration else {
+    let Ok(room) = layer.trim_room(project) else {
         return TrimBounds {
-            fixed_in,
+            fixed_in: layer.time_remap.is_some(),
             ..TrimBounds::FREE
         };
     };
-    let speed = layer.speed.to_f64();
-    let tail = duration.to_f64() - layer.out_point.to_f64();
     TrimBounds {
-        min_start: range.start.to_f64() - layer.in_point.to_f64() / speed,
-        max_end: range.end.to_f64() + tail / speed,
-        fixed_in,
+        min_start: room.head.map_or(f64::NEG_INFINITY, |head| {
+            range.start.to_f64() - head.to_f64()
+        }),
+        max_end: room
+            .tail
+            .map_or(f64::INFINITY, |tail| range.end.to_f64() + tail.to_f64()),
+        fixed_in: room.fixed_in,
     }
 }
 
@@ -256,7 +254,7 @@ mod tests {
     }
 
     #[test]
-    fn 撮影素材のつまみは素材の端まで_素材の長さが無いレイヤーは縛らない() {
+    fn 撮影素材のつまみは素材の先頭と終わりまで_素材の長さが無いレイヤーは縛らない() {
         let mut project = Project::new();
         project.assets.push(mm_doc::Asset {
             id: Id::new("a"),

@@ -1,8 +1,10 @@
 //! レイヤーとその付属（変形、時間、重ね方、マスク、効果、音）。
 
 mod shape;
+mod trim;
 
 pub use shape::{Crop, Fade, FadeCurve, MaskRect};
+pub use trim::TrimRoom;
 
 use serde::{Deserialize, Serialize};
 
@@ -196,18 +198,6 @@ impl Layer {
     /// コンポジションの時間軸での範囲。
     pub fn range(&self) -> Result<TimeRange> {
         TimeRange::from_start_duration(self.start, self.duration()?)
-    }
-
-    /// 撮影素材のレイヤーが指す素材。撮影素材でなければ `None`。
-    /// イン点とアウト点を素材の長さで縛るのは撮影素材だけなので、`trimLayer` と Timeline が同じ判定を使う。
-    pub fn footage_asset(&self) -> Option<&mm_types::AssetId> {
-        if self.source.kind != crate::node::FOOTAGE_KIND {
-            return None;
-        }
-        self.source
-            .params
-            .get(crate::node::FOOTAGE_PARAM)
-            .and_then(|p| p.value.as_asset())
     }
 }
 
