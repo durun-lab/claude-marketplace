@@ -34,7 +34,12 @@ export const createController = (platform: Platform): Controller => {
   const api = createApi(platform.fetch);
   const connection = createConnection({ api, openEvents: platform.openEvents, onNetworkBack: platform.onNetworkBack });
   const outbox = createOutbox(platform.outboxStore);
-  const flush = (): Promise<void> => outbox.flush(sendDraft(api));
+  const flush = async (): Promise<void> => {
+    await outbox.flush(sendDraft(api));
+    // 電波の弱い所では SSE が開いたまま送信だけ落ちる。接続を確かめ直し、`offline` から戻る時にまた送る
+    if (outbox.list().some((c) => !c.error)) await connection.refresh();
+  };
+  platform.onNetworkBack(() => void flush());
   let last = connection.get().state;
   connection.subscribe(() => {
     const now = connection.get().state;

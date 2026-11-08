@@ -65,7 +65,7 @@
 | `fixtures/media/` | 短い動画（5 秒、1080p と 4K、H.264 と HEVC と AV1、CFR と VFR、B フレームあり・なし、bt709 の tv と pc）。各フレームに番号と PTS を焼き込む。音はサイン波と無音と、先頭をずらしたもの | FFmpeg の lavfi（`testsrc2`、`smptebars`、`sine`）と `drawtext` [63]〔推。フレーム番号と PTS の書式は FFmpeg の `drawtext` のドキュメントで確かめる〕。NVENC で作ったものと libx264 で作ったものの両方 |
 | `fixtures/media/broken/` | 途中で切れた動画、moov のない MP4、PTS の戻る動画 | 正しい動画を `truncate` で壊す。ファズが見つけた入力をコピーする |
 | `fixtures/doc/` | バージョンごとのフィクスチャのプロジェクトのデータ（`v1/`、`v2/` …）。各バージョンの全部のノードの種類と、全部の操作を 1 回ずつ適用したデータ | バージョンを上げるたびに、そのバージョンのフィクスチャを凍結する。消さない |
-| `fixtures/projects/` | フィクスチャのプロジェクト（縦の 1 本、入れ子のコンポジション、ショートの参照、字幕とチャプター、OFX、`web.cef`）。自動の改善の回が向く先。性能の `mm perf run` のシナリオもここ | `mm` で作り、JSON を入れる |
+| `fixtures/projects/` | フィクスチャのプロジェクト（縦の 1 本、入れ子のコンポジション、ショートの参照、字幕とチャプター、OFX、`web.cef`、モバイル版の通しの `mobile/`）。自動の改善の回が向く先。性能の `mm perf run` のシナリオもここ | `mm` で作り、JSON を入れる |
 | `fixtures/golden/<バックエンド>/` | 期待画像（320x180 の PNG、sRGB の 8 bit、灰色の市松の上に重ねたもの）。バックエンドは `warp`、`rtx`（NVIDIA。D3D12 でも Vulkan でも同じ名前）、`lavapipe`。アダプターから `mm_testkit::golden::backend_name` が決める | `cargo xtask golden-update --backend rtx`。更新したら PNG を目で見て承認してからコミットする。RTX の期待画像は手元で更新する。フォルダーが無いバックエンドのテストはスキップする（`MM_REQUIRE_GOLDEN` で失敗にできる） |
 | `fixtures/audio/` | EBU の loudness test set（利用条件がある。リポジトリに入れず、取り方を書く）[69]、ミキサーのテスト用の信号 | ダウンロード。テスト用の信号は `mm-testkit` が生成 |
 | `fixtures/ep03/` | `expected.json`: ep03 の geneva のタイムラインと前の書き出し（`render/ep03_final.mp4`）の SHA-256、フレーム数、fps。素材は `D:/dev/DTM_Vlog/ep03/`（`MM_EP03_DIR`）にあり、プロジェクトのデータ（約 9 MB）はテストのたびに `mm geneva` で作る | 段階 5。OTIO は変形、切り抜き、キーフレーム、音量を持てないので、geneva のタイムラインから直に変換する |
@@ -126,6 +126,52 @@
 | 巻き戻し（26.0 秒） | `rewind`（`transitions/rewind.wgsl`） | — | 試せない。トランジションは sequence のカットの境に置くもので、`mm geneva` はコンポジションのレイヤーにする。代わりに元のマークアップを `web.cef` で描く |
 
 残り: 部品の書体の埋め込みは並行の担当（`feature/movie-maker-pack-fonts`）。部品で置き換えるには `edit.yaml` の文と置き場所が要り、`mm geneva` はタイムラインの PNG しか見ない。
+
+## モバイル版の通しの確認
+
+段階 9 の終わりの条件（出先で Story とコメントと操作の発行ができる）を、本物の `mm-serve` を相手に Playwright で通す（[モバイル版](12-mobile.md)）。
+端末の設定は iPhone 14（WebKit）と Pixel 7（Chromium）。
+`tailscale serve` の代わりに、中継（`ui/mobile/e2e/pc.mjs`）が自己署名の HTTPS で受け、`Host` を tailnet での名前に、`Origin` を `https://<tailnet での名前>:8443` に替え、`Tailscale-User-Login` を付けて 127.0.0.1:7338 へ流す。
+
+| 置き場所 | 中身 |
+|---|---|
+| `crates/mm-testkit/examples/mobile_rig.rs` | PC の側。フィクスチャから `project.mmdb` を作り、アプリと同じ実際の実装の `EngineFrames`、Claude の待ち受け、人の待ち受けを始める。標準入力の `code` で `Devices::issue_code`（Devices の「Add device」と同じ）を呼ぶ |
+| `fixtures/projects/mobile/project.json` | 8 秒の 640x360（動く見出しと直す対象の字幕）と、文字起こし（`fixtures/ingest/transcript-ja.json`）の付く素材 1 つ |
+| `ui/mobile/e2e/flow.mjs` | 手順。1 登録（QR の URL）、2 Watch（プレイリストと TS の区間。Chromium は hls.js で再生）と描き込みつきのコメント、3 MCP の `comments` と `propose`（`responds_to`）、4 Proposals で前後のフレームを見て承認し、別の画面に SSE でコメントの `fresh` が届く、5 Story の `Keep` と「Decide on PC」の提案、6 `setOffline` で書いたコメントが IndexedDB に入り、戻ると 1 回だけ届く |
+
+WebKit の Windows 版は HLS を再生できないので、WebKit はプレイリストと区間が取れるところまでを確かめる。
+回すのは段階の締めと、`mm-serve` の人の待ち受け、`mm-stream`、`ui/mobile` を変えた PR。
+
+```sh
+# PC の側（FFmpeg ありの設定。HLS の区間の符号化に要る）
+cd movie-maker
+export CARGO_TARGET_DIR=E:/dev/mmt/mobile-e2e CARGO_INCREMENTAL=0
+export FFMPEG_DIR=D:/dev/ffmpeg-dev/ffmpeg-n9.0-latest-win64-gpl-shared-9.0 LIBCLANG_PATH="C:/Program Files/LLVM/bin"
+cargo build -p mm-testkit --example mobile_rig --features mm-runtime/ffmpeg
+# PWA と通し。7338 を本物のアプリが使っていたら止めておく。LOCALAPPDATA は MM_E2E_WORK の下に差し替わる
+cd ui/mobile && pnpm build
+PATH="$PATH:$FFMPEG_DIR/bin" PLAYWRIGHT_DIR=/d/dev/pw \
+  MM_RIG=$CARGO_TARGET_DIR/debug/examples/mobile_rig.exe MM_E2E_WORK=E:/dev/mmt/mobile-e2e-work \
+  MM_E2E_REPEAT=3 node e2e/run.mjs
+```
+
+`MM_E2E_TARGETS=iphone` か `android` で片方だけ回す。落ちた手順の画面は `MM_E2E_WORK` の `<端末>-failed.png` に残る。
+
+### 実機での確かめ方
+
+Playwright の端末の設定は WebKit と Chromium の描画を通すだけで、iOS の Safari の HLS の再生、ホーム画面の Web アプリ、指の操作、4G/5G の回線は実機でしか確かめられない。
+iPhone の Safari と Android の Chrome で、それぞれ次を行う。
+
+1. PC で movie-maker を起動し、[設定の手順](12-mobile.md#設定の手順)の 2〜3 で `tailscale serve --bg --https=8443 http://127.0.0.1:7338` を確かめる。スマホは Wi-Fi を切り、モバイルの回線で tailnet につなぐ。
+2. Devices の「Add device」の QR をカメラで読み、Pair を押す。PC の端末の一覧に名前と Tailscale のアカウントが出る。iPhone は共有のメニューからホーム画面に置き、ホーム画面から開いて、登録の画面が出たら新しい符号を手で入れる。
+3. Watch で再生する（iPhone は Safari のそのままの再生、Android は hls.js）。一時停止して `Comment`、`Draw` で字幕を丸で囲み、送る。PC の Review にそのコメントが出る。
+4. claude.ai/code のセッションで「モバイルのコメントに対応して」と頼む。Claude が `comments` で読み、`propose` で提案を出す。
+5. Proposals で提案を開き、`Before` と `After` を押して見比べ、`Approve` を押す。Watch に戻るとコメントが `fresh` になっている。PC の画面にも変更が入る。
+6. Story で素材を開き、単語を 2 つ押して範囲を選び、`Keep` を押す。続けて `Decide on PC` を入れて別の範囲で `Keep` を押し、PC の Review に提案が届くことを見る。
+7. 機内モードにして `Comment` で書く。上に `1 queued` が出る。機内モードを切ると送られ、PC に 1 件だけ届く。
+8. 横にして映像が全画面になること、押す所が親指で届くこと、画面を隠して戻ると読み直されることを見る。終わったら PC の Devices で登録を外す。
+
+気づいたことは、端末、OS とブラウザーの版、手順の番号を添えて PR かコメントに書く。
 
 ## GPU の要るテストの扱い
 
