@@ -195,10 +195,7 @@ mod tests {
                 kind: ShapeKind::Rect,
                 points: vec![[0.1, 0.2], [0.3, 0.4]],
             }],
-            author: Actor {
-                kind: "mobile".into(),
-                name: "Pixel".into(),
-            },
+            author: Actor::new("mobile", "Pixel"),
             client_id: None,
             replies: Vec::new(),
             state: CommentState::Open,
