@@ -45,7 +45,8 @@ export const attachStream = async (video: HTMLVideoElement, url: string, support
   }
   const { default: Hls } = await import("hls.js");
   if (!Hls.isSupported()) throw new Error("This browser cannot play HLS.");
-  const hls = new Hls({ enableWorker: true });
+  // 区間は見られたときに作るので、最初は一番軽い画質（level 0）から始め、帯域が見えたら上げる。
+  const hls = new Hls({ enableWorker: true, startLevel: 0 });
   hls.loadSource(url);
   hls.attachMedia(video);
   return () => hls.destroy();

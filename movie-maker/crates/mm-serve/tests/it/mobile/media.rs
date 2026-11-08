@@ -193,8 +193,9 @@ fn opacity_of_title(value: f64, base_version: i64) -> Value {
     })
 }
 
-const MEDIA_PATHS: [&str; 4] = [
+const MEDIA_PATHS: [&str; 5] = [
     "/m/api/frame?t=0",
+    "/m/api/stream/main/index.m3u8",
     "/m/api/stream/main/360p.m3u8",
     "/m/api/stream/main/seg/0123456789abcdef.ts",
     "/m/api/audio/clip.m4a",
@@ -254,6 +255,31 @@ fn seg_という名のコンポジションもプレイリストを読め_区間
     // 今のプレイリストに無いキーは、コンポジションの名前に依らず区間の道で 404。
     let unknown = get(&r, &cookie, "/m/api/stream/seg/seg/0123456789abcdef.ts");
     assert_eq!((unknown.status, code(&unknown)), (404, "not_found".into()));
+}
+
+#[test]
+fn 親のプレイリストは画質ごとの子を相対パスで指し_無いコンポジションは_404() {
+    let Some(config) = gpu_config() else { return };
+    let tmp = tempfile::tempdir().unwrap();
+    let r = stream_rig(&project(&tmp.path().join("media.mp4")), config);
+    let cookie = r.pair("phone");
+
+    let master = get(&r, &cookie, "/m/api/stream/main/index.m3u8");
+    assert_eq!(master.status, 200, "{}", master.error_message());
+    assert_eq!(
+        master.header("content-type"),
+        Some("application/vnd.apple.mpegurl")
+    );
+    let text = String::from_utf8_lossy(&master.body);
+    let uris: Vec<&str> = text.lines().filter(|l| l.ends_with(".m3u8")).collect();
+    assert_eq!(uris, ["360p.m3u8", "540p.m3u8"]);
+    assert!(text.contains("CODECS=\"avc1.640028,mp4a.40.2\""), "{text}");
+    for uri in uris {
+        let child = get(&r, &cookie, &format!("/m/api/stream/main/{uri}"));
+        assert_eq!(child.status, 200, "{uri}: {}", child.error_message());
+    }
+    let missing = get(&r, &cookie, "/m/api/stream/nothing/index.m3u8");
+    assert_eq!((missing.status, code(&missing)), (404, "not_found".into()));
 }
 
 #[test]

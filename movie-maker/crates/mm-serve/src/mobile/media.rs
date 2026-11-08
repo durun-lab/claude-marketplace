@@ -31,6 +31,8 @@ const DEFAULT_STILL_WIDTH: u32 = 480;
 /// どんな名前のコンポジション（`seg` も）ともパスの形がぶつからない。
 const SEGMENT_BASE: &str = "seg/";
 const PLAYLIST_EXT: &str = ".m3u8";
+/// 親のプレイリストの名前（拡張子を除く）。画質の名前（`360p` など）とはぶつからない。
+const MASTER_NAME: &str = "index";
 const AUDIO_EXT: &str = ".m4a";
 
 pub(super) fn routes() -> Router<Arc<MobileState>> {
@@ -100,16 +102,19 @@ async fn frame(
     Ok(respond(payload))
 }
 
-/// `GET /m/api/stream/{comp}/{quality}.m3u8`。区間の URI はプレイリストからの相対パス `seg/{key}.ts`。
+/// `GET /m/api/stream/{comp}/index.m3u8`（親のプレイリスト）と `GET /m/api/stream/{comp}/{quality}.m3u8`（画質ごとのプレイリスト）。
+/// 親のプレイリストは画質ごとのプレイリストを相対パス `{quality}.m3u8` で、画質ごとのプレイリストは区間を相対パス `seg/{key}.ts` で指す。
 async fn playlist(
     State(st): State<Arc<MobileState>>,
     Path((comp, file)): Path<(String, String)>,
 ) -> Result<Response, MobileError> {
-    let quality: HlsQuality = file
+    let name = file
         .strip_suffix(PLAYLIST_EXT)
-        .ok_or_else(|| not_found("プレイリストの名前は <画質>.m3u8"))?
-        .parse()
-        .map_err(mm_error)?;
+        .ok_or_else(|| not_found("プレイリストの名前は index.m3u8 か <画質>.m3u8"))?;
+    if name == MASTER_NAME {
+        return master(&st, comp).await;
+    }
+    let quality: HlsQuality = name.parse().map_err(mm_error)?;
     let streamer = streamer(&st)?;
     let core = st.core.clone();
     let request = HlsRequest {
@@ -119,6 +124,20 @@ async fn playlist(
     let payload = run(move || {
         let (version, project) = core.render_project().map_err(into_mm)?;
         streamer.playlist(&project, version.unsigned_abs(), &request, SEGMENT_BASE)
+    })
+    .await?;
+    Ok(respond(payload))
+}
+
+/// 画質を選ぶ親のプレイリスト。
+async fn master(st: &Arc<MobileState>, comp: String) -> Result<Response, MobileError> {
+    let streamer = streamer(st)?;
+    let core = st.core.clone();
+    let payload = run(move || {
+        let (_, project) = core.render_project().map_err(into_mm)?;
+        streamer.master_playlist(&project, &comp, &|q| {
+            format!("{}{PLAYLIST_EXT}", q.as_str())
+        })
     })
     .await?;
     Ok(respond(payload))
