@@ -1,4 +1,4 @@
-# RFC hdr-input-tonemap: タイムラインの作業の明るさと、HDR の素材の入力の側のトーンマップ
+# RFC 0190 hdr-input-tonemap: タイムラインの作業の明るさと、HDR の素材の入力の側のトーンマップ
 
 状態: 提案
 
