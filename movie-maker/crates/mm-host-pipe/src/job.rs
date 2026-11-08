@@ -126,7 +126,7 @@ pub fn wait_exit(child: &mut Child, limit: Duration) -> std::io::Result<Option<E
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::process::{Command, Stdio};
+    use std::process::Stdio;
 
     /// 標準入力が閉じるまで終わらない子。
     fn waiting_child() -> Child {
@@ -135,7 +135,7 @@ mod tests {
         } else {
             ("cat", &[])
         };
-        Command::new(program)
+        mm_types::process::command(program)
             .args(args)
             .stdin(Stdio::piped())
             .stdout(Stdio::null())

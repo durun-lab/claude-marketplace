@@ -5,7 +5,6 @@
 use crate::common;
 
 use std::path::Path;
-use std::process::Command;
 
 use mm_doc::{Composition, Cut, Layer, Node, Project, Sequence, SEQUENCE_KIND, SEQUENCE_PARAM};
 use mm_node_api::Quality;
@@ -32,7 +31,7 @@ fn make_clip(path: &Path) {
         i64::from(CLIP_SECONDS) * FPS
     );
     let audio = format!("sine=frequency=440:sample_rate=48000:duration={CLIP_SECONDS}");
-    let status = Command::new("ffmpeg")
+    let status = mm_types::process::command("ffmpeg")
         .args([
             "-hide_banner",
             "-v",
@@ -53,7 +52,7 @@ fn make_clip(path: &Path) {
 }
 
 fn mm(args: &[&str]) {
-    let out = Command::new(env!("CARGO_BIN_EXE_mm"))
+    let out = mm_types::process::command(env!("CARGO_BIN_EXE_mm"))
         .args(args)
         .output()
         .expect("mm を実行できる");

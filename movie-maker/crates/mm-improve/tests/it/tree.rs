@@ -2,7 +2,7 @@
 //! アプリが落ちたとき（ジョブのハンドルが OS に閉じられる）と、回の呼び出しが終わったとき（後ろに回したコマンドが残る）。
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -49,7 +49,7 @@ fn wait_pids(path: &Path) -> Vec<u32> {
 }
 
 fn alive(pid: u32) -> bool {
-    let out = Command::new("tasklist")
+    let out = mm_types::process::command("tasklist")
         .args(["/FI", &format!("PID eq {pid}"), "/NH", "/FO", "CSV"])
         .output()
         .unwrap();
@@ -65,7 +65,7 @@ fn survivors(pids: &[u32]) -> Vec<u32> {
     let left: Vec<u32> = pids.iter().copied().filter(|p| alive(*p)).collect();
     for p in &left {
         drop(
-            Command::new("taskkill")
+            mm_types::process::command("taskkill")
                 .args(["/PID", &p.to_string(), "/T", "/F"])
                 .output(),
         );
@@ -84,7 +84,7 @@ fn app_crash_takes_the_claude_tree_down() {
     })
     .unwrap();
     let pids_file = fx.data.join("pids.txt");
-    let mut host = Command::new(fake_claude())
+    let mut host = mm_types::process::command(fake_claude())
         .arg("host")
         .arg(&fx.data)
         .arg(&fx.repo)

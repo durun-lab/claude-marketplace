@@ -1,7 +1,6 @@
 //! 素材の中身の調べ方。ffprobe の JSON から、素材の長さ・映像・音の情報を取る。
 
 use std::path::Path;
-use std::process::Command;
 
 use serde_json::Value;
 
@@ -52,7 +51,7 @@ impl MediaProbe {
 
 /// ffprobe で素材を調べる。映像も音も無ければ取り込めない素材として `Unsupported`。
 pub fn probe(tools: &Tools, path: &Path) -> Result<MediaProbe> {
-    let mut cmd = Command::new(&tools.ffprobe);
+    let mut cmd = mm_types::process::command(&tools.ffprobe);
     cmd.args([
         "-v",
         "error",

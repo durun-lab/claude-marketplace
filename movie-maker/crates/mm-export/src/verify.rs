@@ -4,7 +4,6 @@
 //! フレームと 1 対 1 で、1080p でも数十ミリ秒で済む。
 
 use std::path::Path;
-use std::process::Command;
 
 use serde_json::Value;
 
@@ -46,7 +45,7 @@ pub fn verify_output(path: &Path, expected: &Expected) -> Result<Verification> {
 
 fn probe(path: &Path) -> Result<Verification> {
     let exe = std::env::var_os(ENV_FFPROBE).unwrap_or_else(|| "ffprobe".into());
-    let out = Command::new(&exe)
+    let out = mm_types::process::command(&exe)
         .args(["-v", "error", "-count_packets", "-print_format", "json"])
         .args(["-show_streams", "-show_format"])
         .arg(path)

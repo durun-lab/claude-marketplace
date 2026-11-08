@@ -5,7 +5,7 @@ use std::process::{Command, Output};
 
 /// `mm` の実行ファイル。
 pub fn mm_command() -> Command {
-    Command::new(env!("CARGO_BIN_EXE_mm"))
+    mm_types::process::command(env!("CARGO_BIN_EXE_mm"))
 }
 
 /// `mm` を呼ぶ。成否は呼ぶ側が見る。

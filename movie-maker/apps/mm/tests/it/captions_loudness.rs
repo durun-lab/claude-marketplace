@@ -49,7 +49,7 @@ fn run(cmd: &mut Command) -> Output {
 }
 
 fn mm(args: &[&str]) -> Output {
-    run(Command::new(env!("CARGO_BIN_EXE_mm")).args(args))
+    run(mm_types::process::command(env!("CARGO_BIN_EXE_mm")).args(args))
 }
 
 fn op(dir: &str, value: Value) {
@@ -70,7 +70,7 @@ fn word_start(i: i64) -> f64 {
 
 fn make_media(out: &Path) {
     let seconds = MEDIA_SECONDS.to_string();
-    run(Command::new("ffmpeg")
+    run(mm_types::process::command("ffmpeg")
         .args(["-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i"])
         .arg(format!("testsrc2=s=320x180:r=30:d={seconds}"))
         .args(["-f", "lavfi", "-i"])
@@ -290,7 +290,7 @@ fn check_cues(cues: &[Cue]) {
 
 /// ffmpeg の ebur128 で測った統合ラウドネス（LUFS）とトゥルーピーク（dBFS）。
 fn loudness(path: &Path) -> (f64, f64) {
-    let out = run(Command::new("ffmpeg")
+    let out = run(mm_types::process::command("ffmpeg")
         .args(["-hide_banner", "-nostats", "-i"])
         .arg(path)
         .args(["-af", "ebur128=peak=true", "-vn", "-f", "null", "-"]));
@@ -307,7 +307,7 @@ fn loudness(path: &Path) -> (f64, f64) {
 }
 
 fn ffprobe_json(path: &Path, args: &[&str]) -> Value {
-    let out = run(Command::new("ffprobe")
+    let out = run(mm_types::process::command("ffprobe")
         .args(["-v", "error", "-of", "json"])
         .args(args)
         .arg(path));
@@ -393,7 +393,7 @@ fn 字幕とチャプターとラウドネスが書き出しの時間軸と目�
         .collect();
     assert!(codecs.contains(&"mov_text".to_owned()), "{codecs:?}");
     let extracted = tmp.path().join("tv.srt");
-    run(Command::new("ffmpeg")
+    run(mm_types::process::command("ffmpeg")
         .args(["-hide_banner", "-v", "error", "-y", "-i"])
         .arg(&tv)
         .args(["-map", "0:s:0"])

@@ -1,8 +1,6 @@
 //! 取り込みの結合テスト。ffmpeg の CLI で小さな素材を作って取り込む。
 //! ffmpeg が無い環境ではスキップする（`MM_REQUIRE_FFMPEG=1` なら失敗にする）。
 
-use std::process::Command;
-
 use mm_ingest::{asset_id, ingest, probe, ArtifactState};
 use mm_ingest_api::SidecarBody;
 use mm_types::MmError;
@@ -81,7 +79,7 @@ fn 映像の無い素材は波形だけ作る() {
     let Some(tools) = tools() else { return };
     let dir = tempfile::tempdir().unwrap();
     let wav = dir.path().join("tone.wav");
-    let status = Command::new(&tools.ffmpeg)
+    let status = mm_types::process::command(&tools.ffmpeg)
         .args(["-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i"])
         .arg("sine=frequency=440:sample_rate=48000:duration=1")
         .arg(&wav)
@@ -133,7 +131,7 @@ fn 高さが奇数で_540_未満の素材もプレビュー動画にできる() 
     let dir = tempfile::tempdir().unwrap();
     let odd = dir.path().join("odd.mp4");
     // 奇数の高さは yuv444p なら素材として作れる。プレビュー動画の yuv420p には入らないので偶数へ丸める。
-    let status = Command::new(&tools.ffmpeg)
+    let status = mm_types::process::command(&tools.ffmpeg)
         .args(["-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i"])
         .arg("color=c=red:s=500x375:r=30:d=1")
         .args(["-c:v", "libx264", "-pix_fmt", "yuv444p"])

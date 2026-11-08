@@ -28,7 +28,7 @@ fn 合い言葉のファイルは持ち主だけの_dacl_になる() {
     let writer = Store::create(tmp.path(), &project_with(1), NOW).unwrap();
     writer.publish_token("secret").unwrap();
     let path = Store::writer_token_file(tmp.path()).unwrap();
-    let out = std::process::Command::new("icacls")
+    let out = mm_types::process::command("icacls")
         .arg(&path)
         .output()
         .unwrap();

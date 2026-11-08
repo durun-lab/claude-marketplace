@@ -1,5 +1,4 @@
 use std::cell::RefCell;
-use std::process::Command;
 
 use mm_doc::Project;
 use mm_types::{ColorSpace, Id, RationalTime};
@@ -126,7 +125,7 @@ fn make_clip(dir: &Path) -> Option<PathBuf> {
         return None;
     }
     let out = dir.join("clip.mp4");
-    let status = Command::new(&tools.ffmpeg)
+    let status = mm_types::process::command(&tools.ffmpeg)
         .args(["-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i"])
         .arg("testsrc2=s=320x180:r=30:d=1")
         .args(["-f", "lavfi", "-i"])

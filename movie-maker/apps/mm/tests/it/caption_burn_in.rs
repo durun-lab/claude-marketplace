@@ -44,7 +44,7 @@ fn run(cmd: &mut Command) -> Output {
 }
 
 fn mm(args: &[&str]) -> Output {
-    run(Command::new(env!("CARGO_BIN_EXE_mm")).args(args))
+    run(mm_types::process::command(env!("CARGO_BIN_EXE_mm")).args(args))
 }
 
 fn op(dir: &str, value: Value) {
@@ -60,7 +60,7 @@ fn rt(num: i64, den: u32) -> Value {
 
 fn make_media(out: &Path) {
     let seconds = MEDIA_SECONDS.to_string();
-    run(Command::new("ffmpeg")
+    run(mm_types::process::command("ffmpeg")
         .args(["-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i"])
         .arg(format!("testsrc2=s=320x180:r=30:d={seconds}"))
         .args(["-f", "lavfi", "-i"])
@@ -167,13 +167,13 @@ fn parse_srt(text: &str) -> Vec<Cue> {
 fn luma(video: &Path, index: i64, png: Option<&Path>) -> Vec<u8> {
     let select = format!("select=eq(n\\,{index})");
     if let Some(png) = png {
-        run(Command::new("ffmpeg")
+        run(mm_types::process::command("ffmpeg")
             .args(["-hide_banner", "-v", "error", "-y", "-i"])
             .arg(video)
             .args(["-vf", &select, "-fps_mode", "passthrough", "-frames:v", "1"])
             .arg(png));
     }
-    run(Command::new("ffmpeg")
+    run(mm_types::process::command("ffmpeg")
         .args(["-hide_banner", "-v", "error", "-i"])
         .arg(video)
         .args([

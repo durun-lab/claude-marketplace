@@ -2,7 +2,6 @@
 
 use std::collections::VecDeque;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::{Arc, Mutex};
 
 use mm_improve::{
@@ -22,7 +21,7 @@ pub struct Fixture {
 }
 
 pub fn run_git(dir: &Path, args: &[&str]) {
-    let ok = Command::new("git")
+    let ok = mm_types::process::command("git")
         .arg("-C")
         .arg(dir)
         .args(args)

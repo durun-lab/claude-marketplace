@@ -2,7 +2,6 @@
 #![cfg(feature = "ffmpeg")]
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use mm_decode_api::{EncodeSettings, EncoderFactory, Nv12Frame};
 use mm_encode_nvenc::{available, NvencEncoderFactory};
@@ -36,7 +35,7 @@ fn nv12(size: Size, n: usize) -> Nv12Frame {
 }
 
 fn probe(path: &Path, entries: &str) -> String {
-    let out = Command::new("ffprobe")
+    let out = mm_types::process::command("ffprobe")
         .args(["-v", "error", "-count_frames", "-select_streams", "v:0"])
         .args(["-show_entries", entries, "-of", "csv=p=0"])
         .arg(path)

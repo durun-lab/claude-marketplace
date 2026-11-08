@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
@@ -66,7 +66,7 @@ pub fn probe_reply(exe: &Path) -> Option<String> {
 
 /// `exe probe` の標準出力。起動できないか、期限までに正常に終わらなければ `None`。
 fn probe(exe: &Path) -> Option<String> {
-    let mut cmd = Command::new(exe);
+    let mut cmd = mm_types::process::command(exe);
     cmd.arg(PROBE_COMMAND)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())

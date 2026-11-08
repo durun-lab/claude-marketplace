@@ -3,7 +3,7 @@
 
 use std::io::Read;
 use std::path::Path;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -27,7 +27,7 @@ pub fn run_describe<T: DeserializeOwned>(
     timeout: Duration,
     name: &str,
 ) -> Result<T> {
-    let mut child = Command::new(executable)
+    let mut child = mm_types::process::command(executable)
         .arg(DESCRIBE_COMMAND)
         .arg(path)
         .stdin(Stdio::null())

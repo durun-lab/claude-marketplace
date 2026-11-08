@@ -8,11 +8,13 @@ use mm_types::Result;
 pub fn kill_tree(pid: u32) {
     let pid = pid.to_string();
     let status = if cfg!(windows) {
-        Command::new("taskkill")
+        mm_types::process::command("taskkill")
             .args(["/PID", &pid, "/T", "/F"])
             .output()
     } else {
-        Command::new("kill").args(["-TERM", &pid]).output()
+        mm_types::process::command("kill")
+            .args(["-TERM", &pid])
+            .output()
     };
     drop(status);
 }

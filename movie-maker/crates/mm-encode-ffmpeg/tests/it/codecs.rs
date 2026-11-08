@@ -4,7 +4,6 @@ use crate::common;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use mm_audio_api::AudioBlock;
 use mm_decode_api::{AudioStreamInfo, DecoderFactory, EncodeSettings, EncoderFactory};
@@ -37,7 +36,7 @@ fn numbered_frame(size: Size, number: i64) -> RgbaImage {
 }
 
 fn probe(path: &Path, select: &str, entries: &str) -> HashMap<String, String> {
-    let out = Command::new("ffprobe")
+    let out = mm_types::process::command("ffprobe")
         .args(["-v", "error", "-count_frames", "-select_streams", select])
         .args(["-show_entries", entries, "-of", "default=nw=1"])
         .arg(path)
@@ -153,7 +152,7 @@ fn プロレスは_8_ビットを経由せず暗部の階調を保つ() {
         .unwrap();
     enc.finish().unwrap();
     let y = |f: u32| {
-        let out = Command::new("ffmpeg")
+        let out = mm_types::process::command("ffmpeg")
             .args(["-v", "error", "-i"])
             .arg(&path)
             .args(["-vf", &format!("select=eq(n\\,{f})"), "-frames:v", "1"])

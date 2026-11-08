@@ -5,7 +5,6 @@
 //! 10 bit の YUV にする。期待の値は符号化値を `mm_types::transfer` の式で線形にし、Rec.709 の原色に直したもの。
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use mm_types::transfer::{hlg_to_linear, mul3, pq_to_linear, REC2020_TO_REC709};
@@ -130,7 +129,7 @@ pub fn fixture(dir: &Path, kind: HdrKind) -> PathBuf {
         kind.trc(),
         std::process::id()
     ));
-    let status = Command::new("ffmpeg")
+    let status = mm_types::process::command("ffmpeg")
         .args(["-y", "-v", "error", "-filter_complex", &graph(kind)])
         .args([
             "-frames:v",

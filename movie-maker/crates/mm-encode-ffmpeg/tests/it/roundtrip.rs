@@ -5,7 +5,6 @@ use crate::common;
 use std::collections::HashMap;
 use std::f32::consts::TAU;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use mm_audio_api::AudioBlock;
 use mm_decode_api::{AudioStreamInfo, DecoderFactory, EncodeSettings, EncoderFactory};
@@ -45,7 +44,7 @@ fn tone(start: usize, frames: usize) -> AudioBlock {
 
 /// ffprobe の `key=value` 出力を引く。
 fn probe(path: &Path, select: &str, entries: &str) -> HashMap<String, String> {
-    let out = Command::new("ffprobe")
+    let out = mm_types::process::command("ffprobe")
         .args([
             "-v",
             "error",

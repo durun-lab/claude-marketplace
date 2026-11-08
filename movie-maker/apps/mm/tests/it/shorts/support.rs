@@ -1,7 +1,6 @@
 //! 本編とショートの通しのプロジェクトの組み立てと、ショートの画素から本編の画素への写像。
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use mm_doc::{
     Asset, Composition, Cut, Interpolation, Keyframe, Layer, Node, OriginRelation, Param, Project,
@@ -26,7 +25,7 @@ const R1_TO: (i64, u32, f64) = (11, 2, 60.0);
 
 /// `mm` を実行して標準出力を返す。失敗したら止める。
 pub fn mm(args: &[&str]) -> String {
-    let out = Command::new(env!("CARGO_BIN_EXE_mm"))
+    let out = mm_types::process::command(env!("CARGO_BIN_EXE_mm"))
         .args(args)
         .output()
         .expect("mm を実行できる");
@@ -49,7 +48,7 @@ fn make_clip(path: &Path) {
         CLIP_SECONDS * FPS
     );
     let audio = format!("sine=frequency=440:sample_rate=48000:duration={CLIP_SECONDS}");
-    let status = Command::new("ffmpeg")
+    let status = mm_types::process::command("ffmpeg")
         .args([
             "-hide_banner",
             "-v",

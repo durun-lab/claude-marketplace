@@ -1,7 +1,6 @@
 //! 結合テストの共通部分。ffmpeg の CLI で小さな素材を作る。
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use mm_ingest::{CacheLayout, IngestOptions, PreviewEncoder, Tools};
 
@@ -21,7 +20,7 @@ pub fn tools() -> Option<Tools> {
 
 /// 映像（`size`、30fps）と音（440Hz、ステレオ）つきの MP4 を作る。
 pub fn make_media(tools: &Tools, out: &Path, size: &str, seconds: u32, with_audio: bool) {
-    let mut cmd = Command::new(&tools.ffmpeg);
+    let mut cmd = mm_types::process::command(&tools.ffmpeg);
     cmd.args(["-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i"])
         .arg(format!("testsrc2=s={size}:r=30:d={seconds}"));
     if with_audio {
