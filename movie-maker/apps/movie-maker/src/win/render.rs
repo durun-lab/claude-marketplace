@@ -104,17 +104,6 @@ impl Gpu {
             (FrameImage::Gpu(_), None) => false,
         }
     }
-
-    /// テクスチャを取れなかったサーフェスを `recovery` のとおりに立て直す。
-    fn recover(&mut self, hwnd: isize, recovery: Recovery) -> Result<(), String> {
-        match recovery {
-            Recovery::Wait => return Ok(()),
-            Recovery::Reconfigure => {}
-            Recovery::Recreate => self.surface = create_surface(&self.instance, hwnd)?,
-        }
-        self.surface.configure(&self.device, &self.config);
-        Ok(())
-    }
 }
 
 /// レンダラーのコンテキストがあればそのデバイスで、無ければ自前のデバイスでサーフェスを作る。
@@ -407,71 +396,6 @@ mod tests {
             }
         });
         assert_eq!(calls, 3, "3 回目に正常に終わるまで作り直す");
-    }
-
-    /// 試験の HWND とサーフェスの一辺（物理ピクセル）。
-    const TEST_SIZE: u32 = 64;
-
-    /// 試験に使う見えないトップレベルの HWND。落とすと破棄する。
-    struct TestWindow(isize);
-
-    impl TestWindow {
-        fn new() -> Self {
-            use windows::core::w;
-            use windows::Win32::UI::WindowsAndMessaging::{
-                CreateWindowExW, WINDOW_EX_STYLE, WS_OVERLAPPED,
-            };
-            let (title, size) = (w!("surface test"), TEST_SIZE as i32);
-            let hwnd = unsafe {
-                CreateWindowExW(
-                    WINDOW_EX_STYLE(0),
-                    w!("STATIC"),
-                    title,
-                    WS_OVERLAPPED,
-                    0,
-                    0,
-                    size,
-                    size,
-                    None,
-                    None,
-                    None,
-                    None,
-                )
-            }
-            .expect("試験の HWND");
-            Self(hwnd.0 as isize)
-        }
-    }
-
-    impl Drop for TestWindow {
-        fn drop(&mut self) {
-            use windows::Win32::{Foundation::HWND, UI::WindowsAndMessaging::DestroyWindow};
-            // 試験の後片付けなので、破棄に失敗しても続ける。
-            let _ = unsafe { DestroyWindow(HWND(self.0 as *mut _)) };
-        }
-    }
-
-    #[test]
-    fn 張り直しと作り直しの後もテクスチャを取って_present_できる() {
-        let window = TestWindow::new();
-        let shared = Shared::new();
-        let mut gpu = match init_gpu(&shared, window.0, None) {
-            Ok(gpu) => gpu,
-            Err(e) if std::env::var_os("MM_REQUIRE_GPU").is_some() => {
-                panic!("MM_REQUIRE_GPU が有るのに GPU を作れない: {e}")
-            }
-            Err(e) => return eprintln!("GPU が無いのでスキップする: {e}"),
-        };
-        (gpu.config.width, gpu.config.height) = (TEST_SIZE, TEST_SIZE);
-        for recovery in [
-            Recovery::Reconfigure,
-            Recovery::Recreate,
-            Recovery::Recreate,
-        ] {
-            gpu.recover(window.0, recovery).expect("立て直せる");
-            let texture = acquire::classify(gpu.surface.get_current_texture()).expect("取れる");
-            gpu.queue.present(texture);
-        }
     }
 
     #[test]
