@@ -108,7 +108,7 @@ fn not_on_mobile_response(ops: &[&str]) -> Response {
         .into_response()
 }
 
-/// 取り消しは、この端末（登録ごとの ID で見分ける）が出したトランザクションが全体の直前のときだけ。違えば 409 `not_latest`。
+/// 取り消しは、この端末（登録ごとの ID で見分ける）のトランザクションが全体の直前のときだけ。違えば 409 `not_latest`。
 async fn post_undo(
     State(st): State<Arc<MobileState>>,
     Extension(device): Extension<DeviceInfo>,
@@ -117,22 +117,25 @@ async fn post_undo(
     let core = st.core.clone();
     match blocking(move || core.undo_own(&caller)).await? {
         UndoOwn::Done(change) => Ok(Json(json!({ "change": change })).into_response()),
-        UndoOwn::NotLatest(of) => Err(refuse(
-            StatusCode::CONFLICT,
-            "not_latest",
-            &format!(
-                "直前のトランザクション「{}」は {}（{}）のもので、この端末のものでない",
-                of.name, of.actor_name, of.actor
-            ),
-        )),
+        UndoOwn::NotLatest { name, owner } => {
+            let who = owner.map_or_else(
+                || "記録の無い者".to_owned(),
+                |o| format!("{}（{}）", o.name, o.kind),
+            );
+            Err(refuse(
+                StatusCode::CONFLICT,
+                "not_latest",
+                &format!("直前のトランザクション「{name}」は {who} のもので、この端末のものでない"),
+            ))
+        }
     }
 }
 
 enum UndoOwn {
     /// 取り消した（取り消すものが無ければ `None`）。
     Done(Option<Change>),
-    /// 直前のトランザクションが別の人のもの。
-    NotLatest(ChangeOf),
+    /// 直前のトランザクションが別の人のもの。`owner` はそれを取り消せる者。
+    NotLatest { name: String, owner: Option<Actor> },
 }
 
 /// 記録の発行元 `recorded` が、端末 `caller` と同じ登録か。名前は登録を外すと別の端末が使えるので端末の ID で比べ、
@@ -141,15 +144,17 @@ fn same_device(recorded: &Actor, caller: &Actor) -> bool {
     recorded.device.is_some() && recorded.device == caller.device
 }
 
-/// `actor` が出したか、`actor` が承認した提案のトランザクションか。承認の記録の発行元は提案した者なので、決めた者は提案の側で引く。
-fn owned_by(s: &Store, plan: &UndoPlan, actor: &Actor) -> Result<bool, ServeError> {
-    if same_device(&plan.actor, actor) {
-        return Ok(true);
-    }
-    Ok(s.proposals()?.iter().any(|p| {
-        p.txn_id == Some(plan.txn_id)
-            && p.decided_by.as_ref().is_some_and(|d| same_device(d, actor))
-    }))
+/// トランザクションを取り消せる者。承認で適用したトランザクションの発行元は提案した者なので、提案を決めた者を返す。
+/// 承認は 1 回ごとに新しいトランザクションを書くので、1 つのトランザクションに紐づく提案は多くて 1 件。
+fn owner(s: &Store, plan: &UndoPlan) -> Result<Option<Actor>, ServeError> {
+    let approval = s
+        .proposals()?
+        .into_iter()
+        .find(|p| p.txn_id == Some(plan.txn_id));
+    Ok(match approval {
+        Some(p) => p.decided_by,
+        None => Some(plan.actor.clone()),
+    })
 }
 
 impl Core {
@@ -159,11 +164,17 @@ impl Core {
             let Some(plan) = s.undo_plan()? else {
                 return Ok(UndoOwn::Done(None));
             };
-            let owned = owned_by(s, &plan, &caller.actor)?;
-            let target = ChangeOf::from(plan);
-            if !owned {
-                return Ok(UndoOwn::NotLatest(target));
+            let owner = owner(s, &plan)?;
+            if !owner
+                .as_ref()
+                .is_some_and(|o| same_device(o, &caller.actor))
+            {
+                return Ok(UndoOwn::NotLatest {
+                    name: plan.name,
+                    owner,
+                });
             }
+            let target = ChangeOf::from(plan);
             let ctx = mm_ops::OpContext::new(caller.entry);
             let stored = s.undo_last(&ctx, caller.actor.clone(), crate::core::now_ms())?;
             Ok(UndoOwn::Done(
