@@ -17,6 +17,7 @@ use mm_ui_layout::TimelineModel;
 use mm_ui_wgpu::Ui;
 
 use crate::win::playback::Command;
+use crate::win::review::drawing::DrawingSync;
 use crate::win::state::{FrameImage, PreviewFrame, Shared};
 use crate::win::surface;
 use crate::win::theme;
@@ -244,6 +245,7 @@ fn run(
     let mut seen = 0u64;
     let mut doc = DocSync::default();
     let mut source = SourceSync::default();
+    let mut drawing = DrawingSync::default();
     let mut failed_frames = 0u32;
     // HWND が破棄された後に present し続けないよう、毎周で生死を確かめる。
     while !quit.load(Ordering::SeqCst) && surface::is_alive(hwnd) {
@@ -257,10 +259,12 @@ fn run(
             view = View::new(shared, hwnd, Some(context), model)?;
             doc = DocSync::default();
             source = SourceSync::default();
+            drawing = DrawingSync::default();
         }
         view.configure(size);
         doc.refresh(shared, &mut view.ui);
         source.refresh(shared, &mut view);
+        drawing.refresh(shared, &mut view.ui);
         handle_input(shared, &mut view.ui, &doc);
         if frame(shared, &view.gpu, &mut view.ui, &mut seen) {
             failed_frames = 0;

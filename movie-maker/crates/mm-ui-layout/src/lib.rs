@@ -6,9 +6,11 @@
 //! スナップとフレームへの丸めは [`snap`] と [`quantize`]、帯と端のつまみの当たり判定は [`hit_test`]、
 //! ポインター操作（スクラブ、選択、つまみのドラッグ）は [`TimelineController`] が受け持つ。
 //! [`timeline_quads`] は Timeline を [`Quad`] の並びに落とし、描画は `mm-ui-wgpu` が行う。
+//! [`mark_segments`] はコメントの描き込みを Program の映像の矩形の線分に落とす。
 
 mod controller;
 mod digits;
+mod drawing;
 mod geom;
 mod gesture;
 mod paint;
@@ -21,6 +23,9 @@ mod timeline;
 
 pub use controller::{Action, Mods, PointerEvent, TimelineController};
 pub use digits::{text_quads, text_width};
+pub use drawing::{
+    frame_point, mark_segments, Mark, MarkKind, MarkSegment, MARK_LINE_PX, MARK_POINT_PX,
+};
 pub use geom::{fit_rect, Color, Quad, Rect};
 pub use gesture::{body_edit, edge_edit, EditKind, Side};
 pub use paint::{timeline_quads, PaintState};

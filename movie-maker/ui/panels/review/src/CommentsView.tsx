@@ -79,8 +79,15 @@ const Decisions = ({ c, state }: { c: Comment; state: CommentsState }) =>
 const CommentCard = ({ comment: c, state, nowMs }: CardProps) => {
   const [replying, setReplying] = useState(false);
   const drawing = drawingLabel(c);
+  const focused = state.focused === c.id;
   return (
-    <li class="mm-review-card" data-state={c.state} data-comment={c.id}>
+    <li
+      class="mm-review-card"
+      data-state={c.state}
+      data-comment={c.id}
+      data-focused={focused ? "" : undefined}
+      aria-current={focused ? "true" : undefined}
+    >
       <header class="mm-review-head">
         <div class="mm-review-comment-top">
           <button
@@ -131,7 +138,7 @@ const Filters = ({
   </div>
 );
 
-/** コメントの一覧。`Fresh`（Claude が対応済みで確認待ち）を先頭に、時刻を押すと再生位置が動く。 */
+/** コメントの一覧。`Fresh`（Claude が対応済みで確認待ち）を先頭に、時刻を押すとそのコメントを選んで再生位置が動き、描き込みが Program に重なる。 */
 export const CommentsView = ({ state, nowMs }: { state: CommentsState; nowMs: number }) => {
   const [filter, setFilter] = useState<CommentFilter>("all");
   const all = state.comments ?? [];

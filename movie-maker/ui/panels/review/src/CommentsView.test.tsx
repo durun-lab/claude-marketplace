@@ -36,6 +36,7 @@ const fakeApi = (list: Comment[], over: Partial<ReviewApi> = {}): ReviewApi => (
   comments: vi.fn().mockResolvedValue(list),
   replyComment: vi.fn().mockResolvedValue(list[0]),
   setCommentState: vi.fn().mockResolvedValue(list[0]),
+  focusComment: vi.fn().mockResolvedValue(undefined),
   seek: vi.fn().mockResolvedValue(undefined),
   onCommentsChanged: vi.fn().mockResolvedValue(() => undefined),
   ...over,
@@ -90,6 +91,18 @@ describe("コメントの一覧", () => {
     const range = { in: { num: 1, den: 1 }, out: { num: 3, den: 1 } };
     await mount(fakeApi([comment("a", { at: null, range })]));
     expect(host.textContent).toContain("0:01.00–0:03.00");
+  });
+});
+
+describe("コメントの選択", () => {
+  it("時刻を押したコメントを選び、アプリに知らせて印を付ける", async () => {
+    const api = fakeApi([comment("a"), comment("b", { at: { num: 9, den: 1 } })]);
+    await mount(api);
+    await click(host.querySelectorAll(".mm-review-time")[1]);
+    expect(api.focusComment).toHaveBeenCalledWith("b");
+    const focused = host.querySelector("[data-focused]") as HTMLElement | null;
+    expect(focused?.dataset.comment).toBe("b");
+    expect(focused?.getAttribute("aria-current")).toBe("true");
   });
 });
 

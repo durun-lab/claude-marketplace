@@ -197,7 +197,7 @@ fn forward_changes(app: &tauri::AppHandle, shared: &Arc<Shared>) {
     if let Err(e) = started {
         tracing::warn!("提案の通知を受けるスレッドを始められない: {e}");
     }
-    review_ipc::forward_comments(app, core);
+    review_ipc::forward_comments(app, shared);
 }
 
 fn fail(message: &str) -> ! {

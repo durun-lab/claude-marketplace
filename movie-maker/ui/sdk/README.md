@@ -150,6 +150,7 @@ Review パネル（`ui/panels/review`）が使う Tauri のコマンド。型は
 | `review_reopen` | `{ id }` | `Proposal`。却下したものを保留に戻す |
 | `review_undo` | `{ id }` | `Proposal`。承認で適用したトランザクションが取り消しのスタックの一番上のときだけ取り消す |
 | `review_preview` | `{ id, ops }` | `null`。Program に提案を適用したフレームを出す。`id: null` で元のフレームに戻す |
+| `review_comment_focus` | `{ id }`（`null` で外す） | `null`。選んだコメントの描き込みを、再生位置がその時刻か範囲にある間だけ Program に重ねる |
 | `review_comments` | なし | `Comment[]`（書いた順。モバイルが書いたものも入る。型は `ui/sdk/src/comments.ts`） |
 | `review_comment_reply` | `{ id, text }` | `Comment`。人の操作経路（`gui`）の返信 |
 | `review_comment_state` | `{ id, value }`（`open`、`done`、`wontfix`） | `Comment`。`fresh` は決められず `Err` |
