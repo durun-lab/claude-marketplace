@@ -255,6 +255,8 @@ fn 短い動画のキーは操作と範囲と範囲に掛かる中身で決ま�
     assert_eq!(clip(&project(), 3.0, 3.0, "[1]"), k, "同じ中身なら同じキー");
     let name = k.file_name();
     assert_eq!(name.trim_end_matches(".mp4").parse::<ClipKey>().unwrap(), k);
+    assert_eq!(name.parse::<ClipKey>().unwrap(), k, "URL の最後の部分");
+    assert!("x.partial.mp4".parse::<ClipKey>().is_err());
     assert_ne!(clip(&p, 3.0, 3.0, "[2]"), k, "操作が違えば別");
     assert_ne!(clip(&p, 3.0, 4.0, "[1]"), k, "範囲が違えば別");
 

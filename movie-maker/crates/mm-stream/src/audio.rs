@@ -7,7 +7,7 @@ use mm_doc::Project;
 use mm_types::{Id, Result};
 
 use crate::cache::{CacheDir, PARTIAL_EXT};
-use crate::payload::{ranged_file, Payload};
+use crate::payload::{ranged_file, Payload, REVALIDATE};
 use crate::quality::AUDIO_BITS_PER_SECOND;
 use crate::tools::{args, path_arg, run_ffmpeg};
 
@@ -61,5 +61,6 @@ pub(crate) fn ensure_audio(
 
 /// `path` の m4a を、`Range` ヘッダーに合わせて返す。長さの外を指す `Range` は 416。
 pub(crate) fn respond(path: &Path, content_hash: &str, range: Option<&str>) -> Result<Payload> {
-    ranged_file(path, "audio/mp4", &format!("\"{content_hash}\""), range)
+    let etag = format!("\"{content_hash}\"");
+    ranged_file(path, "audio/mp4", (&etag, REVALIDATE), range)
 }

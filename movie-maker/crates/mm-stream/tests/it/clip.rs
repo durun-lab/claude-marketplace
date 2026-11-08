@@ -1,13 +1,13 @@
 //! 提案の区間の短い動画。ffprobe で読めること、範囲と長さ、moov が先頭にあること、`Range` に 206 で答えること、
-//! 提案を適用したフレームになっていること、同じキーは作り直さないこと。
+//! 提案を適用したフレームになっていること、同じキーは作り直さないこと、範囲の中の編集で前のキーが前のバイトのまま残ること。
 
 use std::path::Path;
 use std::process::Command;
 use std::time::Instant;
 
 use mm_doc::{Layer, Node, Project};
-use mm_stream::{ClipRequest, Payload, CLIP_PAD_SECONDS};
-use mm_types::{ParamValue, RationalTime, Rgba};
+use mm_stream::{ClipRequest, Payload, Streamer, CLIP_PAD_SECONDS};
+use mm_types::{MmError, ParamValue, RationalTime, Rgba};
 
 use crate::common::{ffmpeg_config, make_media, number, probe, project, streamer};
 
@@ -107,7 +107,7 @@ fn 短い動画は範囲の前後を足した長さの_360p_の_mp4_で_moov_が
     let project = applied(&project(&media, 10));
 
     let started = Instant::now();
-    let clip = s.clip(&project, 1, &req("[0]"), None).unwrap();
+    let clip = clip(&s, &project, 1, "[0]", None);
     eprintln!(
         "短い動画（6 秒）を作る時間: {:?}、{} バイト",
         started.elapsed(),
@@ -158,8 +158,8 @@ fn 短い動画は提案を適用したフレームで_range_に_206_で答え_�
     make_media(&media);
     let s = streamer(config, dir.path());
     let base = project(&media, 10);
-    let after = s.clip(&applied(&base), 1, &req("[0]"), None).unwrap();
-    let before = s.clip(&base, 1, &req("[]"), None).unwrap();
+    let after = clip(&s, &applied(&base), 1, "[0]", None);
+    let before = clip(&s, &base, 1, "[]", None);
     assert_ne!(after.header("ETag"), before.header("ETag"));
 
     // 短い動画の 3 秒はコンポジションの 5 秒で、赤いレイヤーが覆う所。前の 1 秒（3 秒）は覆わない。
@@ -184,9 +184,7 @@ fn 短い動画は提案を適用したフレームで_range_に_206_で答え_�
     );
 
     let len = after.body.len();
-    let head = s
-        .clip(&applied(&base), 1, &req("[0]"), Some("bytes=0-99"))
-        .unwrap();
+    let head = clip(&s, &applied(&base), 1, "[0]", Some("bytes=0-99"));
     assert_eq!(head.status, 206);
     assert_eq!(head.body, after.body[..100]);
     assert_eq!(
@@ -194,18 +192,17 @@ fn 短い動画は提案を適用したフレームで_range_に_206_で答え_�
         Some(format!("bytes 0-99/{len}").as_str())
     );
     assert_eq!(head.header("ETag"), after.header("ETag"));
-    let beyond = s
-        .clip(
-            &applied(&base),
-            1,
-            &req("[0]"),
-            Some(&format!("bytes={len}-")),
-        )
-        .unwrap();
+    let beyond = clip(
+        &s,
+        &applied(&base),
+        1,
+        "[0]",
+        Some(&format!("bytes={len}-")),
+    );
     assert_eq!(beyond.status, 416);
 
     let started = Instant::now();
-    let again = s.clip(&applied(&base), 2, &req("[0]"), None).unwrap();
+    let again = clip(&s, &applied(&base), 2, "[0]", None);
     assert_eq!(
         again.body, after.body,
         "バージョンが進んでも中身が同じなら同じ動画"
@@ -215,4 +212,50 @@ fn 短い動画は提案を適用したフレームで_range_に_206_で答え_�
         "キャッシュから返る: {:?}",
         started.elapsed()
     );
+}
+
+#[test]
+fn 範囲の中を編集するとキーが変わり_前のキーは作ったバイトのまま答える() {
+    let Some(config) = ffmpeg_config() else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let media = dir.path().join("media.mp4");
+    make_media(&media);
+    let s = streamer(config, dir.path());
+    let first = applied(&project(&media, 10));
+    let old = s.clip_key(&first, 1, &req("[0]")).unwrap();
+    let played = s.clip(&first, 1, &req("[0]"), old, None).unwrap().body;
+
+    let mut edited = first.clone();
+    let red = edited.compositions[0].layers.last_mut().unwrap();
+    red.source = red.source.clone().with_param(
+        "color",
+        ParamValue::Color(Rgba {
+            r: 0.0,
+            g: 0.0,
+            b: 1.0,
+            a: 1.0,
+        }),
+    );
+    let new = s.clip_key(&edited, 2, &req("[0]")).unwrap();
+    assert_ne!(new, old, "範囲の中の編集は別のキー");
+    let stale = s.clip(&edited, 2, &req("[0]"), old, None).unwrap_err();
+    assert!(matches!(stale, MmError::NotFound(_)), "{stale}");
+    assert!(s.cached_clip(new, None).unwrap().is_none());
+
+    let rest = s.cached_clip(old, Some("bytes=100-199")).unwrap().unwrap();
+    assert_eq!(rest.status, 206);
+    assert_eq!(rest.body, played[100..200], "再生の続きは前の動画のバイト");
+    assert_eq!(
+        rest.header("Cache-Control"),
+        Some("public, max-age=31536000, immutable")
+    );
+}
+
+/// 今の中身のキーで短い動画を読む（端末が提案の応答の URL で読むのと同じ）。
+fn clip(s: &Streamer, project: &Project, version: u64, ops: &str, range: Option<&str>) -> Payload {
+    let req = req(ops);
+    let key = s.clip_key(project, version, &req).unwrap();
+    s.clip(project, version, &req, key, range).unwrap()
 }

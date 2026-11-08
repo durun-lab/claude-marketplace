@@ -35,13 +35,15 @@ export const frameUrl = (t: number, opts: { comp?: string; proposal?: number; op
 };
 
 /**
- * 提案の区間の短い動画（範囲の前後 2 秒、MP4）。`comp` は範囲を見るコンポジション、`ops` は一部だけ適用するときの番号。
- * PC は作り終えるまで応答を待たせるので、`<video>` にそのまま渡せる。
+ * 提案の区間の短い動画（範囲の前後 2 秒、MP4）の URL を提案の応答から読む。`comp` は範囲を見るコンポジション、
+ * `ops` は一部だけ適用するときの番号。URL は範囲に掛かるもののハッシュを含むので、範囲の中が編集されると変わる。
+ * PC は作り終えるまで応答を待たせるので、`<video>` にそのまま渡せる。出せない提案は null。
  */
-export const clipUrl = (id: number, opts: { comp?: string; ops?: number[] | null } = {}): string => {
+export const fetchClipUrl = async (api: Api, id: number, opts: { comp?: string; ops?: number[] | null } = {}): Promise<string | null> => {
   const q = new URLSearchParams();
   if (opts.comp) q.set("comp", opts.comp);
   if (opts.ops) q.set("ops", opts.ops.join(","));
   const query = q.toString();
-  return `${PROPOSALS}/${id}/clip.mp4${query ? `?${query}` : ""}`;
+  const res = await api.get<{ clip_url?: string | null }>(`${PROPOSALS}/${id}${query ? `?${query}` : ""}`);
+  return res.clip_url ?? null;
 };

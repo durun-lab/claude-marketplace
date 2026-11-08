@@ -6,13 +6,14 @@
 use std::sync::Arc;
 
 use axum::body::Bytes;
-use axum::extract::{Extension, Path, State};
+use axum::extract::{Extension, Path, Query, State};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::Deserialize;
 use serde_json::json;
 
+use super::clip::{clip_url, ClipQuery};
 use super::devices::DeviceInfo;
 use super::ops::MobileOpsBody;
 use super::spans::{view_json, with_comp_spans};
@@ -43,12 +44,21 @@ async fn list(State(st): State<Arc<MobileState>>) -> Result<Response, MobileErro
     Ok(Json(json!({ "proposals": proposals })).into_response())
 }
 
+/// 提案 1 つ。`clip_url` は `comp` と `ops`（選んだ操作）の今の中身の短い動画の URL で、出せなければ `null`。
 async fn one(
     State(st): State<Arc<MobileState>>,
     Path(id): Path<i64>,
+    Query(q): Query<ClipQuery>,
 ) -> Result<Response, MobileError> {
     let core = st.core.clone();
-    let view = blocking(move || view_json(&core, &core.proposal(id)?)).await?;
+    let view = blocking(move || {
+        let proposal = core.proposal(id)?;
+        let mut value = view_json(&core, &proposal)?;
+        let streamer = core.streamer();
+        value["clip_url"] = clip_url(&core, streamer.as_deref(), proposal.state, id, &q)?.into();
+        Ok::<_, ServeError>(value)
+    })
+    .await?;
     Ok(Json(view).into_response())
 }
 

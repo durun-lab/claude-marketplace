@@ -33,7 +33,7 @@ pub use audio::AudioRequest;
 pub use clip::{ClipRequest, CLIP_MAX_SECONDS, CLIP_PAD_SECONDS};
 pub use frames::{StillRequest, STILL_MAX_WIDTH, STILL_MIN_WIDTH};
 pub use hls::{HlsRequest, SEGMENT_SECONDS};
-pub use key::SegmentKey;
+pub use key::{ClipKey, SegmentKey};
 pub use payload::{ByteRange, Payload};
 pub use quality::HlsQuality;
 pub use streamer::{StreamConfig, Streamer};

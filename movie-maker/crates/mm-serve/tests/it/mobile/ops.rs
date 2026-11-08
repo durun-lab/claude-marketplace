@@ -61,6 +61,14 @@ fn 表の外の操作は_not_on_mobile_で断り_提案なら出せる() {
     // シーケンスに掛からない提案でも、コンポジションの時刻のフィールドは空の配列で返す。
     assert_eq!(p["comp_spans"], serde_json::json!([]));
     assert_eq!(r.version(), 0);
+    let detail = r.send(&req, "GET", &format!("/m/api/proposals/{}", p["id"]), None);
+    assert_eq!(detail.status, 200, "{}", detail.error_message());
+    let detail = detail.json().unwrap();
+    assert_eq!(
+        detail["clip_url"],
+        Value::Null,
+        "配信を持たない待ち受けは短い動画の URL を出さない"
+    );
 }
 
 #[test]

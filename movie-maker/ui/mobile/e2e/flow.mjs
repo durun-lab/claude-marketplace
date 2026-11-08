@@ -98,25 +98,54 @@ export const watch = async ({ page, browserName, hlsRequests }) => {
   return `${s.variant ? `index.m3u8 -> ${s.variant}` : "360p.m3u8"}: ${s.segments} segments, first segment ${s.size} bytes, ${played}`;
 };
 
-/** 映像の上を指でなぞる。 */
-const drawStroke = async (page) => {
+/** なぞる点（映像の矩形の左上を (0, 0)、右下を (1, 1) にした座標）。 */
+const STROKE = [[0.15, 0.7], [0.3, 0.75], [0.45, 0.8], [0.6, 0.78]];
+/** 正規化した座標の許容の誤差。縦長の映像の矩形は幅が約 120 px なので、1 px は約 0.008。 */
+const POINT_TOLERANCE = 0.02;
+
+/**
+ * 映像の矩形（`object-fit: contain` で枠に収めた所）。コンポジションの大きさは `GET /m/api/project` から読む。
+ * デスクトップの Program の `fit_rect` と同じ計算で、描き込みの座標はこの矩形を 0〜1 にしたもの。
+ */
+const videoRect = async (page) => {
   const box = await page.locator(".draw").boundingBox();
-  const at = (x, y) => [box.x + box.width * x, box.y + box.height * y];
-  await page.mouse.move(...at(0.15, 0.7));
+  const { width, height } = await page.evaluate(async () => (await (await globalThis.fetch("/m/api/project")).json()).compositions[0]);
+  const scale = Math.min(box.width / width, box.height / height);
+  const [w, h] = [width * scale, height * scale];
+  return { x: box.x + (box.width - w) / 2, y: box.y + (box.height - h) / 2, width: w, height: h, comp: `${width}x${height}` };
+};
+
+/** 映像の上を指でなぞる。 */
+const drawStroke = async (page, rect) => {
+  const at = ([x, y]) => [rect.x + rect.width * x, rect.y + rect.height * y];
+  await page.mouse.move(...at(STROKE[0]));
   await page.mouse.down();
-  for (const [x, y] of [[0.3, 0.75], [0.45, 0.8], [0.6, 0.78]]) await page.mouse.move(...at(x, y), { steps: 4 });
+  for (const p of STROKE.slice(1)) await page.mouse.move(...at(p), { steps: 4 });
   await page.mouse.up();
 };
 
-/** 2b. 止めたフレームに描き込みつきのコメントを書く。 */
-export const comment = async ({ page }) => {
+/** 2b. 止めたフレームに描き込みつきのコメントを書く。フィクスチャは縦長（360x640）なので、16:9 の枠の左右に余白がある。 */
+export const comment = async ({ page, pc, deviceName }) => {
   await page.getByRole("button", { name: "Comment", exact: true }).click();
   await page.getByLabel("Comment text").fill(COMMENT_TEXT);
   await page.getByRole("button", { name: "Draw" }).click();
-  await drawStroke(page);
+  const rect = await videoRect(page);
+  await drawStroke(page, rect);
+  // 縦長の映像の上に描いた所を、通った回も作業のフォルダーの横に残して目で確かめられるようにする。
+  await page.screenshot({ path: `${pc.work}/../${deviceName}-draw.png` });
   await page.getByRole("button", { name: "Send" }).click();
   await item(page, COMMENT_TEXT).locator(".state.open").waitFor({ timeout: UI_TIMEOUT_MS });
-  return "comment with a drawing is open";
+  return `comment with a drawing is open (${rect.comp}, video ${Math.round(rect.width)}x${Math.round(rect.height)})`;
+};
+
+/** 描いた点が映像の矩形の座標で届いたこと。最初と最後の点は間引かれない。 */
+const checkDrawing = (drawing) => {
+  const points = drawing[0]?.points ?? [];
+  assert.ok(points.length > 1, `描き込みが届く: ${JSON.stringify(drawing)}`);
+  for (const [got, want] of [[points[0], STROKE[0]], [points.at(-1), STROKE.at(-1)]]) {
+    const near = Math.abs(got[0] - want[0]) < POINT_TOLERANCE && Math.abs(got[1] - want[1]) < POINT_TOLERANCE;
+    assert.ok(near, `映像の矩形の座標（デスクトップの Program と同じ）: ${JSON.stringify(got)} ≒ ${JSON.stringify(want)}`);
+  }
 };
 
 /** 3. Claude の待ち受けの MCP で読み、responds_to つきで提案を出す。 */
@@ -126,7 +155,7 @@ export const claudeProposes = async ({ mcp, state }) => {
   const c = comments.find((x) => x.text === COMMENT_TEXT);
   assert.ok(c, "MCP の comments にモバイルのコメントが出る");
   assert.equal(c.author.kind, "mobile");
-  assert.ok(c.drawing.length > 0 && c.drawing[0].points.length > 1, `描き込みが届く: ${JSON.stringify(c.drawing)}`);
+  checkDrawing(c.drawing);
   const ops = [
     { op: "setParam", target: { layer: "l-caption", path: "source.text" }, value: { type: "text", value: "Caption fixed" } },
     { op: "setParam", target: { layer: "l-caption", path: "source.color" }, value: { type: "color", value: { r: 0.4, g: 1, b: 0.6, a: 1 } } },
@@ -146,12 +175,17 @@ const checkFrames = async (page) => {
   await page.locator(".compare img.show[alt=Before]").waitFor({ timeout: UI_TIMEOUT_MS });
 };
 
-/** 短い動画の先頭を画面と同じ資格で取る。MP4 の先頭の箱（ftyp）と、Range への 206。 */
+/**
+ * 短い動画の先頭を画面と同じ資格で取る。URL は提案の応答の `clip_url`（キーつき）。MP4 の先頭の箱（ftyp）と、Range への 206。
+ * 作っていないキーの URL は 404（古いキーは転送しない）。
+ */
 const fetchClip = (page, id) =>
   page.evaluate(async (pid) => {
-    const res = await globalThis.fetch(`/m/api/proposals/${pid}/clip.mp4`, { headers: { Range: "bytes=0-7" } });
+    const detail = await (await globalThis.fetch(`/m/api/proposals/${pid}`)).json();
+    const res = await globalThis.fetch(detail.clip_url, { headers: { Range: "bytes=0-7" } });
     const bytes = new Uint8Array(await res.arrayBuffer());
-    return { status: res.status, type: res.headers.get("content-type"), box: String.fromCharCode(...bytes.slice(4, 8)) };
+    const stale = await globalThis.fetch(`/m/api/proposals/${pid}/clip/0123456789abcdef.mp4`);
+    return { url: detail.clip_url, status: res.status, type: res.headers.get("content-type"), box: String.fromCharCode(...bytes.slice(4, 8)), stale: stale.status };
   }, id);
 
 /**
@@ -163,15 +197,18 @@ const checkClip = async (page, browserName, id) => {
   assert.equal(c.status, 206);
   assert.equal(c.type, "video/mp4");
   assert.equal(c.box, "ftyp");
+  assert.match(c.url, /\/clip\/[0-9a-f]{16}\.mp4\?comp=main$/);
+  assert.equal(c.stale, 404, "作っていないキーは 404");
   await page.getByRole("button", { name: "Play", exact: true }).click();
+  assert.equal(await page.locator(".compare video").getAttribute("src"), c.url, "Play は提案の応答の URL を読む");
   if (browserName !== "chromium") {
     await page.locator(".clip-note").first().waitFor({ timeout: MEDIA_TIMEOUT_MS });
     await page.getByRole("button", { name: "After", exact: true }).click();
-    return "clip.mp4 answered 206 (WebKit on Windows cannot decode H.264)";
+    return "keyed clip answered 206, unknown key 404 (WebKit on Windows cannot decode H.264)";
   }
   await page.waitForFunction((min) => (globalThis.document.querySelector(".compare video.on")?.currentTime ?? 0) > min, PLAYED_SECONDS, { timeout: MEDIA_TIMEOUT_MS });
   await page.getByRole("button", { name: "After", exact: true }).click();
-  return "clip.mp4 played";
+  return "keyed clip played, unknown key 404";
 };
 
 /** 4. モバイルの Proposals で前後を見て、短い動画を再生して承認する。別の画面（同じ端末）に SSE でコメントの fresh が届く。 */

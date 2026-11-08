@@ -65,13 +65,13 @@ impl FromStr for SegmentKey {
     }
 }
 
-/// 提案の区間の短い動画のキー。キャッシュのファイル名と `ETag` に入る。
+/// 提案の区間の短い動画のキー。URL の `clip/{key}.mp4`、キャッシュのファイル名、`ETag` に入る。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct ClipKey(u64);
+pub struct ClipKey(u64);
 
 impl ClipKey {
-    /// キャッシュのファイル名（`<16 桁の 16 進>.mp4`）。
-    pub(crate) fn file_name(self) -> String {
+    /// URL とキャッシュに使うファイル名（`<16 桁の 16 進>.mp4`）。
+    pub fn file_name(self) -> String {
         format!("{self}.{CLIP_EXT}")
     }
 }
@@ -85,13 +85,14 @@ impl fmt::Display for ClipKey {
 impl FromStr for ClipKey {
     type Err = MmError;
 
-    /// 16 桁の 16 進。
+    /// 16 桁の 16 進。URL の最後の部分をそのまま渡せるよう、末尾の `.mp4` は省ける。
     fn from_str(s: &str) -> Result<Self> {
         let bad = || MmError::InvalidArgument(format!("短い動画のキーとして読めない: {s}"));
-        if s.len() != 16 {
+        let hex = s.strip_suffix(&format!(".{CLIP_EXT}")).unwrap_or(s);
+        if hex.len() != 16 {
             return Err(bad());
         }
-        u64::from_str_radix(s, 16).map(Self).map_err(|_| bad())
+        u64::from_str_radix(hex, 16).map(Self).map_err(|_| bad())
     }
 }
 

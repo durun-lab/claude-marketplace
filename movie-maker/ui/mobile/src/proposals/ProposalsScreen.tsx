@@ -9,7 +9,8 @@ import "./proposals.css";
 /** Proposals のタブ。一覧（新しい順）と、1 件の画面。決めた後の 5 秒は `Undo` を下に出す。 */
 export const ProposalsScreen = ({ controller, now = Date.now() }: { controller: Controller; now?: number }) => {
   const proposals = useProposals(controller);
-  const comp = useStore(controller.connection.subscribe, controller.connection.get).project?.open_composition ?? undefined;
+  const project = useStore(controller.connection.subscribe, controller.connection.get).project;
+  const comp = project?.open_composition ?? undefined;
   const [openId, setOpenId] = useState<number | null>(null);
   const opened = proposals.items.find((p) => p.id === openId) ?? null;
   return (
@@ -19,6 +20,8 @@ export const ProposalsScreen = ({ controller, now = Date.now() }: { controller: 
           key={opened.id}
           proposal={opened}
           comp={comp}
+          api={controller.api}
+          version={project?.version ?? 0}
           onBack={() => setOpenId(null)}
           onApprove={(ops) => proposals.approve(opened, ops)}
           onReject={() => proposals.reject(opened)}

@@ -1,6 +1,7 @@
 import { type RefObject } from "preact";
 import { useEffect, useRef, useState } from "preact/hooks";
-import { clipUrl, frameUrl, type Proposal } from "./api.ts";
+import type { Api } from "../api/http.ts";
+import { fetchClipUrl, frameUrl, type Proposal } from "./api.ts";
 import { frameTime, hasClip } from "./view.ts";
 
 type View = "before" | "after";
@@ -45,7 +46,7 @@ const useClip = (): ClipPlayer => {
 };
 
 /** 前後のフレームの上に重ねる短い動画。映像が出るまでは透明にして、作っている間の表示（`Rendering clip…`）を出す。 */
-const ClipLayer = ({ player }: { player: ClipPlayer }) => (
+const ClipLayer = ({ player, onError }: { player: ClipPlayer; onError: () => void }) => (
   <>
     <video
       ref={player.video}
@@ -54,7 +55,7 @@ const ClipLayer = ({ player }: { player: ClipPlayer }) => (
       preload="none"
       controls={player.clip === "playing"}
       onPlaying={player.playing}
-      onError={player.fail}
+      onError={onError}
     />
     {player.clip === "loading" && (
       <p class="clip-note" role="status">
@@ -69,11 +70,46 @@ const ClipLayer = ({ player }: { player: ClipPlayer }) => (
   </>
 );
 
+interface ClipSource {
+  api: Api;
+  proposal: Proposal;
+  ops: number[] | null;
+  comp?: string;
+  /** プロジェクトのバージョン。編集のたびに読み直し、範囲の中が変わったときだけ URL が変わる。 */
+  version: number;
+}
+
+/**
+ * 短い動画の URL（範囲に掛かるもののハッシュを含む）。iOS の Safari は押した操作の中の play() だけを許すので、押す前に読んでおく。
+ * 読み直す間も前の URL を残し、範囲の外の編集で再生を止めない。`refresh` は再生に失敗したとき（古いキーの 404）に呼ぶ。
+ */
+const useClipUrl = ({ api, proposal, ops, comp, version }: ClipSource, can: boolean) => {
+  const [url, setUrl] = useState<string | null>(null);
+  const [round, setRound] = useState(0);
+  const opsKey = ops?.join(",") ?? "";
+  useEffect(() => {
+    if (!can) {
+      setUrl(null);
+      return undefined;
+    }
+    let live = true;
+    fetchClipUrl(api, proposal.id, { comp, ops }).then(
+      (u) => live && setUrl(u),
+      () => live && setUrl(null),
+    );
+    return () => {
+      live = false;
+    };
+  }, [api, proposal.id, comp, opsKey, can, version, round]);
+  return { url, refresh: () => setRound((r) => r + 1) };
+};
+
 /**
  * 提案の前後のフレーム。2 枚とも先に読み込んで重ね、押すと切り替える（デスクトップの Program の切り替えと同じ）。
  * `Play` は範囲の前後 2 秒の短い動画に替える。
  */
-export const FrameCompare = ({ proposal, ops, comp }: { proposal: Proposal; ops: number[] | null; comp?: string }) => {
+export const FrameCompare = (props: ClipSource) => {
+  const { proposal, ops, comp } = props;
   const [view, setView] = useState<View>("after");
   const player = useClip();
   const t = frameTime(proposal);
@@ -82,11 +118,17 @@ export const FrameCompare = ({ proposal, ops, comp }: { proposal: Proposal; ops:
     player.stop();
     setView(v);
   };
-  const url = clipUrl(proposal.id, { comp, ops });
   const can = hasClip(proposal);
-  // 選ぶ操作が変わるか提案が決まったら、前の操作の短い動画を流し続けない。
+  const clip = useClipUrl(props, can);
+  const url = clip.url;
+  // 選ぶ操作が変わるか、範囲の中が編集されるか、提案が決まったら、前の短い動画を流し続けない。
   useEffect(() => player.stop, [url, can]);
-  const play = (): void => (on ? player.stop() : player.start(url));
+  // 古いキーの 404 で失敗したら URL を読み直し、次の Play は今の中身の動画にする。止めた後のイベントは無視する。
+  const fail = (): void => {
+    if (player.clip !== "off") clip.refresh();
+    player.fail();
+  };
+  const play = (): void => (on || !url ? player.stop() : player.start(url));
   return (
     <div class="compare">
       <div class="stage">
@@ -94,7 +136,7 @@ export const FrameCompare = ({ proposal, ops, comp }: { proposal: Proposal; ops:
           <img src={frameUrl(t, { comp })} alt="Before" class={view === "before" ? "show" : ""} />
           <img src={frameUrl(t, { comp, proposal: proposal.id, ...(ops ? { ops } : {}) })} alt="After" class={view === "after" ? "show" : ""} />
         </button>
-        {can && <ClipLayer player={player} />}
+        {can && <ClipLayer player={player} onError={fail} />}
       </div>
       <div class="row seg" role="group" aria-label="Compare">
         {(["before", "after"] as const).map((v) => (
@@ -103,7 +145,7 @@ export const FrameCompare = ({ proposal, ops, comp }: { proposal: Proposal; ops:
           </button>
         ))}
         {can && (
-          <button type="button" class={`chipbtn${on ? " on" : ""}`} aria-pressed={on} onClick={play}>
+          <button type="button" class={`chipbtn${on ? " on" : ""}`} aria-pressed={on} disabled={!on && !url} onClick={play}>
             Play
           </button>
         )}
