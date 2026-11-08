@@ -7,25 +7,25 @@ use serde_json::{json, Value};
 /// 変換できない・近似した要素の種類。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Gap {
-    /// クリップのマスク（角丸、楕円、画像の輝度）。
+    /// クリップのマスクのうち描けないもの（楕円、置けない画像）。
     Mask,
     /// クリップの効果（ぼかし）。
     Effects,
-    /// 重ね方（`normal` 以外）。
+    /// 知らない合成モードの名前（`blend`）。
     Blend,
     /// クリップのトランジション。
     Transition,
     /// CSS のアニメーション。
     Animation,
-    /// `fit` の `cover` と `fill`。
-    FitCoverFill,
+    /// `fit` の `fill`（縦横で違う倍率）。
+    FitFill,
     /// 回転。
     Rotation,
     /// 直線でないイージング。
     Easing,
-    /// 変換できない source（`text`、`captions`、`color`、`composition`、画面と違う大きさの `html`）。
+    /// 変換できない source（`text`、`captions`、動く色の `solid`、画面と違う大きさの `html`）。
     Source,
-    /// 字幕のトラック、入れ子のコンポジション、映像でない出力。
+    /// 字幕のトラック、映像でない出力。
     TopLevel,
     /// 音のクリップの速さ。
     AudioSpeed,
@@ -34,22 +34,22 @@ pub enum Gap {
 impl Gap {
     fn describe(self) -> (&'static str, &'static str) {
         match self {
-            Self::Mask => ("mask", "楕円と画像のマスクを除いた（角丸の矩形だけ描く）"),
+            Self::Mask => (
+                "mask",
+                "楕円と、置けない画像のマスク（素材が映像か画像でない、大きさが分からない）を除いた（角丸の矩形と画像の輝度を描く）",
+            ),
             Self::Effects => ("effects", "クリップの効果を除いた"),
-            Self::Blend => ("blend", "重ね方を normal にした"),
+            Self::Blend => ("blend", "知らない合成モードを normal にした"),
             Self::Transition => ("transition", "トランジションを除いた"),
             Self::Animation => ("animation", "CSS のアニメーションを除いた"),
-            Self::FitCoverFill => ("fit", "cover と fill を contain にした"),
+            Self::FitFill => ("fit", "fill を contain にした"),
             Self::Rotation => ("rotation", "回転を除いた"),
             Self::Easing => ("ease", "直線でないイージングを直線で近似した"),
             Self::Source => (
                 "source",
-                "映像、画像、画面の大きさの html 以外の source を除いた",
+                "映像、画像、単色、入れ子、画面の大きさの html 以外の source を除いた",
             ),
-            Self::TopLevel => (
-                "top-level",
-                "字幕のトラック、入れ子、映像でない出力を除いた",
-            ),
+            Self::TopLevel => ("top-level", "字幕のトラック、映像でない出力を除いた"),
             Self::AudioSpeed => ("audio.speed", "音のクリップの速さを 1 にした"),
         }
     }

@@ -14,11 +14,12 @@ use crate::compose::Compositor;
 use crate::export::ExportPipe;
 use crate::frame_cache::{FrameCacheConfig, MemoStats, RenderCache};
 use crate::layers::CompCx;
+use crate::matte::MattePass;
 use crate::source::SourcePool;
 use mm_gpu::{GpuContext, PassTimer, WgpuGpu};
 
 /// レンダラーのバージョン。合成の式を変えたら上げる（フレームのキャッシュのキーに入る）。
-pub const WGPU_RENDERER_VERSION: u32 = 2;
+pub const WGPU_RENDERER_VERSION: u32 = 3;
 /// `render_frame` が返したテクスチャを持っておく数。これより古いフレームの `FrameRef` は無効になる。
 const KEPT_OUTPUTS: usize = mm_render_api::KEPT_RENDERED_FRAMES;
 
@@ -42,6 +43,8 @@ pub struct WgpuRenderer {
     recoveries: u32,
     /// 書き出しの NV12 への変換。最初の書き出しで作る。
     pub(crate) export: Option<ExportPipe>,
+    /// トラックマットを掛けるパス。最初のトラックマットで作る。
+    pub(crate) matte: Option<MattePass>,
     /// 文字の実装とノードの種類に渡した、プロジェクトの書体の組の指紋（`crate::fonts`）。
     pub(crate) fonts: String,
 }
@@ -70,6 +73,7 @@ impl WgpuRenderer {
             outputs: VecDeque::new(),
             recoveries: 0,
             export: None,
+            matte: None,
             fonts: String::new(),
         }
     }
@@ -136,6 +140,7 @@ impl WgpuRenderer {
         // 開いた素材は前のデバイスの上でデコードしているので、次に使うとき開き直す。
         self.sources.clear();
         self.export = None;
+        self.matte = None;
     }
 
     /// 持っているテクスチャの数。漏れの検査に使う。

@@ -3,8 +3,9 @@
 use mm_types::{ParamValue, Rational, RationalTime};
 
 use mm_doc::{
-    Composition, Cut, Interpolation, Keyframe, Layer, Marker, Mask, MaskRect, Node, Project,
-    RenderTarget, Sequence, TimeKeyframe, TimeRemap, NESTED_KIND, NESTED_PARAM,
+    Composition, Cut, Interpolation, Keyframe, Layer, Marker, Mask, MaskRect, MatteKind, Node,
+    Project, RenderTarget, Sequence, TimeKeyframe, TimeRemap, TrackMatte, NESTED_KIND,
+    NESTED_PARAM,
 };
 use mm_types::{Id, MmError, Result};
 
@@ -173,6 +174,39 @@ fn 親の先が在り循環しない() {
     ));
     a.parent = Some(Id::new("nope"));
     assert!(is_invalid(project(vec![comp("c", vec![a])]).validate()));
+}
+
+fn matted(mut l: Layer, matte: &str) -> Layer {
+    l.track_matte = Some(TrackMatte {
+        layer: Id::new(matte),
+        kind: MatteKind::Alpha,
+        inverted: false,
+    });
+    l
+}
+
+#[test]
+fn トラックマットの先が在り循環しない() {
+    let plain = |id: &str| layer(id, Node::new("solid", 1));
+    let check = |layers: Vec<Layer>| project(vec![comp("c", layers)]).validate();
+    // 連鎖は循環でなければ通る。
+    check(vec![
+        matted(plain("a"), "b"),
+        matted(plain("b"), "c"),
+        plain("c"),
+    ])
+    .unwrap();
+    let two = check(vec![matted(plain("a"), "b"), matted(plain("b"), "a")]);
+    assert!(is_invalid(two));
+    // 循環に外から入るレイヤーがあっても見つける。
+    let tail = check(vec![
+        matted(plain("x"), "a"),
+        matted(plain("a"), "b"),
+        matted(plain("b"), "a"),
+    ]);
+    assert!(is_invalid(tail));
+    assert!(is_invalid(check(vec![matted(plain("a"), "a")])));
+    assert!(is_invalid(check(vec![matted(plain("a"), "nope")])));
 }
 
 #[test]

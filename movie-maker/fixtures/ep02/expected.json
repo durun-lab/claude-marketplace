@@ -1,0 +1,13 @@
+{
+  "note": "ep02（作曲Vlog #2。公開済み）の再現の入力と、前の書き出し（最終の 1080p）。素材は D:/dev/DTM_Vlog/ep02/ にあり、リポジトリに入れない。apps/mm/tests/it/ep02.rs が MM_EP02_DIR で読む。素材のフォルダーは読むだけで、書き換えない。",
+  "timeline": {
+    "path": "timeline.json",
+    "sha256": "cfe3a90122955807144b3b3ef2bd9535dbe6af8e123022cf378738e50221a8e6"
+  },
+  "reference": {
+    "path": "render/ep02_final.mp4",
+    "sha256": "945c974adc35b7de9b7be9e33ae1624972650f9da7e262062b022acc88b638c2",
+    "frames": 28130,
+    "fps": 30
+  }
+}

@@ -73,7 +73,7 @@ pub trait NodeKind: Send + Sync {
 ## 変形と合成
 
 - 変形は 4x4 の行列で掛け合わせ、素材を 1 回だけ再標本化する。縮めるときは面積の平均か Lanczos、広げるときは bicubic。線形の光で。
-- マスクは被覆率のアンチエイリアス。合成モードの式は W3C Compositing and Blending Level 1。
+- マスクは被覆率のアンチエイリアス。トラックマットは別のレイヤーの画像のアルファか線形の輝度を被覆率にする（[レンダラー](06-engine.md)）。合成モードの式は W3C Compositing and Blending Level 1。
 - モーションブラーのインターフェースを `FrameCx` と `frames_needed` で持つ。最初は実装しない。
 - 中間の画像は `Rgba16Float`。8 bit に落とすのは表示と書き出しの最後だけ。
 
