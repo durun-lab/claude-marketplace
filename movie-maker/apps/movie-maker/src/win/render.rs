@@ -5,7 +5,7 @@
 //! サーフェスは再生スレッドのレンダラーと同じ `GpuContext` のデバイスで作り、描いたテクスチャをリードバックせずに描く。
 //! レンダラーがデバイスを作り直したら、新しいデバイスでサーフェスと UI を作り直す。
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -304,19 +304,53 @@ fn moved_context(shared: &Shared, gpu: &Gpu, seen: u64) -> Option<Arc<GpuContext
     }
 }
 
+/// サーフェスのテクスチャを取る口。実物は `Gpu`、試験は取得の結果を差し込む。
+trait SurfaceSource {
+    type Texture;
+    fn acquire(&self) -> Result<Self::Texture, wgpu::CurrentSurfaceTexture>;
+    fn reconfigure(&self);
+}
+
+impl SurfaceSource for Gpu {
+    type Texture = wgpu::SurfaceTexture;
+
+    fn acquire(&self) -> Result<Self::Texture, wgpu::CurrentSurfaceTexture> {
+        match self.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(t)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(t) => Ok(t),
+            other => Err(other),
+        }
+    }
+
+    fn reconfigure(&self) {
+        self.surface.configure(&self.device, &self.config);
+    }
+}
+
+/// テクスチャを取る。取れなければ数えて張り直し、`wait` 待って `None` を返す。
+/// 大きさの変更の直後の Outdated や隠れている間の Occluded は普通で、Lost も張り直して次の周で取り直す。
+fn acquire_texture<S: SurfaceSource>(
+    src: &S,
+    errors: &AtomicU64,
+    wait: Duration,
+) -> Option<S::Texture> {
+    match src.acquire() {
+        Ok(t) => Some(t),
+        Err(state) => {
+            errors.fetch_add(1, Ordering::SeqCst);
+            tracing::debug!(?state, "サーフェスを取れなかった");
+            src.reconfigure();
+            std::thread::sleep(wait);
+            None
+        }
+    }
+}
+
 /// 1 フレーム描いて present する。サーフェスを取れなければ偽。
 fn frame(shared: &Shared, gpu: &Gpu, ui: &mut Ui, seen: &mut u64) -> bool {
     let _span = tracing::info_span!("window.frame").entered();
-    let texture = match gpu.surface.get_current_texture() {
-        wgpu::CurrentSurfaceTexture::Success(t) | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
-        other => {
-            // 大きさの変更の直後の Outdated や、隠れている間の Occluded は普通なので、数えて張り直す。
-            shared.surface_errors.fetch_add(1, Ordering::SeqCst);
-            tracing::debug!(state = ?other, "サーフェスを取れなかった");
-            gpu.surface.configure(&gpu.device, &gpu.config);
-            std::thread::sleep(RETRY_WAIT);
-            return false;
-        }
+    let Some(texture) = acquire_texture(gpu, &shared.surface_errors, RETRY_WAIT) else {
+        return false;
     };
     let uploaded = upload_frame(shared, gpu, ui, seen);
     ui.set_playhead(shared.playhead());
@@ -393,6 +427,57 @@ mod tests {
             }
         });
         assert_eq!(calls, 3, "3 回目に正常に終わるまで作り直す");
+    }
+
+    /// 取得の結果を順に返す試験用のサーフェス。
+    struct Scripted {
+        results: std::cell::RefCell<Vec<wgpu::CurrentSurfaceTexture>>,
+        reconfigured: std::cell::Cell<u32>,
+    }
+
+    impl Scripted {
+        fn new(results: Vec<wgpu::CurrentSurfaceTexture>) -> Self {
+            Self {
+                results: std::cell::RefCell::new(results),
+                reconfigured: std::cell::Cell::new(0),
+            }
+        }
+    }
+
+    impl SurfaceSource for Scripted {
+        type Texture = ();
+
+        fn acquire(&self) -> Result<(), wgpu::CurrentSurfaceTexture> {
+            Err(self.results.borrow_mut().remove(0))
+        }
+
+        fn reconfigure(&self) {
+            self.reconfigured.set(self.reconfigured.get() + 1);
+        }
+    }
+
+    #[test]
+    fn outdated_と_lost_は数えて張り直し次の周へ進む() {
+        use wgpu::CurrentSurfaceTexture::{Lost, Outdated};
+        for state in [Outdated, Lost] {
+            let src = Scripted::new(vec![state]);
+            let errors = AtomicU64::new(0);
+            assert!(acquire_texture(&src, &errors, Duration::ZERO).is_none());
+            assert_eq!(errors.load(Ordering::SeqCst), 1);
+            assert_eq!(src.reconfigured.get(), 1, "張り直す");
+        }
+    }
+
+    #[test]
+    fn 取得が続けて失敗しても落ちずに毎回張り直す() {
+        use wgpu::CurrentSurfaceTexture::{Lost, Occluded, Outdated, Timeout};
+        let src = Scripted::new(vec![Outdated, Lost, Lost, Timeout, Occluded]);
+        let errors = AtomicU64::new(0);
+        for _ in 0..5 {
+            assert!(acquire_texture(&src, &errors, Duration::ZERO).is_none());
+        }
+        assert_eq!(errors.load(Ordering::SeqCst), 5);
+        assert_eq!(src.reconfigured.get(), 5);
     }
 
     #[test]
