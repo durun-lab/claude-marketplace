@@ -81,27 +81,27 @@ interface ClipSource {
 
 /**
  * 短い動画の URL（範囲に掛かるもののハッシュを含む）。iOS の Safari は押した操作の中の play() だけを許すので、押す前に読んでおく。
- * 読み直す間も前の URL を残し、範囲の外の編集で再生を止めない。`refresh` は再生に失敗したとき（古いキーの 404）に呼ぶ。
+ * 編集で読み直す間と読み直しに失敗したときは前の URL を残し、範囲の外の編集や一時的な切断で再生を止めない。
+ * 選ぶ操作かコンポジションが変わったら、前の選び方の動画を押せないよう読み終えるまで null にする。
+ * `refresh` は再生に失敗したとき（古いキーの 404）に呼ぶ。
  */
 const useClipUrl = ({ api, proposal, ops, comp, version }: ClipSource, can: boolean) => {
   const [url, setUrl] = useState<string | null>(null);
-  const [round, setRound] = useState(0);
+  const [attempt, setAttempt] = useState(0);
   const opsKey = ops?.join(",") ?? "";
+  useEffect(() => setUrl(null), [proposal.id, comp, opsKey, can]);
   useEffect(() => {
-    if (!can) {
-      setUrl(null);
-      return undefined;
-    }
+    if (!can) return undefined;
     let live = true;
     fetchClipUrl(api, proposal.id, { comp, ops }).then(
       (u) => live && setUrl(u),
-      () => live && setUrl(null),
+      () => undefined,
     );
     return () => {
       live = false;
     };
-  }, [api, proposal.id, comp, opsKey, can, version, round]);
-  return { url, refresh: () => setRound((r) => r + 1) };
+  }, [api, proposal.id, comp, opsKey, can, version, attempt]);
+  return { url, refresh: () => setAttempt((n) => n + 1) };
 };
 
 /**

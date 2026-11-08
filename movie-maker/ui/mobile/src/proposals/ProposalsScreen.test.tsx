@@ -129,6 +129,17 @@ describe("短い動画の URL", () => {
     expect(play?.disabled).toBe(false);
   });
 
+  it("選ぶ操作を変えると、新しい URL を読み終えるまで前の選び方の動画を押せない", async () => {
+    await open();
+    await h.press("Slow the zoom");
+    const play = [...h.host.querySelectorAll<HTMLButtonElement>(".compare button")].find((b) => b.textContent === "Play");
+    expect(play?.disabled).toBe(false);
+    await act(() => void h.host.querySelectorAll<HTMLInputElement>('.ops input[type="checkbox"]')[1]?.click());
+    expect(play?.disabled).toBe(true);
+    await h.settle();
+    expect(play?.disabled).toBe(false);
+  });
+
   it("決めた提案には Play を出さない", async () => {
     await open();
     await h.press("Remove the long pause");
