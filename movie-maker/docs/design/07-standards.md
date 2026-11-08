@@ -11,7 +11,7 @@
 | VST3、CLAP | 別プロセスのホスト。CLAP は `clack-host`（安全な Rust のホストのライブラリ [23]）、VST3 は `vst3` クレート（coupler-rs。C++ のヘッダーから生成した生のバインディング。生成済みなので SDK は要らない [24]）の上に書く。読むのは規格の置き場所のプラグインだけ。段階 8 で音の効果（`audio.clap`、`audio.vst3`）まで済 | 8 | `mm-host-clap`、`mm-host-vst3`（共通は `mm-host-pipe` の `audio`） | あると良い |
 | H.264、HEVC、AV1 | NVDEC でデコード、NVENC でエンコード。デコードの既定は `mm-decode-d3d12va`、失敗する素材は `mm-decode-cuvid`、最後は CPU 経由（2026-11-06 の決定。[nvdec](spikes/nvdec.md)） | 0〜2 | `mm-decode-d3d12va`、`mm-decode-cuvid`、`mm-encode-nvenc` | 必須 |
 | ProRes、DNxHR、MXF、DPX、OpenEXR | FFmpeg のライブラリでそのまま読む。書き出しも FFmpeg | 読みは 2、書き出しは 4 | `mm-decode-ffmpeg`、`mm-encode-ffmpeg` | 読み込みは必須 |
-| PQ、HLG、Rec.2020 | 作業色空間は線形の浮動小数。入力はトーンマップを明示。段階 8 で読み込み（`bt2100_pq`、`bt2100_hlg`）、合成、`hevc_pq` と `hevc_hlg` の書き出し、プレビューと SDR の書き出しの BT.2390 の EETF まで済（[RFC](../rfcs/0138-hdr.md)、[RFC](../rfcs/hdr-sdr-match.md)）。HDR の表示（サーフェスを `Rgba16Float` に）は残り | 8 | `mm-types`（`transfer`、`tonemap`）、`mm-decode-ffmpeg`、`mm-encode-ffmpeg-core`、`mm-render` | あると良い |
+| PQ、HLG、Rec.2020 | 作業色空間は線形の浮動小数。入力はトーンマップを明示。段階 8 で読み込み（`bt2100_pq`、`bt2100_hlg`）、合成、`hevc_pq` と `hevc_hlg` の書き出し、プレビューと SDR の書き出しの BT.2390 の EETF まで済（[RFC](../rfcs/0138-hdr.md)、[RFC](../rfcs/0180-hdr-sdr-match.md)）。HDR の表示（サーフェスを `Rgba16Float` に）は残り | 8 | `mm-types`（`transfer`、`tonemap`）、`mm-decode-ffmpeg`、`mm-encode-ffmpeg-core`、`mm-render` | あると良い |
 | BWF、iXML | WAV のチャンクを取り込みで読む | 3 | 取り込み | 読み込みは必須 |
 | ITU-R BS.1770、EBU R128 | `ebur128` クレートのメーターと、書き出しの正規化（統合ラウドネスの目標、-1 dBTP のトゥルーピークの上限） | 2、書き出しは 4 | ミキサー | 必須 |
 | SRT、WebVTT | sequence のカットの文字起こしから書き出す。MP4 の字幕のトラックは mov_text | 4 | 書き出し | 必須 |
