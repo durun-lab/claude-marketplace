@@ -30,8 +30,8 @@ pub struct PaintState {
     pub selected_cut: Option<(usize, usize)>,
     /// スナップのガイド線（秒）。
     pub guide: Option<f64>,
-    /// ドラッグ中でまだ確定していない編集と量。`trimLayer` は帯の端を動かして描く。
-    pub pending: Option<(EditKind, f64)>,
+    /// ドラッグ中の見た目（離す前の編集と動かす量）。`trimLayer` は帯の端を動かして描く。
+    pub preview: Option<(EditKind, f64)>,
     /// 色。
     pub palette: Palette,
 }
@@ -80,7 +80,7 @@ fn rows(model: &TimelineModel, view: &TimeView, w: f32, state: &PaintState, q: &
         let top = row_top(i);
         let stripe = if i % 2 == 0 { p.row_even } else { p.row_odd };
         q.push(Quad::new(Rect::new(0.0, top - 1.0, w, ROW_H + 2.0), stripe));
-        let (start, end) = trimmed(item, i, state.pending);
+        let (start, end) = trimmed(item, i, state.preview);
         let (x, bw) = span(view, start, end);
         let mut color = palette::item_color(item.kind);
         if !item.enabled {
@@ -107,8 +107,8 @@ fn rows(model: &TimelineModel, view: &TimeView, w: f32, state: &PaintState, q: &
 
 /// 帯の始まりと終わり。ドラッグ中の `trimLayer` は動かした後の位置にする。
 /// 確定は離したときの 1 回の操作に任せ、ここでは描く位置だけを変える。
-fn trimmed(item: &Item, index: usize, pending: Option<(EditKind, f64)>) -> (f64, f64) {
-    match pending {
+fn trimmed(item: &Item, index: usize, preview: Option<(EditKind, f64)>) -> (f64, f64) {
+    match preview {
         Some((EditKind::TrimLayer { item: i, side }, by)) if i == index => match side {
             Side::In => (item.start + by, item.end),
             Side::Out => (item.start, item.end + by),
@@ -238,7 +238,7 @@ mod tests {
             selected: None,
             selected_cut: None,
             guide: None,
-            pending: None,
+            preview: None,
             palette: Palette::DEFAULT,
         }
     }
@@ -293,13 +293,13 @@ mod tests {
         assert_eq!((bar.rect.x, bar.rect.w), (100.0, 200.0));
     }
 
-    fn bar_of(model: &TimelineModel, pending: Option<(EditKind, f64)>) -> Rect {
+    fn bar_of(model: &TimelineModel, preview: Option<(EditKind, f64)>) -> Rect {
         let v = TimeView {
             origin: 0.0,
             px_per_sec: 100.0,
         };
         let st = PaintState {
-            pending,
+            preview,
             ..state(0.0)
         };
         let color = palette::item_color(model.items[0].kind);
@@ -347,7 +347,7 @@ mod tests {
             px_per_sec: 100.0,
         };
         let st = PaintState {
-            pending: trim,
+            preview: trim,
             ..state(0.0)
         };
         let quads = timeline_quads(&seq_model(), &v, (800.0, 120.0), &st);

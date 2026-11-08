@@ -41,7 +41,7 @@ pub struct CutBar {
 }
 
 /// レイヤーの端のつまみで動かせる範囲（コンポジションの秒）。`trimLayer` が拒否しない範囲に合わせ、
-/// ドラッグを素材の端で止める（Premiere や Resolve のトリムと同じ）。
+/// ドラッグを素材の先頭と終わりで止める（Premiere や Resolve のトリムと同じ）。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TrimBounds {
     /// 帯の左端を動かせる最も前の時刻（素材の先頭）。

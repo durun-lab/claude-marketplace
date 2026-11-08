@@ -6,7 +6,7 @@
 use crate::controller::Mods;
 use crate::timeline::{Part, TimelineModel};
 
-/// 素材の端がちょうどフレームの境にあるとき、浮動小数の誤差で 1 フレーム手前に切り下げないための幅（フレーム）。
+/// 素材の先頭か終わりがちょうどフレームの境にあるとき、浮動小数の誤差で 1 フレーム手前に切り下げないための幅（フレーム）。
 const FRAME_EPS: f64 = 1e-6;
 
 /// 動かす端。
@@ -96,7 +96,7 @@ pub fn edge_edit(
     ))
 }
 
-/// レイヤー `item` の端を時刻 `t` へ動かす `trimLayer`。素材の端（[`crate::TrimBounds`]）で止め、長さは 1 フレーム残す。
+/// レイヤー `item` の端を時刻 `t` へ動かす `trimLayer`。素材の余白を使い切った所（[`crate::TrimBounds`]）で止め、長さは 1 フレーム残す。
 fn trim_edit(model: &TimelineModel, item: usize, side: Side, t: f64) -> Option<(EditKind, f64)> {
     let it = model.items.get(item)?;
     let bounds = it.trim;
@@ -112,7 +112,7 @@ fn trim_edit(model: &TimelineModel, item: usize, side: Side, t: f64) -> Option<(
     ))
 }
 
-/// 素材の端までの余り `room`（秒）を整数フレームに切り下げる。
+/// 素材の余白 `room`（秒）を整数フレームに切り下げる。
 /// 量は操作にするときフレームに丸めるので、丸めても素材の外へ出ない値にしておく。既に外にあれば 0。
 fn whole_frames(room: f64, fps: f64) -> f64 {
     let room = room.max(0.0);
@@ -298,13 +298,13 @@ mod tests {
     }
 
     #[test]
-    fn 素材の端がフレームの境に無いときは内側のフレームで止まる() {
+    fn 素材の終わりがフレームの境に無いときは内側のフレームで止まる() {
         let mut m = footage_model();
         m.items[1].trim.max_end = 5.0 + 1.5 / 30.0;
         let by = trim_by(&m, Part::OutHandle, 99.0).unwrap();
         assert!(
             (by * 30.0 - 1.0).abs() < 1e-9,
-            "1.5 フレームの余りは 1 フレーム: {by}"
+            "1.5 フレームの素材の余白は 1 フレーム: {by}"
         );
     }
 
