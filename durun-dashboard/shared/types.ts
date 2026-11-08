@@ -557,8 +557,11 @@ export type Snapshot = {
 };
 
 export type DashboardEntry = { id: string; name: string };
-/** ホームのダッシュボード。layouts は id ごとの配置で、編集していないダッシュボードの分は無く、初期配置で開く。 */
-export type Dashboards = { list: DashboardEntry[]; layouts: Record<string, unknown[]> };
+/**
+ * ダッシュボードの配置のプリセット。1 つのプリセットがホームとセッション画面の配置を組で持つ。
+ * layouts はホームの、sessionLayouts はセッション画面の id ごとの配置で、編集していないプリセットの分は無く、初期配置で開く。
+ */
+export type Dashboards = { list: DashboardEntry[]; layouts: Record<string, unknown[]>; sessionLayouts?: Record<string, unknown[]> };
 /** まだ一度も保存していないときの一覧。最初のダッシュボードの id は空文字にする。 */
 export const FIRST_DASHBOARDS: Dashboards = { list: [{ id: '', name: 'ダッシュボード' }], layouts: {} };
 

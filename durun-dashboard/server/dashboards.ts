@@ -1,18 +1,19 @@
-// ホームのダッシュボードの一覧と配置。どの端末で開いても同じ配置を選べるよう、サーバーに保存する。
+// ダッシュボードのプリセットの一覧と、ホームとセッション画面の配置。どの端末で開いても同じ配置を選べるよう、サーバーに保存する。
 import { type DashboardEntry, type Dashboards, FIRST_DASHBOARDS } from '../shared/types.ts';
 
-export type DashboardInput = { id: string; name?: string; layout?: unknown[] };
+export type DashboardInput = { id: string; name?: string; layout?: unknown[]; sessionLayout?: unknown[] };
 
 /**
- * id のダッシュボードを足すか、名前と配置を差し替える。name や layout を省いたら今の値を残す。
+ * id のダッシュボードを足すか、名前と配置を差し替える。name、layout、sessionLayout を省いたら今の値を残す。
  * 一覧に無い id は、名前があるときだけ足す。名前の無い配置だけが届いても、一覧に無いダッシュボードは作らない。
  */
-export const putDashboard = (saved: Dashboards | undefined, { id, name, layout }: DashboardInput): Dashboards => {
+export const putDashboard = (saved: Dashboards | undefined, { id, name, layout, sessionLayout }: DashboardInput): Dashboards => {
   const base = saved ?? FIRST_DASHBOARDS;
   const exists = base.list.some((d) => d.id === id);
   if (!exists && !name) return base;
   const list = exists ? base.list.map((d) => (d.id === id && name ? { ...d, name } : d)) : [...base.list, { id, name: name! }];
-  return { list, layouts: layout ? { ...base.layouts, [id]: layout } : base.layouts };
+  const next: Dashboards = { ...base, list, layouts: layout ? { ...base.layouts, [id]: layout } : base.layouts };
+  return sessionLayout ? { ...next, sessionLayouts: { ...base.sessionLayouts, [id]: sessionLayout } } : next;
 };
 
 const isEntry = (v: unknown): v is DashboardEntry => typeof (v as DashboardEntry)?.id === 'string' && typeof (v as DashboardEntry)?.name === 'string';

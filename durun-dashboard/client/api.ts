@@ -129,7 +129,7 @@ export const api = {
   renameTheme: (from: string, to: string) => postJson('/api/themes/rename', { from, to }),
   orderThemes: (themes: string[]) => postJson('/api/themes/order', { themes }),
   /** name や layout を省くと、サーバーにある値を残す。 */
-  saveDashboard: (d: { id: string; name?: string; layout?: unknown[] }) => postJson<Dashboards>('/api/dashboards', d),
+  saveDashboard: (d: { id: string; name?: string; layout?: unknown[]; sessionLayout?: unknown[] }) => postJson<Dashboards>('/api/dashboards', d),
   importDashboards: (d: Dashboards) => postJson<Dashboards>('/api/dashboards/import', d),
   title: (id: string, title: string) => postJson(`${session(id)}/title`, { title }),
   suggestTitle: (id: string) => postJson<{ title: string }>(`${session(id)}/title-suggestion`),

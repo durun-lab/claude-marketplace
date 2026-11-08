@@ -863,9 +863,10 @@ const orderSessions = (body: unknown): void => {
 
 /** 配置は画面が読むときに形を確かめるので、ここでは配列であることだけを確かめる。 */
 const saveDashboard = (body: unknown): Dashboards => {
-  const layout = (body as Record<string, unknown>).layout;
+  const { layout, sessionLayout } = body as Record<string, unknown>;
   if (layout !== undefined && !Array.isArray(layout)) throw new HttpError(400, 'layout must be array');
-  state.dashboards = putDashboard(state.dashboards, { id: field<string>(body, 'id', 'string'), name: optionalString(body, 'name')?.trim() || undefined, layout });
+  if (sessionLayout !== undefined && !Array.isArray(sessionLayout)) throw new HttpError(400, 'sessionLayout must be array');
+  state.dashboards = putDashboard(state.dashboards, { id: field<string>(body, 'id', 'string'), name: optionalString(body, 'name')?.trim() || undefined, layout, sessionLayout });
   touch();
   return state.dashboards;
 };
