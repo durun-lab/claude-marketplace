@@ -141,15 +141,17 @@ fn same_device(recorded: &Actor, caller: &Actor) -> bool {
     recorded.device.is_some() && recorded.device == caller.device
 }
 
-/// `actor` が出したか、`actor` が承認した提案のトランザクションか。承認の記録の発行元は提案した者なので、決めた者は提案の側で引く。
+/// `actor` が行った操作のトランザクションか。提案の承認のトランザクションは、記録の発行元が提案した者なので、
+/// 承認した者（決めた者）だけで判定する。提案した端末は、他の者が承認したものを取り消せない。
 fn owned_by(s: &Store, plan: &UndoPlan, actor: &Actor) -> Result<bool, ServeError> {
-    if same_device(&plan.actor, actor) {
-        return Ok(true);
-    }
-    Ok(s.proposals()?.iter().any(|p| {
-        p.txn_id == Some(plan.txn_id)
-            && p.decided_by.as_ref().is_some_and(|d| same_device(d, actor))
-    }))
+    let approval = s
+        .proposals()?
+        .into_iter()
+        .find(|p| p.txn_id == Some(plan.txn_id));
+    Ok(match approval {
+        Some(p) => p.decided_by.as_ref().is_some_and(|d| same_device(d, actor)),
+        None => same_device(&plan.actor, actor),
+    })
 }
 
 impl Core {
