@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+mod acquire;
 mod sync;
 
 use mm_runtime::GpuContext;
@@ -21,6 +22,7 @@ use crate::win::review::drawing::DrawingSync;
 use crate::win::state::{FrameImage, PreviewFrame, Shared};
 use crate::win::surface;
 use crate::win::theme;
+use acquire::Recovery;
 use sync::{handle_input, DocSync, SourceSync};
 
 /// サーフェスを取れなかったときの待ち。再試行で CPU を回さないための間隔。
@@ -83,6 +85,8 @@ fn supervise(quit: &AtomicBool, wait: Duration, mut body: impl FnMut() -> Result
 }
 
 struct Gpu {
+    /// サーフェスを作ったインスタンス。サーフェスが Lost になったら同じインスタンスで作り直す。
+    instance: wgpu::Instance,
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -111,15 +115,17 @@ fn init_gpu(
 ) -> Result<Gpu, String> {
     let shared_device = match &context {
         Some(ctx) => {
-            let surface = create_surface(ctx.instance(), hwnd)?;
+            let instance = ctx.instance().clone();
+            let surface = create_surface(&instance, hwnd)?;
             let adapter = ctx.wgpu_adapter().clone();
-            adapter
-                .is_surface_supported(&surface)
-                .then(|| (surface, adapter, ctx.device.clone(), ctx.queue.clone()))
+            adapter.is_surface_supported(&surface).then(|| {
+                let (device, queue) = (ctx.device.clone(), ctx.queue.clone());
+                (instance, surface, adapter, device, queue)
+            })
         }
         None => None,
     };
-    let (surface, adapter, device, queue) = match shared_device {
+    let (instance, surface, adapter, device, queue) = match shared_device {
         Some(parts) => parts,
         None => {
             if context.take().is_some() {
@@ -133,6 +139,7 @@ fn init_gpu(
     *shared.adapter.lock().expect("adapter") = format!("{} ({:?})", info.name, info.backend);
     let config = surface_config(&surface, &adapter)?;
     Ok(Gpu {
+        instance,
         surface,
         device,
         queue,
@@ -142,6 +149,7 @@ fn init_gpu(
 }
 
 type OwnDevice = (
+    wgpu::Instance,
     wgpu::Surface<'static>,
     wgpu::Adapter,
     wgpu::Device,
@@ -165,7 +173,7 @@ fn own_device(hwnd: isize) -> Result<OwnDevice, String> {
     let (device, queue) =
         pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor::default()))
             .map_err(|e| e.to_string())?;
-    Ok((surface, adapter, device, queue))
+    Ok((instance, surface, adapter, device, queue))
 }
 
 fn surface_config(
@@ -269,11 +277,14 @@ fn run(
         source.refresh(shared, &mut view);
         drawing.refresh(shared, &mut view.ui);
         handle_input(shared, &mut view.ui, &doc);
-        if frame(shared, &view.gpu, &mut view.ui, &mut seen) {
-            failed_frames = 0;
-        } else {
-            failed_frames += 1;
-            nudge_if_lost(shared, &mut failed_frames);
+        match frame(shared, &view.gpu, &mut view.ui, &mut seen) {
+            Ok(()) => failed_frames = 0,
+            Err(recovery) => {
+                view.gpu.recover(hwnd, recovery)?;
+                std::thread::sleep(RETRY_WAIT);
+                failed_frames += 1;
+                nudge_if_lost(shared, &mut failed_frames);
+            }
         }
     }
     Ok(())
@@ -304,20 +315,12 @@ fn moved_context(shared: &Shared, gpu: &Gpu, seen: u64) -> Option<Arc<GpuContext
     }
 }
 
-/// 1 フレーム描いて present する。サーフェスを取れなければ偽。
-fn frame(shared: &Shared, gpu: &Gpu, ui: &mut Ui, seen: &mut u64) -> bool {
+/// 1 フレーム描いて present する。サーフェスを取れなければ数えて、立て直し方を返す。
+fn frame(shared: &Shared, gpu: &Gpu, ui: &mut Ui, seen: &mut u64) -> Result<(), Recovery> {
     let _span = tracing::info_span!("window.frame").entered();
-    let texture = match gpu.surface.get_current_texture() {
-        wgpu::CurrentSurfaceTexture::Success(t) | wgpu::CurrentSurfaceTexture::Suboptimal(t) => t,
-        other => {
-            // 大きさの変更の直後の Outdated や、隠れている間の Occluded は普通なので、数えて張り直す。
-            shared.surface_errors.fetch_add(1, Ordering::SeqCst);
-            tracing::debug!(state = ?other, "サーフェスを取れなかった");
-            gpu.surface.configure(&gpu.device, &gpu.config);
-            std::thread::sleep(RETRY_WAIT);
-            return false;
-        }
-    };
+    let texture = acquire::classify(gpu.surface.get_current_texture()).inspect_err(|_| {
+        shared.surface_errors.fetch_add(1, Ordering::SeqCst);
+    })?;
     let uploaded = upload_frame(shared, gpu, ui, seen);
     ui.set_playhead(shared.playhead());
     let view = texture.texture.create_view(&Default::default());
@@ -330,7 +333,7 @@ fn frame(shared: &Shared, gpu: &Gpu, ui: &mut Ui, seen: &mut u64) -> bool {
     if let Some(frame_time) = uploaded {
         record_skew(shared, frame_time);
     }
-    true
+    Ok(())
 }
 
 /// 新しいフレームがあれば Program に渡して、そのフレームの時刻を返す。GPU のテクスチャはリードバックせずにそのまま渡す。
