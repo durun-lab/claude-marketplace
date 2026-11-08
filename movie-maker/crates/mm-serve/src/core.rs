@@ -34,21 +34,15 @@ impl Caller {
     pub fn mcp() -> Self {
         Self {
             entry: Entry::Mcp,
-            actor: Actor {
-                kind: "mcp".into(),
-                name: "claude".into(),
-            },
+            actor: Actor::new("mcp", "claude"),
         }
     }
 
-    /// モバイル版の登録した端末（人の操作）。名乗りは端末の名前で、ロックの付いた所には触れない。
-    pub fn mobile(device_name: &str) -> Self {
+    /// モバイル版の登録した端末（人の操作）。発行元の名前は端末の名前で、取り消しで見分けるために端末の ID も持つ。ロックの付いた所には触れない。
+    pub fn mobile(device_id: &str, device_name: &str) -> Self {
         Self {
             entry: Entry::Mobile,
-            actor: Actor {
-                kind: "mobile".into(),
-                name: device_name.into(),
-            },
+            actor: Actor::new("mobile", device_name).with_device(device_id),
         }
     }
 
@@ -56,10 +50,7 @@ impl Caller {
     pub fn webview() -> Self {
         Self {
             entry: Entry::WebView,
-            actor: Actor {
-                kind: "gui".into(),
-                name: "app".into(),
-            },
+            actor: Actor::new("gui", "app"),
         }
     }
 }

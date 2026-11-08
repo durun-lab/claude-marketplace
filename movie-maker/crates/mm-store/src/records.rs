@@ -5,11 +5,33 @@ use serde::{Deserialize, Serialize};
 
 pub use mm_ops::{OpRecord, TxnKind, TxnRecord};
 
-/// 誰が。操作経路の種類（`gui`、`cli`、`claude`、`mcp`）と名前。
+/// 誰が。操作経路の種類（`gui`、`cli`、`claude`、`mcp`、`mobile`）と名前。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Actor {
     pub kind: String,
     pub name: String,
+    /// 登録した端末の ID（`mobile` だけ）。名前は登録を外すと別の端末が使えるので、端末の見分けはこちらでする。
+    /// DB のスキーマ 5 より前に書いた行と、端末でない発行元は `None`。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
+}
+
+impl Actor {
+    /// 端末の ID を持たない発行元。
+    pub fn new(kind: impl Into<String>, name: impl Into<String>) -> Self {
+        Self {
+            kind: kind.into(),
+            name: name.into(),
+            device: None,
+        }
+    }
+
+    /// 登録した端末の ID を持たせる。
+    #[must_use]
+    pub fn with_device(mut self, device: impl Into<String>) -> Self {
+        self.device = Some(device.into());
+        self
+    }
 }
 
 /// 書き込むトランザクション（ドラッグ、マクロ、Claude の対応 1 回、取り消し、やり直し）。
@@ -124,5 +146,22 @@ pub(crate) fn kind_of(kind: &str, of: Option<i64>) -> TxnKind {
         ("undo", Some(of)) => TxnKind::Undo { of: of as u64 },
         ("redo", Some(of)) => TxnKind::Redo { of: of as u64 },
         _ => TxnKind::Normal,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 端末の_id_の無い発行元の_json_を読め_端末の_id_が無ければ書かない() {
+        let old: Actor = serde_json::from_str(r#"{"kind":"mobile","name":"phone"}"#).unwrap();
+        assert_eq!(old, Actor::new("mobile", "phone"));
+        assert_eq!(
+            serde_json::to_value(&old).unwrap(),
+            serde_json::json!({"kind": "mobile", "name": "phone"})
+        );
+        let phone = old.with_device("d1");
+        assert_eq!(serde_json::to_value(&phone).unwrap()["device"], "d1");
     }
 }

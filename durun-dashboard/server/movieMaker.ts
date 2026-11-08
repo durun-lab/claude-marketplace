@@ -5,10 +5,11 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import type { ServerResponse } from 'node:http';
 import path from 'node:path';
-import type { MmChange, MmLogEntry, MovieMakerView, MmLinkStatus } from '../shared/types.ts';
+import type { MmChange, MmLogEntry, MmMobileView, MovieMakerView, MmLinkStatus } from '../shared/types.ts';
 import { appendLog, logFilePath } from './flLogFile.ts';
 import { type Installer, installedApp, installerFor, installPaths } from './movieMakerInstall.ts';
-import { CHANGE_FORMAT, changeLine, findLink, hookText, isHuman, MM_DIR, mobileUrl, MmClient, projectSummary, STORE_FILE, type ToolInfo, type ToolResult } from './movieMakerLink.ts';
+import { CHANGE_FORMAT, changeLine, findLink, hookText, isHuman, MM_DIR, MmClient, projectSummary, STORE_FILE, type ToolInfo, type ToolResult } from './movieMakerLink.ts';
+import { readMobile } from './movieMakerMobile.ts';
 import { platform } from './platform.ts';
 import { DATA_DIR, newId, state, touch } from './store.ts';
 
@@ -64,13 +65,39 @@ const logFileOf = (sessionId: string | undefined): string | undefined => {
   return file && fs.existsSync(file) ? platform.displayPath(file) : undefined;
 };
 
-/** tailnet での名前から作ったモバイル版の URL。ウィンドウを開くたびに読み直す（Tailscale の起動や名前の変更に追従する）。 */
-let tailnetMobileUrl: string | undefined;
-const refreshMobileUrl = async (): Promise<void> => {
-  const next = mobileUrl(await platform.tailnetHosts().catch(() => []));
-  if (next === tailnetMobileUrl) return;
-  tailnetMobileUrl = next;
-  broadcast();
+/** モバイル版につながる条件の確認結果。ウィンドウを開いたとき、確かめ直しのとき、movie-maker とつながったときに読み直す。 */
+let mobile: MmMobileView | undefined;
+let mobileReading: Promise<void> | undefined;
+let mobileQueued: Promise<void> | undefined;
+let queuedWait = false;
+
+const readMobileOnce = async (waitListener: boolean): Promise<void> => {
+  try {
+    const next = await readMobile(undefined, waitListener);
+    if (JSON.stringify(next) === JSON.stringify(mobile)) return;
+    mobile = next;
+    broadcast();
+  } catch (e) {
+    console.error(`[moviemaker] モバイル版の条件を読めません: ${(e as Error).message}`);
+  }
+};
+
+/** 読んでいる途中に頼まれたら、終わってからもう 1 回だけ読む。途中で変えた設定を、前に始めた読みの結果で済ませない。 */
+export const refreshMobile = (waitListener = false): Promise<void> => {
+  if (!mobileReading) {
+    mobileReading = readMobileOnce(waitListener).finally(() => {
+      mobileReading = undefined;
+    });
+    return mobileReading;
+  }
+  queuedWait ||= waitListener;
+  mobileQueued ??= mobileReading.then(() => {
+    const wait = queuedWait;
+    mobileQueued = undefined;
+    queuedWait = false;
+    return refreshMobile(wait);
+  });
+  return mobileQueued;
 };
 
 const hasStore = (): boolean => !!projectDir && fs.existsSync(path.join(projectDir, STORE_FILE));
@@ -81,7 +108,7 @@ const view = (): MovieMakerView => ({
   project: projectDir,
   recent: state.mmRecentProjects ?? [],
   hasStore: hasStore(),
-  mobileUrl: tailnetMobileUrl,
+  mobile,
   link: { status: linkStatus, message: linkMessage, port: client?.port, version, undoDepth },
   log,
   logFile: logFileOf(boundSession),
@@ -129,8 +156,10 @@ const bind = (sessionId: string | undefined): void => {
 // ─── movie-maker とのつながり ─────────────────────────────────────────────
 
 const setLink = (status: MmLinkStatus, message?: string): void => {
+  const newlyConnected = status === 'connected' && linkStatus !== 'connected';
   linkStatus = status;
   linkMessage = message;
+  if (newlyConnected) void refreshMobile(true);
   broadcast();
 };
 
@@ -255,7 +284,7 @@ export const streamMovieMaker = (res: ServerResponse, sessionId: string | undefi
   if (sessionId) bind(sessionId);
   if (project && !projectDir) remember((projectDir = path.resolve(project)));
   if (windows.size === 1) start();
-  void refreshMobileUrl();
+  void refreshMobile();
   sendView(win, JSON.stringify(view()));
   const keepalive = setInterval(() => res.write(': keepalive\n\n'), KEEPALIVE_MS);
   res.on('close', () => {

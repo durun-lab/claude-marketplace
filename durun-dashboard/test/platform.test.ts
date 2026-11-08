@@ -175,6 +175,31 @@ test('tailnet での名前は、どの OS でも tailscale の CLI に聞き、m
   assert.deepEqual(await platformFor('linux').tailnetHosts(onlyAt(MAC_APP)), []);
 });
 
+test('tailscale の CLI は、どの OS でも引数をそのまま渡し、macOS と Windows では既定の置き場所の CLI も試し、時間切れなら次を試さない', async () => {
+  const MAC_APP = '/Applications/Tailscale.app/Contents/MacOS/Tailscale';
+  const WIN_EXE = String.raw`C:\Program Files\Tailscale\tailscale.exe`;
+  const tried: string[] = [];
+  const onlyAt =
+    (found: string): Run =>
+    async (file, args) => {
+      tried.push(file);
+      if (file !== found) throw new Error('ENOENT');
+      return args.join(' ');
+    };
+  assert.equal(await platformFor('darwin').tailscale(['serve', 'status', '--json'], onlyAt(MAC_APP)), 'serve status --json');
+  assert.deepEqual(tried.splice(0), ['tailscale', MAC_APP]);
+  assert.equal(await platformFor('win32').tailscale(['status'], onlyAt(WIN_EXE)), 'status');
+  assert.deepEqual(tried.splice(0), ['tailscale', WIN_EXE]);
+  await assert.rejects(platformFor('linux').tailscale(['status'], onlyAt(MAC_APP)));
+  assert.deepEqual(tried.splice(0), ['tailscale']);
+  const hangs: Run = async (file) => {
+    tried.push(file);
+    throw Object.assign(new Error('timed out'), { killed: true });
+  };
+  await assert.rejects(platformFor('win32').tailscale(['status'], hangs), /timed out/);
+  assert.deepEqual(tried.splice(0), ['tailscale']);
+});
+
 test('MCP の呼び出しには、headersHelper が PID を送れない OS でだけ、接続の持ち主の PID を補う', async () => {
   const request = (): IncomingMessage => ({ headers: { 'x-claude-pid': '$PPID' }, socket: { remotePort: 50692, localPort: 7337 } }) as unknown as IncomingMessage;
   const lookups: number[][] = [];

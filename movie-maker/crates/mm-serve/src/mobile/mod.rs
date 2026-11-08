@@ -133,9 +133,9 @@ impl IntoResponse for MobileError {
 }
 
 impl DeviceInfo {
-    /// この端末から来た操作の発行元（`Entry::Mobile`、発行元の名前は端末の名前）。
+    /// この端末から来た操作の発行元（`Entry::Mobile`、発行元の名前は端末の名前で、端末の ID も持つ）。
     pub fn caller(&self) -> Caller {
-        Caller::mobile(&self.name)
+        Caller::mobile(&self.id, &self.name)
     }
 }
 

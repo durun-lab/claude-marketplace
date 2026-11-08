@@ -451,5 +451,6 @@ export const buildSnapshot = (): Snapshot => {
       const kept = trashOf(m);
       return kept ? [{ id: m.id, name: displayName(m, undefined), ...kept, error: m.discardError }] : [];
     }),
+    dashboards: state.dashboards,
   };
 };

@@ -37,10 +37,7 @@ fn topic(id: &str) -> Op {
 fn mcp() -> Caller {
     Caller {
         entry: Entry::Mcp,
-        actor: Actor {
-            kind: "mcp".into(),
-            name: "claude".into(),
-        },
+        actor: Actor::new("mcp", "claude"),
     }
 }
 

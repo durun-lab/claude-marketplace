@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { EFFORT_LEVELS, MODELS, type Session, type Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
-import { HOME_KEY, layoutKeyOf, useDashboards } from './dashboards.ts';
+import { HOME_KEY, saveDashboardLayout, useDashboards } from './dashboards.ts';
 import { Dashboard, type EditProps, type Widget, type WidgetProps } from './Dashboard.tsx';
 import { DesktopIcon } from './apps.tsx';
 import { BOOKMARKS_ICON, BOOKMARKS_KEY, BOOKMARKS_TITLE, BookmarksIcon, openBookmarks } from './Bookmarks.tsx';
@@ -241,9 +241,10 @@ const DEFAULT_LAYOUT: Layout = [
 ];
 
 export const Home = ({ snapshot, editing, onEditDone }: HomeData & EditProps) => {
-  const layoutKey = layoutKeyOf(useDashboards().current);
+  const { current, layouts } = useDashboards();
+  const store = { saved: layouts[current], save: (layout: Layout) => saveDashboardLayout(current, layout) };
   // 切り替えたダッシュボードの配置を読み直すよう、key で作り直す。
-  return <Dashboard key={layoutKey} widgets={WIDGETS} defaults={DEFAULT_LAYOUT} storageKey={HOME_KEY} layoutKey={layoutKey} data={{ snapshot }} editing={editing} onEditDone={onEditDone} />;
+  return <Dashboard key={current} widgets={WIDGETS} defaults={DEFAULT_LAYOUT} storageKey={HOME_KEY} store={store} data={{ snapshot }} editing={editing} onEditDone={onEditDone} />;
 };
 
 export const HomeFloat = ({ f, snapshot }: HomeData & { f: Float }) => <FloatWindow f={f} widgets={WIDGETS} data={{ snapshot }} />;

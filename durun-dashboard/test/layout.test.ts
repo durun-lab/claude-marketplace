@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { COLS, ROWS, addWidget, dropTab, fitRect, freeApps, fromSaved, keepTabs, mergeInto, moveTab, moveWidget, resizeRect, resizeWidget } from '../client/layout.ts';
-import { uniqueName } from '../client/dashboards.ts';
+import { COLS, ROWS, addWidget, dropTab, fitRect, freeApps, fromSaved, keepTabs, mergeInto, moveTab, moveWidget, resizeRect, resizeWidget, uniqueName } from '../client/layout.ts';
 
 test('重なったウィジェットを順に下へ押し出し、配列の順と、グリッドに収まる位置と大きさを保つ', () => {
   const layout = [

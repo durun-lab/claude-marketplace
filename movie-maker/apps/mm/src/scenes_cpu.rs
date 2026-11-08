@@ -97,10 +97,7 @@ fn commit_ms(project: &Project) -> Result<f64> {
     let dir = tempfile::tempdir()?;
     let mut store = Store::create(dir.path(), project, 0)?;
     let ctx = OpContext::human();
-    let actor = Actor {
-        kind: "perf".into(),
-        name: "mm".into(),
-    };
+    let actor = Actor::new("perf", "mm");
     let start = Instant::now();
     for i in 0..COMMITS {
         let opacity = 0.1 + (i % 9) as f64 / 10.0;

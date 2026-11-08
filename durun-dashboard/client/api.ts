@@ -1,5 +1,5 @@
 import type {
-  AgentPriority, CdMeta, AssistantMessage, TranslateStatus, AssistantReply, Bookmark, BranchView, ChatEntry, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, GithubSearch, Glossary, Harness, HarnessToggle, InboxSection, PrReviewEvent, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, SlackChannel, SlackConversation, TextSaveResult,
+  AgentPriority, CdMeta, AssistantMessage, TranslateStatus, AssistantReply, Bookmark, BranchView, ChatEntry, Dashboards, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, GithubSearch, Glossary, Harness, HarnessToggle, InboxSection, PrReviewEvent, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, SlackChannel, SlackConversation, TextSaveResult,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -85,6 +85,7 @@ export const api = {
   mmProject: (project?: string) => postJson('/api/moviemaker/project', { project }),
   mmInstall: () => postJson<{ message: string }>('/api/moviemaker/install'),
   mmLaunch: () => postJson<{ message: string }>('/api/moviemaker/launch'),
+  mmMobileCheck: () => postJson<{ message: string }>('/api/moviemaker/mobile/check'),
   cdripEventsUrl: '/api/cdrip/events',
   cdripList: (text: string) => postJson('/api/cdrip/list', { text }),
   cdripAccepting: (on: boolean) => postJson('/api/cdrip/accepting', { on }),
@@ -127,6 +128,9 @@ export const api = {
   theme: (id: string, theme: string) => postJson(`${session(id)}/theme`, { theme }),
   renameTheme: (from: string, to: string) => postJson('/api/themes/rename', { from, to }),
   orderThemes: (themes: string[]) => postJson('/api/themes/order', { themes }),
+  /** name や layout を省くと、サーバーにある値を残す。 */
+  saveDashboard: (d: { id: string; name?: string; layout?: unknown[] }) => postJson<Dashboards>('/api/dashboards', d),
+  importDashboards: (d: Dashboards) => postJson<Dashboards>('/api/dashboards/import', d),
   title: (id: string, title: string) => postJson(`${session(id)}/title`, { title }),
   suggestTitle: (id: string) => postJson<{ title: string }>(`${session(id)}/title-suggestion`),
   /** 作業中でアーカイブ待ちにしたら true を返す。Claude Code の一覧から消し終わるのは待たず、作業ツリーに変更が残って消せなかったものはゴミ箱に入る。 */
