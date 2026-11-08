@@ -8,7 +8,7 @@ use mm_host_api::{HostProcess, HostRequest, HostResponse, SharedFrame, FONT_ORIG
 use mm_host_cef::CefLauncher;
 use mm_types::{RationalTime, Size};
 
-use crate::serve::{host_exe, render, spec, TIMEOUT};
+use crate::serve::{host_exe, render, spec, REQUEST_LIMIT};
 
 const SIZE: Size = Size::new(320, 160);
 
@@ -37,7 +37,7 @@ fn draw(fonts: serde_json::Value) -> Vec<f32> {
         params: serde_json::json!({ "html": page(), "fonts": fonts }),
     };
     assert_eq!(
-        host.request(&req, TIMEOUT).expect("Prepare"),
+        host.request(&req, REQUEST_LIMIT).expect("Prepare"),
         HostResponse::Prepared
     );
     match render(&mut host, RationalTime::ZERO, SIZE, serde_json::json!({})) {
