@@ -20,18 +20,19 @@ use mm_types::{Id, ParamValue, Rational, RationalTime, Rgba, Size, TimeRange};
 
 const SIZE: Size = Size::new(64, 36);
 const FRAMES: i64 = 12;
-/// 待ち続けているとみなす秒数。
+/// 1 つの段（消失を知らせるまで、知らせてから書き出しが返るまで）で、待ち続けているとみなす秒数。
 const HANG_LIMIT: Duration = Duration::from_secs(30);
 
 /// 消失させるコンテキストをプロセスの終わりまで持ち、破棄しない。NVIDIA の Vulkan ドライバーは破棄の後も
 /// 自分のスレッドが解放済みの領域に触れることがあり、プロセスの終了と重なると 0xc0000409 で落ちる。
 static RETIRED: OnceLock<Arc<GpuContext>> = OnceLock::new();
 
-/// NV12 を受け、`lose_after` 枚目を受けた時点でデバイスの消失を知らせる。
+/// NV12 を受け、`lose_after` 枚目を受けた時点でデバイスの消失を知らせ、`lost` にも送る。
 struct LosingEncoder {
     ctx: Arc<GpuContext>,
     pushed: usize,
     lose_after: usize,
+    lost: mpsc::Sender<()>,
 }
 
 impl Encoder for LosingEncoder {
@@ -47,6 +48,7 @@ impl Encoder for LosingEncoder {
         self.pushed += frames.len();
         if self.pushed == self.lose_after {
             self.ctx.mark_lost();
+            let _ = self.lost.send(());
         }
         Ok(())
     }
@@ -100,6 +102,7 @@ fn 書き出しの途中のデバイス消失は待ち続けずエラーで返�
     };
     let ctx = RETIRED.get_or_init(|| ctx).clone();
     let (tx, rx) = mpsc::channel();
+    let (lost_tx, lost_rx) = mpsc::channel();
     let worker = std::thread::spawn(move || {
         let mut nodes = MapRegistry::default();
         for kind in all_kinds() {
@@ -118,6 +121,7 @@ fn 書き出しの途中のデバイス消失は待ち続けずエラーで返�
             ctx,
             pushed: 0,
             lose_after: 2,
+            lost: lost_tx,
         };
         let range = TimeRange::new(
             RationalTime::ZERO,
@@ -140,6 +144,10 @@ fn 書き出しの途中のデバイス消失は待ち続けずエラーで返�
         );
         let _ = tx.send((result.is_err(), r.recoveries()));
     });
+    // 判定の時計は消失を知らせた時点から測り、レンダラーの組み立てと消失の前のフレームを含めない。
+    lost_rx
+        .recv_timeout(HANG_LIMIT)
+        .expect("消失を知らせる所まで書き出しが進まない");
     let (is_err, recoveries) = rx
         .recv_timeout(HANG_LIMIT)
         .expect("古いデバイスのリードバックを待ち続けている");

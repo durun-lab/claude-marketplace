@@ -27,7 +27,12 @@ fn gpu() -> Option<(wgpu::Device, wgpu::Queue)> {
 }
 
 fn make_device() -> Result<(wgpu::Device, wgpu::Queue), String> {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    // アプリと同じく Windows では D3D12 で描き、Vulkan のドライバーを読み込まない。
+    let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+    if cfg!(windows) {
+        desc.backends = wgpu::Backends::DX12;
+    }
+    let instance = wgpu::Instance::new(desc);
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
         power_preference: wgpu::PowerPreference::HighPerformance,
         ..Default::default()

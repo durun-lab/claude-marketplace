@@ -148,7 +148,11 @@ type OwnDevice = (
 );
 
 fn own_device(hwnd: isize) -> Result<OwnDevice, String> {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    // レンダラーのサーフェス（mm-runtime の present）と同じく D3D12 だけで作り、Vulkan のドライバーを
+    // 読み込まない。NVIDIA と AMD の Vulkan のドライバーが同居すると、破棄のときに NVIDIA の側で落ちる。
+    let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+    desc.backends = wgpu::Backends::DX12;
+    let instance = wgpu::Instance::new(desc);
     let surface = create_surface(&instance, hwnd)?;
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
         power_preference: wgpu::PowerPreference::HighPerformance,

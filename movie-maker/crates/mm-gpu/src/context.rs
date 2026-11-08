@@ -17,7 +17,7 @@ pub struct GpuRequest {
     pub adapter: Option<GpuAdapterId>,
     /// あれば有効にする機能。無いアダプターでは失敗させずに外す。
     pub optional_features: wgpu::Features,
-    /// 選べるバックエンド。D3D12 の資源を FFmpeg や CUDA と共有するデコーダーは D3D12 だけにする。
+    /// 選べるバックエンド。既定は [`default_backends`]。
     pub backends: wgpu::Backends,
 }
 
@@ -27,9 +27,23 @@ impl Default for GpuRequest {
         Self {
             adapter: None,
             optional_features: wgpu::Features::TIMESTAMP_QUERY,
-            backends: wgpu::Backends::all(),
+            backends: default_backends(),
         }
     }
+}
+
+/// 既定に使うバックエンド。環境変数 `WGPU_BACKEND`（`vulkan`、`dx12` など）があればそれに従い、
+/// 無ければ Windows は D3D12 だけにする。Vulkan と OpenGL のローダーは入っている全部のドライバーを
+/// 読み込み、NVIDIA と AMD のドライバーが同じプロセスにあると、Instance の破棄のときに NVIDIA の
+/// ドライバーの中で落ちる（gfx-rs/wgpu#6571）。サーフェス、CEF の共有テクスチャ、d3d12va と cuvid の
+/// デコードも D3D12 の資源で受け渡す。
+pub fn default_backends() -> wgpu::Backends {
+    let platform = if cfg!(windows) {
+        wgpu::Backends::DX12
+    } else {
+        wgpu::Backends::all()
+    };
+    wgpu::Backends::from_env().unwrap_or(platform)
 }
 
 /// GPU のコンテキスト。レンダラー、デコーダー、GpuHelper が共有する。
@@ -225,8 +239,10 @@ impl Drop for GpuContext {
 
 /// この PC のアダプターの一覧。設定で選ぶときの候補。
 pub fn enumerate_adapters() -> Vec<GpuAdapterId> {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-    pollster::block_on(instance.enumerate_adapters(wgpu::Backends::PRIMARY))
+    let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+    desc.backends = default_backends();
+    let instance = wgpu::Instance::new(desc);
+    pollster::block_on(instance.enumerate_adapters(default_backends()))
         .iter()
         .map(adapter_id)
         .collect()

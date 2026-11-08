@@ -74,6 +74,30 @@ fn shared_は選んだアダプターが求めの範囲にあれば同じコン�
     ));
 }
 
+/// Windows の既定は D3D12 だけで作り、Vulkan のローダーを読み込まない。NVIDIA と AMD の Vulkan
+/// ドライバーが同じプロセスにあると、Instance の破棄のときに NVIDIA のドライバーの中で落ちる。
+#[cfg(windows)]
+#[test]
+fn windows_の既定のコンテキストと一覧は_vulkan_を読み込まない() {
+    let Some(ctx) = gpu() else {
+        return;
+    };
+    assert_eq!(ctx.backend(), wgpu::Backend::Dx12);
+    assert!(!mm_gpu::enumerate_adapters().is_empty());
+    let own = GpuContext::new().expect("既定の求めで作れる");
+    drop(own);
+    assert!(
+        !module_loaded(windows::core::w!("vulkan-1.dll")),
+        "Vulkan のローダーが読み込まれている"
+    );
+}
+
+#[cfg(windows)]
+fn module_loaded(name: windows::core::PCWSTR) -> bool {
+    // SAFETY: 読み込み済みのモジュールを名前で引くだけで、参照の数も変えない。
+    unsafe { windows::Win32::System::LibraryLoader::GetModuleHandleW(name) }.is_ok()
+}
+
 #[test]
 fn 保存した識別子の_luid_が古くても同じ_gpu_を選ぶ() {
     let Some(ctx) = gpu() else {
