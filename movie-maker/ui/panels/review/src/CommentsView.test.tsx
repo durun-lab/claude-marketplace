@@ -95,7 +95,7 @@ describe("コメントの一覧", () => {
 });
 
 describe("コメントの選択", () => {
-  it("時刻を押したコメントを選び、アプリに知らせて印を付ける", async () => {
+  it("時刻を押したコメントを選び、アプリに知らせてカードを選んだ表示にする", async () => {
     const api = fakeApi([comment("a"), comment("b", { at: { num: 9, den: 1 } })]);
     await mount(api);
     await click(host.querySelectorAll(".mm-review-time")[1]);
@@ -103,6 +103,13 @@ describe("コメントの選択", () => {
     const focused = host.querySelector("[data-focused]") as HTMLElement | null;
     expect(focused?.dataset.comment).toBe("b");
     expect(focused?.getAttribute("aria-current")).toBe("true");
+  });
+
+  it("開いたときは何も選ばず、アプリに残った選択を外す", async () => {
+    const api = fakeApi([comment("a")]);
+    await mount(api);
+    expect(api.focusComment).toHaveBeenCalledWith(null);
+    expect(host.querySelector("[data-focused]")).toBeNull();
   });
 });
 

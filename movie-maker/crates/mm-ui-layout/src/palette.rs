@@ -21,7 +21,7 @@ pub const GAP: Color = Color::hex(0x6b7280);
 /// 隣り合うカットの編集点の線。
 pub const CUT_SEAM: Color = Color::hex(0x14161a);
 /// コメントの描き込みの線。テーマの `accent` が無いときの色。
-pub const MARK: Color = Color::hex(0x5b8def);
+pub const DRAWING: Color = Color::hex(0x5b8def);
 
 /// サーフェスの UI の色の一式。既定は上の定数で、`ui/theme` の theme.json の色で差し替えられる。
 /// 再生位置、スナップのガイド線、帯の種類の色、Program の背景はテーマに無いので既定のまま。
@@ -38,7 +38,7 @@ pub struct Palette {
     pub guide: Color,
     pub selection: Color,
     /// Program に重ねるコメントの描き込みの色。
-    pub mark: Color,
+    pub drawing: Color,
 }
 
 impl Palette {
@@ -54,7 +54,7 @@ impl Palette {
         playhead: PLAYHEAD,
         guide: GUIDE,
         selection: SELECTION,
-        mark: MARK,
+        drawing: DRAWING,
     };
 
     /// theme.json の 1 つのモードの `color` から。`color(name)` は色の名前（`bg`、`surface` など）の値を返す。
@@ -71,7 +71,7 @@ impl Palette {
             label: pick("text-muted", d.label),
             outside: pick("bg", d.outside).with_alpha(d.outside.0[3]),
             selection: pick("text", d.selection),
-            mark: pick("accent", d.mark),
+            drawing: pick("accent", d.drawing),
             ..d
         }
     }

@@ -1,8 +1,8 @@
 //! コメントの描き込みの線分のバッチ描画。線分ごとに太さぶんの矩形を張り、フラグメントで線分からの距離を測って
-//! 端と継ぎ目を丸める。太さはサーフェスの画素で決まるので、映像の拡大に依らず一定になる。
+//! 端と継ぎ目を丸める。太さは線分の `width`（物理ピクセル）で決まり、映像の拡大に依らない。
 
 use bytemuck::{Pod, Zeroable};
-use mm_ui_layout::{Color, MarkSegment};
+use mm_ui_layout::{drawing_segments, Color, DrawingSegment, DrawingShape, Rect};
 
 const SHADER: &str = r#"
 struct U { res: vec2<f32>, pad: vec2<f32> };
@@ -69,7 +69,7 @@ const INSTANCE_SIZE: u64 = std::mem::size_of::<Instance>() as u64;
 const INITIAL_CAPACITY: u64 = 256;
 
 /// 描き込みの線分を描くパイプライン。
-pub struct MarkRenderer {
+pub struct DrawingRenderer {
     pipeline: wgpu::RenderPipeline,
     bind: wgpu::BindGroup,
     uniform: wgpu::Buffer,
@@ -77,17 +77,17 @@ pub struct MarkRenderer {
     capacity: u64,
 }
 
-impl MarkRenderer {
+impl DrawingRenderer {
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
-        let bgl = crate::quads::viewport_layout(device, "ui marks");
+        let bgl = crate::quads::viewport_layout(device, "ui drawing");
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("ui marks uniform"),
+            label: Some("ui drawing uniform"),
             size: 16,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
         let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("ui marks"),
+            label: Some("ui drawing"),
             layout: &bgl,
             entries: &[wgpu::BindGroupEntry {
                 binding: 0,
@@ -108,7 +108,7 @@ impl MarkRenderer {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        segments: &[MarkSegment],
+        segments: &[DrawingSegment],
         color: Color,
         viewport: (f32, f32),
     ) -> u32 {
@@ -148,9 +148,65 @@ impl MarkRenderer {
     }
 }
 
+/// 描き込みを線分にするときの条件。どれかが変わったら頂点を作り直す。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct DrawingFit {
+    /// Program の画像の大きさ。
+    pub image: (f32, f32),
+    /// Program の領域。
+    pub area: Rect,
+    /// サーフェスの大きさ。
+    pub viewport: (f32, f32),
+    /// 表示の倍率（DPI / 96）。
+    pub scale: f32,
+    pub color: Color,
+}
+
+/// Program に重ねる描き込みと、それを線分にした頂点。描画のループは毎周回るので、条件が同じ間は頂点を作り直さない。
+pub(crate) struct DrawingLayer {
+    renderer: DrawingRenderer,
+    shapes: Vec<DrawingShape>,
+    /// 最後に頂点を作ったときの条件。`None` は作り直しが要る。
+    prepared: Option<DrawingFit>,
+    count: u32,
+}
+
+impl DrawingLayer {
+    pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+        Self {
+            renderer: DrawingRenderer::new(device, format),
+            shapes: Vec::new(),
+            prepared: None,
+            count: 0,
+        }
+    }
+
+    pub fn set_shapes(&mut self, shapes: Vec<DrawingShape>) {
+        self.shapes = shapes;
+        self.prepared = None;
+    }
+
+    /// 条件が前と違うときだけ線分を作って転送し、描く数を返す。
+    pub fn prepare(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, fit: DrawingFit) -> u32 {
+        if self.prepared != Some(fit) {
+            let segments = drawing_segments(&self.shapes, fit.image, fit.area, fit.scale);
+            self.count = self
+                .renderer
+                .prepare(device, queue, &segments, fit.color, fit.viewport);
+            self.prepared = Some(fit);
+        }
+        self.count
+    }
+
+    /// `prepare` が返した数だけ描く。
+    pub fn draw(&self, pass: &mut wgpu::RenderPass<'_>, count: u32) {
+        self.renderer.draw(pass, count);
+    }
+}
+
 fn instance_buffer(device: &wgpu::Device, capacity: u64) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("ui marks instances"),
+        label: Some("ui drawing instances"),
         size: capacity * INSTANCE_SIZE,
         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
@@ -163,17 +219,17 @@ fn pipeline(
     bgl: &wgpu::BindGroupLayout,
 ) -> wgpu::RenderPipeline {
     let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-        label: Some("ui marks"),
+        label: Some("ui drawing"),
         source: wgpu::ShaderSource::Wgsl(SHADER.into()),
     });
     let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("ui marks"),
+        label: Some("ui drawing"),
         bind_group_layouts: &[Some(bgl)],
         immediate_size: 0,
     });
     let attrs = wgpu::vertex_attr_array![0 => Float32x4, 1 => Float32x4, 2 => Float32x4];
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("ui marks"),
+        label: Some("ui drawing"),
         layout: Some(&layout),
         vertex: wgpu::VertexState {
             module: &module,

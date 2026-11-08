@@ -264,7 +264,7 @@ fn run(
         view.configure(size);
         doc.refresh(shared, &mut view.ui);
         source.refresh(shared, &mut view);
-        drawing.refresh(shared, &mut view.ui);
+        drawing.refresh(shared, hwnd, &mut view.ui);
         handle_input(shared, &mut view.ui, &doc);
         if frame(shared, &view.gpu, &mut view.ui, &mut seen) {
             failed_frames = 0;

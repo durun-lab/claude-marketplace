@@ -144,17 +144,16 @@ pub fn forward_comments(app: &tauri::AppHandle, shared: &Arc<Shared>) {
     let Some(core) = shared.core.get() else {
         return;
     };
-    drawing::reload(shared, core);
-    let (handle, s) = (app.clone(), shared.clone());
+    let (handle, s, c) = (app.clone(), shared.clone(), core.clone());
     let started = core.on_comment(move |event| {
-        if let Some(core) = s.core.get() {
-            drawing::reload(&s, core);
-        }
+        drawing::reload(&s, &c);
         let _ = handle.emit(COMMENTS_CHANGED_EVENT, event);
     });
     if let Err(e) = started {
         tracing::warn!("コメントの通知を受けるスレッドを始められない: {e}");
     }
+    // 購読を始めてから読むので、その間に書かれたコメントも取りこぼさない。
+    drawing::reload(shared, core);
 }
 
 /// Review で選んだコメント。その描き込みを、再生位置がコメントの時刻か範囲にある間だけ Program に重ねる。`None` で外す。

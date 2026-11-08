@@ -60,6 +60,13 @@ export const useComments = (api: ReviewApi): CommentsState => {
   const [focused, setFocused] = useState<string | null>(null);
   const { comments, reload } = useCommentList(api, setError);
 
+  // 選択はパネルの中にだけあり、開き直すと空になる。開いたときと閉じたときにアプリの選択も外し、Program の表示と揃える。
+  useEffect(() => {
+    const clear = () => void api.focusComment(null).catch(() => undefined);
+    clear();
+    return clear;
+  }, [api]);
+
   const run = async (action: () => Promise<unknown>): Promise<boolean> => {
     setError(null);
     try {
