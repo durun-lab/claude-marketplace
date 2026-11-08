@@ -164,9 +164,12 @@ fn mark_source(env: &Env<'_>, log: &mut Log) -> Option<String> {
     let asset = doc.project.assets.last()?.id.to_string();
     let opened = shared.source.open(&doc.project, comp, &asset);
     let source = shared.source.handle();
-    let framed = source
-        .as_ref()
-        .is_some_and(|s| wait_until(WAIT, || s.shared.frames.newer_than(0).is_some()));
+    // 後の割り付けが Source の領域を含むよう、フレームの到着に加えて `Ui` が領域を出すまで待つ。
+    let framed = source.as_ref().is_some_and(|s| {
+        wait_until(WAIT, || {
+            s.shared.frames.newer_than(0).is_some() && shared.source.is_shown()
+        })
+    });
     log.step(
         "source_open",
         opened.is_ok() && framed,

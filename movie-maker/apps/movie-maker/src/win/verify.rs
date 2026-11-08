@@ -124,8 +124,9 @@ pub(crate) fn wait_until(limit: Duration, mut done: impl FnMut() -> bool) -> boo
     false
 }
 
-/// `Ui` と同じ `split_viewers` で割り付けた論理ピクセルの領域と、表示の倍率。Source に最初のフレームが来ていれば
-/// 上の段を Source と Program に割る（`Ui::set_source_frame`）。クリックを投げるときは倍率を掛けて物理ピクセルに直す。
+/// `Ui` と同じ `split_viewers` で計算した論理ピクセルのサーフェスの割り付けと、表示の倍率。クリックを投げるときは
+/// 倍率を掛けて物理ピクセルに直す。Source の有無はフレームの到着から 1 周遅れて変わる `Ui` の側の値
+/// （`SourceSlot::is_shown`）を読む。
 pub(crate) fn viewer_layout(
     shared: &Shared,
     hwnd: isize,
@@ -133,15 +134,11 @@ pub(crate) fn viewer_layout(
 ) -> (SurfaceLayout, Scale) {
     let scale = Scale::new(surface::scale_factor(hwnd));
     let (w, h) = shared.surface_size();
-    let has_source_image = shared
-        .source
-        .handle()
-        .is_some_and(|s| s.shared.frames.newer_than(0).is_some());
     let layout = split_viewers(
         scale.to_logical(w as f32),
         scale.to_logical(h as f32),
         timeline_content_h,
-        has_source_image,
+        shared.source.is_shown(),
     );
     (layout, scale)
 }

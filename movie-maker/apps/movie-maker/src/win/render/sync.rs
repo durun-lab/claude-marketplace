@@ -42,6 +42,7 @@ impl SourceSync {
             self.seen = 0;
             if handle.is_none() {
                 view.ui.close_source();
+                shared.source.set_shown(false);
             }
         }
         let Some(frame) = handle.and_then(|h| h.shared.frames.newer_than(self.seen)) else {
@@ -52,6 +53,7 @@ impl SourceSync {
         if let FrameImage::Cpu(image) = &frame.image {
             view.ui
                 .set_source_frame(&view.gpu.device, &view.gpu.queue, image);
+            shared.source.set_shown(true);
         }
     }
 }

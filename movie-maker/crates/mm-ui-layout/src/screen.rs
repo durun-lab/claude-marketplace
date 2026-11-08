@@ -22,11 +22,7 @@ pub struct SurfaceLayout {
 }
 
 /// 幅 `w`、高さ `h` のサーフェスを割る。Timeline は中身の高さ `timeline_content_h` に合わせ、上限は半分。
-pub fn split_surface(w: f32, h: f32, timeline_content_h: f32) -> SurfaceLayout {
-    split_viewers(w, h, timeline_content_h, false)
-}
-
-/// [`split_surface`] に加えて、`with_source` なら上の段を左の Source と右の Program に半分ずつ割る。
+/// `with_source` なら上の段を左の Source と右の Program に半分ずつ割る。
 pub fn split_viewers(w: f32, h: f32, timeline_content_h: f32, with_source: bool) -> SurfaceLayout {
     let max_h = (h * MAX_TIMELINE_RATIO).max(0.0);
     let th = (timeline_content_h + GAP).max(MIN_TIMELINE_H).min(max_h);
@@ -53,7 +49,7 @@ mod tests {
 
     #[test]
     fn 二つの領域はサーフェスを隙間つきで埋める() {
-        let l = split_surface(1000.0, 800.0, 100.0);
+        let l = split_viewers(1000.0, 800.0, 100.0, false);
         assert_eq!(l.program.bottom() + GAP, l.timeline.y);
         assert_eq!(l.timeline.bottom(), 800.0);
         assert_eq!((l.program.w, l.timeline.w), (1000.0, 1000.0));
@@ -61,7 +57,7 @@ mod tests {
 
     #[test]
     fn source_を開くと上の段を左右に半分ずつ割り_timeline_は変わらない() {
-        let plain = split_surface(1000.0, 800.0, 100.0);
+        let plain = split_viewers(1000.0, 800.0, 100.0, false);
         let l = split_viewers(1000.0, 800.0, 100.0, true);
         let source = l.source.expect("Source");
         assert_eq!(source.right() + GAP, l.program.x);
@@ -73,13 +69,13 @@ mod tests {
 
     #[test]
     fn timeline_は半分を超えない() {
-        let l = split_surface(1000.0, 800.0, 5000.0);
+        let l = split_viewers(1000.0, 800.0, 5000.0, false);
         assert_eq!(l.timeline.h, 400.0);
     }
 
     #[test]
     fn 小さなサーフェスでも矩形が負にならない() {
-        let l = split_surface(10.0, 20.0, 100.0);
+        let l = split_viewers(10.0, 20.0, 100.0, false);
         assert!(l.program.h >= 0.0 && l.timeline.h >= 0.0);
     }
 }
