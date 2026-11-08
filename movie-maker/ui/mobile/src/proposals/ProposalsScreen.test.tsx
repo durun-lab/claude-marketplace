@@ -3,7 +3,7 @@ import { act } from "preact/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { demoProposals } from "../../demo/fixtures.ts";
 import { createHarness } from "../testing/harness.ts";
-import { clipUrl, frameUrl } from "./api.ts";
+import { frameUrl } from "./api.ts";
 import { ProposalsScreen } from "./ProposalsScreen.tsx";
 import { UNDO_WINDOW_MS } from "./useUndo.ts";
 
@@ -34,7 +34,7 @@ describe("Proposals の一覧", () => {
 });
 
 describe("提案の 1 件", () => {
-  it("前後のフレームは時刻と提案の ID で引き、押すと切り替わる。Play は短い動画に替える", async () => {
+  it("前後のフレームは時刻と提案の ID で引き、押すと切り替わる。PC が配らない短い動画のボタンは出さない", async () => {
     await open();
     await h.press("Slow the zoom");
     const imgs = [...h.host.querySelectorAll("img")].map((i) => i.getAttribute("src"));
@@ -42,8 +42,8 @@ describe("提案の 1 件", () => {
     expect(h.host.querySelector("img.show")?.getAttribute("alt")).toBe("After");
     await h.press("Before");
     expect(h.host.querySelector("img.show")?.getAttribute("alt")).toBe("Before");
-    await h.press("Play");
-    expect(h.host.querySelector("video")?.getAttribute("src")).toBe(clipUrl(2));
+    expect(h.texts(".compare button")).not.toContain("Play");
+    expect(h.host.querySelector(".compare video")).toBeNull();
   });
 
   it("操作を外すと一部だけ承認し、後の編集と重なる提案は承認できない", async () => {

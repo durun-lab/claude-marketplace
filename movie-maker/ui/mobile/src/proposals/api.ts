@@ -33,6 +33,3 @@ export const frameUrl = (t: number, opts: { comp?: string; proposal?: number; op
   if (opts.ops) q.set("ops", opts.ops.join(","));
   return `${API_ROOT}/frame?${q}`;
 };
-
-/** 提案の区間の短い動画。 */
-export const clipUrl = (id: number): string => `${PROPOSALS}/${id}/clip.mp4`;

@@ -132,6 +132,17 @@ fn serve(st: &MobileState, path: &str) -> Response {
         header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
     );
+    // tailnet の別のサービスのページは同じサイトでクッキーが付くので、枠に埋め込んで承認を押させない。
+    h.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    h.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static("frame-ancestors 'none'"),
+    );
+    // 登録の画面の URL は登録の符号を持つので、参照元で外へ渡さない。
+    h.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("no-referrer"),
+    );
     if name == SERVICE_WORKER {
         h.insert("service-worker-allowed", HeaderValue::from_static("/m/"));
     }

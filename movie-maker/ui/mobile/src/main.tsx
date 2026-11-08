@@ -10,6 +10,7 @@ const browserPlatform = (): Platform => ({
   fetch: (input, init) => fetch(input, init),
   openEvents: (url) => new EventSource(url) as unknown as ReturnType<Platform["openEvents"]>,
   onNetworkBack: (fn) => window.addEventListener("online", fn),
+  onVisibility: (fn) => document.addEventListener("visibilitychange", () => fn(document.visibilityState === "visible")),
   outboxStore: createIdbStore(),
 });
 

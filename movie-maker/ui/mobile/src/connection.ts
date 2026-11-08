@@ -22,6 +22,8 @@ export interface ConnectionDeps {
   openEvents: (url: string) => EventSourceLike;
   /** 圏外から戻ったことを知らせる（`window` の online）。 */
   onNetworkBack: (fn: () => void) => void;
+  /** 画面が隠れた（`false`）・戻った（`true`）ことを知らせる（`document` の visibilitychange）。 */
+  onVisibility?: (fn: (visible: boolean) => void) => void;
   setTimer?: (fn: () => void, ms: number) => unknown;
 }
 
@@ -70,20 +72,30 @@ const createEventHub = () => {
 const forwardEvents = (es: EventSourceLike, hub: ReturnType<typeof createEventHub>): void =>
   FORWARD_EVENTS.forEach((t) => es.addEventListener(t, (ev) => hub.emit(t, parseData(ev.data))));
 
-/** PC との接続の状態を持つ。SSE の切断と圏外は `offline`、401 は `unpaired`。 */
+/**
+ * PC との接続の状態を持つ。SSE の切断と圏外は `offline`、401 は `unpaired`。
+ * 画面が隠れている間は電池と回線を使わないよう SSE を閉じて再試行も止め、戻ったら読み直して開き直す。
+ */
 export const createConnection = (deps: ConnectionDeps): Connection => {
   const setTimer = deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
   let snap: ConnectionSnapshot = { state: "checking", project: null };
   let events: EventSourceLike | null = null;
+  let hidden = false;
   const listeners = new Set<() => void>();
   const hub = createEventHub();
   const set = (patch: Partial<ConnectionSnapshot>): void => {
     snap = { ...snap, ...patch };
     listeners.forEach((fn) => fn());
   };
-  const retryLater = (): void => void setTimer(() => void refresh(), RETRY_MS);
+  const closeEvents = (): void => {
+    events?.close();
+    events = null;
+  };
+  const retryLater = (): void => {
+    if (!hidden) void setTimer(() => void refresh(), RETRY_MS);
+  };
   const openEvents = (): void => {
-    if (events) return;
+    if (events || hidden) return;
     const es = deps.openEvents(`${API_ROOT}/events`);
     es.onopen = () => set({ state: "online" });
     es.onerror = () => set({ state: "offline" });
@@ -97,8 +109,7 @@ export const createConnection = (deps: ConnectionDeps): Connection => {
       set({ state: "online", project });
       openEvents();
     } catch (e) {
-      events?.close();
-      events = null;
+      closeEvents();
       if (isUnauthorized(e)) {
         set({ state: "unpaired", project: null });
       } else {
@@ -108,6 +119,11 @@ export const createConnection = (deps: ConnectionDeps): Connection => {
     }
   };
   deps.onNetworkBack(() => void refresh());
+  deps.onVisibility?.((visible) => {
+    hidden = !visible;
+    if (hidden) closeEvents();
+    else void refresh();
+  });
   return {
     get: () => snap,
     subscribe: (fn) => {

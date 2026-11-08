@@ -35,6 +35,23 @@ fn 画面と登録の画面は資格が無くても同じ入口を返す() {
     }
 }
 
+/// 同じ tailnet の別のサービス（同じサイトなので `SameSite=Strict` のクッキーが付く）のページに枠で埋め込ませず、
+/// 登録の画面の URL の符号を参照元で渡さない。
+#[test]
+fn 画面は枠での埋め込みを断り_参照元を送らせない() {
+    let r = rig_with_assets();
+    for path in ["/m/", "/m/pair", "/m/app.js"] {
+        let res = r.send(&Req::tailnet(), "GET", path, None);
+        assert_eq!(res.header("x-frame-options"), Some("DENY"), "{path}");
+        assert_eq!(
+            res.header("content-security-policy"),
+            Some("frame-ancestors 'none'"),
+            "{path}"
+        );
+        assert_eq!(res.header("referrer-policy"), Some("no-referrer"), "{path}");
+    }
+}
+
 #[test]
 fn ファイルは型を付けて返し_service_worker_のスコープを絞る() {
     let r = rig_with_assets();
