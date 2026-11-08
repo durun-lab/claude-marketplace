@@ -149,7 +149,7 @@ PC で 1 回だけ行う。tailnet と Tailscale の HTTPS の証明書（管理
 | 操作を即時に適用する | 下の表の操作だけ | 全部の操作 |
 | 提案を出す | できる（「PC で決める」の下書き） | できる（`propose`） |
 | 提案の承認、一部の承認、却下、保留に戻す | できる | できない（403） |
-| 取り消し | この端末が自分で行った操作のトランザクションが全体の直前のときだけ（違えば 409 `not_latest`）。提案の承認のトランザクションは承認した者のもので、提案を出した端末のものではない（PC が承認したものは、どの端末からも取り消せない）。端末は端末の ID で見分け、ID の無い記録（ID を記録する前の行）はどの端末からも取り消せない | できる |
+| 取り消し | 全体の直前のトランザクションがこの端末のもののときだけ（違えば 409 `not_latest`）。承認で適用したトランザクションは提案を決めた者のもの、それ以外は発行元のもの（PC のアプリで承認した提案は、提案を出した端末からも取り消せない）。端末は端末の ID で見分け、ID の無い記録（ID を記録する前の行）はどの端末からも取り消せない | できる |
 | ロックの付いたレイヤー | 触れない（ロックは PC のアプリ以外の経路に効かせる） | 触れない |
 | 端末の登録と、登録を外すこと | できない | できない |
 
@@ -229,7 +229,7 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 | `GET /m/api/project` | `{ version, compositions, sequences, open_composition, cuts }`（素材のパスは返さない）。`open_composition` は先頭のコンポジション、`cuts` はその中のカットの境の秒（スクラブバーの目盛り） |
 | `GET /m/api/story/overview`、`/transcript?asset=`、`/range?asset=&first=&last=`、`/search?q=` | `ui/panels/story/src/api.ts` の `StoryApi` と同じ形 |
 | `POST /m/api/ops` | `{ op }` か `{ txn }`、`base_version` は必須。即時に適用できる操作だけ |
-| `POST /m/api/undo` | この端末（端末の ID で見分ける）が自分で行った操作が全体の直前のときだけ（提案の承認は承認した者のもの） |
+| `POST /m/api/undo` | 全体の直前のトランザクションがこの端末（端末の ID で見分ける）のもののときだけ。承認で適用したトランザクションは提案を決めた者のもの |
 | `GET /m/api/comments?state=`、`GET /m/api/comments/{id}`、`POST /m/api/comments`、`POST /m/api/comments/{id}/replies`、`POST /m/api/comments/{id}/state` | コメントの一覧、1 件、書く、返信、状態 |
 | `GET /m/api/proposals`、`GET /m/api/proposals/{id}`、`POST /m/api/proposals`、`POST /m/api/proposals/{id}/approve`、`/reject`、`/reopen` | 提案。形は Claude の待ち受けの `/proposals` と同じで、`comp_spans: [{ comp, layer, sequence, start, end }]`（`scope.sequences` の範囲を、そのシーケンスを置いたレイヤーのコンポジションの秒に変換したもの。時間の写像を持つレイヤーは変換しない）を足す。`GET /m/api/proposals/{id}?comp=&ops=` は `clip_url`（今の中身の短い動画の URL。保留中でない提案、範囲の無い提案、配信を持たない待ち受けは `null`）も足す |
 | `GET /m/api/frame?comp=&t=&width=&proposal=&ops=` | 静止画のフレーム。`t` は `comp`（省くと先頭のコンポジション）の時間軸の秒。保存したデータは WebP（`ETag` に `If-None-Match` で 304）、`proposal` つきは提案を適用した PNG |
