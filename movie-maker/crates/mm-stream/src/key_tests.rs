@@ -250,7 +250,7 @@ fn clip(p: &Project, start: f64, end: f64, ops: &str) -> ClipKey {
 #[test]
 fn 短い動画のキーは操作と範囲と範囲に掛かる中身で決まる() {
     let p = project();
-    // 余白を足した範囲は 1〜5 秒（カット a と b）。
+    // 前後に 2 秒を足した範囲は 1〜5 秒（カット a と b）。
     let k = clip(&p, 3.0, 3.0, "[1]");
     assert_eq!(clip(&project(), 3.0, 3.0, "[1]"), k, "同じ中身なら同じキー");
     let name = k.file_name();

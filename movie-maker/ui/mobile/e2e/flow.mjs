@@ -156,7 +156,7 @@ const fetchClip = (page, id) =>
 
 /**
  * 提案の区間の短い動画が MP4 で取れること。Chromium は Play で再生が進むことまで。
- * WebKit の Windows 版は H.264 を再生できないので、押すと作っている知らせが出て、読めない知らせで終わることまで。
+ * WebKit の Windows 版は H.264 を再生できないので、押すと作っている間の表示が出て、失敗の表示で終わることまで。
  */
 const checkClip = async (page, browserName, id) => {
   const c = await fetchClip(page, id);

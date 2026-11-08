@@ -88,7 +88,10 @@ fn 短い動画は提案を適用した_mp4_で_range_に_206_etag_に_304_で�
         (seconds - CLIP_SECONDS).abs() < DURATION_TOLERANCE,
         "長さ {seconds}"
     );
-    assert!(red < 200.0, "提案を適用した絵（title が消える）: 赤 {red}");
+    assert!(
+        red < 200.0,
+        "提案を適用したフレーム（title が消える）: 赤 {red}"
+    );
 
     let len = clip.body.len();
     let head = get_range(&r, &cookie, &path, "bytes=0-1");

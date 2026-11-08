@@ -95,7 +95,7 @@ impl FromStr for ClipKey {
     }
 }
 
-/// 提案の区間の短い動画のキー。提案を適用したプロジェクトの範囲の指紋に、適用した操作の JSON（`ops`）を添える。
+/// 提案の区間の短い動画のキー。提案を適用したプロジェクトの範囲に掛かるもののハッシュに、適用した操作の JSON（`ops`）を添える。
 pub(crate) fn clip_key(env: &KeyEnv<'_>, plan: &ClipPlan, ops: &str) -> Result<ClipKey> {
     let header = format!(
         "{CLIP_FORMAT}|{}|{}x{}@{}|{}-{}|ops={ops}",
@@ -106,7 +106,7 @@ pub(crate) fn clip_key(env: &KeyEnv<'_>, plan: &ClipPlan, ops: &str) -> Result<C
         plan.range.start,
         plan.range.end
     );
-    fingerprint(env, &plan.composition, plan.range, header).map(ClipKey)
+    range_hash(env, &plan.composition, plan.range, header).map(ClipKey)
 }
 
 /// キーを作る材料のうち、区間によらないもの。
@@ -132,11 +132,11 @@ pub(crate) fn segment_key(env: &KeyEnv<'_>, plan: &Plan, index: u64) -> Result<S
         range.start,
         range.end
     );
-    fingerprint(env, &plan.composition, range, header).map(SegmentKey)
+    range_hash(env, &plan.composition, range, header).map(SegmentKey)
 }
 
-/// コンポジション `composition` の `range` に掛かるものの指紋。`header` は出力の作り方（形式、大きさ、範囲など）。
-pub(crate) fn fingerprint(
+/// コンポジション `composition` の `range` に掛かるもののハッシュ。`header` は出力の作り方（形式、大きさ、範囲など）。
+fn range_hash(
     env: &KeyEnv<'_>,
     composition: &CompositionId,
     range: TimeRange,

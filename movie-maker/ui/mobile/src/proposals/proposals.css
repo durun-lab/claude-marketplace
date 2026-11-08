@@ -5,7 +5,7 @@
 .swap img { opacity: 0; }
 .swap img.show { opacity: 1; }
 .compare .seg { padding: 8px 12px; }
-/* 映像が出るまでは前後のフレームを見せたまま、上に作っている知らせを重ねる */
+/* 映像が出るまでは前後のフレームを見せたまま、上に作っている間の表示を重ねる */
 .compare .clip { opacity: 0; pointer-events: none; }
 .compare .clip.on { opacity: 1; pointer-events: auto; }
 .clip-note {

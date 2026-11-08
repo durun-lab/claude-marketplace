@@ -1,5 +1,5 @@
 //! 提案の区間の短い動画。ffprobe で読めること、範囲と長さ、moov が先頭にあること、`Range` に 206 で答えること、
-//! 提案を適用した絵になっていること、同じキーは作り直さないこと。
+//! 提案を適用したフレームになっていること、同じキーは作り直さないこと。
 
 use std::path::Path;
 use std::process::Command;
@@ -48,7 +48,7 @@ fn applied(base: &Project) -> Project {
     p
 }
 
-/// MP4 の最上位の箱の種類を順に並べる。
+/// MP4 の最上位のボックスの種類を順に並べる。
 fn top_boxes(mp4: &[u8]) -> Vec<String> {
     let mut out = Vec::new();
     let mut at = 0usize;
@@ -149,7 +149,7 @@ fn 短い動画は範囲の前後を足した長さの_360p_の_mp4_で_moov_が
 }
 
 #[test]
-fn 短い動画は提案を適用した絵で_range_に_206_で答え_同じキーは作り直さない() {
+fn 短い動画は提案を適用したフレームで_range_に_206_で答え_同じキーは作り直さない() {
     let Some(config) = ffmpeg_config() else {
         return;
     };
@@ -170,17 +170,17 @@ fn 短い動画は提案を適用した絵で_range_に_206_で答え_同じキ�
     let (red, green) = red_and_green_at(&after_path, 3.0);
     assert!(
         red > 200.0 && green < 40.0,
-        "提案を適用した絵: 赤 {red}、緑 {green}"
+        "提案を適用したフレーム: 赤 {red}、緑 {green}"
     );
     let (red_before, green_before) = red_and_green_at(&before_path, 3.0);
     assert!(
         green_before > 60.0,
-        "提案の前の絵: 赤 {red_before}、緑 {green_before}"
+        "元のフレーム: 赤 {red_before}、緑 {green_before}"
     );
     let (_, green_edge) = red_and_green_at(&after_path, 1.0);
     assert!(
         green_edge > 60.0,
-        "範囲の前の余白は覆わない: 緑 {green_edge}"
+        "範囲の前のプリロールは覆わない: 緑 {green_edge}"
     );
 
     let len = after.body.len();

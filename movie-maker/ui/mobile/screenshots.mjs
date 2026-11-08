@@ -150,7 +150,7 @@ const checkPlayback = async (base) => {
   if (order.includes(-1) || order.some((v, i) => i > 0 && v < order[i - 1])) throw new Error("master playlist was not read first");
 };
 
-/** 提案の Play が短い動画を再生し、映像が出たら作っている知らせを消すことを H.264 の入った Chrome で確かめて撮る。 */
+/** 提案の Play が短い動画を再生し、映像が出たら作っている間の表示を消すことを H.264 の入った Chrome で確かめて撮る。 */
 const checkClip = async (base) => {
   const browser = await chromium.launch({ channel: process.env.PLAYBACK_CHANNEL ?? "chrome" });
   const page = await (await browser.newContext({ ...devices["Pixel 7"], colorScheme: "light" })).newPage();
