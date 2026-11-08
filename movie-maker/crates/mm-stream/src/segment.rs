@@ -55,7 +55,7 @@ pub(crate) fn render_segment(
     };
     match export_run_interleaved(engine, &project, &options, urgent)? {
         ExportOutcome::Completed(_) => Ok(()),
-        // 取り消しの旗を渡していないので来ないが、来たら区間が無いことをエラーで返す
+        // 取り消しのフラグを渡していないので来ないが、来たら区間が無いことをエラーで返す
         ExportOutcome::Cancelled => Err(MmError::Internal("区間の書き出しが取り消された".into())),
     }
 }

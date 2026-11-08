@@ -1,12 +1,12 @@
-//! 1 つのレンダラーの書き出しの流れ。描画の段（`Engine` を持つ）と符号化の段（`Engine` を持たない別のスレッド）に
+//! 1 つのレンダラーの書き出しの流れ。描画の工程（`Engine` を持つ）とエンコードの工程（`Engine` を持たない別のスレッド）に
 //! 分け、上限のある受け渡しのキューでつなぐ。FFmpeg のフィルターグラフとエンコーダーのスレッド、OBS の描画スレッドと
-//! 符号化スレッドの間のキュー、GStreamer の `queue` 要素と同じ形。
+//! エンコードのスレッドの間のキュー、GStreamer の `queue` 要素と同じ形。
 //!
-//! - 描画の段はリードバックを `READBACK_AHEAD` 枚先行させ、フレームを 1 つ渡すごとに `between` に `Engine` を貸す。
+//! - 描画の工程はリードバックを `READBACK_AHEAD` 枚先行させ、フレームを 1 つ描くごとに `between` へ `Engine` を渡す。
 //!   配信の描画のスレッドは、そこで `GET /frame` と静止画のフレームを挟む。
-//! - 受け渡しのキューが満ちたら描画の段が待つ（背圧）。溜まるのはキューの `QUEUE_FRAMES` 枚と、符号化中の 1 枚まで。
-//! - 符号化の失敗は送信の失敗で描画の段に、描画の失敗と取り消しは終わりの印なしに閉じた受け渡しのキューで符号化の段に
-//!   伝わり、どちらの段も待ち続けない。
+//! - 受け渡しのキューが満ちたら描画の工程が待つ（背圧）。溜まるのはキューの `QUEUE_FRAMES` 枚と、エンコード中の 1 枚まで。
+//! - エンコードの失敗は送信の失敗で描画の工程に、描画の失敗、取り消し、パニックは終端なしに閉じた受け渡しのキューで
+//!   エンコードの工程に伝わり、どちらの工程も待ち続けない。
 
 use std::collections::VecDeque;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
@@ -22,26 +22,26 @@ use mm_types::{MmError, RationalTime, Result};
 use crate::passes::{Plan, Progress};
 use crate::CANCELLED_MARK;
 
-/// 描画の段で先行させるリードバックの数。描画から符号化までにこの分の遅れが入る。
+/// 描画の工程で先行させるリードバックの数。描画からエンコードまでにこの分の遅れが入る。
 const READBACK_AHEAD: usize = 3;
 /// 受け渡しのキューの長さ（フレーム）。1080p で NV12 は 1 枚 3 MB、RGBA の f32 は 33 MB。
 const QUEUE_FRAMES: usize = 4;
-/// 符号化の段が先に止まったときの、描画の段の送信のエラー。符号化の段のエラーを返すので外へは出ない。
-const ENCODER_STOPPED: &str = "符号化の段が止まった";
-/// 描画の段が終わりの印を送らずに止まったときの、符号化の段のエラー。描画の段のエラーを返すので外へは出ない。
-const DRAW_STOPPED: &str = "描画の段が止まった";
+/// エンコードの工程が先に止まったときの、描画の工程の送信のエラー。エンコードの工程のエラーを返すので外へは出ない。
+const ENCODER_STOPPED: &str = "エンコードの工程が止まった";
+/// 描画の工程が終端を送らずに止まったときの、エンコードの工程のエラー。描画の工程のエラーを返すので外へは出ない。
+const DRAW_STOPPED: &str = "描画の工程が止まった";
 
-/// フレームの間に `Engine` を貸す先。
+/// フレームの間に `Engine` を渡す先。
 pub(crate) type Between<'a> = &'a mut dyn FnMut(&mut Engine);
 
-/// 描画の段から符号化の段への受け渡し。
+/// 描画の工程からエンコードの工程への受け渡し。
 enum Handoff {
     Frame(ExportFrame),
-    /// 区間の全部を渡し終えた。これが来ずに受け渡しのキューが閉じたら、描画の段が止まった。
+    /// 終端。区間の全部を渡し終えた。これが来ずに受け渡しのキューが閉じたら、描画の工程が止まった。
     End,
 }
 
-/// 1 つのレンダラーで区間を描き、別のスレッドの符号化の段でエンコーダーに押す。押したフレームの数を返す。
+/// 1 つのレンダラーで区間を描き、別のスレッドのエンコードの工程でエンコーダーに送る。送ったフレームの数を返す。
 pub(crate) fn export_staged(
     engine: &mut Engine,
     draw: &Draw<'_, '_>,
@@ -50,11 +50,12 @@ pub(crate) fn export_staged(
     between: Between<'_>,
 ) -> Result<usize> {
     let nv12 = accepts_nv12(encoder)?;
-    let (queue, received) = sync_channel(QUEUE_FRAMES);
-    // 符号化の段のスパン（`export.encode`）を呼んだ側の購読者と親のスパンの下に集める。
+    // エンコードの工程のスパン（`export.encode`）を呼んだ側の購読者と親のスパンの下に集める。
     let dispatch = tracing::dispatcher::get_default(Clone::clone);
     let parent = tracing::Span::current();
     std::thread::scope(|scope| {
+        // 送信側をスコープの中で作る。描画の工程がパニックしても、スコープがスレッドを待つ前に閉じるので待ち続けない。
+        let (queue, received) = sync_channel(QUEUE_FRAMES);
         let encoding = std::thread::Builder::new()
             .name("export-encode".into())
             .spawn_scoped(scope, move || {
@@ -67,7 +68,7 @@ pub(crate) fn export_staged(
         drop(queue);
         let encoded = encoding.join().unwrap_or_else(|_| {
             Err(MmError::Internal(
-                "符号化の段のスレッドがパニックした".into(),
+                "エンコードの工程のスレッドがパニックした".into(),
             ))
         });
         merge(drawn, encoded)
@@ -83,7 +84,7 @@ fn accepts_nv12(encoder: &mut dyn Encoder) -> Result<bool> {
     }
 }
 
-/// 両方の段の結果をまとめる。先に止まった段のエラーを返し、もう一方の「相手が止まった」は捨てる。
+/// 両方の工程の結果をまとめる。先に止まった工程のエラーを返し、もう一方の「相手が止まった」は捨てる。
 fn merge(drawn: Result<usize>, encoded: Result<usize>) -> Result<usize> {
     let stopped = |e: &MmError| matches!(e, MmError::Internal(m) if m == ENCODER_STOPPED);
     match (drawn, encoded) {
@@ -92,14 +93,14 @@ fn merge(drawn: Result<usize>, encoded: Result<usize>) -> Result<usize> {
         (Err(d), Ok(_)) => Err(d),
         (Ok(d), Ok(e)) if d == e => Ok(d),
         (Ok(d), Ok(e)) => Err(MmError::Internal(format!(
-            "描画の段が渡した {d} フレームと、符号化の段が押した {e} フレームが違う"
+            "描画の工程が渡した {d} フレームと、エンコードの工程が送った {e} フレームが違う"
         ))),
     }
 }
 
-/// 符号化の段。受け渡しのキューから受け取った順にエンコーダーに 1 枚ずつ押す。押したフレームの数を返す。
+/// エンコードの工程。受け渡しのキューから受け取った順にエンコーダーに 1 枚ずつ送る。送ったフレームの数を返す。
 fn encode_stage(encoder: &mut dyn Encoder, received: &Receiver<Handoff>) -> Result<usize> {
-    let mut pushed = 0;
+    let mut sent = 0;
     loop {
         match received.recv() {
             Ok(Handoff::Frame(ExportFrame::Nv12(frame))) => {
@@ -108,14 +109,14 @@ fn encode_stage(encoder: &mut dyn Encoder, received: &Receiver<Handoff>) -> Resu
             Ok(Handoff::Frame(ExportFrame::Rgba(image))) => {
                 encoder.push_frames(std::slice::from_ref(&image))?;
             }
-            Ok(Handoff::End) => return Ok(pushed),
+            Ok(Handoff::End) => return Ok(sent),
             Err(_) => return Err(MmError::Internal(DRAW_STOPPED.into())),
         }
-        pushed += 1;
+        sent += 1;
     }
 }
 
-/// 描画の段が描くもの。
+/// 描画の工程が描くもの。
 pub(crate) struct Draw<'a, 'p> {
     pub project: &'a Project,
     pub plan: &'a Plan<'p>,
@@ -123,7 +124,7 @@ pub(crate) struct Draw<'a, 'p> {
 }
 
 impl Draw<'_, '_> {
-    /// 区間を描いて符号化の段へ渡し、終わりの印を送る。渡したフレームの数を返す。
+    /// 区間を描いてエンコードの工程へ渡し、終端を送る。渡したフレームの数を返す。
     fn run(
         &self,
         engine: &mut Engine,
@@ -173,7 +174,7 @@ impl Draw<'_, '_> {
     }
 }
 
-/// 一番古いフレームのリードバックを受け取り、符号化の段へ渡す。`started` から受け渡しのキューに入れる前までを
+/// 一番古いフレームのリードバックを受け取り、エンコードの工程へ渡す。`started` から受け渡しのキューに入れる前までを
 /// 1 フレームの描画の時間（`export.render`）にし、キューが満ちて待った時間は `export.queue_wait` に分ける。
 fn hand_off(
     engine: &mut Engine,
@@ -201,7 +202,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn 先に止まった段のエラーを返す() {
+    fn 先に止まった工程のエラーを返す() {
         let encoder_failed = merge(
             Err(MmError::Internal(ENCODER_STOPPED.into())),
             Err(MmError::Corrupt("push".into())),
@@ -217,7 +218,7 @@ mod tests {
     }
 
     #[test]
-    fn 渡した数と押した数が違えばエラー() {
+    fn 渡した数と送った数が違えばエラー() {
         assert_eq!(merge(Ok(5), Ok(5)).unwrap(), 5);
         assert!(merge(Ok(5), Ok(4)).is_err());
     }

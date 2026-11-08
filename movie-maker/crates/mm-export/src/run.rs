@@ -47,7 +47,7 @@ pub fn export_run(
     export_run_interleaved(engine, project, options, &mut |_| {})
 }
 
-/// [`export_run`] と同じ書き出しで、描画の段がフレームを 1 つ符号化の段へ渡すごとに `between` に `Engine` を貸す。
+/// [`export_run`] と同じ書き出しで、描画の工程がフレームを 1 つ描くごとに `between` へ `Engine` を渡す。
 /// 配信の描画のスレッドが、区間の途中に `GET /frame` と静止画のフレームを挟むのに使う。
 /// 並行の描画（[`ExportOptions::parallel`]）の間と、音を混ぜる間は呼ばない。
 pub fn export_run_interleaved(

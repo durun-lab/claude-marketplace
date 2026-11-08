@@ -1,5 +1,5 @@
 //! 映像を描いてエンコーダーに送る工程。2 パスのコーデックは同じ描画を 2 回通し、並行の描画は別のエンジンで描く。
-//! 1 つのレンダラーで描くときは、描画の段と符号化の段に分けて流す（`stages`）。
+//! 1 つのレンダラーで描くときは、描画の工程とエンコードの工程に分けて流す（`stages`）。
 //! 音は映像と同じ取り消しで止まるよう、短い区間ずつ混ぜてつなぐ。
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -60,7 +60,7 @@ pub(crate) fn frames_in(range: TimeRange, settings: &EncodeSettings) -> usize {
 }
 
 /// 映像を描く手段。並行の描画は別のエンジンを組むので、設定だけでよい。
-/// 1 つのエンジンで描くときは、フレームの間にそのエンジンを貸す先も持つ。
+/// 1 つのエンジンで描くときは、フレームの間にそのエンジンを渡す先も持つ。
 pub(crate) enum Drawer<'a> {
     Engine(&'a mut Engine, Between<'a>),
     Workers(&'a RuntimeConfig),
@@ -241,7 +241,7 @@ pub(crate) fn export_frames(
     export_frames_interleaved(engine, project, plan, settings, encoder, &mut |_| {})
 }
 
-/// `export_frames` で、フレームの間に `between` へエンジンを貸す。
+/// `export_frames` で、フレームの間に `between` へエンジンを渡す。
 #[cfg(test)]
 pub(crate) fn export_frames_interleaved(
     engine: &mut Engine,

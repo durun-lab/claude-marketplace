@@ -218,7 +218,7 @@ pub trait Renderer: Send {
     ) -> Result<usize> {
         export_range_rgba(self, req, encoder, batch, sink)
     }
-    /// 書き出しの描画の段の 1 フレーム。描いてリードバックを出し、待たずに返す。`nv12` が真なら NV12 で、
+    /// 書き出しの描画の工程の 1 フレーム。描いてリードバックを出し、待たずに返す。`nv12` が真なら NV12 で、
     /// 偽なら RGBA で受け取る。呼ぶ側（`mm-export`）は数フレーム先行させてから [`PendingFrame::finish`] で受け取り、
     /// フレームの間にほかの描画を挟んでよい。
     ///

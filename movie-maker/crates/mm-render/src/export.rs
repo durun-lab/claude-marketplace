@@ -323,7 +323,7 @@ impl PendingFrame for RgbaPending {
 
 impl WgpuRenderer {
     /// 書き出しの 1 フレームを描き、NV12（`nv12` が偽なら RGBA）のリードバックを出して待たずに返す。
-    /// 描いたフレームはコピーを提出した後に手放す（GPU のキューの順で、次の描画はコピーの後になる）。
+    /// 描いたフレームはコピーを提出した後に解放する（GPU のキューの順で、次の描画はコピーの後になる）。
     pub(crate) fn begin_export_frame(
         &mut self,
         req: &RenderRequest<'_>,
@@ -351,8 +351,8 @@ impl WgpuRenderer {
         pending
     }
 
-    /// 書き出しの区間。リードバックを `READBACK_AHEAD` 枚先行させて描き、出来た順にエンコーダーに押す。
-    /// エンコーダーが NV12 を受けなければ RGBA で押す。
+    /// 書き出しの区間。リードバックを `READBACK_AHEAD` 枚先行させて描き、出来た順にエンコーダーに送る。
+    /// エンコーダーが NV12 を受けなければ RGBA で送る。
     pub(crate) fn export_pipelined(
         &mut self,
         req: &RangeRequest<'_>,

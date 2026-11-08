@@ -331,7 +331,7 @@ fn has_partial(hls: &Path) -> bool {
 }
 
 #[test]
-fn 区間を作っている途中にも_engine_を借りる仕事が割り込む() {
+fn 区間を作っている途中にも_engine_を借用する仕事が割り込む() {
     let Some(config) = ffmpeg_config() else {
         return;
     };
@@ -350,7 +350,7 @@ fn 区間を作っている途中にも_engine_を借りる仕事が割り込む
             body
         })
     };
-    // GET /frame の代わりに、区間を待つ間ずっと `Engine` を借りる仕事を積み、区間の途中で動けた回数を数える
+    // GET /frame の代わりに、区間を待つ間ずっと `Engine` を借用する仕事を積み、区間の途中で動けた回数を数える
     let hls = dir.path().join("cache/mobile/hls");
     let mut waits = Vec::new();
     while !done.load(Ordering::SeqCst) {

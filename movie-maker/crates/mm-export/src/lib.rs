@@ -2,11 +2,12 @@
 //!
 //! インターフェースの実装を選ぶのは mm-runtime だけという契約のため、このクレートは実装を知らず、`Engine` から
 //! レンダラーとエンコーダーを取り出して使う（[`Engine::renderer`]、[`Engine::encoders`]）。
-//! 1 つのレンダラーで描くときは、描画の段（`Engine` を持つ）と符号化の段（`Engine` を持たない別のスレッド）を
-//! 上限のある受け渡しのキューでつなぐ（`stages`）。描画の段はフレームごとに `Engine` を手放せる（[`export_run_interleaved`]）。
-//! 工程ごとの時間はスパン `export.render`（描画の段の 1 フレーム。描画、NV12 への変換の提出、リードバック）、
-//! `export.readback`（そのうちリードバックの待ちと写し）、`export.queue_wait`（受け渡しのキューが満ちて待った時間）、
-//! `export.encode`（符号化の段の 1 回の送信）に出す。
+//! 1 つのレンダラーで描くときは、描画の工程（`Engine` を持つ）とエンコードの工程（`Engine` を持たない別のスレッド）を
+//! 上限のある受け渡しのキューでつなぐ（`stages`）。描画の工程はフレームを 1 つ描くごとに `Engine` を呼び出し側に渡せる
+//! （[`export_run_interleaved`]）。
+//! 工程ごとの時間はスパン `export.render`（描画の工程の 1 フレーム。描画、NV12 への変換の提出、リードバック）、
+//! `export.readback`（そのうちリードバックの待ちとコピー）、`export.queue_wait`（受け渡しのキューが満ちて待った時間）、
+//! `export.encode`（エンコードの工程の 1 回の送信）に出す。
 //!
 //! - レンダーターゲットごと（[`export_targets`]）、範囲の指定（[`ExportOptions::range`]）、
 //!   sequence のまま（[`ExportOptions::sequence`]）の書き出し。
