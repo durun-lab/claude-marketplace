@@ -57,7 +57,7 @@ import { fetchYahooHome, fetchYahooSearch } from './yahoo.ts';
 import { resizeTerminal, streamTerminal, writeTerminal } from './terminal.ts';
 import { abortCdItem, CdRipError, ejectCd, exportCdItem, retryCdResearch, saveCdMeta, sendCdCover, sendCdRekordbox, setCdCover, installCdTool, retryCdItem, skipCdItem, saveCdRip, saveCdRipSettings, setCdRipAccepting, setCdRipList, streamCdRip } from './cdrip.ts';
 import { answerFlRemoval, createFlLoopback, installFlScripts, launchFlStudio, setFlSession, setFlSettings, streamFlConnect } from './flconnect.ts';
-import { installMovieMaker, launchMovieMaker, setMmProject, setMmSession, streamMovieMaker } from './movieMaker.ts';
+import { installMovieMaker, launchMovieMaker, refreshMobile, setMmProject, setMmSession, streamMovieMaker } from './movieMaker.ts';
 import { WALLPAPER_TYPES, clearWallpaper, readWallpaper, saveWallpaper } from './wallpaper.ts';
 
 const PORT = Number(process.env.DURUN_DASHBOARD_PORT ?? 7337);
@@ -1304,6 +1304,7 @@ const POST_ROUTES: Route[] = [
   // ビルドしてファイルを書き、アプリを起動するので、他のサイトから GET で起こされないよう POST で受ける。
   [/^\/api\/moviemaker\/install$/, () => installMovieMaker()],
   [/^\/api\/moviemaker\/launch$/, () => launchMovieMaker(), WEB_API_MS],
+  [/^\/api\/moviemaker\/mobile\/check$/, async () => (await refreshMobile(), { message: 'モバイル版の条件を確かめ直しました。' }), WEB_API_MS],
   [/^\/api\/terminal\/([\w-]+)\/input$/, ([, id = ''], b) => terminalInput(id, b)],
   [/^\/api\/terminal\/([\w-]+)\/resize$/, ([, id = ''], b) => terminalResize(id, b)],
   [/^\/api\/proofread\/files\/([\w-]{1,64})$/, ([, id = ''], b) => writeProofFile(proofFileOf(id, b))],

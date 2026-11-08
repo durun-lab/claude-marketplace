@@ -6,7 +6,7 @@ import { api, attempt } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
 import { openFileFloat } from './Docs.tsx';
 import { type Float, FloatFrame, dock, floatUp, setFloatSettings } from './Float.tsx';
-import { describeMmEntry, type MmAction, type MmStep, mmSteps } from './mmSteps.ts';
+import { describeMmEntry, type MmAction, type MmGuideItem, type MmStep, mmSteps, mobileSteps } from './mmSteps.ts';
 import { Chip, Empty } from './ui.tsx';
 import { XpConfirm } from './XpConfirm.tsx';
 
@@ -57,6 +57,32 @@ const useMmView = (params: () => { session?: string; project?: string }): MovieM
 
 const ACTIONS: Record<MmAction, () => Promise<{ message: string }>> = { install: api.mmInstall, launch: api.mmLaunch };
 
+/** 人が打つコマンド。ダッシュボードは実行せず、コピーだけを手伝う。 */
+const Command = ({ text }: { text: string }) => {
+  const [copied, setCopied] = useState(false);
+  const copy = () => {
+    void navigator.clipboard.writeText(text).then(() => setCopied(true), () => setCopied(false));
+  };
+  return (
+    <span class="mm-command">
+      <code>{text}</code>
+      <button class="btn btn-sm" type="button" onClick={copy}>{copied ? 'コピーした' : 'コピー'}</button>
+    </span>
+  );
+};
+
+const GuideList = ({ items }: { items: MmGuideItem[] }) => (
+  <ol class="mm-guide">
+    {items.map((g) => (
+      <li key={g.text}>
+        {g.text}
+        {g.link && <> <a href={g.link.href} target="_blank" rel="noopener noreferrer">{g.link.label}</a></>}
+        {g.command && <Command text={g.command} />}
+      </li>
+    ))}
+  </ol>
+);
+
 const Steps = ({ steps }: { steps: MmStep[] }) => {
   const [message, setMessage] = useState<string>();
   const run = (step: MmStep) => {
@@ -74,6 +100,7 @@ const Steps = ({ steps }: { steps: MmStep[] }) => {
           <div class="fl-step-body">
             <strong>{s.title}</strong>
             {s.text && <p>{s.text}</p>}
+            {s.guide && <GuideList items={s.guide} />}
           </div>
           {s.action && (
             <button class="btn btn-sm" disabled={!!s.action.disabled} title={s.action.disabled} onClick={() => run(s)}>
@@ -161,15 +188,34 @@ const LinkChips = ({ v }: { v: MovieMakerView }) => (
   <div class="fl-links">
     {v.install.path ? <Chip tone="ok" title={v.install.path}>入っている{v.install.commit ? `（${v.install.commit}${v.install.features?.length ? `、${v.install.features.join('、')}` : ''}）` : ''}</Chip> : <Chip tone="muted">入っていない</Chip>}
     {v.link.status === 'connected' ? <Chip tone="ok" title={`127.0.0.1:${v.link.port}`}>movie-maker とつながっている（version {v.link.version ?? '?'}）</Chip> : <Chip tone="muted">movie-maker とつながっていない</Chip>}
-    {v.mobileUrl ? (
-      <a class="mm-mobile-link" href={v.mobileUrl} target="_blank" rel="noopener noreferrer" title="スマホで開く。初回は movie-maker の登録の符号で端末を登録します">
-        モバイル版を開く: {v.mobileUrl}
-      </a>
-    ) : (
-      <Chip tone="muted" title="tailscale status で tailnet での名前が読めると出ます">モバイル版の URL なし（Tailscale が動いていません）</Chip>
-    )}
   </div>
 );
+
+const MOBILE_NOTE = 'スマホで開いたら、PC の movie-maker の Devices パネルに出る登録コードで端末を登録します。';
+
+/** モバイル版。3 つの条件がそろえばリンクを、足りなければ足りない所の手順を出す。 */
+const MobileSection = ({ v }: { v: MovieMakerView }) => {
+  const m = v.mobile;
+  const recheck = <button class="btn btn-sm" type="button" onClick={() => void attempt('モバイル版の確認', api.mmMobileCheck)}>確かめ直す</button>;
+  if (!m) return <p class="fl-note">モバイル版の条件を確かめています…</p>;
+  const steps = mobileSteps(v, m);
+  if (!steps.length && m.url) {
+    return (
+      <div class="mm-mobile">
+        <a class="mm-mobile-link" href={m.url} target="_blank" rel="noopener noreferrer">モバイル版を開く: {m.url}</a>
+        {recheck}
+        <p class="fl-note">{MOBILE_NOTE}</p>
+      </div>
+    );
+  }
+  return (
+    <div class="mm-mobile">
+      <div class="mm-mobile-head"><strong>モバイル版を開けません</strong>{recheck}</div>
+      <Steps steps={steps} />
+      <p class="fl-note">{MOBILE_NOTE}</p>
+    </div>
+  );
+};
 
 export const MovieMakerFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }) => {
   const settingsRef = useRef({ session: f.tab.settings?.session, project: f.tab.settings?.project });
@@ -214,6 +260,7 @@ export const MovieMakerFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot 
             </label>
             <ProjectField project={project} recent={v?.recent ?? []} />
             <LinkChips v={v} />
+            <MobileSection v={v} />
             <Steps steps={mmSteps(v)} />
             {(v.install.busy || v.install.output.length > 0) && <pre class="fl-pre mm-output">{v.install.output.join('\n')}</pre>}
             <Log v={v} />

@@ -64,7 +64,7 @@ const HUMAN_ACTORS = new Set(['gui', 'mobile']);
 export const isHuman = (change: MmChange): boolean => HUMAN_ACTORS.has(change.actor);
 
 /** モバイル版の待ち受けの tailnet 上の HTTPS のポート。movie-maker の MOBILE_HTTPS_PORT と同じ。 */
-const MOBILE_HTTPS_PORT = 8443;
+export const MOBILE_HTTPS_PORT = 8443;
 
 /**
  * モバイル版の URL。tailnet での名前は `tailscale status --json` の Self.DNSName で、movie-maker の MobileServer::url と同じ元から作る。
