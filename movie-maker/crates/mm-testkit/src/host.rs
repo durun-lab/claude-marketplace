@@ -142,11 +142,15 @@ impl HostFixture {
     }
 }
 
+/// 期限を見ない要求（起動、Prepare、描画、再起動後の Ping）の待つ長さ。CPU が詰まると本物のホストは数秒かかるので、
+/// 期限は `HostSpec::default_timeout` を超える要求の検査にだけ使う。
+const SETUP_LIMIT: Duration = Duration::from_secs(60);
+
 /// ホストの契約。
 pub fn contract(make: impl Fn() -> Arc<dyn HostLauncher>, fx: &HostFixture) {
     let launcher = make();
     let mut host = launcher.spawn(&fx.spec).expect("起動");
-    let timeout = fx.spec.default_timeout;
+    let timeout = SETUP_LIMIT;
     assert!(host.is_alive(), "起動直後は生きている");
     assert!(
         matches!(
@@ -207,7 +211,7 @@ fn check_timeout_and_restart(host: &mut dyn HostProcess, fx: &HostFixture, size:
     assert!(host.is_alive(), "restart の後は生きている");
     assert!(
         matches!(
-            host.request(&HostRequest::Ping, timeout),
+            host.request(&HostRequest::Ping, SETUP_LIMIT),
             Ok(HostResponse::Pong { .. })
         ),
         "再起動後も Ping が通る"

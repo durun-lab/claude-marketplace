@@ -143,6 +143,7 @@ movie-maker/
     mm-runtime/         assemble()（実装を選んで Engine を作る）、ノードの種類のレジストリ、再生の状態（再生位置、選択）
     mm-export/          レンダーターゲット → 区間 → 並行の描画 → mux、ラウドネスの正規化、字幕とチャプター
     mm-pack/            パック（packs/）の読み込み、検査、マクロとテンプレートの操作の列への展開
+    mm-story/           Story の読み出し（文字起こしの単語、話題、選別、範囲の時刻、全文検索）。アプリとモバイル向けの HTTP が使う
     mm-serve/           HTTP（axum）と MCP。操作と描画を外に出す
     mm-ui-layout/       wgpu サーフェス上の UI の計算（端のつまみ、スナップ、範囲）。純関数
     mm-ui-wgpu/         Program、Timeline、メーターの描画と入力
