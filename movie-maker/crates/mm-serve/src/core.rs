@@ -406,7 +406,7 @@ impl Core {
             .map_err(ServeError::from)
     }
 
-    /// モバイルの映像の配信（コマ、HLS、素材の音だけ）。描画が `Streamer` でなければ `None`。
+    /// モバイルの映像の配信（静止画のフレーム、HLS、素材の音だけ）。描画が `Streamer` でなければ `None`。
     pub fn streamer(&self) -> Option<Arc<mm_stream::Streamer>> {
         self.frames.as_ref().and_then(|f| f.streamer())
     }

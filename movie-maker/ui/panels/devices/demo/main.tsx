@@ -11,7 +11,7 @@ const HOUR_MS = 3_600_000;
 const SERVE_COMMAND = "tailscale serve --bg --https=8443 http://127.0.0.1:7338";
 const URL_BASE = "https://desk.tail1234.ts.net:8443/m/";
 
-/** QR に見せた市松模様（本物の QR はアプリが `qrcode` で作る）。 */
+/** QR に見せた市松模様（実際の QR はアプリが `qrcode` で作る）。 */
 const fakeQr = (): string => {
   const cells = 21;
   const rects: string[] = [];

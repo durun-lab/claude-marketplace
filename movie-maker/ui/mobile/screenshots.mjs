@@ -1,5 +1,5 @@
 // dist/ を /m/ で配り、iPhone（WebKit）と Android（Chromium）の端末の設定でスクリーンショットを撮る。
-// 偽の PC のデモ（demo.html）で画面を撮り、index.html では Service Worker とマニフェストが働くことを確かめる。
+// モックの PC のデモ（demo.html）で画面を撮り、index.html では Service Worker とマニフェストが働くことを確かめる。
 // playwright は repo の依存にせず、PLAYWRIGHT_DIR（playwright を入れた場所）から読む。
 // 使い方: pnpm build && PLAYWRIGHT_DIR=/d/dev/pw node screenshots.mjs
 import { createReadStream } from "node:fs";
@@ -17,7 +17,7 @@ const DIST = fileURLToPath(new URL("./dist/", import.meta.url));
 const OUT = fileURLToPath(new URL("./screenshots/", import.meta.url));
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".webmanifest": "application/manifest+json" };
 
-// PC の映像の配信の偽物。HLS と提案の短い動画は demo/media の実物、フレームは前後で色の違う SVG。
+// PC の映像の配信のモック。HLS は demo/media の実物、フレームは前後で色の違う SVG。
 const MEDIA = fileURLToPath(new URL("./demo/media/", import.meta.url));
 const MEDIA_TYPES = { ".m3u8": "application/vnd.apple.mpegurl", ".m4s": "video/iso.segment", ".mp4": "video/mp4" };
 const frameSvg = (query) => {
@@ -28,12 +28,11 @@ const frameSvg = (query) => {
 <circle cx="${240 + shift}" cy="200" r="90" fill="${fg}"/><text x="360" y="360" font-size="34" font-family="sans-serif" fill="#fff" text-anchor="middle">${after ? "After" : "Before"} t=${query.get("t")}s</text></svg>`;
 };
 const serveMedia = async (url, res) => {
-  const name = url.pathname.split("/").pop();
+  const file = url.pathname.split("/").pop();
   if (url.pathname === "/m/api/frame") {
     res.writeHead(200, { "Content-Type": "image/svg+xml" });
     return res.end(frameSvg(url.searchParams));
   }
-  const file = url.pathname.endsWith("/clip.mp4") ? "clip.mp4" : name.replace(/^360p_init/, "360p_init");
   const ok = /^[\w.]+$/.test(file) && (await stat(MEDIA + file).catch(() => null));
   res.writeHead(ok ? 200 : 404, { "Content-Type": MEDIA_TYPES[extname(file)] ?? "text/plain" });
   if (ok) createReadStream(MEDIA + file).pipe(res);
@@ -45,7 +44,7 @@ const serve = () =>
     const server = createServer(async (req, res) => {
       const url = new URL(req.url, "http://x");
       const path = url.pathname;
-      if (/^\/m\/api\/(stream\/|frame|proposals\/\d+\/clip\.mp4)/.test(path)) return serveMedia(url, res);
+      if (/^\/m\/api\/(stream\/|frame)/.test(path)) return serveMedia(url, res);
       const file = path === "/m/" ? "index.html" : path.replace(/^\/m\//, "");
       const ok = path.startsWith("/m/") && !file.includes("..") && (await stat(DIST + file).catch(() => null));
       res.writeHead(ok ? 200 : 404, { "Content-Type": TYPES[extname(file)] ?? "text/plain" });

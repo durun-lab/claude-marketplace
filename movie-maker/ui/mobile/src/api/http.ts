@@ -1,11 +1,11 @@
 import { errorMessage } from "./errors.ts";
 
-/** 人の待ち受けのパスの根。`GET /m/` の画面と API が同じオリジンで同じ根の下にある。 */
+/** 人の待ち受けのパスのルート。`GET /m/` の画面と API が同じオリジンで同じルートの下にある。 */
 export const MOBILE_ROOT = "/m";
 export const API_ROOT = `${MOBILE_ROOT}/api`;
 export const PAIR_PATH = `${MOBILE_ROOT}/pair`;
 
-/** 書き込みの要求に付ける見出し。別のオリジンのフォームからの送信を PC が止める。 */
+/** 書き込みの要求に付けるヘッダー。別のオリジンのフォームからの送信を PC が止める。 */
 export const MOBILE_HEADER = "X-MM-Mobile";
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;

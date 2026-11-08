@@ -1,4 +1,4 @@
-//! 人の待ち受けの SSE。端末の登録を外したら、開いている列を閉じる。
+//! 人の待ち受けの SSE。端末の登録を外したら、開いているストリームを閉じる。
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpStream};
@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use super::{rig, Req, Rig};
 
-/// 列が閉じるのを待つ上限。閉じなければ読み出しが時間切れで落ちる。
+/// ストリームが閉じるのを待つ上限。閉じなければ読み出しが時間切れで失敗する。
 const CLOSE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// `GET /m/api/events` を開き、`hello` を読んだところで返す。
@@ -52,7 +52,7 @@ fn 登録を外した端末の_sse_は閉じ_ほかの端末の_sse_は続く() 
         .read_to_end(&mut rest)
         .expect("登録を外した端末の SSE が閉じない");
 
-    // 外していない端末の列には、外した後の変更も届く。
+    // 外していない端末のストリームには、外した後の変更も届く。
     let marker = serde_json::json!({
         "op": {"op": "addMarker", "composition": "main",
                "marker": {"id": "m1", "time": {"num": 1, "den": 1}, "name": "見る"}},
@@ -64,7 +64,11 @@ fn 登録を外した端末の_sse_は閉じ_ほかの端末の_sse_は続く() 
     );
     loop {
         let mut line = String::new();
-        assert_ne!(tablet_events.read_line(&mut line).unwrap(), 0, "列が閉じた");
+        assert_ne!(
+            tablet_events.read_line(&mut line).unwrap(),
+            0,
+            "ストリームが閉じた"
+        );
         if line.trim_end() == "event: change" {
             break;
         }

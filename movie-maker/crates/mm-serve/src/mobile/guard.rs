@@ -1,4 +1,4 @@
-//! 人の待ち受けの守り。`docs/design/12-mobile.md` の「つながり方」の順に確かめ、落ちた理由をログに残す。
+//! 人の待ち受けのガード。`docs/design/12-mobile.md` の「つながり方」の順に確かめ、拒否した理由をログに残す。
 //!
 //! 1. `Host` が tailnet での名前で、`Origin` があれば同じオリジン（403）。
 //! 2. `tailscale serve` が付ける `Tailscale-User-Login` がある（401）。
@@ -15,9 +15,9 @@ use axum::response::{IntoResponse, Response};
 use super::devices::DeviceInfo;
 use super::{MobileError, MobileState};
 
-/// `tailscale serve` が tailnet の要求に付ける本人の見出し。外から来た同じ見出しは `tailscale serve` が消す。
+/// `tailscale serve` が tailnet の要求に付ける本人のヘッダー。外から来た同じヘッダーは `tailscale serve` が消す。
 pub const LOGIN_HEADER: &str = "tailscale-user-login";
-/// 書き込みの要求に要る見出し。別のオリジンのフォームは付けられない。
+/// 書き込みの要求に要るヘッダー。別のオリジンのフォームは付けられない。
 pub const MOBILE_HEADER: &str = "x-mm-mobile";
 /// 端末の資格を入れるクッキーの名前。
 pub const COOKIE_NAME: &str = "mm_device";
@@ -26,8 +26,8 @@ pub const PAIR_PATH: &str = "/m/pair";
 /// 資格の要る API の前置き。これの外の読み出し（PWA の画面）は資格の無い端末にも配り、登録の画面を出す。
 const API_PREFIX: &str = "/m/api/";
 
-/// 守りを通った要求に、登録した端末（[`DeviceInfo`]）と、その端末の発行元（`Caller`、`Entry::Mobile`）を
-/// `Extension` で付ける。Claude の待ち受けと共有するハンドラーは `Extension<Caller>` があれば本体の名乗りを受けない。
+/// ガードを通った要求に、登録した端末（[`DeviceInfo`]）と、その端末の発行元（`Caller`、`Entry::Mobile`）を
+/// `Extension` で付ける。Claude の待ち受けと共有するハンドラーは `Extension<Caller>` があれば本体の発行元の指定を受けない。
 pub(crate) async fn guard(
     State(st): State<Arc<MobileState>>,
     mut req: Request,
@@ -124,7 +124,7 @@ fn check_device(
         return Err(refuse(
             StatusCode::UNAUTHORIZED,
             "no_device",
-            "端末の資格が無い（登録の符号で登録する）",
+            "端末の資格が無い（登録コードで登録する）",
         ));
     }
     let mut found = None;
@@ -163,7 +163,7 @@ fn header_str<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
     headers.get(name).and_then(|v| v.to_str().ok())
 }
 
-/// `Cookie` の見出し（複数に分かれていてもよい）から、名前の合う値を全部引く。
+/// `Cookie` のヘッダー（複数に分かれていてもよい）から、名前の合う値を全部引く。
 fn cookies<'a>(headers: &'a HeaderMap, name: &'a str) -> impl Iterator<Item = &'a str> {
     headers
         .get_all(header::COOKIE)
@@ -194,7 +194,7 @@ mod tests {
     }
 
     #[test]
-    fn クッキーは複数の組と見出しから引ける() {
+    fn クッキーは複数の組とヘッダーから引ける() {
         let mut h = HeaderMap::new();
         h.append(header::COOKIE, "a=1; mm_device=abc".parse().unwrap());
         assert_eq!(cookies(&h, COOKIE_NAME).collect::<Vec<_>>(), ["abc"]);

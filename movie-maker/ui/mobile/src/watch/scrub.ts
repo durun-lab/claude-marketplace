@@ -1,10 +1,10 @@
-/** 棒の上の位置（0〜1）から時刻（秒）を求める。 */
+/** スクラブバーの上の位置（0〜1）から時刻（秒）を求める。 */
 export const timeAt = (clientX: number, box: { left: number; width: number }, duration: number): number => {
   if (box.width <= 0 || duration <= 0) return 0;
   return Math.min(1, Math.max(0, (clientX - box.left) / box.width)) * duration;
 };
 
-/** 時刻（秒）の棒の上の位置（0〜1）。尺が分からないうちは 0。 */
+/** 時刻（秒）のスクラブバーの上の位置（0〜1）。尺が分からないうちは 0。 */
 export const fractionOf = (seconds: number, duration: number): number =>
   duration > 0 ? Math.min(1, Math.max(0, seconds / duration)) : 0;
 

@@ -52,7 +52,7 @@ pub struct ByteRange {
 }
 
 impl ByteRange {
-    /// `Range` ヘッダーの値を、長さ `len` の本体に当てはめる。
+    /// `Range` ヘッダーの値を、長さ `len` の本体の範囲として読む。
     /// 無い・`bytes` 以外・複数区間は全体（`None`）。長さの外だけを指すときは `Err`（416）。
     pub fn parse(header: Option<&str>, len: u64) -> Result<Option<Self>> {
         let Some(spec) = header.and_then(|h| h.trim().strip_prefix("bytes=")) else {

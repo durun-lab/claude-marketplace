@@ -1,4 +1,4 @@
-//! `POST /m/pair`。PC のアプリが出した登録の符号と引き換えに、端末の資格をクッキーで渡す。
+//! `POST /m/pair`。PC のアプリが出した登録コードと引き換えに、端末の資格をクッキーで渡す。
 //! 資格は本文に入れない（画面のスクリプトから読めない `HttpOnly` のクッキーにだけ置く）。
 
 use std::sync::Arc;
@@ -39,7 +39,7 @@ async fn pair(
 ) -> Result<Response, MobileError> {
     let parsed: PairBody = serde_json::from_slice(&body)
         .map_err(|e| ServeError::BadRequest(format!("本体の形が違う: {e}")))?;
-    // 守りが見出しの有無を確かめた後なので、ここでは値を読むだけ。
+    // ガードがヘッダーの有無を確かめた後なので、ここでは値を読むだけ。
     let login = headers
         .get(LOGIN_HEADER)
         .and_then(|v| v.to_str().ok())
@@ -67,12 +67,12 @@ fn pair_refusal(e: PairError) -> MobileError {
         PairError::NoCode => refuse(
             StatusCode::UNAUTHORIZED,
             "pairing_unavailable",
-            "登録の符号が無いか期限が切れた（PC のアプリで出し直す）",
+            "登録コードが無いか期限が切れた（PC のアプリで出し直す）",
         ),
         PairError::WrongCode => refuse(
             StatusCode::UNAUTHORIZED,
             "pairing_wrong_code",
-            "登録の符号が違う",
+            "登録コードが違う",
         ),
         PairError::BadName => refuse(
             StatusCode::BAD_REQUEST,

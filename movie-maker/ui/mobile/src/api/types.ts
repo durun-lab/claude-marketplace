@@ -8,7 +8,7 @@ export interface ProjectInfo {
   compositions: { id: string; name: string }[];
   sequences: { id: string; name: string }[];
   open_composition: string | null;
-  /** 開いているコンポジションのカットの境（秒）。スクラブの棒の目盛りに使う。 */
+  /** 開いているコンポジションのカットの境（秒）。スクラブバーの目盛りに使う。 */
   cuts?: number[];
 }
 

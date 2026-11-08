@@ -37,7 +37,7 @@ const readAll = (db: IDBDatabase): Promise<PendingComment[]> =>
   });
 
 /**
- * IndexedDB の送信待ちのキュー。localStorage は 5 MB 前後で上限に当たると書けず、毎回全体を書き直すため使わない。
+ * IndexedDB の送信待ちのキュー。localStorage は 5 MB 前後で上限に達すると書けず、毎回全体を書き直すため使わない。
  * 開けない端末（古い非公開モード）では全部の呼び出しが失敗し、`createOutbox` がメモリだけで続ける。
  */
 export const createIdbStore = (factory: IDBFactory | undefined = globalThis.indexedDB): OutboxStore => {

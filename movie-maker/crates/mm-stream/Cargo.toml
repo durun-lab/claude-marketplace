@@ -1,6 +1,6 @@
 [package]
 name = "mm-stream"
-description = "モバイル版への映像の配信。静止画のコマ（WebP）、区間ごとに作る HLS、素材の音だけ。HTTP の道は持たず、mm-serve のハンドラーが呼ぶ関数と型を出す"
+description = "モバイル版への映像の配信。静止画のフレーム（WebP）、区間ごとに作る HLS、素材の音だけ。HTTP のパスは持たず、mm-serve のハンドラーが呼ぶ関数と型を出す"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

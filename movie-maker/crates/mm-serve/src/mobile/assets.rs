@@ -1,5 +1,5 @@
 //! `GET /m/` の下の PWA の静的な配信。`ui/mobile` のビルドの出力（画面、マニフェスト、Service Worker）を返す。
-//! 出力の置き場所はアプリが決める（`MobileAssets`）ので、ここは名前を引いて型と見出しを付けるだけ。
+//! 出力の置き場所はアプリが決める（`MobileAssets`）ので、ここは名前を引いて型とヘッダーを付けるだけ。
 
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
@@ -13,11 +13,11 @@ use axum::Router;
 use super::guard::PAIR_PATH;
 use super::MobileState;
 
-/// 画面の入口。`/m/`、`/m/pair`、画面の中の経路（拡張子の無いパス）はこれを返す。
+/// 画面のエントリーポイント。`/m/`、`/m/pair`、画面の中の経路（拡張子の無いパス）はこれを返す。
 const INDEX: &str = "index.html";
 /// `/m/api/` の下は資格の要る API で、未知のパスを画面にしない。
 const API_PREFIX: &str = "api/";
-/// Service Worker の名前。最大のスコープを `/m/` と明示する見出しを付け、`/` の下（ダッシュボード）へ広げさせない。
+/// Service Worker の名前。最大のスコープを `/m/` と明示するヘッダーを付け、`/` の下（ダッシュボード）へ広げさせない。
 const SERVICE_WORKER: &str = "sw.js";
 
 /// PWA の 1 ファイル。
@@ -43,7 +43,7 @@ pub trait MobileAssets: std::fmt::Debug + Send + Sync {
     fn get(&self, path: &str) -> Option<MobileAsset>;
 }
 
-/// ディレクトリーから読む置き場（`ui/mobile/dist/` をそのまま指す開発と試験の用）。
+/// ディレクトリーから読む置き場（`ui/mobile/dist/` をそのまま指す開発とテストの用）。
 #[derive(Debug, Clone)]
 pub struct DirAssets {
     root: PathBuf,
@@ -88,9 +88,9 @@ pub(super) fn routes() -> Router<Arc<MobileState>> {
     Router::new()
         .route("/m", get(|| async { Redirect::permanent("/m/") }))
         .route("/m/", get(root))
-        // 登録の POST と同じパス。GET は登録の画面（PWA の入口）を返す。
+        // 登録の POST と同じパス。GET は登録の画面（PWA のエントリーポイント）を返す。
         .route(PAIR_PATH, get(root))
-        // GET 以外は 405 でなく 404 にして、人の待ち受けに無い道（/m/mcp など）を同じ答えにする。
+        // GET 以外は 405 でなく 404 にして、人の待ち受けに無いパス（/m/mcp など）を同じ答えにする。
         .route("/m/{*path}", get(file).fallback(not_found))
 }
 
@@ -106,7 +106,7 @@ async fn file(State(st): State<Arc<MobileState>>, UrlPath(path): UrlPath<String>
     serve(&st, &path)
 }
 
-/// 名前のファイルを返す。拡張子の無い名前は画面の中の経路なので入口を返し、拡張子のある名前は無ければ 404。
+/// 名前のファイルを返す。拡張子の無い名前は画面の中の経路なのでエントリーポイントを返し、拡張子のある名前は無ければ 404。
 fn serve(st: &MobileState, path: &str) -> Response {
     let not_found = || StatusCode::NOT_FOUND.into_response();
     if path.starts_with(API_PREFIX) || !is_plain_name(path) {
@@ -131,6 +131,17 @@ fn serve(st: &MobileState, path: &str) -> Response {
     h.insert(
         header::X_CONTENT_TYPE_OPTIONS,
         HeaderValue::from_static("nosniff"),
+    );
+    // tailnet の別のサービスのページは同じサイトでクッキーが付くので、枠に埋め込んで承認を押させない。
+    h.insert(header::X_FRAME_OPTIONS, HeaderValue::from_static("DENY"));
+    h.insert(
+        header::CONTENT_SECURITY_POLICY,
+        HeaderValue::from_static("frame-ancestors 'none'"),
+    );
+    // 登録の画面の URL は登録コードを持つので、参照元で外へ渡さない。
+    h.insert(
+        header::REFERRER_POLICY,
+        HeaderValue::from_static("no-referrer"),
     );
     if name == SERVICE_WORKER {
         h.insert("service-worker-allowed", HeaderValue::from_static("/m/"));

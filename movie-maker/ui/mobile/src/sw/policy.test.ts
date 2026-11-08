@@ -20,7 +20,7 @@ describe("isCacheable", () => {
 });
 
 describe("staleCaches", () => {
-  it("今の版以外の mm-mobile のキャッシュだけを消す", () => {
+  it("今のバージョン以外の mm-mobile のキャッシュだけを消す", () => {
     expect(staleCaches(["mm-mobile-a", "mm-mobile-b", "other"], "mm-mobile-b")).toEqual(["mm-mobile-a"]);
   });
 });

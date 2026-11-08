@@ -11,6 +11,8 @@ export interface Platform {
   fetch: FetchLike;
   openEvents: (url: string) => EventSourceLike;
   onNetworkBack: (fn: () => void) => void;
+  /** 画面が隠れた・戻ったことを知らせる。無ければ隠れても SSE を開いたままにする。 */
+  onVisibility?: (fn: (visible: boolean) => void) => void;
   /** 送信待ちのキューの保存先。実機は IndexedDB。 */
   outboxStore: OutboxStore;
 }
@@ -22,7 +24,7 @@ export interface Controller {
   outbox: Outbox;
   /** 操作を PC に送る Transport。Story の操作が使う。 */
   transport: Transport;
-  /** 登録の符号を送り、成功したら接続をやり直す。 */
+  /** 登録コードを送り、成功したら接続をやり直す。 */
   pair: (code: string, deviceName: string) => Promise<PairResult>;
   /** コメントを送信待ちのキューに入れ、つながっていればすぐ送る。 */
   comment: (draft: Omit<CommentDraft, "client_id">) => Promise<void>;
@@ -33,7 +35,12 @@ const sendDraft = (api: Api) => (draft: CommentDraft) => api.post(`${API_ROOT}/c
 /** 画面の部品を組み立て、接続が `online` になるたびに送信待ちのキューを送る。 */
 export const createController = (platform: Platform): Controller => {
   const api = createApi(platform.fetch);
-  const connection = createConnection({ api, openEvents: platform.openEvents, onNetworkBack: platform.onNetworkBack });
+  const connection = createConnection({
+    api,
+    openEvents: platform.openEvents,
+    onNetworkBack: platform.onNetworkBack,
+    onVisibility: platform.onVisibility,
+  });
   const outbox = createOutbox(platform.outboxStore);
   const flush = async (): Promise<void> => {
     await outbox.flush(sendDraft(api));

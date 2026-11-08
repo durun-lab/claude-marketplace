@@ -1,4 +1,4 @@
-//! 単語の列の組み立てと、範囲・検索の純粋な計算。
+//! 単語の並びの組み立てと、範囲・検索の純粋な計算。
 
 use std::collections::HashSet;
 
@@ -29,7 +29,7 @@ pub fn range_end(words: &[StoryWord], b: usize) -> RationalTime {
     }
 }
 
-/// 付属ファイルの文字起こしを単語の列にする。単語の時刻の無い区間は区間を 1 つの単語にする。
+/// 付属ファイルの文字起こしを単語の並びにする。単語の時刻の無い区間は区間を 1 つの単語にする。
 /// 単語の ID は `Store::put_transcript` と同じ規則（同じ開始の時刻には `_2`、`_3` を付ける）。
 pub(crate) fn sidecar_words(content_hash: &str, t: &Transcript) -> Vec<BaseWord> {
     let mut raw = Vec::new();

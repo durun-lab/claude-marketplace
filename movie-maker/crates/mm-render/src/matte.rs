@@ -221,7 +221,7 @@ fn create_pipeline(device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> wgp
 }
 
 impl WgpuRenderer {
-    /// レイヤーを合成に渡す 1 枚にする。トラックマットがあれば掛ける。`chain` はマットを辿った段数。
+    /// レイヤーを合成に渡す 1 枚にする。トラックマットがあれば掛ける。`chain` はマットを辿った深さ。
     pub(crate) fn matted_item(
         &mut self,
         encoder: &mut wgpu::CommandEncoder,
@@ -238,7 +238,7 @@ impl WgpuRenderer {
         };
         if chain >= MAX_DEPTH {
             return Err(MmError::InvalidArgument(format!(
-                "トラックマットが {MAX_DEPTH} 段を超えた（循環の疑い）"
+                "トラックマットの深さが {MAX_DEPTH} を超えた（循環の疑い）"
             )));
         }
         let matte_layer = cx

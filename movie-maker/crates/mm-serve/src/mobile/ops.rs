@@ -1,6 +1,6 @@
 //! モバイルからの操作の即時の適用（`POST /m/api/ops`）と取り消し（`POST /m/api/undo`）。
 //!
-//! 即時に適用するのは Story で切る・並べる操作と目印（`mm_story::MOBILE_OPS`）だけで、ほかは 403 `not_on_mobile`。
+//! 即時に適用するのは Story で切る・並べる操作とマーカー（`mm_story::MOBILE_OPS`）だけで、ほかは 403 `not_on_mobile`。
 //! ほかの操作は提案（`POST /m/api/proposals`）で出し、PC かモバイルで承認する。
 
 use std::sync::Arc;
@@ -146,7 +146,7 @@ fn owned_by(s: &Store, target: &ChangeOf, actor: &Actor) -> Result<bool, ServeEr
 }
 
 impl Core {
-    /// 直前のトランザクションが `caller` のものなら取り消す。確かめてから取り消すまで `Store` の列を離さない。
+    /// 直前のトランザクションが `caller` のものなら取り消す。確かめてから取り消すまで `Store` のロックを離さない。
     fn undo_own(&self, caller: &Caller) -> Result<UndoOwn, ServeError> {
         self.with_store(|s| {
             let Some(target) = s.undo_plan()?.map(ChangeOf::from) else {

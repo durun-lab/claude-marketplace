@@ -1,4 +1,4 @@
-//! 端末の登録の画面の裏側。人の待ち受け（`MobileServer`）をアプリと一緒に始め、登録の符号と端末の一覧を渡す。
+//! 端末の登録の画面のアプリ側の処理。人の待ち受け（`MobileServer`）をアプリと一緒に始め、登録コードと端末の一覧を渡す。
 //! 待ち受けの起動は tailnet の名前を CLI で読むので別のスレッドで行い、画面は `Starting` を見て読み直す。
 
 use std::collections::HashSet;
@@ -14,7 +14,7 @@ use crate::win::state::Shared;
 
 /// ui のビルドが PWA を置く、アプリの画面の下のフォルダー（`ui/tools/build.ts`）。
 const PWA_DIR: &str = "m";
-/// PWA の入口。これが埋め込まれていれば PWA がある。
+/// PWA のエントリーポイント。これが埋め込まれていれば PWA がある。
 const PWA_INDEX: &str = "index.html";
 /// 設定の手順（12-mobile.md）で使う `tailscale serve` のコマンド。
 const SERVE_COMMAND: &str = "tailscale serve --bg --https=8443 http://127.0.0.1:7338";
@@ -53,13 +53,13 @@ pub enum NoticeKind {
     NoPwa,
 }
 
-/// 登録の符号と、それを入れた登録の画面の QR。
+/// 登録コードと、それを入れた登録の画面の QR。
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Pairing {
     pub code: String,
     pub expires_at_ms: i64,
-    /// スマホで開く URL。tailnet の名前が分からなければ `None`（符号を手で入れる）。
+    /// スマホで開く URL。tailnet の名前が分からなければ `None`（登録コードを手で入れる）。
     pub url: Option<String>,
     pub qr_svg: Option<String>,
 }
@@ -147,7 +147,7 @@ impl DevicesState {
         }
     }
 
-    /// 登録の符号を出す。前の符号は無効になる。
+    /// 登録コードを出す。前の登録コードは無効になる。
     pub fn issue_code(&self) -> Result<Pairing, String> {
         let launch = self.lock();
         let Launch::Running { server, .. } = &*launch else {

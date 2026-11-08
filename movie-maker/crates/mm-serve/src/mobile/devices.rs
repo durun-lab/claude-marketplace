@@ -1,6 +1,6 @@
-//! 登録した端末と登録の符号。PC には端末の資格の BLAKE3 のハッシュだけを置く（`devices.json`）。
+//! 登録した端末と登録コード。PC には端末の資格の BLAKE3 のハッシュだけを置く（`devices.json`）。
 //!
-//! 登録の符号は同時に 1 つだけ持ち、期限を過ぎるか、1 回使うか、決まった回数を間違えると消す。
+//! 登録コードは同時に 1 つだけ持ち、期限を過ぎるか、1 回使うか、決まった回数を間違えると消す。
 //! 登録と登録を外すのは PC のアプリの Rust の呼び出しからだけ受け、HTTP には出さない。
 
 use std::path::PathBuf;
@@ -15,17 +15,17 @@ use crate::http::constant_time_eq;
 
 /// 端末の資格の長さ（バイト）。クッキーには 16 進で 2 倍の文字数で入る。
 pub const CREDENTIAL_BYTES: usize = 32;
-/// 登録の符号の文字数。
+/// 登録コードの文字数。
 pub const PAIRING_CODE_LEN: usize = 8;
-/// 登録の符号を間違えてよい回数。超えたら符号を消し、PC のアプリで出し直す。
+/// 登録コードを間違えてよい回数。超えたら登録コードを消し、PC のアプリで出し直す。
 pub const PAIRING_MAX_FAILURES: u32 = 5;
-/// 登録の符号の既定の期限。
+/// 登録コードの既定の期限。
 pub const PAIRING_TTL: Duration = Duration::from_secs(5 * 60);
 /// 端末の名前の最大の文字数。
 const NAME_MAX_CHARS: usize = 64;
 /// 端末の ID の長さ（バイト）。
 const DEVICE_ID_BYTES: usize = 8;
-/// 符号の文字。読み違えやすい I、L、O、U を除いた 32 文字（Crockford の Base32）で、1 バイトの下位 5 ビットで偏りなく選べる。
+/// 登録コードの文字。読み違えやすい I、L、O、U を除いた 32 文字（Crockford の Base32）で、1 バイトの下位 5 ビットで偏りなく選べる。
 const CODE_ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const CODE_MASK: u8 = 0b1_1111;
 
@@ -39,7 +39,7 @@ pub struct DeviceInfo {
     pub paired_at_ms: i64,
 }
 
-/// PC のアプリが出す登録の符号。
+/// PC のアプリが出す登録コード。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct PairingCode {
     pub code: String,
@@ -49,9 +49,9 @@ pub struct PairingCode {
 /// 登録の失敗。応答の `code` に対応する。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PairError {
-    /// 符号が無い、期限切れ、回数を使い切った。
+    /// 登録コードが無い、期限切れ、回数を使い切った。
     NoCode,
-    /// 符号が違う。
+    /// 登録コードが違う。
     WrongCode,
     /// 名前が空か長すぎる。
     BadName,
@@ -73,7 +73,7 @@ struct DeviceRecord {
 }
 
 impl DeviceRecord {
-    /// 一覧に残る登録か。資格を一度も使わないまま符号の期限（`ttl_ms`）を過ぎた登録は無いものとみなす。
+    /// 一覧に残る登録か。資格を一度も使わないまま登録コードの期限（`ttl_ms`）を過ぎた登録は無いものとみなす。
     fn live(&self, now_ms: i64, ttl_ms: i64) -> bool {
         !self.unused || now_ms.saturating_sub(self.paired_at_ms) <= ttl_ms
     }
@@ -101,7 +101,7 @@ struct State {
     pending: Option<Pending>,
 }
 
-/// 登録した端末の一覧と、今の登録の符号。
+/// 登録した端末の一覧と、今の登録コード。
 pub struct Devices {
     path: PathBuf,
     ttl: Duration,
@@ -137,7 +137,7 @@ impl Devices {
             .map_err(|_| ServeError::Internal("端末の一覧のロックが壊れた".into()))
     }
 
-    /// 新しい登録の符号を出す。前の符号は使えなくなる。
+    /// 新しい登録コードを出す。前の登録コードは使えなくなる。
     pub fn issue_code(&self) -> Result<PairingCode, ServeError> {
         let mut raw = [0u8; PAIRING_CODE_LEN];
         fill_random(&mut raw)?;
@@ -157,7 +157,7 @@ impl Devices {
         })
     }
 
-    /// 符号を確かめて端末を登録し、端末と資格（16 進）を返す。
+    /// 登録コードを確かめて端末を登録し、端末と資格（16 進）を返す。
     pub(crate) fn pair(
         &self,
         code: &str,
@@ -165,7 +165,7 @@ impl Devices {
         login: &str,
     ) -> Result<Result<(DeviceInfo, String), PairError>, ServeError> {
         let mut st = self.lock()?;
-        // 符号を先に確かめ、符号を知らない者に登録した名前を探らせない。名前の誤りでは符号を消さない。
+        // 登録コードを先に確かめ、登録コードを知らない者に登録した名前を探らせない。名前の誤りでは登録コードを消さない。
         if let Err(e) = check_code(&mut st.pending, code) {
             return Ok(Err(e));
         }
@@ -285,7 +285,7 @@ fn make_room(
     Ok(())
 }
 
-/// 符号を確かめる。違えば数え、期限か回数を超えたら消す。合った符号は登録を決めてから消す。
+/// 登録コードを確かめる。違えば数え、期限か回数を超えたら消す。合った登録コードは登録を決めてから消す。
 fn check_code(pending: &mut Option<Pending>, given: &str) -> Result<(), PairError> {
     let Some(p) = pending.as_mut() else {
         return Err(PairError::NoCode);
@@ -305,7 +305,7 @@ fn check_code(pending: &mut Option<Pending>, given: &str) -> Result<(), PairErro
     Err(PairError::WrongCode)
 }
 
-/// 手で入れた符号の区切り（空白とハイフン）を除いて大文字にそろえ、Crockford の Base32 の読み替え
+/// 手で入れた登録コードの区切り（空白とハイフン）を除いて大文字にそろえ、Crockford の Base32 の読み替え
 /// （O を 0、I と L を 1）をする。
 fn normalize_code(raw: &str) -> String {
     raw.chars()
@@ -352,7 +352,7 @@ mod tests {
     }
 
     #[test]
-    fn 符号は決まった文字から決まった長さで出る() {
+    fn 登録コードは決まった文字から決まった長さで出る() {
         let (_tmp, d) = devices(PAIRING_TTL);
         let code = d.issue_code().unwrap().code;
         assert_eq!(code.len(), PAIRING_CODE_LEN);
@@ -360,7 +360,7 @@ mod tests {
     }
 
     #[test]
-    fn 符号は小文字と区切りを許し_1_回で消える() {
+    fn 登録コードは小文字と区切りを許し_1_回で消える() {
         let (_tmp, d) = devices(PAIRING_TTL);
         let code = d.issue_code().unwrap().code;
         let typed = format!("{}-{}", &code[..4], &code[4..]).to_lowercase();

@@ -302,7 +302,11 @@ fn 入れ子の中のマットのレイヤーの素材の中身が変わった�
     render(&mut r, &p);
     assert_eq!(entries(&r), 3, "マットの単色、切り抜く単色、入れ子");
     render(&mut r, &p);
-    assert_eq!(entries(&r), 3, "同じ中身なら覚えた入れ子にヒットする");
+    assert_eq!(
+        entries(&r),
+        3,
+        "同じ中身ならキャッシュした入れ子の画像にヒットする"
+    );
     p.assets[0].content_hash = "invertcube000002".into();
     render(&mut r, &p);
     assert_eq!(

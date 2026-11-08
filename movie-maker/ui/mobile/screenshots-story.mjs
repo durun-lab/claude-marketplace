@@ -1,4 +1,4 @@
-// Story の画面を偽の PC のデモ（demo.html）で操作して、390x844 のスクリーンショットを撮る。
+// Story の画面をモックの PC のデモ（demo.html）で操作して、390x844 のスクリーンショットを撮る。
 // playwright は repo の依存にせず、PLAYWRIGHT_DIR（playwright を入れた場所）から読む。
 // 使い方: pnpm build && PLAYWRIGHT_DIR=/d/dev/pw node screenshots-story.mjs
 import { createReadStream } from "node:fs";

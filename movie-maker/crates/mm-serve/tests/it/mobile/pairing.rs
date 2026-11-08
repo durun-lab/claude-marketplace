@@ -1,4 +1,4 @@
-//! 端末の登録の符号と端末の名前。符号を知らない者に名前を探らせず、並行の要求でも 1 台だけ登録する。
+//! 端末の登録コードと端末の名前。登録コードを知らない者に名前を探らせず、並行の要求でも 1 台だけ登録する。
 
 use std::sync::Arc;
 use std::thread;
@@ -17,7 +17,7 @@ fn try_pair(r: &Rig, code: &str, name: &str) -> mm_serve::Response {
 }
 
 #[test]
-fn 符号が違えば名前の重なりを明かさない() {
+fn 登録コードが違えば名前の重なりを明かさない() {
     let r = rig();
     r.pair("phone");
     r.mobile.devices().issue_code().unwrap();
@@ -26,7 +26,7 @@ fn 符号が違えば名前の重なりを明かさない() {
 }
 
 #[test]
-fn 名前の誤りでは符号を消さない() {
+fn 名前の誤りでは登録コードを消さない() {
     let r = rig();
     r.pair("phone");
     let c = r.mobile.devices().issue_code().unwrap().code;
@@ -55,7 +55,7 @@ fn クッキーを保存しなかった登録は同じ名前の登録し直し�
 }
 
 #[test]
-fn 手で入れた符号は_crockford_の読み替えをする() {
+fn 手で入れた登録コードは_crockford_の読み替えをする() {
     let r = rig();
     let c = r.mobile.devices().issue_code().unwrap().code;
     // 0 と 1 を読み違えやすい文字に替えても通る。
@@ -71,7 +71,7 @@ fn 手で入れた符号は_crockford_の読み替えをする() {
 }
 
 #[test]
-fn 同じ符号の並行の登録は_1_台だけ通る() {
+fn 同じ登録コードの並行の登録は_1_台だけ通る() {
     const RACERS: usize = 8;
     let r = Arc::new(rig());
     let c = r.mobile.devices().issue_code().unwrap().code;
@@ -96,7 +96,7 @@ fn 同じ符号の並行の登録は_1_台だけ通る() {
 }
 
 #[test]
-fn 資格の要らない読み出しも_host_と本人の見出しは確かめる() {
+fn 資格の要らない読み出しも_host_と本人のヘッダーは確かめる() {
     let r = rig();
     let bad_host = Req {
         host: Some("evil.example".into()),

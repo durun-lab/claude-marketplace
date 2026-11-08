@@ -1,4 +1,4 @@
-//! Devices パネルの Tauri のコマンド。端末の登録（符号と QR）と、登録を外すのは PC のアプリからだけで、
+//! Devices パネルの Tauri のコマンド。端末の登録（登録コードと QR）と、登録を外すのは PC のアプリからだけで、
 //! 人の待ち受け（HTTP）には出さない。名前と引数の形は `ui/panels/devices/src/api.ts`。
 
 use std::sync::Arc;
@@ -37,7 +37,7 @@ async fn devices_status(state: Devices<'_>) -> Result<Status, String> {
     blocking(state, DevicesState::status).await
 }
 
-/// 登録の符号と QR を出す。前の符号は無効になる。
+/// 登録コードと QR を出す。前の登録コードは無効になる。
 #[tauri::command]
 async fn devices_issue_code(state: Devices<'_>) -> Result<Pairing, String> {
     blocking(state, DevicesState::issue_code).await?

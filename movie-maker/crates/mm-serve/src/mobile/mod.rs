@@ -2,7 +2,7 @@
 //!
 //! 127.0.0.1 の決まったポートで待ち、`tailscale serve` が HTTPS で tailnet に出す。Claude の待ち受けと
 //! ルーターを分け、`/mcp` と `entry` の指定を持たない。ここから来た操作は全部 `Entry::Mobile`（人）で、
-//! 名乗りは登録した端末の名前。パスは全部 `/m` の下に置く。
+//! 発行元の名前は登録した端末の名前。パスは全部 `/m` の下に置く。
 
 mod assets;
 mod cuts;
@@ -54,7 +54,7 @@ const WORKER_THREADS: usize = 2;
 /// 人の待ち受けの設定。
 #[derive(Debug, Clone)]
 pub struct MobileConfig {
-    /// 127.0.0.1 で待つポート。0 なら空いているポート（試験用）。
+    /// 127.0.0.1 で待つポート。0 なら空いているポート（テスト用）。
     pub port: u16,
     /// `Host` に許す tailnet での名前。空なら全部の要求を 403 にする。
     pub hosts: Vec<String>,
@@ -62,7 +62,7 @@ pub struct MobileConfig {
     pub https_port: u16,
     /// 端末の一覧（`devices.json`）のパス。
     pub devices_file: PathBuf,
-    /// 登録の符号の期限。
+    /// 登録コードの期限。
     pub pairing_ttl: Duration,
     /// PWA のファイルの置き場。無ければ `GET /m/` は 404。
     pub assets: Option<Arc<dyn MobileAssets>>,
@@ -100,7 +100,7 @@ pub(crate) struct MobileState {
 #[derive(Debug)]
 pub(crate) enum MobileError {
     Serve(ServeError),
-    /// 人の待ち受けだけの拒否（守り、`not_on_mobile`、`not_latest` など）。
+    /// 人の待ち受けだけの拒否（ガード、`not_on_mobile`、`not_latest` など）。
     Refuse {
         status: StatusCode,
         code: &'static str,
@@ -132,17 +132,17 @@ impl IntoResponse for MobileError {
 }
 
 impl DeviceInfo {
-    /// この端末から来た操作の発行元（`Entry::Mobile`、名乗りは端末の名前）。
+    /// この端末から来た操作の発行元（`Entry::Mobile`、発行元の名前は端末の名前）。
     pub fn caller(&self) -> Caller {
         Caller::mobile(&self.name)
     }
 }
 
 /// 人の待ち受けのルーター。ほかのモジュールの `/m/api/` は名前の順に 1 行ずつ `merge` か `nest` する。
-/// 守りは最後に全体へ掛けるので、`nest` した認証なしのルーター（Story の読み出しなど）も守りの内側に入る。
+/// ガードは最後に全体へ掛けるので、`nest` した認証なしのルーター（Story の読み出しなど）もガードの内側に入る。
 pub(crate) fn router(state: Arc<MobileState>) -> Router {
     let core = state.core.clone();
-    // コメントのハンドラーは Claude の待ち受けと共有し、`core` だけを読む。トークンと `Host` は守り（guard）が確かめる。
+    // コメントのハンドラーは Claude の待ち受けと共有し、`core` だけを読む。トークンと `Host` はガード（guard）が確かめる。
     let shared = Arc::new(AppState {
         core: core.clone(),
         token: String::new(),
@@ -162,7 +162,7 @@ pub(crate) fn router(state: Arc<MobileState>) -> Router {
         .layer(middleware::from_fn_with_state(state, guard::guard))
 }
 
-/// 動いている人の待ち受け。落とすと待ち受けを止める。
+/// 動いている人の待ち受け。破棄すると待ち受けを止める。
 pub struct MobileServer {
     port: u16,
     config: MobileConfig,
@@ -223,7 +223,7 @@ impl MobileServer {
         self.port
     }
 
-    /// 登録した端末と登録の符号。PC のアプリが端末の登録の画面で使う。
+    /// 登録した端末と登録コード。PC のアプリが端末の登録の画面で使う。
     pub fn devices(&self) -> &Arc<Devices> {
         &self.devices
     }
@@ -234,7 +234,7 @@ impl MobileServer {
         Some(format!("https://{host}:{}/m/", self.config.https_port))
     }
 
-    /// 登録の符号を入れた登録の画面の URL（`.../m/pair?code=`、QR に載せる）。
+    /// 登録コードを入れた登録の画面の URL（`.../m/pair?code=`、QR に載せる）。
     pub fn pairing_url(&self, code: &PairingCode) -> Option<String> {
         Some(format!("{}pair?code={}", self.url()?, code.code))
     }

@@ -9,7 +9,7 @@ use crate::hls::{HlsRequest, Plan};
 use crate::key::SegmentKey;
 use crate::quality::HlsQuality;
 
-/// 1 つのプレイリスト。プロジェクトはそのバージョンの写しで、キーが同じ区間はどの写しで描いても同じになる。
+/// 1 つのプレイリスト。プロジェクトはそのバージョンのコピーで、キーが同じ区間はどのコピーで描いても同じになる。
 pub(crate) struct Listing {
     pub version: u64,
     pub project: Arc<Project>,

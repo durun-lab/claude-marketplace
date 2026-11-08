@@ -25,7 +25,7 @@ pub fn gpu_config() -> Option<RuntimeConfig> {
     usable(config)
 }
 
-/// 本物のデコードとエンコードで描ける設定。FFmpeg を入れていない設定では `None`。
+/// 実際のデコードとエンコードで描ける設定。FFmpeg を入れていない設定では `None`。
 pub fn ffmpeg_config() -> Option<RuntimeConfig> {
     let config = RuntimeConfig {
         decode: Backend::Ffmpeg,

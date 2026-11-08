@@ -22,6 +22,8 @@ export interface ConnectionDeps {
   openEvents: (url: string) => EventSourceLike;
   /** 圏外から戻ったことを知らせる（`window` の online）。 */
   onNetworkBack: (fn: () => void) => void;
+  /** 画面が隠れた（`false`）・戻った（`true`）ことを知らせる（`document` の visibilitychange）。 */
+  onVisibility?: (fn: (visible: boolean) => void) => void;
   setTimer?: (fn: () => void, ms: number) => unknown;
 }
 
@@ -70,23 +72,42 @@ const createEventHub = () => {
 const forwardEvents = (es: EventSourceLike, hub: ReturnType<typeof createEventHub>): void =>
   FORWARD_EVENTS.forEach((t) => es.addEventListener(t, (ev) => hub.emit(t, parseData(ev.data))));
 
-/** PC との接続の状態を持つ。SSE の切断と圏外は `offline`、401 は `unpaired`。 */
+/** 接続の状態と、変わるたびに呼ぶ受け手。 */
+const createSnapshotStore = () => {
+  let snap: ConnectionSnapshot = { state: "checking", project: null };
+  const listeners = new Set<() => void>();
+  return {
+    get: (): ConnectionSnapshot => snap,
+    set: (patch: Partial<ConnectionSnapshot>): void => {
+      snap = { ...snap, ...patch };
+      listeners.forEach((fn) => fn());
+    },
+    subscribe: (fn: () => void): (() => void) => {
+      listeners.add(fn);
+      return () => listeners.delete(fn);
+    },
+  };
+};
+
+/**
+ * PC との接続の状態を持つ。SSE の切断と圏外は `offline`、401 は `unpaired`。
+ * 画面が隠れている間は電池と回線を使わないよう SSE を閉じて再試行も止め、戻ったら読み直して開き直す。
+ */
 export const createConnection = (deps: ConnectionDeps): Connection => {
   const setTimer = deps.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
-  let snap: ConnectionSnapshot = { state: "checking", project: null };
-  let events: EventSourceLike | null = null;
-  const listeners = new Set<() => void>();
+  const store = createSnapshotStore();
   const hub = createEventHub();
-  const set = (patch: Partial<ConnectionSnapshot>): void => {
-    snap = { ...snap, ...patch };
-    listeners.forEach((fn) => fn());
+  let events: EventSourceLike | null = null;
+  let hidden = false;
+  const closeEvents = (): void => {
+    events?.close();
+    events = null;
   };
-  const retryLater = (): void => void setTimer(() => void refresh(), RETRY_MS);
   const openEvents = (): void => {
-    if (events) return;
+    if (events || hidden) return;
     const es = deps.openEvents(`${API_ROOT}/events`);
-    es.onopen = () => set({ state: "online" });
-    es.onerror = () => set({ state: "offline" });
+    es.onopen = () => store.set({ state: "online" });
+    es.onerror = () => store.set({ state: "offline" });
     REFRESH_EVENTS.forEach((t) => es.addEventListener(t, () => void refresh()));
     forwardEvents(es, hub);
     events = es;
@@ -94,29 +115,27 @@ export const createConnection = (deps: ConnectionDeps): Connection => {
   const refresh = async (): Promise<void> => {
     try {
       const project = await deps.api.get<ProjectInfo>(`${API_ROOT}/project`);
-      set({ state: "online", project });
+      store.set({ state: "online", project });
       openEvents();
     } catch (e) {
-      events?.close();
-      events = null;
-      if (isUnauthorized(e)) {
-        set({ state: "unpaired", project: null });
-      } else {
-        set({ state: "offline" });
-        retryLater();
-      }
+      closeEvents();
+      const unpaired = isUnauthorized(e);
+      store.set(unpaired ? { state: "unpaired", project: null } : { state: "offline" });
+      if (!unpaired && !hidden) void setTimer(() => void refresh(), RETRY_MS);
     }
   };
   deps.onNetworkBack(() => void refresh());
+  deps.onVisibility?.((visible) => {
+    hidden = !visible;
+    if (hidden) closeEvents();
+    else void refresh();
+  });
   return {
-    get: () => snap,
-    subscribe: (fn) => {
-      listeners.add(fn);
-      return () => listeners.delete(fn);
-    },
+    get: store.get,
+    subscribe: store.subscribe,
     refresh,
     start: refresh,
     onEvent: hub.on,
-    version: () => snap.project?.version ?? 0,
+    version: () => store.get().project?.version ?? 0,
   };
 };

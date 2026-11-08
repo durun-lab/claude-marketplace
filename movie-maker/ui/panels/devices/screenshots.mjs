@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 const outDir = fileURLToPath(new URL("./screenshots/", import.meta.url));
 
-/** モックの API で、符号と QR を出した状態と、足りない設定の文言（serve が未設定、ポートが使われている）を撮る。右の列と同じ幅。 */
+/** モックの API で、登録コードと QR を出した状態と、足りない設定の文言（serve が未設定、ポートが使われている）を撮る。右の WebView と同じ幅。 */
 export default async (browser, { dist }) => {
   await mkdir(outDir, { recursive: true });
   for (const theme of ["light", "dark"]) {

@@ -174,7 +174,7 @@ fn finish(mut child: Child, what: &str) -> Option<String> {
     }
 }
 
-/// 画面のアプリから呼んでも、コンソールの窓を出さない。
+/// 画面のアプリから呼んでも、コンソールのウィンドウを出さない。
 #[cfg(windows)]
 fn hide_console(cmd: &mut Command) {
     use std::os::windows::process::CommandExt;

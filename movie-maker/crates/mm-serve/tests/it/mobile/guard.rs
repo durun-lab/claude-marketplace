@@ -1,4 +1,4 @@
-//! 人の待ち受けの守りと端末の登録。どの検査で落ちても、操作は適用されない。
+//! 人の待ち受けのガードと端末の登録。どの検査で拒否されても、操作は適用されない。
 
 use mm_serve::PAIRING_MAX_FAILURES;
 use serde_json::{json, Value};
@@ -18,13 +18,13 @@ fn post_marker(r: &Rig, req: &Req) -> mm_serve::Response {
 }
 
 #[test]
-fn 各検査で落ちた要求は適用されない() {
+fn 各検査で拒否された要求は適用されない() {
     let r = rig();
     let cookie = r.pair("phone");
     let ok = Req::device(&cookie);
     let cases = [
         (
-            "偽の Host",
+            "tailnet の名前でない Host",
             Req {
                 host: Some("evil.example".into()),
                 ..ok.clone()
@@ -87,7 +87,7 @@ fn 各検査で落ちた要求は適用されない() {
             "forbidden_origin",
         ),
         (
-            "Tailscale の見出しが無い",
+            "Tailscale のヘッダーが無い",
             Req {
                 login: None,
                 ..ok.clone()
@@ -105,7 +105,7 @@ fn 各検査で落ちた要求は適用されない() {
             "no_device",
         ),
         (
-            "偽の資格",
+            "登録に無い資格",
             Req {
                 cookie: Some("mm_device=00ff".into()),
                 ..ok.clone()
@@ -172,7 +172,7 @@ fn 読み出しは_x_mm_mobile_なしで通り_資格は要る() {
 }
 
 #[test]
-fn 人の待ち受けに_mcp_と_claude_の道は無い() {
+fn 人の待ち受けに_mcp_と_claude_のパスは無い() {
     let r = rig();
     let req = Req::device(&r.pair("phone"));
     let init = json!({"jsonrpc": "2.0", "id": 1, "method": "initialize"});
@@ -234,7 +234,7 @@ fn try_pair(r: &Rig, code: &str, name: &str) -> mm_serve::Response {
 }
 
 #[test]
-fn 登録の符号は_1_回で消え_決まった回数を間違えると無効になる() {
+fn 登録コードは_1_回で消え_決まった回数を間違えると無効になる() {
     let r = rig();
     let first = r.mobile.devices().issue_code().unwrap().code;
     assert_eq!(try_pair(&r, &first, "phone").status, 200);
@@ -255,7 +255,7 @@ fn 登録の符号は_1_回で消え_決まった回数を間違えると無効�
 }
 
 #[test]
-fn 期限の切れた符号では登録できない() {
+fn 期限の切れた登録コードでは登録できない() {
     let r = expired_rig();
     let code_ = r.mobile.devices().issue_code().unwrap().code;
     std::thread::sleep(std::time::Duration::from_millis(5));
@@ -267,7 +267,7 @@ fn 期限の切れた符号では登録できない() {
 }
 
 #[test]
-fn 登録にも_tailnet_の見出しと_x_mm_mobile_が要る() {
+fn 登録にも_tailnet_のヘッダーと_x_mm_mobile_が要る() {
     let r = rig();
     let c = r.mobile.devices().issue_code().unwrap().code;
     let body = json!({"code": c, "device_name": "phone"});
@@ -290,6 +290,6 @@ fn 登録にも_tailnet_の見出しと_x_mm_mobile_が要る() {
     assert_eq!(
         try_pair(&r, &c, "phone").status,
         200,
-        "断った要求は符号を使わない"
+        "断った要求は登録コードを使わない"
     );
 }

@@ -19,19 +19,36 @@ fn rig_with_assets() -> Rig {
     for (name, body) in files {
         std::fs::write(dir.path().join(name), body).unwrap();
     }
-    // 置き場は一時フォルダーの置き場所なので、試験の後は OS の一時フォルダーの掃除に任せる。
+    // 置き場は一時フォルダーの置き場所なので、テストの後は OS の一時フォルダーの掃除に任せる。
     let root = dir.keep();
     rig_with(|c| c.assets = Some(Arc::new(DirAssets::new(root))))
 }
 
 #[test]
-fn 画面と登録の画面は資格が無くても同じ入口を返す() {
+fn 画面と登録の画面は資格が無くても同じエントリーポイントを返す() {
     let r = rig_with_assets();
     for path in ["/m/", "/m/pair", "/m/watch/c1"] {
         let res = r.send(&Req::tailnet(), "GET", path, None);
         assert_eq!(res.status, 200, "{path}");
         assert_eq!(res.header("content-type"), Some("text/html; charset=utf-8"));
         assert!(String::from_utf8_lossy(&res.body).contains("<title>mm</title>"));
+    }
+}
+
+/// 同じ tailnet の別のサービス（同じサイトなので `SameSite=Strict` のクッキーが付く）のページに枠で埋め込ませず、
+/// 登録の画面の URL の登録コードを参照元で渡さない。
+#[test]
+fn 画面は枠での埋め込みを断り_参照元を送らせない() {
+    let r = rig_with_assets();
+    for path in ["/m/", "/m/pair", "/m/app.js"] {
+        let res = r.send(&Req::tailnet(), "GET", path, None);
+        assert_eq!(res.header("x-frame-options"), Some("DENY"), "{path}");
+        assert_eq!(
+            res.header("content-security-policy"),
+            Some("frame-ancestors 'none'"),
+            "{path}"
+        );
+        assert_eq!(res.header("referrer-policy"), Some("no-referrer"), "{path}");
     }
 }
 
@@ -86,7 +103,7 @@ fn 未登録の端末に_api_を言い換えたパスや置き場の外を指す
 }
 
 #[test]
-fn 置き場があっても_host_と本人の見出しを先に確かめる() {
+fn 置き場があっても_host_と本人のヘッダーを先に確かめる() {
     let r = rig_with_assets();
     let bad_host = Req {
         host: Some("evil.example".into()),

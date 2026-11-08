@@ -178,7 +178,7 @@ fn 循環したマットは描かずにエラーを記録する() {
 }
 
 #[test]
-fn マットの連鎖は段ごとに掛ける() {
+fn マットの連鎖は各マットを順に掛ける() {
     // target ← matte（左半分）← outer（上半分）。matte 自身も outer で切り抜かれる。
     let matte = matted_by(left_half(WHITE), "outer");
     let mut outer = layer("outer", solid(WHITE), 2);

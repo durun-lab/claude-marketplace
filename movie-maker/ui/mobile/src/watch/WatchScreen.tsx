@@ -23,7 +23,7 @@ export interface WatchScreenProps {
 const toggleFilter = (now: readonly Filter[], f: Filter): Filter[] =>
   now.includes(f) ? now.filter((x) => x !== f) : [...now, f];
 
-/** Watch のタブ。上に映像とスクラブの棒、下にコメントの一覧、書く欄、スレッド。 */
+/** Watch のタブ。上に映像とスクラブバー、下にコメントの一覧、入力欄、スレッド。 */
 export const WatchScreen = ({ controller, attach }: WatchScreenProps) => {
   const project = useStore(controller.connection.subscribe, controller.connection.get).project;
   const comp = project?.open_composition ?? project?.compositions[0]?.id ?? "";

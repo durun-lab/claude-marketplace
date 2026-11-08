@@ -1,4 +1,4 @@
-//! 静止画のコマ。
+//! 静止画のフレーム。
 
 use std::time::Instant;
 
@@ -26,7 +26,7 @@ fn dimensions(webp: &[u8]) -> (u32, u32) {
 }
 
 #[test]
-fn コマは_webp_で返り幅は範囲に丸められキャッシュされる() {
+fn 静止画のフレームは_webp_で返り幅は範囲に丸められキャッシュされる() {
     let Some(config) = gpu_config() else { return };
     let dir = tempfile::tempdir().unwrap();
     let (project, _, _) = vertical_project(&SampleMedia::default(), &dir.path().join("o.json"));
@@ -80,7 +80,7 @@ fn 無いコンポジションはエラーになる() {
 }
 
 #[test]
-fn 配信の描画のスレッドの_engine_を借りて描ける() {
+fn 配信の描画のスレッドの_engine_を借用して描ける() {
     let Some(config) = gpu_config() else { return };
     let dir = tempfile::tempdir().unwrap();
     let (project, _, _) = vertical_project(&SampleMedia::default(), &dir.path().join("o.json"));

@@ -8,10 +8,10 @@ use crate::key::{SegmentKey, SEGMENT_EXT};
 
 const HLS_DIR: &str = "hls";
 const AUDIO_DIR: &str = "audio";
-/// 書きかけのファイルの拡張子。完成してから名前を替える。
+/// 一時ファイルの拡張子。完成してから名前を替える。
 pub(crate) const PARTIAL_EXT: &str = "partial";
 
-/// キャッシュの根。
+/// キャッシュのルート。
 #[derive(Debug, Clone)]
 pub(crate) struct CacheDir {
     root: PathBuf,
@@ -34,7 +34,7 @@ impl CacheDir {
             .join(format!("{}.m4a", sanitize(content_hash)))
     }
 
-    /// 前の起動が残した書きかけ（区間で終わらない名前）を捨てる。
+    /// 前の起動が残した一時ファイル（区間で終わらない名前）を捨てる。
     pub(crate) fn remove_partials(&self) {
         for entry in fs::read_dir(self.root.join(HLS_DIR))
             .into_iter()
@@ -140,7 +140,7 @@ mod tests {
     }
 
     #[test]
-    fn 書きかけだけを捨てる() {
+    fn 一時ファイルだけを捨てる() {
         let dir = tempfile::tempdir().unwrap();
         let cache = CacheDir::new(dir.path().to_path_buf());
         let done = cache.segment(key(1));
