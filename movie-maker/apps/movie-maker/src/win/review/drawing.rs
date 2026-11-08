@@ -14,7 +14,7 @@ use mm_ui_layout::{DrawingShape, DrawingShapeKind};
 use mm_ui_wgpu::Ui;
 
 use crate::win::state::Shared;
-use crate::win::{surface, timebase};
+use crate::win::timebase;
 
 /// 描き込みを持つコメントと、Review で選んだコメント。コメントの通知と選択のたびに置き直す。
 #[derive(Default)]
@@ -133,9 +133,8 @@ pub struct DrawingSync {
 }
 
 impl DrawingSync {
-    /// 今の再生位置で出す描き込みと、`hwnd` の表示の倍率を `ui` に渡す。
-    pub fn refresh(&mut self, shared: &Shared, hwnd: isize, ui: &mut Ui) {
-        ui.set_scale_factor(surface::scale_factor(hwnd));
+    /// 今の再生位置で出す描き込みを `ui` に渡す。
+    pub fn refresh(&mut self, shared: &Shared, ui: &mut Ui) {
         let state = shared.review_drawing.snapshot();
         let doc = shared.doc();
         let at = doc.as_ref().and_then(|doc| {

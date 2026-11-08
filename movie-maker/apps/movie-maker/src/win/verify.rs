@@ -8,7 +8,9 @@ use std::time::{Duration, Instant};
 use mm_trace::chrome::ChromeTraceHandle;
 use mm_trace::MetricsHandle;
 use mm_types::ParamValue;
-use mm_ui_layout::{row_top, split_surface, TimeView, TimelineModel, ROW_H, RULER_H, VIEW_MARGIN};
+use mm_ui_layout::{
+    row_top, split_surface, Scale, TimeView, TimelineModel, ROW_H, RULER_H, VIEW_MARGIN,
+};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager, Window};
 
@@ -119,6 +121,22 @@ pub(crate) fn wait_until(limit: Duration, mut done: impl FnMut() -> bool) -> boo
         std::thread::sleep(POLL);
     }
     false
+}
+
+/// サーフェスの大きさ（論理ピクセル）と表示の倍率。自動試験も `Ui` と同じく論理ピクセルで割り付け、
+/// クリックを投げるときに表示の倍率を掛けて物理ピクセルに直す。
+pub(crate) fn logical_surface(shared: &Shared, hwnd: isize) -> ((f32, f32), Scale) {
+    let scale = Scale::new(surface::scale_factor(hwnd));
+    let (w, h) = shared.surface_size();
+    let logical = (scale.to_logical(w as f32), scale.to_logical(h as f32));
+    (logical, scale)
+}
+
+/// 論理ピクセルの点を、サーフェスのクライアントの物理ピクセルにする。
+/// 切り捨てると最大 1 物理ピクセル左上へ寄るので、近い画素に丸める。
+pub(crate) fn client_point(scale: Scale, (x, y): (f32, f32)) -> (i32, i32) {
+    let p = |v: f32| (v * scale.get()).round() as i32;
+    (p(x), p(y))
 }
 
 fn run(
@@ -240,11 +258,14 @@ fn report(
 
 /// 実際のウィンドウへの入力で、Timeline のスクラブとキー操作が効くか確かめる。
 fn interaction(shared: &Shared, info: &PlaybackInfo, target: &Target) -> Value {
-    let (w, h) = shared.surface_size();
-    let tl = split_surface(w as f32, h as f32, target.model.content_height()).timeline;
+    let ((w, h), scale) = logical_surface(shared, target.surface_hwnd);
+    let tl = split_surface(w, h, target.model.content_height()).timeline;
     let view = TimeView::fit(target.model.duration, tl.w, VIEW_MARGIN);
-    let x = tl.x + view.x_of(SCRUB_TARGET);
-    surface::post_click(target.surface_hwnd, x as i32, (tl.y + RULER_H / 2.0) as i32);
+    let (x, y) = client_point(
+        scale,
+        (tl.x + view.x_of(SCRUB_TARGET), tl.y + RULER_H / 2.0),
+    );
+    surface::post_click(target.surface_hwnd, x, y);
     std::thread::sleep(INPUT_WAIT);
     let scrubbed = shared.playhead();
     let playing = || shared.playing.load(Ordering::SeqCst);
@@ -256,6 +277,7 @@ fn interaction(shared: &Shared, info: &PlaybackInfo, target: &Target) -> Value {
     std::thread::sleep(INPUT_WAIT);
     let stopped = !playing();
     json!({
+        "scale_factor": scale.get(),
         "scrub_target_secs": SCRUB_TARGET,
         "scrub_result_secs": scrubbed,
         "scrub_ok": (scrubbed - SCRUB_TARGET).abs() <= 2.0 / info.fps,
@@ -293,18 +315,20 @@ fn inspector_flow(
     hwnd: isize,
     test: &PlayTest,
 ) -> Value {
-    let (w, h) = shared.surface_size();
-    let tl = split_surface(w as f32, h as f32, target.model.content_height()).timeline;
+    let ((w, h), scale) = logical_surface(shared, target.surface_hwnd);
+    let tl = split_surface(w, h, target.model.content_height()).timeline;
     let view = TimeView::fit(target.model.duration, tl.w, VIEW_MARGIN);
     let Some(item) = target.model.items.first() else {
         return json!({ "skipped": "レイヤーが無い" });
     };
-    let x = tl.x + view.x_of((item.start + item.end) / 2.0);
-    surface::post_click(
-        target.surface_hwnd,
-        x as i32,
-        (tl.y + row_top(0) + ROW_H / 2.0) as i32,
+    let (x, y) = client_point(
+        scale,
+        (
+            tl.x + view.x_of((item.start + item.end) / 2.0),
+            tl.y + row_top(0) + ROW_H / 2.0,
+        ),
     );
+    surface::post_click(target.surface_hwnd, x, y);
     let selected = wait_until(FLOW_TIMEOUT, || shared.selected_layer().is_some());
     let id = shared.selected_layer();
     std::thread::sleep(INPUT_WAIT);

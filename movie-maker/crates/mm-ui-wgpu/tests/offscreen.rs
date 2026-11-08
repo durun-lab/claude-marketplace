@@ -3,7 +3,8 @@
 use mm_gpu::{GpuContext, GpuRequest};
 use mm_types::{Rgba, RgbaImage, Size};
 use mm_ui_layout::{
-    fit_rect, frame_point, palette, DrawingShape, DrawingShapeKind, Item, ItemKind, TimelineModel,
+    fit_rect, frame_point, palette, row_top, DrawingShape, DrawingShapeKind, Item, ItemKind,
+    PointerEvent, TimelineModel, HANDLE_PX, ROW_H, VIEW_MARGIN,
 };
 use mm_ui_wgpu::{Region, Ui};
 
@@ -393,14 +394,16 @@ fn 描き込みは表示の倍率とウィンドウの大きさが変わると�
     ui.set_frame(&device, &queue, &img);
     ui.set_drawing(vec![point_shape(0.5, 0.5)]);
     let first = render(&device, &queue, &mut ui);
-    let [x, y] = frame_point(fit_rect(16.0, 9.0, ui.layout().program), [0.5, 0.5]);
+    let centre = |ui: &Ui| frame_point(fit_rect(16.0, 9.0, ui.layout().program), [0.5, 0.5]);
+    let [x, y] = centre(&ui);
     // 点の中心から 8 画素の所は、倍率 1（直径 12）では点の外、倍率 2（直径 24）では点の中。
-    let (ox, oy) = (x as u32 + 8, y as u32);
-    let base = px(&first, ox, oy);
+    let base = px(&first, x as u32 + 8, y as u32);
     assert!(close(base, [0, 0, 0], 2), "倍率 1 では点の外 {base:?}");
     ui.set_scale_factor(2.0);
     let hidpi = render(&device, &queue, &mut ui);
-    let wide = px(&hidpi, ox, oy);
+    // 表示の倍率が変わると Timeline の物理ピクセルの高さも変わり、Program の領域が動く。
+    let [x, y] = centre(&ui);
+    let wide = px(&hidpi, x as u32 + 8, y as u32);
     assert!(
         close(wide, hex(palette::DRAWING), 3),
         "倍率 2 では点の中 {wide:?}"
@@ -415,4 +418,57 @@ fn 描き込みは表示の倍率とウィンドウの大きさが変わると�
         close(at, hex(palette::DRAWING), 3),
         "小さくしても映像の中央 {at:?}"
     );
+}
+
+/// 走査線の上で、`hit` に当てはまる画素が続く最も長い数。
+fn longest_run(points: impl Iterator<Item = [u8; 3]>, hit: impl Fn([u8; 3]) -> bool) -> u32 {
+    let (mut best, mut run) = (0, 0);
+    for p in points {
+        run = if hit(p) { run + 1 } else { 0 };
+        best = best.max(run);
+    }
+    best
+}
+
+/// 帯の高さとつまみの幅は論理ピクセルで決まり、表示の倍率 1.5 と 2 でも同じ見た目の大きさになる。
+/// つまみは物理ピクセルのポインターで光らせるので、当たり判定も同じ表示の倍率で換算されていることを確かめる。
+#[test]
+fn timeline_の帯とつまみは表示の倍率を掛けても論理ピクセルの寸法を保つ() {
+    let Some((device, queue)) = gpu() else { return };
+    let bar = hex(palette::lighten(
+        palette::item_color(ItemKind::Footage),
+        0.18,
+    ));
+    for scale in [1.0_f32, 1.5, 2.0] {
+        let size = ((W as f32 * scale) as u32, (H as f32 * scale) as u32);
+        let mut ui = Ui::new(&device, FORMAT);
+        ui.set_scale_factor(scale);
+        ui.set_model(model());
+        ui.resize(size.0, size.1);
+        let t = ui.layout().timeline;
+        // 全体表示の帯の右端は右の余白（論理）の内側。その 2 論理ピクセル内側でつまみに乗る。
+        let end = t.right() - VIEW_MARGIN * scale;
+        let row_y = t.y + (row_top(0) + ROW_H / 2.0) * scale;
+        ui.pointer(PointerEvent::Move {
+            x: end - 2.0 * scale,
+            y: row_y,
+        });
+        let out = render_sized(&device, &queue, &mut ui, size);
+        let at = |x: u32, y: u32| px_in(&out, size.0, x, y);
+        let mid_x = (t.x + t.w / 2.0) as u32;
+        let column = (t.y as u32..t.bottom() as u32).map(|y| at(mid_x, y));
+        let height = longest_run(column, |p| close(p, bar, 3));
+        let row = (t.x as u32..t.right() as u32).map(|x| at(x, row_y as u32));
+        let handle = longest_run(row, |p| p.iter().all(|c| *c >= 200));
+        for (name, got, logical) in [
+            ("帯の高さ", height, ROW_H),
+            ("つまみの幅", handle, HANDLE_PX),
+        ] {
+            let want = logical * scale;
+            assert!(
+                (got as f32 - want).abs() <= 1.0,
+                "表示の倍率 {scale}: {name} {got} 物理ピクセル（期待 {want}）"
+            );
+        }
+    }
 }

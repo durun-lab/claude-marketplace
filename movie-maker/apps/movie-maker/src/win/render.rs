@@ -221,7 +221,10 @@ impl View {
         })
     }
 
-    fn configure(&mut self, (w, h): (u32, u32)) {
+    /// サーフェスを `(w, h)`（物理ピクセル）に張り直し、`hwnd` の表示の倍率を UI に渡す。
+    /// 表示の倍率はモニターをまたぐと物理ピクセルの大きさと別に変わるので、毎フレーム読む。
+    fn configure(&mut self, hwnd: isize, (w, h): (u32, u32)) {
+        self.ui.set_scale_factor(surface::scale_factor(hwnd));
         if (w, h) != self.configured {
             self.gpu.config.width = w;
             self.gpu.config.height = h;
@@ -261,10 +264,10 @@ fn run(
             source = SourceSync::default();
             drawing = DrawingSync::default();
         }
-        view.configure(size);
+        view.configure(hwnd, size);
         doc.refresh(shared, &mut view.ui);
         source.refresh(shared, &mut view);
-        drawing.refresh(shared, hwnd, &mut view.ui);
+        drawing.refresh(shared, &mut view.ui);
         handle_input(shared, &mut view.ui, &doc);
         if frame(shared, &view.gpu, &mut view.ui, &mut seen) {
             failed_frames = 0;

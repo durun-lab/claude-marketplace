@@ -6,7 +6,7 @@
 | 時刻のコメント / 範囲のコメント | `at` を持つコメント / `range`（`in` から `out` まで。`out` は含まない）を持つコメント。描き込みは Program に映るフレームで比べ、時刻のコメントは止めている間だけ、範囲のコメントは再生中も出す | `Comment.at`、`Comment.range`、`review::drawing::shows_at` |
 | 選んだコメント（Review の） | Review で時刻を押したコメント。その位置ではその描き込みだけを Program に重ねる。選択はパネルの中にだけあり、パネルを開いたときと閉じたときに外す | `review_comment_focus`、`ReviewApi.focusComment`、`DrawingSlot::focus` |
 | 映像の矩形 | Program の領域の中で、縦横比を保って映像が映る矩形。レターボックスの余白を除く | `fit_rect`、`frame_point` |
-| 表示の倍率 | Windows の DPI を 96 で割った値。描き込みの太さを論理ピクセルで揃えるのに掛ける | `surface::scale_factor`、`Ui::set_scale_factor` |
+| 表示の倍率 | Windows の DPI を 96 で割った値。1 論理ピクセルあたりの物理ピクセルの数で、サーフェスの UI（Timeline、描き込み）を論理ピクセルで揃えるのに掛ける | `surface::scale_factor`、`Ui::set_scale_factor`、`Scale`（mm-ui-layout） |
 
 ## 置き換えた語
 
