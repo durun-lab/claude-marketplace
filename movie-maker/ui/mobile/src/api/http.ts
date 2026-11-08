@@ -32,7 +32,8 @@ export class ApiError extends Error {
 export const isRetryable = (e: unknown): boolean =>
   e instanceof ApiError && (e.status === 0 || e.status === TOO_MANY_REQUESTS || e.status >= SERVER_ERROR);
 
-const UNAUTHORIZED = 401;
+/** 資格が無いか効いていない。 */
+export const UNAUTHORIZED = 401;
 const FORBIDDEN = 403;
 
 /** 資格が無い、または登録を外された（401）か、待ち受けに拒まれた（403）。登録の画面へ送る。 */
