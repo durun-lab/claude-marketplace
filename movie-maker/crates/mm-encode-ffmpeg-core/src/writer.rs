@@ -46,6 +46,7 @@ pub fn can_open(spec: &CodecSpec) -> bool {
         output_path: PathBuf::new(),
         audio: None,
         stream: None,
+        source_peak: 1.0,
     };
     VideoTrack::open(None, &settings, spec, &Pass::Single, false).is_ok()
 }

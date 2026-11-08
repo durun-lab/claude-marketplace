@@ -122,6 +122,7 @@ fn エンコーダーの失敗は最初のエラーで止まる() {
         output_path: temp("fail.json"),
         audio: None,
         stream: None,
+        source_peak: 1.0,
     };
     let control = ExportControl::default();
     let plan = Plan {

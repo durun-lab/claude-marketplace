@@ -4,6 +4,7 @@
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use mm_render_api::tone_map_peak;
 use mm_ui_layout::{Action, EditKind, PointerEvent};
 use mm_ui_wgpu::{timeline_cut_ids, timeline_layer_ids, timeline_model, Region, Ui};
 
@@ -66,6 +67,8 @@ impl DocSync {
                 return;
             };
             ui.update_model(timeline_model(&doc.project, comp));
+            // SDR の書き出しと同じ素材の上限の明るさでトーンマップし、プレビューと書き出しの映像を揃える。
+            ui.set_hdr_peak(tone_map_peak(&doc.project));
             self.layer_ids = timeline_layer_ids(comp);
             self.cut_ids = timeline_cut_ids(&doc.project, comp);
             self.shown = Some(doc.clone());

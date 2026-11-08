@@ -1,5 +1,6 @@
 //! HDR の線形を SDR の表示（1.0 が白）に収めるトーンマップ。ITU-R BT.2390 の EETF（PQ の空間のエルミート曲線の肩）を
 //! RGB の最大値に掛け、比で RGB を縮めて色相を保つ。素材の上限が 1 以下なら何もしないので、SDR の画像は変わらない。
+//! プレビューと SDR の書き出しが同じこの式を掛け、プレビューで見た映像を書き出す（ITU-R BT.2408 の 5.2）。
 //!
 //! 線形の単位は [`crate::transfer`] と同じ（1.0 が HDR の基準の白）。WGSL の [`TONEMAP_WGSL`] は
 //! `transfer::TRANSFER_WGSL` の後に連結する。
@@ -7,9 +8,10 @@
 use crate::transfer::{linear_to_pq, pq_to_linear, HDR_REFERENCE_WHITE_NITS, HLG_PEAK_NITS};
 use crate::ColorSpace;
 
-/// プレビューのトーンマップの素材の上限（線形）。素材の色空間に HDR（`bt2100_pq`、`bt2100_hlg`）があれば
+/// 素材の上限の明るさ（線形）。素材の色空間に HDR（`bt2100_pq`、`bt2100_hlg`）があれば
 /// 1000 cd/m²（HDR10 のマスタリングの既定、HLG の基準の表示）、無ければ 1.0（トーンマップしない）。
-pub fn preview_peak<'a>(spaces: impl IntoIterator<Item = &'a ColorSpace>) -> f32 {
+/// デコーダーが MaxCLL とマスタリングの表示の明るさを読まないので、色空間だけで決める。
+pub fn hdr_source_peak<'a>(spaces: impl IntoIterator<Item = &'a ColorSpace>) -> f32 {
     let hdr = spaces
         .into_iter()
         .any(|cs| cs == &ColorSpace::bt2100_pq() || cs == &ColorSpace::bt2100_hlg());
@@ -91,6 +93,19 @@ mod tests {
         assert!((dark[0] - 0.05).abs() < 1e-4, "肩より下は恒等: {dark:?}");
     }
 
+    /// HDR の素材があると、HDR の基準の白（SDR の素材の白）は肩の中に入り約 0.78（8 bit の tv レンジで 214）に下がる。
+    /// 白より明るい HDR のハイライトは白と上限の間に別の明るさで残る。この引き換えは `03-data-model.md` の「色」。
+    #[test]
+    fn 基準の白は肩で下がり_ハイライトは白の上に残る() {
+        let peak = 1000.0 / 203.0;
+        let white = bt2390_to_sdr([1.0; 3], peak)[0];
+        assert!((white - 0.783).abs() < 2e-3, "{white}");
+        let highlight = bt2390_to_sdr([2.0; 3], peak)[0];
+        assert!(white < highlight && highlight < 0.99, "{highlight}");
+        let code = |v: f32| (16.0 + 219.0 * crate::transfer::linear_to_bt1886(v)).round();
+        assert_eq!((code(white), code(highlight)), (214.0, 231.0));
+    }
+
     #[test]
     fn 単調で色相を保つ() {
         let peak = 1000.0 / 203.0;
@@ -107,9 +122,9 @@ mod tests {
     #[test]
     fn hdr_の素材があるときだけ上限を上げる() {
         let sdr = [ColorSpace::bt709(), ColorSpace::bt2020()];
-        assert_eq!(preview_peak(&sdr), 1.0);
+        assert_eq!(hdr_source_peak(&sdr), 1.0);
         let mixed = [ColorSpace::bt709(), ColorSpace::bt2100_pq()];
-        assert!((preview_peak(&mixed) - 1000.0 / 203.0).abs() < 1e-4);
+        assert!((hdr_source_peak(&mixed) - 1000.0 / 203.0).abs() < 1e-4);
     }
 
     #[test]

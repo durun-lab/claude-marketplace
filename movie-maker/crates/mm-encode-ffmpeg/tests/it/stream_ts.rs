@@ -116,6 +116,7 @@ fn write_segment(path: &Path, stream: StreamOutput, seconds: i64) {
             channels: 2,
         }),
         stream: Some(stream),
+        source_peak: 1.0,
     })
     .unwrap();
     let frames: Vec<RgbaImage> = (0..seconds * FPS)
@@ -217,6 +218,7 @@ fn ビットレートの指定は配信の区間のコーデックにだけ要�
         output_path: path.clone(),
         audio: None,
         stream,
+        source_peak: 1.0,
     };
     let mut enc = FfmpegEncoderFactory.create().unwrap();
     assert!(

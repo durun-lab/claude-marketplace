@@ -96,8 +96,18 @@ fn hdr_の素材は_gpu_に上げても_1_を超える線形の光になる() {
             .open(&path, Some(ctx.as_ref()))
             .expect("開ける");
         let frame = dec.next_frame().expect("デコード").expect("ある");
+        assert!(frame.gpu.is_some(), "GPU のフレームで返す");
         let image = download(&mut helper, &frame);
         hdr::check_bands(&image, kind, "GPU").unwrap();
+        let on_cpu = FfmpegCpuDecoderFactory
+            .open(&path, Some(ctx.as_ref()))
+            .expect("開ける");
+        assert_eq!(dec.backend_id(), Some(mm_decode_ffmpeg::UPLOAD_WIDE_ID));
+        assert_eq!(
+            on_cpu.backend_id(),
+            Some(mm_decode_ffmpeg::WIDE_ID),
+            "画素の一致しない CPU の経路とフレームのキャッシュで画像を引き合わない"
+        );
         eprintln!(
             "GPU に上げた {kind:?} の帯の最大の相対の差 {:e}",
             hdr::max_relative_error(&image, kind)

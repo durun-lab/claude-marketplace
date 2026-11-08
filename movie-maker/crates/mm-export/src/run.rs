@@ -6,6 +6,7 @@ use std::time::Instant;
 use mm_audio_api::{NormalizeReport, DEFAULT_CHANNELS, DEFAULT_SAMPLE_RATE};
 use mm_decode_api::{AudioStreamInfo, EncodeReport, EncodeSettings};
 use mm_doc::{Project, RenderTarget};
+use mm_render_api::tone_map_peak;
 use mm_runtime::Engine;
 use mm_types::{MmError, Rational, RationalTime, RenderTargetId, Result, Size, TimeRange};
 
@@ -177,7 +178,7 @@ fn export_target(
 ) -> Result<Option<Finished>> {
     let target = project.render_target(target)?;
     let comp = project.composition(&target.composition)?;
-    let settings = encode_settings(target, options);
+    let settings = encode_settings(project, target, options);
     let range = resolve_range(comp.range()?, options.range, settings.fps)?;
     let prepared = deliver::prepare(project, target, comp, range, options.transcript.as_deref())?;
     let mut encoder = open_encoder(engine, target, &prepared)?;
@@ -243,7 +244,12 @@ fn open_encoder(
     Ok(encoder)
 }
 
-fn encode_settings(target: &RenderTarget, options: &ExportOptions) -> EncodeSettings {
+/// 書き出しの設定。SDR の書き出しがプレビューと同じトーンマップを掛けるよう、素材の上限の明るさを渡す。
+fn encode_settings(
+    project: &Project,
+    target: &RenderTarget,
+    options: &ExportOptions,
+) -> EncodeSettings {
     EncodeSettings {
         size: Size::new(target.width, target.height),
         fps: target.fps,
@@ -254,6 +260,7 @@ fn encode_settings(target: &RenderTarget, options: &ExportOptions) -> EncodeSett
             channels: DEFAULT_CHANNELS,
         }),
         stream: options.stream.clone(),
+        source_peak: tone_map_peak(project),
     }
 }
 

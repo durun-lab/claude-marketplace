@@ -65,6 +65,7 @@ fn settings(path: PathBuf, codec: &str, size: Size) -> EncodeSettings {
             channels: 2,
         }),
         stream: None,
+        source_peak: 1.0,
     }
 }
 

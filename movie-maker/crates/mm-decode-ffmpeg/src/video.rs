@@ -18,6 +18,9 @@ pub struct FfmpegDecoder {
     converter: RgbaConverter,
     #[cfg(feature = "gpu")]
     uploader: Option<crate::upload::GpuUploader>,
+    /// 広い信号の素材のフレームを GPU に上げるか。名乗る名前（`backend_id`）を CPU の経路と分ける。
+    #[cfg(feature = "gpu")]
+    uploads_wide: bool,
     audio_probe: Option<AudioProbe>,
     audio: Option<AudioReader>,
 }
@@ -28,7 +31,9 @@ impl FfmpegDecoder {
     #[cfg(feature = "gpu")]
     pub fn open_with_gpu(path: &Path, gpu: &mm_gpu::GpuContext) -> Result<Self> {
         let mut dec = Self::open(path)?;
-        dec.uploader = Some(crate::upload::GpuUploader::new(gpu, dec.seq.info().size));
+        let uploader = crate::upload::GpuUploader::new(gpu, dec.seq.info().size);
+        dec.uploads_wide = dec.seq.wide_signal() && uploader.handles(dec.seq.decoder().format());
+        dec.uploader = Some(uploader);
         Ok(dec)
     }
 
@@ -74,6 +79,8 @@ impl FfmpegDecoder {
             converter: RgbaConverter::default(),
             #[cfg(feature = "gpu")]
             uploader: None,
+            #[cfg(feature = "gpu")]
+            uploads_wide: false,
             audio_probe,
             audio: None,
         })
@@ -99,6 +106,10 @@ impl FfmpegDecoder {
 
 impl Decoder for FfmpegDecoder {
     fn backend_id(&self) -> Option<&'static str> {
+        #[cfg(feature = "gpu")]
+        if self.uploads_wide {
+            return Some(crate::UPLOAD_WIDE_ID);
+        }
         Some(if self.seq.wide_signal() {
             crate::WIDE_ID
         } else {

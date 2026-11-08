@@ -79,7 +79,7 @@ impl VideoTrack {
             stream.set_time_base(encoder_tb);
             stream_tb = stream.time_base();
         }
-        let encoding = Encoding::for_spec(spec);
+        let encoding = Encoding::for_spec(spec, settings.source_peak);
         Ok(Self {
             encoder: opened,
             scaler: make_scaler(size, spec, encoding.pixel())?,
@@ -235,6 +235,13 @@ fn describe_picture(
     enc.set_color_range(Range::MPEG);
     enc.set_color_primaries(primaries);
     enc.set_color_transfer_characteristic(trc);
+    if matches!(spec.input, VideoInput::Nv12 | VideoInput::Yuv420p10) {
+        // 4:2:0 の色差は GPU の NV12、HDR の自前の変換、swscale の既定のどれも 2x2 の中央に置くので、そう宣言する。
+        // SAFETY: 開く前のコンテキストの chroma_sample_location に列挙の値を書くだけ。
+        unsafe {
+            (*enc.as_mut_ptr()).chroma_sample_location = ffi::AVChromaLocation::AVCHROMA_LOC_CENTER
+        };
+    }
 }
 
 /// パス（1 パス、2 パスの 1 回目と 2 回目）とグローバルヘッダーのフラグ、統計ファイルのオプション。

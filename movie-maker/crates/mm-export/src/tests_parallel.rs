@@ -65,6 +65,7 @@ fn settings_of(media: &SampleMedia) -> EncodeSettings {
         output_path: temp("unused.json"),
         audio: None,
         stream: None,
+        source_peak: 1.0,
     }
 }
 

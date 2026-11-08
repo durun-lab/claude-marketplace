@@ -16,7 +16,7 @@ use mm_doc::{
 };
 use mm_eval::{node_params_at, place_cuts, source_time, PlacedCut};
 use mm_node_api::NodeRegistry;
-use mm_render_api::digest_bytes;
+use mm_render_api::{digest_bytes, tone_map_peak};
 use mm_types::{AssetId, CompositionId, Id, MmError, Params, RationalTime, Result, TimeRange};
 use serde::Serialize;
 
@@ -24,13 +24,13 @@ use crate::clip::ClipPlan;
 use crate::hls::Plan;
 
 /// 区間のバイトの作り方（コンテナ、符号化の設定）のバージョン。作り方を変えたら上げ、前のキーを使わせない。
-const FORMAT: &str = "mm-stream/ts-2";
+const FORMAT: &str = "mm-stream/ts-3";
 /// 入れ子をたどる深さの上限。レンダラーと同じ。
 const MAX_DEPTH: u32 = 16;
 /// 区間のファイルの拡張子。
 pub(crate) const SEGMENT_EXT: &str = "ts";
 /// 提案の区間の短い動画のバイトの作り方のバージョン。区間の `FORMAT` と同じく、作り方を変えたら上げる。
-const CLIP_FORMAT: &str = "mm-stream/clip-1";
+const CLIP_FORMAT: &str = "mm-stream/clip-2";
 /// 短い動画のファイルの拡張子。
 pub(crate) const CLIP_EXT: &str = "mp4";
 
@@ -143,9 +143,11 @@ fn range_hash(
     header: String,
 ) -> Result<u64> {
     let comp = env.project.composition(composition)?;
+    // SDR の出力はプロジェクトの全部の素材から決まるトーンマップの上限で符号化するので、範囲に掛からない
+    // HDR の素材を足しても作り直すよう上限を入れる。
     let mut walk = Walk {
         env,
-        text: header,
+        text: format!("{header}|peak={}", tone_map_peak(env.project)),
         volatile: false,
     };
     walk.composition(comp, range, 0);

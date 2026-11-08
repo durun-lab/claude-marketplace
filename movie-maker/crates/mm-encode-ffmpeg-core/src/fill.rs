@@ -4,6 +4,7 @@
 use ff::format::Pixel;
 use ff::frame;
 use ffmpeg_next as ff;
+use mm_types::tonemap::bt2390_to_sdr;
 use mm_types::transfer::{linear_to_hlg, linear_to_pq, mul3, REC709_TO_REC2020};
 use mm_types::RgbaImage;
 
@@ -11,31 +12,32 @@ use crate::spec::{CodecSpec, OutputSignal};
 use crate::transfer::{EncodeTable, EncodeTable16, EncodeTableHdr};
 
 /// 線形 → 符号化値の表。8 ビットは NV12 向け、16 ビットは 10 ビットの YUV 向け、HDR は Rec.2020 の PQ か HLG。
+/// SDR の 2 つは、符号化の前にプレビューと同じトーンマップ（素材の上限の明るさ `peak`）を掛ける。
 pub(crate) enum Encoding {
     /// 境界の表（255 個）を持つので、ほかの形と大きさを揃えるためBox に入れる。
-    Code8(Box<EncodeTable>),
-    Code16(EncodeTable16),
+    Code8(Box<EncodeTable>, f32),
+    Code16(EncodeTable16, f32),
     Hdr(EncodeTableHdr),
 }
 
 impl Encoding {
-    /// コーデックの指定の画素形式と信号から。
-    pub(crate) fn for_spec(spec: &CodecSpec) -> Self {
+    /// コーデックの指定の画素形式と信号、素材の上限の明るさ（`EncodeSettings::source_peak`）から。
+    pub(crate) fn for_spec(spec: &CodecSpec, source_peak: f32) -> Self {
         match spec.signal {
             OutputSignal::Pq => Self::Hdr(EncodeTableHdr::new(linear_to_pq)),
             OutputSignal::Hlg => Self::Hdr(EncodeTableHdr::new(linear_to_hlg)),
             OutputSignal::Sdr if spec.input.is_high_bit_depth() => {
-                Self::Code16(EncodeTable16::new())
+                Self::Code16(EncodeTable16::new(), source_peak)
             }
-            OutputSignal::Sdr => Self::Code8(Box::default()),
+            OutputSignal::Sdr => Self::Code8(Box::default(), source_peak),
         }
     }
 
     /// スケーラーに渡す RGBA の形式。
     pub(crate) fn pixel(&self) -> Pixel {
         match self {
-            Self::Code8(_) => Pixel::RGBA,
-            Self::Code16(_) | Self::Hdr(_) => Pixel::RGBA64LE,
+            Self::Code8(..) => Pixel::RGBA,
+            Self::Code16(..) | Self::Hdr(_) => Pixel::RGBA64LE,
         }
     }
 
@@ -49,8 +51,16 @@ impl Encoding {
             Prepared::Rgba(f)
         };
         match self {
-            Self::Code8(t) => rgba(&|f| fill_rgba(f, image, t)),
-            Self::Code16(t) => rgba(&|f| fill_rgba64(f, image, |rgb| rgb.map(|c| t.encode(c)))),
+            Self::Code8(t, peak) => rgba(&|f| {
+                fill_rgba(f, image, |rgb| {
+                    bt2390_to_sdr(rgb, *peak).map(|c| t.encode(c))
+                })
+            }),
+            Self::Code16(t, peak) => rgba(&|f| {
+                fill_rgba64(f, image, |rgb| {
+                    bt2390_to_sdr(rgb, *peak).map(|c| t.encode(c))
+                })
+            }),
             Self::Hdr(t) => Prepared::Yuv(fill_yuv420p10(image, t)),
         }
     }
@@ -130,18 +140,16 @@ fn code10(v: f32) -> [u8; 2] {
     (v.round().clamp(0.0, 1023.0) as u16).to_le_bytes()
 }
 
-/// 線形の f32 の画素を Rec.1886 の 8 ビットにエンコードして RGBA のフレームへコピーする。
+/// 線形の f32 の画素を `encode` で Rec.1886 の 8 ビットにして RGBA のフレームへコピーする。
 /// アルファは使わず不透明として書く（premultiplied なので黒の上に置いた色と同じ）。
-fn fill_rgba(dst: &mut frame::Video, image: &RgbaImage, table: &EncodeTable) {
+fn fill_rgba(dst: &mut frame::Video, image: &RgbaImage, encode: impl Fn([f32; 3]) -> [u8; 3]) {
     let width = image.width() as usize;
     let stride = dst.stride(0);
     let data = dst.data_mut(0);
     for (y, row) in image.data().chunks_exact(width * 4).enumerate() {
         let out = &mut data[y * stride..y * stride + width * 4];
         for (o, px) in out.chunks_exact_mut(4).zip(row.chunks_exact(4)) {
-            o[0] = table.encode(px[0]);
-            o[1] = table.encode(px[1]);
-            o[2] = table.encode(px[2]);
+            o[..3].copy_from_slice(&encode([px[0], px[1], px[2]]));
             o[3] = 255;
         }
     }

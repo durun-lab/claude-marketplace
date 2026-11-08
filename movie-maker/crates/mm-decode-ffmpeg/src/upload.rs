@@ -94,6 +94,11 @@ impl GpuUploader {
         }
     }
 
+    /// この画素形式のフレームを GPU に上げるか（上げなければ CPU の経路）。
+    pub fn handles(&self, pixel: Pixel) -> bool {
+        self.plane_format(pixel).is_some()
+    }
+
     /// プレーンの形式が扱えるか。8 bit は常に、10 bit はデバイスが 16 bit の正規化テクスチャを持つとき。
     fn plane_format(&self, pixel: Pixel) -> Option<(wgpu::TextureFormat, u32)> {
         match pixel {

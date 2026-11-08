@@ -4024,6 +4024,7 @@ dependencies = [
  "mm-node-api",
  "mm-ops",
  "mm-pack",
+ "mm-render-api",
  "mm-runtime",
  "mm-serve",
  "mm-store",

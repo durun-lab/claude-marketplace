@@ -12,4 +12,6 @@ mod hdr;
 #[cfg(feature = "ffmpeg")]
 mod roundtrip;
 #[cfg(feature = "ffmpeg")]
+mod sdr_tone_map;
+#[cfg(feature = "ffmpeg")]
 mod stream_ts;
