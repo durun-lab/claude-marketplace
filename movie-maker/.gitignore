@@ -4,3 +4,6 @@ target/
 *.mmdb-shm
 cache/
 .mm/
+/bazel-*
+/user.bazelrc
+/MODULE.bazel.lock

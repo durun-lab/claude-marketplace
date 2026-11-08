@@ -1,0 +1,15 @@
+# 出力とキャッシュはこの PC の E:/dev/bazel に置き、worktree の間で disk cache を共有する（試作。docs/design/spikes/bazel.md）。
+# output_user_root を短くするのは、Windows のパスの長さ（MAX_PATH）に外部クレートの深いパスが当たらないようにするため。
+startup --output_user_root=E:/dev/bazel/o
+common --repository_cache=E:/dev/bazel/repo
+common --disk_cache=E:/dev/bazel/disk
+
+# 環境の PATH などで action のキーが worktree ごとに変わらないようにする。
+common --incompatible_strict_action_env
+
+# 並行の開発で PC が重くならないよう、同時のアクションを 32 スレッドの半分に抑える。
+build --jobs=16
+
+test --test_output=errors
+
+try-import %workspace%/user.bazelrc

@@ -1,0 +1,36 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+DEPS = [
+    "//crates/mm-doc:mm_doc",
+    "//crates/mm-types:mm_types",
+    "@crates//:schemars",
+    "@crates//:serde",
+    "@crates//:serde_json",
+    "@crates//:thiserror",
+]
+
+rust_library(
+    name = "mm_ops",
+    srcs = glob(["src/**/*.rs"]),
+    visibility = ["//visibility:public"],
+    deps = DEPS,
+)
+
+rust_test(
+    name = "mm_ops_test",
+    crate = ":mm_ops",
+    data = glob(["schema/**"]) + ["//:fixtures"],
+    deps = ["@crates//:proptest"],
+)
+
+rust_test(
+    name = "it",
+    srcs = glob(["tests/it/**/*.rs"]),
+    compile_data = glob(["tests/it/**"]),
+    crate_root = "tests/it/main.rs",
+    data = glob(["schema/**"]) + ["//:fixtures"],
+    deps = DEPS + [
+        ":mm_ops",
+        "@crates//:proptest",
+    ],
+)
