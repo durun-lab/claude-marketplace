@@ -2,6 +2,8 @@
 resolver = "2"
 # apps/* はアプリ（Tauri のウィンドウなど）。xtask は開発用のコマンド（cargo xtask）。
 members = ["crates/*", "apps/*", "xtask"]
+# vendor/ は外のクレートに当てた修正。fmt、clippy、規約の検査の対象に入れない。
+exclude = ["vendor/wgpu-hal"]
 
 [workspace.package]
 version = "0.1.0"
@@ -140,6 +142,11 @@ rfd = { version = "0.15", default-features = false }
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }
 # CEF ホスト（mm-host-cef の `cef` feature）。wgpu のバージョンは cef クレートが要るバージョンに合わせる。
 cef = { version = "156.3", default-features = false, features = ["accelerated_osr"] }
+
+# wgpu-hal 30.0.1 に、環境変数 MM_WGPU_DX12_HIGH_PERFORMANCE_ONLY があれば高性能のアダプターだけを出す修正を当てる。
+# DX12 のアダプターの列挙は全部のアダプターに D3D12 のデバイスを作り、内蔵 AMD では 1 回約 1 秒かかりプロセスをまたいで直列になる。
+[patch.crates-io]
+wgpu-hal = { path = "vendor/wgpu-hal" }
 
 [workspace.lints.clippy]
 all = "warn"
