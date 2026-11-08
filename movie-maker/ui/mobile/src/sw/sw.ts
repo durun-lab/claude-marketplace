@@ -33,7 +33,7 @@ scope.addEventListener("activate", (e: WaitEvent) => {
   );
 });
 
-// 資源は取得済みを優先し、無ければ取りに行く。画面の遷移は圏外でも起動できるよう index.html に落とす。
+// 資源は取得済みを優先し、無ければ取りに行く。画面の遷移は圏外でも起動できるよう index.html にフォールバックする。
 scope.addEventListener("fetch", (e: FetchEvt) => {
   const url = new URL(e.request.url);
   if (!isCacheable(e.request.method, url, scope.location.origin)) return;

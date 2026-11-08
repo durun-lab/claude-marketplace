@@ -1,4 +1,4 @@
-//! コメントを `Core` の直列の列で扱い、HTTP（`/comments`）に出す。
+//! コメントを `Core` で直列に扱い、HTTP（`/comments`）に出す。
 //!
 //! 書いて決めるのは人の操作経路だけで、Claude（`cli`、`mcp`）は読むのと返信だけ。変更は [`CommentEvent`] で
 //! 購読者（`GET /events` の `comment`）に送る。Claude の対応（`responds_to` つきの適用と提案の承認）で
@@ -27,7 +27,7 @@ pub struct CommentEvent {
     pub state: CommentState,
 }
 
-/// 書く、決める、描き込むは人の操作経路だけ。Claude が自分で `done` にすると、人が確かめる段が無くなる。
+/// 書く、決める、描き込むは人の操作経路だけ。Claude が自分で `done` にすると、人が確かめる工程が無くなる。
 fn require_human(caller: &Caller, what: &str) -> Result<(), ServeError> {
     if caller.entry.is_claude() {
         return Err(ServeError::Forbidden(format!(

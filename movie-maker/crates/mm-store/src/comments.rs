@@ -1,4 +1,4 @@
-//! レビューのコメント。`comments` の表に 1 件 1 行（`json` が本体、`state` と `comp_id` は検索用に抜いた列）で持つ。
+//! レビューのコメント。`comments` の表に 1 件 1 行（`json` が本体、`state` と `comp_id` は検索用に抜いたカラム）で持つ。
 //!
 //! 状態は人が `open`、`done`、`wontfix` に決める。`fresh` は Claude の対応（`responds_to` を持つトランザクションの
 //! 適用か提案の承認）が書いたときにだけなり、そのトランザクションを `responded_txn` で指す。結びつけは対応を書く
@@ -33,7 +33,7 @@ pub enum CommentState {
 }
 
 impl CommentState {
-    /// 列と JSON に書く文字。
+    /// カラムと JSON に書く文字。
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Open => "open",
@@ -48,7 +48,7 @@ impl CommentState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ShapeKind {
-    /// 指でなぞった線。点の列。
+    /// 指でなぞった線。点の並び。
     Stroke,
     /// 矩形。対角の 2 点。
     Rect,
@@ -56,7 +56,7 @@ pub enum ShapeKind {
     Point,
 }
 
-/// 描き込み 1 つ。座標はコマの左上を (0, 0)、右下を (1, 1) に正規化する。
+/// 描き込み 1 つ。座標はフレームの左上を (0, 0)、右下を (1, 1) に正規化する。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Shape {
     pub kind: ShapeKind,

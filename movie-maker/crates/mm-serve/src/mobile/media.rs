@@ -1,7 +1,7 @@
-//! モバイルの映像の道。コマ（`GET /m/api/frame`）、HLS（`/m/api/stream`）、素材の音だけ（`/m/api/audio`）。
+//! モバイルの映像のエンドポイント。静止画のフレーム（`GET /m/api/frame`）、HLS（`/m/api/stream`）、素材の音だけ（`/m/api/audio`）。
 //!
 //! 描くのは `mm-stream` の `Streamer`（`Core` の描画と共有する 1 つの `Engine`）。ここは URL の形と、
-//! `MmError` から HTTP の状態への写しだけを持つ。
+//! `MmError` から HTTP の状態への対応だけを持つ。
 
 use std::sync::Arc;
 
@@ -25,7 +25,7 @@ use crate::frames::{parse_time, FrameRequest};
 use crate::http::blocking;
 use crate::proposals_http::parse_indices;
 
-/// 幅を省いたときのコマの幅。スクラブのつまみから提案の比べまで足りる中間。
+/// 幅を省いたときの静止画のフレームの幅。スクラブのつまみから提案の比べまで足りる中間。
 const DEFAULT_STILL_WIDTH: u32 = 480;
 /// プレイリストの区間の URI の前置き。プレイリストからの相対パスで `/m/api/stream/{comp}/seg/` を指すので、
 /// どんな名前のコンポジション（`seg` も）ともパスの形がぶつからない。
@@ -49,13 +49,13 @@ struct FrameQuery {
     t: String,
     comp: Option<String>,
     width: Option<u32>,
-    /// 提案の ID。あれば提案を適用したコマ（書かない）。
+    /// 提案の ID。あれば提案を適用したフレーム（書かない）。
     proposal: Option<i64>,
     /// 提案のうち適用する操作の番号（`0,2`）。
     ops: Option<String>,
 }
 
-/// コマ。保存したデータのコマは WebP（バージョンごとにキャッシュ）、提案を適用したコマは PNG（キャッシュしない）。
+/// 静止画のフレーム。保存したデータのフレームは WebP（バージョンごとにキャッシュ）、提案を適用したフレームは PNG（キャッシュしない）。
 async fn frame(
     State(st): State<Arc<MobileState>>,
     headers: HeaderMap,
@@ -187,7 +187,7 @@ fn streamer(st: &MobileState) -> Result<Arc<Streamer>, MobileError> {
     })
 }
 
-/// 描画は長いので、非同期の実行環境をふさがないよう別のスレッドで走らせる。
+/// 描画は長いので、非同期の実行環境をふさがないよう別のスレッドで実行する。
 async fn run<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, MmError> + Send + 'static,
 ) -> Result<T, MobileError> {
@@ -197,7 +197,7 @@ async fn run<T: Send + 'static>(
         .map_err(mm_error)
 }
 
-/// `Core` の失敗を `run` の中で返すための写し。状態は `mm_error` で決めるので、種類を保てば足りる。
+/// `Core` の失敗を `run` の中で返すための変換。状態は `mm_error` で決めるので、種類を保てば足りる。
 fn into_mm(e: ServeError) -> MmError {
     match e {
         ServeError::BadRequest(m) => MmError::InvalidArgument(m),

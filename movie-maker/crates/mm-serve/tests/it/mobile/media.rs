@@ -1,4 +1,4 @@
-//! モバイルの映像の道。コマ、HLS のプレイリストと区間、素材の音だけ。
+//! モバイルの映像のエンドポイント。静止画のフレーム、HLS のプレイリストと区間、素材の音だけ。
 
 use std::path::Path;
 use std::process::Command;
@@ -24,7 +24,7 @@ const USED_SECONDS: i64 = 10;
 const SEGMENT_URI_PREFIX: &str = "seg/";
 const SEGMENTS: &str = "/m/api/stream/main/seg/";
 
-/// 組めない理由が FFmpeg の無い設定なら `None`（`MM_REQUIRE_GPU` があれば GPU の無い失敗は落とす）。
+/// 組めない理由が FFmpeg の無い設定なら `None`（`MM_REQUIRE_GPU` があれば GPU の無い失敗をテストの失敗にする）。
 fn usable(config: RuntimeConfig) -> Option<RuntimeConfig> {
     match assemble(&config) {
         Ok(_) => Some(config),
@@ -252,7 +252,7 @@ fn seg_という名のコンポジションもプレイリストを読め_区間
     let list = get(&r, &cookie, "/m/api/stream/seg/360p.m3u8");
     assert_eq!(list.status, 200, "{}", list.error_message());
     assert_eq!(keys(&list).len(), 3);
-    // 今のプレイリストに無いキーは、コンポジションの名前に依らず区間の道で 404。
+    // 今のプレイリストに無いキーは、コンポジションの名前に依らず区間のパスで 404。
     let unknown = get(&r, &cookie, "/m/api/stream/seg/seg/0123456789abcdef.ts");
     assert_eq!((unknown.status, code(&unknown)), (404, "not_found".into()));
 }
@@ -283,11 +283,11 @@ fn 親のプレイリストは画質ごとの子を相対パスで指し_無い�
 }
 
 #[test]
-fn コマは_webp_で返り_etag_が合えば_304_で_claude_の_frame_も同じ_engine_で描く() {
+fn 静止画のフレームは_webp_で返り_etag_が合えば_304_で_claude_の_frame_も同じ_engine_で描く() {
     let Some(config) = gpu_config() else { return };
     let tmp = tempfile::tempdir().unwrap();
     let media = tmp.path().join("media.mp4");
-    // 素材に頼らないコマを描くため、素材のレイヤーを外して title だけにする。
+    // 素材に頼らないフレームを描くため、素材のレイヤーを外して title だけにする。
     let mut p = project(&media);
     p.compositions[0].layers.remove(0);
     p.compositions[0].layers[0].start = RationalTime::ZERO;
@@ -311,7 +311,7 @@ fn コマは_webp_で返り_etag_が合えば_304_で_claude_の_frame_も同じ
     assert_eq!(png.status, 200, "{}", png.error_message());
     assert_eq!(&png.body[1..4], b"PNG");
 
-    // 編集の後はバージョンが進み、コマは作り直される。
+    // 編集の後はバージョンが進み、静止画のフレームは作り直される。
     let before = r.version();
     let edit = r
         .claude
@@ -323,7 +323,7 @@ fn コマは_webp_で返り_etag_が合えば_304_で_claude_の_frame_も同じ
 }
 
 #[test]
-fn 提案を適用したコマは_png_で保存したデータを変えない() {
+fn 提案を適用したフレームは_png_で保存したデータを変えない() {
     let Some(config) = gpu_config() else { return };
     let tmp = tempfile::tempdir().unwrap();
     let mut p = project(&tmp.path().join("media.mp4"));

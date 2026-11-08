@@ -2,7 +2,7 @@
 //! フィクスチャのプロジェクトで始め、標準出力に 1 行の JSON で待ち受けを知らせる。
 //!
 //! 標準入力の 1 行ごとに応える。`code` は PC のアプリの Devices の「Add device」と同じ `Devices::issue_code`
-//! で登録の符号を出し、`devices` は登録した端末の一覧を出す。標準入力が閉じたら止める。
+//! で登録コードを出し、`devices` は登録した端末の一覧を出す。標準入力が閉じたら止める。
 //!
 //! 使い方: `cargo run -p mm-serve --example mobile_rig --features mm-runtime/ffmpeg -- \
 //!   --project fixtures/projects/mobile/project.json --transcript fixtures/ingest/transcript-ja.json \

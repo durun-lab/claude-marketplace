@@ -6,7 +6,7 @@ const HTTP_BAD_REQUEST = 400;
 const HTTP_CONFLICT = 409;
 const WORD_MS = 500;
 const MS = 1000;
-/** 偽の文字起こしの話題の範囲（単語の番号、終わりは含まない）。 */
+/** モックの文字起こしの話題の範囲（単語の番号、終わりは含まない）。 */
 const HARBOR_START = 0;
 const HARBOR_END = 23;
 const FERRY_START = 34;
@@ -120,7 +120,7 @@ const read = (s: MockStory, url: URL): Response | null => {
   return null;
 };
 
-/** PC の Story の応答を手元で返す偽物。操作は受けた分だけ状態に反映する。 */
+/** PC の Story の応答を手元で返すモック。操作は受けた分だけ状態に反映する。 */
 export const createMockStory = (): MockStory => {
   let conflict = false;
   const s: MockStory = {

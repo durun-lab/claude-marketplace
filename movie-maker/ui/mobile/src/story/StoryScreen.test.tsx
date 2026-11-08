@@ -45,7 +45,7 @@ const pickRange = async () => {
 };
 
 describe("Story", () => {
-  it("単語を 2 回押すと範囲になり、下の棒に選んだ数が出る", async () => {
+  it("単語を 2 回押すと範囲になり、下の操作バーに選んだ数が出る", async () => {
     await openStory();
     await click(wordButton("today"));
     expect(host.querySelector(".st-hint")?.textContent).toContain("another word");

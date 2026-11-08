@@ -5,7 +5,7 @@ import type { Proposal } from "../proposals/api.ts";
 import { MOBILE_HEADER } from "../api/http.ts";
 import { createMockStory, type MockStory } from "../story/mockStory.ts";
 
-/** デモとテストの偽の PC。人の待ち受けの API が出来るまで、12-mobile.md の「HTTP の形」の応答を手元で返す。 */
+/** デモとテストのモックの PC。人の待ち受けの API が出来るまで、12-mobile.md の「HTTP の形」の応答を手元で返す。 */
 export const MOCK_PAIR_CODE = "ABCD2345";
 
 const HTTP_OK = 200;
@@ -53,7 +53,7 @@ interface Request1 {
 
 const pair = (req: Request1, setPaired: () => void): Response => {
   if ((req.body as { code?: string } | null)?.code !== MOCK_PAIR_CODE) {
-    return errorBody(HTTP_UNAUTHORIZED, "pairing_wrong_code", "登録の符号が違う");
+    return errorBody(HTTP_UNAUTHORIZED, "pairing_wrong_code", "登録コードが違う");
   }
   setPaired();
   return json(HTTP_OK, { device_name: (req.body as { device_name: string }).device_name });

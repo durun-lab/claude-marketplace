@@ -7,7 +7,7 @@ export interface DevicesPanelProps {
   api: DevicesApi;
   /** 増えるたびに読み直す（タブを開いたとき）。 */
   refreshKey?: number;
-  /** 時刻の基準（ミリ秒）。固定すると符号の残りが進まない。スクリーンショットとテストで使う。 */
+  /** 時刻の基準（ミリ秒）。固定すると登録コードの期限の残りが進まない。スクリーンショットとテストで使う。 */
   nowMs?: number;
 }
 
@@ -99,7 +99,7 @@ const Notices = ({ status, onRecheck }: { status: Running; onRecheck: () => void
   );
 };
 
-/** スマホの登録。上から、待ち受けの状態と足りない設定、符号と QR、登録した端末の一覧。 */
+/** スマホの登録。上から、待ち受けの状態と足りない設定、登録コードと QR、登録した端末の一覧。 */
 export const DevicesPanel = ({ api, refreshKey = 0, nowMs }: DevicesPanelProps) => {
   const d = useDevices(api, refreshKey, nowMs);
   const running = d.status?.state === "running" ? d.status : null;

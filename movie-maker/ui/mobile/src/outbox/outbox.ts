@@ -12,7 +12,7 @@ export interface Outbox {
   list: () => PendingComment[];
   add: (draft: Omit<CommentDraft, "client_id">) => PendingComment;
   remove: (clientId: string) => void;
-  /** 先頭から順に送る。再送で解消し得る失敗に当たったら、そこで止めて残りを残す。 */
+  /** 先頭から順に送る。再送で解消し得る失敗が起きたら、そこで止めて残りを残す。 */
   flush: (send: (draft: CommentDraft) => Promise<unknown>) => Promise<void>;
   subscribe: (fn: () => void) => () => void;
   /** 保存した送信待ちを読み終えたら解決する。 */

@@ -11,7 +11,7 @@ const ENV_FFMPEG: &str = "MM_FFMPEG";
 /// エラーに載せる標準エラー出力の末尾の行数。
 const STDERR_TAIL_LINES: usize = 3;
 
-/// ffmpeg を `args` で走らせる。場所は `MM_FFMPEG`、無ければ PATH の `ffmpeg`。
+/// ffmpeg を `args` で実行する。場所は `MM_FFMPEG`、無ければ PATH の `ffmpeg`。
 pub(crate) fn run_ffmpeg(args: &[OsString]) -> Result<()> {
     let exe = std::env::var_os(ENV_FFMPEG).unwrap_or_else(|| "ffmpeg".into());
     run_with(&exe, args)

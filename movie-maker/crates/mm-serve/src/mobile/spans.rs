@@ -1,5 +1,5 @@
 //! 提案の範囲（`scope.sequences` の秒はシーケンスの時間軸）を、そのシーケンスを置いたレイヤーの
-//! コンポジションの時刻に写す。モバイル版はコマ（`GET /m/api/frame?comp=&t=`）とスクラブの棒をコンポジションの
+//! コンポジションの時刻に変換する。モバイル版は静止画のフレーム（`GET /m/api/frame?comp=&t=`）とスクラブバーをコンポジションの
 //! 時間軸で持つので、提案の応答に `comp_spans` として足す。
 
 use mm_doc::{Composition, Layer, Project};
@@ -23,7 +23,7 @@ pub(super) struct CompSpan {
     pub end: f64,
 }
 
-/// `scope` の範囲を、今のプロジェクトのデータのレイヤーの置き方で写す。写せない範囲（時間の写像を持つ
+/// `scope` の範囲を、今のプロジェクトのデータのレイヤーの置き方で変換する。変換できない範囲（時間の写像を持つ
 /// レイヤーだけが置く、レイヤーの見えている区間の外）は入れない。
 pub(super) fn comp_spans(project: &Project, scope: &ProposalScope) -> Vec<CompSpan> {
     project
@@ -136,7 +136,7 @@ mod tests {
     }
 
     #[test]
-    fn シーケンスの秒をレイヤーの始まりと速さでコンポジションの秒に写す() {
+    fn シーケンスの秒をレイヤーの始まりと速さでコンポジションの秒に変換する() {
         let spans = comp_spans(&project(), &scope(4.0, 6.0));
         assert_eq!(spans.len(), 1);
         assert_eq!(
@@ -154,7 +154,7 @@ mod tests {
     }
 
     #[test]
-    fn 時間の写像を持つレイヤーは写さない() {
+    fn 時間の写像を持つレイヤーは変換しない() {
         let mut p = project();
         p.compositions[0].layers[0].time_remap = Some(mm_doc::TimeRemap { keyframes: vec![] });
         assert!(comp_spans(&p, &scope(4.0, 6.0)).is_empty());

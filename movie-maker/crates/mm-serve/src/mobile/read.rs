@@ -26,7 +26,7 @@ pub(super) fn routes() -> Router<Arc<MobileState>> {
 
 /// `{ version, compositions, sequences, open_composition, cuts }`。素材の一覧（パスを持つ）は返さない。
 /// `open_composition` は PC で開いているものを `Core` が知らないので、先頭のコンポジション。
-/// `cuts` はその境の秒（スクラブの棒の目盛り）。
+/// `cuts` はその境の秒（スクラブバーの目盛り）。
 async fn project(State(st): State<Arc<MobileState>>) -> Result<Response, MobileError> {
     let core = st.core.clone();
     let view = blocking(move || core.project()).await?;
@@ -44,12 +44,12 @@ async fn project(State(st): State<Arc<MobileState>>) -> Result<Response, MobileE
 }
 
 /// Claude の待ち受けの `GET /events` と同じ通知（`hello`、`change`、`resync`、`proposal`、`comment`）。
-/// 端末の登録を外したら列を閉じ、`EventSource` の繋ぎ直しは守りが 401 で断る。
+/// 端末の登録を外したらストリームを閉じ、`EventSource` の繋ぎ直しはガードが 401 で断る。
 async fn events(
     State(st): State<Arc<MobileState>>,
     Extension(device): Extension<DeviceInfo>,
 ) -> Result<Response, MobileError> {
-    // 守りを通ってから見張り始めるまでに外された端末は、見張りを始めた後に確かめ直して拾う。
+    // ガードを通ってから見張り始めるまでに外された端末は、見張りを始めた後に確かめ直して拾う。
     let revocations = st.devices.subscribe_revocations();
     if !st.devices.is_paired(&device.id)? {
         return Err(refuse(
@@ -60,7 +60,7 @@ async fn events(
     }
     let devices = st.devices.clone();
     let id = device.id;
-    // 通知は `Some`、外されたことは `None` にして 1 つの列に混ぜ、`None` で列を終える。
+    // 通知は `Some`、外されたことは `None` にして 1 つのストリームに混ぜ、`None` でストリームを終える。
     let revoked = WatchStream::from_changes(revocations)
         .filter(move |_| !still_paired(&devices, &id))
         .map(|_| None);
@@ -74,7 +74,7 @@ async fn events(
         .into_response())
 }
 
-/// 確かめられないとき（ロックが壊れた）も外されたとみなし、列を閉じる。
+/// 確かめられないとき（ロックが壊れた）も外されたとみなし、ストリームを閉じる。
 fn still_paired(devices: &Devices, id: &str) -> bool {
     devices.is_paired(id).unwrap_or(false)
 }

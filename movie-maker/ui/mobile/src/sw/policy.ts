@@ -8,6 +8,6 @@ const PAIR_PATH = "/m/pair";
 export const isCacheable = (method: string, url: URL, origin: string): boolean =>
   method === "GET" && url.origin === origin && !url.pathname.startsWith(API_PREFIX) && url.pathname !== PAIR_PATH;
 
-/** 版の違う古いキャッシュの名前。 */
+/** バージョンの違う古いキャッシュの名前。 */
 export const staleCaches = (names: string[], current: string): string[] =>
   names.filter((n) => n.startsWith("mm-mobile-") && n !== current);

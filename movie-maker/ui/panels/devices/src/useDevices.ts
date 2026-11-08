@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "preact/hooks";
 import type { Device, DevicesApi, MobileStatus, Pairing } from "./api.ts";
 
 const STARTING_RETRY_MS = 1000;
-/** 符号を出している間、スマホが登録したかを確かめる間隔。 */
+/** 登録コードを出している間、スマホが登録したかを確かめる間隔。 */
 const PAIRING_POLL_MS = 2000;
 const TICK_MS = 1000;
 
@@ -39,7 +39,7 @@ const useLoad = (api: DevicesApi, refreshKey: number, report: Report) => {
   return { status, devices, setDevices, load };
 };
 
-/** 符号を出している間、登録の完了を一覧の増加で見張り、期限の残りを進める。 */
+/** 登録コードを出している間、登録の完了を一覧の増加で見張り、期限の残りを進める。 */
 const usePairing = (api: DevicesApi, setDevices: (d: Device[]) => void, report: Report, fixedNowMs?: number) => {
   const [pairing, setPairing] = useState<Pairing | null>(null);
   const [justPaired, setJustPaired] = useState<string | null>(null);
@@ -80,11 +80,11 @@ export interface DevicesView {
   status: MobileStatus | null;
   devices: Device[];
   pairing: Pairing | null;
-  /** 符号で登録できた端末の名前。次の符号を出すまで残す。 */
+  /** 登録コードで登録できた端末の名前。次の登録コードを出すまで残す。 */
   justPaired: string | null;
   error: string | null;
   busy: boolean;
-  /** 表示の基準の時刻（ミリ秒）。符号を出している間は進む。 */
+  /** 表示の基準の時刻（ミリ秒）。登録コードを出している間は進む。 */
   nowMs: number;
   recheck: () => void;
   addDevice: () => void;

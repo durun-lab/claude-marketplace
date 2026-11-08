@@ -1,7 +1,7 @@
-//! 描画のスレッド。`Engine` を 1 つだけ持ち、静止画のコマ、`GET /frame`、区間を順に描く。
+//! 描画のスレッド。`Engine` を 1 つだけ持ち、静止画のフレーム、`GET /frame`、区間を順に描く。
 //!
 //! `Engine` は GPU のコンテキストとフレームのキャッシュを持ち、VRAM を食うので、配信の全部で 1 つにする。
-//! 待たせると困る順に取り出す: コマとキャッシュの破棄、要求された区間、先読みの区間。
+//! 待たせると困る順に取り出す: 静止画のフレームとキャッシュの破棄、要求された区間、先読みの区間。
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
@@ -17,7 +17,7 @@ use crate::key::SegmentKey;
 /// 区間 1 つを待つ上限。
 const SEGMENT_TIMEOUT: Duration = Duration::from_secs(300);
 
-/// 描画のスレッドで `Engine` を借りて走らせる仕事。組み立てに失敗したら `Err` を渡す。
+/// 描画のスレッドで `Engine` を借用して実行する仕事。組み立てに失敗したら `Err` を渡す。
 pub(crate) type EngineJob = Box<dyn FnOnce(Result<&mut Engine>) + Send>;
 
 /// 区間を 1 つ作る仕事。

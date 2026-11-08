@@ -117,7 +117,7 @@ fn デコーダーの画素の作り方のバージョンが上がると全区�
     }
 }
 
-/// `project()` に、無効のレイヤー `off`（シーケンス `s2` の絵）を足す。`as_matte` なら `seq` のマットに使う。
+/// `project()` に、無効のレイヤー `off`（シーケンス `s2` の画像）を足す。`as_matte` なら `seq` のマットに使う。
 fn with_disabled_layer(as_matte: bool) -> Project {
     let mut p = project();
     p.sequences.push(Sequence {
@@ -192,10 +192,10 @@ fn 区間の中だけのレイヤーを直すとその区間だけ変わる() {
 }
 
 #[test]
-fn トランジションは境目の近くの区間だけを変える() {
+fn トランジションは編集点の近くの区間だけを変える() {
     let before = keys(&project());
     let mut p = project();
-    // c の頭（6 秒）の 1 秒のトランジションは 5.5〜6.5 秒に掛かる。
+    // c の先頭（6 秒）の 1 秒のトランジションは 5.5〜6.5 秒に掛かる。
     p.sequences[0].cuts[2].transition_in = Some(Transition {
         node: Node::new("crossfade", 1),
         duration: s(1),

@@ -26,7 +26,7 @@ const AssetList = ({ overview, onOpen }: { overview: StoryOverview | null; onOpe
   );
 };
 
-/** Story。素材の一覧から文字起こしを開き、範囲を選んで下の棒で決める。上に検索。 */
+/** Story。素材の一覧から文字起こしを開き、範囲を選んで下の操作バーで決める。上に検索。 */
 export const StoryScreen = ({ controller }: { controller: Controller }) => {
   const { connection } = controller;
   const snap = useStore(connection.subscribe, connection.get);

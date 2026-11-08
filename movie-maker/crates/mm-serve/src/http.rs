@@ -324,7 +324,7 @@ fn event_stream(
     Ok(Sse::new(event_items(core)?).keep_alive(KeepAlive::default()))
 }
 
-/// `GET /events` と人の待ち受けの `GET /m/api/events` が送る同じ通知の列。
+/// `GET /events` と人の待ち受けの `GET /m/api/events` が送る同じ通知のストリーム。
 pub(crate) fn event_items(
     core: &Arc<Core>,
 ) -> Result<impl tokio_stream::Stream<Item = Result<Event, Infallible>>, ServeError> {

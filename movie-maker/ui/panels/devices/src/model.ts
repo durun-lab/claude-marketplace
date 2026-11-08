@@ -3,7 +3,7 @@ const SECOND_MS = 1000;
 const SECONDS_PER_MINUTE = 60;
 const PAD = 2;
 
-/** 8 文字の符号を読みやすく 4 文字ずつに分ける（`ABCD EFGH`）。手で入れるときは空白を入れても読み替えられる。 */
+/** 8 文字の登録コードを読みやすく 4 文字ずつに分ける（`ABCD EFGH`）。手で入れるときは空白を入れても読み替えられる。 */
 export const formatCode = (code: string): string =>
   code.match(new RegExp(`.{1,${CODE_GROUP}}`, "g"))?.join(" ") ?? code;
 

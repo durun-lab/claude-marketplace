@@ -9,7 +9,7 @@ const settle = () => new Promise<void>((r) => setTimeout(r, 0));
 const setup = () => {
   const server = createMockServer({ paired: true, online: true });
   const counts = { opened: 0, closed: 0, reads: 0, timers: 0 };
-  let toggle = (_visible: boolean): void => undefined;
+  let toggle: (visible: boolean) => void = () => undefined;
   const connection = createConnection({
     api: createApi((path, init) => {
       if (path.endsWith("/project")) counts.reads += 1;

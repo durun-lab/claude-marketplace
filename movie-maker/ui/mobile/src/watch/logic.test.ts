@@ -111,7 +111,7 @@ describe("描き込みの座標", () => {
   });
 });
 
-describe("スクラブの棒", () => {
+describe("スクラブバー", () => {
   it("押した位置から時刻を求め、範囲の外は端に寄せる", () => {
     expect(timeAt(150, { left: 50, width: 200 }, 12)).toBe(6);
     expect(timeAt(900, { left: 50, width: 200 }, 12)).toBe(12);

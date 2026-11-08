@@ -48,7 +48,7 @@ describe("App", () => {
     expect(host.querySelector(".chip")?.textContent).toContain("Connected");
   });
 
-  it("未登録なら登録の画面を出し、符号を入れると登録してタブに進む", async () => {
+  it("未登録なら登録の画面を出し、登録コードを入れると登録してタブに進む", async () => {
     const { controller, server, mount } = setup({ paired: false, online: true }, "?code=abcd-2345");
     await mount();
     await act(() => controller.connection.start());
@@ -60,7 +60,7 @@ describe("App", () => {
     expect(host.querySelector("[role=tab]")).not.toBeNull();
   });
 
-  it("間違った符号は PC の文言を出し、登録の画面に留まる", async () => {
+  it("間違った登録コードは PC の文言を出し、登録の画面に留まる", async () => {
     const { controller, mount } = setup({ paired: false, online: true });
     await mount();
     await act(() => controller.connection.start());
@@ -95,7 +95,7 @@ describe("App のコメント", () => {
 });
 
 describe("pairing helpers", () => {
-  it("符号は大文字にそろえ、区切りと余りを落とす", () => {
+  it("登録コードは大文字にそろえ、区切りと余りを除く", () => {
     expect(normalizeCode(" ab-cd 2345xyz")).toBe("ABCD2345");
     expect(codeFromSearch("?code=abcd2345")).toBe("ABCD2345");
     expect(codeFromSearch("")).toBe("");

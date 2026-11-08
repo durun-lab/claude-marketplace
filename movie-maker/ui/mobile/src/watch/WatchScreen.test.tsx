@@ -91,7 +91,7 @@ describe("コメントを書く", () => {
     expect(h.host.querySelector(".draw.editing")).not.toBeNull();
   });
 
-  it("Cancel で書く欄を閉じ、下書きを捨てる", async () => {
+  it("Cancel で入力欄を閉じ、下書きを捨てる", async () => {
     await open({ comments: [] });
     await h.press("Comment");
     await h.type("textarea", "x");

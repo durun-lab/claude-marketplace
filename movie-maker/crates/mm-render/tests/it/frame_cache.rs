@@ -208,7 +208,7 @@ fn パラメータを変えたレイヤーだけ描き直す() {
 }
 
 #[test]
-fn 有効と無効を切り替えると描き直し_戻すと覚えた画像が出る() {
+fn 有効と無効を切り替えると描き直し_戻すとキャッシュした画像が出る() {
     let Some(ctx) = gpu() else { return };
     let mut f = fixture(&ctx, true, FrameCacheConfig::default());
     let mut p = project(vec![comp(
@@ -219,14 +219,14 @@ fn 有効と無効を切り替えると描き直し_戻すと覚えた画像が�
     assert_eq!(renders(&f), 2);
     p.compositions[0].layers[1].enabled = false;
     let off = render(&mut f, &p, 0);
-    assert_ne!(*on, *off, "無効にしたら古い絵が出てはいけない");
+    assert_ne!(*on, *off, "無効にしたら古い画像が出てはいけない");
     p.compositions[0].layers[1].enabled = true;
     let back = render(&mut f, &p, 0);
     assert_eq!(*on, *back);
 }
 
 #[test]
-fn 入れ子の中の無効のレイヤーは入れ子の画像を覚えるのを妨げない() {
+fn 入れ子の中の無効のレイヤーは入れ子の画像のキャッシュを妨げない() {
     let Some(ctx) = gpu() else { return };
     let entries = |inner: Vec<Layer>| {
         let mut f = fixture(&ctx, true, FrameCacheConfig::default());
@@ -243,7 +243,7 @@ fn 入れ子の中の無効のレイヤーは入れ子の画像を覚えるの�
     assert_eq!(
         entries(vec![counting("in", 0.5), unknown]),
         entries(vec![counting("in", 0.5)]),
-        "種類を引けない無効のレイヤーがあっても入れ子の画像を覚える"
+        "種類を引けない無効のレイヤーがあっても入れ子の画像をキャッシュする"
     );
 }
 

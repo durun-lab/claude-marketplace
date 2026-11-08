@@ -1,6 +1,6 @@
-// 偽の PC で PWA を動かすページ。スクリーンショットと手元の確認に使う。
+// モックの PC で PWA を動かすページ。スクリーンショットと手元の確認に使う。
 // ?state=unpaired|online|queued（圏外で送信待ちが 2 件）、?tab=Watch|Story|Proposals、?code=ABCD2345
-// ?view=compose|thread|detail で、Watch の書く欄・スレッド、Proposals の 1 件の画面を開いた状態にする。
+// ?view=compose|thread|detail で、Watch の入力欄・スレッド、Proposals の 1 件の画面を開いた状態にする。
 import { render } from "preact";
 import { App, TABS, type Tab } from "../src/App.tsx";
 import { createController } from "../src/controller.ts";

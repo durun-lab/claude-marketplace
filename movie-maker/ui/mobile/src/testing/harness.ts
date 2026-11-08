@@ -7,7 +7,7 @@ import "./stubMedia.ts";
 
 type MockInit = Parameters<typeof createMockServer>[0];
 
-/** 画面のテストの土台。偽の PC につないだ controller と、描画・操作の関数。 */
+/** 画面のテストの土台。モックの PC につないだ controller と、描画・操作の関数。 */
 export const createHarness = (init: Partial<MockInit> = {}) => {
   const host = document.createElement("div");
   document.body.append(host);

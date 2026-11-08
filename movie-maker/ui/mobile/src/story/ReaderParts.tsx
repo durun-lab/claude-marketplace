@@ -12,7 +12,7 @@ export interface FooterProps {
   onPc: { on: boolean; set: (on: boolean) => void };
 }
 
-/** 結果の知らせ、「PC で決める」、決める操作の棒。親指の届く下端にまとめる。 */
+/** 結果の知らせ、「PC で決める」、決める操作のバー。親指の届く下端にまとめる。 */
 export const Footer = ({ actions, selected, waiting, player, onPlay, onPc }: FooterProps) => (
   <>
     {actions.notice && <NoticeBar notice={actions.notice} onUndo={() => void actions.undo()} onDismiss={actions.dismiss} />}

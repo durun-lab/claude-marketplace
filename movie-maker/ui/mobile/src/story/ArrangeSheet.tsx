@@ -20,7 +20,7 @@ interface Drag {
   startY: number;
 }
 
-/** 行の中心の位置から、指の高さに当たる行の番号を返す。 */
+/** 行の中心の位置から、指の高さにある行の番号を返す。 */
 const indexAt = (rows: (HTMLElement | null)[], y: number): number => {
   const hit = rows.findIndex((el) => el !== null && y < el.getBoundingClientRect().bottom);
   return hit < 0 ? rows.length - 1 : hit;

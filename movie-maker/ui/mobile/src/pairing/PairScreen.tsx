@@ -1,14 +1,14 @@
 import { useState } from "preact/hooks";
 import type { Controller } from "../controller.ts";
 
-/** 登録の符号の文字数。PC のアプリが出す符号と同じ。 */
+/** 登録コードの文字数。PC のアプリが出す登録コードと同じ。 */
 export const PAIR_CODE_LENGTH = 8;
 
-/** 符号に使わない文字（空白、ハイフン）を除き、大文字にそろえる。 */
+/** 登録コードに使わない文字（空白、ハイフン）を除き、大文字にそろえる。 */
 export const normalizeCode = (raw: string): string =>
   raw.replace(/[\s-]/g, "").toUpperCase().slice(0, PAIR_CODE_LENGTH);
 
-/** QR の URL に入った符号（`?code=`）を読む。 */
+/** QR の URL に入った登録コード（`?code=`）を読む。 */
 export const codeFromSearch = (search: string): string => normalizeCode(new URLSearchParams(search).get("code") ?? "");
 
 /** 端末の名前の初期値。PC の端末の一覧で見分けるための名前。 */
@@ -45,7 +45,7 @@ const usePair = (controller: Controller, code: string, name: string) => {
   return { error, busy, submit };
 };
 
-/** 端末の登録。PC のアプリが出した符号を入れる（QR で開いた Safari と、ホーム画面の Web アプリでクッキーが分かれる場合の道）。 */
+/** 端末の登録。PC のアプリが出した登録コードを入れる（QR で開いた Safari と、ホーム画面の Web アプリでクッキーが分かれる場合の経路）。 */
 export const PairScreen = ({ controller, initialCode, initialName }: PairScreenProps) => {
   const [code, setCode] = useState(initialCode);
   const [name, setName] = useState(initialName);

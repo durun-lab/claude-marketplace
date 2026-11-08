@@ -1,5 +1,5 @@
 // dist/ を /m/ で配り、iPhone（WebKit）と Android（Chromium）の端末の設定でスクリーンショットを撮る。
-// 偽の PC のデモ（demo.html）で画面を撮り、index.html では Service Worker とマニフェストが働くことを確かめる。
+// モックの PC のデモ（demo.html）で画面を撮り、index.html では Service Worker とマニフェストが働くことを確かめる。
 // playwright は repo の依存にせず、PLAYWRIGHT_DIR（playwright を入れた場所）から読む。
 // 使い方: pnpm build && PLAYWRIGHT_DIR=/d/dev/pw node screenshots.mjs
 import { createReadStream } from "node:fs";

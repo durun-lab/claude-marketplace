@@ -9,10 +9,10 @@
 | 形 | 自宅の PC の `mm-serve` が配る PWA（`ui/mobile/`、Preact）。対象は iOS の Safari と Android の Chrome。durun-dashboard からは URL を開く |
 | つながり方 | Tailscale の `tailscale serve`（HTTPS、tailnet の中だけ）から、`mm-serve` の人の待ち受け（127.0.0.1 の決まったポート）へ。端末は PC のアプリで登録する |
 | 権限 | 人の待ち受けは人の操作経路（`Entry::Mobile`）。提案の承認と却下を受ける。MCP は置かない |
-| 映像 | 静止画のコマ、区間ごとに作る HLS（360p 約 0.5 Mbps）、素材の音だけ。WebRTC は採らない |
-| 操作の発行 | Story の操作と目印は即時（取り消しつき）。それ以外は、コメントで Claude に頼み、返った提案をモバイルで承認する |
+| 映像 | 静止画のフレーム、区間ごとに作る HLS（360p 約 0.5 Mbps）、素材の音だけ。WebRTC は採らない |
+| 操作の発行 | Story の操作とマーカーは即時（取り消しつき）。それ以外は、コメントで Claude に頼み、返った提案をモバイルで承認する |
 | PC のアプリが閉じているとき | durun-dashboard から movie-maker を起動する |
-| オフライン | 接続を前提にし、コメントだけ送信待ちの列に置く |
+| オフライン | 接続を前提にし、コメントだけ送信待ちのキューに置く |
 | 通知 | durun-dashboard の通知に任せる。Web Push は作らない |
 
 ## 前提
@@ -25,7 +25,7 @@
 主な流れは次のとおり。
 人がモバイルでコメントを書き、claude.ai/code のセッションで Claude に対応を頼む。
 Claude は MCP でコメントを読み、`propose` で提案を出す（`responds_to` にコメントの ID）。
-人はモバイルで提案の前後のコマを見比べ、承認か却下を決める。
+人はモバイルで提案の前後のフレームを見比べ、承認か却下を決める。
 
 ```mermaid
 sequenceDiagram
@@ -37,7 +37,7 @@ sequenceDiagram
   C->>S: MCP の comments で読む
   C->>S: MCP の propose（responds_to にコメントの ID）
   S-->>P: SSE の proposal と comment（状態 fresh）
-  P->>S: 提案の前後のコマ（GET /m/api/frame?proposal=）
+  P->>S: 提案の前後のフレーム（GET /m/api/frame?proposal=）
   P->>S: 承認（POST /m/api/proposals/{id}/approve）
   S-->>C: SSE の change（actor は mobile）
 ```
@@ -48,7 +48,7 @@ sequenceDiagram
 
 | 事例 | 中身 | 採るもの |
 |---|---|---|
-| Frame.io のモバイル | 上げた素材をサーバーが 360p〜2160p の H.264/H.265 のプロキシに変換して配る。API は 180p の配信用と、スクラブ用のコマのスプライトも出す [82]。iOS のアプリは時刻つきのコメント、描き込み、返信を持ち、範囲のコメントと時刻の変更は持たない [83] | 低い画質の配信、コマのスプライト、コメントの描き込み。範囲のコメントはモバイルでも持つ |
+| Frame.io のモバイル | 上げた素材をサーバーが 360p〜2160p の H.264/H.265 のプロキシに変換して配る。API は 180p の配信用と、スクラブ用のフレームのスプライトも出す [82]。iOS のアプリは時刻つきのコメント、描き込み、返信を持ち、範囲のコメントと時刻の変更は持たない [83] | 低い画質の配信、フレームのスプライト、コメントの描き込み。範囲のコメントはモバイルでも持つ |
 | DaVinci Resolve の Blackmagic Cloud | プロジェクトのライブラリをクラウドに置き、プロキシを優先して同期し、各自が手元に複製を持つ。ビンとタイムラインは自動でロックする [84] | 採らない。素材とプロジェクトのデータをクラウドに置く前提で、書き手が 1 つの `project.mmdb` と合わない |
 | Premiere と Frame.io、Premiere の iPhone 版 | Premiere の iPhone 版は端末の上で編集し、Frame.io を経由してデスクトップで続ける [85]。レビューは Frame.io のアプリ | 採らない。端末の上の編集は素材を端末に持つ |
 | LumaFusion | iPhone と iPad の上で編集する。素材は端末に置き、端末の間はプロジェクトの書庫（素材ごと、切った分だけ、素材なし）で移す [86] | 採らない。同じ理由 |
@@ -64,10 +64,10 @@ movie-maker は素材を外に出さない（通信量と容量）ので、レ�
 
 | 軸 | A. PWA（`mm-serve` が配る） | B. durun-dashboard の中の画面 | C. Tauri 2 のモバイル |
 |---|---|---|---|
-| 作る物 | `ui/mobile/` の画面と、`mm-serve` の人の待ち受け | ダッシュボードの画面と、`mm-serve` への中継 | iOS と Android のアプリ。この章の前の案では、端末に `mm-doc`、`mm-ops`、`mm-store` を載せて操作の列で同期する案だった |
+| 作る物 | `ui/mobile/` の画面と、`mm-serve` の人の待ち受け | ダッシュボードの画面と、`mm-serve` への中継 | iOS と Android のアプリ。この章の前の案では、端末に `mm-doc`、`mm-ops`、`mm-store` を載せて操作の並びで同期する案だった |
 | ビルドと配布 | PC の `pnpm build` だけ。ストアも署名も要らない | 同じ | iOS は macOS と Xcode が要る [90]。ユーザーの開発機は Windows。署名と配布の手間 |
 | 既存の画面の流用 | Preact と `ui/sdk` の `Transport`、パネルの `model.ts` をそのまま使う | ダッシュボードの画面の技術に合わせて書き直すか、iframe で A を埋める | WebView なので A と同じだけ流用できる |
-| オフライン | 送信待ちの列（IndexedDB）まで | A と同じ | 端末に複製を持てる。ただし複製の同期は、書き手が 1 つで CRDT を使わない決まり（[同時書き込み](05-ops.md#同時書き込み)）と別の仕組みになる |
+| オフライン | 送信待ちのキュー（IndexedDB）まで | A と同じ | 端末に複製を持てる。ただし複製の同期は、書き手が 1 つで CRDT を使わない決まり（[同時書き込み](05-ops.md#同時書き込み)）と別の仕組みになる |
 | 通知 | iOS 16.4 からホーム画面の Web アプリで Web Push [91] | ダッシュボードの通知 | ネイティブの通知 |
 | 誰の操作かの区別 | 人の待ち受けを分けるので、MCP と混ざらない | ダッシュボードは人の画面と Claude の `mm_tool` の両方を中継するので、ダッシュボードの中で分ける必要がある | A と同じ |
 | movie-maker の単独で動くか | 動く | ダッシュボードが要る | 動く |
@@ -75,7 +75,7 @@ movie-maker は素材を外に出さない（通信量と容量）ので、レ�
 A を採る（2026-11-08、ユーザー）。対象は iOS の Safari と Android の Chrome の両方。
 ビルドも配布も PC の中で済み、iOS のために macOS を用意しなくてよい。
 画面は `ui/` の Preact とパネルのモデルを流用できる。
-B は、ユーザーがすでにスマホでダッシュボードを開いている点で入口が 1 つになる利点がある。ただし movie-maker が単独で動かなくなり、ダッシュボードの中で人の操作と Claude の操作を分ける仕事が増える。A の画面をダッシュボードのムービーメーカーのウィンドウから URL で開けば、入口の利点の大半は A でも得られる（[ダッシュボードとのつなぎ](#durun-dashboard-とのつなぎ)）。
+B は、ユーザーがすでにスマホでダッシュボードを開いている点で開く所が 1 つになる利点がある。ただし movie-maker が単独で動かなくなり、ダッシュボードの中で人の操作と Claude の操作を分ける仕事が増える。A の画面をダッシュボードのムービーメーカーのウィンドウから URL で開けば、開く所が 1 つになる利点の大半は A でも得られる（[ダッシュボードとのつなぎ](#durun-dashboard-とのつなぎ)）。
 C は、オフラインで長く作業する要望が出たときに改めて考える。
 
 ブラウザで動かす点は[README の決まったこと](README.md#決まったこと2026-11-05ユーザー)の「ブラウザで動く前提を外す」とぶつからない。外したのは編集ソフトの本体をブラウザで動かすことで、PWA は描画もデータも持たない表示の窓にとどまる。
@@ -87,7 +87,7 @@ C は、オフラインで長く作業する要望が出たときに改めて考
 | 事例 | 中身 | 採るもの |
 |---|---|---|
 | durun-dashboard の Tailscale 経由 [92] | サーバーは 127.0.0.1 で待ち、`tailscale serve` が tailnet へ中継する。`Host` を tailnet での名前（`tailscale status` から読む）と比べ、`Origin` も確かめる。HTTPS（`*.ts.net`）にすると通知とクリップボードが使える | 全部。名前の読み方と `Host` の確かめ方は `server/access.ts` と同じにする |
-| `tailscale serve` の本人の見出し [89] | tailnet からの要求に `Tailscale-User-Login` などを付け、外から来た同じ見出しは消す。待ち受けが 127.0.0.1 だけなら偽れない。タグの付いた端末と Funnel には付かない | 本人の確認の 1 段目 |
+| `tailscale serve` の本人のヘッダー [89] | tailnet からの要求に `Tailscale-User-Login` などを付け、外から来た同じヘッダーは消す。待ち受けが 127.0.0.1 だけなら偽装できない。タグの付いた端末と Funnel には付かない | 本人の確認の 1 番目 |
 | Plex、Jellyfin、Home Assistant の端末の登録〔推〕 | 自宅のサーバーに端末を登録し、長く使える資格を端末ごとに持たせ、サーバーの画面で登録を外す | 端末の登録と、登録を外すこと |
 | `mm-serve` のトークン（[HTTP サーバー](05-ops.md#http-サーバー)） | 起動ごとの乱数を持ち主専用のフォルダーに置き、`Authorization: Bearer` で確かめる | 端末の資格も同じフォルダーに置く。置くのは資格のハッシュだけ |
 
@@ -115,14 +115,14 @@ flowchart LR
   DASH -- mm_tool の中継 --> AGENT
 ```
 
-- 人の待ち受け: `mm-serve` に 2 つ目の待ち受けを足す。127.0.0.1 の決まったポート（既定 7338、設定で変える）で待ち、`tailscale serve --bg --https=8443 http://127.0.0.1:7338` で tailnet に出す。ダッシュボードの 443 と別のオリジンにし、画面のスクリプトを分ける。クッキーはポートで分かれないので、パスを `/m` に絞り `HttpOnly` にする。ルーターは別に作り、`/mcp` と `entry` の指定を持たない。この待ち受けから来た操作は全部 `Entry::Mobile`（人）で、`actor` は `{ kind: "mobile", name: <端末の名前> }`。Claude の待ち受けは今のまま `cli` と `mcp` しか名乗れないので、Claude の操作が `mobile` を名乗る道は無い。
-- 確かめる順: (1) `Host` が tailnet での名前（`tailscale status --json` の `Self.DNSName`）で、`Origin` があれば同じオリジン。(2) `Tailscale-User-Login` があり、登録した端末のときと同じ人。(3) 端末の資格のクッキーが登録した資格のハッシュと合う。(4) 書き込みの要求は見出し `X-MM-Mobile: 1` を持つ（別のオリジンのフォームからの送信を止める）。順に 403、401、401、403。
-- 端末の資格をクッキーにする理由: SSE の `EventSource` は見出しを足せない [93]。クッキーは `HttpOnly`、`Secure`、`SameSite=Strict`、パスは `/m`。`SameSite=Strict` は同じ tailnet の別の端末やダッシュボード（:443）のページを同じサイトとみなして止めないので、別のオリジンからの書き込みは (1) の `Origin` と (4) の見出しで止める（見出しを付けた別のオリジンの要求には CORS の事前確認が要り、事前確認は資格を持たないので 401 で落ちる）。同じサイトのページは同じ名前のクッキーを足せるので、送られた資格のどれか 1 つが合えば通す。
-- 端末の登録: PC のアプリの Devices パネル（右の列）で「Add device」を押すと、5 分だけ使える 8 文字の登録の符号と、その符号を入れた URL の QR を出す。モバイルは符号を `POST /m/pair` に送り、端末の資格（32 バイトの乱数）をクッキーで受け取る。PC は資格の BLAKE3 のハッシュと端末の名前、`Tailscale-User-Login`、登録した時刻を持ち主専用のフォルダー（`%LOCALAPPDATA%\movie-maker\devices.json`）に置く。符号は 1 回で消え、5 回間違えたら無効にする。符号を先に確かめ、符号を知らない者に登録した名前を探らせない。名前の誤りでは符号を消さない。端末の名前は登録した端末の間で一意（大文字と小文字は区別しない）で、トランザクションの取り消し（undo）でどの端末が出したかを見分けるのに使う。手で入れた符号は Crockford の Base32 として読む（O を 0、I と L を 1）。登録を外すと、その端末の開いている SSE も閉じる。登録と登録を外すのは PC のアプリからだけで、モバイルからはできない。Claude が PC のファイルを読めても、ハッシュから資格は作れない。
-- 符号を手で入れる道も持つ: iOS ではホーム画面に置いた Web アプリと Safari でクッキーが分かれることがある〔推〕。QR を Safari で開いた後にホーム画面へ置いたときは、Web アプリの中で符号を入れ直す。Safari の登録は資格を使った登録なので、名前は別にする（同じ名前は `name_taken`）。
-- 資格が効いたかを確かめる: 端末がクッキーを保存しない（Safari の「すべての Cookie をブロック」など）と、PC では登録が済み符号も消えたまま、画面は登録の画面に残る。モバイルは `POST /m/pair` の応答の後に `GET /m/api/project` を読み直し、401 なら英語の文言で知らせる（画面だけの code `pairing_not_kept`）。PC は資格を一度も使っていない登録にフラグ（`devices.json` の `unused`）を立て、その資格の付いた要求が初めて通ったときに下ろす。フラグの立った登録は操作を出していないので名前を塞がず、同じ名前の登録し直しで置き換える。符号の期限（5 分）を過ぎても使われなければ端末の一覧から消し、その資格も通さない。フラグの無い記録（フラグを足す前の `devices.json`）は使った登録とみなす。
-- QR の URL は登録の画面 `https://<tailnet での名前>:8443/m/pair?code=<符号>`（`MobileServer::pairing_url`）。PWA の画面（`/m/api/` の外の読み出し）は資格の無い端末にも配り、`Host` と本人の見出しだけを確かめる。
-- 落ちた要求の応答の `code` とログの理由: `forbidden_host`、`forbidden_origin`（403）、`no_tailnet_login`、`no_device`、`unknown_device`、`login_mismatch`（401）、`missing_mobile_header`（403）。登録の失敗は `pairing_unavailable`（符号が無い、期限切れ、使い切った）、`pairing_wrong_code`（401）、`name_taken`（409）。
+- 人の待ち受け: `mm-serve` に 2 つ目の待ち受けを足す。127.0.0.1 の決まったポート（既定 7338、設定で変える）で待ち、`tailscale serve --bg --https=8443 http://127.0.0.1:7338` で tailnet に出す。ダッシュボードの 443 と別のオリジンにし、画面のスクリプトを分ける。クッキーはポートで分かれないので、パスを `/m` に絞り `HttpOnly` にする。ルーターは別に作り、`/mcp` と `entry` の指定を持たない。この待ち受けから来た操作は全部 `Entry::Mobile`（人）で、`actor` は `{ kind: "mobile", name: <端末の名前> }`。Claude の待ち受けの発行元は今のまま `cli` と `mcp` だけなので、Claude の操作の発行元が `mobile` になる経路は無い。
+- 確かめる順: (1) `Host` が tailnet での名前（`tailscale status --json` の `Self.DNSName`）で、`Origin` があれば同じオリジン。(2) `Tailscale-User-Login` があり、登録した端末のときと同じ人。(3) 端末の資格のクッキーが登録した資格のハッシュと合う。(4) 書き込みの要求はヘッダー `X-MM-Mobile: 1` を持つ（別のオリジンのフォームからの送信を止める）。順に 403、401、401、403。
+- 端末の資格をクッキーにする理由: SSE の `EventSource` はヘッダーを足せない [93]。クッキーは `HttpOnly`、`Secure`、`SameSite=Strict`、パスは `/m`。`SameSite=Strict` は同じ tailnet の別の端末やダッシュボード（:443）のページを同じサイトとみなして止めないので、別のオリジンからの書き込みは (1) の `Origin` と (4) のヘッダーで止める（ヘッダーを付けた別のオリジンの要求には CORS の事前確認が要り、事前確認は資格を持たないので 401 で拒否される）。同じサイトのページは同じ名前のクッキーを足せるので、送られた資格のどれか 1 つが合えば通す。
+- 端末の登録: PC のアプリの Devices パネル（右の WebView）で「Add device」を押すと、5 分だけ使える 8 文字の登録コードと、その登録コードを入れた URL の QR を出す。モバイルは登録コードを `POST /m/pair` に送り、端末の資格（32 バイトの乱数）をクッキーで受け取る。PC は資格の BLAKE3 のハッシュと端末の名前、`Tailscale-User-Login`、登録した時刻を持ち主専用のフォルダー（`%LOCALAPPDATA%\movie-maker\devices.json`）に置く。登録コードは 1 回で消え、5 回間違えたら無効にする。登録コードを先に確かめ、登録コードを知らない者に登録した名前を探らせない。名前の誤りでは登録コードを消さない。端末の名前は登録した端末の間で一意（大文字と小文字は区別しない）で、トランザクションの取り消し（undo）でどの端末が出したかを見分けるのに使う。手で入れた登録コードは Crockford の Base32 として読む（O を 0、I と L を 1）。登録を外すと、その端末の開いている SSE も閉じる。登録と登録を外すのは PC のアプリからだけで、モバイルからはできない。Claude が PC のファイルを読めても、ハッシュから資格は作れない。
+- 登録コードを手で入れる経路も持つ: iOS ではホーム画面に置いた Web アプリと Safari でクッキーが分かれることがある〔推〕。QR を Safari で開いた後にホーム画面へ置いたときは、Web アプリの中で登録コードを入れ直す。Safari の登録は資格を使った登録なので、名前は別にする（同じ名前は `name_taken`）。
+- 資格が効いたかを確かめる: 端末がクッキーを保存しない（Safari の「すべての Cookie をブロック」など）と、PC では登録が済み登録コードも消えたまま、画面は登録の画面に残る。モバイルは `POST /m/pair` の応答の後に `GET /m/api/project` を読み直し、401 なら英語の文言で知らせる（画面だけの code `pairing_not_kept`）。PC は資格を一度も使っていない登録にフラグ（`devices.json` の `unused`）を立て、その資格の付いた要求が初めて通ったときに下ろす。フラグの立った登録は操作を出していないので名前を塞がず、同じ名前の登録し直しで置き換える。登録コードの期限（5 分）を過ぎても使われなければ端末の一覧から消し、その資格も通さない。フラグの無い記録（フラグを足す前の `devices.json`）は使った登録とみなす。
+- QR の URL は登録の画面 `https://<tailnet での名前>:8443/m/pair?code=<登録コード>`（`MobileServer::pairing_url`）。PWA の画面（`/m/api/` の外の読み出し）は資格の無い端末にも配り、`Host` と本人のヘッダーだけを確かめる。
+- 拒否した要求の応答の `code` とログの理由: `forbidden_host`、`forbidden_origin`（403）、`no_tailnet_login`、`no_device`、`unknown_device`、`login_mismatch`（401）、`missing_mobile_header`（403）。登録の失敗は `pairing_unavailable`（登録コードが無い、期限切れ、使い切った）、`pairing_wrong_code`（401）、`name_taken`（409）。
 
 #### 設定の手順
 
@@ -131,10 +131,10 @@ PC で 1 回だけ行う。tailnet と Tailscale の HTTPS の証明書（管理
 1. movie-maker を起動する。人の待ち受けが 127.0.0.1:7338 で待つ（ポートが使われていると起動の画面に出る）。
 2. 管理者でないターミナルで `tailscale serve --bg --https=8443 http://127.0.0.1:7338` を実行する。`--bg` で PC を再起動しても残る。
 3. `tailscale serve status` で `https://<端末の名前>.<tailnet の名前>.ts.net:8443` が `http://127.0.0.1:7338` に向いていることを確かめる。ダッシュボードの 443 の行はそのまま残る。
-4. PC のアプリの Devices パネルで「Add device」を押し、スマホのカメラで QR を読む（読めなければ `/m/pair` の画面で 8 文字の符号を入れる）。
+4. PC のアプリの Devices パネルで「Add device」を押し、スマホのカメラで QR を読む（読めなければ `/m/pair` の画面で 8 文字の登録コードを入れる）。
 5. やめるときは `tailscale serve --https=8443 off`。登録した端末は PC のアプリで登録を外す。
 
-`tailscale funnel` は使わない。Funnel を通った要求には `Tailscale-User-Login` が付かず、2 段目で 401 になる。タグの付いた端末からの要求も同じ。
+`tailscale funnel` は使わない。Funnel を通った要求には `Tailscale-User-Login` が付かず、2 番目の確認で 401 になる。タグの付いた端末からの要求も同じ。
 
 ### 権限
 
@@ -142,7 +142,7 @@ PC で 1 回だけ行う。tailnet と Tailscale の HTTPS の証明書（管理
 
 | できること | 人の待ち受け（モバイル） | Claude の待ち受け（MCP） |
 |---|---|---|
-| 読む（プロジェクトの要約、文字起こし、コメント、提案、コマ） | できる | できる |
+| 読む（プロジェクトの要約、文字起こし、コメント、提案、静止画のフレーム） | できる | できる |
 | 映像の配信（HLS、素材の音） | できる | 置かない |
 | コメントを書く、返信する | できる | 返信だけ（`comment_reply`） |
 | コメントの状態 | `done`、`wontfix`、`open` に戻す | 対応を適用した時に `fresh` になるだけ |
@@ -153,14 +153,14 @@ PC で 1 回だけ行う。tailnet と Tailscale の HTTPS の証明書（管理
 | ロックの付いたレイヤー | 触れない（ロックは PC のアプリ以外の経路に効かせる） | 触れない |
 | 端末の登録と、登録を外すこと | できない | できない |
 
-モバイルから即時に適用できる操作は、Story で切る・並べる操作と目印に限る。
+モバイルから即時に適用できる操作は、Story で切る・並べる操作とマーカーに限る。
 
 | 組 | 操作 |
 |---|---|
 | 話題と選別 | `addTopic`、`removeTopic`、`addSelection`、`removeSelection`、`rate`、`tag` |
 | 文字起こし | `deleteWords`、`fixTranscript`、`cutWords` |
 | 並べる | `insertTopics` |
-| 目印 | `addMarker`、`removeMarker` |
+| マーカー | `addMarker`、`removeMarker` |
 
 ほかの操作（端の詰め、レイヤー、パラメータ、書き出し）は 403 `not_on_mobile` で断る。小さな画面で細かい編集を誤るより、コメントで Claude に頼み、提案の前後を見て決める方が確かなため。表に操作を足すときは、この表と `mm-story` の `MOBILE_OPS` を同じ PR で変える。
 
@@ -168,17 +168,17 @@ PC で 1 回だけ行う。tailnet と Tailscale の HTTPS の証明書（管理
 
 ### 先行事例
 
-Frame.io は、上げた素材をサーバーが段階の画質に変換し、低い画質から配る。スクラブにはコマのスプライトを使う [82]。
+Frame.io は、上げた素材をサーバーが段階の画質に変換し、低い画質から配る。スクラブにはフレームのスプライトを使う [82]。
 movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1 時間あたり約 2.6 GB、平均で約 5.8 Mbps あり（[エンジンの「プレビュー」](06-engine.md)）、モバイルの回線にはそのまま流せない。
 
 ### 新しく設計したもの
 
 | 方法 | 使う所 | 量の見積もり〔推〕 | 判断 |
 |---|---|---|---|
-| 静止画のコマ（`GET /m/api/frame` の WebP、幅 360〜720） | コメントの時刻、カットの頭、提案の前後、スクラブのつまみの上 | 1 枚 20〜60 KB | 採る。最初に作る |
+| 静止画のフレーム（`GET /m/api/frame` の WebP、幅 360〜720） | コメントの時刻、カットの先頭、提案の前後、スクラブのつまみの上 | 1 枚 20〜60 KB | 採る。最初に作る |
 | 区間ごとに作る HLS（MPEG-TS、4 秒の区間、H.264。360p 約 0.5 Mbps と 540p 約 1.2 Mbps、AAC 64 kbps） | 編集した結果を通して見る | 360p で 1 時間約 250 MB | 採る |
 | 素材の音だけ（AAC 64 kbps の m4a、Range で読む） | Story で文字起こしの所を聞く | 1 時間約 29 MB | 採る |
-| 提案の区間の短い動画（範囲の前後 2 秒、MP4） | 提案を動きで確かめる | 1 本 数百 KB〜数 MB | 採る。HLS の後 |
+| 提案の区間の短い動画（範囲の前後 2 秒、MP4） | 提案を動きで確かめる | 1 本 数百 KB〜数 MB | 採る。HLS の後。未実装（[後の段階の注意](15-roadmap.md#試作で分かった後の段階の注意)） |
 | WebRTC で Program を流す | 再生の操作をその場で返す | 見ている間ずっと 1〜3 Mbps、PC は常にエンコード | 採らない。レビューに 60 fps のスクラブは要らず、電池と回線を食う |
 | プレビュー動画をそのまま | | 1 時間 2.6 GB | 採らない |
 
@@ -195,18 +195,18 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 
 | タブ | 中身 |
 |---|---|
-| `Watch` | 上に映像（16:9、上に固定）。その下にカットの境とコメントのマーカーの付いたスクラブの棒。その下にコメントの一覧（`Open`、`Fresh`、`Done` で絞る。`Fresh` を先頭に） |
+| `Watch` | 上に映像（16:9、上に固定）。その下にカットの境とコメントのマーカーの付いたスクラブバー。その下にコメントの一覧（`Open`、`Fresh`、`Done` で絞る。`Fresh` を先頭に） |
 | `Story` | 素材の一覧から文字起こしを開く。話題ごとの段落。使っている・使っていないの色分けはデスクトップの Story と同じ |
 | `Proposals` | 提案の一覧（新しい順）。だれが、名前、操作の要約、触る範囲、後の編集と重なるか |
 
-- コメント: 下の大きな `Comment` を押すと再生を止め、その時刻のフレームの上に書く欄を出す。文字は OS の音声入力でも入る。`Range` で今の時刻を始めにし、再生して止めた所を終わりにする。`Draw` で止めたフレームに指で線と矩形を描く（座標は 0〜1 に正規化し、デスクトップは Program の上に wgpu で描く。[UI](08-ui.md)）。スレッドの画面で返信し、下のボタンで `Done`、`Won't fix`、`Reopen` を決める。
+- コメント: 下の大きな `Comment` を押すと再生を止め、その時刻のフレームの上に入力欄を出す。文字は OS の音声入力でも入る。`Range` で今の時刻を始めにし、再生して止めた所を終わりにする。`Draw` で止めたフレームに指で線と矩形を描く（座標は 0〜1 に正規化し、デスクトップの Program の上に wgpu で重ねて描くのは未実装で、Review の一覧に描き込みの数を出す。[UI](08-ui.md)）。スレッドの画面で返信し、下のボタンで `Done`、`Won't fix`、`Reopen` を決める。
 - コメントの形（`comments` の表の `json`。[保存の形](09-ingest-storage.md#表)。型は `ui/sdk/src/comments.ts`）: `{ id, comp, at | range: {in, out}, text, drawing: [{ kind: "stroke" | "rect" | "point", points }], author: { kind, name }, replies: [{ id, author, text, created_ms }], state, created_ms, client_id?, responded_txn? }`。`at` は時刻のコメントの時刻で、範囲のコメントでは `null`（`range` を持つ）。`author` は文字列でなくオブジェクト（端末は `kind: "mobile"`、`name` が端末の名前）。状態は人が書いて `open`、Claude の対応（`responds_to` を持つトランザクションの適用か提案の承認）で `fresh`（`responded_txn` がそのトランザクション）、人が確かめて `done` か `wontfix`。`fresh` は人からは決められず（400）、済みのコメントは対応で動かない。
-- コメントの API: `POST /comments` は `{ comp, at | range, text?, drawing?, client_id? }`。本文か描き込みが要り、座標は 0〜1。`client_id` が同じ再送は書かずに先のコメントを返す（送信待ちの列の再送用）。`GET /comments?state=&comp=&from=&to=` は `{ comments }`（書いた順）で、`from` と `to`（秒）は両方渡すとその区間と重なる時刻と範囲のコメントだけ。`POST /comments/{id}/replies` は `{ text }`、`POST /comments/{id}/state` は `{ state }`。どれも成功は `Comment` を返し、失敗は `{ error: { code, message } }`。書く、状態、描き込みは人の操作経路だけで、Claude の待ち受けは 403。変更は SSE の `comment`（`{ id, state }`）で流れる。
-- 提案: カードを開くと前後のフレームを並べ、押すと切り替える（デスクトップの Program の切り替えと同じ）。`Play` で区間の短い動画。下の `Approve`（操作を選べば一部だけ）と `Reject`。決めた後の 5 秒は `Undo` を出す（全体の直前のときだけ効く）。
-- Story: 単語を 1 回押すと始め、別の単語を押すと終わりになり、間を範囲にする（ドラッグはスクロールとぶつかるので使わない）。下の棒に `Keep`、`Reject`、`Hold`（`rate`）、`Topic`（範囲から話題）、`Delete`（`deleteWords`）、`Play`（その単語から素材の音）。話題の一覧は長押しで並べ替え、離すと開いているシーケンスへ `insertTopics`。上に検索。
+- コメントの API: `POST /comments` は `{ comp, at | range, text?, drawing?, client_id? }`。本文か描き込みが要り、座標は 0〜1。`client_id` が同じ再送は書かずに先のコメントを返す（送信待ちのキューの再送用）。`GET /comments?state=&comp=&from=&to=` は `{ comments }`（書いた順）で、`from` と `to`（秒）は両方渡すとその区間と重なる時刻と範囲のコメントだけ。`POST /comments/{id}/replies` は `{ text }`、`POST /comments/{id}/state` は `{ state }`。どれも成功は `Comment` を返し、失敗は `{ error: { code, message } }`。書く、状態、描き込みは人の操作経路だけで、Claude の待ち受けは 403。変更は SSE の `comment`（`{ id, state }`）で流れる。
+- 提案: カードを開くと前後のフレームを並べ、押すと切り替える（デスクトップの Program の切り替えと同じ）。区間の短い動画（`Play`）は `clip.mp4` が未実装なので置かない。下の `Approve`（操作を選べば一部だけ）と `Reject`。決めた後の 5 秒は `Undo` を出す（全体の直前のときだけ効く）。
+- Story: 単語を 1 回押すと始め、別の単語を押すと終わりになり、間を範囲にする（ドラッグはスクロールとぶつかるので使わない）。下の操作バーに `Keep`、`Reject`、`Hold`（`rate`）、`Topic`（範囲から話題）、`Delete`（`deleteWords`）、`Play`（その単語から素材の音）。話題の一覧は長押しで並べ替え、離すと開いているシーケンスへ `insertTopics`。上に検索。
 - 「PC で決める」: 操作の前に切り替えると、即時に適用せず提案（`entry` は `mobile`）として出す。PC の Review かモバイルの `Proposals` で決める。
 - 片手で使う要点: 決める操作は画面の下の 3 分の 1 に置く。押す所は 44 pt 以上。スワイプの操作には同じことをするボタンも置く。確認の画面は出さず、`Undo` で戻せるようにする。横にすると映像だけを全画面にする。
-- オフライン: 段階 9 では接続を前提にする。コメントだけは送信待ちのキュー（IndexedDB）に置き、つながったら送る。localStorage は 5 MB 前後で上限に当たると書けず、書くたびに全体を書き直すので、描き込みつきのコメントが溜まる送信待ちには使わない。Safari の 7 日の消去（ITP）は IndexedDB と localStorage に同じく効き、ホーム画面に置いた Web アプリは Safari と別に数えるので、ホーム画面から使う前提にし、`navigator.storage.persist()` で容量が足りないときの消去も避けるよう頼む。操作は `base_version` を付けて送り、`Conflict` なら画面に出して読み直す。
+- オフライン: 段階 9 では接続を前提にする。コメントだけは送信待ちのキュー（IndexedDB）に置き、つながったら送る。localStorage は 5 MB 前後で上限に達すると書けず、書くたびに全体を書き直すので、描き込みつきのコメントが溜まる送信待ちには使わない。Safari の 7 日の消去（ITP）は IndexedDB と localStorage に同じく効き、ホーム画面に置いた Web アプリは Safari と別に数えるので、ホーム画面から使う前提にし、`navigator.storage.persist()` で容量が足りないときの消去も避けるよう頼む。操作は `base_version` を付けて送り、`Conflict` なら画面に出して読み直す。
 
 ### durun-dashboard とのつなぎ
 
@@ -222,18 +222,18 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 |---|---|
 | `GET /m/` | PWA の画面、マニフェスト、Service Worker。`ui/mobile` のビルドの出力 |
 | `POST /m/pair` | `{ code, device_name }` → `{ device_name, device: { id, name, login, paired_at_ms } }` と端末の資格のクッキー（資格は本文に入れない）。資格を確かめる前に受ける唯一の API |
-| `GET /m/api/project` | `{ version, compositions, sequences, open_composition, cuts }`（素材のパスは返さない）。`open_composition` は先頭のコンポジション、`cuts` はその中のカットの境の秒（スクラブの棒の目盛り） |
+| `GET /m/api/project` | `{ version, compositions, sequences, open_composition, cuts }`（素材のパスは返さない）。`open_composition` は先頭のコンポジション、`cuts` はその中のカットの境の秒（スクラブバーの目盛り） |
 | `GET /m/api/story/overview`、`/transcript?asset=`、`/range?asset=&first=&last=`、`/search?q=` | `ui/panels/story/src/api.ts` の `StoryApi` と同じ形 |
 | `POST /m/api/ops` | `{ op }` か `{ txn }`、`base_version` は必須。即時に適用できる操作だけ |
 | `POST /m/api/undo` | この端末が出したトランザクションが全体の直前のときだけ |
 | `GET /m/api/comments?state=`、`GET /m/api/comments/{id}`、`POST /m/api/comments`、`POST /m/api/comments/{id}/replies`、`POST /m/api/comments/{id}/state` | コメントの一覧、1 件、書く、返信、状態 |
-| `GET /m/api/proposals`、`GET /m/api/proposals/{id}`、`POST /m/api/proposals`、`POST /m/api/proposals/{id}/approve`、`/reject`、`/reopen` | 提案。形は Claude の待ち受けの `/proposals` と同じで、`comp_spans: [{ comp, layer, sequence, start, end }]`（`scope.sequences` の範囲を、そのシーケンスを置いたレイヤーのコンポジションの秒に写したもの。時間の写像を持つレイヤーは写さない）を足す |
-| `GET /m/api/frame?comp=&t=&width=&proposal=&ops=` | コマ。`t` は `comp`（省くと先頭のコンポジション）の時間軸の秒。保存したデータは WebP（`ETag` に `If-None-Match` で 304）、`proposal` つきは提案を適用した PNG |
+| `GET /m/api/proposals`、`GET /m/api/proposals/{id}`、`POST /m/api/proposals`、`POST /m/api/proposals/{id}/approve`、`/reject`、`/reopen` | 提案。形は Claude の待ち受けの `/proposals` と同じで、`comp_spans: [{ comp, layer, sequence, start, end }]`（`scope.sequences` の範囲を、そのシーケンスを置いたレイヤーのコンポジションの秒に変換したもの。時間の写像を持つレイヤーは変換しない）を足す |
+| `GET /m/api/frame?comp=&t=&width=&proposal=&ops=` | 静止画のフレーム。`t` は `comp`（省くと先頭のコンポジション）の時間軸の秒。保存したデータは WebP（`ETag` に `If-None-Match` で 304）、`proposal` つきは提案を適用した PNG |
 | `GET /m/api/stream/{comp}/index.m3u8`、`GET /m/api/stream/{comp}/{quality}.m3u8`、`GET /m/api/stream/{comp}/seg/{key}.ts` | HLS の親のプレイリスト、画質ごとのプレイリスト、区間。親のプレイリストは画質ごとのプレイリストを相対パス `{quality}.m3u8` で指し、画質ごとのプレイリストは区間を相対パス `seg/{key}.ts` で指す（どの名前のコンポジションともパスがぶつからない） |
-| `GET /m/api/audio/{asset}.m4a`、`GET /m/api/proposals/{id}/clip.mp4` | 素材の音だけ、提案の区間の短い動画 |
+| `GET /m/api/audio/{asset}.m4a`、`GET /m/api/proposals/{id}/clip.mp4` | 素材の音だけ、提案の区間の短い動画（`clip.mp4` は未実装） |
 | `GET /m/api/events` | SSE。`hello`、`change`、`resync`、`proposal` に加えて `comment`（`{ id, state }`）。返信では `state` が変わらないので、端末は `comment` を受けたら `GET /m/api/comments/{id}` で 1 件を読み直す |
 
-人の待ち受けのルーターは `crates/mm-serve/src/mobile/mod.rs` の `router` で、ほかのモジュールの `/m/api/` は名前の順に `merge` か `nest` で 1 行ずつ載せる。守りは全体に掛かり、通った要求に `Extension<DeviceInfo>`（登録した端末）と `Extension<Caller>`（`Entry::Mobile`、名乗りは端末の名前）を入れる。
+人の待ち受けのルーターは `crates/mm-serve/src/mobile/mod.rs` の `router` で、ほかのモジュールの `/m/api/` は名前の順に `merge` か `nest` で 1 行ずつ載せる。ガードは全体に掛かり、通った要求に `Extension<DeviceInfo>`（登録した端末）と `Extension<Caller>`（`Entry::Mobile`、発行元の名前は端末の名前）を入れる。
 
 Claude の待ち受けにはコメントの `GET /comments`、`POST /comments/{id}/replies` と、MCP のツール `comments`、`comment_reply` を足す（操作でないツール。`mcp_tools.rs` に名前の順で 1 つずつ）。
 
@@ -241,11 +241,11 @@ Claude の待ち受けにはコメントの `GET /comments`、`POST /comments/{i
 
 | 順 | 担当 | 領域（areas.toml） | 書く所 | 完了の条件 |
 |---|---|---|---|---|
-| 1 | 人の待ち受けと端末の登録 | claude-entry（`Entry::Mobile` は doc-and-ops の 1 行） | `crates/mm-serve/src/mobile/`、`crates/mm-ops/src/context.rs` | `Host`、本人の見出し、クッキー、`X-MM-Mobile` の各拒否、登録の符号の期限と回数、即時の操作の表の外を 403、MCP からの承認は今のまま 403 を試験で確かめる |
+| 1 | 人の待ち受けと端末の登録 | claude-entry（`Entry::Mobile` は doc-and-ops の 1 行） | `crates/mm-serve/src/mobile/`、`crates/mm-ops/src/context.rs` | `Host`、本人のヘッダー、クッキー、`X-MM-Mobile` の各拒否、登録コードの期限と回数、即時の操作の表の外を 403、MCP からの承認は今のまま 403 をテストで確かめる |
 | 1 | コメントの API と MCP のツール | claude-entry と doc-and-ops（`mm-store`） | `crates/mm-serve/src/comments.rs`、`crates/mm-store/src/history.rs`、`mcp_tools.rs` に 2 行 | 状態の移り変わり（対応で `fresh`）、`versions/review.json` への書き出し、SSE の `comment` |
 | 1 | Story の読み出しをクレートに | ui-panels（story） | 新しい `crates/mm-story/`、`apps/movie-maker/src/win/story.rs` | アプリの Story のコマンドの結果が変わらない。`mm-serve` から呼べる |
 | 1 | 映像の配信 | 新しい領域 `stream` | 新しい `crates/mm-stream/` | 区間のキーが編集で変わる所だけ変わる。区間を ffprobe で読み直せる。素材の音だけの m4a |
-| 1 | `ui/mobile` の骨組み | 新しい領域 `ui-mobile` | `ui/mobile/` | PWA のマニフェスト、Service Worker、HTTP の `Transport`、登録の画面、タブ。偽のサーバーのデモと 390x844 のスクリーンショット |
+| 1 | `ui/mobile` の骨組み | 新しい領域 `ui-mobile` | `ui/mobile/` | PWA のマニフェスト、Service Worker、HTTP の `Transport`、登録の画面、タブ。モックのサーバーのデモと 390x844 のスクリーンショット |
 | 2 | `ui/mobile` の Watch と Proposals | ui-mobile | `ui/mobile/src/watch/`、`ui/mobile/src/proposals/` | 描き込みつきのコメント、返信、状態、提案の前後と承認。スクリーンショット |
 | 2 | `ui/mobile` の Story | ui-mobile | `ui/mobile/src/story/` | 2 回押しの範囲、`rate`、話題、並べ替え、素材の音。スクリーンショット |
 | 2 | アプリの端末の登録の画面と人の待ち受けの起動 | app-shell | `apps/movie-maker/` | QR、端末の一覧と登録を外す操作、待ち受けのポートが使われていたときの文言 |

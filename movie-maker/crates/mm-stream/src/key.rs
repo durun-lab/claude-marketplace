@@ -22,7 +22,7 @@ use serde::Serialize;
 
 use crate::hls::Plan;
 
-/// 区間のバイトの作り方（コンテナ、符号化の設定）の印。作り方を変えたら上げ、前のキーを使わせない。
+/// 区間のバイトの作り方（コンテナ、符号化の設定）のバージョン。作り方を変えたら上げ、前のキーを使わせない。
 const FORMAT: &str = "mm-stream/ts-2";
 /// 入れ子をたどる深さの上限。レンダラーと同じ。
 const MAX_DEPTH: u32 = 16;
@@ -205,7 +205,7 @@ impl Walk<'_> {
         }
     }
 
-    /// 入れ子のコンポジション。`inner` が無ければ全長（範囲を写せないカットの中身）。
+    /// 入れ子のコンポジション。`inner` が無ければ全長（範囲を変換できないカットの中身）。
     fn nested(&mut self, node: &Node, inner: Option<TimeRange>, depth: u32) {
         let Some(id) = node.text_param(NESTED_PARAM) else {
             return;
@@ -322,7 +322,7 @@ fn touching(seq: &Sequence, placed: &[PlacedCut], inner: TimeRange) -> Vec<usize
         .collect()
 }
 
-/// カットの頭のトランジションが `inner` に掛かるか。トランジションは境目の前後に長さの半分まで掛かるので、
+/// カットの先頭のトランジションが `inner` に掛かるか。トランジションは編集点の前後に長さの半分まで掛かるので、
 /// 前後に長さの分を見れば足りる。範囲を計算できなければ掛かるとみなす。
 fn transition_reaches(seq: &Sequence, placed: &PlacedCut, inner: TimeRange) -> bool {
     let Some(tr) = &seq.cuts[placed.index].transition_in else {

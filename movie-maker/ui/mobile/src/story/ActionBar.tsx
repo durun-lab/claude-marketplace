@@ -21,7 +21,7 @@ const hint = (count: number, waiting: boolean): string => {
   return `${count} words selected`;
 };
 
-/** 画面の下の棒。決める操作は親指の届く下 3 分の 1 に置き、44pt 以上の高さにする。 */
+/** 画面の下の操作バー。決める操作は親指の届く下 3 分の 1 に置き、44pt 以上の高さにする。 */
 export const ActionBar = (p: ActionBarProps) => {
   const none = p.count === 0;
   return (

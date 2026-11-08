@@ -1,11 +1,11 @@
-//! スクラブの棒の目盛りに使う、コンポジションのカットの境の秒。シーケンスの時刻をコンポジションの時刻に写す
-//! [`Placement`] は、提案の範囲の写し（`spans`）と共有する。
+//! スクラブバーの目盛りに使う、コンポジションのカットの境の秒。シーケンスの時刻をコンポジションの時刻に変換する
+//! [`Placement`] は、提案の範囲の変換（`spans`）と共有する。
 
 use mm_doc::{Composition, Layer, Project};
 use mm_eval::place_cuts;
 use mm_story::layer_sequence;
 
-/// シーケンスを置いたレイヤーの、シーケンスの時刻からコンポジションの時刻への写し。
+/// シーケンスを置いたレイヤーの、シーケンスの時刻からコンポジションの時刻への変換。
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Placement {
     start: f64,

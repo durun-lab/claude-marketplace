@@ -54,7 +54,7 @@ describe("DevicesPanel", () => {
     expect(row?.textContent).toContain("Paired 2026-");
   });
 
-  it("端末を足すと QR と符号と期限の残りを出す", async () => {
+  it("端末を足すと QR と登録コードと期限の残りを出す", async () => {
     await mount(fakeApi(RUNNING));
     await click(button("Add device"));
     expect(host.querySelector("#qr")).not.toBeNull();

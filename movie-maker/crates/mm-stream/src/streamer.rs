@@ -1,4 +1,4 @@
-//! 配信のインターフェース。描画のスレッド、プレイリストとキーの表、静止画のコマのキャッシュ、先読みを持つ。
+//! 配信のインターフェース。描画のスレッド、プレイリストとキーの表、静止画のフレームのキャッシュ、先読みを持つ。
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -53,7 +53,7 @@ impl StreamConfig {
 /// モバイルへの映像の配信。`mm-serve` のハンドラーが共有して呼ぶ。
 ///
 /// どの関数も、呼んだスレッドを描画の終わりまで待たせる。非同期のハンドラーは `spawn_blocking` で呼ぶ。
-/// `version` はプロジェクトのバージョン（操作のたびに 1 進む数）。静止画のコマとプレイリストの作り直しの単位。
+/// `version` はプロジェクトのバージョン（操作のたびに 1 進む数）。静止画のフレームとプレイリストの作り直しの単位。
 pub struct Streamer {
     shared: Arc<Shared>,
 }
@@ -62,11 +62,11 @@ struct Shared {
     cache: CacheDir,
     prefetch: u64,
     worker: Worker,
-    /// 静止画のコマのキャッシュと、それを作ったプロジェクトのバージョン。
+    /// 静止画のフレームのキャッシュと、それを作ったプロジェクトのバージョン。
     stills: Mutex<(Option<u64>, StillCache)>,
     listings: Mutex<Listings>,
     inflight: Mutex<HashMap<SegmentKey, Arc<Slot>>>,
-    /// キーの計算に使う種類のレジストリと実装の名前。最初のプレイリストで `Engine` から写す。
+    /// キーの計算に使う種類のレジストリと実装の名前。最初のプレイリストで `Engine` からコピーする。
     keying: Mutex<Option<Arc<Keying>>>,
     audio: Mutex<()>,
 }
@@ -77,7 +77,7 @@ struct Keying {
 }
 
 impl Streamer {
-    /// 描画のスレッドを始め、前の起動の書きかけを捨てる。`Engine` の組み立ては最初の要求まで遅らせる。
+    /// 描画のスレッドを始め、前の起動の一時ファイルを捨てる。`Engine` の組み立ては最初の要求まで遅らせる。
     pub fn spawn(config: StreamConfig) -> Result<Self> {
         let cache = CacheDir::new(config.cache_dir);
         cache.remove_partials();
@@ -112,7 +112,7 @@ impl Streamer {
         Ok(Self { shared })
     }
 
-    /// 配信の描画のスレッドの `Engine` で `job` を走らせ、結果を待つ。区間を描いている間は、その終わりまで待つ。
+    /// 配信の描画のスレッドの `Engine` で `job` を実行し、結果を待つ。区間を描いている間は、その終わりまで待つ。
     /// `mm-serve` の `GET /frame` もこれで描くと、`Engine` を配信と共有できる。
     pub fn with_engine<R, F>(&self, job: F) -> Result<R>
     where
@@ -130,7 +130,7 @@ impl Streamer {
     }
 
     /// プロジェクトを開き直したときに呼ぶ。バージョンの数え直しで同じ数が別の中身を指すので、
-    /// バージョンで分けたコマとプレイリストを捨てる。区間はキーが中身で決まるので残す。
+    /// バージョンで分けた静止画のフレームとプレイリストを捨てる。区間はキーが中身で決まるので残す。
     pub fn reset(&self) -> Result<()> {
         *lock(&self.shared.stills) = Default::default();
         lock(&self.shared.listings).clear();
@@ -145,7 +145,7 @@ impl Streamer {
             .urgent(Urgent::Invalidate(touched.to_vec()));
     }
 
-    /// 静止画のコマ。WebP。
+    /// 静止画のフレーム。WebP。
     pub fn still(&self, project: &Project, version: u64, req: &StillRequest) -> Result<Payload> {
         let key = StillKey::of(req);
         let cached = {

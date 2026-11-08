@@ -1,4 +1,4 @@
-//! モバイルの操作の権限。即時に適用するのは Story の操作と目印だけで、ほかは提案に回す。
+//! モバイルの操作の権限。即時に適用するのは Story の操作とマーカーだけで、ほかは提案に回す。
 //! 提案の承認・却下は人の操作として受け、Claude の MCP からは今のまま 403。
 
 use mm_serve::Response;
@@ -27,7 +27,7 @@ fn post(r: &Rig, req: &Req, path: &str, body: &Value) -> Response {
 }
 
 #[test]
-fn 目印は即時に適用され_発行元はモバイルの端末() {
+fn マーカーは即時に適用され_発行元はモバイルの端末() {
     let r = rig();
     let req = Req::device(&r.pair("phone"));
     let res = post(&r, &req, "/m/api/ops", &add_marker("m1", 1, 0));
@@ -58,13 +58,13 @@ fn 表の外の操作は_not_on_mobile_で断り_提案なら出せる() {
         (Some("mobile"), Some("phone"))
     );
     assert_eq!(p["state"], "pending");
-    // シーケンスに当たらない提案でも、コンポジションの時刻の欄は空の列で返す。
+    // シーケンスに掛からない提案でも、コンポジションの時刻のフィールドは空の配列で返す。
     assert_eq!(p["comp_spans"], serde_json::json!([]));
     assert_eq!(r.version(), 0);
 }
 
 #[test]
-fn base_version_と操作経路の名乗りは本体の形で決まる() {
+fn base_version_と操作経路の指定は本体の形で決まる() {
     let r = rig();
     let req = Req::device(&r.pair("phone"));
     let mut no_base = add_marker("m1", 1, 0);

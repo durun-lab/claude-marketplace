@@ -3,10 +3,10 @@ import type { RationalTime } from "./generated/ops.ts";
 /** コメントの状態。`fresh` は Claude の対応（`responds_to` つきの適用か提案の承認）でだけなり、人は決められない。 */
 export type CommentState = "open" | "fresh" | "done" | "wontfix";
 
-/** 描き込みの種類。`stroke` は点の列、`rect` は対角の 2 点、`point` は 1 点。 */
+/** 描き込みの種類。`stroke` は点の並び、`rect` は対角の 2 点、`point` は 1 点。 */
 export type ShapeKind = "stroke" | "rect" | "point";
 
-/** 描き込み 1 つ。座標はコマの左上を (0, 0)、右下を (1, 1) に正規化する。 */
+/** 描き込み 1 つ。座標はフレームの左上を (0, 0)、右下を (1, 1) に正規化する。 */
 export type CommentShape = { kind: ShapeKind; points: [number, number][] };
 
 /** 誰が書いたか。`kind` は操作経路の種類（`gui`、`mobile`、`mcp`、`cli`）。 */

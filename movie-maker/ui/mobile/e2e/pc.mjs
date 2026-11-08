@@ -84,7 +84,7 @@ export const startPc = async ({ exe, project, transcript, assets, workRoot, appD
   return { ...ready, work, logs, ask, stop };
 };
 
-/** 中継が付け替える見出し。外から来た本人の見出しは tailscale serve と同じく捨てる。 */
+/** 中継が付け替えるヘッダー。外から来た本人のヘッダーは tailscale serve と同じく捨てる。 */
 const relayHeaders = (headers, selfOrigin) => {
   const out = Object.fromEntries(Object.entries(headers).filter(([k]) => !k.startsWith("tailscale-")));
   out.host = `${TAILNET_HOST}:${SERVE_HTTPS_PORT}`;

@@ -41,7 +41,7 @@ export const pairWithoutCookie = async ({ page, context, pc, relay }) => {
   return "pairing without the cookie is reported on the screen";
 };
 
-/** 1b. PC の Devices の符号（`Devices::issue_code`）を QR の URL で開き、同じ名前で登録し直す。 */
+/** 1b. PC の Devices の登録コード（`Devices::issue_code`）を QR の URL で開き、同じ名前で登録し直す。 */
 export const pair = async ({ page, context, pc, relay, deviceName }) => {
   const { code, url } = await pc.ask("code");
   assert.match(url, /\/m\/pair\?code=/);

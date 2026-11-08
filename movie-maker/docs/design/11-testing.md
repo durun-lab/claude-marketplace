@@ -175,7 +175,7 @@
 段階 9 の終わりの条件（出先で Story とコメントと操作の発行ができる）を、実際の `mm-serve` を相手に Playwright で通す（[モバイル版](12-mobile.md)）。
 端末の設定は iPhone 14（WebKit）と Pixel 7（Chromium）。
 `tailscale serve` の代わりに、中継（`ui/mobile/e2e/pc.mjs`）が自己署名の HTTPS で受け、`Host` を tailnet での名前に替え、`Tailscale-User-Login` を付けて人の待ち受けへ流す。
-`Origin` は中継自身のオリジンのときだけ `https://<tailnet での名前>:8443` に替え、ほかのオリジンはそのまま流して守り（`guard.rs`）に拒否させる。
+`Origin` は中継自身のオリジンのときだけ `https://<tailnet での名前>:8443` に替え、ほかのオリジンはそのまま流してガード（`guard.rs`）に拒否させる。
 人の待ち受けは空いているポートで待つので、PC で movie-maker が 7338 で動いていても回せる。
 
 | 置き場所 | 中身 |
@@ -185,7 +185,7 @@
 | `ui/mobile/e2e/flow.mjs` | 手順。1 登録（端末がクッキーを保存しないと画面が知らせ、同じ名前で登録し直せる。続けて QR の URL で登録）、2 Watch（親のプレイリスト `index.m3u8` から画質ごとのプレイリストと TS の配信の区間。Chromium は hls.js で再生）と描き込みつきのコメント、3 MCP の `comments` と `propose`（`responds_to`）、4 Proposals で前後のフレームを見て承認し、別の画面に SSE でコメントの `fresh` が届く、5 Story の `Keep` と「Decide on PC」の提案、6 `setOffline` で書いたコメントが送信待ちのキュー（IndexedDB）に入り、戻ると 1 回だけ届く |
 
 WebKit の Windows 版は HLS を再生できないので、WebKit はプレイリストと配信の区間が取れるところまでを確かめる。
-配信の区間の大きさは回ごとに少し違う（符号化が決定的でない）。区間のキーは出力でなく入力から作るので、キャッシュの当たり外れは変わらない。テストは大きさでなく、TS の同期バイトと区間の数を確かめる。
+配信の区間の大きさは回ごとに少し違う（符号化が決定的でない）。区間のキーは出力でなく入力から作るので、キャッシュのヒットとミスは変わらない。テストは大きさでなく、TS の同期バイトと区間の数を確かめる。
 回すのは段階の締めと、`mm-serve` の人の待ち受け、`mm-stream`、`ui/mobile` を変えた PR。
 
 ```sh
@@ -212,8 +212,8 @@ iPhone の Safari と Android の Chrome で、それぞれ次を行う。
 前提: スマホに Tailscale のアプリを入れ、PC と同じアカウントで tailnet に入っている。PC の Claude Code のセッションが movie-maker の MCP につながっている（[HTTP サーバー](05-ops.md#http-サーバー)）。
 
 1. PC で movie-maker を起動してプロジェクトを開き、[設定の手順](12-mobile.md#設定の手順)の 2〜3 で `tailscale serve status` が `:8443` から `http://127.0.0.1:7338` に向いていることを確かめる。スマホは Wi-Fi を切り、モバイルの回線で Tailscale をつなぐ。
-2. PC の Devices パネルで「Add device」を押し、QR をスマホのカメラで読んで開き、`Pair` を押す。Watch の画面に替わり、PC の端末の一覧に名前と Tailscale のアカウントが出る。登録の画面に「did not keep the sign-in cookie」と出たら、Safari の設定の「すべての Cookie をブロック」を切り、PC で符号を出し直して同じ名前で登録し直す。
-3. iPhone だけ: Safari の共有ボタンから「ホーム画面に追加」を押し、ホーム画面のアイコンから開く。登録の画面が出たら（Safari とクッキーが分かれる）、PC で符号を出し直し、名前を `iPhone Home` のように Safari の登録と別にして入れる。
+2. PC の Devices パネルで「Add device」を押し、QR をスマホのカメラで読んで開き、`Pair` を押す。Watch の画面に替わり、PC の端末の一覧に名前と Tailscale のアカウントが出る。登録の画面に「did not keep the sign-in cookie」と出たら、Safari の設定の「すべての Cookie をブロック」を切り、PC で登録コードを出し直して同じ名前で登録し直す。
+3. iPhone だけ: Safari の共有ボタンから「ホーム画面に追加」を押し、ホーム画面のアイコンから開く。登録の画面が出たら（Safari とクッキーが分かれる）、PC で登録コードを出し直し、名前を `iPhone Home` のように Safari の登録と別にして入れる。
 4. Watch で再生する（iPhone は Safari のそのままの再生、Android は hls.js）。一時停止して `Comment` を押し、文を書き、`Draw` で字幕を丸で囲み、`Send` を押す。PC の Review にそのコメントが出る。
 5. PC の Claude Code のセッションで「モバイルのコメントに対応して」と頼む（スマホの claude.ai/code からでもよい）。Claude が `comments` で読み、`propose` で提案を出す。
 6. Proposals で提案を開き、`Before` と `After` を押して見比べ、`Approve` を押す。Watch に戻るとコメントの状態が `fresh` になっている。PC の画面にも変更が入る。

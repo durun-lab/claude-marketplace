@@ -35,12 +35,12 @@ export interface Device {
   paired_at_ms: number;
 }
 
-/** 登録の符号と QR（アプリの `devices_issue_code`）。 */
+/** 登録コードと QR（アプリの `devices_issue_code`）。 */
 export interface Pairing {
   /** 8 文字。 */
   code: string;
   expiresAtMs: number;
-  /** スマホで開く URL。tailnet の名前が分からなければ `null`（符号を手で入れる）。 */
+  /** スマホで開く URL。tailnet の名前が分からなければ `null`（登録コードを手で入れる）。 */
   url: string | null;
   /** URL の QR（SVG の本体）。 */
   qrSvg: string | null;

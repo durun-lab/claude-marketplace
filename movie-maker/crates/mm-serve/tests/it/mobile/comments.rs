@@ -1,11 +1,11 @@
-//! 人の待ち受けに載せたコメントの API。書くのは登録した端末の名前の人で、本文の名乗りは受けない。
+//! 人の待ち受けに載せたコメントの API。書くのは登録した端末の名前の人で、本文の発行元の指定は受けない。
 
 use serde_json::json;
 
 use super::{code, rig, Req};
 
 #[test]
-fn コメントは端末の名前の人として書け_名乗りは受けない() {
+fn コメントは端末の名前の人として書け_発行元の指定は受けない() {
     let r = rig();
     let req = Req::device(&r.pair("phone"));
     let body = json!({"comp": "main", "at": {"num": 1, "den": 1}, "text": "ここを短く"});

@@ -1,4 +1,4 @@
-//! 静止画のコマ。指定の時刻のプレビューを WebP にする（`GET /m/api/frame` の本体）。
+//! 静止画のフレーム。指定の時刻のプレビューを WebP にする（`GET /m/api/frame` の本体）。
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
@@ -12,12 +12,12 @@ use mm_types::{CompositionId, Id, MmError, RationalTime, Result, Size};
 /// 幅の下限と上限（画素）。コメントの時刻の確認からスクラブのつまみまで、この範囲で足りる。
 pub const STILL_MIN_WIDTH: u32 = 360;
 pub const STILL_MAX_WIDTH: u32 = 720;
-/// WebP の品質（0〜100）。幅 360〜720 の絵で 1 枚 20〜60 KB に収まる値。
+/// WebP の品質（0〜100）。幅 360〜720 の画像で 1 枚 20〜60 KB に収まる値。
 const WEBP_QUALITY: f32 = 70.0;
-/// コマのキャッシュに置く本体の合計の上限（バイト）。
+/// 静止画のフレームのキャッシュに置く本体の合計の上限（バイト）。
 const CACHE_LIMIT_BYTES: usize = 32 * 1024 * 1024;
 
-/// 静止画のコマの指定。
+/// 静止画のフレームの指定。
 #[derive(Debug, Clone, PartialEq)]
 pub struct StillRequest {
     /// コンポジションの ID。省くと `main`、それも無ければ先頭。
@@ -35,7 +35,7 @@ impl StillRequest {
     }
 }
 
-/// コマのキャッシュのキー。プロジェクトのバージョンはキャッシュ全体を捨てる単位なので持たない。
+/// 静止画のフレームのキャッシュのキー。プロジェクトのバージョンはキャッシュ全体を捨てる単位なので持たない。
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub(crate) struct StillKey {
     composition: Option<String>,
@@ -96,7 +96,7 @@ impl StillCache {
     }
 }
 
-/// `engine` で 1 コマを描いて WebP にする。
+/// `engine` で 1 フレームを描いて WebP にする。
 pub(crate) fn render_webp(
     engine: &mut Engine,
     project: &Project,

@@ -24,7 +24,7 @@ export interface Controller {
   outbox: Outbox;
   /** 操作を PC に送る Transport。Story の操作が使う。 */
   transport: Transport;
-  /** 登録の符号を送り、成功したら接続をやり直す。 */
+  /** 登録コードを送り、成功したら接続をやり直す。 */
   pair: (code: string, deviceName: string) => Promise<PairResult>;
   /** コメントを送信待ちのキューに入れ、つながっていればすぐ送る。 */
   comment: (draft: Omit<CommentDraft, "client_id">) => Promise<void>;

@@ -55,7 +55,7 @@ pub fn rig_with(tweak: impl FnOnce(&mut MobileConfig)) -> Rig {
     }
 }
 
-/// 人の待ち受けに送る見出し。`None` の見出しは付けない。
+/// 人の待ち受けに送るヘッダー。`None` のヘッダーは付けない。
 #[derive(Clone)]
 pub struct Req {
     pub host: Option<String>,
@@ -117,7 +117,7 @@ impl Rig {
             .unwrap()
     }
 
-    /// 登録の符号を出して登録し、資格を 1 回使って `Cookie` に入れる値（`mm_device=...`）を返す。
+    /// 登録コードを出して登録し、資格を 1 回使って `Cookie` に入れる値（`mm_device=...`）を返す。
     pub fn pair(&self, name: &str) -> String {
         let cookie = self.pair_unused(name);
         let res = self.send(&Req::device(&cookie), "GET", "/m/api/project", None);
@@ -153,7 +153,7 @@ pub fn code(res: &Response) -> String {
         .to_owned()
 }
 
-/// 期限を 0 にした符号は、出した直後から使えない。
+/// 期限を 0 にした登録コードは、出した直後から使えない。
 pub fn expired_rig() -> Rig {
     rig_with(|c| c.pairing_ttl = Duration::ZERO)
 }
