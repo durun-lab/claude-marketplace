@@ -3,7 +3,7 @@
 //! 提案を適用したプロジェクトを `mm-stream` の `Streamer::clip` に渡し、MP4 を `Range` に合わせて返す。
 //! URL のキーは範囲に掛かるもののハッシュ（HLS の区間と同じ）で、提案の応答（`GET /m/api/proposals/{id}`）の `clip_url` が今のキーを渡す。
 //! 作り終えた動画はキーで引くので、範囲の中が編集された後も再生の途中の `Range` には前と同じバイトで答える。
-//! 作っていない古いキーは 404（端末は提案を読み直す）。別のキーへ転送すると、続きの `Range` が別の MP4 のバイトになる。
+//! 作っていない古いキーは 404（端末は提案を読み直す）。今のキーへリダイレクトすると、続きの `Range` が別の MP4 のバイトになる。
 //! 作るのは 6 秒の範囲で 1 秒足らずなので、202 で再試行させず、作り終えるまで要求を待たせる（HLS の区間と同じ）。
 //! 同時に作る数の上限を超えた要求と、待つ上限を超えた要求は 503 で返し、描画のスレッドに要求を積み上げない。
 
@@ -33,7 +33,7 @@ pub(super) fn routes() -> Router<Arc<MobileState>> {
 }
 
 /// 短い動画を選ぶ問い合わせ。提案の応答（`GET /m/api/proposals/{id}`）と短い動画の URL で同じ形。
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Deserialize)]
 pub(super) struct ClipQuery {
     /// 範囲を見るコンポジション。省くと提案の範囲の最初のコンポジション。
     comp: Option<String>,
@@ -41,7 +41,8 @@ pub(super) struct ClipQuery {
     ops: Option<String>,
 }
 
-/// 提案の区間の短い動画。保留中の提案の作り終えたキーはそのまま返す。無ければ今のキーと比べて作り、違えば 404。
+/// 提案の区間の短い動画。保留中の提案は、そのキーの短い動画を作り終えていればそのまま返す。
+/// 無ければ今のキーと比べ、同じなら作り、違えば 404。
 /// 保留中でない提案は `GET /m/api/frame?proposal=` と同じく操作の層の拒否、範囲を持たない提案は 404 `no_range`。
 async fn clip(
     State(st): State<Arc<MobileState>>,
@@ -82,7 +83,7 @@ async fn clip(
 }
 
 /// 今の中身の短い動画の URL（`/m/api/proposals/{id}/clip/{key}.mp4?comp=&ops=`）。
-/// 保留中でない提案、範囲を持たない提案、配信を持たない待ち受けは `None`。
+/// 保留中でない提案、今のプロジェクトに当てられない提案、範囲を持たない提案、配信を持たない待ち受けは `None`。
 pub(super) fn clip_url(
     core: &Core,
     streamer: Option<&Streamer>,
@@ -94,9 +95,12 @@ pub(super) fn clip_url(
         return Ok(None);
     };
     let selection = q.ops.as_deref().map(parse_indices).transpose()?;
-    let Some((project, version, request)) =
-        prepare(core, id, selection.as_deref(), q.comp.as_deref())?
-    else {
+    let prepared = match prepare(core, id, selection.as_deref(), q.comp.as_deref()) {
+        // 後の編集で今のプロジェクトに当てられない提案も、詳細は返して短い動画だけを出さない。
+        Err(ServeError::Op(_)) => return Ok(None),
+        other => other?,
+    };
+    let Some((project, version, request)) = prepared else {
         return Ok(None);
     };
     let key = streamer

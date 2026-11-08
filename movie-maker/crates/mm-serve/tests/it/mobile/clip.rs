@@ -234,4 +234,19 @@ fn 範囲が違う提案は別の動画で_決めた提案と無い提案は断�
         "/m/api/proposals/9999/clip/0123456789abcdef.mp4",
     );
     assert_eq!(missing.status, 422, "{}", code(&missing));
+
+    // 提案が触る title を PC で外すと、保留中の提案は今のプロジェクトに当てられない。
+    let removed = r
+        .claude
+        .post(
+            "/ops",
+            &json!({"op": {"op": "removeLayer", "layer": "title"}, "base_version": r.version()}),
+        )
+        .unwrap();
+    assert_eq!(removed.status, 200, "{}", removed.error_message());
+    assert_eq!(
+        clip_url(&r, &cookie, hide, ""),
+        None,
+        "当てられない提案も詳細は返し、URL だけを出さない"
+    );
 }
