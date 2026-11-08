@@ -1,8 +1,8 @@
 //! 配信の区間のキーが、編集で変わる区間だけ変わること。
 
 use mm_doc::{
-    Asset, Composition, Cut, Layer, Node, Project, Sequence, Transition, SEQUENCE_KIND,
-    SEQUENCE_PARAM,
+    Asset, Composition, Cut, Layer, MatteKind, Node, Project, Sequence, TrackMatte, Transition,
+    SEQUENCE_KIND, SEQUENCE_PARAM,
 };
 use mm_runtime::Registry;
 use mm_types::color::ColorSpace;
@@ -50,11 +50,15 @@ fn project() -> Project {
 }
 
 fn keys_with(p: &Project, version: u64, quality: HlsQuality) -> Vec<SegmentKey> {
+    keys_on(p, version, quality, "test")
+}
+
+fn keys_on(p: &Project, version: u64, quality: HlsQuality, backends: &str) -> Vec<SegmentKey> {
     let registry = Registry::new();
     let env = KeyEnv {
         project: p,
         nodes: &registry,
-        backends: "test",
+        backends,
         version,
     };
     let req = HlsRequest {
@@ -91,6 +95,55 @@ fn 区間のキーは名前と往復し中身と範囲で決まる() {
         "バージョンに依らない"
     );
     assert_ne!(keys_with(&project(), 1, HlsQuality::P540)[0], k[0]);
+}
+
+#[test]
+fn デコーダーの画素のバージョンが上がると全区間のキーが変わる() {
+    let label = |ids: &[&str]| crate::streamer::backend_label("decode", "auto", ids);
+    let keys = |ids: &[&str]| keys_on(&project(), 1, HlsQuality::P360, &label(ids));
+    let before = keys(&["d3d12va@1", "ffmpeg@1"]);
+    assert_eq!(keys(&["d3d12va@1", "ffmpeg@1"]), before);
+    assert_eq!(
+        same(&before, &keys(&["d3d12va@2", "ffmpeg@1"])),
+        [false, false, false]
+    );
+}
+
+/// `project()` に、無効のレイヤー `off`（シーケンス `s2` の絵）を足す。`as_matte` なら `seq` のマットに使う。
+fn with_disabled_layer(as_matte: bool) -> Project {
+    let mut p = project();
+    p.sequences.push(Sequence {
+        id: Id::new("s2"),
+        cuts: vec![Cut::new("x", solid("x"), s(0), s(12))],
+        origin: None,
+    });
+    let node =
+        Node::new(SEQUENCE_KIND, 1).with_param(SEQUENCE_PARAM, ParamValue::Text("s2".into()));
+    let mut off = Layer::new("off", node, s(0), s(0), s(12));
+    off.enabled = false;
+    p.compositions[0].layers.push(off);
+    if as_matte {
+        p.compositions[0].layers[0].track_matte = Some(TrackMatte {
+            layer: Id::new("off"),
+            kind: MatteKind::Alpha,
+            inverted: false,
+        });
+    }
+    p
+}
+
+#[test]
+fn 無効のレイヤーの中身を直してもキーは変わらず_マットに使われていれば変わる() {
+    for (as_matte, expected) in [(false, [true, true, true]), (true, [false, false, false])] {
+        let p = with_disabled_layer(as_matte);
+        let mut edited = p.clone();
+        edited.sequences[1].cuts[0].source = solid("changed");
+        assert_eq!(
+            same(&keys(&p), &keys(&edited)),
+            expected,
+            "matte={as_matte}"
+        );
+    }
 }
 
 #[test]

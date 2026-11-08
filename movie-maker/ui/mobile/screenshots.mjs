@@ -120,11 +120,27 @@ const checkServiceWorker = async (base) => {
   if (apiCached || !result.cached.includes("/m/app.js")) throw new Error("service worker cache is wrong");
 };
 
+/** 親のプレイリストから子、区間と読み進み、映像が実際に進むことを H.264 の入った Chrome で確かめる。 */
+const checkPlayback = async (base) => {
+  const browser = await chromium.launch({ channel: process.env.PLAYBACK_CHANNEL ?? "chrome" });
+  const page = await (await browser.newContext({ ...devices["Pixel 7"] })).newPage();
+  const requested = [];
+  page.on("request", (r) => requested.push(new URL(r.url()).pathname.split("/").pop()));
+  await page.goto(`${base}/m/demo.html?state=online&tab=Watch`);
+  await page.getByRole("button", { name: "Play" }).click();
+  await page.waitForFunction(() => globalThis.document.querySelector("video").currentTime > 1, null, { timeout: 15000 });
+  await browser.close();
+  process.stdout.write(`playback: ${requested.filter((n) => /m3u8|m4s|mp4/.test(n)).join(" ")}\n`);
+  const order = ["index.m3u8", "360p.m3u8", "360p_init.mp4"].map((n) => requested.indexOf(n));
+  if (order.includes(-1) || order.some((v, i) => i > 0 && v < order[i - 1])) throw new Error("master playlist was not read first");
+};
+
 await mkdir(OUT, { recursive: true });
 const server = await serve();
 const base = `http://localhost:${server.address().port}`;
 try {
   await checkServiceWorker(base);
+  await checkPlayback(base);
   for (const target of TARGETS) await shoot(base, target);
 } finally {
   server.close();

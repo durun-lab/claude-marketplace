@@ -111,13 +111,17 @@ impl Plan {
     }
 }
 
+/// 区間の符号化の profile と level を `mm-encode-ffmpeg` の `h264_ts`（High、level 4.0）に合わせた `CODECS`。
+/// 値は `tests/it/hls.rs` が区間を ffprobe で読んで確かめる。
+const CODECS: &str = "avc1.640028,mp4a.40.2";
+
 /// 画質ごとのプレイリストを並べる親のプレイリスト。`BANDWIDTH` は区間のピーク、`AVERAGE-BANDWIDTH` は目標。
 /// `variants` は画質の順の（計画、プレイリストの URI）。
 pub(crate) fn master_playlist(variants: &[(Plan, String)]) -> String {
     let mut out = String::from("#EXTM3U\n#EXT-X-VERSION:3\n");
     for (plan, uri) in variants {
         out.push_str(&format!(
-            "#EXT-X-STREAM-INF:BANDWIDTH={},AVERAGE-BANDWIDTH={},RESOLUTION={}x{},FRAME-RATE={:.3}\n{uri}\n",
+            "#EXT-X-STREAM-INF:BANDWIDTH={},AVERAGE-BANDWIDTH={},CODECS=\"{CODECS}\",RESOLUTION={}x{},FRAME-RATE={:.3}\n{uri}\n",
             plan.quality.peak_bits_per_second(),
             plan.quality.total_bits_per_second(),
             plan.width,
@@ -199,7 +203,7 @@ mod tests {
         let text = master_playlist(&variants);
         let peak = HlsQuality::P360.peak_bits_per_second();
         assert!(text.contains(&format!(
-            "#EXT-X-STREAM-INF:BANDWIDTH={peak},AVERAGE-BANDWIDTH=500000,RESOLUTION=640x360,FRAME-RATE=30.000\nmain/360p.m3u8\n"
+            "#EXT-X-STREAM-INF:BANDWIDTH={peak},AVERAGE-BANDWIDTH=500000,CODECS=\"avc1.640028,mp4a.40.2\",RESOLUTION=640x360,FRAME-RATE=30.000\nmain/360p.m3u8\n"
         )));
         assert!(text.contains("RESOLUTION=960x540"));
         assert_eq!(text.matches("#EXT-X-STREAM-INF").count(), 2);

@@ -293,10 +293,11 @@ impl Streamer {
             return Ok(k.clone());
         }
         let keying = Arc::new(self.with_engine(|e| {
+            let decoders = e.decoder_backend_ids();
             let backends = e
                 .backend_names()
                 .iter()
-                .map(|(role, name)| format!("{role}={name}"))
+                .map(|&(role, name)| backend_label(role, name, &decoders))
                 .collect::<Vec<_>>()
                 .join(",");
             Ok(Keying {
@@ -368,6 +369,16 @@ impl Drop for Streamer {
     }
 }
 
+/// 区間のキーに入れる実装の名前。`decode=auto` は素材ごとに実装を選ぶので、名乗りうる実装の全部を添える。
+/// デコーダーの画素の作り方のバージョンが上がると名前が変わり、前の区間を使わない。
+pub(crate) fn backend_label(role: &str, name: &str, decoders: &[&str]) -> String {
+    if role == "decode" && name == "auto" {
+        format!("{role}={name}[{}]", decoders.join(","))
+    } else {
+        format!("{role}={name}")
+    }
+}
+
 /// 区間を作ってキャッシュに置き、上限を超えた分を捨てる。先に同じキーの区間ができていれば何もしない。
 fn build(cache: &CacheDir, engine: &mut Engine, job: &SegJob, limit: u64) -> Result<()> {
     let path = cache.segment(job.key);
@@ -377,4 +388,22 @@ fn build(cache: &CacheDir, engine: &mut Engine, job: &SegJob, limit: u64) -> Res
     render_segment(engine, &job.project, &job.plan, job.index, &path)?;
     cache.evict_segments(limit);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::backend_label;
+
+    #[test]
+    fn decode_auto_は名乗りうる実装を添え_ほかはそのまま() {
+        assert_eq!(
+            backend_label("decode", "auto", &["d3d12va@2", "ffmpeg@1"]),
+            "decode=auto[d3d12va@2,ffmpeg@1]"
+        );
+        assert_eq!(
+            backend_label("decode", "ffmpeg", &["ffmpeg@1"]),
+            "decode=ffmpeg"
+        );
+        assert_eq!(backend_label("render", "auto", &["x"]), "render=auto");
+    }
 }

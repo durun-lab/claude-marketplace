@@ -76,6 +76,9 @@ fn プレイリストと区間が返り_ffprobe_で読めて長さとビット�
     let info = probe_segment(dir.path(), &first.body, "first.ts");
     let video = stream(&info, "video");
     assert_eq!(video["codec_name"], "h264");
+    // 親のプレイリストの CODECS（avc1.640028 = High、level 4.0）と同じ。
+    assert_eq!(video["profile"], "High");
+    assert_eq!(video["level"], 40);
     assert_eq!(
         (video["width"].as_u64(), video["height"].as_u64()),
         (Some(640), Some(360))

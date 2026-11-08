@@ -181,8 +181,8 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 | WebRTC で Program を流す | 再生の操作をその場で返す | 見ている間ずっと 1〜3 Mbps、PC は常にエンコード | 採らない。レビューに 60 fps のスクラブは要らず、電池と回線を食う |
 | プレビュー動画をそのまま | | 1 時間 2.6 GB | 採らない |
 
-- HLS の区間は見られたときに作る。プレイリストは今のバージョンのコンポジションの全区間を並べ、区間の要求が来たら描いて符号化して返し、次の 2 区間を先に作る。符号化は `mm-export` から `mm-encode-ffmpeg` の `h264_ts` で、目標のビットレートの H.264 と AAC の MPEG-TS に 1 回で書く。親のプレイリスト（`Streamer::master_playlist`）の `BANDWIDTH` は、VBV が許す 1 区間の最大（区間ごとにバッファーが 9 割埋まった所から始まり、4 秒の区間で上限の 1.45 倍）を見込んだピークの値。`mm-serve` は今は画質ごとのプレイリスト（`{quality}.m3u8`）を直接配り、親のプレイリストの URL を持たない。描くのは `mm-stream` の専用のスレッドの 1 つの `Engine` で、PC の再生を止めない。`GET /frame` も `Streamer::with_engine` で同じ `Engine` を使える。
-- 区間のキーは区間の時間の範囲に掛かるもの（レイヤーとカットの JSON、区間の中の相対の位置、ノードの種類のバージョンと `cache_fingerprint`、素材の `contentHash`。[RFC 0013](../rfcs/0013-render-order-and-cache-keys.md) のフレームのキャッシュと同じ考え方）と画質から作り、URL に入れる。編集で変わらない区間はキーが同じなので作り直さず、端末のブラウザーにも残る（`Cache-Control: immutable`）。区間は `cache/mobile/hls/` に置き、上限（既定 2 GiB）を超えたら使った時刻の古いものから捨てる。消しても作り直せる。
+- HLS の区間は見られたときに作る。プレイリストは今のバージョンのコンポジションの全区間を並べ、区間の要求が来たら描いて符号化して返し、次の 2 区間を先に作る。符号化は `mm-export` から `mm-encode-ffmpeg` の `h264_ts` で、目標のビットレートの H.264 と AAC の MPEG-TS に 1 回で書く。親のプレイリスト（`Streamer::master_playlist`）の `BANDWIDTH` は、VBV が許す 1 区間の最大（区間ごとにバッファーが 9 割埋まった所から始まり、4 秒の区間で上限の 1.45 倍）を見込んだピークの値。`mm-serve` は `/m/api/stream/{comp}/index.m3u8` で親を配り、端末は親を読んで画質を選ぶ（hls.js は帯域に合わせて切り替え、iOS はネイティブ）。親の `CODECS` は `mm-encode-ffmpeg` の `h264_ts` が固定する High profile、level 4.0（`avc1.640028`）と AAC-LC（`mp4a.40.2`）。描くのは `mm-stream` の専用のスレッドの 1 つの `Engine` で、PC の再生を止めない。`GET /frame` も `Streamer::with_engine` で同じ `Engine` を使える。
+- 区間のキーは区間の時間の範囲に掛かるもの（レイヤーとカットの JSON、区間の中の相対の位置、ノードの種類のバージョンと `cache_fingerprint`、素材の `contentHash`。[RFC 0013](../rfcs/0013-render-order-and-cache-keys.md) のフレームのキャッシュと同じ考え方）と画質から作り、URL に入れる。編集で変わらない区間はキーが同じなので作り直さず、端末のブラウザーにも残る（`Cache-Control: immutable`）。`decode=auto` は素材ごとにデコーダーを選ぶので、キーには名乗りうるデコーダーの名前の全部（`Engine::decoder_backend_ids`、画素の作り方のバージョンを含む）を入れ、バージョンが上がったら前の区間を使わない。区間は `cache/mobile/hls/` に置き、上限（既定 2 GiB）を超えたら使った時刻の古いものから捨てる。消しても作り直せる。
 - コンテナは fMP4 でなく MPEG-TS にする。区間を 1 つずつ別に符号化して、編集の前後で作った区間を 1 本のプレイリストに混ぜるので、区間ごとに PAT、PMT、SPS、PPS を持ち、共通の初期化の区間（`EXT-X-MAP`）が要らない形が合う。
 - iOS の Safari は HLS をそのまま再生する。Android の Chrome は直接の再生に頼らず、Media Source Extensions の上の hls.js で再生する。HEVC は端末ごとの差が大きいので使わない。
 - 画質は既定で 360p にし、画面の切り替えで 540p にする。iOS では回線の種類を画面から読めないので、自動では切り替えない。
@@ -228,7 +228,7 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 | `GET /m/api/comments?state=`、`GET /m/api/comments/{id}`、`POST /m/api/comments`、`POST /m/api/comments/{id}/replies`、`POST /m/api/comments/{id}/state` | コメントの一覧、1 件、書く、返信、状態 |
 | `GET /m/api/proposals`、`GET /m/api/proposals/{id}`、`POST /m/api/proposals`、`POST /m/api/proposals/{id}/approve`、`/reject`、`/reopen` | 提案。形は Claude の待ち受けの `/proposals` と同じで、`comp_spans: [{ comp, layer, sequence, start, end }]`（`scope.sequences` の範囲を、そのシーケンスを置いたレイヤーのコンポジションの秒に写したもの。時間の写像を持つレイヤーは写さない）を足す |
 | `GET /m/api/frame?comp=&t=&width=&proposal=&ops=` | コマ。`t` は `comp`（省くと先頭のコンポジション）の時間軸の秒。保存したデータは WebP（`ETag` に `If-None-Match` で 304）、`proposal` つきは提案を適用した PNG |
-| `GET /m/api/stream/{comp}/{quality}.m3u8`、`GET /m/api/stream/{comp}/seg/{key}.ts` | HLS のプレイリストと区間。区間の URI はプレイリストからの相対パス `seg/{key}.ts`（どの名前のコンポジションともパスがぶつからない） |
+| `GET /m/api/stream/{comp}/index.m3u8`、`GET /m/api/stream/{comp}/{quality}.m3u8`、`GET /m/api/stream/{comp}/seg/{key}.ts` | HLS の親のプレイリスト、画質ごとのプレイリスト、区間。親は子を相対パス `{quality}.m3u8` で指し、子は区間を相対パス `seg/{key}.ts` で指す（どの名前のコンポジションともパスがぶつからない） |
 | `GET /m/api/audio/{asset}.m4a`、`GET /m/api/proposals/{id}/clip.mp4` | 素材の音だけ、提案の区間の短い動画 |
 | `GET /m/api/events` | SSE。`hello`、`change`、`resync`、`proposal` に加えて `comment`（`{ id, state }`）。返信では `state` が変わらないので、端末は `comment` を受けたら `GET /m/api/comments/{id}` で 1 件を読み直す |
 

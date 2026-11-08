@@ -6,10 +6,11 @@
 //! 共有の GPU を D3D12 で頼むので、既定の頼み方で共有の GPU を作るほかのテストと同じプロセスに置かない（別の実行ファイル。docs/ci.md）。
 #![cfg(all(feature = "ffmpeg", feature = "d3d12va", feature = "cuvid"))]
 
-use std::path::PathBuf;
-use std::sync::Arc;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Once};
 
 use mm_decode_api::{DecodedFrame, DecoderFactory, GpuContextRef};
+use mm_decode_d3d12va::PROBE_ENV;
 use mm_gpu::{GpuContext, WgpuGpu};
 use mm_node_api::GpuHelper;
 use mm_runtime::{assemble, AutoDecoderFactory, Backend, GpuCandidate, RuntimeConfig, WithAudio};
@@ -17,6 +18,41 @@ use mm_types::{RationalTime, RgbaImage, TimeRange};
 
 const BIT_COUNT: u32 = 16;
 const BIT_SIZE: u32 = 16;
+
+/// 試しデコードの実行ファイル（`mm-d3d12va-probe`）。`-p mm-runtime` だけで回すと cargo はこれを作らないので、
+/// 無ければテストの実行ファイルと同じ target に作り、`MM_D3D12VA_PROBE` で指す。
+fn ensure_probe() {
+    static BUILT: Once = Once::new();
+    BUILT.call_once(build_probe);
+}
+
+fn build_probe() {
+    if std::env::var_os(PROBE_ENV).is_some() {
+        return;
+    }
+    // <target>/<profile>/deps/<テスト>.exe
+    let exe = std::env::current_exe().expect("current_exe");
+    let profile_dir = exe.parent().and_then(Path::parent).expect("profile dir");
+    let target_dir = profile_dir.parent().expect("target dir");
+    let profile = match profile_dir.file_name().and_then(|n| n.to_str()) {
+        Some("debug") | None => "dev",
+        Some(other) => other,
+    };
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let status = std::process::Command::new(cargo)
+        .args(["build", "-p", "mm-decode-d3d12va", "--features", "d3d12va"])
+        .args(["--bin", "mm-d3d12va-probe", "--profile", profile])
+        .arg("--target-dir")
+        .arg(target_dir)
+        .arg("--manifest-path")
+        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.toml"))
+        .status()
+        .expect("cargo");
+    assert!(status.success(), "mm-d3d12va-probe のビルド");
+    let probe = profile_dir.join("mm-d3d12va-probe.exe");
+    assert!(probe.exists(), "{} が無い", probe.display());
+    std::env::set_var(PROBE_ENV, probe);
+}
 
 fn fixtures() -> PathBuf {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/media");
@@ -52,6 +88,7 @@ fn config(decode: Backend) -> RuntimeConfig {
 
 /// `assemble` が作ったのと同じ GPU のコンテキスト（プロセスで共有）。
 fn shared_gpu() -> Arc<GpuContext> {
+    ensure_probe();
     GpuContext::shared(&mm_decode_d3d12va::gpu_request(None).unwrap()).unwrap()
 }
 

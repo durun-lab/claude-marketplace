@@ -5,6 +5,7 @@
 //! ノードの JSON、種類のバージョンと指紋（`NodeKind::cache_fingerprint`、RFC 0132）、素材の `contentHash`。
 //! レイヤーとカットの位置は区間の始まりからの相対で入れるので、後ろの編集は前の区間のキーを変えない。
 
+use std::collections::HashSet;
 use std::fmt;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -137,7 +138,7 @@ impl Walk<'_> {
             return;
         }
         self.json(comp, &["layers", "duration", "markers"]);
-        for layer in comp.layers.iter().filter(|l| l.enabled) {
+        for layer in effective_layers(comp) {
             let Ok(span) = layer.range() else {
                 self.volatile = true;
                 continue;
@@ -300,6 +301,20 @@ impl Walk<'_> {
 }
 
 /// `inner` に掛かるカット（`placed` の中の番号）。重なるカットと、`inner` に掛かるトランジションの両側のカット。
+/// 画素に効きうるレイヤー。有効なレイヤーと、無効でもトラックマットのレイヤーとして引かれるもの
+/// （`mm-render` の `matte::effective_layers` と同じ選び方。描かないレイヤーで区間のキーを変えない）。
+fn effective_layers(comp: &Composition) -> impl Iterator<Item = &Layer> {
+    let mattes: HashSet<&str> = comp
+        .layers
+        .iter()
+        .filter_map(|l| l.track_matte.as_ref())
+        .map(|m| m.layer.as_str())
+        .collect();
+    comp.layers
+        .iter()
+        .filter(move |l| l.enabled || mattes.contains(l.id.as_str()))
+}
+
 fn touching(seq: &Sequence, placed: &[PlacedCut], inner: TimeRange) -> Vec<usize> {
     let mixes = |i: usize| i < placed.len() && transition_reaches(seq, &placed[i], inner);
     (0..placed.len())
