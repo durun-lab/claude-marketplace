@@ -111,6 +111,23 @@ impl Plan {
     }
 }
 
+/// 画質ごとのプレイリストを並べる親のプレイリスト。`BANDWIDTH` は区間のピーク、`AVERAGE-BANDWIDTH` は目標。
+/// `variants` は画質の順の（計画、プレイリストの URI）。
+pub(crate) fn master_playlist(variants: &[(Plan, String)]) -> String {
+    let mut out = String::from("#EXTM3U\n#EXT-X-VERSION:3\n");
+    for (plan, uri) in variants {
+        out.push_str(&format!(
+            "#EXT-X-STREAM-INF:BANDWIDTH={},AVERAGE-BANDWIDTH={},RESOLUTION={}x{},FRAME-RATE={:.3}\n{uri}\n",
+            plan.quality.peak_bits_per_second(),
+            plan.quality.total_bits_per_second(),
+            plan.width,
+            plan.height,
+            plan.fps.to_f64(),
+        ));
+    }
+    out
+}
+
 fn ceil_div(a: i128, b: i128) -> i128 {
     (a + b - 1).div_euclid(b)
 }
@@ -165,6 +182,27 @@ mod tests {
         assert!(text.contains("#EXTINF:2.000,\nseg/00000000000000a2.ts\n"));
         assert!(text.ends_with("#EXT-X-ENDLIST\n"));
         assert_eq!(text.matches("#EXTINF").count(), 3);
+    }
+
+    #[test]
+    fn 親のプレイリストは画質ごとにピークの_bandwidth_を載せる() {
+        let variants: Vec<(Plan, String)> = HlsQuality::ALL
+            .iter()
+            .map(|&quality| {
+                let req = HlsRequest { quality, ..req() };
+                (
+                    Plan::new(&project(10), &req).unwrap(),
+                    format!("main/{}.m3u8", quality.as_str()),
+                )
+            })
+            .collect();
+        let text = master_playlist(&variants);
+        let peak = HlsQuality::P360.peak_bits_per_second();
+        assert!(text.contains(&format!(
+            "#EXT-X-STREAM-INF:BANDWIDTH={peak},AVERAGE-BANDWIDTH=500000,RESOLUTION=640x360,FRAME-RATE=30.000\nmain/360p.m3u8\n"
+        )));
+        assert!(text.contains("RESOLUTION=960x540"));
+        assert_eq!(text.matches("#EXT-X-STREAM-INF").count(), 2);
     }
 
     #[test]

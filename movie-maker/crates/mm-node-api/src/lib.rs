@@ -31,6 +31,10 @@ use mm_types::{
     AssetId, ParamSchema, Params, RationalTime, Rect, Result, Rgba, RgbaImage, Size, TimeRange,
 };
 
+mod fingerprint;
+
+pub use fingerprint::{file_digest, file_stamp};
+
 /// インターフェースのバージョン。`NodeKind` の形を変えたら上げる（RFC）。
 pub const NODE_API_VERSION: u32 = 1;
 
@@ -275,6 +279,7 @@ pub trait NodeKind: Send + Sync {
     /// 画素を変えうる、パラメータと素材の外の入力の指紋（`ofx` のプラグインの共有ライブラリのスタンプなど）。
     /// レンダラーはフレームのキャッシュのキーに入れ、`None` ならそのフレームをキャッシュしない。
     /// `asset_path` は素材のパスを引く。既定は空の文字列（パラメータと素材だけで画素が決まる。RFC 0132）。
+    /// 素材のファイルを自分で読む種類は、取り込んだ後の書き換えを [`file_digest`] で入れる（`contentHash` は取り込み時の値）。
     fn cache_fingerprint(
         &self,
         params: &Params,

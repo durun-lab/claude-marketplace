@@ -152,3 +152,47 @@ fn 面積_0_の画布はホストに頼まず透明を返す() {
     assert_eq!(image.size(), zero);
     assert_eq!(kind.stats(), Stats::default(), "ホストを起こさない");
 }
+
+#[test]
+fn ホストの実行ファイルを差し替えると指紋が変わり_モックは指紋を持たない() {
+    let dir = std::env::temp_dir().join(format!("mm-nodes-cef-fp-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("一時フォルダー");
+    let exe = dir.join("mm-host-cef.exe");
+    std::fs::write(&exe, "a").expect("書ける");
+    let kind = WebCefKind::with_host(Arc::new(SampleLauncher), exe.clone());
+    let fp = || kind.cache_fingerprint(&Params::new(), &|_| None);
+    let first = fp().expect("指紋がある");
+    assert_eq!(fp(), Some(first.clone()), "同じ実行ファイルなら同じ指紋");
+    std::fs::write(&exe, "ab").expect("書ける");
+    assert_ne!(fp(), Some(first), "差し替えた実行ファイルは別の指紋");
+    let mock = WebCefKind::mock();
+    assert_eq!(
+        mock.cache_fingerprint(&Params::new(), &|_| None),
+        Some(String::new())
+    );
+}
+
+#[test]
+fn 組み立てたホストは同じフォルダーの本体の_dll_と_libcef_を指紋に入れる() {
+    let dir = std::env::temp_dir().join(format!("mm-nodes-cef-bundle-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).expect("一時フォルダー");
+    let exe = dir.join("mm-host-cef.exe");
+    std::fs::write(&exe, "boot").expect("書ける");
+    let kind = WebCefKind::with_host(Arc::new(SampleLauncher), exe.clone());
+    let fp = || kind.cache_fingerprint(&Params::new(), &|_| None);
+    let alone = fp().expect("指紋がある");
+    std::fs::write(dir.join("mm-host-cef.dll"), "body").expect("書ける");
+    let with_body = fp().expect("指紋がある");
+    assert_ne!(
+        with_body, alone,
+        "起動の実行ファイルが読む本体の DLL を見分ける"
+    );
+    std::fs::write(dir.join("libcef.dll"), "cef").expect("書ける");
+    let with_cef = fp().expect("指紋がある");
+    assert_ne!(
+        with_cef, with_body,
+        "実行ファイルの隣の libcef.dll を見分ける"
+    );
+    std::fs::write(dir.join("libcef.dll"), "cef2").expect("書ける");
+    assert_ne!(fp(), Some(with_cef), "差し替えた libcef.dll は別の指紋");
+}

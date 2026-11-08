@@ -6,3 +6,4 @@ mod harden;
 mod locate;
 mod policy;
 mod serve;
+mod shared_texture;

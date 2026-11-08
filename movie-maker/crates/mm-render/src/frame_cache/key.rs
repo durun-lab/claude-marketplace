@@ -2,12 +2,14 @@
 //! （入れ子の先、シーケンス、効果）の指紋から作る。
 //!
 //! 画素を変えうる外の入力は全部キーに入れる: 評価済みのパラメータ、素材の `contentHash`（効果が参照する
-//! LUT などの素材も）、種類の指紋（`NodeKind::cache_fingerprint`。`ofx` のプラグインのスタンプ）、色の変換の設定の指紋
-//! （`ColorTransform::config_fingerprint`）、素材ごとに選ばれたデコーダーの実装（`Decoder::backend_id`）。`contentHash` が空の素材（まだ取り込んでいない）に頼る画像はキャッシュしない。
+//! LUT などの素材も）、種類の指紋（`NodeKind::cache_fingerprint`。`ofx` のプラグインのスタンプ、素材のファイルを自分で読む
+//! 種類のファイルの中身のハッシュ）、色の変換の設定の指紋（`ColorTransform::config_fingerprint`）、素材ごとに選ばれた
+//! デコーダーの実装（`Decoder::backend_id`。まだ開いていない素材は [`unopened_decoder`]）。`contentHash` が空の素材（まだ取り込んでいない）に頼る画像はキャッシュしない。
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
 
+use mm_decode_api::DecoderFactory;
 use mm_doc::{Composition, Layer, Node, Project, SEQUENCE_KIND, SEQUENCE_PARAM};
 use mm_eval::{node_params_at, source_time};
 use mm_node_api::{FrameCx, InputFrames, NodeKind, NodeRegistry, Quality};
@@ -27,8 +29,15 @@ pub(crate) struct KeyEnv<'a> {
     pub quality: Quality,
     /// 色の変換の実装と設定の指紋。
     pub color: &'a str,
-    /// 素材を読むデコーダーの実装の名前。まだ開いていない素材はファクトリーの名前。
+    /// 素材を読むデコーダーの実装の名前。まだ開いていない素材は [`unopened_decoder`]。
     pub decoder: &'a dyn Fn(&AssetId) -> String,
+}
+
+/// まだ開いていない素材を読むデコーダーの名前。ファクトリーの名前に、開いたデコーダーが名乗りうる名前の全部を付ける。
+/// どれを選ぶかは開くまで分からないが、どれかの画素の作り方のバージョンが上がればキーが変わり、前のビルドの
+/// ディスクのキャッシュを引かない。開くまでキャッシュしない形より、シーケンスの開かずに済む画像を多く残せる。
+pub(crate) fn unopened_decoder(factory: &dyn DecoderFactory) -> String {
+    format!("{}[{}]", factory.id(), factory.backend_ids().join(","))
 }
 
 /// 素材の ID を持つパラメータから、その ID。

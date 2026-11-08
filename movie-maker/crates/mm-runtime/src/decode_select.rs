@@ -91,6 +91,18 @@ impl DecoderFactory for AutoDecoderFactory {
         "auto"
     }
 
+    /// 試す実装とフォールバックの名前の和。どれを選ぶかは開くまで分からない。
+    fn backend_ids(&self) -> Vec<&'static str> {
+        let factories = self.gpu.iter().map(|c| &c.factory).chain(&self.fallback);
+        let mut ids: Vec<&'static str> = Vec::new();
+        for id in factories.flat_map(|f| f.backend_ids()) {
+            if !ids.contains(&id) {
+                ids.push(id);
+            }
+        }
+        ids
+    }
+
     fn open(&self, path: &Path, gpu: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>> {
         self.open_with_choice(path, gpu).map(|(dec, _)| dec)
     }
@@ -170,6 +182,11 @@ impl WithAudio {
 impl DecoderFactory for WithAudio {
     fn id(&self) -> &'static str {
         self.video.id()
+    }
+
+    /// 名前は映像のデコーダーが名乗る（`SplitDecoder::backend_id`）。
+    fn backend_ids(&self) -> Vec<&'static str> {
+        self.video.backend_ids()
     }
 
     fn open(&self, path: &Path, gpu: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>> {
@@ -256,6 +273,19 @@ mod tests {
     fn auto(gpu: Vec<Arc<dyn DecoderFactory>>) -> AutoDecoderFactory {
         let gpu = gpu.into_iter().map(GpuCandidate::new).collect();
         AutoDecoderFactory::new(gpu, Some(Arc::new(SampleDecoderFactory::default())))
+    }
+
+    #[test]
+    fn auto_の名前の組は試す実装とフォールバックの名前の和() {
+        let a = auto(vec![
+            Arc::new(CannotOpen),
+            Arc::new(FailsAt(0)),
+            Arc::new(CannotOpen),
+        ]);
+        assert_eq!(
+            a.backend_ids(),
+            vec!["cannot_open", "fails_at", mm_testkit::SAMPLE_ID]
+        );
     }
 
     #[test]
