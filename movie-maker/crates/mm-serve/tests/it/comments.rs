@@ -115,6 +115,13 @@ fn claude_の待ち受けは書くことと状態を決めることを断る() {
         )
         .unwrap();
     assert_eq!(write.status, 403);
+    assert!(
+        write
+            .error_message()
+            .starts_with("コメントを書くのは人の操作経路だけ"),
+        "{}",
+        write.error_message()
+    );
     for entry in ["cli", "mcp"] {
         let state = r
             .client

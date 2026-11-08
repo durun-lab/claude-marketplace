@@ -8,6 +8,7 @@ use windows::core::{w, PCWSTR};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::ScreenToClient;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetKeyState, ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
     VK_CONTROL, VK_F4, VK_MENU, VK_SHIFT,
@@ -34,6 +35,8 @@ const WM_MOUSELEAVE: u32 = 0x02A3;
 const KEY_REPEAT_BIT: isize = 1 << 30;
 /// 描画が止まっているときに入力が溜まり続けない上限。
 const INPUT_LIMIT: usize = 512;
+/// 表示の倍率が 1 のときの DPI（Windows の既定）。
+const BASE_DPI: f32 = 96.0;
 
 static SHARED: OnceLock<Arc<Shared>> = OnceLock::new();
 static TRACKING: AtomicBool = AtomicBool::new(false);
@@ -96,6 +99,17 @@ pub fn set_rect(hwnd: isize, rect: PixelRect) {
 /// HWND がまだ生きているか。破棄された HWND への present を止めるのに使う。
 pub fn is_alive(hwnd: isize) -> bool {
     unsafe { IsWindow(Some(HWND(hwnd as *mut _))).as_bool() }
+}
+
+/// HWND の表示の倍率（DPI / 96）。モニターをまたいで動かすと変わるので、描くたびに読む。
+pub fn scale_factor(hwnd: isize) -> f32 {
+    let dpi = unsafe { GetDpiForWindow(HWND(hwnd as *mut _)) };
+    // 破棄された HWND は 0 を返すので、そのときは等倍にする。
+    if dpi == 0 {
+        1.0
+    } else {
+        dpi as f32 / BASE_DPI
+    }
 }
 
 /// サーフェスの HWND に左クリックのメッセージを投げる（自動試験用。座標はクライアントの物理ピクセル）。

@@ -163,6 +163,7 @@ const api: ReviewApi = {
       replies: [...c.replies, { id: `r${c.replies.length + 1}`, author: { kind: "gui", name: "app" }, text, created_ms: NOW_MS }],
     })),
   setCommentState: async (id, state) => replaceComment(id, (c) => ({ ...c, state })),
+  focusComment: async (id) => console.debug("focus", id),
   seek: async (seconds) => console.debug("seek", seconds),
   onCommentsChanged: async () => () => undefined,
 };

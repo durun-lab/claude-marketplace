@@ -255,6 +255,11 @@
   border-color: var(--mm-color-accent);
 }
 
+.mm-review-card[data-focused] {
+  border-color: var(--mm-color-focus);
+  outline: var(--mm-border-width) solid var(--mm-color-focus);
+}
+
 .mm-review-card[data-state="done"],
 .mm-review-card[data-state="wontfix"] {
   color: var(--mm-color-text-muted);
