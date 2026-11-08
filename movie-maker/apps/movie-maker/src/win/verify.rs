@@ -124,7 +124,7 @@ pub(crate) fn wait_until(limit: Duration, mut done: impl FnMut() -> bool) -> boo
 }
 
 /// サーフェスの大きさ（論理ピクセル）と表示の倍率。自動試験も `Ui` と同じく論理ピクセルで割り付け、
-/// クリックを投げるときに倍率を掛けて物理ピクセルに直す。
+/// クリックを投げるときに表示の倍率を掛けて物理ピクセルに直す。
 pub(crate) fn logical_surface(shared: &Shared, hwnd: isize) -> ((f32, f32), Scale) {
     let scale = Scale::new(surface::scale_factor(hwnd));
     let (w, h) = shared.surface_size();
@@ -133,8 +133,10 @@ pub(crate) fn logical_surface(shared: &Shared, hwnd: isize) -> ((f32, f32), Scal
 }
 
 /// 論理ピクセルの点を、サーフェスのクライアントの物理ピクセルにする。
+/// 切り捨てると最大 1 物理ピクセル左上へ寄るので、近い画素に丸める。
 pub(crate) fn client_point(scale: Scale, (x, y): (f32, f32)) -> (i32, i32) {
-    ((x * scale.get()) as i32, (y * scale.get()) as i32)
+    let p = |v: f32| (v * scale.get()).round() as i32;
+    (p(x), p(y))
 }
 
 fn run(

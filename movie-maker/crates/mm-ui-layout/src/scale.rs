@@ -5,6 +5,9 @@ use crate::controller::PointerEvent;
 use crate::geom::Rect;
 use crate::screen::SurfaceLayout;
 
+/// 細い線とみなす太さの上限（論理ピクセル）。目盛り、カットの境、外枠、再生位置の線、7 セグメントの画がこれ以下。
+const THIN_MAX: f32 = 2.0;
+
 /// 表示の倍率（DPI / 96）。1 論理ピクセルあたりの物理ピクセルの数。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Scale(f32);
@@ -13,7 +16,7 @@ impl Scale {
     /// 等倍（96 DPI）。
     pub const ONE: Self = Self(1.0);
 
-    /// 倍率から。0 以下や有限でない値（破棄された HWND の DPI など）は等倍にする。
+    /// 表示の倍率の値から。0 以下や有限でない値（破棄された HWND の DPI など）は等倍にする。
     pub fn new(factor: f32) -> Self {
         if factor.is_finite() && factor > 0.0 {
             Self(factor)
@@ -22,7 +25,7 @@ impl Scale {
         }
     }
 
-    /// 倍率の値。
+    /// 表示の倍率の値。
     pub fn get(self) -> f32 {
         self.0
     }
@@ -32,9 +35,24 @@ impl Scale {
         physical / self.0
     }
 
-    /// 論理ピクセルの矩形を物理ピクセルにする。辺の画素への丸めはラスタライザーの画素の中心の判定に任せる。
+    /// 論理ピクセルの矩形を物理ピクセルにする。辺はラスタライザーの画素の中心の判定に任せ、
+    /// 細い線（`THIN_MAX` 以下）の太さだけ整数の物理ピクセルにそろえる（egui が線の太さを画素に合わせるのと同じ）。
     pub fn rect_to_physical(self, r: Rect) -> Rect {
-        Rect::new(r.x * self.0, r.y * self.0, r.w * self.0, r.h * self.0)
+        let (x, w) = self.span_to_physical(r.x, r.w);
+        let (y, h) = self.span_to_physical(r.y, r.h);
+        Rect::new(x, y, w, h)
+    }
+
+    /// 1 軸の区間。1.25 倍の 1 論理ピクセルの線はそのままだと位置で 1 画素にも 2 画素にもなるので、
+    /// 細い線は太さを丸め、中心に寄せた整数の位置に置く。
+    fn span_to_physical(self, start: f32, len: f32) -> (f32, f32) {
+        if len > 0.0 && len <= THIN_MAX {
+            let px = (len * self.0).round().max(1.0);
+            let centre = (start + len / 2.0) * self.0;
+            ((centre - px / 2.0).round(), px)
+        } else {
+            (start * self.0, len * self.0)
+        }
     }
 
     /// 論理ピクセルの割り付けを物理ピクセルにする。
@@ -95,7 +113,7 @@ mod tests {
     }
 
     #[test]
-    fn 倍率_150_と_200_ではつまみと帯が論理の寸法のまま物理の大きさになる() {
+    fn 表示の倍率_150_と_200_ではつまみと帯の寸法を論理ピクセルのまま物理ピクセルに換える() {
         for factor in [1.5, 2.0] {
             let s = Scale::new(factor);
             let handle = s.rect_to_physical(Rect::new(100.0, row_top(0), HANDLE_PX, ROW_H));
@@ -106,7 +124,7 @@ mod tests {
     }
 
     #[test]
-    fn 物理ピクセルのサーフェスは論理の大きさで割り付けてから物理に戻す() {
+    fn 物理ピクセルのサーフェスは論理ピクセルの大きさで割り付けてから物理ピクセルに戻す() {
         let s = Scale::new(1.5);
         let logical = split_viewers(1000.0, 600.0, 80.0, false);
         let physical = s.layout_to_physical(logical);
@@ -127,7 +145,7 @@ mod tests {
             origin: 0.0,
             px_per_sec: 100.0,
         };
-        // 論理の 498（帯の右端 500 の内側 2）は物理の 747。
+        // 論理ピクセルの 498（帯の右端 500 の内側 2）は物理ピクセルの 747。
         let y = (row_top(0) + ROW_H / 2.0) * 1.5;
         let PointerEvent::Move { x, y } = s.pointer_to_logical(PointerEvent::Move { x: 747.0, y })
         else {
@@ -148,8 +166,71 @@ mod tests {
         assert!(matches!(down, PointerEvent::Down { x, y, .. } if x == 2.0 && y == 4.0));
     }
 
+    /// ラスタライザーと同じく、画素の中心が `[start, start + len)` に入る画素の数。
+    fn covered(start: f32, len: f32) -> u32 {
+        let first = (start - 0.5).ceil();
+        let end = (start + len - 0.5).ceil();
+        (end - first).max(0.0) as u32
+    }
+
     #[test]
-    fn 有限でない倍率や_0_は等倍にする() {
+    fn 細い線は表示の倍率_125_と_150_でも位置に依らず同じ画素の数で描く() {
+        for (factor, want_1, want_2) in [(1.25, 1, 3), (1.5, 2, 3), (1.0, 1, 2), (2.0, 2, 4)] {
+            let s = Scale::new(factor);
+            for i in 0..400 {
+                let x = i as f32 * 0.37;
+                let tick = s.rect_to_physical(Rect::new(x, 17.0, 1.0, 9.0));
+                let playhead = s.rect_to_physical(Rect::new(x, 0.0, 2.0, 40.0));
+                assert_eq!(
+                    covered(tick.x, tick.w),
+                    want_1,
+                    "表示の倍率 {factor}、x {x}: 1 の線"
+                );
+                assert_eq!(
+                    covered(playhead.x, playhead.w),
+                    want_2,
+                    "表示の倍率 {factor}、x {x}: 2 の線"
+                );
+                assert_eq!(tick.h, 9.0 * factor, "長さの向きは丸めない");
+            }
+        }
+    }
+
+    #[test]
+    fn 目盛りの線の太さは表示の倍率_125_でもそろう() {
+        let model = TimelineModel {
+            duration: 10.0,
+            fps: 30.0,
+            items: vec![Item::layer(0.0, 5.0, ItemKind::Footage, true)],
+        };
+        let view = TimeView {
+            origin: 0.0,
+            px_per_sec: 37.3,
+        };
+        let state = crate::paint::PaintState {
+            playhead: 0.0,
+            hover: Hit::Empty,
+            selected: None,
+            selected_cut: None,
+            guide: None,
+            preview: None,
+            palette: crate::palette::Palette::DEFAULT,
+        };
+        let s = Scale::new(1.25);
+        let widths: Vec<u32> = crate::paint::timeline_quads(&model, &view, (800.0, 200.0), &state)
+            .iter()
+            .filter(|q| q.rect.w == 1.0)
+            .map(|q| {
+                let r = s.rect_to_physical(q.rect);
+                covered(r.x, r.w)
+            })
+            .collect();
+        assert!(widths.len() > 10, "目盛りがある");
+        assert!(widths.iter().all(|w| *w == 1), "{widths:?}");
+    }
+
+    #[test]
+    fn 有限でない表示の倍率や_0_は等倍にする() {
         for bad in [0.0, -1.0, f32::NAN, f32::INFINITY] {
             assert_eq!(Scale::new(bad), Scale::ONE, "{bad}");
         }
