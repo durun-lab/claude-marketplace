@@ -4,7 +4,6 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
 
 use mm_host_ofx::TEST_PLUGINS;
 
@@ -17,7 +16,7 @@ use mm_render_api::{RangeRequest, RenderRequest, Renderer};
 use mm_testkit::audio::SampleMixerFactory;
 use mm_testkit::decode::SampleDecoderFactory;
 use mm_testkit::fixtures::sample_services;
-use mm_testkit::node::{ConstInputs, Harness, MapRegistry};
+use mm_testkit::node::MapRegistry;
 use mm_types::{Id, ParamValue, Rational, RationalTime, Rgba, RgbaImage, Size, TimeRange};
 
 use crate::support::{host, kind, kind_in, params, GAIN, GAIN_ID};
@@ -28,8 +27,6 @@ const FPS: Rational = Rational::integer(30);
 const TOLERANCE: f32 = 3e-3;
 const GREY: Rgba = Rgba::new(0.5, 0.5, 0.5, 1.0);
 const RED: Rgba = Rgba::new(1.0, 0.0, 0.0, 1.0);
-/// 1080p の時間を測るフレームの数（最初の 1 回は起動と読み込みを含むので数えない）。
-const TIMED_FRAMES: usize = 10;
 
 fn gpu() -> Option<Arc<GpuContext>> {
     match GpuContext::shared(&GpuRequest::default()) {
@@ -276,25 +273,4 @@ fn プラグインを差し替えたらキャッシュの前の画素を返さ�
     assert!(r.take_errors().is_empty());
     drop((r, nodes));
     let _ = std::fs::remove_dir_all(&root);
-}
-
-#[test]
-fn フル_hd_の_1_フレームの時間を測る() {
-    let Some(exe) = host() else { return };
-    let size = Size::new(1920, 1080);
-    let k = kind(&exe);
-    let p = params(GAIN, GAIN_ID, &[("gain", ParamValue::Number(0.5))]);
-    let mut inputs = ConstInputs(vec![Arc::new(RgbaImage::filled(size, GREY))]);
-    let mut h = Harness::new(None);
-    let mut times = Vec::new();
-    for i in 0..=TIMED_FRAMES {
-        let start = Instant::now();
-        let t = RationalTime::from_frames(i as i64, FPS).unwrap();
-        h.render(&k, &p, t, size, 1.0, &mut inputs).expect("描ける");
-        times.push(start.elapsed().as_secs_f64() * 1000.0);
-    }
-    let first = times.remove(0);
-    times.sort_by(f64::total_cmp);
-    let p50 = times[times.len() / 2];
-    eprintln!("ofx 1920x1080: 最初 {first:.1} ms（起動と読み込みを含む）、以後の p50 {p50:.1} ms");
 }

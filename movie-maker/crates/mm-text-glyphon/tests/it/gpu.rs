@@ -2,7 +2,6 @@
 //! CPU のレンダラーと同じシェーピングの結果から描いて、画像が許容差の中で一致することを確かめる。
 
 use std::sync::Arc;
-use std::time::Instant;
 
 use mm_gpu::GpuContext;
 use mm_testkit::text::contract;
@@ -142,55 +141,4 @@ fn json_を往復したシェーピングの結果も_gpu_で描ける() {
         .rasterize(&back, &st, 1.0)
         .expect("描く");
     assert!(img.data().chunks(4).map(|p| p[3]).sum::<f32>() > 10.0);
-}
-
-fn median(mut v: Vec<f64>) -> f64 {
-    v.sort_by(|a, b| a.partial_cmp(b).expect("NaN は無い"));
-    v[v.len() / 2]
-}
-
-/// 1080p で字幕を想定した大きさ（54 px、幅 1800）。1 行と 10 行を描く時間を測る。
-/// 既定の判断材料なので値は表に出すだけで、閾値では落とさない。
-#[test]
-fn 時間を測る() {
-    let Some(ctx) = gpu() else { return };
-    let engine = TextEngine::new();
-    let (shaper, cpu, glyphon) = (
-        engine.shaper(),
-        engine.rasterizer(),
-        engine.gpu_rasterizer(ctx),
-    );
-    let st = TextStyle {
-        size_px: 54.0,
-        max_width: Some(1800.0),
-        ..style(TextAlign::Left, None)
-    };
-    let line = "動画編集ソフトの字幕テスト。Hello, movie-maker! 日本語と English の混在。";
-    let one = line.to_string();
-    let ten = (0..10)
-        .map(|i| format!("{i}行目 {line}"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    for (label, text) in [("1 行", one), ("10 行", ten)] {
-        let shaped = shaper.shape(&text, &st).expect("シェーピング");
-        let r: [(&str, &dyn TextRasterizer); 2] = [("cpu", &*cpu), ("glyphon", &*glyphon)];
-        for (name, raster) in r {
-            let t0 = Instant::now();
-            let first = raster.rasterize(&shaped, &st, 1.0).expect("描く");
-            let cold = t0.elapsed().as_secs_f64() * 1e3;
-            let warm: Vec<f64> = (0..20)
-                .map(|_| {
-                    let t = Instant::now();
-                    raster.rasterize(&shaped, &st, 1.0).expect("描く");
-                    t.elapsed().as_secs_f64() * 1e3
-                })
-                .collect();
-            eprintln!(
-                "{label} {name}: 画像 {}x{}、初回 {cold:.2} ms、2 回目以降の中央値 {:.2} ms",
-                first.width(),
-                first.height(),
-                median(warm)
-            );
-        }
-    }
 }
