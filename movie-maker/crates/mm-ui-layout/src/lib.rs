@@ -34,7 +34,7 @@ pub use gesture::{body_edit, edge_edit, EditKind, Side};
 pub use paint::{timeline_quads, PaintState};
 pub use ruler::{label, major_step, ticks, Tick};
 pub use scale::Scale;
-pub use screen::{split_surface, split_viewers, SurfaceLayout, VIEW_MARGIN};
+pub use screen::{split_viewers, SurfaceLayout, VIEW_MARGIN};
 pub use snap::{quantize, snap, Snapped, SNAP_PX};
 pub use time_view::{TimeView, MAX_PX_PER_SEC, MIN_PX_PER_SEC};
 pub use timeline::{

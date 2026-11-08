@@ -121,15 +121,19 @@ fn cli_の操作は画面に知らせる前にデータへ入る() {
     let (shared, core) = saved(dir.path());
     let (tx, rx) = channel();
     let s = shared.clone();
-    watch_changes(&shared, move |_| {
+    watch_changes(&shared, move |change| {
         let seen = doc_project(&s).topic(&Id::new("t-cli")).is_ok();
-        let _ = tx.send(seen);
+        // 再生スレッドは Reload を受けるとこの ID で invalidate_touched を呼ぶ。
+        let touched = s.reload_touched.lock().expect("reload").clone();
+        let _ = tx.send((seen, touched, change.actor.clone()));
     })
     .expect("通知を受ける");
     let txn = mm_ops::Transaction::new("mm topic add", vec![topic("t-cli")]);
     core.apply(txn, &cli(), None).expect("CLI の操作");
-    let seen = rx.recv_timeout(Duration::from_secs(5)).expect("通知が届く");
+    let (seen, touched, actor) = rx.recv_timeout(Duration::from_secs(5)).expect("通知が届く");
     assert!(seen, "通知を受けた側が読み直すと CLI の話題が出る");
+    assert!(touched.iter().any(|t| t == "t-cli"), "{touched:?}");
+    assert_eq!(actor, "cli");
 }
 
 fn insert_range() -> SourceRange {

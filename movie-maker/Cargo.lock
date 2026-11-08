@@ -3845,6 +3845,7 @@ dependencies = [
  "mm-eval",
  "mm-node-api",
  "mm-ops",
+ "mm-render-api",
  "mm-runtime",
  "mm-store",
  "mm-story",

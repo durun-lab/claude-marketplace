@@ -38,6 +38,8 @@ pub struct SourceSlot {
     pub serial: AtomicU64,
     /// キー（再生、シーク）が Source に向くか。Source の領域をクリックすると真、Program か Timeline で偽。
     active: AtomicBool,
+    /// 描画スレッドの `Ui` が Source の領域を出しているか。自動試験はこれで `Ui` と同じ割り付けを計算する。
+    shown: AtomicBool,
     options: Mutex<Option<PlayerOptions>>,
 }
 
@@ -60,6 +62,16 @@ impl SourceSlot {
     /// キーを向ける先を切り替える。
     pub fn set_active(&self, active: bool) {
         self.active.store(active, Ordering::SeqCst);
+    }
+
+    /// 描画スレッドの `Ui` が Source の領域を出しているか。
+    pub fn is_shown(&self) -> bool {
+        self.shown.load(Ordering::SeqCst)
+    }
+
+    /// 描画スレッドが `Ui` に Source のフレームを渡した・閉じたときに呼ぶ。
+    pub fn set_shown(&self, shown: bool) {
+        self.shown.store(shown, Ordering::SeqCst);
     }
 
     /// 素材 `asset` を Source で開く。前の素材は閉じる。

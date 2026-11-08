@@ -4,7 +4,7 @@
 use mm_serve::Response;
 use serde_json::{json, Value};
 
-use super::{code, rig, Req, Rig};
+use super::{code, rig, rig_with_core, Req, Rig};
 
 fn add_marker(id: &str, secs: i64, base: i64) -> Value {
     json!({
@@ -234,4 +234,65 @@ fn 登録を外した端末と同じ名前で登録し直した端末は前の�
         "承認した端末も id で見分ける"
     );
     assert_eq!(r.version(), 2);
+}
+
+fn mobile_proposal(r: &Rig, req: &Req) -> i64 {
+    let res = post(r, req, "/m/api/proposals", &opacity("l-footage", 0));
+    assert_eq!(res.status, 200, "{}", res.error_message());
+    res.json().unwrap()["id"].as_i64().unwrap()
+}
+
+fn approve_on(r: &Rig, req: &Req, id: i64) {
+    let res = r.send(req, "POST", &format!("/m/api/proposals/{id}/approve"), None);
+    assert_eq!(res.status, 200, "{}", res.error_message());
+}
+
+#[test]
+fn 端末が出した提案を_pc_のアプリが承認したトランザクションは出した端末からも取り消せない() {
+    let (r, core) = rig_with_core(|_| {});
+    let a = Req::device(&r.pair("phone"));
+    let id = mobile_proposal(&r, &a);
+    core.approve(id, None, &mm_serve::Caller::webview())
+        .unwrap();
+    assert_eq!(r.version(), 1);
+
+    let undo = r.send(&a, "POST", "/m/api/undo", None);
+    assert_eq!((undo.status, code(&undo)), (409, "not_latest".into()));
+    assert!(
+        undo.error_message().contains("app（gui）"),
+        "理由は提案を決めた者を名指す: {}",
+        undo.error_message()
+    );
+    assert_eq!(r.version(), 1);
+}
+
+#[test]
+fn 端末が出して同じ端末が承認したトランザクションはその端末が取り消せる() {
+    let r = rig();
+    let a = Req::device(&r.pair("phone"));
+    let id = mobile_proposal(&r, &a);
+    approve_on(&r, &a, id);
+
+    let undo = r.send(&a, "POST", "/m/api/undo", None);
+    assert_eq!(undo.status, 200, "{}", undo.error_message());
+    assert_eq!(r.version(), 2);
+}
+
+#[test]
+fn 端末が出して別の端末が承認したトランザクションは承認した端末だけが取り消せる() {
+    let r = rig();
+    let a = Req::device(&r.pair("phone"));
+    let b = Req::device(&r.pair("tablet"));
+    let id = mobile_proposal(&r, &a);
+    approve_on(&r, &b, id);
+
+    let by_a = r.send(&a, "POST", "/m/api/undo", None);
+    assert_eq!((by_a.status, code(&by_a)), (409, "not_latest".into()));
+    // PC で取り消してやり直しても、取り消しのスタックは承認で適用したトランザクションを指したまま。
+    assert_eq!(r.claude.post("/undo", &json!({})).unwrap().status, 200);
+    assert_eq!(r.claude.post("/redo", &json!({})).unwrap().status, 200);
+    let again = r.send(&a, "POST", "/m/api/undo", None);
+    assert_eq!(code(&again), "not_latest");
+    let by_b = r.send(&b, "POST", "/m/api/undo", None);
+    assert_eq!(by_b.status, 200, "{}", by_b.error_message());
 }
