@@ -9,7 +9,8 @@ use mm_trace::chrome::ChromeTraceHandle;
 use mm_trace::MetricsHandle;
 use mm_types::ParamValue;
 use mm_ui_layout::{
-    row_top, split_surface, Scale, TimeView, TimelineModel, ROW_H, RULER_H, VIEW_MARGIN,
+    row_top, split_viewers, Scale, SurfaceLayout, TimeView, TimelineModel, ROW_H, RULER_H,
+    VIEW_MARGIN,
 };
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager, Window};
@@ -123,13 +124,26 @@ pub(crate) fn wait_until(limit: Duration, mut done: impl FnMut() -> bool) -> boo
     false
 }
 
-/// サーフェスの大きさ（論理ピクセル）と表示の倍率。自動試験も `Ui` と同じく論理ピクセルで割り付け、
-/// クリックを投げるときに表示の倍率を掛けて物理ピクセルに直す。
-pub(crate) fn logical_surface(shared: &Shared, hwnd: isize) -> ((f32, f32), Scale) {
+/// `Ui` と同じ `split_viewers` で割り付けた論理ピクセルの領域と、表示の倍率。Source に最初のフレームが来ていれば
+/// 上の段を Source と Program に割る（`Ui::set_source_frame`）。クリックを投げるときは倍率を掛けて物理ピクセルに直す。
+pub(crate) fn viewer_layout(
+    shared: &Shared,
+    hwnd: isize,
+    timeline_content_h: f32,
+) -> (SurfaceLayout, Scale) {
     let scale = Scale::new(surface::scale_factor(hwnd));
     let (w, h) = shared.surface_size();
-    let logical = (scale.to_logical(w as f32), scale.to_logical(h as f32));
-    (logical, scale)
+    let has_source_image = shared
+        .source
+        .handle()
+        .is_some_and(|s| s.shared.frames.newer_than(0).is_some());
+    let layout = split_viewers(
+        scale.to_logical(w as f32),
+        scale.to_logical(h as f32),
+        timeline_content_h,
+        has_source_image,
+    );
+    (layout, scale)
 }
 
 /// 論理ピクセルの点を、サーフェスのクライアントの物理ピクセルにする。
@@ -258,8 +272,8 @@ fn report(
 
 /// 実際のウィンドウへの入力で、Timeline のスクラブとキー操作が効くか確かめる。
 fn interaction(shared: &Shared, info: &PlaybackInfo, target: &Target) -> Value {
-    let ((w, h), scale) = logical_surface(shared, target.surface_hwnd);
-    let tl = split_surface(w, h, target.model.content_height()).timeline;
+    let (layout, scale) = viewer_layout(shared, target.surface_hwnd, target.model.content_height());
+    let tl = layout.timeline;
     let view = TimeView::fit(target.model.duration, tl.w, VIEW_MARGIN);
     let (x, y) = client_point(
         scale,
@@ -315,8 +329,8 @@ fn inspector_flow(
     hwnd: isize,
     test: &PlayTest,
 ) -> Value {
-    let ((w, h), scale) = logical_surface(shared, target.surface_hwnd);
-    let tl = split_surface(w, h, target.model.content_height()).timeline;
+    let (layout, scale) = viewer_layout(shared, target.surface_hwnd, target.model.content_height());
+    let tl = layout.timeline;
     let view = TimeView::fit(target.model.duration, tl.w, VIEW_MARGIN);
     let Some(item) = target.model.items.first() else {
         return json!({ "skipped": "レイヤーが無い" });
