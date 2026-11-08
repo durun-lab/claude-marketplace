@@ -149,6 +149,71 @@ all = "warn"
 debug = "line-tables-only"
 
 # 依存は書き換えないので最適化し、画像や proptest のテストの実行を速くする。作り直しの費用はキャッシュが払う。
-[profile.dev.package."*"]
-opt-level = 2
-debug = false
+# proc-macro と build script の道具は、作った直後に 1 回走るだけなので最適化しない。
+# `"*"` は `build-override` より優先されるため `build-override` では効かない。名前を挙げて 0 に戻す。
+# 挙げるのは proc-macro、その依存、build script の依存のうち、実行時のコードに入らないものだけ。
+# 実行時にも使う依存（画像、wgpu、proptest など）は挙げない。
+[profile.dev.package]
+"*" = { opt-level = 2, debug = false }
+# proc-macro と、その土台
+syn = { opt-level = 0 }
+quote = { opt-level = 0 }
+proc-macro2 = { opt-level = 0 }
+unicode-ident = { opt-level = 0 }
+darling = { opt-level = 0 }
+darling_core = { opt-level = 0 }
+darling_macro = { opt-level = 0 }
+ident_case = { opt-level = 0 }
+synstructure = { opt-level = 0 }
+serde_derive = { opt-level = 0 }
+serde_derive_internals = { opt-level = 0 }
+serde_repr = { opt-level = 0 }
+serde_with_macros = { opt-level = 0 }
+schemars_derive = { opt-level = 0 }
+thiserror-impl = { opt-level = 0 }
+displaydoc = { opt-level = 0 }
+derive_more-impl = { opt-level = 0 }
+clap_derive = { opt-level = 0 }
+bytemuck_derive = { opt-level = 0 }
+borsh-derive = { opt-level = 0 }
+defmt-macros = { opt-level = 0 }
+defmt-parser = { opt-level = 0 }
+ref-cast-impl = { opt-level = 0 }
+pin-project-internal = { opt-level = 0 }
+futures-macro = { opt-level = 0 }
+tokio-macros = { opt-level = 0 }
+tracing-attributes = { opt-level = 0 }
+zerocopy-derive = { opt-level = 0 }
+zerofrom-derive = { opt-level = 0 }
+zerovec-derive = { opt-level = 0 }
+yoke-derive = { opt-level = 0 }
+windows-implement = { opt-level = 0 }
+windows-interface = { opt-level = 0 }
+webview2-com-macros = { opt-level = 0 }
+time-macros = { opt-level = 0 }
+phf_macros = { opt-level = 0 }
+phf_generator = { opt-level = 0 }
+phf_codegen = { opt-level = 0 }
+string_cache_codegen = { opt-level = 0 }
+cssparser-macros = { opt-level = 0 }
+serialize-to-javascript-impl = { opt-level = 0 }
+tauri-macros = { opt-level = 0 }
+tauri-codegen = { opt-level = 0 }
+proc-macro-crate = { opt-level = 0 }
+toml_edit = { opt-level = 0 }
+litrs = { opt-level = 0 }
+document-features = { opt-level = 0 }
+# build script の道具
+tauri-build = { opt-level = 0 }
+cfg_aliases = { opt-level = 0 }
+autocfg = { opt-level = 0 }
+version_check = { opt-level = 0 }
+rustc_version = { opt-level = 0 }
+cc = { opt-level = 0 }
+pkg-config = { opt-level = 0 }
+vcpkg = { opt-level = 0 }
+# ffmpeg-sys-next の bindgen
+bindgen = { opt-level = 0 }
+clang-sys = { opt-level = 0 }
+cexpr = { opt-level = 0 }
+prettyplease = { opt-level = 0 }
