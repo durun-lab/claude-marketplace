@@ -12,26 +12,26 @@ export interface Box {
 }
 
 /** コンポジションの大きさ。縦横比だけを使う。 */
-export interface FrameSize {
+export interface CompSize {
   width: number;
   height: number;
 }
 
-/** コンポジションの大きさが分からない間の縦横比。Watch の映像の枠と同じ 16:9。 */
-export const DEFAULT_FRAME: FrameSize = { width: 16, height: 9 };
+/** コンポジションの大きさが分からない間の縦横比。Watch の映像の領域と同じ 16:9。 */
+export const DEFAULT_COMP_SIZE: CompSize = { width: 16, height: 9 };
 
-/** 余白を左右（上下）に等分する割合。 */
+/** レターボックスの余白を左右（上下）に等分する割合。 */
 const HALF = 0.5;
 
 /**
- * 映像の矩形。`frame` を縦横比を保って `box` に最大で収めた矩形（中央寄せ、レターボックスを除く）。
+ * 映像の矩形。`size` を縦横比を保って `box` に最大で収めた矩形（中央寄せ、レターボックスを除く）。
  * デスクトップの Program と同じ計算（mm-ui-layout の `fit_rect`）で、描き込みの座標をデスクトップと揃える。
  */
-export const fitRect = (frame: FrameSize, box: Box): Box => {
-  if (frame.width <= 0 || frame.height <= 0 || box.width <= 0 || box.height <= 0) return { left: box.left, top: box.top, width: 0, height: 0 };
-  const scale = Math.min(box.width / frame.width, box.height / frame.height);
-  const width = frame.width * scale;
-  const height = frame.height * scale;
+export const fitRect = (size: CompSize, box: Box): Box => {
+  if (size.width <= 0 || size.height <= 0 || box.width <= 0 || box.height <= 0) return { left: box.left, top: box.top, width: 0, height: 0 };
+  const scale = Math.min(box.width / size.width, box.height / size.height);
+  const width = size.width * scale;
+  const height = size.height * scale;
   return { left: box.left + (box.width - width) * HALF, top: box.top + (box.height - height) * HALF, width, height };
 };
 
@@ -74,5 +74,5 @@ export const draftShape = (tool: Tool, trail: Point[]): CommentShape | null => {
 };
 
 /** SVG の `points` 属性にする。座標系はコンポジションの大きさの viewBox（`0 0 width height`）。 */
-export const pointsAttr = (points: Point[], frame: FrameSize): string =>
-  points.map(([x, y]) => `${x * frame.width},${y * frame.height}`).join(" ");
+export const pointsAttr = (points: Point[], size: CompSize): string =>
+  points.map(([x, y]) => `${x * size.width},${y * size.height}`).join(" ");

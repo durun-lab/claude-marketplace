@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_FRAME, fitRect, normalizePoint, pointsAttr } from "./shapes.ts";
+import { DEFAULT_COMP_SIZE, fitRect, normalizePoint, pointsAttr } from "./shapes.ts";
 
-/** iPhone 14 の縦向きの Watch の映像の枠（幅 390 の 16:9）。 */
+/** iPhone 14 の縦向きの Watch の映像の領域（幅 390 の 16:9）。 */
 const STAGE = { left: 0, top: 47, width: 390, height: 219.375 };
 const SHORT = { width: 1080, height: 1920 };
 const WIDE = { width: 1920, height: 1080 };
@@ -15,7 +15,7 @@ describe("映像の矩形", () => {
     expect(r.top).toBeCloseTo(218.75);
   });
 
-  it("縦長のコンポジションは 16:9 の枠の中央に左右の余白を残して収まる", () => {
+  it("縦長のコンポジションは 16:9 の映像の領域の中央に左右のレターボックスの余白を残して収まる", () => {
     const r = fitRect(SHORT, STAGE);
     expect(r.height).toBeCloseTo(STAGE.height);
     expect(r.width).toBeCloseTo((STAGE.height * SHORT.width) / SHORT.height);
@@ -30,10 +30,10 @@ describe("映像の矩形", () => {
 });
 
 describe("描くときの座標", () => {
-  it("16:9 のコンポジションは枠の全体を基準にし、映像の矩形にしても値が変わらない", () => {
-    for (const frame of [WIDE, DEFAULT_FRAME]) {
-      expect(fitRect(frame, STAGE)).toEqual(STAGE);
-      expect(normalizePoint(97.5, 47 + 164.53125, fitRect(frame, STAGE))).toEqual(normalizePoint(97.5, 47 + 164.53125, STAGE));
+  it("16:9 のコンポジションは映像の領域の全体を基準にし、映像の矩形にしても値が変わらない", () => {
+    for (const size of [WIDE, DEFAULT_COMP_SIZE]) {
+      expect(fitRect(size, STAGE)).toEqual(STAGE);
+      expect(normalizePoint(97.5, 47 + 164.53125, fitRect(size, STAGE))).toEqual(normalizePoint(97.5, 47 + 164.53125, STAGE));
     }
   });
 
@@ -42,13 +42,9 @@ describe("描くときの座標", () => {
     const [x, y] = normalizePoint(r.left + 0.25 * r.width, r.top + 0.75 * r.height, r);
     expect(x).toBeCloseTo(0.25);
     expect(y).toBeCloseTo(0.75);
-    // デスクトップの Program（1000x1000 の領域）で同じ点を映像の矩形に戻すと、同じ割合の所になる。
-    const desk = fitRect(SHORT, { left: 0, top: 0, width: 1000, height: 1000 });
-    expect(desk.left + x * desk.width).toBeCloseTo(desk.left + 0.25 * desk.width);
-    expect(desk.top + y * desk.height).toBeCloseTo(750);
   });
 
-  it("左右の余白から描いた点は映像の縁に寄せる", () => {
+  it("左右のレターボックスの余白から描いた点は映像の縁に寄せる", () => {
     const r = fitRect(SHORT, STAGE);
     expect(normalizePoint(5, STAGE.top, r)).toEqual([0, 0]);
     expect(normalizePoint(STAGE.width - 5, STAGE.top + STAGE.height, r)).toEqual([1, 1]);

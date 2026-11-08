@@ -5,15 +5,15 @@ import { act } from "preact/test-utils";
 import { describe, expect, it } from "vitest";
 import { DrawLayer } from "./DrawLayer.tsx";
 
-/** 縦向きの Watch の映像の枠（幅 390 の 16:9）。 */
+/** 縦向きの Watch の映像の領域（幅 390 の 16:9）。 */
 const STAGE = { left: 0, top: 0, width: 390, height: 219.375 };
 const SHORT = { width: 1080, height: 1920 };
 
 const mount = (onShape: (s: CommentShape) => void, shapes: CommentShape[] = []): SVGSVGElement => {
   const root = document.createElement("div");
-  render(<DrawLayer shapes={shapes} frame={SHORT} editing={{ tool: "stroke", onShape }} />, root);
+  render(<DrawLayer shapes={shapes} size={SHORT} editing={{ tool: "stroke", onShape }} />, root);
   const svg = root.querySelector("svg");
-  if (!svg) throw new Error("描く面が無い");
+  if (!svg) throw new Error("描き込みの SVG が無い");
   svg.getBoundingClientRect = () => ({ ...STAGE, x: 0, y: 0, right: STAGE.width, bottom: STAGE.height, toJSON: () => STAGE });
   svg.setPointerCapture = () => undefined;
   return svg;
@@ -39,11 +39,18 @@ describe("DrawLayer", () => {
     expect(p?.[1]).toBeCloseTo(0.75);
   });
 
-  it("見せる面は viewBox をコンポジションの大きさにし、映像と同じく中央に収める", () => {
+  it("描き込みの SVG は viewBox をコンポジションの大きさにし、映像と同じく中央に収める", () => {
     const svg = mount(() => undefined, [{ kind: "rect", points: [[0.5, 0.25], [1, 0.5]] }]);
     expect(svg.getAttribute("viewBox")).toBe("0 0 1080 1920");
     expect(svg.getAttribute("preserveAspectRatio")).toBe("xMidYMid meet");
     const rect = svg.querySelector("rect");
     expect([rect?.getAttribute("x"), rect?.getAttribute("y"), rect?.getAttribute("width"), rect?.getAttribute("height")]).toEqual(["540", "480", "540", "480"]);
+  });
+
+  it("点は映像の矩形の座標に置く長さ 0 の線で、直径は CSS で画面のピクセルに決める", () => {
+    const svg = mount(() => undefined, [{ kind: "point", points: [[0.25, 0.75]] }]);
+    const dot = svg.querySelector("path.point");
+    expect(dot?.getAttribute("d")).toBe("M270 1440h0");
+    expect(svg.querySelector("circle")).toBeNull();
   });
 });
