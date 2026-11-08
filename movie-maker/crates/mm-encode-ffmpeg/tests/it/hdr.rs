@@ -2,7 +2,6 @@
 //! デコーダーで読み直し、許容の中で戻ることと、色の宣言と HDR10 のメタデータが付くことを ffprobe で確かめる。
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use mm_decode_api::{DecoderFactory, EncodeSettings, EncoderFactory};
 use mm_decode_ffmpeg::FfmpegDecoderFactory;
@@ -83,7 +82,7 @@ fn read_back(path: &Path, color_space: &str, peak: f32) -> f32 {
 
 /// ffprobe の出力（`key=value` の行）を返す。
 pub(crate) fn probe(path: &Path, args: &[&str]) -> String {
-    let out = Command::new("ffprobe")
+    let out = mm_types::process::command("ffprobe")
         .args(["-v", "error", "-select_streams", "v:0"])
         .args(args)
         .args(["-of", "default=nw=1"])

@@ -32,7 +32,7 @@ fn fixtures() -> PathBuf {
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/media");
     let out = root.join("out");
     if !out.join("cfr.mp4").exists() {
-        let status = std::process::Command::new("sh")
+        let status = mm_types::process::command("sh")
             .arg(root.join("generate.sh"))
             .status()
             .expect("sh");

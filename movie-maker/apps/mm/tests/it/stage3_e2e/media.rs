@@ -1,7 +1,6 @@
 //! 通しの試験の素材と文字起こし。素材は 10 分を超える長さで、音は日本語の話（無ければトーン）。
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Instant;
 
 use serde_json::{json, Value};
@@ -21,7 +20,7 @@ pub fn fixtures_dir() -> PathBuf {
 
 /// 素材の長さ（秒）。
 pub fn probe_duration(path: &Path) -> f64 {
-    let out = Command::new("ffprobe")
+    let out = mm_types::process::command("ffprobe")
         .args(["-v", "error", "-show_entries", "format=duration"])
         .args(["-of", "csv=p=0"])
         .arg(path)
@@ -35,7 +34,7 @@ pub fn probe_duration(path: &Path) -> f64 {
 
 /// ストリームごとの長さ（秒）。`kind` は `v` か `a`。ストリームが無ければ `None`。
 pub fn probe_stream_duration(path: &Path, kind: &str) -> Option<f64> {
-    let out = Command::new("ffprobe")
+    let out = mm_types::process::command("ffprobe")
         .args(["-v", "error", "-select_streams", kind])
         .args(["-show_entries", "stream=duration", "-of", "csv=p=0"])
         .arg(path)
@@ -56,7 +55,7 @@ pub fn make_media(out: &Path) -> f64 {
     } else {
         FALLBACK_SECONDS
     };
-    let mut cmd = Command::new("ffmpeg");
+    let mut cmd = mm_types::process::command("ffmpeg");
     cmd.args(["-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i"])
         .arg(format!("testsrc2=s=640x360:r=30:d={seconds}"));
     if speech.is_file() {
@@ -115,7 +114,7 @@ pub fn write_synthetic_transcript(project: &Path, media: &Path, seconds: f64) {
 pub fn transcribe(python: &str, project: &Path, media: &Path) -> f64 {
     let script = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/transcribe/transcribe.py");
     let started = Instant::now();
-    let out = Command::new(python)
+    let out = mm_types::process::command(python)
         .arg("-I")
         .arg(script)
         .arg(media)

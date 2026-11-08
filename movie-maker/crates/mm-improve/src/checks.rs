@@ -115,7 +115,7 @@ impl CargoChecks {
     }
 
     fn cargo(&self, root: &Path) -> Command {
-        let mut c = Command::new("cargo");
+        let mut c = mm_types::process::command("cargo");
         c.current_dir(root)
             .env("CARGO_TARGET_DIR", &self.target_dir)
             .env("CARGO_INCREMENTAL", "0");
@@ -192,7 +192,9 @@ impl CargoChecks {
         };
         outcome_of(
             "webview",
-            run(Command::new(prog).args(args).current_dir(cx.root)),
+            run(mm_types::process::command(prog)
+                .args(args)
+                .current_dir(cx.root)),
         )
     }
 

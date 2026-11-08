@@ -3,7 +3,6 @@
 //! opentimelineio が入っていない環境ではスキップする。CI は入れて `MM_REQUIRE_OTIO=1` で必ず実行する。
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use super::common::{apply, sample_project};
 use mm_doc::otio::{export_sequence, import_timeline, ImportOptions};
@@ -16,7 +15,7 @@ fn script() -> PathBuf {
 
 /// `python -I` で opentimelineio を読み込めるか。
 fn python_has_otio() -> bool {
-    Command::new("python")
+    mm_types::process::command("python")
         .args(["-I", "-c", "import opentimelineio"])
         .output()
         .is_ok_and(|o| o.status.success())
@@ -27,7 +26,7 @@ fn require() -> bool {
 }
 
 fn run_python(src: &Path, dst: &Path) -> Value {
-    let out = Command::new("python")
+    let out = mm_types::process::command("python")
         .arg("-I")
         .arg(script())
         .arg(src)

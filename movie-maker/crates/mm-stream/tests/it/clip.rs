@@ -2,7 +2,6 @@
 //! 提案を適用したフレームになっていること、同じキーは作り直さないこと、範囲の中の編集で前のキーが前のバイトのまま残ること。
 
 use std::path::Path;
-use std::process::Command;
 use std::time::Instant;
 
 use mm_doc::{Layer, Node, Project};
@@ -65,7 +64,7 @@ fn top_boxes(mp4: &[u8]) -> Vec<String> {
 
 /// 短い動画の `seconds` 秒のフレームの、赤と緑の平均（0〜255）。
 fn red_and_green_at(path: &Path, seconds: f64) -> (f64, f64) {
-    let out = Command::new("ffmpeg")
+    let out = mm_types::process::command("ffmpeg")
         .args(["-nostdin", "-v", "error", "-ss", &seconds.to_string(), "-i"])
         .arg(path)
         .args(["-frames:v", "1", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"])

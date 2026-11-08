@@ -85,7 +85,7 @@ impl Env {
 
 /// `mm` を実行する。結果は成否にかかわらず返す。
 pub fn mm_try(args: &[&str]) -> Output {
-    std::process::Command::new(env!("CARGO_BIN_EXE_mm"))
+    mm_types::process::command(env!("CARGO_BIN_EXE_mm"))
         .args(args)
         .output()
         .expect("mm を実行できる")

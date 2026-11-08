@@ -33,7 +33,7 @@ const FPS: f64 = 30.0;
 
 fn mm(args: &[&str]) -> (Output, f64) {
     let started = Instant::now();
-    let out = std::process::Command::new(env!("CARGO_BIN_EXE_mm"))
+    let out = mm_types::process::command(env!("CARGO_BIN_EXE_mm"))
         .args(args)
         .output()
         .expect("mm を実行できる");

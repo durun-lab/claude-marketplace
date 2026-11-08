@@ -39,7 +39,7 @@ impl Tools {
     /// 両方の実行ファイルが起動できるか。
     pub fn available(&self) -> bool {
         [&self.ffmpeg, &self.ffprobe].into_iter().all(|exe| {
-            Command::new(exe)
+            mm_types::process::command(exe)
                 .arg("-version")
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
@@ -50,7 +50,7 @@ impl Tools {
 
     /// ffmpeg のコマンド。ログは誤りだけにして、進み具合の行で標準エラーを埋めない。
     pub(crate) fn ffmpeg_command(&self) -> Command {
-        let mut cmd = Command::new(&self.ffmpeg);
+        let mut cmd = mm_types::process::command(&self.ffmpeg);
         cmd.args(["-hide_banner", "-nostdin", "-v", "error", "-y"]);
         cmd
     }
@@ -108,7 +108,7 @@ mod tests {
 
     #[test]
     fn 実行ファイルが無ければ入れ方を促す() {
-        let mut cmd = Command::new("mm-no-such-exe");
+        let mut cmd = mm_types::process::command("mm-no-such-exe");
         let e = cmd.output().unwrap_err();
         let err = spawn_error(&cmd, "probe", &e);
         assert!(matches!(err, MmError::Unsupported(m) if m.contains(ENV_FFMPEG)));

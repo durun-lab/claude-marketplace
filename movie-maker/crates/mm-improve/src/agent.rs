@@ -6,7 +6,7 @@
 use std::fs::{File, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::process::{Child, Command, ExitStatus, Stdio};
+use std::process::{Child, ExitStatus, Stdio};
 use std::sync::mpsc::{self, RecvTimeoutError};
 use std::time::Duration;
 
@@ -212,7 +212,7 @@ impl ClaudeCli {
             .append(true)
             .open(req.run_dir.join(LOG_FILE))?;
         let out = File::create(req.run_dir.join(OUT_FILE))?;
-        let mut child = Command::new(&self.program)
+        let mut child = mm_types::process::command(&self.program)
             .args(self.args(req))
             .current_dir(req.cwd)
             .envs(self.child_env(req))

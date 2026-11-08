@@ -22,7 +22,7 @@ pub fn run(cmd: &mut Command) -> Output {
 
 /// 書き出したファイルの `n` 番目のフレーム（0 始まり）を PNG に抜く。
 pub fn extract_frame(video: &Path, n: i64, png: &Path) {
-    run(Command::new("ffmpeg")
+    run(mm_types::process::command("ffmpeg")
         .args(["-hide_banner", "-v", "error", "-y", "-i"])
         .arg(video)
         .args(["-vf", &format!("select=eq(n\\,{n})")])
@@ -32,7 +32,7 @@ pub fn extract_frame(video: &Path, n: i64, png: &Path) {
 
 /// 2 枚の PNG の SSIM（全チャンネルの平均、1 が一致）。ffmpeg の `ssim` フィルター。
 pub fn ssim(a: &Path, b: &Path) -> f64 {
-    let out = run(Command::new("ffmpeg")
+    let out = run(mm_types::process::command("ffmpeg")
         .args(["-hide_banner", "-nostats", "-i"])
         .arg(a)
         .arg("-i")
@@ -65,7 +65,7 @@ pub fn reframe_png(
         x.round(),
         y.round()
     );
-    run(Command::new("ffmpeg")
+    run(mm_types::process::command("ffmpeg")
         .args(["-hide_banner", "-v", "error", "-y", "-i"])
         .arg(main)
         .args(["-vf", &filter])
@@ -74,7 +74,7 @@ pub fn reframe_png(
 
 /// ffmpeg の ebur128 で測った統合ラウドネス（LUFS）とトゥルーピーク（dBFS）。
 pub fn loudness(path: &Path) -> (f64, f64) {
-    let out = run(Command::new("ffmpeg")
+    let out = run(mm_types::process::command("ffmpeg")
         .args(["-hide_banner", "-nostats", "-i"])
         .arg(path)
         .args(["-af", "ebur128=peak=true", "-vn", "-f", "null", "-"]));
@@ -91,7 +91,7 @@ pub fn loudness(path: &Path) -> (f64, f64) {
 }
 
 pub fn ffprobe_json(path: &Path, args: &[&str]) -> Value {
-    let out = run(Command::new("ffprobe")
+    let out = run(mm_types::process::command("ffprobe")
         .args(["-v", "error", "-of", "json"])
         .args(args)
         .arg(path));

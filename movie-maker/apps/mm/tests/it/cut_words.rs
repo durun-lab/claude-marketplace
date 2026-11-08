@@ -40,7 +40,7 @@ fn run(cmd: &mut Command) -> Output {
 }
 
 fn mm(args: &[&str]) -> Output {
-    run(Command::new(env!("CARGO_BIN_EXE_mm")).args(args))
+    run(mm_types::process::command(env!("CARGO_BIN_EXE_mm")).args(args))
 }
 
 fn op(dir: &str, value: Value) {
@@ -58,7 +58,7 @@ fn secs(t: RationalTime) -> f64 {
 fn make_media(out: &Path, from: f64, to: f64) {
     let tone = format!("sine=frequency=1000:sample_rate=48000:duration={MEDIA_SECONDS}");
     let gate = format!("volume=volume=0:enable='not(between(t,{from},{to}))'");
-    run(Command::new("ffmpeg")
+    run(mm_types::process::command("ffmpeg")
         .args(["-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i"])
         .arg(format!("testsrc2=s=320x180:r=30:d={MEDIA_SECONDS}"))
         .args([
@@ -153,7 +153,7 @@ fn add_output(dir: &str, asset: &str, topic: (RationalTime, RationalTime)) {
 }
 
 fn probe_duration(path: &Path) -> f64 {
-    let out = run(Command::new("ffprobe")
+    let out = run(mm_types::process::command("ffprobe")
         .args([
             "-v",
             "error",
@@ -168,7 +168,7 @@ fn probe_duration(path: &Path) -> f64 {
 
 /// 音の最大の音量（dBFS）。`volumedetect` の `max_volume`。
 fn max_volume(path: &Path) -> f64 {
-    let out = run(Command::new("ffmpeg")
+    let out = run(mm_types::process::command("ffmpeg")
         .args(["-hide_banner", "-nostats", "-i"])
         .arg(path)
         .args(["-af", "volumedetect", "-vn", "-f", "null", "-"]));

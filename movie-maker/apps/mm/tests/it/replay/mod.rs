@@ -5,7 +5,6 @@ pub mod measure;
 
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
@@ -57,7 +56,7 @@ pub fn inputs(dir: &Path, expected: &Value) -> (PathBuf, PathBuf) {
 }
 
 fn mm(args: &[&OsStr]) -> String {
-    let out = Command::new(env!("CARGO_BIN_EXE_mm"))
+    let out = mm_types::process::command(env!("CARGO_BIN_EXE_mm"))
         .args(args)
         .output()
         .expect("mm を実行できる");

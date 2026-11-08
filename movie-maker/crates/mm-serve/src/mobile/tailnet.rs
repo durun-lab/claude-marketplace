@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 use std::io::Read;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
 
@@ -131,12 +131,11 @@ fn is_local_port(proxy: &str, port: u16) -> bool {
 /// `tailscale` の CLI を呼び、成功したときの標準出力を返す。CLI が無いか、失敗したか、時間内に答えなければ `None`。
 fn tailscale_output(args: &[&str]) -> Option<String> {
     for command in TAILSCALE_COMMANDS {
-        let mut cmd = Command::new(command);
+        let mut cmd = mm_types::process::command(command);
         cmd.args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
-        hide_console(&mut cmd);
         match cmd.spawn() {
             Ok(child) => return finish(child, args[0]),
             Err(_) => continue,
@@ -173,17 +172,6 @@ fn finish(mut child: Child, what: &str) -> Option<String> {
         }
     }
 }
-
-/// 画面のアプリから呼んでも、コンソールのウィンドウを出さない。
-#[cfg(windows)]
-fn hide_console(cmd: &mut Command) {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    cmd.creation_flags(CREATE_NO_WINDOW);
-}
-
-#[cfg(not(windows))]
-fn hide_console(_cmd: &mut Command) {}
 
 #[cfg(test)]
 mod tests {

@@ -1,6 +1,5 @@
 //! 関門: MCP からの承認、承認の後の変更、上限の超過、自動の改善の回の中。
 
-use std::process::Command;
 use std::sync::Arc;
 
 use mm_nodes_genai::{
@@ -128,7 +127,7 @@ fn 回の環境変数があれば承認できない() {
     // 空の値で上書きしても環境変数は外れない。
     for round in ["r-child", ""] {
         let exe = std::env::current_exe().unwrap();
-        let out = Command::new(exe)
+        let out = mm_types::process::command(exe)
             .args([CHILD_TEST, "--exact", "--nocapture"])
             .env(IMPROVE_ROUND_ENV, round)
             .output()

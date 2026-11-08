@@ -2,7 +2,6 @@
 //! レンダーターゲットの編集（足す、直す、消す）は `apply_ops` で送る。
 
 use std::os::windows::process::CommandExt;
-use std::process::Command;
 use std::sync::Arc;
 
 use tauri::{AppHandle, Emitter, State};
@@ -66,7 +65,7 @@ pub async fn export_cancel(state: Deliver<'_>) -> Result<(), String> {
 pub async fn export_reveal(state: Deliver<'_>, path: String) -> Result<(), String> {
     let path = state.revealable(&path)?;
     // explorer は `/select,"パス"` を 1 つの引数として読むので、引用符つきで渡す。
-    Command::new("explorer")
+    mm_types::process::command("explorer")
         .raw_arg(format!("/select,\"{}\"", path.display()))
         .spawn()
         .map(|_| ())

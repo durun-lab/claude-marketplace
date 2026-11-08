@@ -157,7 +157,7 @@ fn restrict_file(path: &Path) -> Result<()> {
 
 #[cfg(windows)]
 fn icacls_owner_only(path: &Path, grant: &str) -> Result<()> {
-    let status = std::process::Command::new("icacls")
+    let status = mm_types::process::command("icacls")
         .arg(path)
         .args(["/inheritance:r", "/grant:r", grant])
         .stdout(std::process::Stdio::null())

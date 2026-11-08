@@ -2,7 +2,7 @@
 
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 use mm_types::{MmError, Result};
 
@@ -19,7 +19,7 @@ pub(crate) fn run_ffmpeg(args: &[OsString]) -> Result<()> {
 
 /// 見つからなければ `Unsupported`（入れ方を添える）、失敗したら標準エラーの末尾を添えて `Internal`。
 fn run_with(exe: &OsStr, args: &[OsString]) -> Result<()> {
-    let out = Command::new(exe)
+    let out = mm_types::process::command(exe)
         .args(["-nostdin", "-hide_banner", "-loglevel", "error", "-y"])
         .args(args)
         .stdin(Stdio::null())

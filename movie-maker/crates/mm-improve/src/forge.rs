@@ -1,7 +1,6 @@
 //! PR までで止めるときの PR の作り方。[`Forge`] を差し替えられる層にし、実際の実装は [`GhForge`]（`git push` と `gh pr create`）。
 
 use std::path::Path;
-use std::process::Command;
 
 use mm_types::{MmError, Result};
 
@@ -35,7 +34,7 @@ pub struct GhForge;
 impl Forge for GhForge {
     fn open_pr(&self, pr: &PullRequest<'_>) -> Result<String> {
         git(pr.repo, &["push", "-u", "origin", pr.branch])?;
-        let ran = run(Command::new("gh").current_dir(pr.repo).args([
+        let ran = run(mm_types::process::command("gh").current_dir(pr.repo).args([
             "pr", "create", "--base", pr.base, "--head", pr.branch, "--title", pr.title, "--body",
             pr.body,
         ]))?;

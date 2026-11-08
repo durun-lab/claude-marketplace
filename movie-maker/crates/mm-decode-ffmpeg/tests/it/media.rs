@@ -182,7 +182,7 @@ fn 途中へシークして読んだ音は先頭から読んだ音と同じ位�
 
 /// FFmpeg のコマンドで先頭からデコードした 48 kHz・ステレオの音（前置きを捨てた正しい位置の基準）。
 fn ffmpeg_pcm(name: &str) -> Vec<f32> {
-    let out = std::process::Command::new("ffmpeg")
+    let out = mm_types::process::command("ffmpeg")
         .args(["-v", "error", "-i"])
         .arg(common::fixtures().join(name))
         .args(["-ac", "2", "-ar", "48000", "-f", "f32le", "-"])

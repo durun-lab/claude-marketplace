@@ -43,7 +43,7 @@ pub struct Sound {
 }
 
 fn ffmpeg() -> Command {
-    let mut c = Command::new("ffmpeg");
+    let mut c = mm_types::process::command("ffmpeg");
     c.args(["-v", "error", "-nostdin", "-y"]);
     c
 }
@@ -135,7 +135,7 @@ pub fn pcm(path: &Path, start: f64, len: f64) -> Vec<f32> {
 /// モノラルにせず浮動小数のまま `astats` で数える。
 pub fn peak_dbfs(path: &Path) -> f64 {
     // astats はログの info で書くので、ほかの呼び出しと違い -v info で実行する
-    let mut cmd = Command::new("ffmpeg");
+    let mut cmd = mm_types::process::command("ffmpeg");
     cmd.args(["-v", "info", "-nostdin", "-i"]).arg(path);
     cmd.args(["-af", "aformat=sample_fmts=flt,astats", "-f", "null", "-"]);
     let out = cmd.output().expect("ffmpeg を実行できる");

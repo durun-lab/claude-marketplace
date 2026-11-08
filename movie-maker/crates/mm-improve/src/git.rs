@@ -1,7 +1,6 @@
 //! git の操作。回の worktree を作って消し、1 コミットにまとめ、本線へ取り込む。
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use mm_types::{MmError, Result};
 
@@ -15,7 +14,11 @@ pub fn git(dir: &Path, args: &[&str]) -> Result<String> {
 
 /// 標準出力をそのまま返す（`-z` の出力で、パスの前後の空白を削らない）。
 fn git_raw(dir: &Path, args: &[&str]) -> Result<String> {
-    let out = Command::new("git").arg("-C").arg(dir).args(args).output()?;
+    let out = mm_types::process::command("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()?;
     if out.status.success() {
         return Ok(String::from_utf8_lossy(&out.stdout).into_owned());
     }
@@ -60,7 +63,7 @@ fn parse_raw(out: &str) -> Vec<Change> {
 
 /// 終了コードだけを見る。
 fn git_ok(dir: &Path, args: &[&str]) -> Result<bool> {
-    Ok(Command::new("git")
+    Ok(mm_types::process::command("git")
         .arg("-C")
         .arg(dir)
         .args(args)

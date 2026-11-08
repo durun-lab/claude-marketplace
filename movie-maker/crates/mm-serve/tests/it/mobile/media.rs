@@ -1,7 +1,6 @@
 //! モバイルの映像のエンドポイント。静止画のフレーム、HLS のプレイリストと区間、素材の音だけ。
 
 use std::path::Path;
-use std::process::Command;
 use std::sync::Arc;
 
 use mm_doc::{
@@ -58,7 +57,7 @@ pub(super) fn ffmpeg_config() -> Option<RuntimeConfig> {
 
 /// ffmpeg の CLI で、動きのある映像と音の素材を作る。
 pub(super) fn make_media(path: &Path) {
-    let status = Command::new("ffmpeg")
+    let status = mm_types::process::command("ffmpeg")
         .args(["-nostdin", "-v", "error", "-y"])
         .args(["-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30"])
         .args(["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000"])

@@ -5,7 +5,6 @@
 
 use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -76,7 +75,7 @@ fn run_generate(root: &Path) -> std::result::Result<(), String> {
         "C:/Program Files/Git/bin/sh.exe",
         "C:/Program Files/Git/usr/bin/sh.exe",
     ] {
-        match Command::new(sh).arg(&script).status() {
+        match mm_types::process::command(sh).arg(&script).status() {
             Ok(s) if s.success() => return Ok(()),
             Ok(s) => return Err(format!("{sh} {}: {s}", script.display())),
             Err(_) => continue,
@@ -296,7 +295,7 @@ pub fn derived_fixture(name: &str, lavfi: &str, encode: &[&str]) -> PathBuf {
     }
     std::fs::create_dir_all(&out).expect("out/ を作れた");
     let tmp = out.join(format!("{}.{}.tmp.mp4", name, std::process::id()));
-    let status = Command::new("ffmpeg")
+    let status = mm_types::process::command("ffmpeg")
         .args(["-y", "-v", "error", "-f", "lavfi", "-i", lavfi])
         .args(encode)
         .arg(&tmp)

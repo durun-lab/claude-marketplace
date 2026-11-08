@@ -3,7 +3,7 @@
 //! 話題から sequence を作って `mm render` で書き出す。FFmpeg が要るので feature `ffmpeg` のときだけ走る。
 
 use std::path::{Path, PathBuf};
-use std::process::{Command, Output};
+use std::process::Output;
 
 use serde_json::{json, Value};
 
@@ -15,7 +15,7 @@ fn fixtures_dir() -> PathBuf {
 }
 
 fn mm(args: &[&str]) -> Output {
-    let out = Command::new(env!("CARGO_BIN_EXE_mm"))
+    let out = mm_types::process::command(env!("CARGO_BIN_EXE_mm"))
         .args(args)
         .output()
         .expect("mm を実行できる");
@@ -31,7 +31,7 @@ fn mm(args: &[&str]) -> Output {
 /// 映像（320x180）と音の素材。`fixtures/ingest/generate.sh` の日本語の音声があればそれを、無ければトーンを使う。
 fn make_media(out: &Path) {
     let speech = fixtures_dir().join("out/speech-ja.wav");
-    let mut cmd = Command::new("ffmpeg");
+    let mut cmd = mm_types::process::command("ffmpeg");
     cmd.args(["-hide_banner", "-v", "error", "-y", "-f", "lavfi", "-i"])
         .arg(format!("testsrc2=s=320x180:r=30:d={MEDIA_SECONDS}"));
     if speech.is_file() {
@@ -119,7 +119,7 @@ fn add_output(dir: &str, length: &Value) {
 }
 
 fn probe_duration(path: &Path) -> f64 {
-    let out = Command::new("ffprobe")
+    let out = mm_types::process::command("ffprobe")
         .args([
             "-v",
             "error",
