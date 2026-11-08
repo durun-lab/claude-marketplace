@@ -3,6 +3,7 @@ import type { EventSourceLike } from "../connection.ts";
 import type { CommentItem, CommentState, ProjectInfo } from "../api/types.ts";
 import type { Proposal } from "../proposals/api.ts";
 import { MOBILE_HEADER } from "../api/http.ts";
+import { mockClipUrl } from "./mockClip.ts";
 import { createMockStory, type MockStory } from "../story/mockStory.ts";
 
 /** デモとテストのモックの PC。人の待ち受けの API が出来るまで、12-mobile.md の「HTTP の形」の応答を手元で返す。 */
@@ -30,7 +31,7 @@ export interface MockServer {
 
 const PROJECT: ProjectInfo = {
   version: 12,
-  compositions: [{ id: "c1", name: "Vlog 14" }],
+  compositions: [{ id: "c1", name: "Vlog 14", width: 1920, height: 1080 }],
   sequences: [
     { id: "s1", name: "Main" },
     { id: "s2", name: "Shorts" },
@@ -124,6 +125,13 @@ const undoLast = (server: MockServer): Response => {
 const COMMENT_PATH = /^\/m\/api\/comments\/([^/]+)\/(replies|state)$/;
 const ONE_COMMENT = /^\/m\/api\/comments\/([^/]+)$/;
 const PROPOSAL_PATH =/^\/m\/api\/proposals\/(\d+)\/(approve|reject|reopen)$/;
+const ONE_PROPOSAL = /^\/m\/api\/proposals\/(\d+)(?:\?(.*))?$/;
+
+const oneProposal = (server: MockServer, id: number, query: URLSearchParams): Response => {
+  const p = server.proposals.find((x) => x.id === id);
+  if (!p) return errorBody(HTTP_NOT_FOUND, "not_found", String(id));
+  return json(HTTP_OK, { ...p, clip_url: mockClipUrl(p, server.project.version, query) });
+};
 
 const api = (server: MockServer, req: Request1): Response => {
   const story = server.story.handle(req);
@@ -137,6 +145,8 @@ const api = (server: MockServer, req: Request1): Response => {
   const c = COMMENT_PATH.exec(path);
   if (c) return commentAction(server, req, decodeURIComponent(c[1] ?? ""), c[2] ?? "");
   if (path === "/m/api/proposals") return json(HTTP_OK, { proposals: server.proposals });
+  const single = method === "GET" ? ONE_PROPOSAL.exec(path) : null;
+  if (single) return oneProposal(server, Number(single[1]), new URLSearchParams(single[2] ?? ""));
   const p = PROPOSAL_PATH.exec(path);
   if (p) return decide(server, Number(p[1]), p[2] ?? "", (req.body ?? {}) as { ops?: number[] });
   if (path === "/m/api/undo") return undoLast(server);

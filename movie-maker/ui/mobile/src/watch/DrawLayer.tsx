@@ -1,17 +1,20 @@
 import type { CommentShape } from "@mm/sdk";
 import { useRef, useState } from "preact/hooks";
-import { draftShape, normalizePoint, pointsAttr, type Point, type Tool } from "./shapes.ts";
+import { draftShape, fitRect, normalizePoint, pointsAttr, type CompSize, type Point, type Tool } from "./shapes.ts";
 
-const POINT_RADIUS = 0.012;
+const NO_BOX = { left: 0, top: 0, width: 0, height: 0 };
 
-const ShapeView = ({ shape, draft = false }: { shape: CommentShape; draft?: boolean }) => {
+const ShapeView = ({ shape, size, draft = false }: { shape: CommentShape; size: CompSize; draft?: boolean }) => {
   const cls = draft ? "shape draft" : "shape";
   const [a, b] = shape.points;
-  if (shape.kind === "point" && a) return <circle class={cls} cx={a[0]} cy={a[1]} r={POINT_RADIUS} />;
+  const x = (p: Point): number => p[0] * size.width;
+  const y = (p: Point): number => p[1] * size.height;
+  // 点は長さ 0 の線を丸い端で描き、直径を画面のピクセルで決める（デスクトップの Program の点と同じ 12 px）。
+  if (shape.kind === "point" && a) return <path class={`${cls} point`} d={`M${x(a)} ${y(a)}h0`} />;
   if (shape.kind === "rect" && a && b) {
-    return <rect class={cls} x={a[0]} y={a[1]} width={b[0] - a[0]} height={b[1] - a[1]} />;
+    return <rect class={cls} x={x(a)} y={y(a)} width={x(b) - x(a)} height={y(b) - y(a)} />;
   }
-  return <polyline class={cls} points={pointsAttr(shape.points)} />;
+  return <polyline class={cls} points={pointsAttr(shape.points, size)} />;
 };
 
 export interface Editing {
@@ -19,15 +22,22 @@ export interface Editing {
   onShape: (shape: CommentShape) => void;
 }
 
+export interface DrawLayerProps {
+  shapes: CommentShape[];
+  /** コンポジションの大きさ。映像の矩形（レターボックスを除く）を決める。 */
+  size: CompSize;
+  editing?: Editing;
+}
+
 /**
- * 止めたフレームの上に重ねる描き込みの面。座標は 0〜1 に正規化し、表示の大きさが変わっても位置が合う。
- * `editing` を渡すと指で描ける。渡さなければ見るだけで、タッチは下の映像へ通す。
+ * 止めたフレームの上に重ねる描き込みの SVG。座標は映像の矩形を 0〜1 に正規化し、デスクトップの Program と同じ所を指す。
+ * SVG は映像の領域の全体を覆い、viewBox と `meet` で映像の矩形に合わせる（`object-fit: contain` の映像と同じ収め方）。
+ * `editing` を渡すと指で描ける。レターボックスの余白から描いた点は映像の縁に寄せる。渡さなければ見るだけで、タッチは下の映像へ通す。
  */
-export const DrawLayer = ({ shapes, editing }: { shapes: CommentShape[]; editing?: Editing }) => {
+export const DrawLayer = ({ shapes, size, editing }: DrawLayerProps) => {
   const svg = useRef<SVGSVGElement>(null);
   const [trail, setTrail] = useState<Point[]>([]);
-  const at = (e: PointerEvent): Point =>
-    normalizePoint(e.clientX, e.clientY, svg.current?.getBoundingClientRect() ?? { left: 0, top: 0, width: 0, height: 0 });
+  const at = (e: PointerEvent): Point => normalizePoint(e.clientX, e.clientY, fitRect(size, svg.current?.getBoundingClientRect() ?? NO_BOX));
   const down = (e: PointerEvent): void => {
     svg.current?.setPointerCapture(e.pointerId);
     setTrail([at(e)]);
@@ -45,17 +55,17 @@ export const DrawLayer = ({ shapes, editing }: { shapes: CommentShape[]; editing
     <svg
       ref={svg}
       class={`draw${editing ? " editing" : ""}`}
-      viewBox="0 0 1 1"
-      preserveAspectRatio="none"
+      viewBox={`0 0 ${size.width} ${size.height}`}
+      preserveAspectRatio="xMidYMid meet"
       onPointerDown={editing ? down : undefined}
       onPointerMove={editing ? move : undefined}
       onPointerUp={editing ? up : undefined}
       onPointerCancel={editing ? () => setTrail([]) : undefined}
     >
       {shapes.map((s, i) => (
-        <ShapeView key={i} shape={s} />
+        <ShapeView key={i} shape={s} size={size} />
       ))}
-      {live && <ShapeView shape={live} draft />}
+      {live && <ShapeView shape={live} size={size} draft />}
     </svg>
   );
 };

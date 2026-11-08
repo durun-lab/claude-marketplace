@@ -2,7 +2,7 @@
 
 | 用語 | 定義 | 識別子 |
 |---|---|---|
-| 提案の区間の短い動画 | 保留中の提案を適用したプロジェクトの、提案の範囲にプリロールとポストロールを足した所（上限 30 秒）を書いた 360p の MP4。モバイル版の Proposals の `Play` で再生する。「短い動画」と略すのは、この文脈が明らかな所（`Streamer::clip` とそのハンドラー、`FrameCompare`）だけ | `Streamer::clip`、`ClipRequest`、`GET /m/api/proposals/{id}/clip.mp4` |
+| 提案の区間の短い動画 | 保留中の提案を適用したプロジェクトの、提案の範囲にプリロールとポストロールを足した所（上限 30 秒）を書いた 360p の MP4。モバイル版の Proposals の `Play` で再生する。「短い動画」と略すのは、この文脈が明らかな所（`Streamer::clip` とそのハンドラー、`FrameCompare`）だけ | `Streamer::clip`、`ClipRequest`、`ClipKey`、`GET /m/api/proposals/{id}/clip/{key}.mp4`、`clip_url` |
 | プリロール / ポストロール（短い動画の） | 提案の範囲の前 / 後ろに足して見せる長さ（各 2 秒）。編集点の前後のつながりを見せる。Premiere Pro の「前後を再生」の同名の設定と同じ考え方 | `CLIP_PAD_SECONDS` |
 
 ## 置き換えた語

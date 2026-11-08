@@ -30,7 +30,7 @@ const frameSvg = (query) => {
 <circle cx="${240 + shift}" cy="200" r="90" fill="${fg}"/><text x="360" y="360" font-size="34" font-family="sans-serif" fill="#fff" text-anchor="middle">${after ? "After" : "Before"} t=${query.get("t")}s</text></svg>`;
 };
 // 提案の短い動画は demo/media の初期化の区間と最初の 2 区間をつないだ MP4。PC が作る間の待ちも真似る。
-const CLIP_PATH = /^\/m\/api\/proposals\/\d+\/clip\.mp4$/;
+const CLIP_PATH = /^\/m\/api\/proposals\/\d+\/clip\/[0-9a-f]{16}\.mp4$/;
 const CLIP_DELAY_MS = 1500;
 const serveClip = async (res) => {
   await new Promise((r) => setTimeout(r, CLIP_DELAY_MS));

@@ -48,18 +48,18 @@ impl Payload {
     }
 }
 
-/// `path` のファイルを `Range` ヘッダーに合わせて返す（200、206、416）。毎回 `etag` で確かめさせる。
+/// `path` のファイルを `Range` ヘッダーに合わせて返す（200、206、416）。`ETag` は `etag`、`Cache-Control` は `cache_control`。
 pub(crate) fn ranged_file(
     path: &Path,
     content_type: &str,
-    etag: &str,
+    (etag, cache_control): (&str, &str),
     range: Option<&str>,
 ) -> Result<Payload> {
     let mut file = fs::File::open(path)?;
     let len = file.metadata()?.len();
     let base = |status: u16, body: Vec<u8>| Payload {
         status,
-        ..Payload::ok(content_type, REVALIDATE, body)
+        ..Payload::ok(content_type, cache_control, body)
             .with_header("Accept-Ranges", "bytes".into())
             .with_header("ETag", etag.to_owned())
     };

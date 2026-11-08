@@ -199,7 +199,7 @@ const MEDIA_PATHS: [&str; 6] = [
     "/m/api/stream/main/360p.m3u8",
     "/m/api/stream/main/seg/0123456789abcdef.ts",
     "/m/api/audio/clip.m4a",
-    "/m/api/proposals/1/clip.mp4",
+    "/m/api/proposals/1/clip/0123456789abcdef.mp4",
 ];
 
 #[test]
