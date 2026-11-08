@@ -5,11 +5,33 @@ use serde::{Deserialize, Serialize};
 
 pub use mm_ops::{OpRecord, TxnKind, TxnRecord};
 
-/// 誰が。操作経路の種類（`gui`、`cli`、`claude`、`mcp`）と名前。
+/// 誰が。操作経路の種類（`gui`、`cli`、`claude`、`mcp`、`mobile`）と名前。
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Actor {
     pub kind: String,
     pub name: String,
+    /// 登録した端末の ID（`mobile` だけ）。名前は登録を外すと別の端末が使えるので、端末の見分けはこちらでする。
+    /// 端末の ID を記録する前の行と、端末でない発行元は `None`。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device: Option<String>,
+}
+
+impl Actor {
+    /// 端末の ID を持たない発行元。
+    pub fn new(kind: impl Into<String>, name: impl Into<String>) -> Self {
+        Self {
+            kind: kind.into(),
+            name: name.into(),
+            device: None,
+        }
+    }
+
+    /// 登録した端末の ID を持たせる。
+    #[must_use]
+    pub fn with_device(mut self, device: impl Into<String>) -> Self {
+        self.device = Some(device.into());
+        self
+    }
 }
 
 /// 書き込むトランザクション（ドラッグ、マクロ、Claude の対応 1 回、取り消し、やり直し）。

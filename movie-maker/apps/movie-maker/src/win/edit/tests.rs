@@ -79,10 +79,7 @@ fn topic(id: &str) -> Op {
 fn cli() -> Caller {
     Caller {
         entry: mm_ops::Entry::Cli,
-        actor: Actor {
-            kind: "cli".into(),
-            name: "mm".into(),
-        },
+        actor: Actor::new("cli", "mm"),
     }
 }
 

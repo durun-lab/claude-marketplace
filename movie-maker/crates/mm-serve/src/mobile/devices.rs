@@ -23,7 +23,8 @@ pub const PAIRING_MAX_FAILURES: u32 = 5;
 pub const PAIRING_TTL: Duration = Duration::from_secs(5 * 60);
 /// 端末の名前の最大の文字数。
 const NAME_MAX_CHARS: usize = 64;
-/// 端末の ID の長さ（バイト）。
+/// 端末の ID の長さ（バイト）。ID は登録ごとの乱数で、操作の記録の発行元（`Actor::device`）に残り取り消しで端末を見分けるので、
+/// 登録を外した端末の ID と偶然そろわない長さにする。
 const DEVICE_ID_BYTES: usize = 8;
 /// 登録コードの文字。読み違えやすい I、L、O、U を除いた 32 文字（Crockford の Base32）で、1 バイトの下位 5 ビットで偏りなく選べる。
 const CODE_ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
@@ -55,7 +56,7 @@ pub enum PairError {
     WrongCode,
     /// 名前が空か長すぎる。
     BadName,
-    /// 同じ名前の端末がある（トランザクションの取り消し（undo）で、どの端末が出したかを名前で見分ける）。
+    /// 同じ名前の端末がある（履歴と提案の一覧で、どの端末の操作かを名前で読み分ける）。
     NameTaken,
 }
 
@@ -276,7 +277,7 @@ fn make_room(
     {
         return Err(PairError::BadName);
     }
-    // 取り消し（undo）で出した端末を見分けるのも画面の表示も名前なので、大文字と小文字の違いだけの名前も同じとみなす。
+    // 画面に出す発行元は名前なので、大文字と小文字の違いだけの名前も同じとみなす。取り消しの判定は端末の ID でする。
     // 資格を一度も使っていない登録は操作を出していないので、同じ名前の登録し直しで置き換える。
     if devices.iter().any(|d| !d.unused && d.same_name(name)) {
         return Err(PairError::NameTaken);

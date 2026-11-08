@@ -100,7 +100,7 @@ impl Store {
             .conn
             .prepare(&format!(
                 "SELECT id, kind, of_txn, name, actor_kind, actor_name, at_ms, responds_to,
-                        base_version, doc_version, first_seq, last_seq
+                        base_version, doc_version, first_seq, last_seq, actor_device
                  FROM txns {filter} ORDER BY id"
             ))
             .sql()?;
@@ -114,6 +114,7 @@ impl Store {
                     actor: Actor {
                         kind: r.get(4)?,
                         name: r.get(5)?,
+                        device: r.get(12)?,
                     },
                     at_ms: r.get(6)?,
                     responds_to: r.get(7)?,

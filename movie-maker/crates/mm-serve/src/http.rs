@@ -205,10 +205,7 @@ impl OpsBody {
             .actor
             .take()
             .map_or_else(|| default_actor.1.to_owned(), |a| a.name);
-        let actor = Actor {
-            kind: default_actor.0.into(),
-            name,
-        };
+        let actor = Actor::new(default_actor.0, name);
         Ok(Caller { entry, actor })
     }
 }
