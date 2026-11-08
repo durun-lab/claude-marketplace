@@ -5,7 +5,8 @@ export type { CommentState };
 /** `GET /m/api/project` の応答。素材のパスは含まれない。 */
 export interface ProjectInfo {
   version: number;
-  compositions: { id: string; name: string }[];
+  /** `width` と `height` はコンポジションの大きさ（ピクセル）。描き込みの映像の矩形の縦横比に使う。 */
+  compositions: { id: string; name: string; width?: number; height?: number }[];
   sequences: { id: string; name: string }[];
   open_composition: string | null;
   /** 開いているコンポジションのカットの境（秒）。スクラブバーの目盛りに使う。 */

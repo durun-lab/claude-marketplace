@@ -3,12 +3,40 @@ import type { CommentShape } from "@mm/sdk";
 export type Point = [number, number];
 export type Tool = "stroke" | "rect";
 
-/** 画面上の座標を、描く面の左上を (0, 0)、右下を (1, 1) にした座標にする。はみ出しは縁に寄せる。 */
-export const normalizePoint = (
-  clientX: number,
-  clientY: number,
-  box: { left: number; top: number; width: number; height: number },
-): Point => {
+/** 画面上の矩形（CSS ピクセル）。 */
+export interface Box {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** コンポジションの大きさ。縦横比だけを使う。 */
+export interface FrameSize {
+  width: number;
+  height: number;
+}
+
+/** コンポジションの大きさが分からない間の縦横比。Watch の映像の枠と同じ 16:9。 */
+export const DEFAULT_FRAME: FrameSize = { width: 16, height: 9 };
+
+/** 余白を左右（上下）に等分する割合。 */
+const HALF = 0.5;
+
+/**
+ * 映像の矩形。`frame` を縦横比を保って `box` に最大で収めた矩形（中央寄せ、レターボックスを除く）。
+ * デスクトップの Program と同じ計算（mm-ui-layout の `fit_rect`）で、描き込みの座標をデスクトップと揃える。
+ */
+export const fitRect = (frame: FrameSize, box: Box): Box => {
+  if (frame.width <= 0 || frame.height <= 0 || box.width <= 0 || box.height <= 0) return { left: box.left, top: box.top, width: 0, height: 0 };
+  const scale = Math.min(box.width / frame.width, box.height / frame.height);
+  const width = frame.width * scale;
+  const height = frame.height * scale;
+  return { left: box.left + (box.width - width) * HALF, top: box.top + (box.height - height) * HALF, width, height };
+};
+
+/** 画面上の座標を、`box`（映像の矩形）の左上を (0, 0)、右下を (1, 1) にした座標にする。はみ出しは縁に寄せる。 */
+export const normalizePoint = (clientX: number, clientY: number, box: Box): Point => {
   if (box.width <= 0 || box.height <= 0) return [0, 0];
   const clamp = (v: number): number => Math.min(1, Math.max(0, v));
   return [clamp((clientX - box.left) / box.width), clamp((clientY - box.top) / box.height)];
@@ -45,5 +73,6 @@ export const draftShape = (tool: Tool, trail: Point[]): CommentShape | null => {
   return tool === "rect" ? rectShape(first, last) : strokeShape(trail);
 };
 
-/** SVG の `points` 属性にする。座標系は viewBox `0 0 1 1`。 */
-export const pointsAttr = (points: Point[]): string => points.map(([x, y]) => `${x},${y}`).join(" ");
+/** SVG の `points` 属性にする。座標系はコンポジションの大きさの viewBox（`0 0 width height`）。 */
+export const pointsAttr = (points: Point[], frame: FrameSize): string =>
+  points.map(([x, y]) => `${x * frame.width},${y * frame.height}`).join(" ");

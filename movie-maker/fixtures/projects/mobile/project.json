@@ -20,8 +20,8 @@
   "compositions": [
     {
       "id": "main",
-      "width": 640,
-      "height": 360,
+      "width": 360,
+      "height": 640,
       "fps": {
         "num": 30,
         "den": 1
@@ -123,7 +123,7 @@
                     "value": {
                       "type": "vec2",
                       "value": [
-                        360,
+                        200,
                         60
                       ]
                     },
@@ -193,7 +193,7 @@
                   "type": "vec2",
                   "value": [
                     40,
-                    280
+                    520
                   ]
                 },
                 "keyframes": []
