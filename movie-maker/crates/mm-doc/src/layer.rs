@@ -197,6 +197,18 @@ impl Layer {
     pub fn range(&self) -> Result<TimeRange> {
         TimeRange::from_start_duration(self.start, self.duration()?)
     }
+
+    /// 撮影素材のレイヤーが指す素材。撮影素材でなければ `None`。
+    /// イン点とアウト点を素材の長さで縛るのは撮影素材だけなので、`trimLayer` と Timeline が同じ判定を使う。
+    pub fn footage_asset(&self) -> Option<&mm_types::AssetId> {
+        if self.source.kind != crate::node::FOOTAGE_KIND {
+            return None;
+        }
+        self.source
+            .params
+            .get(crate::node::FOOTAGE_PARAM)
+            .and_then(|p| p.value.as_asset())
+    }
 }
 
 /// タイムリマップ。レイヤーの始まりからの時刻（`time`）を素材の時刻（`source`）に変換する折れ線。

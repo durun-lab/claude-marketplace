@@ -127,6 +127,7 @@ impl TimelineController {
             selected: self.selected,
             selected_cut: self.selected_cut,
             guide: self.guide,
+            pending: self.last_edit,
             palette: Palette::DEFAULT,
         }
     }

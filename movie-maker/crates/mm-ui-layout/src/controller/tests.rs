@@ -113,6 +113,38 @@ fn スナップしないドラッグも離したときに確定する() {
 }
 
 #[test]
+fn ドラッグ中だけ描く状態に確定前の編集を載せる() {
+    let mut c = ctl();
+    let m = model();
+    let y = row_top(1) + 4.0;
+    c.handle(down(399.0, y), &m, 0.0);
+    let moved = c.handle(PointerEvent::Move { x: 555.0, y }, &m, 0.0);
+    let Action::Edit { kind, by, .. } = moved[0] else {
+        panic!("{moved:?}")
+    };
+    assert_eq!(c.paint_state(0.0).pending, Some((kind, by)));
+    c.handle(PointerEvent::Up, &m, 0.0);
+    assert_eq!(c.paint_state(0.0).pending, None, "離したら操作の結果を描く");
+}
+
+#[test]
+fn 撮影素材のレイヤーのつまみは素材の終わりより先へ引けない() {
+    let mut c = ctl();
+    let mut m = model();
+    m.items[1].trim.max_end = 5.0;
+    let y = row_top(1) + 4.0;
+    c.handle(down(399.0, y), &m, 0.0);
+    let moved = c.handle(PointerEvent::Move { x: 777.0, y }, &m, 0.0);
+    let Action::Edit { by, .. } = moved[0] else {
+        panic!("{moved:?}")
+    };
+    assert!(
+        (by - 1.0).abs() < 1e-9,
+        "出つまみの 4 秒から素材の終わりの 5 秒まで: {by}"
+    );
+}
+
+#[test]
 fn 動かさずに離したクリックは編集にしない() {
     let mut c = ctl();
     let m = model();

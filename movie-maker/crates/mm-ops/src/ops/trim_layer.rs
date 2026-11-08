@@ -2,8 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use mm_doc::{Project, FOOTAGE_KIND, FOOTAGE_PARAM};
-use mm_types::{LayerId, ParamValue, RationalTime, Result};
+use mm_doc::Project;
+use mm_types::{LayerId, RationalTime, Result};
 
 use crate::op::{Apply, Op};
 use crate::ops::{invalid, negate, node_refs, Edge};
@@ -70,11 +70,8 @@ impl Apply for TrimLayer {
 /// 撮影素材のレイヤーの素材の長さ。撮影素材でなければ `None`（範囲は縛らない）。
 fn footage_duration(project: &Project, layer: &LayerId) -> Result<Option<RationalTime>> {
     let (_, layer) = project.layer(layer)?;
-    if layer.source.kind != FOOTAGE_KIND {
-        return Ok(None);
-    }
-    match layer.source.params.get(FOOTAGE_PARAM).map(|p| &p.value) {
-        Some(ParamValue::AssetRef(id)) => Ok(Some(project.asset(id)?.duration)),
-        _ => Ok(None),
+    match layer.footage_asset() {
+        Some(id) => Ok(Some(project.asset(id)?.duration)),
+        None => Ok(None),
     }
 }

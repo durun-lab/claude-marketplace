@@ -2,11 +2,12 @@
 
 use crate::digits::{text_quads, text_width};
 use crate::geom::{Quad, Rect};
+use crate::gesture::{EditKind, Side};
 use crate::palette::{self, Palette};
 use crate::ruler::{label, major_step, ticks};
 use crate::time_view::TimeView;
 use crate::timeline::{
-    bar_span, cut_span, row_top, Hit, Item, Part, TimelineModel, HANDLE_PX, ROW_H, RULER_H,
+    cut_span, row_top, span, Hit, Item, Part, TimelineModel, HANDLE_PX, ROW_H, RULER_H,
 };
 
 /// 目盛りのラベルの文字の高さ。
@@ -29,6 +30,8 @@ pub struct PaintState {
     pub selected_cut: Option<(usize, usize)>,
     /// スナップのガイド線（秒）。
     pub guide: Option<f64>,
+    /// ドラッグ中でまだ確定していない編集と量。`trimLayer` は帯の端を動かして描く。
+    pub pending: Option<(EditKind, f64)>,
     /// 色。
     pub palette: Palette,
 }
@@ -77,7 +80,8 @@ fn rows(model: &TimelineModel, view: &TimeView, w: f32, state: &PaintState, q: &
         let top = row_top(i);
         let stripe = if i % 2 == 0 { p.row_even } else { p.row_odd };
         q.push(Quad::new(Rect::new(0.0, top - 1.0, w, ROW_H + 2.0), stripe));
-        let (x, bw) = bar_span(view, item);
+        let (start, end) = trimmed(item, i, state.pending);
+        let (x, bw) = span(view, start, end);
         let mut color = palette::item_color(item.kind);
         if !item.enabled {
             color = color.with_alpha(0.35);
@@ -92,7 +96,7 @@ fn rows(model: &TimelineModel, view: &TimeView, w: f32, state: &PaintState, q: &
             handles(&bar, (state.hover, i), p, q);
         } else {
             q.push(Quad::new(bar, color.with_alpha(0.25)));
-            cuts(item, (i, top), view, state, q);
+            cuts(item, (i, &bar), view, state, q);
         }
         if state.selected == Some(i) {
             outline(&bar, p, q);
@@ -101,10 +105,23 @@ fn rows(model: &TimelineModel, view: &TimeView, w: f32, state: &PaintState, q: &
     outside(model, view, w, p, q);
 }
 
+/// 帯の始まりと終わり。ドラッグ中の `trimLayer` は動かした後の位置にする。
+/// 確定は離したときの 1 回の操作に任せ、ここでは描く位置だけを変える。
+fn trimmed(item: &Item, index: usize, pending: Option<(EditKind, f64)>) -> (f64, f64) {
+    match pending {
+        Some((EditKind::TrimLayer { item: i, side }, by)) if i == index => match side {
+            Side::In => (item.start + by, item.end),
+            Side::Out => (item.start, item.end + by),
+        },
+        _ => (item.start, item.end),
+    }
+}
+
 /// シーケンスのカットを並べて描く。隙間は枠だけの空き、選んだカットは外枠、ホバーしたカットの端はつまみを出す。
+/// カットはレイヤーの帯 `layer` の内側だけを描く（帯の外はレイヤーのイン点とアウト点で切られて映らない）。
 fn cuts(
     item: &Item,
-    (index, top): (usize, f32),
+    (index, layer): (usize, &Rect),
     view: &TimeView,
     state: &PaintState,
     q: &mut Vec<Quad>,
@@ -112,8 +129,13 @@ fn cuts(
     let p = &state.palette;
     let base = palette::item_color(item.kind);
     for (c, bar) in item.cuts.iter().enumerate() {
-        let (x, w) = cut_span(view, bar);
-        let r = Rect::new(x, top, w, ROW_H);
+        let (cx, cw) = cut_span(view, bar);
+        let x = cx.max(layer.x);
+        let w = (cx + cw).min(layer.right()) - x;
+        if w <= 0.0 {
+            continue;
+        }
+        let r = Rect::new(x, layer.y, w, ROW_H);
         let hovered =
             matches!(state.hover, Hit::Cut { item: i, cut, .. } if i == index && cut == c);
         if bar.gap {
@@ -127,7 +149,10 @@ fn cuts(
             };
             q.push(Quad::new(r, color));
             // 隣のカットとの編集点が見えるように、左端に暗い線を引く。
-            q.push(Quad::new(Rect::new(x, top, 1.0, ROW_H), palette::CUT_SEAM));
+            q.push(Quad::new(
+                Rect::new(x, layer.y, 1.0, ROW_H),
+                palette::CUT_SEAM,
+            ));
         }
         if hovered {
             handles(&r, (state.hover, c), p, q);
@@ -213,6 +238,7 @@ mod tests {
             selected: None,
             selected_cut: None,
             guide: None,
+            pending: None,
             palette: Palette::DEFAULT,
         }
     }
@@ -265,6 +291,75 @@ mod tests {
             .find(|q| q.color == color)
             .expect("レイヤーの帯");
         assert_eq!((bar.rect.x, bar.rect.w), (100.0, 200.0));
+    }
+
+    fn bar_of(model: &TimelineModel, pending: Option<(EditKind, f64)>) -> Rect {
+        let v = TimeView {
+            origin: 0.0,
+            px_per_sec: 100.0,
+        };
+        let st = PaintState {
+            pending,
+            ..state(0.0)
+        };
+        let color = palette::item_color(model.items[0].kind);
+        timeline_quads(model, &v, (800.0, 120.0), &st)
+            .into_iter()
+            .find(|q| q.color == color || q.color == color.with_alpha(0.25))
+            .expect("レイヤーの帯")
+            .rect
+    }
+
+    #[test]
+    fn ドラッグ中の_trim_layer_は帯の端を動かして描く() {
+        let trim = |side, by| Some((EditKind::TrimLayer { item: 0, side }, by));
+        let r = bar_of(&model(), trim(Side::In, -0.5));
+        assert_eq!((r.x, r.w), (50.0, 250.0), "イン点を前へ");
+        let r = bar_of(&model(), trim(Side::Out, -1.0));
+        assert_eq!((r.x, r.w), (100.0, 100.0), "アウト点を前へ");
+        let other = Some((
+            EditKind::TrimLayer {
+                item: 1,
+                side: Side::In,
+            },
+            1.0,
+        ));
+        assert_eq!(
+            bar_of(&model(), other).x,
+            100.0,
+            "別のレイヤーの編集は映さない"
+        );
+    }
+
+    #[test]
+    fn シーケンスのアウト点を縮めると帯の外のカットは描かない() {
+        let trim = Some((
+            EditKind::TrimLayer {
+                item: 0,
+                side: Side::Out,
+            },
+            -3.5,
+        ));
+        let r = bar_of(&seq_model(), trim);
+        assert_eq!((r.x, r.w), (0.0, 150.0));
+        let v = TimeView {
+            origin: 0.0,
+            px_per_sec: 100.0,
+        };
+        let st = PaintState {
+            pending: trim,
+            ..state(0.0)
+        };
+        let quads = timeline_quads(&seq_model(), &v, (800.0, 120.0), &st);
+        let base = palette::item_color(ItemKind::Sequence);
+        let cut = quads
+            .iter()
+            .find(|q| q.color == base && q.rect.y > RULER_H)
+            .expect("カット 0");
+        assert_eq!((cut.rect.x, cut.rect.w), (0.0, 150.0), "帯の右端で切る");
+        assert!(!quads
+            .iter()
+            .any(|q| q.color == palette::GAP.with_alpha(0.5)));
     }
 
     fn seq_model() -> TimelineModel {

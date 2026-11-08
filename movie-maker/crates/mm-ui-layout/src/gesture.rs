@@ -6,6 +6,9 @@
 use crate::controller::Mods;
 use crate::timeline::{Part, TimelineModel};
 
+/// 素材の端がちょうどフレームの境にあるとき、浮動小数の誤差で 1 フレーム手前に切り下げないための幅（フレーム）。
+const FRAME_EPS: f64 = 1e-6;
+
 /// 動かす端。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Side {
@@ -54,14 +57,7 @@ pub fn edge_edit(
         Part::Body => return None,
     };
     let Some(cut) = cut else {
-        let (edge, len) = (
-            if side == Side::In { it.start } else { it.end },
-            it.end - it.start,
-        );
-        return Some((
-            EditKind::TrimLayer { item, side },
-            shrink_limit(t - edge, side, len, frame),
-        ));
+        return trim_edit(model, item, side, t);
     };
     let bar = *it.cuts.get(cut)?;
     let len = bar.end - bar.start;
@@ -98,6 +94,33 @@ pub fn edge_edit(
         },
         by,
     ))
+}
+
+/// レイヤー `item` の端を時刻 `t` へ動かす `trimLayer`。素材の端（[`crate::TrimBounds`]）で止め、長さは 1 フレーム残す。
+fn trim_edit(model: &TimelineModel, item: usize, side: Side, t: f64) -> Option<(EditKind, f64)> {
+    let it = model.items.get(item)?;
+    let bounds = it.trim;
+    let by = match side {
+        Side::In if bounds.fixed_in => return None,
+        Side::In => (t - it.start).max(-whole_frames(it.start - bounds.min_start, model.fps)),
+        Side::Out => (t - it.end).min(whole_frames(bounds.max_end - it.end, model.fps)),
+    };
+    let len = it.end - it.start;
+    Some((
+        EditKind::TrimLayer { item, side },
+        shrink_limit(by, side, len, frame_secs(model)),
+    ))
+}
+
+/// 素材の端までの余り `room`（秒）を整数フレームに切り下げる。
+/// 量は操作にするときフレームに丸めるので、丸めても素材の外へ出ない値にしておく。既に外にあれば 0。
+fn whole_frames(room: f64, fps: f64) -> f64 {
+    let room = room.max(0.0);
+    if fps > 0.0 && room.is_finite() {
+        (room * fps + FRAME_EPS).floor() / fps
+    } else {
+        room
+    }
 }
 
 /// 端を縮める向きに 1 フレーム分は残す。イン点は右へ、アウト点は左へ動かすと縮む。
@@ -246,6 +269,60 @@ mod tests {
         assert!((by - 0.5).abs() < 1e-9);
         let (_, by) = edge_edit(&model(), 1, None, Part::OutHandle, NONE, 4.0).unwrap();
         assert!((by + 1.0).abs() < 1e-9);
+    }
+
+    /// 帯 [1, 5) が素材の 0.5 秒から始まり、素材の終わりまで 1.5 秒残っている撮影素材のレイヤー。
+    fn footage_model() -> TimelineModel {
+        let mut m = model();
+        m.items[1].trim = crate::TrimBounds {
+            min_start: 0.5,
+            max_end: 6.5,
+            fixed_in: false,
+        };
+        m
+    }
+
+    fn trim_by(m: &TimelineModel, part: Part, t: f64) -> Option<f64> {
+        edge_edit(m, 1, None, part, NONE, t).map(|(_, by)| by)
+    }
+
+    #[test]
+    fn 撮影素材のレイヤーの端は素材の先頭と終わりで止まる() {
+        let m = footage_model();
+        let by = trim_by(&m, Part::InHandle, -3.0).unwrap();
+        assert!((by + 0.5).abs() < 1e-9, "素材の先頭まで: {by}");
+        let by = trim_by(&m, Part::OutHandle, 99.0).unwrap();
+        assert!((by - 1.5).abs() < 1e-9, "素材の終わりまで: {by}");
+        let by = trim_by(&m, Part::OutHandle, 6.0).unwrap();
+        assert!((by - 1.0).abs() < 1e-9, "内側は止めない: {by}");
+    }
+
+    #[test]
+    fn 素材の端がフレームの境に無いときは内側のフレームで止まる() {
+        let mut m = footage_model();
+        m.items[1].trim.max_end = 5.0 + 1.5 / 30.0;
+        let by = trim_by(&m, Part::OutHandle, 99.0).unwrap();
+        assert!(
+            (by * 30.0 - 1.0).abs() < 1e-9,
+            "1.5 フレームの余りは 1 フレーム: {by}"
+        );
+    }
+
+    #[test]
+    fn 素材の長さが無いレイヤーは縛らず_長さは_1_フレーム残す() {
+        let m = model();
+        assert!((trim_by(&m, Part::InHandle, -50.0).unwrap() + 51.0).abs() < 1e-9);
+        assert!((trim_by(&m, Part::OutHandle, 80.0).unwrap() - 75.0).abs() < 1e-9);
+        let by = trim_by(&m, Part::InHandle, 99.0).unwrap();
+        assert!((by - (4.0 - 1.0 / 30.0)).abs() < 1e-9, "{by}");
+    }
+
+    #[test]
+    fn タイムリマップのあるレイヤーのイン点は動かさない() {
+        let mut m = footage_model();
+        m.items[1].trim.fixed_in = true;
+        assert!(trim_by(&m, Part::InHandle, 2.0).is_none());
+        assert!(trim_by(&m, Part::OutHandle, 4.0).is_some());
     }
 
     #[test]

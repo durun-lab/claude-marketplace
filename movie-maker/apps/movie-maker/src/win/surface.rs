@@ -145,12 +145,25 @@ fn key_name(vk: u32) -> String {
 
 /// サーフェスの HWND に、左ボタンを押して `from` から `to` まで動かして離すメッセージを投げる（自動試験用）。
 pub fn post_drag(hwnd: isize, from: (i32, i32), to: (i32, i32)) {
-    let lparam = |(x, y): (i32, i32)| LPARAM((((y & 0xFFFF) << 16) | (x & 0xFFFF)) as isize);
-    let h = HWND(hwnd as *mut _);
+    post_press(hwnd, from, to);
+    post_release(hwnd, to);
+}
+
+/// 左ボタンを押して `from` から `to` まで動かし、離さずに止める（ドラッグ中の画面を撮る自動試験用）。
+pub fn post_press(hwnd: isize, from: (i32, i32), to: (i32, i32)) {
+    post_mouse(hwnd, WM_LBUTTONDOWN, from);
+    post_mouse(hwnd, WM_MOUSEMOVE, to);
+}
+
+/// `at` で左ボタンを離す。
+pub fn post_release(hwnd: isize, at: (i32, i32)) {
+    post_mouse(hwnd, WM_LBUTTONUP, at);
+}
+
+fn post_mouse(hwnd: isize, msg: u32, (x, y): (i32, i32)) {
+    let lparam = LPARAM((((y & 0xFFFF) << 16) | (x & 0xFFFF)) as isize);
     unsafe {
-        let _ = PostMessageW(Some(h), WM_LBUTTONDOWN, WPARAM(0), lparam(from));
-        let _ = PostMessageW(Some(h), WM_MOUSEMOVE, WPARAM(0), lparam(to));
-        let _ = PostMessageW(Some(h), WM_LBUTTONUP, WPARAM(0), lparam(to));
+        let _ = PostMessageW(Some(HWND(hwnd as *mut _)), msg, WPARAM(0), lparam);
     }
 }
 

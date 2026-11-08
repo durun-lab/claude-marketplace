@@ -1,38 +1,41 @@
-//! ウィンドウのスクリーンショット。画面の同じ矩形を GDI で写して PNG にする。
-//! DWM が合成した後の画面を写すので、子 HWND のサーフェスも子 WebView も入る（ほかのウィンドウに隠れていないこと）。
+//! ウィンドウのスクリーンショット。`PrintWindow` でウィンドウ自身に描かせて PNG にする。
+//! 画面の矩形を写さないので、重なったほかのウィンドウや利用者の画面は入らない。
+//! `PW_RENDERFULLCONTENT` で DWM の合成の内容を描かせるので、子 HWND のサーフェスも子 WebView も入る。
 
 use std::path::Path;
 
 use windows::Win32::Foundation::{HWND, RECT};
 use windows::Win32::Graphics::Gdi::{
-    BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits,
-    ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, CAPTUREBLT, DIB_RGB_COLORS,
-    SRCCOPY,
+    CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, GetDC, GetDIBits,
+    ReleaseDC, SelectObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
 };
-use windows::Win32::UI::WindowsAndMessaging::GetWindowRect;
+use windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
+use windows::Win32::UI::WindowsAndMessaging::{GetWindowRect, PW_RENDERFULLCONTENT};
 
 /// 1 画素のバイト数（BGRA）。
 const BYTES_PER_PIXEL: usize = 4;
 
-/// `hwnd` の画面上の矩形を `path` に PNG で書く。
+/// `hwnd` のウィンドウを `path` に PNG で書く。
 pub fn capture_window(hwnd: isize, path: &Path) -> Result<(), String> {
+    let hwnd = HWND(hwnd as *mut _);
     let mut rect = RECT::default();
-    unsafe { GetWindowRect(HWND(hwnd as *mut _), &mut rect) }.map_err(|e| e.to_string())?;
+    unsafe { GetWindowRect(hwnd, &mut rect) }.map_err(|e| e.to_string())?;
     let (w, h) = (rect.right - rect.left, rect.bottom - rect.top);
     if w <= 0 || h <= 0 {
         return Err("ウィンドウの大きさが 0".into());
     }
-    let bgra = read_screen(rect.left, rect.top, w, h)?;
+    let bgra = print_window(hwnd, w, h)?;
     write_png(path, w as u32, h as u32, &bgra)
 }
 
-fn read_screen(x: i32, y: i32, w: i32, h: i32) -> Result<Vec<u8>, String> {
+fn print_window(hwnd: HWND, w: i32, h: i32) -> Result<Vec<u8>, String> {
     unsafe {
+        // 画面の DC は互換のビットマップを作るのにだけ使い、画素は読まない。
         let screen = GetDC(None);
         let mem = CreateCompatibleDC(Some(screen));
         let bitmap = CreateCompatibleBitmap(screen, w, h);
         let old = SelectObject(mem, bitmap.into());
-        let blit = BitBlt(mem, 0, 0, w, h, Some(screen), x, y, SRCCOPY | CAPTUREBLT);
+        let printed = PrintWindow(hwnd, mem, PRINT_WINDOW_FLAGS(PW_RENDERFULLCONTENT)).as_bool();
         let mut info = BITMAPINFO {
             bmiHeader: BITMAPINFOHEADER {
                 biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
@@ -60,7 +63,9 @@ fn read_screen(x: i32, y: i32, w: i32, h: i32) -> Result<Vec<u8>, String> {
         let _ = DeleteObject(bitmap.into());
         let _ = DeleteDC(mem);
         ReleaseDC(None, screen);
-        blit.map_err(|e| e.to_string())?;
+        if !printed {
+            return Err("PrintWindow が失敗".into());
+        }
         if lines == 0 {
             return Err("GetDIBits が 0 行".into());
         }
