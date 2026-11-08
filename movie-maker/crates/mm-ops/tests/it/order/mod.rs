@@ -2,7 +2,7 @@
 //! レビューで再現した、順で結果が変わるプロジェクトのデータを固定する。
 
 use crate::common::{self, canon, comp, layer, project};
-use mm_doc::{Cut, Layer, Mask, MaskRect, Node, Project, NESTED_KIND, NESTED_PARAM};
+use mm_doc::{Cut, Effect, Layer, Mask, MaskRect, Node, Project, NESTED_KIND, NESTED_PARAM};
 use mm_ops::*;
 use mm_types::{Id, ParamValue, RationalTime};
 
@@ -314,5 +314,54 @@ fn add_layer_は足すレイヤーのマスクの_id_を_touches_に含める() 
     let a = add_layer("c", l);
     let b = add_mask("l1", "mk2");
     assert!(apply_each(&p, &[&a]).0[0] && apply_each(&p, &[&b]).0[0]);
-    assert!(a.touches(&p).unwrap().overlaps(&b.touches(&p).unwrap()));
+    assert_order_free(&p, &a, &b);
+}
+
+#[test]
+fn add_composition_は中のレイヤーのマスクの_id_を_touches_に含める() {
+    let p = mask_layers();
+    let mut l = layer("l5", 0, 0, 2);
+    l.masks.push(rect_mask("mk2"));
+    let a: Op = AddComposition {
+        composition: comp("c3", vec![l], vec![]),
+    }
+    .into();
+    let b = add_mask("l1", "mk2");
+    assert!(apply_each(&p, &[&a]).0[0] && apply_each(&p, &[&b]).0[0]);
+    assert_order_free(&p, &a, &b);
+}
+
+fn effect_layer(id: &str, effect: &str) -> Layer {
+    let mut l = layer(id, 0, 0, 2);
+    l.effects.push(Effect {
+        id: Id::new(effect),
+        node: Node::new("blur", 1),
+        enabled: true,
+    });
+    l
+}
+
+#[test]
+fn remove_layer_はレイヤーが持つ効果の_id_を_touches_に含める() {
+    // 同じ ID の効果を持つレイヤーを別のコンポジションに足す操作は、持ち主を外した後でないと重複で拒否される。
+    let mut p = mask_layers();
+    p.compositions[0].layers.push(effect_layer("l4", "fx"));
+    p.validate().unwrap();
+    let add = add_layer("c2", effect_layer("l5", "fx"));
+    let remove: Op = RemoveLayer {
+        layer: Id::new("l4"),
+    }
+    .into();
+    assert!(!apply_each(&p, &[&add]).0[0] && apply_each(&p, &[&remove]).0[0]);
+    assert_order_free(&p, &add, &remove);
+}
+
+#[test]
+fn add_layer_は足すレイヤーの効果の_id_を_touches_に含める() {
+    // 別のコンポジションに同じ ID の効果を持つレイヤーを足す 2 つの操作は、後に適用した方が重複で拒否される。
+    let p = mask_layers();
+    let a = add_layer("c", effect_layer("l3", "fx"));
+    let b = add_layer("c2", effect_layer("l4", "fx"));
+    assert!(apply_each(&p, &[&a]).0[0] && apply_each(&p, &[&b]).0[0]);
+    assert_order_free(&p, &a, &b);
 }

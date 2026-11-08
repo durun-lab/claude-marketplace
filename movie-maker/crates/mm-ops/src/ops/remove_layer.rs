@@ -6,7 +6,7 @@ use mm_doc::Project;
 use mm_types::{LayerId, Result};
 
 use crate::op::{Apply, Op};
-use crate::ops::{invalid, layer_mask_ids, layer_referrers, AddLayer};
+use crate::ops::{invalid, layer_owned_ids, layer_referrers, AddLayer};
 use crate::touches::Touches;
 
 /// レイヤーを外す。ほかのレイヤーの親やトラックマットになっていれば拒否する（先に外す）。
@@ -21,7 +21,7 @@ impl Apply for RemoveLayer {
         let (comp, _) = project.layer_index(&self.layer)?;
         let mut t = Touches::of(&comp);
         t.add(&self.layer);
-        layer_mask_ids(project.layer(&self.layer)?.1, &mut t);
+        layer_owned_ids(project.layer(&self.layer)?.1, &mut t);
         layer_referrers(project.composition(&comp)?, &self.layer, &mut t);
         Ok(t)
     }
