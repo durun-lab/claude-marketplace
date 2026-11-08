@@ -5,7 +5,7 @@ use mm_decode_hw::render::{
 };
 use mm_decode_hw::yuv::YuvParams;
 
-use crate::share::{BufferLayout, SharedRing};
+use crate::share::{BufferLayout, SharedRing, Slot};
 
 /// バッファの配置を渡す一様バッファのバイト数（`u32` 8 個分。WGSL の `Layout` の大きさ以上）。
 const LAYOUT_BYTES: usize = 32;
@@ -72,50 +72,76 @@ fn layout_bytes(layout: BufferLayout, bits: u32) -> [u8; LAYOUT_BYTES] {
     out
 }
 
+/// 共有バッファを読む描画パス。バインディングの番号は 0 が YUV、1 が変換の係数、2 が配置で、
+/// WGSL の `@binding` と `slot_bind` の番号に合わせる。
+fn yuv_pass(device: &wgpu::Device) -> YuvPass {
+    let entries = [
+        fragment_entry(0, storage_binding()),
+        fragment_entry(1, uniform_binding()),
+        fragment_entry(2, uniform_binding()),
+    ];
+    YuvPass::new(
+        device,
+        "yuv420 buffer to linear rgba16f",
+        FRAGMENT,
+        &entries,
+    )
+}
+
+/// 配置を書き込んだ一様バッファ。
+fn layout_buffer(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    layout: BufferLayout,
+    bits: u32,
+) -> wgpu::Buffer {
+    let buffer = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("yuv layout"),
+        size: LAYOUT_BYTES as u64,
+        usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    queue.write_buffer(&buffer, 0, &layout_bytes(layout, bits));
+    buffer
+}
+
+/// 1 スロット分のバインドグループ。
+fn slot_bind(
+    device: &wgpu::Device,
+    pass: &YuvPass,
+    slot: &Slot,
+    params: &ParamsBuffer,
+    layout_buf: &wgpu::Buffer,
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: None,
+        layout: &pass.layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: slot.buffer.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: params.buffer().as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: layout_buf.as_entire_binding(),
+            },
+        ],
+    })
+}
+
 impl BufferConverter {
-    /// リングバッファのスロットごとに束縛を作る。`bits` は 1 成分のビット深度。
+    /// リングバッファのスロットごとにバインドグループを作る。`bits` は 1 成分のビット深度。
     pub fn new(queue: wgpu::Queue, ring: &SharedRing, bits: u32) -> Self {
         let device = ring.device().clone();
-        let entries = [
-            fragment_entry(0, storage_binding()),
-            fragment_entry(1, uniform_binding()),
-            fragment_entry(2, uniform_binding()),
-        ];
-        let pass = YuvPass::new(
-            &device,
-            "yuv420 buffer to linear rgba16f",
-            FRAGMENT,
-            &entries,
-        );
+        let pass = yuv_pass(&device);
         let params = ParamsBuffer::new(&device);
-        let layout_buf = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("yuv layout"),
-            size: LAYOUT_BYTES as u64,
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        queue.write_buffer(&layout_buf, 0, &layout_bytes(ring.layout(), bits));
+        let layout_buf = layout_buffer(&device, &queue, ring.layout(), bits);
         let binds = (0..ring.len())
-            .map(|i| {
-                device.create_bind_group(&wgpu::BindGroupDescriptor {
-                    label: None,
-                    layout: &pass.layout,
-                    entries: &[
-                        wgpu::BindGroupEntry {
-                            binding: 0,
-                            resource: ring.slot(i).buffer.as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 1,
-                            resource: params.buffer().as_entire_binding(),
-                        },
-                        wgpu::BindGroupEntry {
-                            binding: 2,
-                            resource: layout_buf.as_entire_binding(),
-                        },
-                    ],
-                })
-            })
+            .map(|i| slot_bind(&device, &pass, ring.slot(i), &params, &layout_buf))
             .collect();
         Self {
             device,
