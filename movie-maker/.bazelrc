@@ -12,4 +12,8 @@ build --jobs=16
 
 test --test_output=errors
 
+# 道具（process_wrapper など）と build script は exec の設定で一度走るだけなので最適化しない。
+# MODULE.bazel の proc-macro の注記と合わせて、何もない状態のビルドが 43 秒から 22 秒になる（docs/design/spikes/bazel.md）。
+build --@rules_rust//rust/settings:extra_exec_rustc_flags=-Copt-level=0
+
 try-import %workspace%/user.bazelrc

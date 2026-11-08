@@ -27,6 +27,35 @@ crate.annotation(
     rustc_flags = ["-Copt-level=2"],
 )
 
+# build script と proc-macro からしか使わない依存は、ビルドの間に一度走るだけなので最適化しない（cargo の build-override の既定と同じ）。
+# 道具と build script 自体は .bazelrc の extra_exec_rustc_flags で同じにする。
+[
+    crate.annotation(
+        crate = name,
+        rustc_flags = ["-Copt-level=0"],
+    )
+    for name in [
+        "autocfg",
+        "cc",
+        "find-msvc-tools",
+        "glob",
+        "jobserver",
+        "pkg-config",
+        "proc-macro2",
+        "quote",
+        "ref-cast-impl",
+        "schemars_derive",
+        "serde_derive",
+        "serde_derive_internals",
+        "shlex",
+        "syn",
+        "thiserror-impl",
+        "unicode-ident",
+        "vcpkg",
+        "version_check",
+    ]
+]
+
 # from_cargo は workspace の根の全部のファイルを一時ディレクトリへ symlink するので、
 # symlink の特権が無い Windows（開発者モードが切）では作れない。試作の範囲の依存を spec で並べ、版は Cargo.lock に合わせる。
 crate.spec(
