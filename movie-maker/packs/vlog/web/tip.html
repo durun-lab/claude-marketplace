@@ -72,19 +72,9 @@
     if (data.body) box.append(el('p', 'b', String(data.body)));
   };
 
-  // テーマの色を CSS 変数にして、var(--名前) の参照を返す。色は theme.json だけが持ち、ページは名前で引く。
-  const themeColors = (theme) => {
-    const out = {};
-    for (const [k, v] of Object.entries(theme.colors || {})) {
-      document.documentElement.style.setProperty(`--${k}`, v);
-      out[k] = `var(--${k})`;
-    }
-    return out;
-  };
-
   window.mmSetTime = (t, data) => {
     const theme = data.theme || {};
-    const colors = themeColors(theme);
+    const colors = mmThemeColors(theme);
     const fonts = theme.fonts || {};
     const ink = colors.ink;
     const box = document.getElementById('box');

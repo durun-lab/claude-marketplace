@@ -28,6 +28,10 @@ pub const SUPPORTED_NAMES: [&str; 16] = [
 /// x264 の品質（小さいほど高画質）。編集の途中の確認と配信の両方に足りる値。
 const X264_CRF: &str = "18";
 const X264_PRESET: &str = "medium";
+/// 配信の区間（`h264_ts`）の profile と level。親のプレイリストの `CODECS`（`avc1.640028`）と同じ値にそろえる。
+/// level 4.0 は 540p の縦横比の広い映像（1 フレーム 8192 マクロブロックまで）まで収める。
+const H264_TS_PROFILE: &str = "high";
+const H264_TS_LEVEL: &str = "40";
 /// 2 パスの目標。1 画素 1 フレームあたりのビット数（1080p60 でおよそ 15 Mbps）。
 const TWO_PASS_BITS_PER_PIXEL: f64 = 0.12;
 /// ProRes の profile（prores_ks）。
@@ -52,7 +56,9 @@ pub fn spec_of(codec: &str) -> Option<CodecSpec> {
                 AudioCodec::Aac,
                 Rate::Stream,
             )
-            .option("preset", X264_PRESET),
+            .option("preset", X264_PRESET)
+            .option("profile", H264_TS_PROFILE)
+            .option("level", H264_TS_LEVEL),
         ),
         "h264_2pass" => Some(
             CodecSpec::new(

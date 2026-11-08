@@ -18,6 +18,7 @@ use crate::compose::DrawItem;
 use crate::effects::FrameList;
 use crate::frame_cache::{self, CachedImage, KeyEnv, Keyed, NestedKeyInput};
 use crate::kind_cache::{render_cached, Placement};
+use crate::matte;
 
 use crate::renderer::WgpuRenderer;
 use crate::transform::{uv_to_ndc, LayerTransform};
@@ -52,19 +53,19 @@ impl CompCx<'_> {
         self.size.width as f32 / self.comp.width as f32
     }
 
-    fn comp_size(&self) -> (f32, f32) {
+    pub(crate) fn comp_size(&self) -> (f32, f32) {
         (self.comp.width as f32, self.comp.height as f32)
     }
 }
 
 /// 合成に渡す 1 枚。
 pub(crate) struct Prepared {
-    texture: u64,
-    matrix: [f32; 16],
-    opacity: f32,
-    taps: [f32; 2],
-    clip: Clip,
-    passes: &'static [BlendPass],
+    pub(crate) texture: u64,
+    pub(crate) matrix: [f32; 16],
+    pub(crate) opacity: f32,
+    pub(crate) taps: [f32; 2],
+    pub(crate) clip: Clip,
+    pub(crate) passes: &'static [BlendPass],
 }
 
 /// レイヤーの画像のテクスチャと、コンポジションの画素での置き場所。
@@ -120,12 +121,17 @@ impl WgpuRenderer {
         let target = self.gpu.create(cx.size)?;
         let mut prepared = Vec::new();
         let mut temps = Vec::new();
+        let mattes = matte::matte_layers(cx.comp);
         for layer in &cx.comp.layers {
-            if !layer.range()?.contains(cx.t) {
+            // 無効のレイヤーは描かない。マットのレイヤーは matted_item が enabled に依らず引く。
+            if !layer.enabled
+                || mattes.contains(layer.id.as_str())
+                || !layer.range()?.contains(cx.t)
+            {
                 continue;
             }
             let _span = tracing::debug_span!("render.layer").entered();
-            match self.layer_item(encoder, cx, layer, &mut temps) {
+            match self.matted_item(encoder, cx, layer, &mut temps, 0) {
                 Ok(Some(p)) => prepared.push(p),
                 Ok(None) => {}
                 Err(e) => self.errors.push(format!("layer {}: {e}", layer.id)),
@@ -371,8 +377,12 @@ impl WgpuRenderer {
             return None;
         }
         let color = self.config_fingerprint();
-        let factory = self.decoders.id();
-        let decoder = |id: &AssetId| self.sources.backend(id).unwrap_or(factory).to_owned();
+        let unopened = frame_cache::unopened_decoder(self.decoders.as_ref());
+        let decoder = |id: &AssetId| {
+            self.sources
+                .backend(id)
+                .map_or_else(|| unopened.clone(), str::to_owned)
+        };
         let env = KeyEnv {
             project: child.project,
             quality: child.quality,
@@ -448,7 +458,7 @@ fn has_vector(cx: &CompCx<'_>, comp: &Composition, depth: u32) -> bool {
     if depth > MAX_DEPTH {
         return false;
     }
-    comp.layers.iter().any(|layer| {
+    matte::effective_layers(comp).any(|layer| {
         let Ok((kind, params)) = evaluate(cx.nodes, layer, cx.t) else {
             return false;
         };

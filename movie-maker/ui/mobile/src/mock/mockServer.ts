@@ -3,6 +3,7 @@ import type { EventSourceLike } from "../connection.ts";
 import type { CommentItem, CommentState, ProjectInfo } from "../api/types.ts";
 import type { Proposal } from "../proposals/api.ts";
 import { MOBILE_HEADER } from "../api/http.ts";
+import { createMockStory, type MockStory } from "../story/mockStory.ts";
 
 /** デモとテストの偽の PC。人の待ち受けの API が出来るまで、12-mobile.md の「HTTP の形」の応答を手元で返す。 */
 export const MOCK_PAIR_CODE = "ABCD2345";
@@ -20,6 +21,7 @@ export interface MockServer {
   project: ProjectInfo;
   comments: CommentItem[];
   proposals: Proposal[];
+  story: MockStory;
   /** PC が受けた書き込みの要求（パスと本文）。 */
   writes: { path: string; body: unknown; header: string | null }[];
   /** PC から SSE のイベントを流す。 */
@@ -124,6 +126,8 @@ const ONE_COMMENT = /^\/m\/api\/comments\/([^/]+)$/;
 const PROPOSAL_PATH =/^\/m\/api\/proposals\/(\d+)\/(approve|reject|reopen)$/;
 
 const api = (server: MockServer, req: Request1): Response => {
+  const story = server.story.handle(req);
+  if (story) return story;
   const { path, method } = req;
   if (path === "/m/api/project") return json(HTTP_OK, server.project);
   if (path === "/m/api/comments" && method === "GET") return json(HTTP_OK, { comments: server.comments });
@@ -184,6 +188,7 @@ export const createMockServer = (init: {
     project: { ...PROJECT, ...(init.cuts ? { cuts: init.cuts } : {}) },
     comments: init.comments ?? [],
     proposals: init.proposals ?? [],
+    story: createMockStory(),
     writes: [],
     emit: (type, data) =>
       handlers.forEach((m) => m.get(type)?.forEach((fn) => fn({ data: JSON.stringify(data) }))),

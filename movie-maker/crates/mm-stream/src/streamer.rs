@@ -12,10 +12,11 @@ use mm_types::{MmError, Result};
 use crate::audio::{ensure_audio, respond, AudioRequest};
 use crate::cache::{touch, CacheDir};
 use crate::frames::{render_webp, StillCache, StillKey, StillRequest};
-use crate::hls::{HlsRequest, Plan};
+use crate::hls::{master_playlist, HlsRequest, Plan};
 use crate::key::{segment_key, KeyEnv, SegmentKey};
 use crate::listing::{Listing, Listings};
 use crate::payload::{Payload, IMMUTABLE, REVALIDATE};
+use crate::quality::HlsQuality;
 use crate::segment::render_segment;
 use crate::worker::{lock, run, SegJob, Slot, Urgent, Worker};
 
@@ -190,6 +191,31 @@ impl Streamer {
         ))
     }
 
+    /// 画質を選ぶ親のプレイリスト（m3u8）。各画質の `BANDWIDTH` は区間のピークのビットレート
+    /// （[`HlsQuality::peak_bits_per_second`]）。画質ごとのプレイリストの URI は `variant_uri` が決める。
+    pub fn master_playlist(
+        &self,
+        project: &Project,
+        composition: &str,
+        variant_uri: &dyn Fn(HlsQuality) -> String,
+    ) -> Result<Payload> {
+        let variants = HlsQuality::ALL
+            .iter()
+            .map(|&quality| {
+                let req = HlsRequest {
+                    composition: composition.into(),
+                    quality,
+                };
+                Ok((Plan::new(project, &req)?, variant_uri(quality)))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Ok(Payload::ok(
+            "application/vnd.apple.mpegurl",
+            REVALIDATE,
+            master_playlist(&variants).into_bytes(),
+        ))
+    }
+
     /// HLS の区間（MPEG-TS）。無ければ作って待ち、後ろの区間を先読みに回す。
     /// 今のプレイリストに無く、ディスクにも無いキーは `NotFound`（端末はプレイリストを読み直す）。
     pub fn segment(&self, key: SegmentKey) -> Result<Payload> {
@@ -267,10 +293,11 @@ impl Streamer {
             return Ok(k.clone());
         }
         let keying = Arc::new(self.with_engine(|e| {
+            let decoders = e.decoder_backend_ids();
             let backends = e
                 .backend_names()
                 .iter()
-                .map(|(role, name)| format!("{role}={name}"))
+                .map(|&(role, name)| backend_label(role, name, &decoders))
                 .collect::<Vec<_>>()
                 .join(",");
             Ok(Keying {
@@ -342,6 +369,16 @@ impl Drop for Streamer {
     }
 }
 
+/// 配信の区間のキーに入れる実装の名前。デコーダーには名乗りうる名前の全部を添える（フレームのキャッシュの
+/// `unopened_decoder` と同じ形）。どれかの画素の作り方のバージョンが上がると名前が変わり、前の区間を使わない。
+pub(crate) fn backend_label(role: &str, name: &str, decoders: &[&str]) -> String {
+    if role == "decode" {
+        format!("{role}={name}[{}]", decoders.join(","))
+    } else {
+        format!("{role}={name}")
+    }
+}
+
 /// 区間を作ってキャッシュに置き、上限を超えた分を捨てる。先に同じキーの区間ができていれば何もしない。
 fn build(cache: &CacheDir, engine: &mut Engine, job: &SegJob, limit: u64) -> Result<()> {
     let path = cache.segment(job.key);
@@ -351,4 +388,22 @@ fn build(cache: &CacheDir, engine: &mut Engine, job: &SegJob, limit: u64) -> Res
     render_segment(engine, &job.project, &job.plan, job.index, &path)?;
     cache.evict_segments(limit);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::backend_label;
+
+    #[test]
+    fn デコーダーには名乗りうる名前を添え_ほかはそのまま() {
+        assert_eq!(
+            backend_label("decode", "auto", &["d3d12va@2", "ffmpeg@1"]),
+            "decode=auto[d3d12va@2,ffmpeg@1]"
+        );
+        assert_eq!(
+            backend_label("decode", "ffmpeg", &["ffmpeg", "ffmpeg@1"]),
+            "decode=ffmpeg[ffmpeg,ffmpeg@1]"
+        );
+        assert_eq!(backend_label("render", "auto", &["x"]), "render=auto");
+    }
 }

@@ -105,19 +105,9 @@
     return `<div class="rw" style="opacity:${show};translate:${(1 - show) * -60}px 0">${hl}${gr}<div class="txs"><p class="lb" style="color:${lbColor}"><span>${esc(r.label)}</span>${pb}</p>${cm}</div></div>`;
   };
 
-  // テーマの色を CSS 変数にして、var(--名前) の参照を返す。色は theme.json だけが持ち、ページは名前で引く。
-  const themeColors = (theme) => {
-    const out = {};
-    for (const [k, v] of Object.entries(theme.colors || {})) {
-      document.documentElement.style.setProperty(`--${k}`, v);
-      out[k] = `var(--${k})`;
-    }
-    return out;
-  };
-
   window.mmSetTime = (t, data) => {
     const theme = data.theme || {};
-    const c = themeColors(theme);
+    const c = mmThemeColors(theme);
     const fonts = theme.fonts || {};
     const labels = split(data.labels, '|').filter(Boolean);
     const comments = split(data.comments, '|');

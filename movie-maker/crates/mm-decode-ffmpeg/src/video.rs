@@ -100,9 +100,9 @@ impl FfmpegDecoder {
 impl Decoder for FfmpegDecoder {
     fn backend_id(&self) -> Option<&'static str> {
         Some(if self.seq.wide_signal() {
-            mm_decode_ffmpeg_core::wide_backend_id!("ffmpeg")
+            crate::WIDE_ID
         } else {
-            "ffmpeg"
+            crate::ID
         })
     }
 

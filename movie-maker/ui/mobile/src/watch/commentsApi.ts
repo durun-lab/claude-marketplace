@@ -18,6 +18,5 @@ export const replyToComment = (api: Api, id: string, text: string): Promise<Comm
 export const setCommentState = (api: Api, id: string, state: Exclude<CommentState, "fresh">): Promise<CommentItem> =>
   api.post(`${COMMENTS}/${encodeURIComponent(id)}/state`, { state });
 
-/** 編集した結果の HLS のプレイリスト。画質は既定の 360p。 */
-export const streamUrl = (comp: string, quality = "360p"): string =>
-  `${API_ROOT}/stream/${encodeURIComponent(comp)}/${quality}.m3u8`;
+/** 編集した結果の HLS の親のプレイリスト。画質は hls.js（Android）と iOS のネイティブがネットワークに合わせて選ぶ。 */
+export const streamUrl = (comp: string): string => `${API_ROOT}/stream/${encodeURIComponent(comp)}/index.m3u8`;

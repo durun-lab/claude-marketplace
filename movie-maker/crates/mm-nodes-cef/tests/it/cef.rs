@@ -4,7 +4,6 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::Instant;
 
 use mm_gpu::{GpuContext, GpuRequest, WgpuGpu};
 use mm_host_cef::CefLauncher;
@@ -156,6 +155,31 @@ fn 同じ入力なら同じ画素で_gpu_と_cpu_の経路も合う() {
     assert!(diff < TOLERANCE, "GPU と CPU の経路の差 {diff}");
 }
 
+/// キャッシュから追い出すのに使う大きさ。キャッシュの上限（384 MiB）を数枚で超える。
+const EVICTOR: Size = Size::new(3840, 2160);
+
+#[test]
+fn 同じホストで同じ時刻を描き直しても同じ画素() {
+    let Some(exe) = host() else { return };
+    let size = Size::new(640, 360);
+    let p = params(serde_json::json!({"label": "again"}), false);
+    let t = RationalTime::new(3, 2).unwrap();
+    let kind = kind(&exe);
+    let mut gpu = gpu();
+    let first = render_gpu(&kind, &mut gpu, &p, t, size);
+    for n in 10..18 {
+        render_gpu(&kind, &mut gpu, &p, RationalTime::seconds(n), EVICTOR);
+    }
+    let drawn = kind.stats().drawn;
+    let second = render_gpu(&kind, &mut gpu, &p, t, size);
+    assert_eq!(
+        kind.stats().drawn,
+        drawn + 1,
+        "キャッシュから出ていて描き直す"
+    );
+    assert_eq!(first, second, "同じホストで時刻を往復しても同じ画素");
+}
+
 #[test]
 fn デバイスを作り直しても新しいデバイスのホストで描く() {
     let Some(exe) = host() else { return };
@@ -217,60 +241,4 @@ fn 同じフレームに多数のレイヤーが並んでも全部を描く() {
         );
     }
     assert_eq!(kind.stats().drawn, LAYERS as u64);
-}
-
-fn percentile(sorted: &[f64], p: f64) -> f64 {
-    sorted[((sorted.len() - 1) as f64 * p).round() as usize]
-}
-
-/// 1080p の 1 フレームの時間（ホストの描画、共有テクスチャの受け取り、変換、ヘルパーへのコピー、GPU の完了まで）を出す。
-#[test]
-fn フル_hd_の_1_フレームの時間を測る() {
-    let Some(exe) = host() else { return };
-    const WARMUP: i64 = 20;
-    const FRAMES: i64 = 120;
-    let mut gpu = gpu();
-    let ctx = gpu.context().clone();
-    let kind = kind(&exe);
-    let p = params(serde_json::json!({"label": "bench"}), false);
-    let mut ms = Vec::new();
-    let frame_at = |n: i64, gpu: &mut WgpuGpu| {
-        let start = Instant::now();
-        let t = RationalTime::new(i128::from(n), 30).unwrap();
-        let services = sample_services();
-        let mut inputs = NoInputs;
-        let mut cx = FrameCx {
-            time: t,
-            params: &p,
-            size: FULL_HD,
-            region: FULL_HD.to_rect(),
-            scale: 1.0,
-            quality: Quality::Full,
-            inputs: &mut inputs,
-            footage: None,
-            source_time: t,
-            gpu,
-            services: &services,
-        };
-        let frame = kind.render(&mut cx).expect("描ける");
-        gpu.release(&frame);
-        gpu.after_submit();
-        ctx.device
-            .poll(wgpu::PollType::wait_indefinitely())
-            .expect("GPU の完了待ち");
-        start.elapsed().as_secs_f64() * 1000.0
-    };
-    for n in 0..WARMUP + FRAMES {
-        let took = frame_at(n, &mut gpu);
-        if n >= WARMUP {
-            ms.push(took);
-        }
-    }
-    let hit = frame_at(WARMUP + FRAMES - 1, &mut gpu);
-    ms.sort_by(f64::total_cmp);
-    eprintln!(
-        "web.cef 1920x1080: p50 {:.2} ms, p95 {:.2} ms（{FRAMES} フレーム）、キャッシュにヒットしたとき {hit:.2} ms",
-        percentile(&ms, 0.5),
-        percentile(&ms, 0.95),
-    );
 }

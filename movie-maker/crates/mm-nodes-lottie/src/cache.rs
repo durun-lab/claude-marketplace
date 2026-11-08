@@ -2,11 +2,11 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::SystemTime;
 
 use velato::Composition;
 use vello_cpu::kurbo::Affine;
 
+use mm_node_api::file_digest;
 use mm_types::{MmError, Result, RgbaImage, Size};
 
 use crate::raster::{DrawRequest, Raster};
@@ -16,10 +16,10 @@ const KEPT_COMPOSITIONS: usize = 4;
 /// 覚えるフレームの数。速さ 0 の静止と、短いループの往復で同じフレームが続く分。
 const KEPT_FRAMES: usize = 8;
 
-/// 読んだアニメーションと、読んだ時のファイルの更新時刻。
+/// 読んだアニメーションと、読んだ時のファイルの中身のハッシュ。
 struct Loaded {
     path: PathBuf,
-    modified: Option<SystemTime>,
+    digest: String,
     composition: Arc<Composition>,
 }
 
@@ -27,7 +27,7 @@ struct Loaded {
 #[derive(Debug, Clone, PartialEq)]
 struct FrameKey {
     path: PathBuf,
-    modified: Option<SystemTime>,
+    digest: String,
     frame_bits: u64,
     size: Size,
     transform: [u64; 6],
@@ -50,13 +50,13 @@ pub(crate) struct LottieCache {
 }
 
 impl LottieCache {
-    /// `path` のアニメーション。更新時刻が同じなら読み直さない。
+    /// `path` のアニメーション。中身のハッシュが同じなら読み直さない。
     pub(crate) fn composition(&mut self, path: &Path) -> Result<Arc<Composition>> {
-        let modified = modified(path)?;
+        let digest = digest(path)?;
         if let Some(i) = self
             .loaded
             .iter()
-            .position(|l| l.path == path && l.modified == modified)
+            .position(|l| l.path == path && l.digest == digest)
         {
             let hit = self.loaded.remove(i);
             let composition = hit.composition.clone();
@@ -71,7 +71,7 @@ impl LottieCache {
             0,
             Loaded {
                 path: path.to_path_buf(),
-                modified,
+                digest,
                 composition: composition.clone(),
             },
         );
@@ -87,7 +87,7 @@ impl LottieCache {
     ) -> Result<Arc<RgbaImage>> {
         let key = FrameKey {
             path: job.path.to_path_buf(),
-            modified: modified(job.path)?,
+            digest: digest(job.path)?,
             frame_bits: job.frame.to_bits(),
             size: job.size,
             transform: job.transform.as_coeffs().map(f64::to_bits),
@@ -110,7 +110,9 @@ impl LottieCache {
     }
 }
 
-/// ファイルの更新時刻。時刻を返さないファイルシステムでは `None`（中身の変化は見分けない）。
-fn modified(path: &Path) -> Result<Option<SystemTime>> {
-    Ok(std::fs::metadata(path)?.modified().ok())
+/// ファイルの中身のハッシュ。種類の指紋（`cache_fingerprint`）と同じ値で覚え、フレームのキャッシュのキーと
+/// 違う中身の画像を描かない（更新時刻の刻みの中の書き換えも見分ける）。
+fn digest(path: &Path) -> Result<String> {
+    file_digest(path)
+        .ok_or_else(|| MmError::NotFound(format!("lottie: {} を読めない", path.display())))
 }

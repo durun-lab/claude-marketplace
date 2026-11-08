@@ -11,10 +11,11 @@ fn field_at(pos: vec2<f32>) -> f32 {
 }
 fn front(p: f32) -> f32 { return mix(-1.05, 1.05, io3(win(p, 0.02, 0.96))); }
 
-// 境目からの距離（基準の画素）。次の場面の側が負。場の勾配は画面の 1 画素あたりの差（dpdx、dpdy）を基準の画素に直して使う。
+// 境目からの距離（基準の画素）。次の場面の側が負。場の勾配は画面の 1 画素あたりの差を基準の画素に直して使う。
+// 差は画素ごとに取り（dpdxFine）、2x2 の画素で同じ勾配になって縁がブロック状に段になるのを避ける。
 fn dist(p: f32) -> f32 {
     let f0 = field_at(P);
-    let g = length(vec2<f32>(dpdx(f0), dpdy(f0))) / PX;
+    let g = length(vec2<f32>(dpdxFine(f0), dpdyFine(f0))) / PX;
     return (f0 - front(p)) / max(g, 1e-5);
 }
 

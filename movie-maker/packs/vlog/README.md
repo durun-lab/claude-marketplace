@@ -28,6 +28,8 @@ mm pack expand packs/vlog note --var id=n1 --var text=OTTって？ --var at=3 > 
 mm pack apply ep04 packs/vlog callout --var id=co1 --var text=このつまみで空気感が変わる --var x=1180 --var y=640 --var at=2
 ```
 
+`--var comp=short` でショートに置くと、`apply` は文字のスタイルを画面の縁からの距離を保って変換し、web の部品にショートの画面の大きさを渡す。`pin` のある引数（`claude`、`figure` の `x`）の既定も右の縁からの距離を保つ。`expand` は `--project ep04` を渡したときだけプロジェクトを読み、省くと本編の画面に置く（[設計書の「ショートに置く」](../../docs/design/13-vlog-pack.md#ショートに置く)）。
+
 `callout` などの web の部品は `web.cef` で描く。CEF の配布物とホストが無い環境（`CEF_PATH` か `MM_CEF_HOST` が無い）では、モックの矩形で描く（[mm-nodes-cef](../../crates/mm-nodes-cef/README.md)）。
 
 ### web の部品
@@ -53,9 +55,9 @@ mm pack apply ep04 packs/vlog callout --var id=co1 --var text=このつまみで
 
 ### web の部品の書き方
 
-- `web/<名前>.html` に置き、`window.mmSetTime(t, data)` で画面を作る。`data` はマクロの `web` 手順の `data`（引数を埋めたもの）に `theme`（`colors`、`fonts`、`canvas`）を足したもの。
-- 1 倍の画素（コンポジションの画素）で組み、背景は透明のままにする。色と書体は `data.theme` から引き、HTML に色を直に書かない。
-- 出る・消える動きは手順の `fade_in`、`fade_out`（レイヤーの不透明度）で付け、ページは時刻で動かさない（`animated: false`。パラメータの組ごとに 1 回だけ描く）。出た後も動く決まりの部品（題字のきらめき、名乗りの帯と縦の動画の終わりの札の帯の速度線）と、時刻で中身が変わる部品（歌詞の色の進み、図解の `cues`、読む窓の下線と送り、Claude の 1 文字ずつ）だけ `animated: true` にして、`t` から形を決める。時計、タイマー、CSS のアニメーションとトランジションは使わない（同じ `t` でも画素が変わる。`mm pack check` が書き方の文字で確かめる）。
+- `web/<名前>.html` に置き、`window.mmSetTime(t, data)` で画面を作る。`data` はマクロの `web` 手順の `data`（引数を埋めたもの）に `theme`（`colors`、`fonts`、`canvas`）を足したもの。`canvas` は置くコンポジションの画面の大きさ（ショートなら 1080x1920）で、右や下の縁からの位置はこれで決める。
+- 1 倍の画素（コンポジションの画素）で組み、背景は透明のままにする。色と書体は `data.theme` から引き、HTML に色を直に書かない。色は `mmThemeColors(data.theme)` で引く。`web` 手順がページの最初の `<script>` の前にこの関数を差し込み、テーマの色を CSS 変数（`--名前`）にして `var(--名前)` の表を返す（`crates/mm-pack/src/web.rs`）。
+- 出る・消える動きは手順の `fade_in`、`fade_out`（レイヤーの不透明度）で付け、ページは時刻で動かさない（`animated: false`。パラメータの組ごとに 1 回だけ描く）。出た後も動く決まりの部品（題字のきらめき、名乗りの帯と縦の動画の終わりの札の帯の速度線）と、時刻で中身が変わる部品（歌詞の色の進み、図解の `cues`、読む窓の下線と送り、Claude の 1 文字ずつ）だけ `animated: true` にして、`t` から形を決める。時計、タイマー、CSS のアニメーションとトランジションは使わない（同じ `t` でも画素が変わる。`mm pack check` が書き方の文字で、`tests/it/vlog_web.rs` が描いた画素で確かめる）。
 - 乱数の要る形（爆発のぎざぎざ、紙吹雪、速度線）は、種から決まる乱数（mulberry32）で毎回同じに作る。
 - 画像は `data:` の URL で HTML に埋め込む。`web.cef` はネットワークとファイルの読み込みを CSP で禁じる（外の URL、相対のパス、`file://` は読めない）。書体はテーマの family の名前で書くだけでよい。パックの目録の書体（M PLUS Rounded 1c、Dela Gothic One、Mochiy Pop One。どれも OFL）は、適用したときにキャッシュからプロジェクトに写して素材になり、ホストが `@font-face` で渡す（[設計書の「書体」](../../docs/design/13-vlog-pack.md#書体)）。書体を取れなかったときや、書体のファイルが無いプロジェクトでは OS の書体（Yu Gothic UI）で描く。太さは書体の持つ面だけで描き（`font-synthesis: none`）、1 つの太さしかない Dela Gothic One と Mochiy Pop One に合成の太字を掛けない。
 - HTML はレイヤーのパラメータにコピーされるので、プロジェクトはパックのフォルダーが無くても同じに描ける。部品の HTML を直しても、置いたレイヤーは変わらない（置き直す）。
@@ -70,9 +72,10 @@ mm pack apply ep04 packs/vlog rewind --var cut=c20 --var speed=3
 ```
 
 - 種類は `transitions/<名前>.wgsl`。DTM_Vlog の WebGL2 のトランジション 19 種（boot、dip、dissolve、filter、flash、glitch、hex、leak、liquid、pianoroll、punch、slice、spectrum、stars、stepseq、vinyl、warp、waveform、whip）と、巻き戻し（rewind）。
-- `_prelude.wgsl` は全部の前に付く共通のコードで、元の `engine.js` の GLSL の小道具と、`index.html` の合成（マット、重ねる絵、映像の動き、シャッターの間のモーションブラー）を移したもの。合成は元と同じく 8 bit の符号化値（書き出しと同じ Rec.1886 の式）の空間で行う。
+- `_prelude.wgsl` は全部の前に付く共通のコードで、元の `engine.js` の GLSL の小道具と、`index.html` の合成（マット、重ねる絵、映像の動き、シャッターの間のモーションブラー）を移したもの。合成は元と同じく 8 bit の符号化値（書き出しと同じ Rec.1886 の式）の空間で行い、シャッターの間は元と同じ 16 回描いて平均する（RTX 5090 の 1080p では 8 回との差が計測のばらつきに収まる）。小道具の `fmod`（GLSL の `mod`）、`fill_sized`（形が画素を覆う割合。大きさ 0 の形を漏らさない）もここに置き、トランジションのファイルにコピーしない。
+- 縦横比の違う画面（ショート）では、基準の 1920x1080 の中央を画面を覆うように縦横同じ倍率で変換する（左右が切れる。[設計書の「ショートに置く」](../../docs/design/13-vlog-pack.md#ショートに置く)）。
 - パラメータは `transition.wgsl` の `p0` が乱数の種（マクロ `transition` の `seed`）、`rewind` が巻き戻しの逆再生の倍率（マクロ `rewind` の `speed`、正）。`p1`..`p7` は使わない。地は元と同じ不透明の黒で、境の両端（進み具合 0 と 1）ではシャッターを閉じ、前と次の場面そのものになる。
-- 元と違う所: 乱数の表（`data`）はセルの番号のハッシュで作るので並びが変わる。効果音（`sfx`）は移さない。前後の場面のぼかしはミップではなく円盤のタップの平均。巻き戻しの時刻の表示（t0 → t7）は文字が要るので描かない。進み具合はコマの中心ではなく連続の時刻から取る。座標は 1920x1080 の基準を画面へ軸ごとに引き伸ばすので、16:9 の本編向け（9:16 のショートでは円が楕円になる）。シャッターの長さはコマの速さ 30 fps で数える。
+- 元と違う所: 乱数の表（`data`）はセルの番号のハッシュで作るので並びが変わる。効果音（`sfx`）は移さない。前後の場面のぼかしはミップではなく円盤のタップの平均。巻き戻しの時刻の表示（t0 → t7）は文字が要るので描かない。進み具合はコマの中心ではなく連続の時刻から取る。シャッターの長さはコマの速さ 30 fps で数える。
 - 置き直すと差し替わる。外すのは操作 `setTransition`（`transition: null`）。
 - 元のコードは DTM_Vlog の自作で、gl-transitions のコードは含まない。小道具のうち `hash11`、`hash21`、`hash22` は Dave Hoskins の Hash without Sine（MIT）、`sdBox`、`sdSeg`、`sdHex` は Inigo Quilez の 2D の距離関数（MIT）と同じ形。
 

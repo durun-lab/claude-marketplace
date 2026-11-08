@@ -4,7 +4,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use mm_gpu::{GpuContext, GpuRequest};
 use mm_host_api::{HostProcess, HostRequest, HostResponse, HostSpec, SharedFrame};
@@ -12,12 +12,14 @@ use mm_host_cef::{pixel, CefLauncher, PipeHost, CEF_PATH_ENV};
 use mm_testkit::golden::{backend_name, Golden, GOLDEN_SIZE};
 use mm_testkit::host::HostFixture;
 use mm_types::{RationalTime, RgbaImage, Size};
-use windows::Win32::Foundation::{CloseHandle, HANDLE};
-use windows::Win32::Graphics::Direct3D12::ID3D12Resource;
+
+use crate::shared_texture::open_shared;
 
 const PAGE: &str = include_str!("pages/golden.html");
-const BENCH_PAGE: &str = include_str!("../../assets/bench.html");
+/// 契約の時間切れの検査が使う、ホストの 1 要求の期限。
 pub(crate) const TIMEOUT: Duration = Duration::from_secs(3);
+/// 要求の結果を見るテストの期限。CPU が詰まると CEF の起動と Prepare が数秒かかるので、時間を見ないテストは長く待つ。
+pub(crate) const REQUEST_LIMIT: Duration = Duration::from_secs(60);
 /// 契約の時間切れに使う、レンダラーを止める長さ。`TIMEOUT` より長くする。
 const BUSY_MS: u64 = 8000;
 const REQUIRE_ENV: &str = "MM_REQUIRE_CEF";
@@ -58,7 +60,7 @@ pub(crate) fn prepare(host: &mut PipeHost, page: &str) {
     let req = HostRequest::Prepare {
         params: serde_json::json!({ "html": page }),
     };
-    let res = host.request(&req, TIMEOUT).expect("Prepare");
+    let res = host.request(&req, REQUEST_LIMIT).expect("Prepare");
     assert_eq!(res, HostResponse::Prepared);
 }
 
@@ -74,7 +76,7 @@ pub(crate) fn render(
         params,
     };
     match host
-        .request(&req, TIMEOUT)
+        .request(&req, REQUEST_LIMIT)
         .unwrap_or_else(|e| panic!("RenderFrame {t:?} {size:?}: {e}"))
     {
         HostResponse::Frame(frame) => frame,
@@ -85,52 +87,6 @@ pub(crate) fn render(
 /// アプリ側として共有ハンドルを開き、BGRA8 をリードバックする。
 pub(crate) fn read_shared(ctx: &GpuContext, handle: u64, size: Size) -> Vec<u8> {
     readback(ctx, &open_shared(ctx, handle, size))
-}
-
-/// アプリ側として共有ハンドルを開いて wgpu のテクスチャにし、ハンドルを閉じる。
-pub(crate) fn open_shared(ctx: &GpuContext, handle: u64, size: Size) -> wgpu::Texture {
-    let handle = HANDLE(handle as usize as *mut _);
-    // SAFETY: as_hal の参照はこのブロックの間だけ使う。handle はホストがこのプロセスへ複製したもの。
-    let resource = unsafe {
-        let hal = ctx.device.as_hal::<wgpu::hal::api::Dx12>().expect("D3D12");
-        let mut resource: Option<ID3D12Resource> = None;
-        hal.raw_device()
-            .OpenSharedHandle(handle, &mut resource)
-            .expect("共有ハンドルを開ける");
-        CloseHandle(handle).expect("ハンドルを閉じられる");
-        resource.expect("資源")
-    };
-    let extent = wgpu::Extent3d {
-        width: size.width,
-        height: size.height,
-        depth_or_array_layers: 1,
-    };
-    let desc = wgpu::TextureDescriptor {
-        label: Some("host frame"),
-        size: extent,
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: wgpu::TextureFormat::Bgra8Unorm,
-        usage: wgpu::TextureUsages::COPY_SRC,
-        view_formats: &[],
-    };
-    // SAFETY: ホストは BGRA8 の 2D テクスチャを COMMON で渡す。
-    unsafe {
-        let hal = wgpu::hal::dx12::Device::texture_from_raw(
-            resource,
-            desc.format,
-            desc.dimension,
-            extent,
-            1,
-            1,
-        );
-        ctx.device.create_texture_from_hal::<wgpu::hal::api::Dx12>(
-            hal,
-            &desc,
-            wgpu::TextureUses::PRESENT,
-        )
-    }
 }
 
 fn readback(ctx: &GpuContext, texture: &wgpu::Texture) -> Vec<u8> {
@@ -174,39 +130,6 @@ fn readback(ctx: &GpuContext, texture: &wgpu::Texture) -> Vec<u8> {
         .chunks(padded as usize)
         .flat_map(|r| r[..row as usize].to_vec())
         .collect()
-}
-
-/// アプリが受け取ったフレームを自分のテクスチャへコピーし、完了を待つ（アプリ側の取り込みの費用）。
-fn copy_owned(ctx: &GpuContext, source: &wgpu::Texture) -> wgpu::Texture {
-    let target = ctx.device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("app frame"),
-        size: source.size(),
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: source.format(),
-        usage: wgpu::TextureUsages::COPY_DST | wgpu::TextureUsages::TEXTURE_BINDING,
-        view_formats: &[],
-    });
-    let mut encoder = ctx.device.create_command_encoder(&Default::default());
-    encoder.copy_texture_to_texture(
-        source.as_image_copy(),
-        target.as_image_copy(),
-        source.size(),
-    );
-    encoder.transition_resources(
-        std::iter::empty(),
-        std::iter::once(wgpu::TextureTransition {
-            texture: source,
-            selector: None,
-            state: wgpu::TextureUses::PRESENT,
-        }),
-    );
-    ctx.queue.submit([encoder.finish()]);
-    ctx.device
-        .poll(wgpu::PollType::wait_indefinitely())
-        .expect("コピーの完了待ち");
-    target
 }
 
 pub(crate) fn to_image(frame: &SharedFrame, ctx: &GpuContext) -> RgbaImage {
@@ -282,43 +205,5 @@ fn 古い時刻のフレームを返さない() {
             panic!("共有テクスチャのはず");
         };
         assert_eq!(marker(&read_shared(&ctx, handle, size), size.width), seq);
-    }
-}
-
-fn percentile(sorted: &[f64], p: f64) -> f64 {
-    sorted[((sorted.len() - 1) as f64 * p).round() as usize]
-}
-
-/// 別プロセス越しの 1 フレームの往復（要求からアプリ側のコピーの完了まで）を測って出す。数字は判定しない。
-#[test]
-fn 別プロセス越しの往復を測る() {
-    let Some(exe) = host_exe() else { return };
-    let ctx = gpu();
-    const WARMUP: i64 = 30;
-    const FRAMES: i64 = 300;
-    for size in [Size::new(1920, 1080), Size::new(1280, 720)] {
-        let mut host = CefLauncher::start(spec(&exe, Some(std::process::id()))).expect("起動");
-        prepare(&mut host, BENCH_PAGE);
-        let mut ms = Vec::new();
-        for n in 0..WARMUP + FRAMES {
-            let start = Instant::now();
-            let t = RationalTime::new(i128::from(n), 30).unwrap();
-            let frame = render(&mut host, t, size, serde_json::json!({}));
-            let SharedFrame::SharedTexture { handle, .. } = frame else {
-                panic!("共有テクスチャのはず");
-            };
-            copy_owned(&ctx, &open_shared(&ctx, handle, size));
-            if n >= WARMUP {
-                ms.push(start.elapsed().as_secs_f64() * 1000.0);
-            }
-        }
-        ms.sort_by(f64::total_cmp);
-        eprintln!(
-            "往復 {}x{}: p50 {:.2} ms, p95 {:.2} ms（{FRAMES} フレーム、アプリ側の GPU のコピーの完了まで）",
-            size.width,
-            size.height,
-            percentile(&ms, 0.5),
-            percentile(&ms, 0.95)
-        );
     }
 }

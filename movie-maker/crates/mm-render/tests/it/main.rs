@@ -2,16 +2,19 @@
 
 mod audio_effects;
 mod blend;
+mod cache_carry;
 mod cache_keys;
 mod common;
 mod contract;
 mod decoder_version;
+mod enabled;
 mod fonts;
 mod footage_reuse;
 mod frame_cache;
 mod golden;
 mod gpu_footage;
 mod mask;
+mod matte;
 mod nested;
 mod node_kinds;
 mod scene;

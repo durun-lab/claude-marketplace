@@ -30,4 +30,4 @@ mod wrap;
 #[cfg(feature = "d3d12va")]
 pub use decoder::{gpu_request, required_features, D3d12vaDecoder, D3d12vaFactory};
 #[cfg(feature = "d3d12va")]
-pub use probe::{PROBE_ENV, PROBE_FRAMES};
+pub use probe::{find_probe, PROBE_ENV, PROBE_FRAMES};

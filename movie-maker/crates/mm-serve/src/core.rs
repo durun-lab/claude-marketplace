@@ -41,6 +41,17 @@ impl Caller {
         }
     }
 
+    /// モバイル版の登録した端末（人の操作）。名乗りは端末の名前で、ロックの付いた所には触れない。
+    pub fn mobile(device_name: &str) -> Self {
+        Self {
+            entry: Entry::Mobile,
+            actor: Actor {
+                kind: "mobile".into(),
+                name: device_name.into(),
+            },
+        }
+    }
+
     /// アプリの WebView（人の操作）。
     pub fn webview() -> Self {
         Self {
@@ -186,6 +197,10 @@ impl Core {
         let (events, _) = broadcast::channel(EVENT_BACKLOG);
         let (proposals, _) = broadcast::channel(EVENT_BACKLOG);
         let (comments, _) = broadcast::channel(EVENT_BACKLOG);
+        // 新しい `Core` は開き直したプロジェクトなので、バージョンで分けた配信のキャッシュを持ち越さない。
+        if let Some(f) = &frames {
+            f.reset();
+        }
         Arc::new(Self {
             version: AtomicI64::new(store.doc_version()),
             store: Mutex::new(Some(store)),
@@ -389,6 +404,11 @@ impl Core {
         frames
             .frame_png(&project, request)
             .map_err(ServeError::from)
+    }
+
+    /// モバイルの映像の配信（コマ、HLS、素材の音だけ）。描画が `Streamer` でなければ `None`。
+    pub fn streamer(&self) -> Option<Arc<mm_stream::Streamer>> {
+        self.frames.as_ref().and_then(|f| f.streamer())
     }
 
     /// 描画に使うノードの種類の定義（MCP の `kinds`）。

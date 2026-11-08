@@ -119,6 +119,7 @@ mod tests {
             description: String::new(),
             choices: choices.iter().map(|c| c.to_string()).collect(),
             format,
+            pin: None,
         }
     }
 

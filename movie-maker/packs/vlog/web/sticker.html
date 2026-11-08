@@ -88,19 +88,9 @@
     st.style.filter = 'none';
   };
 
-  // テーマの色を CSS 変数にして、var(--名前) の参照を返す。色は theme.json だけが持ち、ページは名前で引く。
-  const themeColors = (theme) => {
-    const out = {};
-    for (const [k, v] of Object.entries(theme.colors || {})) {
-      document.documentElement.style.setProperty(`--${k}`, v);
-      out[k] = `var(--${k})`;
-    }
-    return out;
-  };
-
   window.mmSetTime = (t, data) => {
     const theme = data.theme || {};
-    const c = themeColors(theme);
+    const c = mmThemeColors(theme);
     const fonts = theme.fonts || {};
     const st = document.getElementById('st');
     if (data.look === 'oto') oto(st, data, c, fonts);

@@ -63,7 +63,7 @@
 
   const applyTheme = (theme) => {
     const s = document.documentElement.style;
-    for (const [k, v] of Object.entries(theme.colors || {})) s.setProperty(`--${k}`, v);
+    mmThemeColors(theme);
     const f = theme.fonts || {};
     const stack = (name) => `"${name}", "Yu Gothic UI", "Meiryo", sans-serif`;
     s.setProperty('--body', stack(f.body));
