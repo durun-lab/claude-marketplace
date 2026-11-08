@@ -6,7 +6,7 @@ use mm_doc::Project;
 use mm_types::{CompositionId, Result};
 
 use crate::op::{Apply, Op};
-use crate::ops::{composition_referrers, AddComposition};
+use crate::ops::{composition_referrers, layer_mask_ids, AddComposition};
 use crate::touches::Touches;
 
 /// コンポジションを外す。入れ子やレンダーターゲットから参照されていれば `Project::validate` が拒否する。
@@ -22,6 +22,7 @@ impl Apply for RemoveComposition {
         let mut t = Touches::of(&comp.id);
         for l in &comp.layers {
             t.add(&l.id);
+            layer_mask_ids(l, &mut t);
         }
         for m in &comp.markers {
             t.add(&m.id);

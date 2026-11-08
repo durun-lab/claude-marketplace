@@ -2,7 +2,7 @@
 //! レビューで再現した、順で結果が変わるプロジェクトのデータを固定する。
 
 use crate::common::{self, canon, comp, layer, project};
-use mm_doc::{Cut, Layer, Node, Project, NESTED_KIND, NESTED_PARAM};
+use mm_doc::{Cut, Layer, Mask, MaskRect, Node, Project, NESTED_KIND, NESTED_PARAM};
 use mm_ops::*;
 use mm_types::{Id, ParamValue, RationalTime};
 
@@ -253,4 +253,66 @@ fn 同じ時刻のマーカーは_add_marker_が拒否し_remove_marker_の逆�
     let applied = remove.apply(&mut p, &human).unwrap();
     applied.inverse.apply(&mut p, &human).unwrap();
     assert_eq!(canon(&p), before);
+}
+
+fn rect_mask(id: &str) -> Mask {
+    Mask::rect(id, MaskRect::new([0.0, 0.0], [32.0, 18.0], 0.0))
+}
+
+fn mask_layers() -> Project {
+    let mut with_mask = layer("l2", 0, 0, 2);
+    with_mask.masks.push(rect_mask("mk"));
+    let mut p = Project::new();
+    p.compositions
+        .push(comp("c", vec![layer("l1", 0, 0, 2), with_mask], vec![]));
+    p.compositions
+        .push(comp("c2", vec![layer("l9", 0, 0, 2)], vec![]));
+    p.validate().unwrap();
+    p
+}
+
+fn add_mask(layer: &str, mask: &str) -> Op {
+    AddMask {
+        layer: Id::new(layer),
+        mask: rect_mask(mask),
+        index: None,
+    }
+    .into()
+}
+
+#[test]
+fn remove_layer_はレイヤーが持つマスクの_id_を_touches_に含める() {
+    // 同じ ID のマスクを別のレイヤーに足す操作は、持ち主を外した後なら通り、外す前は ID の重複で拒否される。
+    let p = mask_layers();
+    let add = add_mask("l1", "mk");
+    let remove: Op = RemoveLayer {
+        layer: Id::new("l2"),
+    }
+    .into();
+    assert!(!apply_each(&p, &[&add]).0[0] && apply_each(&p, &[&remove]).0[0]);
+    assert_order_free(&p, &add, &remove);
+}
+
+#[test]
+fn remove_composition_はレイヤーが持つマスクの_id_を_touches_に含める() {
+    let p = mask_layers();
+    let add = add_mask("l9", "mk");
+    let remove: Op = RemoveComposition {
+        composition: Id::new("c"),
+    }
+    .into();
+    assert!(!apply_each(&p, &[&add]).0[0] && apply_each(&p, &[&remove]).0[0]);
+    assert_order_free(&p, &add, &remove);
+}
+
+#[test]
+fn add_layer_は足すレイヤーのマスクの_id_を_touches_に含める() {
+    // 足すレイヤーのマスクと同じ ID のマスクを足す操作は、どちらが先でも片方が重複で拒否される。
+    let p = mask_layers();
+    let mut l = layer("l3", 0, 0, 2);
+    l.masks.push(rect_mask("mk2"));
+    let a = add_layer("c", l);
+    let b = add_mask("l1", "mk2");
+    assert!(apply_each(&p, &[&a]).0[0] && apply_each(&p, &[&b]).0[0]);
+    assert!(a.touches(&p).unwrap().overlaps(&b.touches(&p).unwrap()));
 }

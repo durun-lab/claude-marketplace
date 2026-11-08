@@ -6,7 +6,7 @@ use mm_doc::{Composition, Project};
 use mm_types::Result;
 
 use crate::op::{Apply, Op};
-use crate::ops::{invalid, layer_refs, RemoveComposition};
+use crate::ops::{invalid, layer_mask_ids, layer_refs, RemoveComposition};
 use crate::touches::Touches;
 
 /// コンポジションを足す（レイヤーとマーカーを含めてよい）。
@@ -21,6 +21,7 @@ impl Apply for AddComposition {
         let mut t = Touches::of(&self.composition.id);
         for l in &self.composition.layers {
             t.add(&l.id);
+            layer_mask_ids(l, &mut t);
             layer_refs(l, &mut t);
         }
         for m in &self.composition.markers {
