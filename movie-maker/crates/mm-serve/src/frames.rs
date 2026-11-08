@@ -9,8 +9,10 @@ use std::sync::Arc;
 
 use mm_doc::Project;
 use mm_node_api::{NodeRegistry, Quality};
+use mm_render_api::tone_map_peak;
 use mm_runtime::{Engine, RuntimeConfig};
 use mm_stream::{StreamConfig, Streamer};
+use mm_types::tonemap::bt2390_to_sdr;
 use mm_types::transfer::linear_to_code8;
 use mm_types::RgbaImage;
 use mm_types::{CompositionId, Id, MmError, RationalTime, Result, Rgba, Size};
@@ -106,7 +108,7 @@ pub fn render_png(
     let c = project.composition(&comp)?;
     let size = scaled(Size::new(c.width, c.height), request.width);
     let image = engine.render_frame(project, &comp, request.time, size, Quality::Full)?;
-    encode_png(&image)
+    encode_png(&image, tone_map_peak(project))
 }
 
 fn pick_composition(project: &Project, wanted: Option<&str>) -> Result<CompositionId> {
@@ -168,15 +170,18 @@ const CHECKER_DARK: f32 = 0.18;
 const CHECKER_LIGHT: f32 = 0.26;
 
 /// 線形の premultiplied の画像を、灰色の市松の上に重ねた 8 bit の PNG にする。
-/// 書き出しと同じ Rec.1886 の符号化値にするので、16 進の色は PNG でも同じ値になる。
-pub fn encode_png(image: &RgbaImage) -> Result<Vec<u8>> {
+/// 書き出しと同じ Rec.1886 の符号化値にするので、16 進の色は PNG でも同じ値になる。`source_peak` は素材の上限の明るさ
+/// （`tone_map_peak`）。書き出しと同じく premultiplied の RGB（黒の上に置いた値）に SDR のトーンマップを掛けてから
+/// 市松を足すので、市松は素材の上限の明るさに依らず、不透明な所は書き出しと同じ値になる。
+pub fn encode_png(image: &RgbaImage, source_peak: f32) -> Result<Vec<u8>> {
     let mut rgb = Vec::with_capacity(image.size().area() * 3);
     for y in 0..image.height() {
         for x in 0..image.width() {
             let p: Rgba = image.pixel(x, y);
+            let [r, g, b] = bt2390_to_sdr([p.r, p.g, p.b], source_peak);
             let dark = (x / CHECKER_SIDE + y / CHECKER_SIDE).is_multiple_of(2);
             let back = if dark { CHECKER_DARK } else { CHECKER_LIGHT };
-            rgb.extend([p.r, p.g, p.b].map(|c| linear_to_code8(c + back * (1.0 - p.a))));
+            rgb.extend([r, g, b].map(|c| linear_to_code8(c + back * (1.0 - p.a))));
         }
     }
     let mut out = Vec::new();
@@ -192,6 +197,9 @@ pub fn encode_png(image: &RgbaImage) -> Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use mm_testkit::hdr::{self, HdrKind};
+    use mm_types::tonemap::hdr_source_peak;
+    use mm_types::ColorSpace;
 
     #[test]
     fn 時刻は分数と小数を読む() {
@@ -213,7 +221,63 @@ mod tests {
     #[test]
     fn 画像は_png_にできる() {
         let img = RgbaImage::filled(Size::new(4, 2), Rgba::WHITE);
-        let png = encode_png(&img).unwrap();
+        let png = encode_png(&img, 1.0).unwrap();
         assert_eq!(&png[1..4], b"PNG");
+    }
+
+    fn decode(png: &[u8]) -> Vec<u8> {
+        let mut reader = png::Decoder::new(std::io::Cursor::new(png))
+            .read_info()
+            .unwrap();
+        let mut buf = vec![0; reader.output_buffer_size().unwrap()];
+        let info = reader.next_frame(&mut buf).unwrap();
+        buf.truncate(info.buffer_size());
+        buf
+    }
+
+    /// HDR のフィクスチャの帯（線形、`mm_testkit::hdr`）を 1 画素ずつ並べた画像。
+    fn hdr_bands() -> RgbaImage {
+        let mut img = RgbaImage::filled(Size::new(hdr::BANDS.len() as u32, 1), Rgba::BLACK);
+        for band in 0..hdr::BANDS.len() {
+            let [r, g, b] = hdr::expected(HdrKind::Pq, band);
+            img.set_pixel(band as u32, 0, Rgba { r, g, b, a: 1.0 });
+        }
+        img
+    }
+
+    #[test]
+    fn hdr_の素材が無いと_png_はトーンマップを掛けない() {
+        let png = decode(&encode_png(&hdr_bands(), 1.0).unwrap());
+        for band in 0..hdr::BANDS.len() {
+            let want = hdr::expected(HdrKind::Pq, band).map(linear_to_code8);
+            assert_eq!(png[band * 3..band * 3 + 3], want, "帯 {band}");
+        }
+    }
+
+    #[test]
+    fn hdr_の素材があると_png_は書き出しの_sdr_と同じトーンマップを通る() {
+        let peak = hdr_source_peak(&[ColorSpace::bt2100_pq()]);
+        let png = decode(&encode_png(&hdr_bands(), peak).unwrap());
+        let mut compressed = false;
+        for band in 0..hdr::BANDS.len() {
+            let linear = hdr::expected(HdrKind::Pq, band);
+            let want = bt2390_to_sdr(linear, peak).map(linear_to_code8);
+            assert_eq!(png[band * 3..band * 3 + 3], want, "帯 {band}");
+            compressed |= want != linear.map(linear_to_code8);
+        }
+        assert!(compressed, "トーンマップの肩に入る帯が曲がる");
+    }
+
+    #[test]
+    fn hdr_の素材があっても市松は変わらず_半透明は書き出しの値に市松を足す() {
+        let peak = hdr_source_peak(&[ColorSpace::bt2100_pq()]);
+        let half = Rgba::new(1.5, 0.5, 0.1, 0.5);
+        let mut img = RgbaImage::filled(Size::new(2, 1), Rgba::TRANSPARENT);
+        img.set_pixel(1, 0, half);
+        let png = decode(&encode_png(&img, peak).unwrap());
+        assert_eq!(png[0..3], [linear_to_code8(CHECKER_DARK); 3], "透明");
+        let want = bt2390_to_sdr([half.r, half.g, half.b], peak)
+            .map(|c| linear_to_code8(c + CHECKER_DARK * (1.0 - half.a)));
+        assert_eq!(png[3..6], want, "半透明");
     }
 }

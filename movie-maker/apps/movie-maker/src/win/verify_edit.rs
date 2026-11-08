@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use mm_doc::{Cut, Project, Sequence, SEQUENCE_KIND, SEQUENCE_PARAM};
 use mm_types::{Id, ParamValue};
-use mm_ui_layout::{row_top, split_viewers, Scale, TimeView, ROW_H, VIEW_MARGIN};
+use mm_ui_layout::{row_top, Scale, TimeView, ROW_H, VIEW_MARGIN};
 use mm_ui_wgpu::timeline_model;
 use serde_json::{json, Value};
 
@@ -17,7 +17,7 @@ use crate::win::keys;
 use crate::win::playback::Command;
 use crate::win::state::Shared;
 use crate::win::surface;
-use crate::win::verify::{client_point, logical_surface, wait_until};
+use crate::win::verify::{client_point, viewer_layout, wait_until};
 
 /// 仮想キーコード。
 const VK_I: u32 = 0x49;
@@ -117,8 +117,8 @@ fn geometry(shared: &Shared, hwnd: isize) -> Option<Geometry> {
     let doc = shared.doc()?;
     let comp = doc.project.composition(&doc.comp).ok()?;
     let model = timeline_model(&doc.project, comp);
-    let ((w, h), scale) = logical_surface(shared, hwnd);
-    let tl = split_viewers(w, h, model.content_height(), true).timeline;
+    let (layout, scale) = viewer_layout(shared, hwnd, model.content_height());
+    let tl = layout.timeline;
     let row = model.items.iter().position(|i| !i.cuts.is_empty())?;
     Some(Geometry {
         tl_x: tl.x,
@@ -164,9 +164,12 @@ fn mark_source(env: &Env<'_>, log: &mut Log) -> Option<String> {
     let asset = doc.project.assets.last()?.id.to_string();
     let opened = shared.source.open(&doc.project, comp, &asset);
     let source = shared.source.handle();
-    let framed = source
-        .as_ref()
-        .is_some_and(|s| wait_until(WAIT, || s.shared.frames.newer_than(0).is_some()));
+    // 後の割り付けが Source の領域を含むよう、フレームの到着に加えて `Ui` が領域を出すまで待つ。
+    let framed = source.as_ref().is_some_and(|s| {
+        wait_until(WAIT, || {
+            s.shared.frames.newer_than(0).is_some() && shared.source.is_shown()
+        })
+    });
     log.step(
         "source_open",
         opened.is_ok() && framed,
