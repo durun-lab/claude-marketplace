@@ -17,6 +17,11 @@ name = "sandboxed"
 crate-type = ["cdylib"]
 required-features = ["cef"]
 
+# 別プロセス越しの往復を測る（負荷で揺れるので判定するテストにしない）。
+[[example]]
+name = "bench_roundtrip"
+required-features = ["cef"]
+
 [dependencies]
 mm-host-api = { workspace = true }
 mm-host-pipe = { workspace = true }

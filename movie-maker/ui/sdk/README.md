@@ -168,3 +168,11 @@ Transition パネル（`ui/panels/transition`）が使う Tauri のコマンド�
 | `pack_transitions` | `{ dir }` | パックの `transitions/` の名前（名前の順） |
 | `pack_apply` | `{ dir, name: "transition", args: { cut, kind, dur, seed? } }`、巻き戻しは `{ dir, name: "rewind", args: { cut, dur, speed? } }` | 置く・差し替える。`setTransition` 1 回で、取り消し 1 回で戻る。パネルは今の `p0`（`seed`）と `rewind`（`speed`）を引き継ぐ |
 | `apply_op` | `{ op: { op: "setTransition", cut, transition: null } }` | 外す |
+
+## Inspector のコマンド
+
+Inspector パネル（`ui/panels/inspector`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/win/inspector_ipc.rs`、呼ぶのは `ui/panels/inspector/src/kindsApi.ts`（`createIpcKindLookup`）。MCP の `kinds` と同じ `Core::kinds` を通る。失敗は `Err(String)`。登録の無い種類（`composition` など）と、書き手として開いていないプロジェクト（JSON）には失敗を返し、Inspector はその種類をプロジェクトにある値だけで出す。Inspector が引くのは種類か値が変わったソースとエフェクトだけで、定義のある種類の値の変更は 250 ms 止まってから引く（`LOOKUP_DEBOUNCE_MS`）。
+
+| コマンド | 引数 | 成功 |
+|---|---|---|
+| `inspector_kind` | `{ kind, params }` | 種類の一覧の 1 件 `{ id, version, traits, inputs, params: { params: [{ name, ty, default }] } }`。`params` はレイヤーの今の値（名前から `ParamValue`）で、パラメータの組ごとの定義（`params_for`）で一覧が変わる種類（`ofx` のプラグインのパラメータなど）に渡す。`ty` は `{ type: "number", min, max }`、`{ type: "choice", options }`、`{ type: "bool" }` など |

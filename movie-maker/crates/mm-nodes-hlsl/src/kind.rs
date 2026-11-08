@@ -1,11 +1,12 @@
 //! `shader.hlsl` の種類。パラメータと入力の形は `shader.wgsl` に揃え、入力を 2 つまで受ける。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use mm_gpu::WgpuGpu;
 use mm_node_api::{
-    Cost, FrameCx, FrameRef, GpuHelper, GpuTexture, InputSchema, InputSpec, NodeKind, Traits,
+    file_digest, Cost, FrameCx, FrameRef, GpuHelper, GpuTexture, InputSchema, InputSpec, NodeKind,
+    Traits,
 };
 use mm_types::{
     AssetId, MmError, ParamSchema, ParamSpec, ParamType, ParamValue, Params, Result, Size,
@@ -202,6 +203,21 @@ impl NodeKind for ShaderHlslKind {
     /// `asset` は HLSL の源のファイルで、デコーダーでは開けない。パスを引いて自分で読む。
     fn decodes_asset(&self) -> bool {
         false
+    }
+
+    /// DXC のバージョンと、素材の HLSL の中身のハッシュ。DXC が変われば SPIR-V が変わりうる。素材は取り込んだ後に
+    /// 書き換えられうる（`contentHash` は取り込み時の値）。素材のファイルを読めなければ `None`（描けないのでキャッシュしない）。
+    fn cache_fingerprint(
+        &self,
+        params: &Params,
+        asset_path: &dyn Fn(&AssetId) -> Option<PathBuf>,
+    ) -> Option<String> {
+        let dxc = self.dxc().map_or("none", Dxc::version);
+        let Some(id) = asset_of(params) else {
+            return Some(format!("dxc={dxc}"));
+        };
+        let digest = file_digest(&asset_path(id)?)?;
+        Some(format!("dxc={dxc}|src={digest}"))
     }
 
     fn migrate(&self, old: serde_json::Value, from: u32) -> Result<Params> {

@@ -29,6 +29,10 @@ pub use video::FfmpegDecoder;
 
 /// 実装の名前。`mm-runtime` の設定で選ぶ。
 pub const ID: &str = "ffmpeg";
+/// 広い信号の素材を読むときに名乗る名前。画素の作り方のバージョンが付く。
+pub const WIDE_ID: &str = mm_decode_ffmpeg_core::wide_backend_id!("ffmpeg");
+/// FFmpeg のデコーダー（映像と音だけの素材）が名乗る名前（`Decoder::backend_id`）の全部。
+pub const BACKEND_IDS: [&str; 2] = [ID, WIDE_ID];
 
 /// FFmpeg を開くデコーダーのインターフェース。
 #[derive(Debug, Clone, Copy, Default)]
@@ -37,6 +41,10 @@ pub struct FfmpegDecoderFactory;
 impl DecoderFactory for FfmpegDecoderFactory {
     fn id(&self) -> &'static str {
         ID
+    }
+
+    fn backend_ids(&self) -> Vec<&'static str> {
+        BACKEND_IDS.to_vec()
     }
 
     /// デコードは CPU。feature `gpu` で `mm-gpu` のコンテキストを渡されたときは、YUV のプレーンを上げて
@@ -72,6 +80,10 @@ pub struct FfmpegCpuDecoderFactory;
 impl DecoderFactory for FfmpegCpuDecoderFactory {
     fn id(&self) -> &'static str {
         "ffmpeg_cpu"
+    }
+
+    fn backend_ids(&self) -> Vec<&'static str> {
+        BACKEND_IDS.to_vec()
     }
 
     fn open(&self, path: &Path, _gpu: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>> {

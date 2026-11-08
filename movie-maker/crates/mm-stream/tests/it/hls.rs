@@ -99,6 +99,65 @@ fn プレイリストと区間が返り_ffprobe_で読めて長さとビット�
     assert!((seconds - 2.0).abs() < 0.3, "長さ {seconds}");
 }
 
+/// 映像と音の始まりが区間の始まりの秒から、これ以内（秒）にそろう。
+const START_TOLERANCE: f64 = 0.002;
+
+#[test]
+fn 区間の映像と音は区間の始まりの秒からそろって始まる() {
+    let Some(config) = ffmpeg_config() else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let media = dir.path().join("media.mp4");
+    make_media(&media);
+    let project = project(&media, 10);
+    let s = streamer(config, dir.path());
+    let list = keys(&s.playlist(&project, 1, &req(), "seg/").unwrap());
+    for (index, expected) in [(0, 0.0), (1, 4.0), (2, 8.0)] {
+        let body = s.segment(list[index]).unwrap().body;
+        let info = probe_segment(dir.path(), &body, &format!("seg{index}.ts"));
+        assert_eq!(info["format"]["format_name"], "mpegts");
+        for kind in ["video", "audio"] {
+            let start = number(&stream(&info, kind)["start_time"]);
+            assert!(
+                (start - expected).abs() < START_TOLERANCE,
+                "区間 {index} の {kind} の始まり {start}（期待 {expected}）"
+            );
+        }
+    }
+}
+
+#[test]
+fn 親のプレイリストはピークの_bandwidth_を載せ_区間の実測のピークに収まる() {
+    let Some(config) = ffmpeg_config() else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let media = dir.path().join("media.mp4");
+    make_media(&media);
+    let project = project(&media, 10);
+    let s = streamer(config, dir.path());
+    let master = s
+        .master_playlist(&project, "main", &|q| format!("{}.m3u8", q.as_str()))
+        .unwrap();
+    let text = String::from_utf8(master.body).unwrap();
+    let bandwidth: f64 = text
+        .lines()
+        .find(|l| l.contains("640x360"))
+        .and_then(|l| l.split("BANDWIDTH=").nth(1))
+        .and_then(|l| l.split(',').next())
+        .and_then(|n| n.parse().ok())
+        .unwrap_or_else(|| panic!("BANDWIDTH が読めない: {text}"));
+    let list = keys(&s.playlist(&project, 1, &req(), "seg/").unwrap());
+    let first = s.segment(list[0]).unwrap();
+    let bps = first.body.len() as f64 * 8.0 / 4.0;
+    eprintln!("BANDWIDTH {bandwidth} bps、最初の区間の実測 {bps:.0} bps");
+    assert!(
+        bps <= bandwidth,
+        "実測 {bps} が BANDWIDTH {bandwidth} を超える"
+    );
+}
+
 #[test]
 fn 要求した区間の後ろを先読みし_作った区間は作り直さない() {
     let Some(config) = ffmpeg_config() else {

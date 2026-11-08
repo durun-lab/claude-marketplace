@@ -22,6 +22,8 @@ const MP4_CODEC_PREFIXES: [&str; 3] = ["h264", "libx264", "hevc"];
 const MP4_EXTENSIONS: [&str; 2] = ["mp4", "m4v"];
 /// MOV にしか書けないコーデックの名前の接頭辞（ProRes と DNxHR）。
 const MOV_CODEC_PREFIXES: [&str; 2] = ["prores", "dnx"];
+/// MPEG-TS にしか書けない配信用のコーデックの名前（`h264` で始まるが MP4 ではない）。
+const TS_CODEC: &str = "h264_ts";
 /// 区間の端をフレームの境界に合わせる幅（フレーム）。マイクロ秒の丸め（240 fps でも 1.2e-4 フレーム）を吸い、
 /// 意図して境界から外した指定（1/1000 フレームより離れたもの）は保つ。
 const FRAME_SNAP_TOLERANCE: f64 = 1e-3;
@@ -148,7 +150,12 @@ pub(crate) fn check_container(codec: &str, output: &Path) -> Result<()> {
             .is_some_and(|e| exts.iter().any(|x| e.eq_ignore_ascii_case(x)))
     };
     let starts = |prefixes: &[&str]| prefixes.iter().any(|p| codec.starts_with(p));
-    let wanted = if starts(&MOV_CODEC_PREFIXES) && !has_ext(&["mov"]) {
+    let wanted = if codec == TS_CODEC {
+        if has_ext(&["ts"]) {
+            return Ok(());
+        }
+        ".ts"
+    } else if starts(&MOV_CODEC_PREFIXES) && !has_ext(&["mov"]) {
         ".mov"
     } else if starts(&MP4_CODEC_PREFIXES) && !has_ext(&MP4_EXTENSIONS) {
         ".mp4 か .m4v"
@@ -170,7 +177,7 @@ fn export_target(
 ) -> Result<Option<Finished>> {
     let target = project.render_target(target)?;
     let comp = project.composition(&target.composition)?;
-    let settings = encode_settings(target);
+    let settings = encode_settings(target, options);
     let range = resolve_range(comp.range()?, options.range, settings.fps)?;
     let prepared = deliver::prepare(project, target, comp, range, options.transcript.as_deref())?;
     let mut encoder = open_encoder(engine, target, &prepared)?;
@@ -236,7 +243,7 @@ fn open_encoder(
     Ok(encoder)
 }
 
-fn encode_settings(target: &RenderTarget) -> EncodeSettings {
+fn encode_settings(target: &RenderTarget, options: &ExportOptions) -> EncodeSettings {
     EncodeSettings {
         size: Size::new(target.width, target.height),
         fps: target.fps,
@@ -246,7 +253,7 @@ fn encode_settings(target: &RenderTarget) -> EncodeSettings {
             sample_rate: DEFAULT_SAMPLE_RATE,
             channels: DEFAULT_CHANNELS,
         }),
-        stream: None,
+        stream: options.stream.clone(),
     }
 }
 

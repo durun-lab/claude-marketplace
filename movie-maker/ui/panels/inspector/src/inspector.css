@@ -1,4 +1,23 @@
 /* 値は全部 theme の変数から取る。影は使わず border と角丸だけで区切る。 */
+
+/* Inspector とその下の Graph。高さは列の見えている所に合わせ（fit.ts）、Inspector の行だけを中でスクロールする。 */
+.mm-insp-panels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-md);
+  min-height: 0;
+}
+
+.mm-insp-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.mm-insp-panels > .mm-graph {
+  flex: none;
+}
+
 .mm-insp {
   display: flex;
   flex-direction: column;
@@ -155,6 +174,11 @@
 .mm-insp-row[data-selected="true"] .mm-insp-label {
   color: var(--mm-color-accent);
   font-weight: 700;
+}
+
+/* プロジェクトに値が無く、種類の既定値を出している行。触ると値を書く。 */
+.mm-insp-row[data-default="true"] .mm-insp-input {
+  color: var(--mm-color-text-muted);
 }
 
 /* キーフレームナビゲーター: 前へ、再生位置のキー、次へ、補間。 */

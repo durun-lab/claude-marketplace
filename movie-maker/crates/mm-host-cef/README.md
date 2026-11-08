@@ -10,7 +10,8 @@ CEF のオフスクリーン描画を、共有テクスチャで別プロセス�
 | アプリ側のランチャー（`CefLauncher`、`PipeHost`）、ホストの探し方（`find_host`）、URL の決まり（`policy`）、書体の `@font-face`（`fonts`） | `src/launcher.rs`、`src/locate.rs`、`src/policy.rs`、`src/fonts.rs` | 要らない。既定のビルドでコンパイルする |
 | ホストの本体（`serve`、`bench`、`probe`） | `src/host/`（`--features cef` のときだけライブラリに入る） | 要る |
 | sandbox つきの起動の DLL | `examples/sandboxed.rs`、`bundle.sh` | 要る |
-| テスト（URL の決まり、能力の問い合わせ、契約、期待画像、古いフレーム、守り、往復の時間、書体） | `tests/it/` | `serve`、`harden`、`fonts` は要る。`CEF_PATH` が無ければスキップする（`MM_REQUIRE_CEF=1` で失敗にする） |
+| 別プロセス越しの往復を測る例（負荷で揺れるのでテストにしない） | `examples/bench_roundtrip.rs` | 要る |
+| テスト（URL の決まり、能力の問い合わせ、契約、期待画像、古いフレーム、守り、書体） | `tests/it/` | `serve`、`harden`、`fonts` は要る。`CEF_PATH` が無ければスキップする（`MM_REQUIRE_CEF=1` で失敗にする） |
 
 既定のワークスペースのビルド、clippy、テストは CEF を取りに行かない。`--features cef` なしの実行ファイルは何もせず終了コード 2。
 
@@ -24,7 +25,7 @@ CEF のオフスクリーン描画を、共有テクスチャで別プロセス�
 - `Prepare` の `params` は `{"html": "...", "fonts": [...]}`（`fonts` は任意。`mm_text_api::FontFile` の JSON の列）。ホストは `fonts` から `@font-face` を作って `</head>` の前に差し込み、一時フォルダーに書いたファイルとして開く。書体のファイルは `FONT_ORIGIN`（`https://mm-font.invalid/<contentHash>`）に答える scheme handler が配る（`src/host/font_scheme.rs`）。読めないファイルはスキップし、その family は OS の書体で描く。ページは `window.mmSetTime(t, params)` を定義し、時刻 `t`（秒）と `params` の関数としてだけ画面を作る。ビューポートは `RenderFrame` の `size`。
 - 読み込める資源はページそのものと `data:`、`blob:`、書体の URL（`FONT_ORIGIN` の直下）だけ。ほかの要求（http、https、ほかのファイル）と、ページの遷移、ポップアップは `RequestHandler` と `LifeSpanHandler` で拒否する（`src/policy.rs`、`src/host/guard.rs`）。遷移を始めた時点の先読みの接続（preconnect）はその前に出るので、Chromium のネットワークを閉じたポートのプロキシ（`--proxy-server=http://127.0.0.1:9`、`--proxy-bypass-list=<-loopback>`）へ向け、行き先へは接続も名前解決も出さない。WebRTC の UDP（STUN、TURN）はプロキシを通らないので、ブラウザーを作る前に設定 `webrtc.ip_handling_policy=disable_non_proxied_udp` を入れて止める（CEF の Chromium にはこれを決めるスイッチが無い）。
 - 通すページの URL は、ホストが書いたページのファイルを指すメインフレームの遷移の URL（Chromium が正規化した形）を覚える。ページを開き直すたびにファイルの名前を変え、閉じ切る前の前のブラウザーの遷移は覚えない。
-- 1 フレームの手順: `mmSetTime` を呼んだ後に組み直し、`<img>` の画像の `decode()` と `document.fonts` の読み込みが終わるまで待つ（デコード前の画像や、初めて使う Web フォントの代わりの書体で描かない。CSS の背景の画像は待たない）。書体を待ったときは `mmSetTime` をもう一度呼ぶ（文字の幅を測って枠を組むページが、代わりの書体の幅のまま描かない）。左上の透明な 1 画素の canvas を消し直してダメージを作り、画面が変わらないフレームでも CEF にフレームを出させる。BeginFrame を送り、その時刻と大きさのフレームが来たものだけを返す。時刻の反映からフレームが来るまでを 1 回の `RenderFrame` で 4 秒までとし、過ぎたら理由を誤りで返す（アプリの 1 フレームの期限 5 秒より前に答える）。
+- 1 フレームの手順: `mmSetTime` を呼んだ後に組み直し、`<img>` の画像と CSS の `background-image`（要素と `::before`、`::after`）の画像の `decode()`、`document.fonts` の読み込みが終わるまで待つ（デコード前の画像や、初めて使う Web フォントの代わりの書体で描かない）。書体を待ったときは `mmSetTime` をもう一度呼ぶ（文字の幅を測って枠を組むページが、代わりの書体の幅のまま描かない）。左上の透明な 1 画素の canvas を消し直してダメージを作り、画面が変わらないフレームでも CEF にフレームを出させる。BeginFrame を送り、その時刻と大きさのフレームが来たものだけを返す。時刻の反映からフレームが来るまでを 1 回の `RenderFrame` で 4 秒までとし、過ぎたら理由を誤りで返す（アプリの 1 フレームの期限 5 秒より前に答える）。
 - アプリ側（`mm-runtime`）は `find_host()` でホストを探す。`CEF_PATH` が無ければ探さない。`MM_CEF_HOST` があればそれ、無ければ今の実行ファイルと同じフォルダー（テストの実行ファイルなら 1 つ上も）の `mm-host-cef`。見つけたら `mm-host-cef probe` で能力を問い合わせ、`cef` の feature 無しのもの（何も答えない）や `libcef.dll` が見つからないものは使わない（`None` を返し、`web.cef` はモックになる）。
 
 ## sandbox
@@ -71,6 +72,7 @@ export MM_CEF_HOST=D:/dev/mm-host-cef/mm-host-cef.exe
    crates/mm-host-cef/run.sh bench --frames 300 --warmup 30 --verify --out D:/dev/mm-spike-out
    ```
    `serve` のスパンは、環境変数 `MM_HOST_METRICS=<ファイル>` を付けると終わるときに `metrics.jsonl` の 1 行で書く。
+   別プロセス越しの往復（要求からアプリ側のコピーの完了まで）は `cargo run -p mm-host-cef --release --features cef --example bench_roundtrip` で測る。
 
 ## bench の指定
 
