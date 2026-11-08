@@ -19,7 +19,7 @@ import { notificationPermission } from './notify.ts';
 import { setRateWeekdays, useRateWeekdays } from './rateWeekdays.ts';
 import { DOT_RADIUS, FIVE_HOURS_MS, GRAPH_HEIGHT, GRAPH_WIDTH, PLOT, RING_STROKE, SEVEN_DAYS_MS, type RateGraphShape, paceOf, rateGraphShape } from './rateGraph.ts';
 import { useLiveReload } from './reload.ts';
-import { href } from './router.ts';
+import { currentSessionId, href } from './router.ts';
 import { SKINS, setSkin, useSkin, type Skin } from './skin.ts';
 import { EDIT_SHORTCUT, FULLSCREEN_SHORTCUT, SEARCH_SHORTCUT, isShortcut, onDoubleTap, shortcutLabel } from './shortcut.ts';
 import { Empty, Loading, Meter, Time, paceColor, rateColor } from './ui.tsx';
@@ -271,9 +271,9 @@ const AppMenu = ({ onSearch, onEdit, docs, autoContinue, agentPriority }: MenuPr
   const recent = [...docs].sort((a, b) => b.createdAt - a.createdAt).slice(0, 15);
   const favorites = useFavorites();
   const dashboards = useDashboards();
-  // ダッシュボードはホームの配置なので、ほかの画面で選んだらホームへ移る。
-  const showHome = () => {
-    location.hash = href.home();
+  // ダッシュボードはホームとセッション画面の配置の組なので、セッション画面ではとどまって配置だけを替え、ほかの画面ではホームへ移る。
+  const showDashboard = () => {
+    if (!currentSessionId()) location.hash = href.home();
   };
   const [renaming, setRenaming] = useState(false);
   const closeOnItem = (e: MouseEvent) => {
@@ -373,7 +373,7 @@ const AppMenu = ({ onSearch, onEdit, docs, autoContinue, agentPriority }: MenuPr
               <div class="app-menu-item" tabindex={0} aria-haspopup="true"><AppIcon icon="🗂️" />ダッシュボード<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
               <div class="app-menu-submenu" role="group" aria-label="ダッシュボード">
                 {dashboards.list.map((d) => (
-                  <button key={d.id} class="app-menu-item" aria-pressed={d.id === dashboards.current} onClick={() => (switchDashboard(d.id), showHome())}>{d.name}</button>
+                  <button key={d.id} class="app-menu-item" aria-pressed={d.id === dashboards.current} onClick={() => (switchDashboard(d.id), showDashboard())}>{d.name}</button>
                 ))}
                 <hr class="app-menu-sep" />
                 {onEdit && (
@@ -381,8 +381,8 @@ const AppMenu = ({ onSearch, onEdit, docs, autoContinue, agentPriority }: MenuPr
                     編集<kbd>{shortcutLabel(EDIT_SHORTCUT)}</kbd>
                   </button>
                 )}
-                <button class="app-menu-item" onClick={() => (createDashboard(), showHome())}>新規作成</button>
-                <button class="app-menu-item" onClick={() => (duplicateDashboard(), showHome())}>複製</button>
+                <button class="app-menu-item" onClick={() => (createDashboard(), showDashboard())}>新規作成</button>
+                <button class="app-menu-item" onClick={() => (duplicateDashboard(), showDashboard())}>複製</button>
                 <button class="app-menu-item" onClick={() => setRenaming(true)}>名前を変更</button>
               </div>
             </div>
