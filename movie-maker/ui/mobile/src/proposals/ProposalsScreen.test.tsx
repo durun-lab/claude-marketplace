@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { demoProposals } from "../../demo/fixtures.ts";
 import { createHarness } from "../testing/harness.ts";
 import "../testing/stubMedia.ts";
-import { clipUrl, frameUrl } from "./api.ts";
+import { frameUrl } from "./api.ts";
 import { ProposalsScreen } from "./ProposalsScreen.tsx";
 import { UNDO_WINDOW_MS } from "./useUndo.ts";
 
@@ -14,6 +14,15 @@ afterEach(() => h.unmount());
 const open = async () => {
   h = createHarness({ proposals: demoProposals() });
   await h.mount(<ProposalsScreen controller={h.controller} now={Date.now()} />);
+};
+
+/** 提案 2 の全部の操作の短い動画の URL（キーは範囲に掛かるもののハッシュ）。 */
+const CLIP_ALL = /^\/m\/api\/proposals\/2\/clip\/[0-9a-f]{16}\.mp4\?comp=c1$/;
+
+/** 操作の選択を外し、短い動画の URL を読み直し終えるまで待つ。 */
+const uncheck = async (index: number): Promise<void> => {
+  await act(() => void h.host.querySelectorAll<HTMLInputElement>('.ops input[type="checkbox"]')[index]?.click());
+  await h.settle();
 };
 
 const posts = (suffix: string) => h.server.writes.filter((w) => w.path.endsWith(suffix));
@@ -53,7 +62,7 @@ describe("提案の区間の短い動画", () => {
     const play = vi.spyOn(HTMLMediaElement.prototype, "play");
     await h.press("Play");
     const video = h.host.querySelector<HTMLVideoElement>(".compare video");
-    expect(video?.getAttribute("src")).toBe(clipUrl(2, { comp: "c1" }));
+    expect(video?.getAttribute("src")).toMatch(CLIP_ALL);
     expect(play).toHaveBeenCalledTimes(1);
     expect(h.host.querySelector(".clip-note")?.textContent).toBe("Rendering clip…");
     expect(video?.classList.contains("on")).toBe(false);
@@ -69,10 +78,10 @@ describe("提案の区間の短い動画", () => {
   it("一部の操作だけを選ぶとその操作の短い動画にし、読めなければ失敗を表示する", async () => {
     await open();
     await h.press("Slow the zoom");
-    await act(() => void h.host.querySelectorAll<HTMLInputElement>('.ops input[type="checkbox"]')[1]?.click());
+    await uncheck(1);
     await h.press("Play");
     const video = h.host.querySelector<HTMLVideoElement>(".compare video");
-    expect(video?.getAttribute("src")).toBe(clipUrl(2, { comp: "c1", ops: [0, 2] }));
+    expect(video?.getAttribute("src")).toMatch(/^\/m\/api\/proposals\/2\/clip\/[0-9a-f]{16}\.mp4\?comp=c1&ops=0,2$/);
     await act(() => void video?.dispatchEvent(new Event("error")));
     expect(h.host.querySelector(".clip-note")?.textContent).toBe("Could not play the clip.");
   });
@@ -82,11 +91,53 @@ describe("提案の区間の短い動画", () => {
     await h.press("Slow the zoom");
     await h.press("Play");
     const video = h.host.querySelector<HTMLVideoElement>(".compare video");
-    expect(video?.getAttribute("src")).toBe(clipUrl(2, { comp: "c1" }));
-    await act(() => void h.host.querySelectorAll<HTMLInputElement>('.ops input[type="checkbox"]')[1]?.click());
+    expect(video?.getAttribute("src")).toMatch(CLIP_ALL);
+    await uncheck(1);
     expect(video?.getAttribute("src")).toBeNull();
     expect(h.host.querySelector(".clip-note")).toBeNull();
     expect(h.host.querySelector("img.show")?.getAttribute("alt")).toBe("After");
+  });
+});
+
+describe("短い動画の URL", () => {
+  it("URL は範囲に掛かるもののハッシュを含み、編集で読み直して変われば前の動画を止め、次の Play は新しい URL にする", async () => {
+    await open();
+    await h.press("Slow the zoom");
+    await h.press("Play");
+    const video = h.host.querySelector<HTMLVideoElement>(".compare video");
+    const before = video?.getAttribute("src");
+    expect(before).toMatch(CLIP_ALL);
+    h.server.project.version += 1;
+    h.server.emit("change", { version: h.server.project.version });
+    await h.settle();
+    await h.settle();
+    expect(video?.getAttribute("src")).toBeNull();
+    await h.press("Play");
+    const after = video?.getAttribute("src");
+    expect(after).toMatch(CLIP_ALL);
+    expect(after).not.toBe(before);
+  });
+
+  it("URL を読む前は Play を押せない", async () => {
+    h = createHarness({ proposals: demoProposals() });
+    await h.mount(<ProposalsScreen controller={h.controller} now={Date.now()} />);
+    const proposal = h.host.querySelectorAll<HTMLElement>(".item")[1];
+    await act(() => void proposal?.click());
+    const play = [...h.host.querySelectorAll<HTMLButtonElement>(".compare button")].find((b) => b.textContent === "Play");
+    expect(play?.disabled).toBe(true);
+    await h.settle();
+    expect(play?.disabled).toBe(false);
+  });
+
+  it("選ぶ操作を変えると、新しい URL を読み終えるまで前の選び方の動画を押せない", async () => {
+    await open();
+    await h.press("Slow the zoom");
+    const play = [...h.host.querySelectorAll<HTMLButtonElement>(".compare button")].find((b) => b.textContent === "Play");
+    expect(play?.disabled).toBe(false);
+    await act(() => void h.host.querySelectorAll<HTMLInputElement>('.ops input[type="checkbox"]')[1]?.click());
+    expect(play?.disabled).toBe(true);
+    await h.settle();
+    expect(play?.disabled).toBe(false);
   });
 
   it("決めた提案には Play を出さない", async () => {

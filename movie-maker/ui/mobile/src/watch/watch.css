@@ -7,7 +7,7 @@
 .draw * { vector-effect: non-scaling-stroke; }
 .shape { fill: none; stroke: #ff3b6b; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
 .shape.draft { stroke-dasharray: 6 4; }
-circle.shape { fill: #ff3b6b; }
+.shape.point { stroke-width: 12; stroke-dasharray: none; }
 .stage .play {
   position: absolute; inset: 0; margin: auto; width: 64px; height: 64px; border: 0; border-radius: 50%;
   background: rgb(0 0 0 / 0.55); display: grid; place-items: center;

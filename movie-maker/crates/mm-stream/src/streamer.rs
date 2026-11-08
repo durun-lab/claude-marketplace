@@ -1,7 +1,9 @@
 //! 配信のインターフェース。描画のスレッド、プレイリストとキーの表、静止画のフレームのキャッシュ、先読みを持つ。
 
+mod clips;
+
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::mpsc::channel;
 use std::sync::{Arc, Mutex};
 
@@ -11,12 +13,12 @@ use mm_types::{MmError, Result};
 
 use crate::audio::{ensure_audio, respond, AudioRequest};
 use crate::cache::{touch, CacheDir};
-use crate::clip::{render_clip, ClipJobs, ClipPlan, ClipRequest, ClipStart, CLIP_TIMEOUT};
+use crate::clip::ClipJobs;
 use crate::frames::{render_webp, StillCache, StillKey, StillRequest};
 use crate::hls::{master_playlist, HlsRequest, Plan};
-use crate::key::{clip_key, segment_key, ClipKey, KeyEnv, SegmentKey};
+use crate::key::{segment_key, KeyEnv, SegmentKey};
 use crate::listing::{Listing, Listings};
-use crate::payload::{ranged_file, Payload, IMMUTABLE, REVALIDATE};
+use crate::payload::{Payload, IMMUTABLE, REVALIDATE};
 use crate::quality::HlsQuality;
 use crate::segment::render_segment;
 use crate::worker::{lock, run, SegJob, Slot, Urgent, Worker};
@@ -265,72 +267,6 @@ impl Streamer {
             ensure_audio(project, req, &self.shared.cache)?
         };
         respond(&path, &hash, range)
-    }
-
-    /// 提案の区間の短い動画（MP4）。`project` は提案を適用したもの。無ければ作り終えるまで待ち、`Range` に答える。
-    /// `ETag` はキー（提案の操作、範囲、範囲に掛かるもののハッシュ）なので、中身が同じ間は端末の手元のものが使える。
-    /// 同時に作る短い動画が上限なら `Unsupported`、待つ上限を超えたら `Timeout`。
-    pub fn clip(
-        &self,
-        project: &Project,
-        version: u64,
-        req: &ClipRequest,
-        range: Option<&str>,
-    ) -> Result<Payload> {
-        let plan = ClipPlan::new(project, req)?;
-        let keying = self.keying()?;
-        let env = KeyEnv {
-            project,
-            nodes: &keying.registry,
-            backends: &keying.backends,
-            version,
-        };
-        let key = clip_key(&env, &plan, &req.ops)?;
-        let path = self.shared.cache.clip(key);
-        for _ in 0..2 {
-            self.ensure_clip(key, &path, project, &plan, &req.touched)?;
-            touch(&path);
-            match ranged_file(&path, "video/mp4", &format!("\"{key}\""), range) {
-                // 読む前にキャッシュの上限で捨てられたら、もう一度作る。
-                Err(MmError::Io(e)) if e.kind() == std::io::ErrorKind::NotFound => continue,
-                other => return other,
-            }
-        }
-        Err(MmError::Internal(format!(
-            "短い動画 {key} を作っても読めない"
-        )))
-    }
-
-    /// 短い動画が無ければ描画のスレッドで作って待つ。同じキーの要求は先の要求の出来上がりを待つ。
-    fn ensure_clip(
-        &self,
-        key: ClipKey,
-        path: &Path,
-        project: &Project,
-        plan: &ClipPlan,
-        touched: &[String],
-    ) -> Result<()> {
-        let slot = match self.shared.clips.begin(key, || path.exists())? {
-            ClipStart::Ready => return Ok(()),
-            ClipStart::Wait(slot) => slot,
-            ClipStart::Render(slot) => {
-                let (clips, cache) = (self.shared.clips.clone(), self.shared.cache.clone());
-                let (project, plan) = (project.clone(), plan.clone());
-                let (out, touched) = (path.to_path_buf(), touched.to_vec());
-                self.shared
-                    .worker
-                    .urgent(Urgent::Run(Box::new(move |engine| {
-                        let result =
-                            engine.and_then(|e| render_clip(e, &project, &plan, &out, &touched));
-                        if result.is_ok() {
-                            cache.evict_clips(CLIP_CACHE_LIMIT_BYTES);
-                        }
-                        clips.finish(key, result);
-                    })));
-                slot
-            }
-        };
-        slot.wait_for("短い動画を作る", CLIP_TIMEOUT)
     }
 
     /// このバージョンの `req` の区間の割り方とキー。同じバージョンなら前に作ったものを返す。

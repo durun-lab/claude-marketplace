@@ -6,6 +6,7 @@ import { ComposeSheet } from "./ComposeSheet.tsx";
 import { DEFAULT_FILTERS, type Filter } from "./commentsView.ts";
 import { streamUrl } from "./commentsApi.ts";
 import { Scrubber } from "./Scrubber.tsx";
+import { DEFAULT_COMP_SIZE, type CompSize } from "./shapes.ts";
 import { Stage } from "./Stage.tsx";
 import { ThreadSheet } from "./ThreadSheet.tsx";
 import { commentStart } from "./time.ts";
@@ -20,6 +21,10 @@ export interface WatchScreenProps {
   attach?: Attach;
 }
 
+/** コンポジションの大きさ。分からなければ 16:9（映像の領域と同じで、映像の矩形は映像の領域の全体になる）。 */
+const compositionSize = (c: { width?: number; height?: number } | undefined): CompSize =>
+  c?.width && c.height ? { width: c.width, height: c.height } : DEFAULT_COMP_SIZE;
+
 const toggleFilter = (now: readonly Filter[], f: Filter): Filter[] =>
   now.includes(f) ? now.filter((x) => x !== f) : [...now, f];
 
@@ -27,6 +32,7 @@ const toggleFilter = (now: readonly Filter[], f: Filter): Filter[] =>
 export const WatchScreen = ({ controller, attach }: WatchScreenProps) => {
   const project = useStore(controller.connection.subscribe, controller.connection.get).project;
   const comp = project?.open_composition ?? project?.compositions[0]?.id ?? "";
+  const size = compositionSize(project?.compositions.find((c) => c.id === comp));
   const play = usePlayback(comp ? streamUrl(comp) : "", attach);
   const comments = useComments(controller);
   const composer = useComposer(controller, { comp, time: play.time });
@@ -41,7 +47,7 @@ export const WatchScreen = ({ controller, attach }: WatchScreenProps) => {
   const shapes = composer.composing ? composer.state.shapes : (opened?.drawing ?? []);
   return (
     <section class="screen watch">
-      <Stage videoRef={play.ref} playing={play.playing} failed={play.failed} shapes={shapes} editing={composer.editing} onToggle={play.toggle} />
+      <Stage videoRef={play.ref} playing={play.playing} failed={play.failed} shapes={shapes} size={size} editing={composer.editing} onToggle={play.toggle} />
       <Scrubber time={play.time} duration={play.duration} cuts={project?.cuts ?? []} comments={comments.items.map(commentStart)} onSeek={play.seek} />
       {composer.composing && (
         <ComposeSheet state={composer.state} time={play.time} canSend={composer.draft !== null} dispatch={composer.dispatch} onCancel={composer.close} onSend={composer.send} />

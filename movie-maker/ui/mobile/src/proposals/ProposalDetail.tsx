@@ -1,5 +1,6 @@
 import { useState } from "preact/hooks";
 import { approveLabel, describeOp, describeScope } from "@mm/review/src/model.ts";
+import type { Api } from "../api/http.ts";
 import type { Proposal } from "./api.ts";
 import { FrameCompare } from "./FrameCompare.tsx";
 import { allOps, approvalOps, canApprove } from "./view.ts";
@@ -8,6 +9,9 @@ export interface ProposalDetailProps {
   proposal: Proposal;
   /** 前後のフレームを描くコンポジション（Watch と同じ）。 */
   comp?: string;
+  /** 短い動画の URL を読む API と、読み直しの合図のプロジェクトのバージョン。 */
+  api: Api;
+  version: number;
   onBack: () => void;
   onApprove: (ops: number[] | null) => Promise<boolean>;
   onReject: () => Promise<boolean>;
@@ -64,7 +68,7 @@ export const ProposalDetail = (props: ProposalDetailProps) => {
         </button>
         <b>{p.name}</b>
       </header>
-      <FrameCompare proposal={p} ops={approvalOps(p, selected)} comp={props.comp} />
+      <FrameCompare api={props.api} version={props.version} proposal={p} ops={approvalOps(p, selected)} comp={props.comp} />
       <div class="scroll">
         {(p.conflict?.length ?? 0) > 0 && <p class="error">Overlaps later edits: {p.conflict?.join(", ")}</p>}
         <ul class="ops">
