@@ -102,8 +102,8 @@ async fn frame(
     Ok(respond(payload))
 }
 
-/// `GET /m/api/stream/{comp}/index.m3u8`（画質を選ぶ親）と `GET /m/api/stream/{comp}/{quality}.m3u8`。
-/// 子の URI は親からの相対パス `{quality}.m3u8`、区間の URI は子からの相対パス `seg/{key}.ts`。
+/// `GET /m/api/stream/{comp}/index.m3u8`（親のプレイリスト）と `GET /m/api/stream/{comp}/{quality}.m3u8`（画質ごとのプレイリスト）。
+/// 親のプレイリストは画質ごとのプレイリストを相対パス `{quality}.m3u8` で、画質ごとのプレイリストは区間を相対パス `seg/{key}.ts` で指す。
 async fn playlist(
     State(st): State<Arc<MobileState>>,
     Path((comp, file)): Path<(String, String)>,

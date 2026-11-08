@@ -98,15 +98,23 @@ fn 区間のキーは名前と往復し中身と範囲で決まる() {
 }
 
 #[test]
-fn デコーダーの画素のバージョンが上がると全区間のキーが変わる() {
-    let label = |ids: &[&str]| crate::streamer::backend_label("decode", "auto", ids);
-    let keys = |ids: &[&str]| keys_on(&project(), 1, HlsQuality::P360, &label(ids));
-    let before = keys(&["d3d12va@1", "ffmpeg@1"]);
-    assert_eq!(keys(&["d3d12va@1", "ffmpeg@1"]), before);
-    assert_eq!(
-        same(&before, &keys(&["d3d12va@2", "ffmpeg@1"])),
-        [false, false, false]
-    );
+fn デコーダーの画素の作り方のバージョンが上がると全区間のキーが変わる() {
+    for (name, before_ids, after_ids) in [
+        ("auto", ["d3d12va@1", "ffmpeg@1"], ["d3d12va@2", "ffmpeg@1"]),
+        ("ffmpeg", ["ffmpeg", "ffmpeg@1"], ["ffmpeg", "ffmpeg@2"]),
+    ] {
+        let keys = |ids: &[&str]| {
+            let label = crate::streamer::backend_label("decode", name, ids);
+            keys_on(&project(), 1, HlsQuality::P360, &label)
+        };
+        let before = keys(&before_ids);
+        assert_eq!(keys(&before_ids), before, "{name}");
+        assert_eq!(
+            same(&before, &keys(&after_ids)),
+            [false, false, false],
+            "{name}"
+        );
+    }
 }
 
 /// `project()` に、無効のレイヤー `off`（シーケンス `s2` の絵）を足す。`as_matte` なら `seq` のマットに使う。

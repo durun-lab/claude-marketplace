@@ -369,10 +369,10 @@ impl Drop for Streamer {
     }
 }
 
-/// 区間のキーに入れる実装の名前。`decode=auto` は素材ごとに実装を選ぶので、名乗りうる実装の全部を添える。
-/// デコーダーの画素の作り方のバージョンが上がると名前が変わり、前の区間を使わない。
+/// 配信の区間のキーに入れる実装の名前。デコーダーには名乗りうる名前の全部を添える（フレームのキャッシュの
+/// `unopened_decoder` と同じ形）。どれかの画素の作り方のバージョンが上がると名前が変わり、前の区間を使わない。
 pub(crate) fn backend_label(role: &str, name: &str, decoders: &[&str]) -> String {
-    if role == "decode" && name == "auto" {
+    if role == "decode" {
         format!("{role}={name}[{}]", decoders.join(","))
     } else {
         format!("{role}={name}")
@@ -395,14 +395,14 @@ mod tests {
     use super::backend_label;
 
     #[test]
-    fn decode_auto_は名乗りうる実装を添え_ほかはそのまま() {
+    fn デコーダーには名乗りうる名前を添え_ほかはそのまま() {
         assert_eq!(
             backend_label("decode", "auto", &["d3d12va@2", "ffmpeg@1"]),
             "decode=auto[d3d12va@2,ffmpeg@1]"
         );
         assert_eq!(
-            backend_label("decode", "ffmpeg", &["ffmpeg@1"]),
-            "decode=ffmpeg"
+            backend_label("decode", "ffmpeg", &["ffmpeg", "ffmpeg@1"]),
+            "decode=ffmpeg[ffmpeg,ffmpeg@1]"
         );
         assert_eq!(backend_label("render", "auto", &["x"]), "render=auto");
     }

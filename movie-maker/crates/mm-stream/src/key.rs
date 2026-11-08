@@ -300,9 +300,8 @@ impl Walk<'_> {
     }
 }
 
-/// `inner` に掛かるカット（`placed` の中の番号）。重なるカットと、`inner` に掛かるトランジションの両側のカット。
-/// 画素に効きうるレイヤー。有効なレイヤーと、無効でもトラックマットのレイヤーとして引かれるもの
-/// （`mm-render` の `matte::effective_layers` と同じ選び方。描かないレイヤーで区間のキーを変えない）。
+/// 画素に効きうるレイヤー。有効なレイヤーと、無効でもマットのレイヤーとして使われるもの
+/// （`mm-render` の `matte::effective_layers` と同じ選び方。描かないレイヤーで配信の区間のキーを変えない）。
 fn effective_layers(comp: &Composition) -> impl Iterator<Item = &Layer> {
     let mattes: HashSet<&str> = comp
         .layers
@@ -315,6 +314,7 @@ fn effective_layers(comp: &Composition) -> impl Iterator<Item = &Layer> {
         .filter(move |l| l.enabled || mattes.contains(l.id.as_str()))
 }
 
+/// `inner` に掛かるカット（`placed` の中の番号）。重なるカットと、`inner` に掛かるトランジションの両側のカット。
 fn touching(seq: &Sequence, placed: &[PlacedCut], inner: TimeRange) -> Vec<usize> {
     let mixes = |i: usize| i < placed.len() && transition_reaches(seq, &placed[i], inner);
     (0..placed.len())

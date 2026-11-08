@@ -120,7 +120,7 @@ const checkServiceWorker = async (base) => {
   if (apiCached || !result.cached.includes("/m/app.js")) throw new Error("service worker cache is wrong");
 };
 
-/** 親のプレイリストから子、区間と読み進み、映像が実際に進むことを H.264 の入った Chrome で確かめる。 */
+/** 親のプレイリストから画質ごとのプレイリスト、区間と読み進み、映像が実際に進むことを H.264 の入った Chrome で確かめる。 */
 const checkPlayback = async (base) => {
   const browser = await chromium.launch({ channel: process.env.PLAYBACK_CHANNEL ?? "chrome" });
   const page = await (await browser.newContext({ ...devices["Pixel 7"] })).newPage();

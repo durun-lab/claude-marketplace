@@ -6,11 +6,11 @@
 //! 共有の GPU を D3D12 で頼むので、既定の頼み方で共有の GPU を作るほかのテストと同じプロセスに置かない（別の実行ファイル。docs/ci.md）。
 #![cfg(all(feature = "ffmpeg", feature = "d3d12va", feature = "cuvid"))]
 
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Once};
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use mm_decode_api::{DecodedFrame, DecoderFactory, GpuContextRef};
-use mm_decode_d3d12va::PROBE_ENV;
+use mm_decode_d3d12va::find_probe;
 use mm_gpu::{GpuContext, WgpuGpu};
 use mm_node_api::GpuHelper;
 use mm_runtime::{assemble, AutoDecoderFactory, Backend, GpuCandidate, RuntimeConfig, WithAudio};
@@ -19,39 +19,13 @@ use mm_types::{RationalTime, RgbaImage, TimeRange};
 const BIT_COUNT: u32 = 16;
 const BIT_SIZE: u32 = 16;
 
-/// 試しデコードの実行ファイル（`mm-d3d12va-probe`）。`-p mm-runtime` だけで回すと cargo はこれを作らないので、
-/// 無ければテストの実行ファイルと同じ target に作り、`MM_D3D12VA_PROBE` で指す。
-fn ensure_probe() {
-    static BUILT: Once = Once::new();
-    BUILT.call_once(build_probe);
-}
+/// `mm-d3d12va-probe` が無いと d3d12va は素材を試せずに次の実装へ譲り、d3d12va の分岐を確かめられない。
+/// cargo は依存先の実行ファイルを作らないので、`-p mm-runtime` だけで回すときは先に作る（11-testing.md）。
+const PROBE_MISSING: &str = "mm-d3d12va-probe が見つからない。テストと同じ CARGO_TARGET_DIR と profile で \
+     `cargo build -p mm-decode-d3d12va --features d3d12va --bin mm-d3d12va-probe` を先に実行するか、MM_D3D12VA_PROBE で指す";
 
-fn build_probe() {
-    if std::env::var_os(PROBE_ENV).is_some() {
-        return;
-    }
-    // <target>/<profile>/deps/<テスト>.exe
-    let exe = std::env::current_exe().expect("current_exe");
-    let profile_dir = exe.parent().and_then(Path::parent).expect("profile dir");
-    let target_dir = profile_dir.parent().expect("target dir");
-    let profile = match profile_dir.file_name().and_then(|n| n.to_str()) {
-        Some("debug") | None => "dev",
-        Some(other) => other,
-    };
-    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    let status = std::process::Command::new(cargo)
-        .args(["build", "-p", "mm-decode-d3d12va", "--features", "d3d12va"])
-        .args(["--bin", "mm-d3d12va-probe", "--profile", profile])
-        .arg("--target-dir")
-        .arg(target_dir)
-        .arg("--manifest-path")
-        .arg(Path::new(env!("CARGO_MANIFEST_DIR")).join("../../Cargo.toml"))
-        .status()
-        .expect("cargo");
-    assert!(status.success(), "mm-d3d12va-probe のビルド");
-    let probe = profile_dir.join("mm-d3d12va-probe.exe");
-    assert!(probe.exists(), "{} が無い", probe.display());
-    std::env::set_var(PROBE_ENV, probe);
+fn require_probe() {
+    assert!(find_probe().is_some(), "{PROBE_MISSING}");
 }
 
 fn fixtures() -> PathBuf {
@@ -88,7 +62,7 @@ fn config(decode: Backend) -> RuntimeConfig {
 
 /// `assemble` が作ったのと同じ GPU のコンテキスト（プロセスで共有）。
 fn shared_gpu() -> Arc<GpuContext> {
-    ensure_probe();
+    require_probe();
     GpuContext::shared(&mm_decode_d3d12va::gpu_request(None).unwrap()).unwrap()
 }
 

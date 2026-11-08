@@ -59,6 +59,15 @@ fn locate_exe(env: Option<OsString>, current_exe: Option<&Path>) -> Option<PathB
         .find(|p| p.exists())
 }
 
+/// [`probe`] が使う `mm-d3d12va-probe` の場所。`MM_D3D12VA_PROBE`、なければこのプロセスの実行ファイルと同じ場所か
+/// その一つ上。無ければ `None`（d3d12va は素材を試せず、開くのを次の実装へ譲る）。
+pub fn find_probe() -> Option<PathBuf> {
+    locate_exe(
+        std::env::var_os(PROBE_ENV),
+        std::env::current_exe().ok().as_deref(),
+    )
+}
+
 /// `path` を別プロセスで試す。試せなかったときも `Err(Unsupported)` で、その結果はキャッシュしない。
 pub fn probe(path: &Path, luid: u64) -> Result<()> {
     let meta = std::fs::metadata(path).ok();
@@ -72,11 +81,7 @@ pub fn probe(path: &Path, luid: u64) -> Result<()> {
     if let Some(r) = cached.get(&key) {
         return to_result(r.clone());
     }
-    let exe = locate_exe(
-        std::env::var_os(PROBE_ENV),
-        std::env::current_exe().ok().as_deref(),
-    );
-    let outcome = match exe {
+    let outcome = match find_probe() {
         Some(exe) => run_exe(&exe, path, luid),
         None => Outcome::Unavailable(format!("{PROBE_EXE} が見つからない")),
     };
