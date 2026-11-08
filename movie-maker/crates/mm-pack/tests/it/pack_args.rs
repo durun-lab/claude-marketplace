@@ -95,6 +95,22 @@ fn 検査は壊した引数の定義を捕まえる() {
 }
 
 #[test]
+fn 検査は縁の固定の誤りを捕まえる() {
+    let errors = check_broken("macros/claude.json", |v| {
+        v["params"]["x"]["pin"]["anchor"] = 2.into();
+        v["params"]["text"]["pin"] = serde_json::json!({"axis": "y", "anchor": 0});
+    });
+    assert!(
+        mentions(&errors, "引数 x: pin の anchor は 0..1"),
+        "{errors:?}"
+    );
+    assert!(
+        mentions(&errors, "引数 text: pin は type が number"),
+        "{errors:?}"
+    );
+}
+
+#[test]
 fn 検査はページの色の直書きを捕まえる() {
     let dir = tempfile::tempdir().unwrap();
     crate::vlog::copy_dir(&crate::vlog::vlog_dir(), dir.path());

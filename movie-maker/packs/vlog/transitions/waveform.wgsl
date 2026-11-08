@@ -2,12 +2,11 @@
 // 中央の細い線から DAW の波形表示（ピークと RMS）がふくらんで画面を満たし、波形の中に B。
 const SHUTTER: f32 = 0.4;
 
-fn fmodf(x: f32, y: f32) -> f32 { return x - y * floor(x / y); }
 fn amp(p: f32) -> f32 { return mix(2.0, 2600.0, in3(win(p, 0.12, 0.72))); }
 fn peak(x: f32, t: f32) -> f32 {
     let xs = x + t * 900.0; // 波形は左へ流れる
     let beat = 1920.0 / 8.0;
-    let trans = exp(-fmodf(xs, beat) / 70.0); // 拍ごとのアタック
+    let trans = exp(-fmod(xs, beat) / 70.0); // 拍ごとのアタック
     let body = 0.25 + 0.55 * fbm(vec2<f32>(xs * 0.006, uSeed));
     let fine = 0.75 + 0.25 * vnoise(vec2<f32>(xs * 0.08, 3.0));
     return sat((0.18 + 0.5 * trans + body * 0.6) * fine);

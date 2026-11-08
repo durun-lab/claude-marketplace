@@ -84,6 +84,38 @@ pub struct ParamDef {
     /// 値の書式。展開の前に検査する。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub format: Option<ParamFormat>,
+    /// 座標の既定を置く画面へ変換するときに保つ縁（縁の固定）。既定は本編の画面の画素で書き、
+    /// 引数を省いたときだけ変換する（渡した値は置くコンポジションの画素のまま）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pin: Option<ParamPin>,
+}
+
+/// 座標の引数の既定が保つ画面の点（Premiere のレスポンシブデザインの固定先、CSS の `right`・`bottom`）。
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ParamPin {
+    /// 座標の軸。
+    pub axis: ParamAxis,
+    /// 保つ画面の点の割合。0 は左・上の縁、0.5 は中央、1 は右・下の縁（文字のスタイルの基準点と同じ）。
+    pub anchor: f64,
+}
+
+/// 座標の軸。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ParamAxis {
+    X,
+    Y,
+}
+
+impl ParamAxis {
+    /// `[幅, 高さ]` の並びでの位置。
+    pub(crate) fn index(self) -> usize {
+        match self {
+            Self::X => 0,
+            Self::Y => 1,
+        }
+    }
 }
 
 /// 区切りのある文字の引数の書式。ページが読む約束と同じ形で、読めない値を展開の前に誤りにする。

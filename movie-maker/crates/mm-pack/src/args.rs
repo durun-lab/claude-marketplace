@@ -7,6 +7,7 @@ use serde_json::Value;
 
 use crate::macros::{MacroDef, ParamType};
 use crate::param_format::validate;
+use crate::screen::pin_axis;
 use crate::theme::Theme;
 
 /// 小数の秒の桁の上限（`mm op` の時刻と同じ）。
@@ -143,6 +144,25 @@ impl Env {
             values.insert(name.clone(), value);
         }
         Ok(Self { values })
+    }
+
+    /// 省いた引数のうち縁の固定（`pin`）のある既定を、本編の画面 `canvas` から置く画面 `screen` へ変換する。
+    pub(crate) fn pin_defaults(
+        &mut self,
+        def: &MacroDef,
+        raw: &BTreeMap<String, String>,
+        canvas: [f64; 2],
+        screen: [f64; 2],
+    ) {
+        for (name, param) in &def.params {
+            let Some(pin) = param.pin.filter(|_| !raw.contains_key(name)) else {
+                continue;
+            };
+            if let Some(ArgValue::Number(v)) = self.values.get_mut(name) {
+                let i = pin.axis.index();
+                *v = pin_axis(*v, pin.anchor, canvas[i], screen[i]);
+            }
+        }
     }
 
     /// 名前で引ける値か（検査が使う）。

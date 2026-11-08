@@ -4,15 +4,13 @@ const SHUTTER: f32 = 0.4;
 
 const HR: f32 = 64.0;
 
-fn fmodv(x: vec2<f32>, y: vec2<f32>) -> vec2<f32> { return x - y * floor(x / y); }
-
 struct HexCell { cen: vec2<f32>, local: vec2<f32> }
 // 六角形の格子（尖った頭が上）の、この画素のタイルの中心と、中心からの位置
 fn hexCell() -> HexCell {
     let s = vec2<f32>(1.7320508 * HR, 1.5 * HR);
     let per = vec2<f32>(s.x, 2.0 * s.y);
-    let a = fmodv(P, per) - per * 0.5;
-    let b = fmodv(P - vec2<f32>(s.x * 0.5, s.y), per) - per * 0.5;
+    let a = fmod2(P, per) - per * 0.5;
+    let b = fmod2(P - vec2<f32>(s.x * 0.5, s.y), per) - per * 0.5;
     let g = select(b, a, dot(a, a) < dot(b, b));
     return HexCell(P - g, g);
 }
