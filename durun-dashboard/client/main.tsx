@@ -13,7 +13,7 @@ import { EXPLORER_KEY, ExplorerFloat } from './Explorer.tsx';
 import { Feedback } from './Feedback.tsx';
 import { type Float, floatUp, useFloats } from './Float.tsx';
 import { Header } from './Header.tsx';
-import { HOME_KEY } from './dashboards.ts';
+import { HOME_KEY, receiveDashboards } from './dashboards.ts';
 import { Home, HomeFloat, NEW_SESSION_KEY, NewSessionFloat } from './Home.tsx';
 import { CacheVersionContext, NowContext, pickInWidget, useNow, useSnapshot } from './hooks.ts';
 import { useDeliveryFailureEffects } from './deliveryEffects.ts';
@@ -140,6 +140,9 @@ const App = () => {
   const route = useRoute();
   const light = useLightMode();
   const { snapshot, fresh, connected } = useSnapshot(light);
+  useEffect(() => {
+    if (snapshot) receiveDashboards(snapshot.dashboards, !!fresh);
+  }, [snapshot, fresh]);
   const [searching, setSearching] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   // ダッシュボードの編集は、ヘッダーのメニューかショートカットで始める。ショートカットをもう一度押すか、画面を移ったら編集を終える。

@@ -53,15 +53,22 @@ export const WidgetPanel = ({ title, count, children }: { title: string; count?:
   </>
 );
 
-const loadLayout = (key: string, widgets: Record<string, { launch?: unknown }>, defaults: Layout): Layout => {
+/** 保存した配置を読む。今は無い種類のウィジェットは外し、読めない配置や保存していなければ初期配置を使う。 */
+const toLayout = (saved: unknown, widgets: Record<string, { launch?: unknown }>, defaults: Layout): Layout => {
   try {
-    const raw = localStorage.getItem(key);
-    // 今は無い種類のウィジェットは外す。
-    if (raw) return freeApps(keepTabs(fromSaved(JSON.parse(raw)), (t) => !!widgets[kindOf(t.id)]), (t) => !!widgets[kindOf(t.id)]?.launch);
+    if (Array.isArray(saved)) return freeApps(keepTabs(fromSaved(saved), (t) => !!widgets[kindOf(t.id)]), (t) => !!widgets[kindOf(t.id)]?.launch);
   } catch {
     // 読めない配置は捨てて、初期配置を使う。
   }
   return defaults;
+};
+
+const loadLayout = (key: string, widgets: Record<string, { launch?: unknown }>, defaults: Layout): Layout => {
+  try {
+    return toLayout(JSON.parse(localStorage.getItem(key) ?? 'null'), widgets, defaults);
+  } catch {
+    return defaults;
+  }
 };
 
 const saveLayout = (key: string, layout: Layout): void => {
@@ -599,8 +606,8 @@ type DashboardProps<P> = EditProps & {
   defaults: Layout;
   /** 浮かべたウィジェットと、開くよう頼まれたウィジェットを、どの画面のものか区別するキー。 */
   storageKey: string;
-  /** 配置を保存する localStorage のキー。省略すると storageKey に保存する。 */
-  layoutKey?: string;
+  /** 配置をブラウザでなくほかの場所に保存するときの、保存した配置と保存する処理。省略すると、配置を localStorage の storageKey に保存する。 */
+  store?: { saved: unknown; save: (layout: Layout) => void };
   /** すべてのウィジェットに渡す、画面のデータ。 */
   data: P;
   focus?: WidgetFocus;
@@ -608,16 +615,22 @@ type DashboardProps<P> = EditProps & {
   scope?: string;
 };
 
-/** 編集モードで、ウィジェットの位置と大きさを変え、外したり、置いたり、タブとして重ねたりできる。配置はブラウザに保存する。 */
-export const Dashboard = <P extends object>({ widgets, defaults, storageKey, layoutKey = storageKey, data, focus, scope = '', editing, onEditDone }: DashboardProps<P>) => {
-  const [layout, setLayout] = useState(() => loadLayout(layoutKey, widgets, defaults));
+/** 編集モードで、ウィジェットの位置と大きさを変え、外したり、置いたり、タブとして重ねたりできる。配置は store か、無ければブラウザに保存する。 */
+export const Dashboard = <P extends object>({ widgets, defaults, storageKey, store, data, focus, scope = '', editing, onEditDone }: DashboardProps<P>) => {
+  const [layout, setLayout] = useState(() => (store ? toLayout(store.saved, widgets, defaults) : loadLayout(storageKey, widgets, defaults)));
+  // ほかの端末で変えた配置が届いたら、描き直す。届くたびに作り直されるオブジェクトは比べず、中身が変わったときだけ読み直す。
+  const savedText = store && JSON.stringify(store.saved);
+  useEffect(() => {
+    if (store && savedText !== JSON.stringify(layout)) setLayout(toLayout(store.saved, widgets, defaults));
+  }, [savedText]);
   // 「追加」で選び、置く場所を待っているウィジェット。
   const [placing, setPlacing] = useState<Tab>();
   const grid = useRef<HTMLDivElement>(null);
   const top = useGridTop(grid);
   const update = (next: Layout) => {
     setLayout(next);
-    saveLayout(layoutKey, next);
+    if (store) store.save(next);
+    else saveLayout(storageKey, next);
   };
   const resize = useResize(grid, layout, update);
   const move = useMove(grid, layout, update, (t) => widgets[kindOf(t.id)]?.size);

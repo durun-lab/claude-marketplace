@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { type AgentPriority, type AskedQuestion, type Bookmark, type BranchView, type DiffRange, type DocFormat, type LearnRun, type LearnSettings, MEDIA_TYPES, type OutboxMessage, type PrThreadNote, type QueuedMessage, type RatePoint, type SavedDoc, type SavedFile, type SavedLink, type SavedProof, type SavedTerm } from '../shared/types.ts';
+import { type AgentPriority, type AskedQuestion, type Bookmark, type BranchView, type Dashboards, type DiffRange, type DocFormat, type LearnRun, type LearnSettings, MEDIA_TYPES, type OutboxMessage, type PrThreadNote, type QueuedMessage, type RatePoint, type SavedDoc, type SavedFile, type SavedLink, type SavedProof, type SavedTerm } from '../shared/types.ts';
 
 // 利用者ごとのデータはツールのリポジトリと分けてホームに置く。テストでは一時ディレクトリに向けて、実際の状態に触れないようにする。
 export const DATA_DIR = process.env.DURUN_DASHBOARD_DATA_DIR ?? path.join(os.homedir(), '.durun-dashboard');
@@ -185,6 +185,8 @@ type State = {
   prNotes: Record<string, PrThreadNote>;
   /** 人間がホームで並べ替えたセッションの順 */
   sessionOrder: string[];
+  /** ホームのダッシュボードの一覧と配置。人間がまだ一度も保存していなければ無い */
+  dashboards?: Dashboards;
   /** 人間がホームで並べ替えたテーマの順 */
   themeOrder: string[];
   /** 5 時間と 7 日の使用制限それぞれの、今の枠の使用率の推移 */

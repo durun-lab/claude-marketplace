@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
-import { AGENT_PRIORITIES, type AgentPriority, type AssistantMessage, type BranchView, PR_REVIEW_EVENTS, type PrReviewEvent, type ChatEntry, bookmarkKey, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, GITHUB_LIST_MAX, type Glossary, type GithubSearch, type HarnessToggle, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PERMISSION_MODES, PR_URL, JIRA_LIST_MAX, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type SlackConversation, type TextSaveResult } from '../shared/types.ts';
+import { AGENT_PRIORITIES, type AgentPriority, type AssistantMessage, type BranchView, PR_REVIEW_EVENTS, type PrReviewEvent, type ChatEntry, bookmarkKey, type Dashboards, type Delivery, type DiffFile, type DiffResult, type Doc, type DocEditResult, type ExplorerDir, EFFORT_LEVELS, type FileTarget, GITHUB_ATTACHMENT, GITHUB_LIST_MAX, type Glossary, type GithubSearch, type HarnessToggle, JIRA_ISSUE_KEY, MEDIA_TYPES, MODELS, PERMISSION_MODES, PR_URL, JIRA_LIST_MAX, type JiraIssue, type PrInfo, type PrNotes, type PrThread, type ProofEvent, type ProofFile, type ProofMode, type ProofVersion, type QueuedMessage, type Replies, type ReviewComment, type ReviseNote, type SkillInfo, type SlackConversation, type TextSaveResult } from '../shared/types.ts';
 import { withBase } from '../shared/html.ts';
 import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
@@ -58,6 +58,7 @@ import { resizeTerminal, streamTerminal, writeTerminal } from './terminal.ts';
 import { abortCdItem, CdRipError, ejectCd, exportCdItem, retryCdResearch, saveCdMeta, sendCdCover, sendCdRekordbox, setCdCover, installCdTool, retryCdItem, skipCdItem, saveCdRip, saveCdRipSettings, setCdRipAccepting, setCdRipList, streamCdRip } from './cdrip.ts';
 import { answerFlRemoval, createFlLoopback, installFlScripts, launchFlStudio, setFlSession, setFlSettings, streamFlConnect } from './flconnect.ts';
 import { installMovieMaker, launchMovieMaker, refreshMobile, setMmProject, setMmSession, streamMovieMaker } from './movieMaker.ts';
+import { dashboardsOf, putDashboard } from './dashboards.ts';
 import { WALLPAPER_TYPES, clearWallpaper, readWallpaper, saveWallpaper } from './wallpaper.ts';
 
 const PORT = Number(process.env.DURUN_DASHBOARD_PORT ?? 7337);
@@ -860,6 +861,26 @@ const orderSessions = (body: unknown): void => {
   touch();
 };
 
+/** 配置は画面が読むときに形を確かめるので、ここでは配列であることだけを確かめる。 */
+const saveDashboard = (body: unknown): Dashboards => {
+  const layout = (body as Record<string, unknown>).layout;
+  if (layout !== undefined && !Array.isArray(layout)) throw new HttpError(400, 'layout must be array');
+  state.dashboards = putDashboard(state.dashboards, { id: field<string>(body, 'id', 'string'), name: optionalString(body, 'name')?.trim() || undefined, layout });
+  touch();
+  return state.dashboards;
+};
+
+/** 画面がブラウザに持っていた一覧と配置を、サーバーにまだ一覧が無いときだけ受け取る。ほかの端末が先に送っていたら、そちらを返す。 */
+const importDashboards = (body: unknown): Dashboards => {
+  if (!state.dashboards) {
+    const imported = dashboardsOf(body);
+    if (!imported) throw new HttpError(400, 'invalid dashboards');
+    state.dashboards = imported;
+    touch();
+  }
+  return state.dashboards;
+};
+
 const orderThemes = (body: unknown): void => {
   state.themeOrder = strings(body, 'themes');
   touch();
@@ -1225,6 +1246,8 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/sessions\/([^/]+)\/theme$/, ([, id = ''], b) => setTheme(id, b)],
   [/^\/api\/themes\/rename$/, (_, b) => setThemeName(b)],
   [/^\/api\/themes\/order$/, (_, b) => orderThemes(b)],
+  [/^\/api\/dashboards$/, (_, b) => saveDashboard(b)],
+  [/^\/api\/dashboards\/import$/, (_, b) => importDashboards(b)],
   [/^\/api\/sessions\/([^/]+)\/title$/, ([, id = ''], b) => setTitle(id, b)],
   [/^\/api\/sessions\/([^/]+)\/archive$/, ([, id = ''], b) => setArchived(id, b)],
   [/^\/api\/sessions\/([^/]+)\/discard$/, ([, id = '']) => discardSession(sessionMeta(id))],
