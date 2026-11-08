@@ -2,6 +2,8 @@
 //!
 //! `Engine` は GPU のコンテキストとフレームのキャッシュを持ち、VRAM を食うので、配信の全部で 1 つにする。
 //! 待たせると困る順に取り出す: 静止画のフレームとキャッシュの破棄、要求された区間、先読みの区間。
+//! 区間の符号化は `mm-export` の符号化の段（別のスレッド）が行い、描画の段はフレームを 1 つ描くごとに急ぎの仕事を
+//! 挟む（[`Worker::run_urgent`]）ので、静止画のフレームと `GET /frame` は区間 1 本ではなく 1 フレーム分だけ待つ。
 
 use std::collections::VecDeque;
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
@@ -123,6 +125,20 @@ impl Worker {
         dropped
     }
 
+    /// 積まれている急ぎの仕事を、待たずに全部 `engine` で済ませる。区間を描くフレームの間に呼ぶ。
+    pub(crate) fn run_urgent(&self, engine: &mut Engine) {
+        loop {
+            // 仕事の中で急ぎの仕事が積まれてもよいよう、取り出したらすぐ錠を放す。
+            let Some(job) = lock(&self.queue).urgent.pop_front() else {
+                return;
+            };
+            match job {
+                Urgent::Invalidate(ids) => engine.invalidate_touched(&ids),
+                Urgent::Run(job) => job(Ok(engine)),
+            }
+        }
+    }
+
     pub(crate) fn close(&self) {
         lock(&self.queue).closed = true;
         self.wake.notify_all();
@@ -145,11 +161,16 @@ impl Worker {
     }
 }
 
-/// 描画のスレッドの本体。`Engine` の組み立ては最初の仕事まで遅らせる。`segment` は区間を作って置く。
+/// 区間を描くフレームの間に、積まれている急ぎの仕事（静止画のフレーム、`GET /frame`、キャッシュの破棄）を
+/// 描いている `Engine` で済ませる関数。
+pub(crate) type Interleave<'a> = &'a mut dyn FnMut(&mut Engine);
+
+/// 描画のスレッドの本体。`Engine` の組み立ては最初の仕事まで遅らせる。`segment` は区間を作って置き、
+/// フレームの間に 3 つ目の引数を呼んで急ぎの仕事を挟む。
 pub(crate) fn run(
     worker: &Worker,
     config: &RuntimeConfig,
-    segment: impl Fn(&mut Engine, &SegJob) -> Result<()>,
+    segment: impl Fn(&mut Engine, &SegJob, Interleave<'_>) -> Result<()>,
 ) {
     let mut engine: Option<Engine> = None;
     while let Some(job) = worker.next() {
@@ -161,7 +182,9 @@ pub(crate) fn run(
             }
             Job::Urgent(Urgent::Run(job)) => job(ensure(&mut engine, config)),
             Job::Segment(job) => {
-                let result = ensure(&mut engine, config).and_then(|e| segment(e, &job));
+                let mut urgent = |e: &mut Engine| worker.run_urgent(e);
+                let result =
+                    ensure(&mut engine, config).and_then(|e| segment(e, &job, &mut urgent));
                 job.slot
                     .finish(result.map_err(|e| format!("区間 {} を作れない: {e}", job.key)));
             }

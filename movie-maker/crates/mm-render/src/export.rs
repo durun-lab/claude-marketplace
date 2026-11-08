@@ -1,6 +1,6 @@
 //! 書き出しの経路。描いたフレームを GPU で NV12（Rec.709、tv レンジ、Rec.1886 の符号化値）にして
-//! リードバックし、エンコーダーの `push_nv12_frames` に押す。リードバックは数フレーム先行させ、
-//! GPU の描画と CPU のエンコードを重ねる。エンコーダーが NV12 を受けなければ RGBA の既定の経路に戻る。
+//! リードバックを出し、待たずに返す（`Renderer::export_frame`）。呼ぶ側はリードバックを数フレーム先行させ、
+//! GPU の描画と CPU のエンコードを重ねる。エンコーダーが NV12 を受けなければ RGBA のリードバックを出す。
 //! NV12 は SDR なので、HDR の素材があればプレビューと同じトーンマップ（`TONEMAP_WGSL`）を掛けてから符号化する。
 
 use std::collections::VecDeque;
@@ -8,7 +8,8 @@ use std::sync::Arc;
 
 use mm_decode_api::{Encoder, Nv12Frame};
 use mm_gpu::{GpuContext, Readback, WgpuGpu, FRAME_FORMAT};
-use mm_render_api::{export_range_rgba, tone_map_peak, RangeRequest, RenderRequest};
+use mm_node_api::GpuHelper;
+use mm_render_api::{tone_map_peak, ExportFrame, PendingFrame, RangeRequest, RenderRequest};
 use mm_types::tonemap::TONEMAP_WGSL;
 use mm_types::transfer::TRANSFER_WGSL;
 use mm_types::{MmError, RationalTime, Result, Size};
@@ -72,14 +73,6 @@ fn fs_uv(@builtin(position) pos: vec4<f32>) -> @location(0) vec2<f32> {
 struct PlaneSet {
     y: wgpu::Texture,
     uv: wgpu::Texture,
-}
-
-/// 提出済みのリードバック。
-struct InFlight {
-    index: i64,
-    size: Size,
-    y: Readback,
-    uv: Readback,
 }
 
 /// NV12 への変換のパイプラインと、変換先のプレーン。
@@ -292,20 +285,84 @@ fn draw_plane(
     pass.draw(0..3, 0..1);
 }
 
+/// NV12 に変換し、Y と UV のリードバックを待っているフレーム。
+struct Nv12Pending {
+    size: Size,
+    y: Readback,
+    uv: Readback,
+}
+
+/// リードバックを待っている RGBA のフレーム（NV12 を受けないエンコーダー）。
+struct RgbaPending {
+    size: Size,
+    frame: Readback,
+}
+
+/// 描いたレンダラーのヘルパーに降りる。リードバックの完了とバッファの返却は、出したヘルパーで行う。
+fn wgpu_of(gpu: &mut dyn GpuHelper) -> Result<&mut WgpuGpu> {
+    gpu.as_any().downcast_mut::<WgpuGpu>().ok_or_else(|| {
+        MmError::Internal("wgpu のレンダラーで描いた書き出しのフレームではない".into())
+    })
+}
+
+impl PendingFrame for Nv12Pending {
+    fn finish(self: Box<Self>, gpu: &mut dyn GpuHelper) -> Result<ExportFrame> {
+        let gpu = wgpu_of(gpu)?;
+        let y = gpu.finish_readback(self.y)?;
+        let uv = gpu.finish_readback(self.uv)?;
+        Ok(ExportFrame::Nv12(Nv12Frame::new(self.size, y, uv)?))
+    }
+}
+
+impl PendingFrame for RgbaPending {
+    fn finish(self: Box<Self>, gpu: &mut dyn GpuHelper) -> Result<ExportFrame> {
+        let image = wgpu_of(gpu)?.finish_frame_readback(self.frame, self.size)?;
+        Ok(ExportFrame::Rgba(image))
+    }
+}
+
 impl WgpuRenderer {
-    /// 書き出しの区間。GPU で NV12 にして先行してリードバックし、エンコーダーに押す。
-    pub(crate) fn export_nv12(
+    /// 書き出しの 1 フレームを描き、NV12（`nv12` が偽なら RGBA）のリードバックを出して待たずに返す。
+    /// 描いたフレームはコピーを提出した後に手放す（GPU のキューの順で、次の描画はコピーの後になる）。
+    pub(crate) fn begin_export_frame(
+        &mut self,
+        req: &RenderRequest<'_>,
+        nv12: bool,
+    ) -> Result<Box<dyn PendingFrame>> {
+        let id = self.draw_frame(req)?;
+        let pending = if nv12 {
+            self.encode_nv12(id, req.size, tone_map_peak(req.project))
+                .map(|(y, uv)| {
+                    Box::new(Nv12Pending {
+                        size: req.size,
+                        y,
+                        uv,
+                    }) as Box<dyn PendingFrame>
+                })
+        } else {
+            self.gpu.begin_frame_readback(id, req.size).map(|frame| {
+                Box::new(RgbaPending {
+                    size: req.size,
+                    frame,
+                }) as Box<dyn PendingFrame>
+            })
+        };
+        self.gpu.release_id(id);
+        pending
+    }
+
+    /// 書き出しの区間。リードバックを `READBACK_AHEAD` 枚先行させて描き、出来た順にエンコーダーに押す。
+    /// エンコーダーが NV12 を受けなければ RGBA で押す。
+    pub(crate) fn export_pipelined(
         &mut self,
         req: &RangeRequest<'_>,
         encoder: &mut dyn Encoder,
         sink: &mut dyn FnMut(i64),
     ) -> Result<usize> {
-        if let Err(MmError::Unsupported(_)) = encoder.push_nv12_frames(&[]) {
-            return export_range_rgba(self, req, encoder, 1, sink);
-        }
+        let nv12 = !matches!(encoder.push_nv12_frames(&[]), Err(MmError::Unsupported(_)));
         let _span = tracing::info_span!("render.export", comp = %req.composition).entered();
-        let peak = tone_map_peak(req.project);
-        let mut in_flight: VecDeque<InFlight> = VecDeque::with_capacity(READBACK_AHEAD + 1);
+        let mut in_flight: VecDeque<(i64, Box<dyn PendingFrame>)> =
+            VecDeque::with_capacity(READBACK_AHEAD + 1);
         let mut count = 0;
         for index in req.range.frame_indices(req.fps) {
             let frame_req = RenderRequest {
@@ -316,22 +373,14 @@ impl WgpuRenderer {
                 quality: req.quality,
                 nodes: req.nodes,
             };
-            let id = self.draw_frame(&frame_req)?;
-            let (y, uv) = self.encode_nv12(id, req.size, peak)?;
-            self.gpu.release_id(id);
-            in_flight.push_back(InFlight {
-                index,
-                size: req.size,
-                y,
-                uv,
-            });
+            in_flight.push_back((index, self.begin_export_frame(&frame_req, nv12)?));
             if in_flight.len() > READBACK_AHEAD {
-                self.flush_one(&mut in_flight, encoder, sink)?;
+                self.push_oldest(&mut in_flight, encoder, sink)?;
                 count += 1;
             }
         }
         while !in_flight.is_empty() {
-            self.flush_one(&mut in_flight, encoder, sink)?;
+            self.push_oldest(&mut in_flight, encoder, sink)?;
             count += 1;
         }
         Ok(count)
@@ -352,18 +401,19 @@ impl WgpuRenderer {
         Ok(pipe.encode(&mut self.gpu, &frame, peak))
     }
 
-    fn flush_one(
+    fn push_oldest(
         &mut self,
-        in_flight: &mut VecDeque<InFlight>,
+        in_flight: &mut VecDeque<(i64, Box<dyn PendingFrame>)>,
         encoder: &mut dyn Encoder,
         sink: &mut dyn FnMut(i64),
     ) -> Result<()> {
-        let Some(InFlight { index, size, y, uv }) = in_flight.pop_front() else {
+        let Some((index, pending)) = in_flight.pop_front() else {
             return Ok(());
         };
-        let y = self.gpu.finish_readback(y)?;
-        let uv = self.gpu.finish_readback(uv)?;
-        encoder.push_nv12_frames(&[Nv12Frame::new(size, y, uv)?])?;
+        match pending.finish(&mut self.gpu)? {
+            ExportFrame::Nv12(frame) => encoder.push_nv12_frames(&[frame])?,
+            ExportFrame::Rgba(image) => encoder.push_frames(&[image])?,
+        }
         sink(index);
         Ok(())
     }

@@ -18,7 +18,9 @@ use mm_types::{CompositionId, Rational, RationalTime, Result, RgbaImage, Size, T
 
 pub use mm_node_api::Quality as RenderQuality;
 
+mod export;
 mod mix;
+pub use export::{ExportFrame, PendingFrame};
 pub use mix::{mixer_config, TrackLevel};
 
 /// 画面上の大きさを丸める段階。キャッシュのキーに入れる。
@@ -215,6 +217,21 @@ pub trait Renderer: Send {
         sink: &mut dyn FnMut(i64),
     ) -> Result<usize> {
         export_range_rgba(self, req, encoder, batch, sink)
+    }
+    /// 書き出しの描画の段の 1 フレーム。描いてリードバックを出し、待たずに返す。`nv12` が真なら NV12 で、
+    /// 偽なら RGBA で受け取る。呼ぶ側（`mm-export`）は数フレーム先行させてから [`PendingFrame::finish`] で受け取り、
+    /// フレームの間にほかの描画を挟んでよい。
+    ///
+    /// 既定は `render_frame` で描いてその場でリードバックした RGBA を返す（`nv12` を見ない）。
+    fn export_frame(
+        &mut self,
+        req: &RenderRequest<'_>,
+        nv12: bool,
+    ) -> Result<Box<dyn PendingFrame>> {
+        let _ = nv12;
+        let frame = self.render_frame(req)?;
+        let image = self.gpu().download(&frame)?;
+        Ok(Box::new(ExportFrame::Rgba((*image).clone())))
     }
     /// 区間の音を混ぜる。コンポジションのミキサーの設定（[`mixer_config`]）と、レイヤーのミュートとソロを効かせる。
     fn render_audio(&mut self, req: &AudioRequest<'_>) -> Result<AudioBlock>;

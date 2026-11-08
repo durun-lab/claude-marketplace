@@ -44,6 +44,18 @@ pub fn export_run(
     project: &Project,
     options: &ExportOptions,
 ) -> Result<ExportOutcome> {
+    export_run_interleaved(engine, project, options, &mut |_| {})
+}
+
+/// [`export_run`] と同じ書き出しで、描画の段がフレームを 1 つ符号化の段へ渡すごとに `between` に `Engine` を貸す。
+/// 配信の描画のスレッドが、区間の途中に `GET /frame` と静止画のフレームを挟むのに使う。
+/// 並行の描画（[`ExportOptions::parallel`]）の間と、音を混ぜる間は呼ばない。
+pub fn export_run_interleaved(
+    engine: &mut Engine,
+    project: &Project,
+    options: &ExportOptions,
+    between: &mut dyn FnMut(&mut Engine),
+) -> Result<ExportOutcome> {
     let span = tracing::info_span!("export.run");
     let _g = span.enter();
     let target = pick_target(project, options.target.as_ref())?;
@@ -51,7 +63,7 @@ pub fn export_run(
     let project = apply_burn_in(engine, project, &target, options)?;
     let partial = PartialFile::new(partial_path(&output_path));
     let started = Instant::now();
-    let Some(done) = export_target(engine, &project, &target, options)? else {
+    let Some(done) = export_target(engine, &project, &target, options, between)? else {
         return Ok(ExportOutcome::Cancelled);
     };
     // 検証は一時ファイルのまま行う。失敗したら一時ファイルだけが消え、前の正常な出力は置き換わらない。
@@ -169,12 +181,13 @@ pub(crate) fn check_container(codec: &str, output: &Path) -> Result<()> {
     )))
 }
 
-/// 区間を描き、バッチでエンコーダーに送り、音を付けて閉じる。取り消されたら `None`。
+/// 区間を描いてエンコーダーに送り、音を付けて閉じる。取り消されたら `None`。
 fn export_target(
     engine: &mut Engine,
     project: &Project,
     target: &RenderTargetId,
     options: &ExportOptions,
+    between: &mut dyn FnMut(&mut Engine),
 ) -> Result<Option<Finished>> {
     let target = project.render_target(target)?;
     let comp = project.composition(&target.composition)?;
@@ -200,6 +213,7 @@ fn export_target(
         &settings,
         audio_range,
         encoder.as_mut(),
+        between,
     )?;
     let Some((frames, mut audio)) = rendered else {
         return Ok(None);
@@ -207,20 +221,23 @@ fn export_target(
     let normalization = deliver::normalize(engine, target, &mut audio)?;
     encoder.push_audio(&audio)?;
     let implementation = encoder.implementation();
-    let report = encoder.finish()?;
-    let expected = Expected {
-        frames: frames as u64,
-        size: settings.size,
-        fps: settings.fps.to_f64(),
-        audio_seconds: Some(audio_range.duration()?.to_f64()),
-    };
     Ok(Some(Finished {
-        report,
-        expected,
+        report: encoder.finish()?,
+        expected: expected_of(frames, &settings, audio_range)?,
         prepared,
         normalization,
         implementation,
     }))
+}
+
+/// 書き出しが満たすべきこと（ffprobe の検証に渡す）。
+fn expected_of(frames: usize, settings: &EncodeSettings, audio: TimeRange) -> Result<Expected> {
+    Ok(Expected {
+        frames: frames as u64,
+        size: settings.size,
+        fps: settings.fps.to_f64(),
+        audio_seconds: Some(audio.duration()?.to_f64()),
+    })
 }
 
 /// レンダーターゲットのコーデックのエンコーダーを作り、字幕とチャプターのトラックを渡す。

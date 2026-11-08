@@ -2,6 +2,8 @@
 //! 編集で変わらない区間は同じキーのまま作り直さないこと。
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use mm_doc::{Layer, Node};
@@ -317,4 +319,57 @@ fn プレイリストに無いキーと無いコンポジションは拒む() {
         quality: HlsQuality::P360,
     };
     assert!(s.playlist(&project(&media, 10), 1, &missing, "").is_err());
+}
+
+/// `hls` の下に、作りかけの区間の一時ファイル（`<キー>.partial.ts`）があるか。
+fn has_partial(hls: &Path) -> bool {
+    std::fs::read_dir(hls).is_ok_and(|entries| {
+        entries
+            .flatten()
+            .any(|e| e.file_name().to_string_lossy().contains(".partial."))
+    })
+}
+
+#[test]
+fn 区間を作っている途中にも_engine_を借りる仕事が割り込む() {
+    let Some(config) = ffmpeg_config() else {
+        return;
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let media = dir.path().join("media.mp4");
+    make_media(&media);
+    let project = project(&media, 10);
+    let s = Arc::new(streamer(config, dir.path()));
+    let list = keys(&s.playlist(&project, 1, &req(), "seg/").unwrap());
+    let done = Arc::new(AtomicBool::new(false));
+    let fetch = {
+        let (s, done, first) = (s.clone(), done.clone(), list[0]);
+        std::thread::spawn(move || {
+            let body = s.segment(first).map(|p| p.body.len());
+            done.store(true, Ordering::SeqCst);
+            body
+        })
+    };
+    // GET /frame の代わりに、区間を待つ間ずっと `Engine` を借りる仕事を積み、区間の途中で動けた回数を数える
+    let hls = dir.path().join("cache/mobile/hls");
+    let mut waits = Vec::new();
+    while !done.load(Ordering::SeqCst) {
+        let hls = hls.clone();
+        let started = Instant::now();
+        if s.with_engine(move |_| Ok(has_partial(&hls))).unwrap() {
+            waits.push(started.elapsed());
+        }
+    }
+    waits.sort();
+    let inside = waits.len();
+    eprintln!(
+        "区間の途中で動いた仕事 {inside} 回、待ちの中央値 {:?}、最大 {:?}",
+        waits.get(inside / 2),
+        waits.last()
+    );
+    assert!(fetch.join().unwrap().unwrap() > 0, "区間ができる");
+    assert!(
+        inside > 0,
+        "区間の一時ファイルがある間（描いている途中）に、積んだ仕事が動く"
+    );
 }

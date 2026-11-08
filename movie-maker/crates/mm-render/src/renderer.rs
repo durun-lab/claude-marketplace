@@ -6,7 +6,9 @@ use std::sync::Arc;
 use mm_audio_api::{AudioBlock, MixerFactory};
 use mm_decode_api::{DecoderFactory, Encoder};
 use mm_node_api::{FrameRef, GpuHelper, GpuTexture, Services};
-use mm_render_api::{AudioRequest, RangeRequest, RenderRequest, Renderer, TrackLevel};
+use mm_render_api::{
+    AudioRequest, PendingFrame, RangeRequest, RenderRequest, Renderer, TrackLevel,
+};
 use mm_types::{CompositionId, RationalTime, Result, TimeRange};
 
 use crate::audio::AudioStream;
@@ -261,7 +263,16 @@ impl Renderer for WgpuRenderer {
         _batch: usize,
         sink: &mut dyn FnMut(i64),
     ) -> Result<usize> {
-        self.export_nv12(req, encoder, sink)
+        self.export_pipelined(req, encoder, sink)
+    }
+
+    fn export_frame(
+        &mut self,
+        req: &RenderRequest<'_>,
+        nv12: bool,
+    ) -> Result<Box<dyn PendingFrame>> {
+        let _span = tracing::info_span!("render.export_frame", comp = %req.composition).entered();
+        self.begin_export_frame(req, nv12)
     }
 
     fn render_audio(&mut self, req: &AudioRequest<'_>) -> Result<AudioBlock> {
