@@ -28,7 +28,7 @@ import { handleHook, holdPermission, type HookInput } from './hooks.ts';
 import { saveFeedback } from './improve.ts';
 import { applyAgentPriority, setAgentPriority } from './agentPriority.ts';
 import { learnNow, noteActivity, updateLearn } from './reflect.ts';
-import { consultWorkflow, runWorkflow, setWorkflowEnabled, startWorkflows } from './workflow.ts';
+import { consultWorkflow, runWorkflow, setWorkflowEnabled, startWorkflows, updateWorkflow } from './workflow.ts';
 import { harness, setHarnessToggle } from './harness.ts';
 import { fileCandidates, listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
@@ -1343,6 +1343,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/learn\/run$/, () => learnNow()],
   [/^\/api\/workflows\/consult$/, (_, b) => consultWorkflow(optionalString(b, 'id'))],
   [/^\/api\/workflows\/([\w-]+)\/run$/, ([, id = '']) => runWorkflow(id)],
+  [/^\/api\/workflows\/([\w-]+)\/settings$/, ([, id = ''], b) => updateWorkflow(id, b)],
   [/^\/api\/workflows\/([\w-]+)\/enabled$/, ([, id = ''], b) => setWorkflowEnabled(id, field<boolean>(b, 'enabled', 'boolean'))],
   [/^\/api\/learn\/toggle$/, (_, b) => setHarnessToggle(CLAUDE_DIR, harnessToggleOf(b), field<boolean>(b, 'on', 'boolean'))],
   [/^\/api\/auto-continue$/, (_, b) => setAutoContinue(field<boolean>(b, 'enabled', 'boolean'))],

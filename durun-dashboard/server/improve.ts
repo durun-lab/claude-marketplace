@@ -47,7 +47,9 @@ export const improveWorkflow = (id: string, legacy: LegacyImprove) => ({
   cwd: ROOT,
   prompt: IMPROVE_PROMPT,
   triggers: [{ kind: 'feedback' }],
-  mode: 'new',
+  // 1 つのセッションで前のウェーブの文脈を引き継ぎ、毎回 compact して会話を短く保つ。
+  mode: 'continue',
+  compact: true,
   ...(legacy.model ? { model: legacy.model } : {}),
   ...(legacy.effort ? { effort: legacy.effort } : {}),
 });

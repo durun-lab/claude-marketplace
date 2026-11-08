@@ -1,5 +1,5 @@
 // ワークフローアプリ。Claude Code のルーティンのように、トリガーでセッションを動かす。ルーティンと違い、手元のダッシュボードで動く。
-// 定義は workflows.json に置き、人間とエージェントが書く。ダッシュボードは書き換えを読み直してすぐ使い、ON と OFF の切り替えだけを書き込む。
+// 定義は workflows.json に置き、人間とエージェントが書く。ダッシュボードは書き換えを読み直してすぐ使い、画面で切り替えた ON と OFF と、「設定」で直した項目を書き込む。
 // 動きは 1 分ごとに確かめる。時刻のトリガーはその間に過ぎた時刻で、レビュー依頼のトリガーは GitHub の Inbox に新しく現れた PR で、メンションのトリガーは Slack の検索に新しく現れた発言で動く。
 // 改善要望のトリガーは、要望が届いたときと前のウェーブを終えたときにもすぐ確かめる。
 import fs from 'node:fs';
@@ -389,13 +389,33 @@ export const runWorkflow = (id: string): void => {
   persist();
 };
 
-/** ON と OFF を切り替える。ほかの項目と書き方は、人間とエージェントが書いたまま残す。 */
-export const setWorkflowEnabled = (id: string, enabled: boolean): void => {
+/** id の定義を edit で書き換える。ほかの定義と、edit が触らない項目と書き方は、人間とエージェントが書いたまま残す。 */
+const rewriteDef = (id: string, edit: (raw: Record<string, unknown>, i: number) => Record<string, unknown>): void => {
   findDef(id);
   const raw = JSON.parse(fs.readFileSync(WORKFLOWS_FILE, 'utf8')) as { workflows: Record<string, unknown>[] };
-  for (const w of raw.workflows) if (w.id === id) w.enabled = enabled;
+  raw.workflows = raw.workflows.map((w, i) => (w.id === id ? edit(w, i) : w));
   fs.writeFileSync(WORKFLOWS_FILE, `${JSON.stringify(raw, null, 2)}\n`);
   touch();
+};
+
+/** ON と OFF を切り替える。 */
+export const setWorkflowEnabled = (id: string, enabled: boolean): void => rewriteDef(id, (w) => ({ ...w, enabled }));
+
+// 画面の「設定」で直す項目。id と ON と OFF は直さない。
+const EDITABLE = ['name', 'cwd', 'prompt', 'triggers', 'mode', 'compact', 'maxSessions', 'model', 'effort'] as const;
+
+/** 画面の「設定」で直した項目を書き込む。送らなかった項目は消して既定に戻す。読めない値なら書かずに理由を返す。 */
+export const updateWorkflow = (id: string, body: unknown): void => {
+  if (!isObject(body)) throw new Error('設定がオブジェクトではありません');
+  rewriteDef(id, (w, i) => {
+    const next = { ...w };
+    for (const key of EDITABLE) {
+      if (body[key] === undefined || body[key] === null) delete next[key];
+      else next[key] = body[key];
+    }
+    defOf(next, i);
+    return next;
+  });
 };
 
 const consultPrompt = (target: WorkflowDef | undefined): string => `${MARK} 人間と相談して、${target ? `ワークフロー「${target.name}」（id: ${target.id}）を変えて` : '新しいワークフローを作って'}ください。

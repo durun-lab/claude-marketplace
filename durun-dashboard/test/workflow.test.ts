@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import fs from 'node:fs';
 import path from 'node:path';
 import { tempDir } from './tmp.ts';
 
 // 実際の定義と状態に触れないよう、データの置き場所を一時ディレクトリに向けてから読み込む。
 process.env.DURUN_DASHBOARD_DATA_DIR = tempDir('durun-dashboard-workflow-');
-const { parseWorkflows, scheduleDue } = await import('../server/workflow.ts');
+const { parseWorkflows, scheduleDue, updateWorkflow, WORKFLOWS_FILE } = await import('../server/workflow.ts');
 
 const cwd = path.resolve('work');
 const def = (extra: object = {}) => ({ id: 'daily', cwd, prompt: '朝の確認', triggers: [{ kind: 'schedule', at: '09:00' }], ...extra });
@@ -55,4 +56,22 @@ test('曜日を指定したトリガーは、その曜日だけ動く', () => {
   const weekdays = { kind: 'schedule' as const, at: '09:00', days: [1, 2, 3, 4, 5] };
   assert.equal(scheduleDue(weekdays, at(2026, 11, 9, 8, 0), at(2026, 11, 9, 10, 0)), true);
   assert.equal(scheduleDue(weekdays, at(2026, 11, 8, 8, 0), at(2026, 11, 8, 10, 0)), false);
+});
+
+const readFile = () => JSON.parse(fs.readFileSync(WORKFLOWS_FILE, 'utf8')) as { workflows: Record<string, unknown>[] };
+
+test('設定を書き込み、送らなかった項目は消し、ほかの定義と知らない項目は残す', () => {
+  fs.writeFileSync(WORKFLOWS_FILE, JSON.stringify({ workflows: [def({ enabled: true, maxSessions: 2, note: 'メモ' }), def({ id: 'other' })] }));
+  updateWorkflow('daily', { name: '朝', cwd, prompt: '直した依頼', triggers: [{ kind: 'feedback' }], mode: 'continue', compact: true, model: 'opus' });
+  const [daily, other] = readFile().workflows;
+  assert.deepEqual(daily, { id: 'daily', cwd, prompt: '直した依頼', triggers: [{ kind: 'feedback' }], enabled: true, note: 'メモ', name: '朝', mode: 'continue', compact: true, model: 'opus' });
+  assert.deepEqual(other, def({ id: 'other' }));
+});
+
+test('読めない設定は書き込まずに理由を返す', () => {
+  fs.writeFileSync(WORKFLOWS_FILE, JSON.stringify({ workflows: [def()] }));
+  const before = fs.readFileSync(WORKFLOWS_FILE, 'utf8');
+  assert.throws(() => updateWorkflow('daily', { cwd: 'relative', prompt: 'x', triggers: [], mode: 'new' }), /絶対パス/);
+  assert.throws(() => updateWorkflow('daily', { cwd, prompt: 'x', triggers: [{ kind: 'schedule', at: '25:00' }], mode: 'new' }), /トリガー/);
+  assert.equal(fs.readFileSync(WORKFLOWS_FILE, 'utf8'), before);
 });

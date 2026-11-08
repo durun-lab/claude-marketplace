@@ -2018,3 +2018,11 @@ table.data { width: 100%; border-collapse: collapse; }
 .cdrip-footer > span { flex: 1; min-width: 0; }
 .cdrip-footer a.btn { display: inline-flex; align-items: center; text-decoration: none; }
 .cdrip-footer a[aria-disabled="true"] { opacity: .7; }
+.workflow-form { padding: 12px; }
+.workflow-fieldset { display: grid; gap: 6px; margin: 0; padding: 8px 10px; border: 1px solid #aca899; border-radius: 6px; }
+.workflow-events { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; }
+.workflow-schedule { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; }
+.workflow-day { display: inline-flex; gap: 4px; align-items: center; }
+.workflow-indent { padding-left: 22px; }
+.workflow-number { width: 4em; }
+.workflow-prompt { min-height: 160px; resize: vertical; font-family: inherit; }

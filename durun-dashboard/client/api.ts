@@ -1,5 +1,5 @@
 import type {
-  AgentPriority, CdMeta, AssistantMessage, TranslateStatus, AssistantReply, Bookmark, BranchView, ChatEntry, Dashboards, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, GithubSearch, Glossary, Harness, HarnessToggle, InboxSection, PrReviewEvent, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, SlackChannel, SlackConversation, TextSaveResult,
+  AgentPriority, CdMeta, AssistantMessage, TranslateStatus, AssistantReply, Bookmark, BranchView, ChatEntry, Dashboards, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, GithubSearch, Glossary, Harness, HarnessToggle, InboxSection, PrReviewEvent, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, SlackChannel, SlackConversation, TextSaveResult, WorkflowSettings,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 
@@ -214,6 +214,7 @@ export const api = {
   workflowConsult: (id?: string) => postJson<{ sessionId: string }>('/api/workflows/consult', { id }),
   workflowRun: (id: string) => postJson(`/api/workflows/${seg(id)}/run`),
   workflowEnabled: (id: string, enabled: boolean) => postJson(`/api/workflows/${seg(id)}/enabled`, { enabled }),
+  workflowSettings: (id: string, settings: WorkflowSettings) => postJson(`/api/workflows/${seg(id)}/settings`, settings),
   harness: () => getJson<Harness>('/api/learn/harness'),
   harnessToggle: ({ setting, key }: HarnessToggle, on: boolean) => postJson('/api/learn/toggle', { setting, key, on }),
   autoContinue: (enabled: boolean) => postJson<void>('/api/auto-continue', { enabled }),

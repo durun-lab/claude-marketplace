@@ -450,6 +450,9 @@ export type WorkflowDef = {
   effort?: string;
 };
 
+/** 画面の「設定」で直す項目。 */
+export type WorkflowSettings = Omit<WorkflowDef, 'id' | 'enabled'>;
+
 export type WorkflowInfo = WorkflowDef & {
   /** 動いているセッションの数 */
   running: number;
