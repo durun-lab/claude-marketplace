@@ -1,10 +1,13 @@
 //! サーフェス 1 枚分の UI。上に Program（素材を開いていれば左に Source）、下に Timeline を描き、Timeline のポインター操作を受ける。
+//!
+//! 外とやりとりする座標と大きさは物理ピクセル、割り付けと Timeline の寸法は論理ピクセルで持つ。
+//! 換算は描く所（[`Ui::render`]）と入力を受ける所（[`Ui::pointer`]、[`Ui::region_at`]）で [`Scale`] を 1 回だけ通す。
 
 use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
     fit_rect, split_viewers, timeline_quads, Action, DrawingShape, PaintState, PointerEvent, Quad,
-    Rect, SurfaceLayout, TimeView, TimelineController, TimelineModel, VIEW_MARGIN,
+    Rect, Scale, SurfaceLayout, TimeView, TimelineController, TimelineModel, VIEW_MARGIN,
 };
 
 use crate::drawing::{DrawingFit, DrawingLayer};
@@ -26,12 +29,14 @@ pub struct Ui {
     program: ProgramViewer,
     /// Program の上に重ねる描き込み。
     drawing: DrawingLayer,
-    /// 表示の倍率（DPI / 96）。描き込みの太さに掛ける。
-    scale: f32,
+    /// 表示の倍率（DPI / 96）。
+    scale: Scale,
     source: ProgramViewer,
     model: TimelineModel,
     controller: TimelineController,
+    /// 割り付け（論理ピクセル）。
     layout: SurfaceLayout,
+    /// サーフェスの大きさ（物理ピクセル）。
     size: (f32, f32),
     playhead: f64,
     fitted: bool,
@@ -45,7 +50,7 @@ impl Ui {
             quads: QuadRenderer::new(device, format),
             program: ProgramViewer::new(device, format),
             drawing: DrawingLayer::new(device, format),
-            scale: 1.0,
+            scale: Scale::ONE,
             source: ProgramViewer::new(device, format),
             model: TimelineModel::default(),
             controller: TimelineController::new(TimeView {
@@ -69,12 +74,12 @@ impl Ui {
         self.palette = palette;
     }
 
-    /// サーフェスの大きさ（物理ピクセル）。割り付けを計算し直す。
+    /// サーフェスの大きさ（物理ピクセル）。割り付けを論理ピクセルで計算し直す。
     pub fn resize(&mut self, width: u32, height: u32) {
         self.size = (width as f32, height as f32);
         self.layout = split_viewers(
-            self.size.0,
-            self.size.1,
+            self.scale.to_logical(self.size.0),
+            self.scale.to_logical(self.size.1),
             self.model.content_height(),
             self.source.has_image(),
         );
@@ -164,9 +169,14 @@ impl Ui {
         self.drawing.set_shapes(drawing);
     }
 
-    /// 表示の倍率（DPI / 96）。描き込みの太さを論理ピクセルで揃えるのに使う。
-    pub fn set_scale_factor(&mut self, scale: f32) {
-        self.scale = scale;
+    /// 表示の倍率（DPI / 96）。Timeline の寸法と描き込みの太さを論理ピクセルで揃える。
+    /// 倍率の違うモニターへ動かして変わったときは、同じ物理の大きさでも割り付けを計算し直す。
+    pub fn set_scale_factor(&mut self, factor: f32) {
+        let scale = Scale::new(factor);
+        if scale != self.scale {
+            self.scale = scale;
+            self.resize(self.size.0 as u32, self.size.1 as u32);
+        }
     }
 
     /// Program に出すフレームを、同じデバイスのテクスチャのまま渡す。
@@ -174,13 +184,14 @@ impl Ui {
         self.program.set_texture(device, texture);
     }
 
-    /// 現在の割り付け。
+    /// 現在の割り付け（物理ピクセル）。
     pub fn layout(&self) -> SurfaceLayout {
-        self.layout
+        self.scale.layout_to_physical(self.layout)
     }
 
-    /// サーフェスの座標の点がどの領域か。
+    /// サーフェスの座標（物理ピクセル）の点がどの領域か。
     pub fn region_at(&self, x: f32, y: f32) -> Region {
+        let (x, y) = (self.scale.to_logical(x), self.scale.to_logical(y));
         let l = self.layout;
         if l.timeline.contains(x, y) {
             Region::Timeline
@@ -193,10 +204,10 @@ impl Ui {
         }
     }
 
-    /// サーフェスの座標のポインターの入力を受ける。Timeline の外から始まったドラッグは捨てる。
+    /// サーフェスの座標（物理ピクセル）のポインターの入力を受ける。Timeline の外から始まったドラッグは捨てる。
     pub fn pointer(&mut self, ev: PointerEvent) -> Vec<Action> {
         let t = self.layout.timeline;
-        let local = match ev {
+        let local = match self.scale.pointer_to_logical(ev) {
             PointerEvent::Down { x, y, .. } if !t.contains(x, y) => return Vec::new(),
             PointerEvent::Wheel { x, y, .. } if !t.contains(x, y) => return Vec::new(),
             PointerEvent::Down { x, y, mods } => PointerEvent::Down {
@@ -230,21 +241,22 @@ impl Ui {
         let count = self
             .quads
             .prepare(device, queue, &self.timeline_quads(), (w, h));
+        let layout = self.layout();
         let mut drawing = 0;
         if let Some((iw, ih)) = self.program.image_size() {
             let image = (iw as f32, ih as f32);
-            let rect = fit_rect(image.0, image.1, self.layout.program);
+            let rect = fit_rect(image.0, image.1, layout.program);
             self.program.prepare(queue, rect, (w, h));
             let fit = DrawingFit {
                 image,
-                area: self.layout.program,
+                area: layout.program,
                 viewport: (w, h),
-                scale: self.scale,
+                scale: self.scale.get(),
                 color: self.palette.drawing,
             };
             drawing = self.drawing.prepare(device, queue, fit);
         }
-        if let (Some((iw, ih)), Some(area)) = (self.source.image_size(), self.layout.source) {
+        if let (Some((iw, ih)), Some(area)) = (self.source.image_size(), layout.source) {
             let rect = fit_rect(iw as f32, ih as f32, area);
             self.source.prepare(queue, rect, (w, h));
         }
@@ -259,7 +271,7 @@ impl Ui {
         queue.submit([enc.finish()]);
     }
 
-    /// Timeline の矩形を、サーフェスの座標に置いた並びにする。
+    /// Timeline の矩形を、サーフェスの座標（物理ピクセル）に置いた並びにする。
     fn timeline_quads(&self) -> Vec<Quad> {
         let t = self.layout.timeline;
         let mut quads = timeline_quads(
@@ -272,7 +284,7 @@ impl Ui {
             },
         );
         for q in &mut quads {
-            q.rect = q.rect.translated(t.x, t.y);
+            q.rect = self.scale.rect_to_physical(q.rect.translated(t.x, t.y));
         }
         quads
     }

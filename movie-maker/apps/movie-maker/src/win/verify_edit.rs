@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use mm_doc::{Cut, Project, Sequence, SEQUENCE_KIND, SEQUENCE_PARAM};
 use mm_types::{Id, ParamValue};
-use mm_ui_layout::{row_top, split_viewers, TimeView, ROW_H, VIEW_MARGIN};
+use mm_ui_layout::{row_top, split_viewers, Scale, TimeView, ROW_H, VIEW_MARGIN};
 use mm_ui_wgpu::timeline_model;
 use serde_json::{json, Value};
 
@@ -17,7 +17,7 @@ use crate::win::keys;
 use crate::win::playback::Command;
 use crate::win::state::Shared;
 use crate::win::surface;
-use crate::win::verify::wait_until;
+use crate::win::verify::{client_point, logical_surface, wait_until};
 
 /// 仮想キーコード。
 const VK_I: u32 = 0x49;
@@ -38,7 +38,7 @@ const INSERT_AT: f64 = 0.8;
 const DRAG_SECS: f64 = 0.25;
 /// レイヤーのアウト点のつまみを引く量（秒）。帯が縮んだのが画面で分かる長さにする。
 const TRIM_SECS: f64 = 1.5;
-/// 端のつまみの中心を掴むための x の内側へのずれ（px）。
+/// 端のつまみの中心を掴むための x の内側へのずれ（論理ピクセル）。
 const HANDLE_INSET: f32 = 3.0;
 
 /// 試験の対象。
@@ -104,38 +104,37 @@ fn shot(env: &Env<'_>, log: &mut Log, name: &str) {
     }
 }
 
-/// 画面の位置の計算に要るもの。Timeline の矩形と時間軸、シーケンスの行の添字。
+/// 画面の位置の計算に要るもの。Timeline の矩形と時間軸（論理ピクセル）、表示の倍率、シーケンスの行の添字。
 struct Geometry {
     tl_x: f32,
     tl_y: f32,
     view: TimeView,
+    scale: Scale,
     row: usize,
 }
 
-fn geometry(shared: &Shared) -> Option<Geometry> {
+fn geometry(shared: &Shared, hwnd: isize) -> Option<Geometry> {
     let doc = shared.doc()?;
     let comp = doc.project.composition(&doc.comp).ok()?;
     let model = timeline_model(&doc.project, comp);
-    let (w, h) = shared.surface_size();
-    let tl = split_viewers(w as f32, h as f32, model.content_height(), true).timeline;
+    let ((w, h), scale) = logical_surface(shared, hwnd);
+    let tl = split_viewers(w, h, model.content_height(), true).timeline;
     let row = model.items.iter().position(|i| !i.cuts.is_empty())?;
     Some(Geometry {
         tl_x: tl.x,
         tl_y: tl.y,
         view: TimeView::fit(model.duration, tl.w, VIEW_MARGIN),
+        scale,
         row,
     })
 }
 
 impl Geometry {
-    /// 時刻 `t` の画面の x。
-    fn x(&self, t: f64) -> i32 {
-        (self.tl_x + self.view.x_of(t)) as i32
-    }
-
-    /// シーケンスの行の中央の y。
-    fn y(&self) -> i32 {
-        (self.tl_y + row_top(self.row) + ROW_H / 2.0) as i32
+    /// 行 `row` の中央で、時刻 `t` から論理ピクセルで `dx` ずらした点（クライアントの物理ピクセル）。
+    fn at(&self, row: usize, t: f64, dx: f32) -> (i32, i32) {
+        let x = self.tl_x + self.view.x_of(t) + dx;
+        let y = self.tl_y + row_top(row) + ROW_H / 2.0;
+        client_point(self.scale, (x, y))
     }
 }
 
@@ -227,13 +226,16 @@ fn insert_step(env: &Env<'_>, log: &mut Log, asset: &str) -> Option<String> {
 /// 挿入したカットの出つまみを引いて ripple、中を引いて slip。
 fn drag_steps(env: &Env<'_>, log: &mut Log, id: &str) {
     let shared = env.shared;
-    let (Some(g), Some((start, end))) = (geometry(shared), cut_span_secs(shared, id)) else {
+    let (Some(g), Some((start, end))) = (
+        geometry(shared, env.surface_hwnd),
+        cut_span_secs(shared, id),
+    ) else {
         log.step("drag", false, json!("Timeline の位置を引けない"));
         return;
     };
     let out_before = cut_named(shared, id).map(|c| c.out_point.to_f64());
-    let from = (g.x(end) - HANDLE_INSET as i32, g.y());
-    let to = (g.x(end - DRAG_SECS) - HANDLE_INSET as i32, g.y());
+    let from = g.at(g.row, end, -HANDLE_INSET);
+    let to = g.at(g.row, end - DRAG_SECS, -HANDLE_INSET);
     surface::post_drag(env.surface_hwnd, from, to);
     let rippled = wait_until(WAIT, || {
         cut_named(shared, id).map(|c| c.out_point.to_f64()) != out_before
@@ -247,11 +249,12 @@ fn drag_steps(env: &Env<'_>, log: &mut Log, id: &str) {
     shot(env, log, "3-ripple");
 
     let in_before = cut_named(shared, id).map(|c| c.in_point.to_f64());
-    let mid = g.x((start + end - DRAG_SECS) / 2.0);
+    let mid = (start + end - DRAG_SECS) / 2.0;
+    let by = (DRAG_SECS * g.view.px_per_sec / 2.0) as f32;
     surface::post_drag(
         env.surface_hwnd,
-        (mid, g.y()),
-        (mid + (DRAG_SECS * g.view.px_per_sec / 2.0) as i32, g.y()),
+        g.at(g.row, mid, 0.0),
+        g.at(g.row, mid, by),
     );
     let slipped = wait_until(WAIT, || {
         cut_named(shared, id).map(|c| c.in_point.to_f64()) != in_before
@@ -322,13 +325,12 @@ struct TrimDrag {
     to: (i32, i32),
 }
 
-fn trim_drag(shared: &Shared) -> Option<TrimDrag> {
-    let (g, (row, id, end)) = (geometry(shared)?, trim_target(shared)?);
-    let y = (g.tl_y + row_top(row) + ROW_H / 2.0) as i32;
+fn trim_drag(shared: &Shared, hwnd: isize) -> Option<TrimDrag> {
+    let (g, (row, id, end)) = (geometry(shared, hwnd)?, trim_target(shared)?);
     Some(TrimDrag {
         id,
-        from: (g.x(end) - HANDLE_INSET as i32, y),
-        to: (g.x(end - TRIM_SECS) - HANDLE_INSET as i32, y),
+        from: g.at(row, end, -HANDLE_INSET),
+        to: g.at(row, end - TRIM_SECS, -HANDLE_INSET),
     })
 }
 
@@ -347,7 +349,7 @@ fn trim_cancel_step(env: &Env<'_>, log: &mut Log, drag: &TrimDrag) {
 /// レイヤーのアウト点のつまみを引いて、離す前（帯だけが動く）と離した後（trimLayer）を撮り、取り消し 1 回で戻す。
 fn trim_step(env: &Env<'_>, log: &mut Log) {
     let shared = env.shared;
-    let Some(drag) = trim_drag(shared) else {
+    let Some(drag) = trim_drag(shared, env.surface_hwnd) else {
         log.step("trim_drag", false, json!("レイヤーの位置を引けない"));
         return;
     };
