@@ -76,7 +76,7 @@ const fetchStream = (page) =>
     const uris = text.split("\n").filter((l) => l && !l.startsWith("#"));
     const seg = await globalThis.fetch(new globalThis.URL(uris[0], list.url));
     const bytes = new Uint8Array(await seg.arrayBuffer());
-    return { list: list.status, type: list.headers.get("content-type"), segments: uris.length, seg: seg.status, first: bytes[0], size: bytes.length };
+    return { variant, list: list.status, type: list.headers.get("content-type"), segments: uris.length, seg: seg.status, first: bytes[0], size: bytes.length };
   });
 
 /** 2a. Watch の映像。区間が TS で取れること。Chromium は hls.js で再生が進むことまで。 */
@@ -95,7 +95,7 @@ export const watch = async ({ page, browserName, hlsRequests }) => {
     assert.ok(hlsRequests.length > 0, "Chromium は hls.js の塊を読む");
     played = "played with hls.js";
   }
-  return `playlist ${s.segments} segments, first segment ${s.size} bytes, ${played}`;
+  return `${s.variant ? `index.m3u8 -> ${s.variant}` : "360p.m3u8"}: ${s.segments} segments, first segment ${s.size} bytes, ${played}`;
 };
 
 /** 映像の上を指でなぞる。 */
