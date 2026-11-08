@@ -8,11 +8,12 @@ publish.workspace = true
 
 [features]
 # WGSL を wgpu の compute で実行して CPU の値と突き合わせる試験のツール。GPU の無い環境では呼び出し側がスキップする。
-gpu-eval = ["dep:wgpu", "dep:pollster"]
+gpu-eval = ["dep:mm-gpu", "dep:wgpu", "dep:pollster"]
 
 [dependencies]
 mm-types = { workspace = true }
 mm-color-api = { workspace = true }
+mm-gpu = { workspace = true, optional = true }
 serde = { workspace = true }
 wgpu = { workspace = true, optional = true }
 pollster = { workspace = true, optional = true }

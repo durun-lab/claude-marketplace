@@ -1,11 +1,14 @@
 # レンダラー
 
-- プロジェクトのデータと時刻 t から、レイヤーを評価して合成する。Rust の `mm-render`、GPU は wgpu（Windows のバックエンドは D3D12 を既定にし、Vulkan も選べる）。合成、変形、色、YUV の変換は compute シェーダー（WGSL）。中間は `Rgba16Float`、精度の要る所は `Rgba32Float`（wgpu の `TextureFormat` にある [5]）。
+- プロジェクトのデータと時刻 t から、レイヤーを評価して合成する。Rust の `mm-render`、GPU は wgpu（Windows のバックエンドは D3D12 だけを既定にし、環境変数 `WGPU_BACKEND` で Vulkan も選べる。下の GPU の選択）。合成、変形、色、YUV の変換は compute シェーダー（WGSL）。中間は `Rgba16Float`、精度の要る所は `Rgba32Float`（wgpu の `TextureFormat` にある [5]）。
 - 描画は UI のスレッドと分けた描画のスレッドで行い、サーフェスへの表示と書き出しは同じ経路（最後にサーフェスかリードバックかが違うだけ）。
 - プロジェクトのデータの一部が変わったら、影響する時刻の範囲だけを評価し直す。`is_identity` が真の効果はスキップし、`region_of_definition` が画面の外のレイヤーは描かない。
 - 合成: レイヤーの画像（効果を掛けた後）を、変形した四角形として 1 パスで重ねる。切り抜きと角丸の矩形のマスクは同じパスのフラグメントシェーダーで、レイヤーの座標での被覆率（角丸の矩形の符号つきの距離。縁の幅は出力の 1 画素か `feather` の広い方）として掛け、別のテクスチャを作らない。プレビューと書き出しは同じ合成を通る。
 - 合成モード: 下の色を読まずに固定の合成（`wgpu::BlendState`）で W3C の premultiplied の式どおりに描ける `normal`、`add`、`screen`、`multiply` を同じパスで描く（`blend.rs`）。`add` は W3C の外で、After Effects の linear dodge と同じく色を足し、アルファは source-over。`multiply` は `cs·cb + cb·(1 − αs)` をアルファを書かずに描き、続けて `cs·(1 − αb)` を足す 2 回の描画にして、半透明の下地でも式に合わせる（そのレイヤーだけフラグメントの費用が 2 倍）。`screen` は 0..1 の値の前提の式なので、両方が 1 を超える所（HDR）では暗くなる（Nuke は `max(A, B)` に切り替える）。ほかの 13 種は下の色を読む別のパスが要るので `normal` で重ね、エラーを記録する。合成の式を変えたら `WGPU_RENDERER_VERSION` を上げ、フレームのキャッシュの古い画像を使わない。
 - GPU の選択: wgpu の `request_adapter` に `HighPerformance` を指定し、選ばれたアダプターの名前を Program に出す。
+  - バックエンドは `mm_gpu::default_backends()` が決める。Windows は D3D12 だけで、Vulkan と OpenGL のドライバーをプロセスに読み込まない。Vulkan のローダーは入っている全部のドライバーを読み込み、NVIDIA と AMD の内蔵 GPU のドライバーが同じプロセスにあると、Instance の破棄で NVIDIA のドライバーの中でクラッシュする（gfx-rs/wgpu#6571）。プレビューのサーフェス、CEF の共有テクスチャ、d3d12va と cuvid の受け渡しも D3D12 の資源を使う。
+  - 環境変数 `WGPU_BACKEND`（`vulkan`、`dx12,vulkan` など。wgpu の `Backends::with_env` と同じ読み方）があれば、書き出しとテストのコンテキストはそれに従う。プレビュー（`RuntimeConfig::present`）と GPU のデコードは D3D12 のままにする。
+  - 機能レベル 11_0 に届かない古い GPU では、wgpu の D3D12 が WARP（Windows の CPU のラスタライザ）を選ぶ。その GPU に Vulkan か OpenGL のドライバーがあれば、`WGPU_BACKEND=vulkan`（`gl`）で GPU に戻せる。
 - 計測: 1 フレームの描画、レイヤーごとの評価、パスごとの GPU の時間（wgpu のタイムスタンプ）、デコードとシーク、キャッシュのヒット率、書き出しの fps を `tracing` のスパンとカウンタで取る。測る項目と予算は[計装](17-instrumentation.md)。
 - デコード: FFmpeg のライブラリ（`ffmpeg-the-third`。FFmpeg 5.1〜8.1 に対応 [17]）を `mm-decode-ffmpeg` でラップし、インターフェースは `mm-decode-api`。H.264、HEVC、AV1 は NVDEC（`hwaccel`）でデコードし、ProRes、DNxHR、MXF、DPX、OpenEXR はそのまま読める。デコーダは素材ごとに 1 つを使い回すプール（同時 4〜6 本。NVDEC は 2 基で約 1,450 fps が上限）。
 - NVDEC からの受け渡しは 3 段で、段階 0 で 3 つとも動いた（2026-11-06）。既定は (1)。開いた直後の数フレームで失敗する素材は (2) に切り替え、最後は (3)（ユーザーの決定。順は `mm-runtime` の設定 `auto`）。NVIDIA の d3d12va がデコードに失敗すると、プロセスの D3D12 のデバイスが全部消え、レンダラーのデバイスも使えなくなる。そのため d3d12va は、素材を開く前に別プロセスの `mm-d3d12va-probe` で先頭の 4 フレームを試し、クラッシュする素材を拒否して (2) に回す。結果は素材ごとにキャッシュする。5 フレーム目より後の失敗はこれで防げないので、レンダラーがデバイスの消失（wgpu の通知、D3D12 の消失の理由）を次のフレームの前に見つけてコンテキストごと作り直す（RFC 0009）。これを入れて `auto` を既定にした（`RuntimeConfig::real()`、2026-11-06）。4K の素材を 1080p に書き出す実測は (1) 181 fps、(2) 172 fps、(3)（YUV のまま GPU に上げる）149 fps、`auto` 166 fps で、4K のまま書き出すと x264 が上限で 52〜55 fps。プローブの実行ファイルは配布物に同梱する（無ければ (1) をスキップして (2) に回る）。4K の速度は (1) 540〜590 fps、(2) 560〜600 fps、(3) 250〜265 fps [nvdec](spikes/nvdec.md)。

@@ -11,7 +11,9 @@ mod frame;
 mod helper;
 mod timer;
 
-pub use context::{adapter_id, enumerate_adapters, GpuContext, GpuRequest, FRAME_FORMAT};
+pub use context::{
+    adapter_id, default_backends, enumerate_adapters, GpuContext, GpuRequest, FRAME_FORMAT,
+};
 pub use frame::{GpuFrameTexture, WaitFn};
 pub use helper::{map_blocking, Readback, WgpuGpu};
 pub use timer::PassTimer;

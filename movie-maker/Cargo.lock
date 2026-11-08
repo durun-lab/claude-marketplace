@@ -3244,6 +3244,7 @@ name = "mm-color-lut"
 version = "0.1.0"
 dependencies = [
  "mm-color-api",
+ "mm-gpu",
  "mm-testkit",
  "mm-types",
  "naga",
@@ -4000,10 +4001,10 @@ dependencies = [
  "half",
  "mm-doc",
  "mm-eval",
+ "mm-gpu",
  "mm-trace",
  "mm-types",
  "mm-ui-layout",
- "pollster",
  "wgpu",
 ]
 

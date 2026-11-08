@@ -91,7 +91,7 @@ flowchart TB
 | 言語 | Rust（コア、ホスト、CLI、アプリ）。WebView の画面は TypeScript |
 | アプリのフレームワーク | Tauri 2（`unstable` の複数 WebView）。wgpu のサーフェスは子の HWND に自前で |
 | 画面（WebView） | Preact。バンドルは esbuild |
-| GPU | wgpu（D3D12 を既定、Vulkan も）。シェーダーは WGSL。GLSL は naga、HLSL は DXC → SPIR-V → naga |
+| GPU | wgpu（Windows は D3D12 だけを既定にし、`WGPU_BACKEND` で Vulkan も選べる。[レンダラー](06-engine.md)の GPU の選択）。シェーダーは WGSL。GLSL は naga、HLSL は DXC → SPIR-V → naga |
 | デコードとエンコード | FFmpeg のライブラリ（`ffmpeg-the-third`）。NVDEC は `d3d12va` か `cuvid`、NVENC は `*_nvenc` |
 | 色 | OCIO 2.5 を自前の `bindgen` で。シェーダーは GLSL → naga |
 | 文字とベクター | cosmic-text、glyphon、resvg。後で vello |
