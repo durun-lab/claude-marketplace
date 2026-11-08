@@ -31,8 +31,11 @@ pub use video::FfmpegDecoder;
 pub const ID: &str = "ffmpeg";
 /// 広い信号の素材を読むときに名乗る名前。画素の作り方のバージョンが付く。
 pub const WIDE_ID: &str = mm_decode_ffmpeg_core::wide_backend_id!("ffmpeg");
+/// 広い信号の素材の YUV のプレーンを GPU に上げて線形にするときに名乗る名前（feature `gpu`）。CPU の経路と
+/// 色差の補間と丸めが違い画素が一致しないので、フレームのキャッシュで互いの画像を引かないよう名前を分ける。
+pub const UPLOAD_WIDE_ID: &str = mm_decode_ffmpeg_core::wide_backend_id!("ffmpeg-upload");
 /// FFmpeg のデコーダー（映像と音だけの素材）が名乗る名前（`Decoder::backend_id`）の全部。
-pub const BACKEND_IDS: [&str; 2] = [ID, WIDE_ID];
+pub const BACKEND_IDS: [&str; 3] = [ID, WIDE_ID, UPLOAD_WIDE_ID];
 
 /// FFmpeg を開くデコーダーのインターフェース。
 #[derive(Debug, Clone, Copy, Default)]

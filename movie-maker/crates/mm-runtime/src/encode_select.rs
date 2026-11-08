@@ -295,6 +295,7 @@ mod tests {
             output_path: "out.mp4".into(),
             audio: None,
             stream: None,
+            source_peak: 1.0,
         }
     }
 

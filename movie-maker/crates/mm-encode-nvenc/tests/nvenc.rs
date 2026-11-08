@@ -24,6 +24,7 @@ fn settings(path: PathBuf, codec: &str, size: Size) -> EncodeSettings {
         output_path: path,
         audio: None,
         stream: None,
+        source_peak: 1.0,
     }
 }
 

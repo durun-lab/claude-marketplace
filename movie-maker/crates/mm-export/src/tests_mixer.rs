@@ -115,6 +115,7 @@ fn exported(engine: &mut Engine, project: &Project, comp: &CompositionId) -> Aud
         output_path: PathBuf::from("unused.json"),
         audio: None,
         stream: None,
+        source_peak: 1.0,
     };
     let range = project.composition(comp).unwrap().range().unwrap();
     let control = ExportControl::default();

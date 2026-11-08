@@ -22,6 +22,7 @@ mm-store = { workspace = true }
 mm-story = { workspace = true }
 mm-node-api = { workspace = true }
 mm-audio-api = { workspace = true }
+mm-render-api = { workspace = true }
 mm-runtime = { workspace = true }
 mm-ops = { workspace = true }
 # Tauri のコマンド pack_list と pack_apply。パックのマクロを展開して適用する。

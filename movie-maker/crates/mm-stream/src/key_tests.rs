@@ -227,3 +227,25 @@ fn 素材の中身が変わると使う区間が変わり_取り込み前の素�
     let v2 = keys_with(&p, 2, HlsQuality::P360);
     assert_eq!(same(&v1, &v2), [true, true, false]);
 }
+
+/// SDR の区間はプロジェクトの素材から決まるトーンマップの上限で符号化するので、どの区間にも置いていない
+/// HDR の素材を足すと全区間のキーが変わる。SDR の素材なら変わらない。
+#[test]
+fn hdr_の素材を足すと区間に掛からなくても全区間のキーが変わる() {
+    let unused = |color_space: ColorSpace| Asset {
+        id: Id::new("unused"),
+        path: "unused.mp4".into(),
+        content_hash: "h".into(),
+        color_space,
+        duration: s(10),
+        fps: None,
+        timebase_offset: RationalTime::ZERO,
+    };
+    let before = keys(&project());
+    let mut sdr = project();
+    sdr.assets.push(unused(ColorSpace::bt709()));
+    assert_eq!(same(&before, &keys(&sdr)), [true, true, true]);
+    let mut hdr = project();
+    hdr.assets.push(unused(ColorSpace::bt2100_pq()));
+    assert_eq!(same(&before, &keys(&hdr)), [false, false, false]);
+}

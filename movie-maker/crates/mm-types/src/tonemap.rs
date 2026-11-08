@@ -1,5 +1,6 @@
 //! HDR の線形を SDR の表示（1.0 が白）に収めるトーンマップ。ITU-R BT.2390 の EETF（PQ の空間のエルミート曲線の肩）を
 //! RGB の最大値に掛け、比で RGB を縮めて色相を保つ。素材の上限が 1 以下なら何もしないので、SDR の画像は変わらない。
+//! プレビューと SDR の書き出しが同じこの式を掛け、見た画を書き出す（ITU-R BT.2408 の 5.2）。
 //!
 //! 線形の単位は [`crate::transfer`] と同じ（1.0 が HDR の基準の白）。WGSL の [`TONEMAP_WGSL`] は
 //! `transfer::TRANSFER_WGSL` の後に連結する。
@@ -7,7 +8,7 @@
 use crate::transfer::{linear_to_pq, pq_to_linear, HDR_REFERENCE_WHITE_NITS, HLG_PEAK_NITS};
 use crate::ColorSpace;
 
-/// プレビューのトーンマップの素材の上限（線形）。素材の色空間に HDR（`bt2100_pq`、`bt2100_hlg`）があれば
+/// トーンマップの素材の上限（線形）。素材の色空間に HDR（`bt2100_pq`、`bt2100_hlg`）があれば
 /// 1000 cd/m²（HDR10 のマスタリングの既定、HLG の基準の表示）、無ければ 1.0（トーンマップしない）。
 pub fn preview_peak<'a>(spaces: impl IntoIterator<Item = &'a ColorSpace>) -> f32 {
     let hdr = spaces

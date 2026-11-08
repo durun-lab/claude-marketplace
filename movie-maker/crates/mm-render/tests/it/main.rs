@@ -19,5 +19,6 @@ mod nested;
 mod node_kinds;
 mod scene;
 mod submit_order;
+mod tone_map;
 mod trace;
 mod transition;

@@ -152,6 +152,11 @@ impl Sequencer {
         self.wide
     }
 
+    /// 開いたデコーダー（出すフレームの画素形式を見るため）。
+    pub fn decoder(&self) -> &ff::decoder::Video {
+        self.reader.decoder()
+    }
+
     /// 素材の情報。
     pub fn info(&self) -> &MediaInfo {
         &self.timeline.info

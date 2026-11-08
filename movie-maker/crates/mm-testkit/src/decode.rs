@@ -357,6 +357,7 @@ pub fn encoder_contract(
             channels: DEFAULT_CHANNELS,
         }),
         stream: None,
+        source_peak: 1.0,
     };
     assert!(enc.push_frames(&[]).is_err(), "begin の前は拒否する");
     enc.begin(&settings).expect("begin");

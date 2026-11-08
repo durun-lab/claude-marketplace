@@ -87,6 +87,7 @@ fn settings(path: PathBuf, size: Size, fps: Rational, audio: bool) -> EncodeSett
             channels: 2,
         }),
         stream: None,
+        source_peak: 1.0,
     }
 }
 

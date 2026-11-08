@@ -16,14 +16,14 @@ use mm_doc::{
 };
 use mm_eval::{node_params_at, place_cuts, source_time, PlacedCut};
 use mm_node_api::NodeRegistry;
-use mm_render_api::digest_bytes;
+use mm_render_api::{digest_bytes, tone_map_peak};
 use mm_types::{AssetId, Id, MmError, Params, RationalTime, Result, TimeRange};
 use serde::Serialize;
 
 use crate::hls::Plan;
 
 /// 区間のバイトの作り方（コンテナ、符号化の設定）のバージョン。作り方を変えたら上げ、前のキーを使わせない。
-const FORMAT: &str = "mm-stream/ts-2";
+const FORMAT: &str = "mm-stream/ts-3";
 /// 入れ子をたどる深さの上限。レンダラーと同じ。
 const MAX_DEPTH: u32 = 16;
 /// 区間のファイルの拡張子。
@@ -74,17 +74,20 @@ pub(crate) struct KeyEnv<'a> {
 pub(crate) fn segment_key(env: &KeyEnv<'_>, plan: &Plan, index: u64) -> Result<SegmentKey> {
     let range = plan.range(index)?;
     let comp = env.project.composition(&plan.composition)?;
+    // SDR の区間はプロジェクトの全部の素材から決まるトーンマップの上限で符号化するので、区間に掛からない
+    // HDR の素材を足しても作り直すよう上限を入れる。
     let mut walk = Walk {
         env,
         text: format!(
-            "{FORMAT}|{}|{}|{}x{}@{}|{}-{}",
+            "{FORMAT}|{}|{}|{}x{}@{}|{}-{}|peak={}",
             env.backends,
             plan.quality.as_str(),
             plan.width,
             plan.height,
             plan.fps.to_f64(),
             range.start,
-            range.end
+            range.end,
+            tone_map_peak(env.project)
         ),
         volatile: false,
     };

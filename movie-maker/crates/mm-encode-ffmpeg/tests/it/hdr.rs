@@ -53,6 +53,7 @@ fn write(codec: &str, path: &Path) {
         output_path: path.to_owned(),
         audio: None,
         stream: None,
+        source_peak: 1.0,
     };
     enc.begin(&settings).unwrap();
     let frames: Vec<RgbaImage> = (0..FRAMES).map(|_| patch_frame()).collect();
@@ -80,7 +81,7 @@ fn read_back(path: &Path, color_space: &str, peak: f32) -> f32 {
 }
 
 /// ffprobe の出力（`key=value` の行）を返す。
-fn probe(path: &Path, args: &[&str]) -> String {
+pub(crate) fn probe(path: &Path, args: &[&str]) -> String {
     let out = Command::new("ffprobe")
         .args(["-v", "error", "-select_streams", "v:0"])
         .args(args)

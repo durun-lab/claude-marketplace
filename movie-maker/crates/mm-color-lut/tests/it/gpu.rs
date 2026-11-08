@@ -6,7 +6,8 @@ use mm_color_lut::gpu_eval::GpuEval;
 use mm_color_lut::{
     bake_lut3d, lut3d_apply_wgsl, sample_lut3d, sample_trilinear, Cdl, LutColor, LUT3D_APPLY_WGSL,
 };
-use mm_types::{transfer, ColorSpace};
+use mm_testkit::hdr::{self, HdrKind};
+use mm_types::{tonemap, transfer, ColorSpace};
 
 /// テスト用の色。黒、18% グレー、白、原色、彩度の高い色。
 const SAMPLES: [[f32; 3]; 8] = [
@@ -127,4 +128,38 @@ fn シェーパーつきのlutのwgslがcpuと一致し_1を超える値を切�
     let d = max_diff(&cpu, &exact);
     eprintln!("PQ のシェーパーつき 65^3 の LUT と式の最大差 {d:e}");
     assert!(d < 2e-3, "1 を超える線形の値も格子の中で引ける: {d}");
+}
+
+/// プレビュー（`mm-ui-wgpu`）と GPU の NV12 の書き出し（`mm-render`）が使う `TONEMAP_WGSL` が、CPU の書き出し
+/// （`mm-encode-ffmpeg-core`）の `bt2390_to_sdr` と同じ値を出す。入力は HDR の素材のフィクスチャの帯の線形の値と、
+/// 色の見本と、素材の上限を超える値。
+#[test]
+fn sdr_のトーンマップのwgslがcpuと一致する() {
+    let Some(gpu) = GpuEval::new() else {
+        return;
+    };
+    let bands = (0..hdr::BANDS.len()).flat_map(|band| {
+        [
+            hdr::expected(HdrKind::Pq, band),
+            hdr::expected(HdrKind::Hlg, band),
+        ]
+    });
+    let over = [[8.0, 6.0, 0.5], [30.0, 30.0, 30.0]];
+    let inputs: Vec<[f32; 3]> = SAMPLES.iter().copied().chain(bands).chain(over).collect();
+    let peak = tonemap::preview_peak(&[ColorSpace::bt2100_pq()]);
+    for peak in [1.0, peak] {
+        let source = format!(
+            "{}{}fn mm_color_transform(c: vec3<f32>) -> vec3<f32> {{ return mm_tonemap_sdr(c, {peak:?}); }}",
+            transfer::TRANSFER_WGSL,
+            tonemap::TONEMAP_WGSL
+        );
+        let got = gpu.run(&source, &inputs, None).expect("GPU で実行");
+        let want: Vec<_> = inputs
+            .iter()
+            .map(|&c| tonemap::bt2390_to_sdr(c, peak))
+            .collect();
+        let d = max_diff(&got, &want);
+        eprintln!("上限 {peak} の SDR のトーンマップの GPU と CPU の最大差 {d:e}");
+        assert!(d < 1e-4, "上限 {peak}: 差 {d}");
+    }
 }

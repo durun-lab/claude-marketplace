@@ -6,6 +6,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use mm_types::transfer::{hlg_to_linear, mul3, pq_to_linear, REC2020_TO_REC709};
 use mm_types::{RgbaImage, Size};
@@ -121,7 +122,14 @@ pub fn fixture(dir: &Path, kind: HdrKind) -> PathBuf {
         return target;
     }
     std::fs::create_dir_all(dir).expect("フィクスチャの置き場を作れた");
-    let tmp = dir.join(format!("hdr_{}.{}.tmp.mp4", kind.trc(), std::process::id()));
+    // 同じプロセスの試験のスレッドどうしも同時に作るので、一時の名前はプロセスとプロセスの中の通し番号で分ける。
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let serial = NEXT.fetch_add(1, Ordering::Relaxed);
+    let tmp = dir.join(format!(
+        "hdr_{}.{}.{serial}.tmp.mp4",
+        kind.trc(),
+        std::process::id()
+    ));
     let status = Command::new("ffmpeg")
         .args(["-y", "-v", "error", "-filter_complex", &graph(kind)])
         .args([

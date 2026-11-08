@@ -224,6 +224,16 @@ pub struct EncodeSettings {
     /// 配信の区間の書き方。コーデック `h264_ts` に要り、ほかのコーデックでは `None`。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stream: Option<StreamOutput>,
+    /// HDR の素材の上限（線形、1.0 が HDR の基準の白。`mm_render_api::tone_map_peak`）。SDR の信号の書き出しは
+    /// プレビューと同じ BT.2390 の EETF（`mm_types::tonemap::bt2390_to_sdr`）でこれを白に収める。1 以下は恒等で、
+    /// HDR の信号の書き出しは使わない。
+    #[serde(default = "unit_peak")]
+    pub source_peak: f32,
+}
+
+/// [`EncodeSettings::source_peak`] の既定。トーンマップしない。
+fn unit_peak() -> f32 {
+    1.0
 }
 
 /// 配信の区間（MPEG-TS）の書き方。目標のビットレートで 1 回だけ符号化し、区間の始まりの秒から始まる時刻で書く。

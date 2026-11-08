@@ -41,7 +41,8 @@ pub enum VideoInput {
 /// 書き出す信号の伝達特性と原色。線形の作業色空間（Rec.709）から、この信号の符号化値にしてエンコーダーに渡す。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum OutputSignal {
-    /// Rec.709 の原色、Rec.1886 の表示の式（SDR）。1 を超える値は白に切る。
+    /// Rec.709 の原色、Rec.1886 の表示の式（SDR）。HDR の素材があればプレビューと同じトーンマップで収め
+    /// （`EncodeSettings::source_peak`）、それでも 1 を超える値は白に切る。
     #[default]
     Sdr,
     /// Rec.2020 の原色、PQ（SMPTE ST 2084、HDR10）。線形の 1.0 が 203 cd/m²。

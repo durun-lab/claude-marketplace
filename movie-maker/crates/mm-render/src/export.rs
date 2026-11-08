@@ -1,13 +1,15 @@
 //! 書き出しの経路。描いたフレームを GPU で NV12（Rec.709、tv レンジ、Rec.1886 の符号化値）にして
 //! リードバックし、エンコーダーの `push_nv12_frames` に押す。リードバックは数フレーム先行させ、
 //! GPU の描画と CPU のエンコードを重ねる。エンコーダーが NV12 を受けなければ RGBA の既定の経路に戻る。
+//! NV12 は SDR なので、HDR の素材があればプレビューと同じトーンマップ（`TONEMAP_WGSL`）を掛けてから符号化する。
 
 use std::collections::VecDeque;
 use std::sync::Arc;
 
 use mm_decode_api::{Encoder, Nv12Frame};
 use mm_gpu::{GpuContext, Readback, WgpuGpu, FRAME_FORMAT};
-use mm_render_api::{export_range_rgba, RangeRequest, RenderRequest};
+use mm_render_api::{export_range_rgba, tone_map_peak, RangeRequest, RenderRequest};
+use mm_types::tonemap::TONEMAP_WGSL;
 use mm_types::transfer::TRANSFER_WGSL;
 use mm_types::{MmError, RationalTime, Result, Size};
 
@@ -20,10 +22,15 @@ const PLANE_SETS: usize = 2;
 const Y_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
 const UV_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rg8Unorm;
 
-/// 線形の premultiplied の RGBA を、Rec.1886 の符号化値にしてから Rec.709・tv レンジの Y と CbCr にする。
-/// アルファは使わず、黒の上に置いた色として扱う（premultiplied なのでそのままの値）。式は `TRANSFER_WGSL` を前に連結する。
+/// トーンマップの一様バッファの大きさ（`vec4<f32>`。x が素材の上限）。
+const TONE_BYTES: u64 = 16;
+
+/// 線形の premultiplied の RGBA を、トーンマップしてから Rec.1886 の符号化値にし、Rec.709・tv レンジの Y と CbCr にする。
+/// アルファは使わず、黒の上に置いた色として扱う（premultiplied なのでそのままの値）。式は `TRANSFER_WGSL` と
+/// `TONEMAP_WGSL` を前に連結する。
 const YUV_OUT_WGSL: &str = r"
 @group(0) @binding(0) var frame: texture_2d<f32>;
+@group(0) @binding(1) var<uniform> tone: vec4<f32>;
 
 @vertex
 fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
@@ -32,8 +39,8 @@ fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
 }
 
 fn encoded(xy: vec2<u32>) -> vec3<f32> {
-    let rgb = clamp(textureLoad(frame, xy, 0).rgb, vec3<f32>(0.0), vec3<f32>(1.0));
-    return mm_linear_to_bt1886_3(rgb);
+    let sdr = mm_tonemap_sdr(textureLoad(frame, xy, 0).rgb, tone.x);
+    return mm_linear_to_bt1886_3(clamp(sdr, vec3<f32>(0.0), vec3<f32>(1.0)));
 }
 
 fn luma(rgb: vec3<f32>) -> f32 {
@@ -80,6 +87,8 @@ pub(crate) struct ExportPipe {
     layout: wgpu::BindGroupLayout,
     y_pipeline: wgpu::RenderPipeline,
     uv_pipeline: wgpu::RenderPipeline,
+    /// トーンマップの素材の上限（`vec4<f32>` の x）。
+    tone: wgpu::Buffer,
     size: Size,
     planes: Vec<PlaneSet>,
     next_set: usize,
@@ -96,20 +105,16 @@ impl ExportPipe {
         let device = &ctx.device;
         let module = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("mm-render yuv out"),
-            source: wgpu::ShaderSource::Wgsl(format!("{TRANSFER_WGSL}{YUV_OUT_WGSL}").into()),
+            source: wgpu::ShaderSource::Wgsl(
+                format!("{TRANSFER_WGSL}{TONEMAP_WGSL}{YUV_OUT_WGSL}").into(),
+            ),
         });
-        let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("mm-render yuv out"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::FRAGMENT,
-                ty: wgpu::BindingType::Texture {
-                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
-                    view_dimension: wgpu::TextureViewDimension::D2,
-                    multisampled: false,
-                },
-                count: None,
-            }],
+        let layout = bind_layout(device);
+        let tone = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("mm-render yuv out tone"),
+            size: TONE_BYTES,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
         });
         let planes = (0..PLANE_SETS)
             .map(|_| PlaneSet {
@@ -125,24 +130,42 @@ impl ExportPipe {
             y_pipeline: pipeline(device, &module, &layout, "fs_y", Y_FORMAT),
             uv_pipeline: pipeline(device, &module, &layout, "fs_uv", UV_FORMAT),
             layout,
+            tone,
             size,
             planes,
             next_set: 0,
         })
     }
 
-    /// 中間形式のテクスチャ `frame` を Y と UV に変換し、両方のリードバックを提出する。
-    fn encode(&mut self, gpu: &mut WgpuGpu, frame: &wgpu::Texture) -> (Readback, Readback) {
+    /// 中間形式のテクスチャ `frame` を、素材の上限 `peak` のトーンマップを掛けて Y と UV に変換し、
+    /// 両方のリードバックを提出する。
+    fn encode(
+        &mut self,
+        gpu: &mut WgpuGpu,
+        frame: &wgpu::Texture,
+        peak: f32,
+    ) -> (Readback, Readback) {
         let ctx = gpu.context().clone();
+        let tone: Vec<u8> = [peak, 0.0, 0.0, 0.0]
+            .iter()
+            .flat_map(|v| v.to_le_bytes())
+            .collect();
+        ctx.queue.write_buffer(&self.tone, 0, &tone);
         let bind = ctx.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("mm-render yuv out"),
             layout: &self.layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(
-                    &frame.create_view(&wgpu::TextureViewDescriptor::default()),
-                ),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureView(
+                        &frame.create_view(&wgpu::TextureViewDescriptor::default()),
+                    ),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: self.tone.as_entire_binding(),
+                },
+            ],
         });
         let set = &self.planes[self.next_set];
         self.next_set = (self.next_set + 1) % PLANE_SETS;
@@ -159,6 +182,35 @@ impl ExportPipe {
             gpu.begin_readback(&set.uv, 2),
         )
     }
+}
+
+/// フレームのテクスチャ（binding 0）とトーンマップの一様バッファ（binding 1）。
+fn bind_layout(device: &wgpu::Device) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("mm-render yuv out"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: wgpu::BufferSize::new(TONE_BYTES),
+                },
+                count: None,
+            },
+        ],
+    })
 }
 
 fn plane_texture(device: &wgpu::Device, size: Size, format: wgpu::TextureFormat) -> wgpu::Texture {
@@ -252,6 +304,7 @@ impl WgpuRenderer {
             return export_range_rgba(self, req, encoder, 1, sink);
         }
         let _span = tracing::info_span!("render.export", comp = %req.composition).entered();
+        let peak = tone_map_peak(req.project);
         let mut in_flight: VecDeque<InFlight> = VecDeque::with_capacity(READBACK_AHEAD + 1);
         let mut count = 0;
         for index in req.range.frame_indices(req.fps) {
@@ -264,7 +317,7 @@ impl WgpuRenderer {
                 nodes: req.nodes,
             };
             let id = self.draw_frame(&frame_req)?;
-            let (y, uv) = self.encode_nv12(id, req.size)?;
+            let (y, uv) = self.encode_nv12(id, req.size, peak)?;
             self.gpu.release_id(id);
             in_flight.push_back(InFlight {
                 index,
@@ -284,7 +337,7 @@ impl WgpuRenderer {
         Ok(count)
     }
 
-    fn encode_nv12(&mut self, id: u64, size: Size) -> Result<(Readback, Readback)> {
+    fn encode_nv12(&mut self, id: u64, size: Size, peak: f32) -> Result<(Readback, Readback)> {
         let ctx: Arc<GpuContext> = self.gpu.context().clone();
         let pipe = match self.export.as_mut() {
             Some(p) if p.size == size => p,
@@ -296,7 +349,7 @@ impl WgpuRenderer {
             .filter(|t| t.format() == FRAME_FORMAT)
             .ok_or_else(|| MmError::NotFound(format!("テクスチャ {id}")))?
             .clone();
-        Ok(pipe.encode(&mut self.gpu, &frame))
+        Ok(pipe.encode(&mut self.gpu, &frame, peak))
     }
 
     fn flush_one(
