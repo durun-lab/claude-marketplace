@@ -10,10 +10,17 @@ use crate::SqlExt;
 pub const APPLICATION_ID: i32 = 0x4d4d_4442;
 
 /// DDL を 1 つずつ適用した先のバージョン。`MIGRATIONS` の長さと一致する。
-pub const SCHEMA_VERSION: u32 = 4;
+pub const SCHEMA_VERSION: u32 = 5;
 
 /// バージョン `i` から `i + 1` に上げる DDL。プロジェクトのデータの JSON の形の移行は `mm_doc::migrate` が持つ。
-pub(crate) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4];
+pub(crate) const MIGRATIONS: &[&str] = &[V1, V2, V3, V4, V5];
+
+/// バージョン 5: 発行元と決めた者の、登録した端末の ID（`Actor::device`）。前からの行は NULL のまま。
+const V5: &str = "
+ALTER TABLE txns ADD COLUMN actor_device TEXT;
+ALTER TABLE proposals ADD COLUMN actor_device TEXT;
+ALTER TABLE proposals ADD COLUMN decided_device TEXT;
+";
 
 /// バージョン 4: Claude の編集の提案（保留中のトランザクション）。承認で適用したトランザクションを `txn_id` で指す。
 /// `ops` は提案した操作（`Op` の JSON の配列）、`touches` は受け付けたときに適用して求めた所、`approved_ops` は承認した操作の番号。
@@ -382,7 +389,7 @@ mod tests {
     fn バージョン_3_の_db_に提案の表が足され_状態の外の値は拒否する() {
         let mut conn = Connection::open_in_memory().unwrap();
         migrate(&mut conn, &[V1, V2, V3]).unwrap();
-        migrate(&mut conn, MIGRATIONS).unwrap();
+        migrate(&mut conn, &[V1, V2, V3, V4]).unwrap();
         assert_eq!(user_version(&conn).unwrap(), 4);
         let insert = |state: &str| {
             conn.execute(
@@ -394,6 +401,33 @@ mod tests {
         };
         assert!(insert("pending").is_ok());
         assert!(insert("merged").is_err());
+    }
+
+    #[test]
+    fn バージョン_4_の_db_の発行元と決めた者は端末の_id_を持たないまま上がる() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&mut conn, &[V1, V2, V3, V4]).unwrap();
+        conn.execute_batch(
+            "INSERT INTO txns(id, kind, name, actor_kind, actor_name, at_ms, base_version,
+                              doc_version, first_seq, last_seq)
+               VALUES (1, 'normal', 't', 'mobile', 'phone', 0, 0, 1, 1, 1);
+             INSERT INTO proposals(name, entry, actor_kind, actor_name, at_ms, base_version,
+                                   ops, touches, state, decided_kind, decided_name, txn_id)
+               VALUES ('p', 'mcp', 'mcp', 'claude', 0, 0, '[]', '[]', 'approved',
+                       'mobile', 'phone', 1);",
+        )
+        .unwrap();
+        migrate(&mut conn, MIGRATIONS).unwrap();
+        assert_eq!(user_version(&conn).unwrap(), SCHEMA_VERSION);
+        let devices: (Option<String>, Option<String>, Option<String>) = conn
+            .query_row(
+                "SELECT t.actor_device, p.actor_device, p.decided_device
+                 FROM txns t JOIN proposals p ON p.txn_id = t.id",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        assert_eq!(devices, (None, None, None));
     }
 
     #[test]

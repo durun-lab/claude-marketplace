@@ -824,6 +824,13 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .mm-project .input { flex: 1; min-width: 0; }
 .mm-project .mm-recent { flex: 0 1 9em; }
 .mm-mobile-link { font-size: 12px; overflow-wrap: anywhere; }
+.mm-mobile { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; }
+.mm-mobile > .fl-steps { align-self: stretch; }
+.mm-mobile-head { display: flex; align-items: center; gap: 8px; }
+.mm-guide { margin: 4px 0 0; padding-left: 20px; font-size: 12px; }
+.mm-guide li { margin: 2px 0; }
+.mm-command { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+.mm-command code { flex: 1; min-width: 0; padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface-2); overflow-wrap: anywhere; user-select: all; }
 .mm-output { max-height: 160px; }
 .fl-links { display: flex; flex-wrap: wrap; gap: 6px; }
 .fl-toggle { display: inline-flex; align-items: center; gap: 4px; align-self: flex-start; }

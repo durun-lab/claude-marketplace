@@ -12,7 +12,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Json, Router};
 use mm_ops::{Op, Transaction};
-use mm_store::{Actor, Store};
+use mm_store::{Actor, Store, UndoPlan};
 use serde::Deserialize;
 use serde_json::json;
 
@@ -108,7 +108,7 @@ fn not_on_mobile_response(ops: &[&str]) -> Response {
         .into_response()
 }
 
-/// 取り消しは、この端末が出したトランザクションが全体の直前のときだけ。違えば 409 `not_latest`。
+/// 取り消しは、この端末（登録ごとの ID で見分ける）が出したトランザクションが全体の直前のときだけ。違えば 409 `not_latest`。
 async fn post_undo(
     State(st): State<Arc<MobileState>>,
     Extension(device): Extension<DeviceInfo>,
@@ -135,24 +135,33 @@ enum UndoOwn {
     NotLatest(ChangeOf),
 }
 
+/// 記録の発行元 `recorded` が、端末 `caller` と同じ登録か。名前は登録を外すと別の端末が使えるので端末の ID で比べ、
+/// ID の無い記録はどの端末のものともみなさない。
+fn same_device(recorded: &Actor, caller: &Actor) -> bool {
+    recorded.device.is_some() && recorded.device == caller.device
+}
+
 /// `actor` が出したか、`actor` が承認した提案のトランザクションか。承認の記録の発行元は提案した者なので、決めた者は提案の側で引く。
-fn owned_by(s: &Store, target: &ChangeOf, actor: &Actor) -> Result<bool, ServeError> {
-    if target.actor == actor.kind && target.actor_name == actor.name {
+fn owned_by(s: &Store, plan: &UndoPlan, actor: &Actor) -> Result<bool, ServeError> {
+    if same_device(&plan.actor, actor) {
         return Ok(true);
     }
-    Ok(s.proposals()?
-        .iter()
-        .any(|p| p.txn_id == Some(target.txn_id) && p.decided_by.as_ref() == Some(actor)))
+    Ok(s.proposals()?.iter().any(|p| {
+        p.txn_id == Some(plan.txn_id)
+            && p.decided_by.as_ref().is_some_and(|d| same_device(d, actor))
+    }))
 }
 
 impl Core {
     /// 直前のトランザクションが `caller` のものなら取り消す。確かめてから取り消すまで `Store` のロックを離さない。
     fn undo_own(&self, caller: &Caller) -> Result<UndoOwn, ServeError> {
         self.with_store(|s| {
-            let Some(target) = s.undo_plan()?.map(ChangeOf::from) else {
+            let Some(plan) = s.undo_plan()? else {
                 return Ok(UndoOwn::Done(None));
             };
-            if !owned_by(s, &target, &caller.actor)? {
+            let owned = owned_by(s, &plan, &caller.actor)?;
+            let target = ChangeOf::from(plan);
+            if !owned {
                 return Ok(UndoOwn::NotLatest(target));
             }
             let ctx = mm_ops::OpContext::new(caller.entry);
@@ -161,5 +170,21 @@ impl Core {
                 stored.map(|t| self.finish(s, &t, Some(target))),
             ))
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 端末は_id_で見分け_id_の無い記録は同じ名前でも自分のものとみなさない() {
+        let phone = Actor::new("mobile", "phone").with_device("d1");
+        assert!(same_device(&phone, &phone));
+        let renamed = Actor::new("mobile", "phone").with_device("d2");
+        assert!(!same_device(&phone, &renamed));
+        let legacy = Actor::new("mobile", "phone");
+        assert!(!same_device(&legacy, &phone));
+        assert!(!same_device(&legacy, &legacy));
     }
 }

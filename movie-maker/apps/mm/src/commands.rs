@@ -117,10 +117,7 @@ pub fn now_ms() -> i64 {
 }
 
 pub(crate) fn actor() -> Actor {
-    Actor {
-        kind: ACTOR_KIND.into(),
-        name: ACTOR_NAME.into(),
-    }
+    Actor::new(ACTOR_KIND, ACTOR_NAME)
 }
 
 /// CLI は Claude の操作経路として、ロックの付いた所に触る操作を拒否する。

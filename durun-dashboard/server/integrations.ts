@@ -110,7 +110,9 @@ const withClaudeStatus = (key: string, pr: PrInfo | null | undefined): PrInfo | 
  */
 const peekPr = <T extends PrInfo | null>(key: string, keep: boolean, load: () => Promise<T>): T | undefined => {
   const pr = peekCached(key, { maxAge: BRANCH_PR_MAX_AGE, keep: true }, load);
-  return keep || pr === undefined || pr?.state === 'MERGED' ? pr : peekCached(key, { maxAge: BRANCH_PR_MAX_AGE }, load);
+  if (keep || !pr) return pr;
+  warmPrDetail(pr.url);
+  return pr.state === 'MERGED' ? pr : peekCached(key, { maxAge: BRANCH_PR_MAX_AGE }, load);
 };
 
 const peekBranchPr = (cwd: string, branch: string, keep: boolean): PrInfo | null | undefined => peekPr(branchKey(cwd, branch), keep, () => findPr(cwd, branch));
@@ -371,8 +373,15 @@ export const githubInbox = (fresh = false): Promise<InboxSection[]> =>
   cached('github-inbox', { maxAge: INBOX_MAX_AGE, fresh }, async () => toInbox((await ghApi<{ data: GhInbox }>(['graphql', '-f', `query=${INBOX_QUERY}`])).data));
 
 /** PR の本文、変更したファイル、会話を GitHub から読む。 */
-export const prDetail = (url: string, fresh = false): Promise<PrDetail> =>
-  cached(`pr-v2:${url}`, { maxAge: PR_MAX_AGE, fresh }, async () => toPrDetail(JSON.parse(await gh(['pr', 'view', url, '--json', DETAIL_FIELDS])) as GhPrDetail));
+export const prDetail = (url: string, fresh = false): Promise<PrDetail> => cached(`pr-v2:${url}`, { maxAge: PR_MAX_AGE, fresh }, () => readPrDetail(url));
+
+const readPrDetail = async (url: string): Promise<PrDetail> => toPrDetail(JSON.parse(await gh(['pr', 'view', url, '--json', DETAIL_FIELDS])) as GhPrDetail);
+
+/**
+ * セッションの PR の詳細を、開かれる前に裏で一度読んでおく。gh は混み合うと 20 秒ほどかかり、初めて開いた PR の画面を待たせるため。
+ * 読んだ後の読み直しは、画面で開いたときの prDetail に任せる。
+ */
+const warmPrDetail = (url: string): void => void peekCached(`pr-v2:${url}`, { maxAge: PR_MAX_AGE, keep: true }, () => readPrDetail(url));
 
 /** gh api --include が本文の前に出す、状態の行とヘッダー。ヘッダーの名前は小文字にする。 */
 export const parseIncluded = (head: string): { status: number; headers: Map<string, string> } => {

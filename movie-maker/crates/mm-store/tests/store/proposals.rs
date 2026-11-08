@@ -16,17 +16,11 @@ pub fn opacity(layer: usize, v: f64) -> Op {
 }
 
 pub fn claude() -> Actor {
-    Actor {
-        kind: "mcp".into(),
-        name: "claude".into(),
-    }
+    Actor::new("mcp", "claude")
 }
 
 pub fn human() -> Actor {
-    Actor {
-        kind: "gui".into(),
-        name: "app".into(),
-    }
+    Actor::new("gui", "app")
 }
 
 pub fn propose(s: &mut Store, ops: Vec<Op>, base: Option<u64>) -> mm_ops::OpResult<i64> {
@@ -203,4 +197,28 @@ fn 提案は開き直しても残り_読み取りだけでも読める() {
     assert_eq!(list.iter().map(|p| p.id).collect::<Vec<_>>(), [pending, id]);
     assert!(list[1].applied);
     assert_eq!(list[0].ops, vec![opacity(1, 0.5)]);
+}
+
+#[test]
+fn 端末の_id_は提案とトランザクションの発行元と決めた者に残り_保留に戻すと消える() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut s = Store::create(tmp.path(), &project_with(2), NOW).unwrap();
+    let phone = Actor::new("mobile", "phone").with_device("d1");
+    let tablet = Actor::new("mobile", "tablet").with_device("d2");
+    let txn = Transaction::new("下書き", vec![opacity(0, 0.5)]);
+    let ctx = OpContext::new(Entry::Mobile);
+    let id = s.propose(txn, &ctx, phone.clone(), NOW, None).unwrap().id;
+    s.approve_proposal(id, None, &tablet, NOW).unwrap();
+    let rejected = propose(&mut s, vec![opacity(1, 0.5)], None).unwrap();
+    s.reject_proposal(rejected, &tablet, NOW).unwrap();
+    s.close(NOW).unwrap();
+
+    let mut s = Store::open(tmp.path(), NOW).unwrap();
+    let approved = s.proposal(id).unwrap();
+    assert_eq!(approved.actor, phone);
+    assert_eq!(approved.decided_by.as_ref(), Some(&tablet));
+    assert_eq!(s.proposal(rejected).unwrap().decided_by, Some(tablet));
+    assert_eq!(s.undo_plan().unwrap().unwrap().actor, phone);
+    assert_eq!(s.txn_log().unwrap()[0].actor, phone);
+    assert_eq!(s.reopen_proposal(rejected).unwrap().decided_by, None);
 }

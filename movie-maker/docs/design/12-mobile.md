@@ -115,10 +115,10 @@ flowchart LR
   DASH -- mm_tool の中継 --> AGENT
 ```
 
-- 人の待ち受け: `mm-serve` に 2 つ目の待ち受けを足す。127.0.0.1 の決まったポート（既定 7338、設定で変える）で待ち、`tailscale serve --bg --https=8443 http://127.0.0.1:7338` で tailnet に出す。ダッシュボードの 443 と別のオリジンにし、画面のスクリプトを分ける。クッキーはポートで分かれないので、パスを `/m` に絞り `HttpOnly` にする。ルーターは別に作り、`/mcp` と `entry` の指定を持たない。この待ち受けから来た操作は全部 `Entry::Mobile`（人）で、`actor` は `{ kind: "mobile", name: <端末の名前> }`。Claude の待ち受けの発行元は今のまま `cli` と `mcp` だけなので、Claude の操作の発行元が `mobile` になる経路は無い。
+- 人の待ち受け: `mm-serve` に 2 つ目の待ち受けを足す。127.0.0.1 の決まったポート（既定 7338、設定で変える）で待ち、`tailscale serve --bg --https=8443 http://127.0.0.1:7338` で tailnet に出す。ダッシュボードの 443 と別のオリジンにし、画面のスクリプトを分ける。クッキーはポートで分かれないので、パスを `/m` に絞り `HttpOnly` にする。ルーターは別に作り、`/mcp` と `entry` の指定を持たない。この待ち受けから来た操作は全部 `Entry::Mobile`（人）で、`actor` は `{ kind: "mobile", name: <端末の名前>, device: <端末の ID> }`（端末の ID は記録の `txns.actor_device` と提案の `actor_device`、`decided_device` に残す。コメントの書き手は `{ kind, name }` のまま）。Claude の待ち受けの発行元は今のまま `cli` と `mcp` だけなので、Claude の操作の発行元が `mobile` になる経路は無い。
 - 確かめる順: (1) `Host` が tailnet での名前（`tailscale status --json` の `Self.DNSName`）で、`Origin` があれば同じオリジン。(2) `Tailscale-User-Login` があり、登録した端末のときと同じ人。(3) 端末の資格のクッキーが登録した資格のハッシュと合う。(4) 書き込みの要求はヘッダー `X-MM-Mobile: 1` を持つ（別のオリジンのフォームからの送信を止める）。順に 403、401、401、403。
 - 端末の資格をクッキーにする理由: SSE の `EventSource` はヘッダーを足せない [93]。クッキーは `HttpOnly`、`Secure`、`SameSite=Strict`、パスは `/m`。`SameSite=Strict` は同じ tailnet の別の端末やダッシュボード（:443）のページを同じサイトとみなして止めないので、別のオリジンからの書き込みは (1) の `Origin` と (4) のヘッダーで止める（ヘッダーを付けた別のオリジンの要求には CORS の事前確認が要り、事前確認は資格を持たないので 401 で拒否される）。同じサイトのページは同じ名前のクッキーを足せるので、送られた資格のどれか 1 つが合えば通す。
-- 端末の登録: PC のアプリの Devices パネル（右の WebView）で「Add device」を押すと、5 分だけ使える 8 文字の登録コードと、その登録コードを入れた URL の QR を出す。モバイルは登録コードを `POST /m/pair` に送り、端末の資格（32 バイトの乱数）をクッキーで受け取る。PC は資格の BLAKE3 のハッシュと端末の名前、`Tailscale-User-Login`、登録した時刻を持ち主専用のフォルダー（`%LOCALAPPDATA%\movie-maker\devices.json`）に置く。登録コードは 1 回で消え、5 回間違えたら無効にする。登録コードを先に確かめ、登録コードを知らない者に登録した名前を探らせない。名前の誤りでは登録コードを消さない。端末の名前は登録した端末の間で一意（大文字と小文字は区別しない）で、トランザクションの取り消し（undo）でどの端末が出したかを見分けるのに使う。手で入れた登録コードは Crockford の Base32 として読む（O を 0、I と L を 1）。登録を外すと、その端末の開いている SSE も閉じる。登録と登録を外すのは PC のアプリからだけで、モバイルからはできない。Claude が PC のファイルを読めても、ハッシュから資格は作れない。
+- 端末の登録: PC のアプリの Devices パネル（右の WebView）で「Add device」を押すと、5 分だけ使える 8 文字の登録コードと、その登録コードを入れた URL の QR を出す。モバイルは登録コードを `POST /m/pair` に送り、端末の資格（32 バイトの乱数）をクッキーで受け取る。PC は資格の BLAKE3 のハッシュと端末の名前、`Tailscale-User-Login`、登録した時刻を持ち主専用のフォルダー（`%LOCALAPPDATA%\movie-maker\devices.json`）に置く。登録コードは 1 回で消え、5 回間違えたら無効にする。登録コードを先に確かめ、登録コードを知らない者に登録した名前を探らせない。名前の誤りでは登録コードを消さない。端末の名前は登録した端末の間で一意（大文字と小文字は区別しない）で、履歴と提案の一覧に発行元として出す。トランザクションの取り消し（undo）でどの端末が出したかは、登録ごとに新しく引く端末の ID（8 バイトの乱数）で見分ける。名前は登録を外すと別の端末が同じ名前で登録できるので、見分けに使わない（Kubernetes の `ownerReferences` が名前でなく `uid` で持ち主を指すのと同じ考え方）。手で入れた登録コードは Crockford の Base32 として読む（O を 0、I と L を 1）。登録を外すと、その端末の開いている SSE も閉じる。登録と登録を外すのは PC のアプリからだけで、モバイルからはできない。Claude が PC のファイルを読めても、ハッシュから資格は作れない。
 - 登録コードを手で入れる経路も持つ: iOS ではホーム画面に置いた Web アプリと Safari でクッキーが分かれることがある〔推〕。QR を Safari で開いた後にホーム画面へ置いたときは、Web アプリの中で登録コードを入れ直す。Safari の登録は資格を使った登録なので、名前は別にする（同じ名前は `name_taken`）。
 - 資格が効いたかを確かめる: 端末がクッキーを保存しない（Safari の「すべての Cookie をブロック」など）と、PC では登録が済み登録コードも消えたまま、画面は登録の画面に残る。モバイルは `POST /m/pair` の応答の後に `GET /m/api/project` を読み直し、401 なら英語の文言で知らせる（画面だけの code `pairing_not_kept`）。PC は資格を一度も使っていない登録にフラグ（`devices.json` の `unused`）を立て、その資格の付いた要求が初めて通ったときに下ろす。フラグの立った登録は操作を出していないので名前を塞がず、同じ名前の登録し直しで置き換える。登録コードの期限（5 分）を過ぎても使われなければ端末の一覧から消し、その資格も通さない。フラグの無い記録（フラグを足す前の `devices.json`）は使った登録とみなす。
 - QR の URL は登録の画面 `https://<tailnet での名前>:8443/m/pair?code=<登録コード>`（`MobileServer::pairing_url`）。PWA の画面（`/m/api/` の外の読み出し）は資格の無い端末にも配り、`Host` と本人のヘッダーだけを確かめる。
@@ -149,7 +149,7 @@ PC で 1 回だけ行う。tailnet と Tailscale の HTTPS の証明書（管理
 | 操作を即時に適用する | 下の表の操作だけ | 全部の操作 |
 | 提案を出す | できる（「PC で決める」の下書き） | できる（`propose`） |
 | 提案の承認、一部の承認、却下、保留に戻す | できる | できない（403） |
-| 取り消し | この端末が出したトランザクションが全体の直前のときだけ（違えば 409 `not_latest`） | できる |
+| 取り消し | この端末が出したか承認したトランザクションが全体の直前のときだけ（違えば 409 `not_latest`）。端末は端末の ID で見分け、ID の無い記録（ID を記録する前の行）はどの端末からも取り消せない | できる |
 | ロックの付いたレイヤー | 触れない（ロックは PC のアプリ以外の経路に効かせる） | 触れない |
 | 端末の登録と、登録を外すこと | できない | できない |
 
@@ -225,7 +225,7 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 | `GET /m/api/project` | `{ version, compositions, sequences, open_composition, cuts }`（素材のパスは返さない）。`open_composition` は先頭のコンポジション、`cuts` はその中のカットの境の秒（スクラブバーの目盛り） |
 | `GET /m/api/story/overview`、`/transcript?asset=`、`/range?asset=&first=&last=`、`/search?q=` | `ui/panels/story/src/api.ts` の `StoryApi` と同じ形 |
 | `POST /m/api/ops` | `{ op }` か `{ txn }`、`base_version` は必須。即時に適用できる操作だけ |
-| `POST /m/api/undo` | この端末が出したトランザクションが全体の直前のときだけ |
+| `POST /m/api/undo` | この端末（端末の ID で見分ける）が出したか承認したトランザクションが全体の直前のときだけ |
 | `GET /m/api/comments?state=`、`GET /m/api/comments/{id}`、`POST /m/api/comments`、`POST /m/api/comments/{id}/replies`、`POST /m/api/comments/{id}/state` | コメントの一覧、1 件、書く、返信、状態 |
 | `GET /m/api/proposals`、`GET /m/api/proposals/{id}`、`POST /m/api/proposals`、`POST /m/api/proposals/{id}/approve`、`/reject`、`/reopen` | 提案。形は Claude の待ち受けの `/proposals` と同じで、`comp_spans: [{ comp, layer, sequence, start, end }]`（`scope.sequences` の範囲を、そのシーケンスを置いたレイヤーのコンポジションの秒に変換したもの。時間の写像を持つレイヤーは変換しない）を足す |
 | `GET /m/api/frame?comp=&t=&width=&proposal=&ops=` | 静止画のフレーム。`t` は `comp`（省くと先頭のコンポジション）の時間軸の秒。保存したデータは WebP（`ETag` に `If-None-Match` で 304）、`proposal` つきは提案を適用した PNG |
@@ -233,7 +233,7 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 | `GET /m/api/audio/{asset}.m4a`、`GET /m/api/proposals/{id}/clip.mp4` | 素材の音だけ、提案の区間の短い動画（`clip.mp4` は未実装） |
 | `GET /m/api/events` | SSE。`hello`、`change`、`resync`、`proposal` に加えて `comment`（`{ id, state }`）。返信では `state` が変わらないので、端末は `comment` を受けたら `GET /m/api/comments/{id}` で 1 件を読み直す |
 
-人の待ち受けのルーターは `crates/mm-serve/src/mobile/mod.rs` の `router` で、ほかのモジュールの `/m/api/` は名前の順に `merge` か `nest` で 1 行ずつ載せる。ガードは全体に掛かり、通った要求に `Extension<DeviceInfo>`（登録した端末）と `Extension<Caller>`（`Entry::Mobile`、発行元の名前は端末の名前）を入れる。
+人の待ち受けのルーターは `crates/mm-serve/src/mobile/mod.rs` の `router` で、ほかのモジュールの `/m/api/` は名前の順に `merge` か `nest` で 1 行ずつ載せる。ガードは全体に掛かり、通った要求に `Extension<DeviceInfo>`（登録した端末）と `Extension<Caller>`（`Entry::Mobile`、発行元の名前は端末の名前で、端末の ID も持つ）を入れる。
 
 Claude の待ち受けにはコメントの `GET /comments`、`POST /comments/{id}/replies` と、MCP のツール `comments`、`comment_reply` を足す（操作でないツール。`mcp_tools.rs` に名前の順で 1 つずつ）。
 

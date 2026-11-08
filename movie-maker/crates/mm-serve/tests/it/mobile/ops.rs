@@ -181,3 +181,49 @@ fn 取り消しはこの端末のトランザクションが直前のときだ�
     assert_eq!(own.status, 200, "{}", own.error_message());
     assert_eq!(own.json().unwrap()["change"]["of"]["actor_name"], "phone");
 }
+
+fn revoke(r: &Rig, name: &str) {
+    let devices = r.mobile.devices();
+    let id = devices
+        .list()
+        .unwrap()
+        .into_iter()
+        .find(|d| d.name == name)
+        .unwrap()
+        .id;
+    assert!(devices.revoke(&id).unwrap());
+}
+
+#[test]
+fn 登録を外した端末と同じ名前で登録し直した端末は前の端末のトランザクションを取り消せない() {
+    let r = rig();
+    let old = Req::device(&r.pair("phone"));
+    assert_eq!(
+        post(&r, &old, "/m/api/ops", &add_marker("m1", 1, 0)).status,
+        200
+    );
+    let id = claude_proposal(&r);
+    revoke(&r, "phone");
+    let new = Req::device(&r.pair("phone"));
+
+    let undo = r.send(&new, "POST", "/m/api/undo", None);
+    assert_eq!((undo.status, code(&undo)), (409, "not_latest".into()));
+    assert_eq!(r.version(), 1);
+
+    let approve = r.send(
+        &new,
+        "POST",
+        &format!("/m/api/proposals/{id}/approve"),
+        None,
+    );
+    assert_eq!(approve.status, 200, "{}", approve.error_message());
+    revoke(&r, "phone");
+    let again = Req::device(&r.pair("phone"));
+    let undo = r.send(&again, "POST", "/m/api/undo", None);
+    assert_eq!(
+        (undo.status, code(&undo)),
+        (409, "not_latest".into()),
+        "承認した端末も id で見分ける"
+    );
+    assert_eq!(r.version(), 2);
+}

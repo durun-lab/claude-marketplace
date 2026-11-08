@@ -265,16 +265,10 @@ impl Store {
         let found: Option<(i64, String, Actor)> = self
             .conn
             .query_row(
-                "SELECT t.id, t.name, t.actor_kind, t.actor_name
+                "SELECT t.id, t.name, t.actor_kind, t.actor_name, t.actor_device
                  FROM undo_stack u JOIN txns t ON t.id = u.txn_id WHERE u.pos = ?1",
                 [pos],
-                |r| {
-                    let actor = Actor {
-                        kind: r.get(2)?,
-                        name: r.get(3)?,
-                    };
-                    Ok((r.get(0)?, r.get(1)?, actor))
-                },
+                |r| Ok((r.get(0)?, r.get(1)?, read_actor(r, 2)?)),
             )
             .optional()
             .sql()?;
@@ -368,6 +362,15 @@ fn not_writer() -> MmError {
     MmError::Unsupported("読み取りだけで開いているので書けない".into())
 }
 
+/// `at` から並んだ種類、名前、端末の ID の 3 列を発行元として読む。
+fn read_actor(r: &rusqlite::Row, at: usize) -> rusqlite::Result<Actor> {
+    Ok(Actor {
+        kind: r.get(at)?,
+        name: r.get(at + 1)?,
+        device: r.get(at + 2)?,
+    })
+}
+
 /// トランザクションと操作を表に書く。ID は通し番号、バージョンは操作ごとに 1 進む。
 fn insert_txn(tx: &rusqlite::Transaction, input: &TxnInput, base: i64) -> Result<StoredTxn> {
     let id: i64 = tx
@@ -378,8 +381,8 @@ fn insert_txn(tx: &rusqlite::Transaction, input: &TxnInput, base: i64) -> Result
     let version = base + input.ops.len() as i64;
     tx.execute(
         "INSERT INTO txns(id, kind, of_txn, name, actor_kind, actor_name, at_ms, responds_to,
-                          base_version, doc_version, first_seq, last_seq)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0, 0)",
+                          base_version, doc_version, first_seq, last_seq, actor_device)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0, 0, ?11)",
         params![
             id,
             kind_str(input.kind),
@@ -390,7 +393,8 @@ fn insert_txn(tx: &rusqlite::Transaction, input: &TxnInput, base: i64) -> Result
             input.at_ms,
             input.responds_to,
             base,
-            version
+            version,
+            input.actor.device,
         ],
     )
     .sql()?;

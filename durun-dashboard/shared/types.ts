@@ -549,7 +549,15 @@ export type Snapshot = {
   assets: { js: number; css: number };
   /** ゴミ箱に入っているセッション。前に受け取ったスナップショットには無いことがある。 */
   trash?: TrashItem[];
+  /** ホームのダッシュボードの一覧と配置。まだ一度も保存していなければ無い。前に受け取ったスナップショットにも無いことがある。 */
+  dashboards?: Dashboards;
 };
+
+export type DashboardEntry = { id: string; name: string };
+/** ホームのダッシュボード。layouts は id ごとの配置で、編集していないダッシュボードの分は無く、初期配置で開く。 */
+export type Dashboards = { list: DashboardEntry[]; layouts: Record<string, unknown[]> };
+/** まだ一度も保存していないときの一覧。最初のダッシュボードの id は空文字にする。 */
+export const FIRST_DASHBOARDS: Dashboards = { list: [{ id: '', name: 'ダッシュボード' }], layouts: {} };
 
 /**
  * アーカイブしたのに、作業ツリーに人間の手当てが要るものが残り、Claude Code の一覧から消せなかったセッション。
@@ -1020,6 +1028,9 @@ export type MmInstallView = {
   error?: string;
 };
 
+/** モバイル版につながる 3 つの条件。url は Tailscale が動いて tailnet の名前が読めるときだけ、enableUrl は Serve と HTTPS 証明書を有効にする管理画面。 */
+export type MmMobileView = { tailscale: boolean; url?: string; serve: boolean; enableUrl?: string; listening: boolean };
+
 export type MmLinkStatus = 'no-project' | 'waiting' | 'connected';
 
 /** ムービーメーカーのウィンドウに描くもの。ウィンドウがつないでいる間、サーバーが変わるたびに送る。 */
@@ -1031,8 +1042,8 @@ export type MovieMakerView = {
   /** 最近開いたプロジェクトのフォルダー。新しい順。 */
   recent: string[];
   hasStore: boolean;
-  /** モバイル版の URL（tailnet での名前から作る）。Tailscale が動いていなければ無い。 */
-  mobileUrl?: string;
+  /** モバイル版につながる条件の確認結果。最初の確認が終わるまでは無い。 */
+  mobile?: MmMobileView;
   link: { status: MmLinkStatus; message?: string; port?: number; version?: number; undoDepth?: number };
   log: MmLogEntry[];
   logFile?: string;
