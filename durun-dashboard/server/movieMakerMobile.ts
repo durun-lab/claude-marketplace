@@ -1,12 +1,14 @@
 // モバイル版につながる条件を確かめる部品。tailnet の名前、tailscale serve の中継、人の待ち受けの 3 つを読む。
 // serve の判定は movie-maker の mm-serve/src/mobile/tailnet.rs の `serve_proxies` と同じにする。
+import { MOBILE_HTTPS_PORT, MOBILE_PORT } from '../shared/mmMobile.ts';
 import type { MmMobileView } from '../shared/types.ts';
-import { MOBILE_HTTPS_PORT, mobileUrl } from './movieMakerLink.ts';
+import { mobileUrl } from './movieMakerLink.ts';
 import { hostsInTailscaleStatus, platform, type Run } from './platform.ts';
 
-/** 人の待ち受け（127.0.0.1）のポート。movie-maker の MOBILE_PORT と同じ。 */
-export const MOBILE_PORT = 7338;
 const PROBE_TIMEOUT_MS = 1500;
+/** movie-maker は人の待ち受けをつなぎ口より後に始めるので、つながった直後は待ち受けが開くまでこの時間だけ待つ。 */
+const LISTENER_START_MS = 5000;
+const LISTENER_RETRY_MS = 250;
 const ENABLE_URL = 'https://login.tailscale.com/f/serve';
 
 type ServeConfig = {
@@ -65,17 +67,39 @@ export const probeListening = async (port: number = MOBILE_PORT, timeoutMs: numb
   }
 };
 
+/** probe が真を返すか totalMs が過ぎるまで、retryMs ごとに確かめ直す。 */
+export const waitListening = async (probe: () => Promise<boolean>, totalMs: number = LISTENER_START_MS, retryMs: number = LISTENER_RETRY_MS): Promise<boolean> => {
+  const deadline = Date.now() + totalMs;
+  while (!(await probe())) {
+    if (Date.now() + retryMs > deadline) return false;
+    await new Promise((r) => setTimeout(r, retryMs));
+  }
+  return true;
+};
+
+/** `tailscale status --json` が JSON でなければ、Tailscale が無いものとして扱う。 */
+const tailnetHostsOf = (status: string | undefined): string[] => {
+  try {
+    return status ? hostsInTailscaleStatus(status) : [];
+  } catch {
+    return [];
+  }
+};
+
 export type MobileDeps = { tailscale: (args: string[], run?: Run) => Promise<string>; probe: () => Promise<boolean> };
 const realDeps: MobileDeps = { tailscale: (args, run) => platform.tailscale(args, run), probe: () => probeListening() };
 
-/** モバイル版の 3 つの条件を読む。Tailscale が読めないときは serve の CLI も答えないので、serve は偽にする。 */
-export const readMobile = async (deps: MobileDeps = realDeps): Promise<MmMobileView> => {
+/**
+ * モバイル版の 3 つの条件を読む。Tailscale が読めないときは serve の CLI も答えないので、serve は偽にする。
+ * waitListener が真なら、人の待ち受けが開くまで少し待つ（movie-maker とつながった直後に使う）。
+ */
+export const readMobile = async (deps: MobileDeps = realDeps, waitListener = false): Promise<MmMobileView> => {
   const [status, serve, listening] = await Promise.all([
     deps.tailscale(['status', '--json', '--peers=false']).catch(() => undefined),
     deps.tailscale(['serve', 'status', '--json']).catch(() => undefined),
-    deps.probe(),
+    waitListener ? waitListening(deps.probe) : deps.probe(),
   ]);
-  const url = status ? mobileUrl(hostsInTailscaleStatus(status)) : undefined;
+  const url = mobileUrl(tailnetHostsOf(status));
   return {
     tailscale: !!url,
     url,

@@ -191,12 +191,12 @@ const LinkChips = ({ v }: { v: MovieMakerView }) => (
   </div>
 );
 
-const MOBILE_NOTE = 'スマホで開いたら、PC の movie-maker の Devices パネルに出る登録コードで端末を登録します。';
+const MOBILE_NOTE = 'スマホも同じ tailnet につないで開きます。初回は、movie-maker の Devices パネルの「Add device」で出る QR か登録コードで端末を登録します。';
 
 /** モバイル版。3 つの条件がそろえばリンクを、足りなければ足りない所の手順を出す。 */
 const MobileSection = ({ v }: { v: MovieMakerView }) => {
   const m = v.mobile;
-  const recheck = <button class="btn btn-sm" type="button" onClick={() => void attempt('モバイル版の確認', api.mmMobileCheck)}>確かめ直す</button>;
+  const recheck = <button class="btn btn-sm" type="button" onClick={() => void attempt('モバイル版の確認', api.mmMobileCheck)}>更新</button>;
   if (!m) return <p class="fl-note">モバイル版の条件を確かめています…</p>;
   const steps = mobileSteps(v, m);
   if (!steps.length && m.url) {
@@ -260,9 +260,9 @@ export const MovieMakerFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot 
             </label>
             <ProjectField project={project} recent={v?.recent ?? []} />
             <LinkChips v={v} />
-            <MobileSection v={v} />
             <Steps steps={mmSteps(v)} />
             {(v.install.busy || v.install.output.length > 0) && <pre class="fl-pre mm-output">{v.install.output.join('\n')}</pre>}
+            <MobileSection v={v} />
             <Log v={v} />
           </>
         )}

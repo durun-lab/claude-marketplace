@@ -1023,7 +1023,7 @@ export type MmInstallView = {
 /** モバイル版につながる 3 つの条件。url は Tailscale が動いて tailnet の名前が読めるときだけ、enableUrl は Serve と HTTPS 証明書を有効にする管理画面。 */
 export type MmMobileView = { tailscale: boolean; url?: string; serve: boolean; enableUrl?: string; listening: boolean };
 
-export type MmLinkStatus ='no-project' | 'waiting' | 'connected';
+export type MmLinkStatus = 'no-project' | 'waiting' | 'connected';
 
 /** ムービーメーカーのウィンドウに描くもの。ウィンドウがつないでいる間、サーバーが変わるたびに送る。 */
 export type MovieMakerView = {

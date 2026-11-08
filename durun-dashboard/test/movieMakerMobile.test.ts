@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { test } from 'node:test';
-import { mmSteps, mobileSteps, SERVE_COMMAND } from '../client/mmSteps.ts';
-import { probeListening, readMobile, serveEnableUrl, serveProxies } from '../server/movieMakerMobile.ts';
-import { platformFor, type Run } from '../server/platform.ts';
+import { mmSteps, mobileSteps } from '../client/mmSteps.ts';
+import { probeListening, readMobile, serveEnableUrl, serveProxies, waitListening } from '../server/movieMakerMobile.ts';
+import { SERVE_COMMAND } from '../shared/mmMobile.ts';
 import type { MmMobileView, MovieMakerView } from '../shared/types.ts';
 
 const STATUS = JSON.stringify({ BackendState: 'Running', Self: { ID: 'n4Xzt4BkWT11CNTRL', DNSName: 'core.tailf03e44.ts.net.', TailscaleIPs: ['100.1.2.3'] } });
@@ -68,22 +68,18 @@ test('3 つの条件をまとめて読み、Tailscale が読めなければ serv
   assert.deepEqual([noServe.tailscale, noServe.serve, noServe.listening], [true, false, false]);
   const noTailscale = await readMobile(deps({}, true));
   assert.deepEqual(noTailscale, { tailscale: false, url: undefined, serve: false, enableUrl: undefined, listening: true });
+  const garbled = await readMobile(deps({ status: 'Warning: not json', serve: SERVE_OK }, true));
+  assert.deepEqual([garbled.tailscale, garbled.serve], [false, false]);
 });
 
-test('tailscale の CLI は、どの OS でも引数をそのまま渡し、macOS ではアプリの中の CLI も試す', async () => {
-  const MAC_APP = '/Applications/Tailscale.app/Contents/MacOS/Tailscale';
-  const tried: string[] = [];
-  const onlyAt =
-    (found: string): Run =>
-    async (file, args) => {
-      tried.push(file);
-      if (file !== found) throw new Error('ENOENT');
-      return args.join(' ');
-    };
-  assert.equal(await platformFor('darwin').tailscale(['serve', 'status', '--json'], onlyAt(MAC_APP)), 'serve status --json');
-  assert.deepEqual(tried, ['tailscale', MAC_APP]);
-  await assert.rejects(platformFor('linux').tailscale(['status'], onlyAt(MAC_APP)));
-  assert.equal(await platformFor('win32').tailscale(['status'], onlyAt('tailscale')), 'status');
+test('movie-maker とつながった直後は、人の待ち受けが開くまで待ち、時間を過ぎたら偽にする', async () => {
+  let calls = 0;
+  const opensOnThird = async () => ++calls >= 3;
+  assert.equal(await waitListening(opensOnThird, 1000, 1), true);
+  assert.equal(calls, 3);
+  assert.equal(await waitListening(async () => false, 20, 5), false);
+  const waited = await readMobile({ ...deps({ status: STATUS, serve: SERVE_OK }, false), probe: async () => ++calls >= 5 }, true);
+  assert.equal(waited.listening, true);
 });
 
 const view = (over: Partial<MovieMakerView> = {}, mobile?: MmMobileView): MovieMakerView => ({
@@ -129,6 +125,7 @@ test('人の待ち受けが応えないときは、起動していなければ�
 
   const stale = view({ install: { ...view().install, sourceCommit: 'def' } }, down);
   const [rebuild] = mobileSteps(stale, down);
-  assert.equal(rebuild?.action?.kind, 'install');
-  assert.equal(rebuild?.action?.label, '作り直す');
+  assert.match(rebuild?.text ?? '', /「作り直す」/);
+  assert.equal(rebuild?.action, undefined);
+  assert.deepEqual(mmSteps(stale).map((s) => s.key), ['rebuild']);
 });

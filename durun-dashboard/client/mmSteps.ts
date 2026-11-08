@@ -1,4 +1,5 @@
 // ムービーメーカーのウィンドウに出す「次にすること」と、ログの文。サーバーが送った生の値から決めるので、テストで確かめる。
+import { MOBILE_PORT, SERVE_COMMAND } from '../shared/mmMobile.ts';
 import type { MmChange, MmLogEntry, MmMobileView, MovieMakerView } from '../shared/types.ts';
 
 export type MmAction = 'install' | 'launch';
@@ -35,39 +36,42 @@ export const mmSteps = (v: MovieMakerView): MmStep[] => {
   return steps;
 };
 
-/** ダッシュボードから実行せず、人が打つ設定のコマンド。Serve が有効になるまで返らず、ユーザーの Tailscale の設定を変えるため。 */
-export const SERVE_COMMAND = 'tailscale serve --bg --https=8443 http://127.0.0.1:7338';
 const TAILSCALE_DOWNLOAD = 'https://tailscale.com/download';
 const TAILSCALE_DNS_ADMIN = 'https://login.tailscale.com/admin/dns';
 
+/** 人の待ち受けが応えない理由ごとの段。起動と作り直しのボタンは上の「次にすること」にあるので、ここではそこへ導く。 */
 const listenerStep = (v: MovieMakerView): MmStep => {
   const i = v.install;
+  const key = 'mobile-listener';
   if (i.mode === 'build' && i.commit && i.sourceCommit && i.commit !== i.sourceCommit) {
-    return { key: 'mobile-listener', tone: 'warn', title: 'movie-maker が古く、モバイル版の待ち受けがありません', text: 'ソースが新しくなっています。作り直して、起動し直してください。', action: { kind: 'install', label: '作り直す' } };
+    return { key, tone: 'warn', title: 'movie-maker が古く、モバイル版の待ち受けがありません', text: '上の「作り直す」で作り直して、起動し直してください。' };
   }
   if (v.link.status === 'connected') {
-    return { key: 'mobile-listener', tone: 'warn', title: 'movie-maker がモバイル版の待ち受け（127.0.0.1:7338）を開いていません', text: '古いビルドの可能性があります。作り直して起動し直してから、確かめ直してください。' };
+    return { key, tone: 'warn', title: `モバイル版の待ち受け（127.0.0.1:${MOBILE_PORT}）が開いていません`, text: 'movie-maker の Devices パネルで理由を確かめてください。古いビルドなら、作り直して起動し直します。' };
   }
-  const text = v.project ? '上の「起動する」で movie-maker を起動すると、モバイル版の待ち受けも一緒に始まります。起動したら、確かめ直してください。' : 'プロジェクトのフォルダーを選んで movie-maker を起動すると、モバイル版の待ち受けも一緒に始まります。';
-  return { key: 'mobile-listener', tone: 'warn', title: 'movie-maker が起動していません', text };
+  const text = v.project ? '上の「起動する」で起動すると、モバイル版の待ち受けも始まります。' : 'プロジェクトのフォルダーを選んで起動すると、モバイル版の待ち受けも始まります。';
+  return { key, tone: 'warn', title: 'movie-maker が起動していません', text };
 };
+
+const serveStep = (m: MmMobileView): MmStep => ({
+  key: 'mobile-serve',
+  tone: 'warn',
+  title: 'tailscale serve にモバイル版の中継がありません',
+  text: 'PC で 1 回だけ、次の 2 つをします。',
+  guide: [
+    { text: 'Serve と HTTPS 証明書を有効にする', link: { label: '管理画面を開く', href: m.enableUrl ?? TAILSCALE_DNS_ADMIN } },
+    // コマンドは Serve が有効になるまで返らず、Tailscale の設定を変えるので、ダッシュボードから実行しない。
+    { text: '管理者でないターミナルで打つ（1 の前に打つと、有効になるまで待ち続けます）', command: SERVE_COMMAND },
+  ],
+});
 
 /** モバイル版のリンクを出せない理由ごとの手順。3 つの条件がそろっていれば空で、リンクを出す。 */
 export const mobileSteps = (v: MovieMakerView, m: MmMobileView): MmStep[] => {
   const steps: MmStep[] = [];
   if (!m.tailscale) {
-    steps.push({ key: 'mobile-tailscale', tone: 'warn', title: 'Tailscale が動いていません', text: 'モバイル版は tailnet の中だけで開けます。Tailscale を入れてログインしてください。tailnet での名前が読めると、リンクが出ます。', guide: [{ text: 'Tailscale を入れて、ログインする', link: { label: 'ダウンロード', href: TAILSCALE_DOWNLOAD } }] });
+    steps.push({ key: 'mobile-tailscale', tone: 'warn', title: 'Tailscale が動いていません', text: 'モバイル版は tailnet の中だけで開けます。', guide: [{ text: 'PC に Tailscale を入れて、ログインする', link: { label: 'ダウンロード', href: TAILSCALE_DOWNLOAD } }] });
   } else if (!m.serve) {
-    steps.push({
-      key: 'mobile-serve',
-      tone: 'warn',
-      title: 'tailscale serve に、モバイル版の中継がありません',
-      text: 'PC で 1 回だけ、次の 2 段を行います。',
-      guide: [
-        { text: 'tailnet で Serve と HTTPS 証明書を有効にする（初めてだけ。有効になるまで次のコマンドは待ち続けます）', link: { label: '管理画面を開く', href: m.enableUrl ?? TAILSCALE_DNS_ADMIN } },
-        { text: 'ターミナルで、設定のコマンドを打つ', command: SERVE_COMMAND },
-      ],
-    });
+    steps.push(serveStep(m));
   }
   return m.listening ? steps : [...steps, listenerStep(v)];
 };

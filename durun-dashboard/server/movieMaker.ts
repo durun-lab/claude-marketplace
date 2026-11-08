@@ -68,17 +68,36 @@ const logFileOf = (sessionId: string | undefined): string | undefined => {
 /** モバイル版につながる条件の確認結果。ウィンドウを開いたとき、確かめ直しのとき、movie-maker とつながったときに読み直す。 */
 let mobile: MmMobileView | undefined;
 let mobileReading: Promise<void> | undefined;
-export const refreshMobile = (): Promise<void> => {
-  mobileReading ??= readMobile()
-    .then((next) => {
-      if (JSON.stringify(next) === JSON.stringify(mobile)) return;
-      mobile = next;
-      broadcast();
-    })
-    .finally(() => {
+let mobileQueued: Promise<void> | undefined;
+let queuedWait = false;
+
+const readMobileOnce = async (waitListener: boolean): Promise<void> => {
+  try {
+    const next = await readMobile(undefined, waitListener);
+    if (JSON.stringify(next) === JSON.stringify(mobile)) return;
+    mobile = next;
+    broadcast();
+  } catch (e) {
+    console.error(`[moviemaker] モバイル版の条件を読めません: ${(e as Error).message}`);
+  }
+};
+
+/** 読んでいる途中に頼まれたら、終わってからもう 1 回だけ読む。途中で変えた設定を、前に始めた読みの結果で済ませない。 */
+export const refreshMobile = (waitListener = false): Promise<void> => {
+  if (!mobileReading) {
+    mobileReading = readMobileOnce(waitListener).finally(() => {
       mobileReading = undefined;
     });
-  return mobileReading;
+    return mobileReading;
+  }
+  queuedWait ||= waitListener;
+  mobileQueued ??= mobileReading.then(() => {
+    const wait = queuedWait;
+    mobileQueued = undefined;
+    queuedWait = false;
+    return refreshMobile(wait);
+  });
+  return mobileQueued;
 };
 
 const hasStore = (): boolean => !!projectDir && fs.existsSync(path.join(projectDir, STORE_FILE));
@@ -140,7 +159,7 @@ const setLink = (status: MmLinkStatus, message?: string): void => {
   const newlyConnected = status === 'connected' && linkStatus !== 'connected';
   linkStatus = status;
   linkMessage = message;
-  if (newlyConnected) void refreshMobile();
+  if (newlyConnected) void refreshMobile(true);
   broadcast();
 };
 
