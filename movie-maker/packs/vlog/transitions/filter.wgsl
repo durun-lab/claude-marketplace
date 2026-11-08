@@ -6,7 +6,6 @@ const Y0: f32 = 260.0;
 const DB: f32 = 9.0;
 const Q: f32 = 3.2;
 
-fn fmodf(x: f32, y: f32) -> f32 { return x - y * floor(x / y); }
 fn fToX(f: f32) -> f32 { return 1920.0 * log(f / 20.0) / log(1000.0); }
 fn cutoff(p: f32) -> f32 {
     let x = win(p, 0.03, 0.84);
@@ -48,7 +47,7 @@ fn overlay(uv: vec2<f32>, p: f32) -> vec4<f32> {
     for (var k = 0; k < 9; k++) {
         g = max(g, fill(abs(P.x - fToX(fs[k])) - 0.6) * select(0.14, 0.28, k == 4));
     }
-    g = max(g, fill(abs(fmodf(P.y - Y0, DB * 6.0)) - 0.6) * 0.1);
+    g = max(g, fill(abs(fmod(P.y - Y0, DB * 6.0)) - 0.6) * 0.1);
     g = max(g, fill(abs(P.y - Y0) - 0.8) * 0.3);
     c = over(c, paint(uInk, g * env * (1.0 - cut)));
     // 通っている帯域（カーブの下）の色

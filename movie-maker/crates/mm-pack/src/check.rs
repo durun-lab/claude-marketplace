@@ -9,9 +9,9 @@ use mm_text_api::FONTS_DIR;
 use mm_types::{Id, RationalTime};
 
 use crate::args::{referenced_names, Env};
-use crate::expand::expand;
+use crate::expand::{expand, expand_for, COMP_PARAM};
 use crate::layout::EstimateShaper;
-use crate::macros::{MacroDef, MacroKind, ParamFormat, ParamType, Step, WebStep};
+use crate::macros::{MacroDef, MacroKind, ParamDef, ParamFormat, ParamType, Step, WebStep};
 use crate::pack::{Pack, FORMAT};
 use crate::param_format::validate;
 use crate::style::TextStyleSpec;
@@ -284,7 +284,27 @@ fn check_params(def: &MacroDef, report: &mut Report) {
         if let Some(Err(e)) = p.default.as_deref().map(|d| validate(p, d)) {
             report.push(at(&format!("既定の値が誤り: {e}")));
         }
+        if let Some(pin) = p.pin {
+            check_pin(def, p, pin.anchor)
+                .into_iter()
+                .for_each(|e| report.push(at(e)));
+        }
     }
+}
+
+/// 縁の固定は、数の既定を、置くコンポジション（引数 `comp`）の画面の 0..1 の点に固定する。
+fn check_pin(def: &MacroDef, p: &ParamDef, anchor: f64) -> Vec<&'static str> {
+    let mut errors = Vec::new();
+    if p.ty != ParamType::Number || p.default.is_none() {
+        errors.push("pin は type が number で既定のある引数だけ");
+    }
+    if !(0.0..=1.0).contains(&anchor) {
+        errors.push("pin の anchor は 0..1");
+    }
+    if !def.params.contains_key(COMP_PARAM) {
+        errors.push("pin のあるマクロには引数 comp が要る");
+    }
+    errors
 }
 
 /// ページに色を直に書かない（色はテーマから引く）。
@@ -355,14 +375,20 @@ fn apply_examples(pack: &Pack, report: &mut Report) {
     }
     for def in pack.macros.iter().filter(|m| m.kind == MacroKind::Macro) {
         let mut editor = Editor::new(base.project().clone());
-        let result = expand(pack, &def.name, &def.example, &EstimateShaper)
-            .map_err(|e| format!("例を展開できない: {e}"))
-            .and_then(|txn| {
-                editor
-                    .apply(txn, &ctx)
-                    .map(|_| ())
-                    .map_err(|e| format!("例を適用できない: {e}"))
-            });
+        let result = expand_for(
+            pack,
+            &def.name,
+            &def.example,
+            &EstimateShaper,
+            base.project(),
+        )
+        .map_err(|e| format!("例を展開できない: {e}"))
+        .and_then(|txn| {
+            editor
+                .apply(txn, &ctx)
+                .map(|_| ())
+                .map_err(|e| format!("例を適用できない: {e}"))
+        });
         match result {
             Ok(()) => report.applied += 1,
             Err(e) => report.push(format!("{}: {e}", def.name)),
