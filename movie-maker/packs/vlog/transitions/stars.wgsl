@@ -20,13 +20,13 @@ fn reveal(p: f32) -> f32 {
     for (var i = 0; i < NS; i++) {
         let t = 0.56 + f32(i) * 0.018;
         let r = 2300.0 * in2(win(p, t, t + 0.36));
-        m = max(m, fill(length(P - star_sp(i)) - r));
+        m = max(m, fill_sized(length(P - star_sp(i)) - r, r));
     }
     for (var k = 0; k < 14; k++) {
         let c = vec2<f32>(hash11(f32(k) * 3.1 + 1.0), hash11(f32(k) * 7.7 + 2.0)) * REF;
         let t = 0.6 + 0.12 * hash11(f32(k) * 5.3);
         let r = 1400.0 * in2(win(p, t, t + 0.32));
-        m = max(m, fill(length(P - c) - r));
+        m = max(m, fill_sized(length(P - c) - r, r));
     }
     return m;
 }

@@ -67,14 +67,19 @@ fn scene(code: &str) -> Node {
 }
 
 fn base_project() -> Project {
+    base_project_with(CANVAS, SCENE_A, SCENE_B)
+}
+
+/// 大きさ `canvas` のコンポジション `main` に、場面 `a`（0..3 秒）と `b`（3..6 秒）の sequence を置いたプロジェクト。
+pub(crate) fn base_project_with(canvas: Size, a: &str, b: &str) -> Project {
     let seconds = RationalTime::seconds;
     let mut p = Project::new();
     let seq = Node::new("sequence", 1).with_param("sequence", ParamValue::Text("s".into()));
     p.compositions.push(
         Composition::new(
             Id::new("main"),
-            CANVAS.width,
-            CANVAS.height,
+            canvas.width,
+            canvas.height,
             Rational::integer(30),
             seconds(6),
         )
@@ -91,8 +96,8 @@ fn base_project() -> Project {
         sequence: Sequence {
             id: Id::new("s"),
             cuts: vec![
-                Cut::new("a", scene(SCENE_A), seconds(0), seconds(3)),
-                Cut::new("b", scene(SCENE_B), seconds(0), seconds(3)),
+                Cut::new("a", scene(a), seconds(0), seconds(3)),
+                Cut::new("b", scene(b), seconds(0), seconds(3)),
             ],
             origin: None,
         },
@@ -108,6 +113,11 @@ fn base_project() -> Project {
 
 /// カット b の頭に `name` のトランジションを置いたプロジェクト。`rewind` は専用のマクロで置く。
 pub(crate) fn project_with(pack: &Pack, name: &str) -> Project {
+    transition_on(pack, base_project(), name)
+}
+
+/// `base` のカット b の頭に `name` のトランジションを置く。
+pub(crate) fn transition_on(pack: &Pack, base: Project, name: &str) -> Project {
     let dur = DURATION.to_string();
     let mut args: BTreeMap<String, String> = [("cut", "b"), ("dur", dur.as_str())]
         .into_iter()
@@ -120,7 +130,7 @@ pub(crate) fn project_with(pack: &Pack, name: &str) -> Project {
         "transition"
     };
     let txn = expand(pack, macro_name, &args, &EstimateShaper).expect("展開できる");
-    let mut editor = Editor::new(base_project());
+    let mut editor = Editor::new(base);
     editor.apply(txn, &OpContext::human()).expect("適用できる");
     editor.project().clone()
 }
@@ -243,10 +253,36 @@ fn vlog_のトランジションの_1080p_の描く時間() {
     }
 }
 
+/// トランジションのファイルが定義する関数（`_prelude.wgsl` の約束）。ほかの小道具は共通のコードに置く。
+const OWN_FNS: [&str; 3] = ["matte", "overlay", "motion"];
+
+#[test]
+fn 同じ小道具の関数を複数のトランジションにコピーしない() {
+    let dir = vlog_dir().join("transitions");
+    let mut seen: BTreeMap<String, String> = BTreeMap::new();
+    for entry in std::fs::read_dir(&dir).expect("transitions を読める") {
+        let path = entry.expect("項目").path();
+        let file = path.file_name().unwrap().to_string_lossy().into_owned();
+        let text = std::fs::read_to_string(&path).expect("読める");
+        for line in text.lines().filter_map(|l| l.strip_prefix("fn ")) {
+            let Some((name, rest)) = line.split_once('(') else {
+                continue;
+            };
+            if OWN_FNS.contains(&name) || !rest.trim_end().ends_with('}') {
+                continue;
+            }
+            // 1 行の関数で、名前を除いた引数と本体が同じなら、名前を変えてコピーしたもの
+            if let Some(first) = seen.insert(rest.to_string(), format!("{file} の {name}")) {
+                panic!("{file} の {name} は {first} と同じ。_prelude.wgsl に 1 つ置く");
+            }
+        }
+    }
+}
+
 /// 目に見える差とみなす、sRGB の 8 bit の段数。
 const EDGE_LEVELS: u8 = 16;
 /// 端のコマで、トランジションの無いコマと目に見えて違ってよい値（画素のチャンネル）の割合の上限。
-/// 残るのは半径 0 の円の縁のにじみ（stars、spectrum の下の端）とグリッチの映像のずれで 0.25 % まで。
+/// 残るのはグリッチの映像のずれで 0.25 % まで（大きさ 0 の形は `fill_sized` で漏れない）。
 /// 盤の影（vinyl）、ブロックの残り（glitch）、開いたままのシャッター（pianoroll）は 0.4〜3.4 % になる。
 const EDGE_SHARE_MAX: f64 = 0.003;
 

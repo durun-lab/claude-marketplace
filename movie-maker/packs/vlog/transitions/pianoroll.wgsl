@@ -15,7 +15,6 @@ fn root_pc() -> f32 { return floor(hash11(uSeed * 0.37 + 3.1) * 12.0); }
 fn ph_p(col: i32) -> f32 { return PH0 + (f32(col) / f32(COLS)) * (PH1 - PH0); }
 fn ph_x(p: f32) -> f32 { return 1920.0 * win(p, PH0, PH1); }
 fn end_grow(p: f32) -> f32 { return win(p, 0.84, 0.96); }
-fn fmodf(x: f32, y: f32) -> f32 { return x - y * floor(x / y); }
 
 // メロディ 8 音（16 分音符、4 列ごと）の行。主音からのペンタトニックの高さ（半音）を行に直す。
 fn mel_row(j: i32) -> i32 {
@@ -123,9 +122,9 @@ fn overlay(uv: vec2<f32>, p: f32) -> vec4<f32> {
     // 背景（音符のない所）: 濃紺の地、黒鍵の行は少し暗く、拍の線と 16 分の線
     let bk = select(0.0, 1.0, black_key(row));
     var bg = mix(uShade * 1.25, uShade * 0.8, bk);
-    let gx = fmodf(P.x, CW);
-    let gy = fmodf(P.y, RH);
-    let beat_line = select(0.0, 0.20, fmodf(P.x, CW * 4.0) < 2.0);
+    let gx = fmod(P.x, CW);
+    let gy = fmod(P.y, RH);
+    let beat_line = select(0.0, 0.20, fmod(P.x, CW * 4.0) < 2.0);
     let lines = max(beat_line, max(select(0.0, 0.08, gx < 1.0), select(0.0, 0.07, gy < 1.0)));
     bg = mix(bg, uInk, lines);
     var c = paint(bg, 0.8 * env * (1.0 - inN));
