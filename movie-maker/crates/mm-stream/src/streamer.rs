@@ -11,7 +11,7 @@ use mm_types::{MmError, Result};
 
 use crate::audio::{ensure_audio, respond, AudioRequest};
 use crate::cache::{touch, CacheDir};
-use crate::clip::{render_clip, ClipPlan, ClipRequest};
+use crate::clip::{render_clip, ClipJobs, ClipPlan, ClipRequest, ClipStart, CLIP_TIMEOUT};
 use crate::frames::{render_webp, StillCache, StillKey, StillRequest};
 use crate::hls::{master_playlist, HlsRequest, Plan};
 use crate::key::{clip_key, segment_key, ClipKey, KeyEnv, SegmentKey};
@@ -72,8 +72,8 @@ struct Shared {
     /// キーの計算に使う種類のレジストリと実装の名前。最初のプレイリストで `Engine` からコピーする。
     keying: Mutex<Option<Arc<Keying>>>,
     audio: Mutex<()>,
-    /// 作っている短い動画のキーごとの錠。同じ動画への Range の要求が重なっても 1 回だけ作る。
-    clips: Mutex<HashMap<ClipKey, Arc<Mutex<()>>>>,
+    /// 作っている短い動画。同じ動画への Range の要求が重なっても 1 回だけ作る。
+    clips: Arc<ClipJobs>,
 }
 
 struct Keying {
@@ -95,7 +95,7 @@ impl Streamer {
             inflight: Mutex::default(),
             keying: Mutex::default(),
             audio: Mutex::new(()),
-            clips: Mutex::default(),
+            clips: Arc::default(),
         });
         let thread = shared.clone();
         let (runtime, limit) = (config.runtime, config.cache_limit_bytes);
@@ -268,7 +268,8 @@ impl Streamer {
     }
 
     /// 提案の区間の短い動画（MP4）。`project` は提案を適用したもの。無ければ作り終えるまで待ち、`Range` に答える。
-    /// `ETag` はキー（提案の操作、範囲、範囲に掛かるものの指紋）なので、中身が同じ間は端末の手元のものが使える。
+    /// `ETag` はキー（提案の操作、範囲、範囲に掛かるもののハッシュ）なので、中身が同じ間は端末の手元のものが使える。
+    /// 同時に作る短い動画が上限なら `Unsupported`、待つ上限を超えたら `Timeout`。
     pub fn clip(
         &self,
         project: &Project,
@@ -300,7 +301,7 @@ impl Streamer {
         )))
     }
 
-    /// 短い動画が無ければ描画のスレッドで作る。同じキーの要求は錠で待ち、先の要求が作ったものを使う。
+    /// 短い動画が無ければ描画のスレッドで作って待つ。同じキーの要求は先の要求の出来上がりを待つ。
     fn ensure_clip(
         &self,
         key: ClipKey,
@@ -309,16 +310,27 @@ impl Streamer {
         plan: &ClipPlan,
         touched: &[String],
     ) -> Result<()> {
-        let gate = lock(&self.shared.clips).entry(key).or_default().clone();
-        let _one_at_a_time = lock(&gate);
-        if !path.exists() {
-            let (project, plan) = (project.clone(), plan.clone());
-            let (out, touched) = (path.to_path_buf(), touched.to_vec());
-            self.with_engine(move |e| render_clip(e, &project, &plan, &out, &touched))?;
-            self.shared.cache.evict_clips(CLIP_CACHE_LIMIT_BYTES);
-        }
-        lock(&self.shared.clips).remove(&key);
-        Ok(())
+        let slot = match self.shared.clips.begin(key, || path.exists())? {
+            ClipStart::Ready => return Ok(()),
+            ClipStart::Wait(slot) => slot,
+            ClipStart::Render(slot) => {
+                let (clips, cache) = (self.shared.clips.clone(), self.shared.cache.clone());
+                let (project, plan) = (project.clone(), plan.clone());
+                let (out, touched) = (path.to_path_buf(), touched.to_vec());
+                self.shared
+                    .worker
+                    .urgent(Urgent::Run(Box::new(move |engine| {
+                        let result =
+                            engine.and_then(|e| render_clip(e, &project, &plan, &out, &touched));
+                        if result.is_ok() {
+                            cache.evict_clips(CLIP_CACHE_LIMIT_BYTES);
+                        }
+                        clips.finish(key, result);
+                    })));
+                slot
+            }
+        };
+        slot.wait_for("短い動画を作る", CLIP_TIMEOUT)
     }
 
     /// このバージョンの `req` の区間の割り方とキー。同じバージョンなら前に作ったものを返す。

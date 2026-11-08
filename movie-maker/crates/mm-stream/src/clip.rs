@@ -1,11 +1,14 @@
 //! 提案の区間の短い動画（docs/design/12-mobile.md の「映像の届け方」）。
 //!
-//! 提案を適用したプロジェクトの、提案の範囲の前後に余白を足した所を、360p の H.264 と AAC の MP4 に書く。
+//! 提案を適用したプロジェクトの、提案の範囲にプリロールとポストロールを足した所を、360p の H.264 と AAC の MP4 に書く。
 //! 符号化は `mm-export` から `mm-encode-ffmpeg` の `h264`（CRF、moov を先頭に置く `+faststart`）で、
 //! 端末の `<video>` が Range で読みながら再生を始められる。
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use mm_doc::Project;
 use mm_export::{export_project, ExportOptions};
@@ -13,24 +16,75 @@ use mm_runtime::Engine;
 use mm_types::{CompositionId, Id, MmError, Rational, RationalTime, Result, TimeRange};
 
 use crate::hls::frame_count;
+use crate::key::ClipKey;
 use crate::quality::{stream_fps, HlsQuality};
 use crate::segment::{with_target, TargetSpec};
+use crate::worker::{lock, Slot};
 
 /// 短い動画を書くコーデック（libx264 の CRF、AAC、MP4）。
 const CLIP_CODEC: &str = "h264";
 /// 短い動画の画質。HLS の軽い方と同じ大きさ。
 const CLIP_QUALITY: HlsQuality = HlsQuality::P360;
-/// 提案の範囲の前後に足す余白（秒）。前後のつながりも見えるようにする。
+/// 提案の範囲の前後に足す秒数（プリロールとポストロール）。編集点の前後のつながりも見えるようにする。
 pub const CLIP_PAD_SECONDS: f64 = 2.0;
 /// 短い動画の長さの上限（秒）。長い範囲は始まりからこの長さで切り、作る時間と量を抑える。
 pub const CLIP_MAX_SECONDS: f64 = 30.0;
+/// 同時に作る短い動画の数の上限。描画のスレッドは 1 つなので、超えた要求は待たせずに断り、スレッドとディスクを積み上げない。
+const MAX_CLIPS_IN_FLIGHT: usize = 2;
+/// 短い動画 1 本を待つ上限。上限の 30 秒の動画に、先に積まれたもう 1 本を足しても収まる長さ。
+pub(crate) const CLIP_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// 作っている短い動画の表。同じキーの要求は 1 つの出来上がりを待ち、描画のスレッドの仕事は 1 回だけ積む。
+#[derive(Default)]
+pub(crate) struct ClipJobs(Mutex<HashMap<ClipKey, Arc<Slot>>>);
+
+/// `ClipJobs::begin` の結果。
+pub(crate) enum ClipStart {
+    /// もう出来ている。
+    Ready,
+    /// 先の要求が作っているので、出来上がりを待つ。
+    Wait(Arc<Slot>),
+    /// この要求が描画のスレッドに仕事を積み、出来上がりを待つ。
+    Render(Arc<Slot>),
+}
+
+impl ClipJobs {
+    /// `key` を作っていればその出来上がりを、`ready()` が真ならもう出来ていると返す。どちらでもなければ表に載せる。
+    /// 作っている数が上限なら `Unsupported`（HTTP では 503）。
+    pub(crate) fn begin(&self, key: ClipKey, ready: impl FnOnce() -> bool) -> Result<ClipStart> {
+        let mut jobs = lock(&self.0);
+        if let Some(slot) = jobs.get(&key) {
+            return Ok(ClipStart::Wait(slot.clone()));
+        }
+        if ready() {
+            return Ok(ClipStart::Ready);
+        }
+        if jobs.len() >= MAX_CLIPS_IN_FLIGHT {
+            return Err(MmError::Unsupported(format!(
+                "同時に作れる短い動画は {MAX_CLIPS_IN_FLIGHT} 本まで"
+            )));
+        }
+        let slot = Arc::new(Slot::default());
+        jobs.insert(key, slot.clone());
+        Ok(ClipStart::Render(slot))
+    }
+
+    /// 描画のスレッドが作り終えたときに呼ぶ。表から外してから待っている要求に結果を渡す。
+    /// 待つ側が時間切れで帰っても表には残るので、作っている途中の同じキーを積み直さない。
+    pub(crate) fn finish(&self, key: ClipKey, outcome: Result<()>) {
+        let slot = lock(&self.0).remove(&key);
+        if let Some(slot) = slot {
+            slot.finish(outcome.map_err(|e| format!("短い動画 {key} を作れない: {e}")));
+        }
+    }
+}
 
 /// 提案の区間の短い動画の要求。`mm-serve` が提案の範囲（`comp_spans`）から作る。
 #[derive(Debug, Clone, PartialEq)]
 pub struct ClipRequest {
     /// 範囲を持つコンポジションの ID。
     pub composition: String,
-    /// 提案の範囲の始まりと終わり（コンポジションの時間軸の秒）。余白はこの外に足す。
+    /// 提案の範囲の始まりと終わり（コンポジションの時間軸の秒）。プリロールとポストロールはこの外に足す。
     pub start: f64,
     pub end: f64,
     /// 適用する操作の JSON。キーに入れ、同じ操作の同じ範囲は作り直さない。
@@ -51,7 +105,7 @@ pub(crate) struct ClipPlan {
 }
 
 impl ClipPlan {
-    /// 範囲の前後に余白を足し、コンポジションの長さと上限の長さに収める。収まる所が無ければ `InvalidArgument`。
+    /// 範囲の前後に `CLIP_PAD_SECONDS` を足し、コンポジションの長さと上限の長さに収める。収まる所が無ければ `InvalidArgument`。
     pub(crate) fn new(project: &Project, req: &ClipRequest) -> Result<Self> {
         if !(req.start.is_finite() && req.end.is_finite() && req.start <= req.end) {
             return Err(MmError::InvalidArgument(format!(
@@ -155,8 +209,64 @@ mod tests {
         (plan.range.start.to_f64(), plan.range.end.to_f64())
     }
 
+    fn key(n: u64) -> ClipKey {
+        format!("{n:016x}").parse().unwrap()
+    }
+
+    fn renders(start: Result<ClipStart>) -> Arc<Slot> {
+        match start {
+            Ok(ClipStart::Render(slot)) => slot,
+            _ => panic!("この要求が作るはず"),
+        }
+    }
+
+    fn waits(start: Result<ClipStart>) -> Arc<Slot> {
+        match start {
+            Ok(ClipStart::Wait(slot)) => slot,
+            _ => panic!("先の要求を待つはず"),
+        }
+    }
+
     #[test]
-    fn 範囲の前後に余白を足し_360p_と配信の_fps_にする() {
+    fn 同じキーは先の要求の出来上がりを待ち_作り終えたら表から外す() {
+        let jobs = ClipJobs::default();
+        let first = renders(jobs.begin(key(1), || false));
+        let second = waits(jobs.begin(key(1), || false));
+        assert!(Arc::ptr_eq(&first, &second));
+        jobs.finish(key(1), Ok(()));
+        assert!(second.wait_for("短い動画", Duration::ZERO).is_ok());
+        assert!(matches!(jobs.begin(key(1), || true), Ok(ClipStart::Ready)));
+    }
+
+    #[test]
+    fn 作っている数が上限なら断り_失敗は待つ側に渡して空きを作る() {
+        let jobs = ClipJobs::default();
+        for n in 0..MAX_CLIPS_IN_FLIGHT as u64 {
+            renders(jobs.begin(key(n), || false));
+        }
+        assert!(matches!(
+            jobs.begin(key(99), || false),
+            Err(MmError::Unsupported(_))
+        ));
+        let waiting = waits(jobs.begin(key(0), || false));
+        jobs.finish(key(0), Err(MmError::Internal("描けない".into())));
+        assert!(waiting.wait_for("短い動画", Duration::ZERO).is_err());
+        renders(jobs.begin(key(99), || false));
+    }
+
+    #[test]
+    fn 待つ側が時間切れで帰っても作り終えるまでは積み直さない() {
+        let jobs = ClipJobs::default();
+        let slot = renders(jobs.begin(key(1), || false));
+        assert!(matches!(
+            slot.wait_for("短い動画", Duration::ZERO),
+            Err(MmError::Timeout { .. })
+        ));
+        waits(jobs.begin(key(1), || false));
+    }
+
+    #[test]
+    fn 範囲の前後に_2_秒を足し_360p_と配信の_fps_にする() {
         let plan = ClipPlan::new(&project(20), &req(5.0, 7.5)).unwrap();
         assert_eq!(secs(&plan), (3.0, 9.5));
         assert_eq!((plan.width, plan.height), (640, 360));
@@ -164,7 +274,7 @@ mod tests {
     }
 
     #[test]
-    fn 余白はコンポジションの端で切り_長い範囲は上限の長さにする() {
+    fn 前後に足す秒数はコンポジションの端で切り_長い範囲は上限の長さにする() {
         assert_eq!(
             secs(&ClipPlan::new(&project(10), &req(0.5, 9.0)).unwrap()),
             (0.0, 10.0)
@@ -174,7 +284,7 @@ mod tests {
     }
 
     #[test]
-    fn 長さ_0_の範囲も余白で前後を見せ_外と読めない範囲は拒む() {
+    fn 長さ_0_の範囲も前後を見せ_外と読めない範囲は拒む() {
         assert_eq!(
             secs(&ClipPlan::new(&project(10), &req(4.0, 4.0)).unwrap()),
             (2.0, 6.0)

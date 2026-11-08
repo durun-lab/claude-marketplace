@@ -206,12 +206,14 @@ fn into_mm(e: ServeError) -> MmError {
     }
 }
 
-/// 配信の失敗を HTTP の状態にする。見つからない 404、引数の誤り 400、ffmpeg が無いなど 503、それ以外 500。
+/// 配信の失敗を HTTP の状態にする。見つからない 404、引数の誤り 400、ffmpeg が無いなど 503、
+/// 描画の待ちの時間切れ 503 `timeout`（後で試せば作り終えている）、それ以外 500。
 fn mm_error(e: MmError) -> MobileError {
     let (status, code) = match &e {
         MmError::NotFound(_) => (StatusCode::NOT_FOUND, "not_found"),
         MmError::InvalidArgument(_) => (StatusCode::BAD_REQUEST, "bad_request"),
         MmError::Unsupported(_) => (StatusCode::SERVICE_UNAVAILABLE, "unavailable"),
+        MmError::Timeout { .. } => (StatusCode::SERVICE_UNAVAILABLE, "timeout"),
         _ => (StatusCode::INTERNAL_SERVER_ERROR, "internal"),
     };
     refuse(status, code, &e.to_string())
