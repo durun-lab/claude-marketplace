@@ -244,7 +244,7 @@ fn open_encoder(
     Ok(encoder)
 }
 
-/// 書き出しの設定。SDR の書き出しがプレビューと同じトーンマップを掛けるよう、素材の HDR の上限を渡す。
+/// 書き出しの設定。SDR の書き出しがプレビューと同じトーンマップを掛けるよう、素材の上限の明るさを渡す。
 fn encode_settings(
     project: &Project,
     target: &RenderTarget,

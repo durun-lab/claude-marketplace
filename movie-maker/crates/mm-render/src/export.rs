@@ -22,7 +22,7 @@ const PLANE_SETS: usize = 2;
 const Y_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::R8Unorm;
 const UV_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rg8Unorm;
 
-/// トーンマップの一様バッファの大きさ（`vec4<f32>`。x が素材の上限）。
+/// トーンマップの一様バッファの大きさ（`vec4<f32>`。x が素材の上限の明るさ）。
 const TONE_BYTES: u64 = 16;
 
 /// 線形の premultiplied の RGBA を、トーンマップしてから Rec.1886 の符号化値にし、Rec.709・tv レンジの Y と CbCr にする。
@@ -87,7 +87,7 @@ pub(crate) struct ExportPipe {
     layout: wgpu::BindGroupLayout,
     y_pipeline: wgpu::RenderPipeline,
     uv_pipeline: wgpu::RenderPipeline,
-    /// トーンマップの素材の上限（`vec4<f32>` の x）。
+    /// トーンマップに渡す素材の上限の明るさ（`vec4<f32>` の x）。
     tone: wgpu::Buffer,
     size: Size,
     planes: Vec<PlaneSet>,
@@ -137,7 +137,7 @@ impl ExportPipe {
         })
     }
 
-    /// 中間形式のテクスチャ `frame` を、素材の上限 `peak` のトーンマップを掛けて Y と UV に変換し、
+    /// 中間形式のテクスチャ `frame` を、素材の上限の明るさ `peak` でトーンマップを掛けて Y と UV に変換し、
     /// 両方のリードバックを提出する。
     fn encode(
         &mut self,

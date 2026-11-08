@@ -224,7 +224,7 @@ pub struct EncodeSettings {
     /// 配信の区間の書き方。コーデック `h264_ts` に要り、ほかのコーデックでは `None`。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stream: Option<StreamOutput>,
-    /// HDR の素材の上限（線形、1.0 が HDR の基準の白。`mm_render_api::tone_map_peak`）。SDR の信号の書き出しは
+    /// 素材の上限の明るさ（線形、1.0 が HDR の基準の白。`mm_render_api::tone_map_peak`）。SDR の信号の書き出しは
     /// プレビューと同じ BT.2390 の EETF（`mm_types::tonemap::bt2390_to_sdr`）でこれを白に収める。1 以下は恒等で、
     /// HDR の信号の書き出しは使わない。
     #[serde(default = "unit_peak")]

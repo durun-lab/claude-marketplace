@@ -53,7 +53,8 @@ fn write(codec: &str, path: &Path) {
         output_path: path.to_owned(),
         audio: None,
         stream: None,
-        source_peak: 1.0,
+        // 書き出しは HDR の素材があるとこの上限を渡す。HDR の信号はトーンマップせず、1 を超える値がそのまま戻る。
+        source_peak: HLG_PEAK_NITS / HDR_REFERENCE_WHITE_NITS,
     };
     enc.begin(&settings).unwrap();
     let frames: Vec<RgbaImage> = (0..FRAMES).map(|_| patch_frame()).collect();

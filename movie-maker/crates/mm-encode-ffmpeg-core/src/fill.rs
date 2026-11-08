@@ -12,7 +12,7 @@ use crate::spec::{CodecSpec, OutputSignal};
 use crate::transfer::{EncodeTable, EncodeTable16, EncodeTableHdr};
 
 /// 線形 → 符号化値の表。8 ビットは NV12 向け、16 ビットは 10 ビットの YUV 向け、HDR は Rec.2020 の PQ か HLG。
-/// SDR の 2 つは、符号化の前にプレビューと同じトーンマップ（素材の上限 `peak`）を掛ける。
+/// SDR の 2 つは、符号化の前にプレビューと同じトーンマップ（素材の上限の明るさ `peak`）を掛ける。
 pub(crate) enum Encoding {
     /// 境界の表（255 個）を持つので、ほかの形と大きさを揃えるためBox に入れる。
     Code8(Box<EncodeTable>, f32),
@@ -21,7 +21,7 @@ pub(crate) enum Encoding {
 }
 
 impl Encoding {
-    /// コーデックの指定の画素形式と信号、素材の HDR の上限（`EncodeSettings::source_peak`）から。
+    /// コーデックの指定の画素形式と信号、素材の上限の明るさ（`EncodeSettings::source_peak`）から。
     pub(crate) fn for_spec(spec: &CodecSpec, source_peak: f32) -> Self {
         match spec.signal {
             OutputSignal::Pq => Self::Hdr(EncodeTableHdr::new(linear_to_pq)),

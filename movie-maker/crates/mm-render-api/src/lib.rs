@@ -36,11 +36,12 @@ pub fn size_bucket(scale: f32) -> f32 {
         .unwrap_or(SIZE_BUCKETS[SIZE_BUCKETS.len() - 1])
 }
 
-/// HDR を SDR の表示に収めるトーンマップの素材の上限（線形、1.0 が HDR の基準の白）。プロジェクトの素材に HDR
+/// SDR のトーンマップに渡す素材の上限の明るさ（線形、1.0 が HDR の基準の白）。プロジェクトの素材に HDR
 /// （`bt2100_pq`、`bt2100_hlg`）があれば 1 を超え、無ければ 1（恒等）。プレビュー（`Ui::set_hdr_peak`）と
 /// SDR の書き出し（`EncodeSettings::source_peak`、GPU の NV12 の変換）がこの値で同じ `mm_types::tonemap` を掛ける。
+/// 置いていない素材も数えるのは、使う素材をたどるにはノードの引数を読むレジストリが要るため。
 pub fn tone_map_peak(project: &Project) -> f32 {
-    mm_types::tonemap::preview_peak(project.assets.iter().map(|a| &a.color_space))
+    mm_types::tonemap::hdr_source_peak(project.assets.iter().map(|a| &a.color_space))
 }
 
 /// フレームのキャッシュのキー。`time_varying` が偽のノードの種類は `frame_index` を `None` にする。

@@ -132,7 +132,7 @@ fn シェーパーつきのlutのwgslがcpuと一致し_1を超える値を切�
 
 /// プレビュー（`mm-ui-wgpu`）と GPU の NV12 の書き出し（`mm-render`）が使う `TONEMAP_WGSL` が、CPU の書き出し
 /// （`mm-encode-ffmpeg-core`）の `bt2390_to_sdr` と同じ値を出す。入力は HDR の素材のフィクスチャの帯の線形の値と、
-/// 色の見本と、素材の上限を超える値。
+/// テスト用の色（`SAMPLES`）と、素材の上限の明るさを超える値。
 #[test]
 fn sdr_のトーンマップのwgslがcpuと一致する() {
     let Some(gpu) = GpuEval::new() else {
@@ -146,7 +146,7 @@ fn sdr_のトーンマップのwgslがcpuと一致する() {
     });
     let over = [[8.0, 6.0, 0.5], [30.0, 30.0, 30.0]];
     let inputs: Vec<[f32; 3]> = SAMPLES.iter().copied().chain(bands).chain(over).collect();
-    let peak = tonemap::preview_peak(&[ColorSpace::bt2100_pq()]);
+    let peak = tonemap::hdr_source_peak(&[ColorSpace::bt2100_pq()]);
     for peak in [1.0, peak] {
         let source = format!(
             "{}{}fn mm_color_transform(c: vec3<f32>) -> vec3<f32> {{ return mm_tonemap_sdr(c, {peak:?}); }}",

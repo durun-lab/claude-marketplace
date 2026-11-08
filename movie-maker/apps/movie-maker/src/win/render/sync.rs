@@ -67,7 +67,7 @@ impl DocSync {
                 return;
             };
             ui.update_model(timeline_model(&doc.project, comp));
-            // SDR の書き出しと同じ上限でトーンマップし、見た画と書き出す画を揃える。
+            // SDR の書き出しと同じ素材の上限の明るさでトーンマップし、プレビューと書き出しの映像を揃える。
             ui.set_hdr_peak(tone_map_peak(&doc.project));
             self.layer_ids = timeline_layer_ids(comp);
             self.cut_ids = timeline_cut_ids(&doc.project, comp);

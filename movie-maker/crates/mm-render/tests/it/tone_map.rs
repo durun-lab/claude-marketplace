@@ -37,15 +37,15 @@ fn bands_shader() -> String {
     )
 }
 
-/// 帯を描くコンポジション `main`。`hdr` なら PQ の素材を足す（置かないが、プロジェクトのトーンマップの上限が上がる）。
+/// フィクスチャの帯を描くコンポジション `main`。`hdr` なら PQ の素材を足す（置かないが、素材の上限の明るさが上がる）。
 fn bands_project(hdr: bool) -> Project {
+    shader_project(&bands_shader(), hdr)
+}
+
+/// WGSL の `mm_main` を全面に描くコンポジション `main`。`hdr` なら PQ の素材を置かずに足す。
+fn shader_project(wgsl: &str, hdr: bool) -> Project {
     let mut p = project(
-        vec![comp(
-            "main",
-            SIZE,
-            1,
-            vec![layer("bands", shader(&bands_shader()), 1)],
-        )],
+        vec![comp("main", SIZE, 1, vec![layer("fill", shader(wgsl), 1)])],
         vec![],
     );
     if hdr {
@@ -143,7 +143,7 @@ fn hdr_の素材があると_nv12_の書き出しはプレビューと同じト�
         assert_eq!(
             peak > 1.0,
             hdr_source,
-            "上限は HDR の素材があるときだけ 1 を超える"
+            "素材の上限の明るさは HDR の素材があるときだけ 1 を超える"
         );
         let preview = render_at(&mut r, &p, "main", RationalTime::ZERO, SIZE);
         let exported = export_nv12(&mut r, &p);
@@ -189,5 +189,36 @@ fn 描いたフレームはトーンマップの前の線形の値で_hdr_の素
     assert!(
         top.r > 4.0,
         "PQ の 1000 cd/m² の付近の帯は 1 を超える: {top:?}"
+    );
+}
+
+/// 左に SDR の白（線形 1.0。文字や画像の白）、右に HDR のハイライト（線形 2.0、406 cd/m²）。
+const WHITE_AND_HIGHLIGHT: &str = "fn mm_main(uv: vec2<f32>) -> vec4<f32> {
+    if (uv.x < 0.5) { return vec4<f32>(1.0, 1.0, 1.0, 1.0); }
+    return vec4<f32>(2.0, 2.0, 2.0, 1.0);
+}
+";
+
+/// 書き出した Y の 8 bit の符号化値（左の 1/4 と右の 1/4 の中央）。
+fn white_and_highlight_luma(frame: &Nv12Frame) -> (i32, i32) {
+    let row = (SIZE.height / 2 * SIZE.width) as usize;
+    let at = |x: u32| i32::from(frame.y[row + x as usize]);
+    (at(SIZE.width / 4), at(SIZE.width * 3 / 4))
+}
+
+/// HDR の素材が無ければ SDR の白は 235 のまま（今までと同じ）で、ハイライトも白に切る。HDR の素材があると白は
+/// 肩の中で 214 に下がり、ハイライトは白と 235 の間に別の明るさで残る。引き換えは `03-data-model.md` の「色」。
+#[test]
+fn sdr_の白は_hdr_の素材が無ければ_235_あれば_214_でハイライトは白の上に残る() {
+    let Some(ctx) = gpu() else { return };
+    let mut r = renderer(&ctx);
+    let sdr = export_nv12(&mut r, &shader_project(WHITE_AND_HIGHLIGHT, false));
+    assert_eq!(white_and_highlight_luma(&sdr), (235, 235));
+    let hdr = export_nv12(&mut r, &shader_project(WHITE_AND_HIGHLIGHT, true));
+    let (white, highlight) = white_and_highlight_luma(&hdr);
+    assert!((white - 214).abs() <= CODE_TOLERANCE, "白 {white}");
+    assert!(
+        (highlight - 231).abs() <= CODE_TOLERANCE && highlight < 235,
+        "ハイライト {highlight}"
     );
 }

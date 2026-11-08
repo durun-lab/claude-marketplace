@@ -8,7 +8,7 @@ use mm_decode_api::{DecoderFactory, EncodeSettings, EncoderFactory};
 use mm_decode_ffmpeg::FfmpegDecoderFactory;
 use mm_encode_ffmpeg::FfmpegEncoderFactory;
 use mm_testkit::hdr::{self, HdrKind};
-use mm_types::tonemap::{bt2390_to_sdr, preview_peak};
+use mm_types::tonemap::{bt2390_to_sdr, hdr_source_peak};
 use mm_types::{ColorSpace, Rational, RgbaImage};
 
 use crate::hdr::probe;
@@ -66,7 +66,7 @@ fn check_bands(path: &Path, peak: f32) {
 #[test]
 fn hdr_の素材を_sdr_で書くとプレビューと同じトーンマップが掛かる() {
     let image = pq_frame();
-    let peak = preview_peak(&[ColorSpace::bt2100_pq()]);
+    let peak = hdr_source_peak(&[ColorSpace::bt2100_pq()]);
     for (codec, name) in [("h264", "h264.mp4"), ("prores_422hq", "prores.mov")] {
         let path = dir().join(name);
         write(codec, &path, &image, peak);
