@@ -11,6 +11,7 @@
 //!   展開する。ノードのインターフェースからはプロジェクトのデータが見えないため、種類自身は透明を返す（[`NESTED_KIND`]）。
 //! - シーケンス（種類 `sequence`）の展開とカットの境のトランジションは `sequence.rs`、レイヤーの効果は `effects.rs` に置く。
 //!   画像を入力に取る種類は自前のコマンドをすぐ提出するので、呼ぶ前にレンダラーが積んだコマンドを提出する。
+//! - トラックマット（`Layer.track_matte`）は `matte.rs`。切り抜くレイヤーとマットを別のテクスチャに描いて掛け合わせる。
 //! - 書き出しは GPU で NV12 にしてリードバックを先行させ、エンコーダーに押す（[`export`]）。
 //! - デバイスが消えたら（`GpuContext::is_lost`）、次のフレームの前にコンテキストとその上の全部を作り直す。
 
@@ -27,6 +28,7 @@ mod fonts;
 mod frame_cache;
 mod kind_cache;
 mod layers;
+mod matte;
 mod renderer;
 mod sequence;
 mod source;

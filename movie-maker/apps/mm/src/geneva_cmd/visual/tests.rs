@@ -16,12 +16,7 @@ fn media() -> HashMap<String, Media> {
 
 fn one(clip: Value) -> (Layer, Report) {
     let media = media();
-    let mut ctx = Ctx {
-        fps: Rational::integer(30),
-        frame: [1920.0, 1080.0],
-        media: &media,
-        report: Report::default(),
-    };
+    let mut ctx = Ctx::new(Rational::integer(30), [1920.0, 1080.0], &media);
     let mut layers = visual_layers(&mut ctx, &[json!({"clips": [clip]})]).unwrap();
     (layers.remove(0), ctx.report)
 }
@@ -113,4 +108,29 @@ fn 楕円のマスクは除いて数える() {
     }));
     assert!(l.masks.is_empty());
     assert_eq!(report.to_json()[0]["what"], "mask");
+}
+
+#[test]
+fn cover_は画面を覆う倍率で中央に置く() {
+    let (l, report) = one(json!({
+        "source": {"kind": "video", "asset": "cap", "audio": false},
+        "duration": "30f", "fit": "cover", "crop": {"x": 0, "y": 0, "width": 3840, "height": 1080}
+    }));
+    assert_eq!(report.to_json(), json!([]));
+    // 3840x1080 を 1920x1080 に覆うと倍率は 1（高さで決まる）。幅のはみ出しは左右に半分ずつ。
+    assert_eq!(vec2(&l.transform.scale), [1.0, 1.0]);
+    assert_eq!(vec2(&l.transform.position), [-960.0, 0.0]);
+}
+
+#[test]
+fn 単色は画面の大きさの画像として合成モードと一緒に置く() {
+    let (l, report) = one(json!({
+        "source": {"kind": "solid", "color": "#EBCF9C"}, "start": "0f", "duration": "71f",
+        "blend": "multiply", "opacity": 0.42
+    }));
+    assert_eq!(report.to_json(), json!([]));
+    assert_eq!(l.source.kind, "solid");
+    assert_eq!(l.blend, mm_doc::BlendMode::Multiply);
+    assert_eq!(vec2(&l.transform.position), [0.0, 0.0]);
+    assert_eq!(l.opacity.value.as_number(), Some(0.42));
 }
