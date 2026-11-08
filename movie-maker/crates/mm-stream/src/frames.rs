@@ -5,7 +5,9 @@ use std::sync::Arc;
 
 use mm_doc::Project;
 use mm_node_api::Quality;
+use mm_render_api::tone_map_peak;
 use mm_runtime::Engine;
+use mm_types::tonemap::bt2390_to_sdr;
 use mm_types::transfer::linear_to_code8;
 use mm_types::{CompositionId, Id, MmError, RationalTime, Result, Size};
 
@@ -106,12 +108,13 @@ pub(crate) fn render_webp(
     let c = project.composition(&comp)?;
     let size = scaled(Size::new(c.width, c.height), req.clamped_width());
     let image = engine.render_frame(project, &comp, req.time, size, Quality::Full)?;
-    // 画像は線形の premultiplied。黒に重ねるので、符号化値にするだけでよい。
+    // 画像は線形の premultiplied。黒に重ねるので、書き出しと同じ SDR のトーンマップを掛けて符号化値にするだけでよい。
+    let peak = tone_map_peak(project);
     let mut rgb = Vec::with_capacity(image.size().area() * 3);
     for y in 0..image.height() {
         for x in 0..image.width() {
             let p = image.pixel(x, y);
-            rgb.extend([p.r, p.g, p.b].map(linear_to_code8));
+            rgb.extend(bt2390_to_sdr([p.r, p.g, p.b], peak).map(linear_to_code8));
         }
     }
     let webp = webp::Encoder::new(&rgb, webp::PixelLayout::Rgb, image.width(), image.height())

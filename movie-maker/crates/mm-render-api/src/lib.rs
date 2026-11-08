@@ -12,9 +12,11 @@ use serde::{Deserialize, Serialize};
 
 use mm_audio_api::AudioBlock;
 use mm_decode_api::Encoder;
-use mm_doc::Project;
+use mm_doc::{Project, WorkingRange};
 use mm_node_api::{FrameRef, GpuHelper, NodeRegistry, Quality};
-use mm_types::{CompositionId, Rational, RationalTime, Result, RgbaImage, Size, TimeRange};
+use mm_types::{
+    ColorSpace, CompositionId, Rational, RationalTime, Result, RgbaImage, Size, TimeRange,
+};
 
 pub use mm_node_api::Quality as RenderQuality;
 
@@ -38,12 +40,37 @@ pub fn size_bucket(scale: f32) -> f32 {
         .unwrap_or(SIZE_BUCKETS[SIZE_BUCKETS.len() - 1])
 }
 
-/// SDR のトーンマップに渡す素材の上限の明るさ（線形、1.0 が HDR の基準の白）。プロジェクトの素材に HDR
-/// （`bt2100_pq`、`bt2100_hlg`）があれば 1 を超え、無ければ 1（恒等）。プレビュー（`Ui::set_hdr_peak`）と
-/// SDR の書き出し（`EncodeSettings::source_peak`、GPU の NV12 の変換）がこの値で同じ `mm_types::tonemap` を掛ける。
+/// 合成の後の SDR のトーンマップに渡す素材の上限の明るさ（線形、1.0 が HDR の基準の白）。作業の明るさが HDR で、
+/// プロジェクトの素材に HDR（`bt2100_pq`、`bt2100_hlg`）があれば 1 を超え、それ以外は 1（恒等）。作業の明るさが
+/// SDR なら HDR の素材は入力の側（[`input_tone_map_peak`]）で収め済みなので掛けない。
+/// プレビュー（`Ui::set_hdr_peak`）、SDR の書き出し（`EncodeSettings::source_peak`、GPU の NV12 の変換）、
+/// PNG（`encode_png`）、モバイルの静止画がこの値で同じ `mm_types::tonemap` を掛ける。
 /// 置いていない素材も数えるのは、使う素材をたどるにはノードの引数を読むレジストリが要るため。
 pub fn tone_map_peak(project: &Project) -> f32 {
-    mm_types::tonemap::hdr_source_peak(project.assets.iter().map(|a| &a.color_space))
+    match project.color_config.working_range {
+        WorkingRange::Sdr => 1.0,
+        WorkingRange::Hdr => {
+            mm_types::tonemap::hdr_source_peak(project.assets.iter().map(|a| &a.color_space))
+        }
+    }
+}
+
+/// 入力の側の SDR のトーンマップに渡す、色空間 `space` の素材の上限の明るさ。作業の明るさが SDR で `space` が HDR
+/// なら 1 を超え、それ以外は 1（恒等）。レンダラーは HDR の素材のレイヤーの画像に、効果と合成の前にこれで掛ける。
+pub fn input_tone_map_peak(project: &Project, space: &ColorSpace) -> f32 {
+    match project.color_config.working_range {
+        WorkingRange::Sdr => mm_types::tonemap::hdr_source_peak([space]),
+        WorkingRange::Hdr => 1.0,
+    }
+}
+
+/// プロジェクトのどれかの素材に入力の側のトーンマップが掛かるか。真なら同じ素材でも描いた画素が作業の明るさで
+/// 変わるので、トーンマップの後の画素を覚える入れ子の画像のキーに入れる。偽のプロジェクトのキーは変えない。
+pub fn input_tone_mapped(project: &Project) -> bool {
+    project
+        .assets
+        .iter()
+        .any(|a| input_tone_map_peak(project, &a.color_space) > 1.0)
 }
 
 /// フレームのキャッシュのキー。`time_varying` が偽のノードの種類は `frame_index` を `None` にする。
@@ -355,6 +382,42 @@ mod tests {
         let mut empty = key();
         empty.content_hash = Some(String::new());
         assert_ne!(none.digest(), empty.digest());
+    }
+
+    fn project_with(space: ColorSpace, range: WorkingRange) -> Project {
+        let mut p = Project::new();
+        p.assets.push(mm_doc::Asset {
+            id: mm_types::Id::new("a"),
+            path: "a.mp4".into(),
+            content_hash: "h".into(),
+            color_space: space,
+            duration: RationalTime::seconds(1),
+            fps: None,
+            timebase_offset: RationalTime::ZERO,
+        });
+        p.color_config.working_range = range;
+        p
+    }
+
+    /// トーンマップは入力の側か合成の後のどちらか一方だけに掛かる。HDR の素材が無ければどちらも恒等。
+    #[test]
+    fn トーンマップは作業の明るさで入力の側か合成の後の一方だけに掛かる() {
+        let hdr = mm_types::tonemap::hdr_source_peak([&ColorSpace::bt2100_pq()]);
+        let pq = ColorSpace::bt2100_pq();
+        let sdr = project_with(pq.clone(), WorkingRange::Sdr);
+        assert_eq!(tone_map_peak(&sdr), 1.0);
+        assert_eq!(input_tone_map_peak(&sdr, &pq), hdr);
+        assert_eq!(input_tone_map_peak(&sdr, &ColorSpace::bt709()), 1.0);
+        assert!(input_tone_mapped(&sdr));
+        let wide = project_with(pq.clone(), WorkingRange::Hdr);
+        assert_eq!(tone_map_peak(&wide), hdr);
+        assert_eq!(input_tone_map_peak(&wide, &pq), 1.0);
+        assert!(!input_tone_mapped(&wide));
+        for range in [WorkingRange::Sdr, WorkingRange::Hdr] {
+            let plain = project_with(ColorSpace::bt709(), range);
+            assert_eq!(tone_map_peak(&plain), 1.0);
+            assert!(!input_tone_mapped(&plain));
+        }
     }
 
     #[test]

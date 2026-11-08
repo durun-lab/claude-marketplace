@@ -45,6 +45,8 @@ pub enum DocSpec {
     RemoveAsset(u8),
     AddMarker(u8, String, i64),
     RemoveMarker(u8),
+    /// 真なら作業の明るさを HDR に、偽なら SDR にする。
+    ColorConfig(bool),
 }
 
 pub fn arb() -> impl Strategy<Value = DocSpec> {
@@ -90,6 +92,7 @@ pub fn arb() -> impl Strategy<Value = DocSpec> {
         s().prop_map(DocSpec::RemoveAsset),
         (s(), arb_id(), 0i64..10).prop_map(|(a, b, c)| DocSpec::AddMarker(a, b, c)),
         s().prop_map(DocSpec::RemoveMarker),
+        any::<bool>().prop_map(DocSpec::ColorConfig),
     ]
 }
 
@@ -309,6 +312,16 @@ fn misc_op(spec: &DocSpec, p: &Project) -> Option<Op> {
             }
             .into()
         }
+        DocSpec::ColorConfig(hdr) => SetColorConfig {
+            color_config: mm_doc::ColorConfig {
+                working_range: if *hdr {
+                    mm_doc::WorkingRange::Hdr
+                } else {
+                    mm_doc::WorkingRange::Sdr
+                },
+            },
+        }
+        .into(),
         _ => return None,
     })
 }

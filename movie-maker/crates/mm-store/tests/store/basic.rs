@@ -32,6 +32,48 @@ fn 書いたプロジェクトのデータと操作は開き直しても残る()
 }
 
 #[test]
+fn 色の設定は開き直しても残る() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut p = project_with(1);
+    p.color_config.working_range = mm_doc::WorkingRange::Hdr;
+    Store::create(tmp.path(), &p, NOW)
+        .unwrap()
+        .close(NOW)
+        .unwrap();
+    let s = Store::open(tmp.path(), NOW).unwrap();
+    assert_eq!(s.project().color_config, p.color_config);
+}
+
+/// 色の設定はプロジェクトの先頭の行に載るので、操作で変えた値と取り消した値の両方が開き直しても残る。
+#[test]
+fn 色の設定の操作と取り消しは開き直しても残る() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut p = project_with(1);
+    let hdr = mm_doc::ColorConfig {
+        working_range: mm_doc::WorkingRange::Hdr,
+    };
+    {
+        let mut s = Store::create(tmp.path(), &p, NOW).unwrap();
+        let op: mm_ops::Op = mm_ops::SetColorConfig {
+            color_config: hdr.clone(),
+        }
+        .into();
+        let outcome = mm_ops::apply_transaction(&mut p, &[op], &OpContext::human()).unwrap();
+        let input = mm_store::TxnInput::normal("hdr", actor(), NOW, outcome.records);
+        s.commit(&p, &input).unwrap();
+        s.close(NOW).unwrap();
+    }
+    let mut s = Store::open(tmp.path(), NOW).unwrap();
+    assert_eq!(s.project().color_config, hdr);
+    s.undo_last(&OpContext::human(), actor(), NOW)
+        .unwrap()
+        .unwrap();
+    s.close(NOW).unwrap();
+    let s = Store::open(tmp.path(), NOW).unwrap();
+    assert!(s.project().color_config.is_default());
+}
+
+#[test]
 fn 取り消しとやり直しは位置を動かし_バージョンと記録を進める() {
     let tmp = tempfile::tempdir().unwrap();
     let mut p = project_with(3);

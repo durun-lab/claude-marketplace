@@ -32,6 +32,7 @@ use mm_types::{
 pub const SCHEMA_VERSION: u32 = 9;
 
 mod bins;
+mod color_config;
 mod delivery;
 mod layer;
 mod migrate;
@@ -50,6 +51,7 @@ pub use bins::{
     Bins, Rating, Selection, SelectionId, SelectionMarker, SourceMarks, Topic, TopicId,
     TopicMarker, WordEdit, WordId, WordMarker,
 };
+pub use color_config::{hdr_signal_from_sdr_range, ColorConfig, WorkingRange, HDR_SIGNAL_CODECS};
 pub use delivery::{Delivery, SubtitleOutput, DEFAULT_TRUE_PEAK_DBTP};
 pub use layer::{
     BlendMode, CaptionPlacement, Crop, CutReframe, Effect, EffectId, EffectMarker, Fade, FadeCurve,
@@ -98,6 +100,9 @@ pub struct Project {
     /// 文字起こしの修正。素材と単語の ID の順。
     #[serde(default)]
     pub transcript_edits: Vec<WordEdit>,
+    /// 色の設定（タイムラインの作業の明るさ）。既定は保存しない。
+    #[serde(default, skip_serializing_if = "ColorConfig::is_default")]
+    pub color_config: ColorConfig,
     /// 済ませた名前つきの移行の名前。名前の順。
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub migrations: Vec<String>,
@@ -114,6 +119,7 @@ impl Project {
             render_targets: Vec::new(),
             bins: Bins::default(),
             transcript_edits: Vec::new(),
+            color_config: ColorConfig::default(),
             migrations: migration_names(),
         }
     }

@@ -17,6 +17,19 @@ fn project_with(out: &Path, edit: impl FnOnce(&mut mm_doc::RenderTarget)) -> Pro
     project
 }
 
+/// 作業の明るさが sdr のまま HDR の素材を HDR の信号で書き出すときだけ、切り替え方を警告に出す。
+#[test]
+fn sdr_の作業の明るさで_hdr_の素材を_hdr_の信号で書き出すと警告する() {
+    let out = temp("hdrwarn").join("out.mp4");
+    let mut project = project_with(&out, |t| t.codec = "hevc_pq".into());
+    let warned = |p: &Project| deliver::hdr_signal_warning(p, &p.render_targets[0]);
+    assert_eq!(warned(&project), None, "HDR の素材が無ければ出さない");
+    project.assets[0].color_space = mm_types::ColorSpace::bt2100_pq();
+    assert!(warned(&project).is_some_and(|w| w.contains("setColorConfig")));
+    project.color_config.working_range = mm_doc::WorkingRange::Hdr;
+    assert_eq!(warned(&project), None, "hdr なら出さない");
+}
+
 #[test]
 fn 正規化を持たない音の実装でラウドネスの目標があると拒否する() {
     let out = temp("loud").join("out.json");

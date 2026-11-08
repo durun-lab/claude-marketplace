@@ -3384,6 +3384,7 @@ dependencies = [
  "mm-audio-api",
  "mm-decode-api",
  "mm-decode-ffmpeg",
+ "mm-doc",
  "mm-encode-ffmpeg-core",
  "mm-testkit",
  "mm-types",

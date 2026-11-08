@@ -2,7 +2,7 @@
 
 use mm_doc::{
     Asset, Composition, Cut, Layer, MatteKind, Node, Project, Sequence, TrackMatte, Transition,
-    SEQUENCE_KIND, SEQUENCE_PARAM,
+    WorkingRange, SEQUENCE_KIND, SEQUENCE_PARAM,
 };
 use mm_runtime::Registry;
 use mm_types::color::ColorSpace;
@@ -229,10 +229,11 @@ fn 素材の中身が変わると使う区間が変わり_取り込み前の素�
     assert_eq!(same(&v1, &v2), [true, true, false]);
 }
 
-/// SDR の区間と短い動画はプロジェクトの素材から決まる素材の上限の明るさでトーンマップするので、どこにも置いていない
-/// HDR の素材を足すと全区間と短い動画のキーが変わる。SDR の素材なら変わらない。
+/// 作業の明るさが HDR なら、SDR の区間と短い動画はプロジェクトの素材から決まる素材の上限の明るさで合成の後に
+/// トーンマップするので、どこにも置いていない HDR の素材を足すと全区間と短い動画のキーが変わる。作業の明るさが SDR
+/// （既定）なら HDR の素材は置いたレイヤーだけで収めるので、置いていない HDR の素材ではキーが変わらない。
 #[test]
-fn hdr_の素材を足すと区間に掛からなくても全区間のキーが変わる() {
+fn 作業の明るさが_hdr_なら_hdr_の素材を足すと区間に掛からなくても全区間のキーが変わる() {
     let unused = |color_space: ColorSpace| Asset {
         id: Id::new("unused"),
         path: "unused.mp4".into(),
@@ -242,16 +243,26 @@ fn hdr_の素材を足すと区間に掛からなくても全区間のキーが�
         fps: None,
         timebase_offset: RationalTime::ZERO,
     };
-    let before = keys(&project());
-    let before_clip = clip(&project(), 3.0, 3.0, "[1]");
-    let mut sdr = project();
+    let wide = || {
+        let mut p = project();
+        p.color_config.working_range = WorkingRange::Hdr;
+        p
+    };
+    let before = keys(&wide());
+    let before_clip = clip(&wide(), 3.0, 3.0, "[1]");
+    let mut sdr = wide();
     sdr.assets.push(unused(ColorSpace::bt709()));
     assert_eq!(same(&before, &keys(&sdr)), [true, true, true]);
     assert_eq!(clip(&sdr, 3.0, 3.0, "[1]"), before_clip);
-    let mut hdr = project();
+    let mut hdr = wide();
     hdr.assets.push(unused(ColorSpace::bt2100_pq()));
     assert_eq!(same(&before, &keys(&hdr)), [false, false, false]);
     assert_ne!(clip(&hdr, 3.0, 3.0, "[1]"), before_clip);
+
+    let mut sdr_range = project();
+    let before = keys(&sdr_range);
+    sdr_range.assets.push(unused(ColorSpace::bt2100_pq()));
+    assert_eq!(same(&before, &keys(&sdr_range)), [true, true, true]);
 }
 
 fn clip(p: &Project, start: f64, end: f64, ops: &str) -> ClipKey {

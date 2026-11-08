@@ -2,7 +2,7 @@
 
 | 用語 | 定義 | 識別子 |
 |---|---|---|
-| 素材の上限の明るさ | SDR のトーンマップが SDR の白に収める明るさ（線形、1.0 が HDR の基準の白）。プロジェクトに HDR の素材があれば 1000 cd/m²（約 4.93）、無ければ 1（恒等）。「上限」と略すのは、この文脈が明らかな所（`tonemap` の中）だけ | `tonemap::hdr_source_peak`、`tone_map_peak`、`EncodeSettings::source_peak` |
+| 素材の上限の明るさ | SDR のトーンマップが SDR の白に収める明るさ（線形、1.0 が HDR の基準の白）。HDR の素材なら 1000 cd/m²（約 4.93）、それ以外は 1（恒等）。入力の側では素材ごと、合成の後（作業の明るさが HDR のとき）ではプロジェクトの全部の素材から決める。「上限」と略すのは、この文脈が明らかな所（`tonemap` の中）だけ | `tonemap::hdr_source_peak`、`tone_map_peak`、`input_tone_map_peak`、`EncodeSettings::source_peak` |
 | 肩（トーンマップの） | BT.2390 の EETF が恒等をやめて曲げ始める所から上。素材の上限の明るさが 1000 cd/m² なら約 88 cd/m² から始まり、HDR の基準の白（SDR の素材の白）もこの中に入る | `tonemap::eetf` の `ks` |
 | super-white | SDR の信号の白（100%、8 bit の tv レンジの 235）を超える値。BT.2408 の down-mapper がハイライトを置くことがあるが、ファイルの再生とプレビューでは切られるので使わない | `03-data-model.md` の「色」 |
 | 帯（HDR のフィクスチャの） | HDR の素材のフィクスチャを横に分けた、明るさの違う縦の範囲。Timeline の帯とは別 | `mm_testkit::hdr::BANDS`、`hdr::band_center` |

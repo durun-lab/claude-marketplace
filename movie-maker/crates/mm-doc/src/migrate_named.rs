@@ -14,6 +14,8 @@ use crate::{Project, SCHEMA_VERSION};
 /// プロジェクトのデータの JSON で、済ませた名前つきの移行の組を持つフィールド。
 pub const MIGRATIONS_FIELD: &str = "migrations";
 const VERSION_FIELD: &str = "schema_version";
+/// 移行の記録の行に一緒に載せる、プロジェクトの色の設定のフィールド。
+const COLOR_CONFIG_FIELD: &str = "color_config";
 
 /// 名前つきの移行の 1 つ。
 pub(crate) struct Migration {
@@ -78,17 +80,23 @@ fn reject_unknown(applied: &[String], registry: &[Migration]) -> Result<()> {
 }
 
 /// 保存の先頭に書く、どこまで移行したかの記録（`schema_version` と、空でなければ `migrations`）。
+/// 列に分けない設定（既定でなければ `color_config`）も同じ 1 行に載せる。
 pub fn version_stamp(p: &Project) -> Value {
     let mut stamp = serde_json::json!({ VERSION_FIELD: p.schema_version });
     if !p.migrations.is_empty() {
         stamp[MIGRATIONS_FIELD] = Value::from(p.migrations.clone());
+    }
+    if !p.color_config.is_default() {
+        if let Ok(v) = serde_json::to_value(&p.color_config) {
+            stamp[COLOR_CONFIG_FIELD] = v;
+        }
     }
     stamp
 }
 
 /// 移行の記録（[`version_stamp`]）のフィールドを、組み立て中のプロジェクトのデータの JSON に写す。
 pub fn copy_stamp(stamp: &Value, value: &mut Value) {
-    for field in [VERSION_FIELD, MIGRATIONS_FIELD] {
+    for field in [VERSION_FIELD, MIGRATIONS_FIELD, COLOR_CONFIG_FIELD] {
         if let Some(v) = stamp.get(field) {
             value[field] = v.clone();
         }
@@ -191,6 +199,19 @@ mod tests {
         let mut value = serde_json::json!({});
         copy_stamp(&stamp, &mut value);
         assert_eq!(value[VERSION_FIELD], SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn 色の設定は既定でなければ移行の記録の行に載って戻る() {
+        let mut p = Project::new();
+        assert!(version_stamp(&p).get(COLOR_CONFIG_FIELD).is_none());
+        p.color_config.working_range = crate::WorkingRange::Hdr;
+        let stamp = version_stamp(&p);
+        let mut value =
+            serde_json::json!({ "assets": [], "compositions": [], "render_targets": [] });
+        copy_stamp(&stamp, &mut value);
+        let back: Project = serde_json::from_value(value).unwrap();
+        assert_eq!(back.color_config, p.color_config);
     }
 
     #[test]

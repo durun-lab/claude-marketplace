@@ -144,8 +144,9 @@ fn range_hash(
     header: String,
 ) -> Result<u64> {
     let comp = env.project.composition(composition)?;
-    // SDR の出力はプロジェクトの全部の素材から決まるトーンマップの上限で符号化するので、範囲に掛からない
-    // HDR の素材を足しても作り直すよう上限を入れる。
+    // 作業の明るさが HDR なら、SDR の出力はプロジェクトの全部の素材から決まる素材の上限の明るさで符号化するので、
+    // 範囲に掛からない HDR の素材を足しても作り直すよう入れる。SDR なら 1 で、HDR の素材の入力の側のトーンマップは
+    // 範囲に掛かる素材の JSON（色空間）とこの値の組で決まる。
     let mut walk = Walk {
         env,
         text: format!("{header}|peak={}", tone_map_peak(env.project)),
