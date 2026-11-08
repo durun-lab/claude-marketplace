@@ -47,7 +47,7 @@ describe("提案の 1 件", () => {
 });
 
 describe("提案の区間の短い動画", () => {
-  it("Play は押した操作の中で短い動画を再生し、映像が出るまで作っている知らせを出す", async () => {
+  it("Play は押した操作の中で短い動画を再生し、映像が出るまで作っている間の表示を出す", async () => {
     await open();
     await h.press("Slow the zoom");
     const play = vi.spyOn(HTMLMediaElement.prototype, "play");
@@ -66,7 +66,7 @@ describe("提案の区間の短い動画", () => {
     play.mockRestore();
   });
 
-  it("一部の操作だけを選ぶとその操作の短い動画にし、読めなければ知らせる", async () => {
+  it("一部の操作だけを選ぶとその操作の短い動画にし、読めなければ失敗を表示する", async () => {
     await open();
     await h.press("Slow the zoom");
     await act(() => void h.host.querySelectorAll<HTMLInputElement>('.ops input[type="checkbox"]')[1]?.click());
@@ -75,6 +75,18 @@ describe("提案の区間の短い動画", () => {
     expect(video?.getAttribute("src")).toBe(clipUrl(2, { comp: "c1", ops: [0, 2] }));
     await act(() => void video?.dispatchEvent(new Event("error")));
     expect(h.host.querySelector(".clip-note")?.textContent).toBe("Could not play the clip.");
+  });
+
+  it("再生中に選ぶ操作を変えると、前の操作の短い動画を止める", async () => {
+    await open();
+    await h.press("Slow the zoom");
+    await h.press("Play");
+    const video = h.host.querySelector<HTMLVideoElement>(".compare video");
+    expect(video?.getAttribute("src")).toBe(clipUrl(2, { comp: "c1" }));
+    await act(() => void h.host.querySelectorAll<HTMLInputElement>('.ops input[type="checkbox"]')[1]?.click());
+    expect(video?.getAttribute("src")).toBeNull();
+    expect(h.host.querySelector(".clip-note")).toBeNull();
+    expect(h.host.querySelector("img.show")?.getAttribute("alt")).toBe("After");
   });
 
   it("決めた提案には Play を出さない", async () => {

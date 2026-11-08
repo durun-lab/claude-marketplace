@@ -1,5 +1,5 @@
 import { type RefObject } from "preact";
-import { useRef, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import { clipUrl, frameUrl, type Proposal } from "./api.ts";
 import { frameTime, hasClip } from "./view.ts";
 
@@ -16,7 +16,7 @@ interface ClipPlayer {
   playing: () => void;
 }
 
-/** 短い動画の再生の状態と操作。止めた後に届いた知らせ（`playing`、`error`）は無視する。 */
+/** 短い動画の再生の状態と操作。止めた後に届いたイベント（`playing`、`error`）は無視する。 */
 const useClip = (): ClipPlayer => {
   const [clip, setClip] = useState<Clip>("off");
   const video = useRef<HTMLVideoElement>(null);
@@ -44,7 +44,7 @@ const useClip = (): ClipPlayer => {
   return { clip, video, start, stop, fail, playing };
 };
 
-/** 前後のフレームの上に重ねる短い動画。映像が出るまでは透明にして、作っている知らせを出す。 */
+/** 前後のフレームの上に重ねる短い動画。映像が出るまでは透明にして、作っている間の表示（`Rendering clip…`）を出す。 */
 const ClipLayer = ({ player }: { player: ClipPlayer }) => (
   <>
     <video
@@ -82,7 +82,11 @@ export const FrameCompare = ({ proposal, ops, comp }: { proposal: Proposal; ops:
     player.stop();
     setView(v);
   };
-  const play = (): void => (on ? player.stop() : player.start(clipUrl(proposal.id, { comp, ops })));
+  const url = clipUrl(proposal.id, { comp, ops });
+  const can = hasClip(proposal);
+  // 選ぶ操作が変わるか提案が決まったら、前の操作の短い動画を流し続けない。
+  useEffect(() => player.stop, [url, can]);
+  const play = (): void => (on ? player.stop() : player.start(url));
   return (
     <div class="compare">
       <div class="stage">
@@ -90,7 +94,7 @@ export const FrameCompare = ({ proposal, ops, comp }: { proposal: Proposal; ops:
           <img src={frameUrl(t, { comp })} alt="Before" class={view === "before" ? "show" : ""} />
           <img src={frameUrl(t, { comp, proposal: proposal.id, ...(ops ? { ops } : {}) })} alt="After" class={view === "after" ? "show" : ""} />
         </button>
-        {hasClip(proposal) && <ClipLayer player={player} />}
+        {can && <ClipLayer player={player} />}
       </div>
       <div class="row seg" role="group" aria-label="Compare">
         {(["before", "after"] as const).map((v) => (
@@ -98,7 +102,7 @@ export const FrameCompare = ({ proposal, ops, comp }: { proposal: Proposal; ops:
             {v === "before" ? "Before" : "After"}
           </button>
         ))}
-        {hasClip(proposal) && (
+        {can && (
           <button type="button" class={`chipbtn${on ? " on" : ""}`} aria-pressed={on} onClick={play}>
             Play
           </button>
