@@ -181,7 +181,7 @@
 | 置き場所 | 中身 |
 |---|---|
 | `crates/mm-serve/examples/mobile_rig.rs` | PC の側。フィクスチャから `project.mmdb` を作り、アプリと同じ実際の実装の `EngineFrames`、Claude の待ち受け、人の待ち受けを始める。標準入力の `code` で `Devices::issue_code`（Devices の「Add device」と同じ）を呼ぶ |
-| `fixtures/projects/mobile/project.json` | 8 秒の 360x640 の縦のコンポジション（動く見出しと直す対象の字幕。描き込みを映像の矩形で取ることを 16:9 の枠の左右の余白で確かめる）と、文字起こし（`fixtures/ingest/transcript-ja.json`）の付く素材 1 つ |
+| `fixtures/projects/mobile/project.json` | 8 秒の 360x640 の縦のコンポジション（動く見出しと直す対象の字幕。描き込みを映像の矩形で取ることを、16:9 の映像の領域の左右のレターボックスの余白で確かめる）と、文字起こし（`fixtures/ingest/transcript-ja.json`）の付く素材 1 つ |
 | `ui/mobile/e2e/flow.mjs` | 手順。1 登録（端末がクッキーを保存しないと画面が知らせ、同じ名前で登録し直せる。続けて QR の URL で登録）、2 Watch（親のプレイリスト `index.m3u8` から画質ごとのプレイリストと TS の配信の区間。Chromium は hls.js で再生）と描き込みつきのコメント（映像の矩形の座標で届く。描いた画面は `MM_E2E_WORK` の `<端末>-draw.png`）、3 MCP の `comments` と `propose`（`responds_to`）、4 Proposals で前後のフレームと区間の短い動画（`clip_url` のキーつきの URL の 206、作っていないキーの 404。Chromium は `Play` で再生）を見て承認し、別の画面に SSE でコメントの `fresh` が届く、5 Story の `Keep` と「Decide on PC」の提案、6 `setOffline` で書いたコメントが送信待ちのキュー（IndexedDB）に入り、戻ると 1 回だけ届く |
 
 WebKit の Windows 版は HLS と H.264 の MP4 を再生できないので、WebKit はプレイリストと配信の区間、短い動画が取れるところまでを確かめる。

@@ -104,7 +104,7 @@ const STROKE = [[0.15, 0.7], [0.3, 0.75], [0.45, 0.8], [0.6, 0.78]];
 const POINT_TOLERANCE = 0.02;
 
 /**
- * 映像の矩形（`object-fit: contain` で枠に収めた所）。コンポジションの大きさは `GET /m/api/project` から読む。
+ * 映像の矩形（`object-fit: contain` で映像の領域に収めた所）。コンポジションの大きさは `GET /m/api/project` から読む。
  * デスクトップの Program の `fit_rect` と同じ計算で、描き込みの座標はこの矩形を 0〜1 にしたもの。
  */
 const videoRect = async (page) => {
@@ -124,7 +124,7 @@ const drawStroke = async (page, rect) => {
   await page.mouse.up();
 };
 
-/** 2b. 止めたフレームに描き込みつきのコメントを書く。フィクスチャは縦長（360x640）なので、16:9 の枠の左右に余白がある。 */
+/** 2b. 止めたフレームに描き込みつきのコメントを書く。フィクスチャは縦長（360x640）なので、16:9 の映像の領域の左右にレターボックスの余白がある。 */
 export const comment = async ({ page, pc, deviceName }) => {
   await page.getByRole("button", { name: "Comment", exact: true }).click();
   await page.getByLabel("Comment text").fill(COMMENT_TEXT);
@@ -176,8 +176,8 @@ const checkFrames = async (page) => {
 };
 
 /**
- * 短い動画の先頭を画面と同じ資格で取る。URL は提案の応答の `clip_url`（キーつき）。MP4 の先頭の箱（ftyp）と、Range への 206。
- * 作っていないキーの URL は 404（古いキーは転送しない）。
+ * 短い動画の先頭を画面と同じ資格で取る。URL は提案の応答の `clip_url`（キーつき）。MP4 の先頭のボックス（ftyp）と、Range への 206。
+ * 作っていないキーの URL は 404（古いキーは今のキーへリダイレクトしない）。
  */
 const fetchClip = (page, id) =>
   page.evaluate(async (pid) => {
