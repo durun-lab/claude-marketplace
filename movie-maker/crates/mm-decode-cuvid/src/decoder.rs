@@ -25,6 +25,8 @@ use mm_decode_hw::pool::FramePool;
 use mm_decode_hw::release::ReleaseQueue;
 use mm_decode_hw::yuv::YuvParams;
 
+/// 広い信号の素材を読むときに名乗る名前（`Decoder::backend_id`）。画素の作り方のバージョンが付く。
+const WIDE_ID: &str = mm_decode_ffmpeg_core::wide_backend_id!("cuvid");
 /// 無音を返すときの形式。
 const SILENCE_RATE: u32 = 48_000;
 const SILENCE_CHANNELS: u16 = 2;
@@ -152,9 +154,9 @@ impl Drop for CuvidDecoder {
 impl Decoder for CuvidDecoder {
     fn backend_id(&self) -> Option<&'static str> {
         Some(if self.seq.wide_signal() {
-            mm_decode_ffmpeg_core::wide_backend_id!("cuvid")
+            WIDE_ID
         } else {
-            "cuvid"
+            crate::ID
         })
     }
 
@@ -188,6 +190,10 @@ pub struct CuvidFactory;
 impl DecoderFactory for CuvidFactory {
     fn id(&self) -> &'static str {
         crate::ID
+    }
+
+    fn backend_ids(&self) -> Vec<&'static str> {
+        vec![crate::ID, WIDE_ID]
     }
 
     /// `gpu` が無い、または `mm-gpu` のコンテキストでなければ `Err(Unsupported)`。

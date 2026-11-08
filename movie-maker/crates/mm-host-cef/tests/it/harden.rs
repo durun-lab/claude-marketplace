@@ -146,6 +146,32 @@ fn 初めて出す_data_の画像はデコードを待ってから描く() {
     );
 }
 
+/// `IMAGE_PAGE` と同じ画像を、時刻 1 で初めて CSS の `background-image` に出すページ。
+fn background_page() -> String {
+    IMAGE_PAGE.replace(
+        "<img alt=\"\" src=\"${url}\">",
+        "<div style=\"position:absolute;left:0;top:0;width:64px;height:64px;\
+         background:url(${url}) 0 0 / 64px 64px\"></div>",
+    )
+}
+
+#[test]
+fn 初めて出す背景画像もデコードを待ってから描く() {
+    let Some(exe) = host_exe() else { return };
+    let ctx = gpu();
+    let size = Size::new(64, 64);
+    let mut host = CefLauncher::start(spec(&exe, None)).expect("起動");
+    prepare(&mut host, &background_page());
+    render(&mut host, RationalTime::ZERO, size, serde_json::json!({}));
+    let t = RationalTime::seconds(1);
+    let first = to_image(&render(&mut host, t, size, serde_json::json!({})), &ctx);
+    let center = first.pixel(32, 32);
+    assert!(
+        center.a > 0.99 && center.r > 0.9,
+        "最初のフレームも背景画像を描く: {center:?}"
+    );
+}
+
 /// 時刻 1 で、レンダラーを 8 秒止めるページ。
 const STUCK_PAGE: &str = r#"<!doctype html><html><body><script>
 window.mmSetTime = (t) => {

@@ -42,6 +42,7 @@ pub use captions::{sequence_cues, CaptionWord, TranscriptWords};
 pub use chapters::{chapter_marks, youtube_description};
 pub use control::{ExportControl, ExportProgress, ProgressFn};
 pub use deliver::DeliveryReport;
+pub use mm_decode_api::StreamOutput;
 pub use run::export_run;
 pub use subtitle_format::{srt, vtt};
 pub use verify::{verify_output, Expected, Verification};
@@ -72,6 +73,8 @@ pub struct ExportOptions {
     pub verify: bool,
     /// プロジェクトのデータのレンダーターゲットの `codec` を上書きする（`h264_nvenc`、`prores_422hq` など）。
     pub codec: Option<String>,
+    /// 配信の区間の書き方（コーデック `h264_ts` に要り、ほかでは `None`）。エンコーダーの設定の `stream` にそのまま渡す。
+    pub stream: Option<StreamOutput>,
     /// 並行に描くレンダラーの数。0 と 1 は並行にしない（`Engine` のレンダラー 1 つで描く）。
     /// 2 以上は、レンダラーを作れる設定で組んだ別の `Engine` をその数だけ作り、区間をチャンクに分けて描かせる。
     pub parallel: usize,

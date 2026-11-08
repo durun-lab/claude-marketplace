@@ -191,6 +191,12 @@ pub trait Decoder: Send {
 pub trait DecoderFactory: Send + Sync {
     /// 実装の名前（`ffmpeg`、`d3d12va`、`cuvid`、モックは `sample`）。
     fn id(&self) -> &'static str;
+    /// 開いたデコーダーが [`Decoder::backend_id`] で名乗りうる名前の全部（`backend_id` が `None` なら `id()`）。
+    /// レンダラーはまだ開いていない素材のキャッシュのキーに入れ、どれかの画素の作り方のバージョンが上がったら前の画像を引かない。
+    /// 名乗る名前を足した実装は、ここにも足す。既定は `[id()]`。
+    fn backend_ids(&self) -> Vec<&'static str> {
+        vec![self.id()]
+    }
     /// 素材を開く。壊れていれば `Err(Corrupt)`。`gpu` が `Some` なら、同じデバイスの上の
     /// GPU のフレームを返してよい。`None` か GPU のデコードに向かない素材では CPU のフレームを返す。
     fn open(&self, path: &Path, gpu: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>>;
