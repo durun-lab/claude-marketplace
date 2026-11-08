@@ -42,6 +42,19 @@ fn 名前の誤りでは符号を消さない() {
 }
 
 #[test]
+fn クッキーを保存しなかった登録は同じ名前の登録し直しを塞がない() {
+    let r = rig();
+    let lost = r.pair_unused("iPhone");
+    let kept = r.pair("iPhone");
+    let devices = r.mobile.devices().list().unwrap();
+    assert_eq!(devices.len(), 1, "{devices:?}");
+    let res = r.send(&Req::device(&lost), "GET", "/m/api/project", None);
+    assert_eq!((res.status, code(&res)), (401, "unknown_device".into()));
+    let res = r.send(&Req::device(&kept), "GET", "/m/api/project", None);
+    assert_eq!(res.status, 200);
+}
+
+#[test]
 fn 手で入れた符号は_crockford_の読み替えをする() {
     let r = rig();
     let c = r.mobile.devices().issue_code().unwrap().code;

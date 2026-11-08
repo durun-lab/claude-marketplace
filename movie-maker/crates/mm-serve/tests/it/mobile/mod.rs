@@ -117,8 +117,16 @@ impl Rig {
             .unwrap()
     }
 
-    /// 登録の符号を出して登録し、`Cookie` に入れる値（`mm_device=...`）を返す。
+    /// 登録の符号を出して登録し、資格を 1 回使って `Cookie` に入れる値（`mm_device=...`）を返す。
     pub fn pair(&self, name: &str) -> String {
+        let cookie = self.pair_unused(name);
+        let res = self.send(&Req::device(&cookie), "GET", "/m/api/project", None);
+        assert_eq!(res.status, 200, "{}", res.error_message());
+        cookie
+    }
+
+    /// 登録だけして資格を使わない（端末がクッキーを保存しなかった登録）。
+    pub fn pair_unused(&self, name: &str) -> String {
         let code = self.mobile.devices().issue_code().unwrap().code;
         let res = self.send(
             &Req::tailnet(),

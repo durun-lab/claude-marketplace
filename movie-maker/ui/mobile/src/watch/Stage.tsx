@@ -15,8 +15,9 @@ export interface StageProps {
 export const Stage = ({ videoRef, playing, failed, shapes, editing, onToggle }: StageProps) => (
   <div class="stage">
     <video ref={videoRef} playsInline preload="metadata" onClick={editing ? undefined : onToggle} />
-    <DrawLayer shapes={shapes} editing={editing} />
+    {/* 映像を読めない知らせは描き込みの下に置き、映像が無くても描けて線も暗くならない */}
     {failed && <p class="overlay">Video is not available yet.</p>}
+    <DrawLayer shapes={shapes} editing={editing} />
     {!playing && !failed && !editing && (
       <button type="button" class="play" aria-label="Play" onClick={onToggle}>
         <svg viewBox="0 0 24 24" aria-hidden="true">
