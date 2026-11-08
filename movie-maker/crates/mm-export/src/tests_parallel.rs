@@ -265,6 +265,8 @@ fn コーデックのコンテナと合わない拡張子は書き出す前に�
         ("h264_nvenc", "a.mov", false),
         ("libx264", "a.mkv", false),
         ("hevc_nvenc", "a", false),
+        ("h264_ts", "a.ts", true),
+        ("h264_ts", "a.mp4", false),
         ("sample", "a.json", true),
     ] {
         let r = check_container(codec, Path::new(name));

@@ -1,4 +1,4 @@
-//! 外部のツール（ffmpeg の CLI）を呼ぶ。HLS の最後の符号化と素材の音だけの変換が使う。
+//! 外部のツール（ffmpeg の CLI）を呼ぶ。素材の音だけの変換が使う。
 
 use std::ffi::{OsStr, OsString};
 use std::path::Path;
