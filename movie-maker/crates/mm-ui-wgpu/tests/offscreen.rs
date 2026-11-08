@@ -401,7 +401,7 @@ fn 描き込みは表示の倍率とウィンドウの大きさが変わると�
     assert!(close(base, [0, 0, 0], 2), "倍率 1 では点の外 {base:?}");
     ui.set_scale_factor(2.0);
     let hidpi = render(&device, &queue, &mut ui);
-    // 倍率が変わると Timeline の物理の高さも変わり、Program の領域が動く。
+    // 表示の倍率が変わると Timeline の物理ピクセルの高さも変わり、Program の領域が動く。
     let [x, y] = centre(&ui);
     let wide = px(&hidpi, x as u32 + 8, y as u32);
     assert!(
@@ -430,10 +430,10 @@ fn longest_run(points: impl Iterator<Item = [u8; 3]>, hit: impl Fn([u8; 3]) -> b
     best
 }
 
-/// 帯の高さとつまみの幅は論理ピクセルで決まり、倍率 1.5 と 2 でも同じ見た目の大きさになる。
-/// つまみは物理ピクセルのポインターで光らせるので、当たり判定も同じ倍率で換算されていることを確かめる。
+/// 帯の高さとつまみの幅は論理ピクセルで決まり、表示の倍率 1.5 と 2 でも同じ見た目の大きさになる。
+/// つまみは物理ピクセルのポインターで光らせるので、当たり判定も同じ表示の倍率で換算されていることを確かめる。
 #[test]
-fn timeline_の帯とつまみは表示の倍率を掛けても論理の寸法を保つ() {
+fn timeline_の帯とつまみは表示の倍率を掛けても論理ピクセルの寸法を保つ() {
     let Some((device, queue)) = gpu() else { return };
     let bar = hex(palette::lighten(
         palette::item_color(ItemKind::Footage),
@@ -467,7 +467,7 @@ fn timeline_の帯とつまみは表示の倍率を掛けても論理の寸法�
             let want = logical * scale;
             assert!(
                 (got as f32 - want).abs() <= 1.0,
-                "倍率 {scale}: {name} {got} 物理ピクセル（期待 {want}）"
+                "表示の倍率 {scale}: {name} {got} 物理ピクセル（期待 {want}）"
             );
         }
     }

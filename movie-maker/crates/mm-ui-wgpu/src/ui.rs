@@ -170,7 +170,7 @@ impl Ui {
     }
 
     /// 表示の倍率（DPI / 96）。Timeline の寸法と描き込みの太さを論理ピクセルで揃える。
-    /// 倍率の違うモニターへ動かして変わったときは、同じ物理の大きさでも割り付けを計算し直す。
+    /// 表示の倍率の違うモニターへ動かしたときは、物理ピクセルの大きさが同じでも割り付けを計算し直す。
     pub fn set_scale_factor(&mut self, factor: f32) {
         let scale = Scale::new(factor);
         if scale != self.scale {

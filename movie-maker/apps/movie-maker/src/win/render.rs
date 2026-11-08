@@ -222,7 +222,7 @@ impl View {
     }
 
     /// サーフェスを `(w, h)`（物理ピクセル）に張り直し、`hwnd` の表示の倍率を UI に渡す。
-    /// 倍率はモニターをまたぐと物理の大きさと別に変わるので、毎フレーム読む。
+    /// 表示の倍率はモニターをまたぐと物理ピクセルの大きさと別に変わるので、毎フレーム読む。
     fn configure(&mut self, hwnd: isize, (w, h): (u32, u32)) {
         self.ui.set_scale_factor(surface::scale_factor(hwnd));
         if (w, h) != self.configured {
