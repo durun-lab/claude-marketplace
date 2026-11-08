@@ -78,6 +78,7 @@ const fakeReview = (): ReviewApi => ({
   comments: vi.fn().mockResolvedValue([]),
   replyComment: vi.fn(),
   setCommentState: vi.fn(),
+  focusComment: vi.fn().mockResolvedValue(undefined),
   seek: vi.fn().mockResolvedValue(undefined),
   onCommentsChanged: vi.fn().mockResolvedValue(() => {}),
 });

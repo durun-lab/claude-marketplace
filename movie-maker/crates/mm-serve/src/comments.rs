@@ -31,7 +31,7 @@ pub struct CommentEvent {
 fn require_human(caller: &Caller, what: &str) -> Result<(), ServeError> {
     if caller.entry.is_claude() {
         return Err(ServeError::Forbidden(format!(
-            "{what}は人の操作経路だけ。Claude はコメントを読んで返信する"
+            "{what}人の操作経路だけ。Claude はコメントを読んで返信する"
         )));
     }
     Ok(())

@@ -2,7 +2,9 @@
 
 use mm_gpu::{GpuContext, GpuRequest};
 use mm_types::{Rgba, RgbaImage, Size};
-use mm_ui_layout::{palette, Item, ItemKind, TimelineModel};
+use mm_ui_layout::{
+    fit_rect, frame_point, palette, DrawingShape, DrawingShapeKind, Item, ItemKind, TimelineModel,
+};
 use mm_ui_wgpu::{Region, Ui};
 
 const W: u32 = 640;
@@ -34,11 +36,21 @@ fn model() -> TimelineModel {
 
 /// 描いた結果を RGBA8 で返す（行は詰めてある）。
 fn render(device: &wgpu::Device, queue: &wgpu::Queue, ui: &mut Ui) -> Vec<u8> {
+    render_sized(device, queue, ui, (W, H))
+}
+
+/// `w`x`h` のテクスチャに描く。`ui` は先に同じ大きさへ `resize` しておく。
+fn render_sized(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    ui: &mut Ui,
+    (w, h): (u32, u32),
+) -> Vec<u8> {
     let texture = device.create_texture(&wgpu::TextureDescriptor {
         label: None,
         size: wgpu::Extent3d {
-            width: W,
-            height: H,
+            width: w,
+            height: h,
             depth_or_array_layers: 1,
         },
         mip_level_count: 1,
@@ -49,10 +61,21 @@ fn render(device: &wgpu::Device, queue: &wgpu::Queue, ui: &mut Ui) -> Vec<u8> {
         view_formats: &[],
     });
     ui.render(device, queue, &texture.create_view(&Default::default()));
-    let row = (W * 4).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
+    read_back(device, queue, &texture, 4)
+}
+
+/// テクスチャの画素を読み戻す（行は詰めてある）。`bpp` は 1 画素のバイト数。
+fn read_back(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    texture: &wgpu::Texture,
+    bpp: u32,
+) -> Vec<u8> {
+    let (w, h) = (texture.width(), texture.height());
+    let row = (w * bpp).next_multiple_of(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT);
     let buffer = device.create_buffer(&wgpu::BufferDescriptor {
         label: None,
-        size: u64::from(row * H),
+        size: u64::from(row * h),
         usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
         mapped_at_creation: false,
     });
@@ -64,12 +87,12 @@ fn render(device: &wgpu::Device, queue: &wgpu::Queue, ui: &mut Ui) -> Vec<u8> {
             layout: wgpu::TexelCopyBufferLayout {
                 offset: 0,
                 bytes_per_row: Some(row),
-                rows_per_image: Some(H),
+                rows_per_image: Some(h),
             },
         },
         wgpu::Extent3d {
-            width: W,
-            height: H,
+            width: w,
+            height: h,
             depth_or_array_layers: 1,
         },
     );
@@ -81,16 +104,21 @@ fn render(device: &wgpu::Device, queue: &wgpu::Queue, ui: &mut Ui) -> Vec<u8> {
         .poll(wgpu::PollType::wait_indefinitely())
         .expect("poll");
     let mapped = buffer.slice(..).get_mapped_range().expect("range");
-    let mut out = Vec::with_capacity((W * H * 4) as usize);
-    for y in 0..H {
+    let mut out = Vec::with_capacity((w * h * bpp) as usize);
+    for y in 0..h {
         let start = (y * row) as usize;
-        out.extend_from_slice(&mapped[start..start + (W * 4) as usize]);
+        out.extend_from_slice(&mapped[start..start + (w * bpp) as usize]);
     }
     out
 }
 
 fn px(img: &[u8], x: u32, y: u32) -> [u8; 3] {
-    let i = ((y * W + x) * 4) as usize;
+    px_in(img, W, x, y)
+}
+
+/// 幅 `w` の画像の画素。
+fn px_in(img: &[u8], w: u32, x: u32, y: u32) -> [u8; 3] {
+    let i = ((y * w + x) * 4) as usize;
     [img[i], img[i + 1], img[i + 2]]
 }
 
@@ -172,7 +200,9 @@ fn filled_texture(device: &wgpu::Device, queue: &wgpu::Queue, value: f64) -> wgp
         sample_count: 1,
         dimension: wgpu::TextureDimension::D2,
         format: wgpu::TextureFormat::Rgba16Float,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::TEXTURE_BINDING
+            | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
     });
     let view = texture.create_view(&Default::default());
@@ -284,4 +314,105 @@ fn 再生位置の線が時刻の位置に立つ() {
     let found =
         (x.saturating_sub(2)..=x + 2).any(|xx| close(px(&out, xx, y), hex(palette::PLAYHEAD), 3));
     assert!(found, "x={x} の近くに再生位置の線");
+}
+
+fn point_shape(u: f32, v: f32) -> DrawingShape {
+    DrawingShape {
+        kind: DrawingShapeKind::Point,
+        points: vec![[u, v]],
+    }
+}
+
+/// 描き込みはサーフェスにだけ重ね、レンダラーから借りたフレームのテクスチャ（キャッシュと書き出しの元）には書かない。
+#[test]
+fn 描き込みは映像の矩形に重ね_フレームのテクスチャには書かない() {
+    let Some((device, queue)) = gpu() else { return };
+    let mut ui = Ui::new(&device, FORMAT);
+    ui.set_model(model());
+    ui.resize(W, H);
+    let texture = filled_texture(&device, &queue, 0.0);
+    let before = read_back(&device, &queue, &texture, 8);
+    ui.set_frame_texture(&device, &texture);
+    ui.set_drawing(vec![point_shape(0.25, 0.5)]);
+    let out = render(&device, &queue, &mut ui);
+
+    let frame = fit_rect(16.0, 9.0, ui.layout().program);
+    let [x, y] = frame_point(frame, [0.25, 0.5]);
+    let at = px(&out, x as u32, y as u32);
+    assert!(close(at, hex(palette::DRAWING), 3), "描き込みの点 {at:?}");
+    let [fx, fy] = frame_point(frame, [0.75, 0.5]);
+    let outside = px(&out, fx as u32, fy as u32);
+    assert!(
+        close(outside, [0, 0, 0], 2),
+        "点の外は映像のまま {outside:?}"
+    );
+    assert_eq!(
+        read_back(&device, &queue, &texture, 8),
+        before,
+        "フレームのテクスチャは変わらない"
+    );
+
+    ui.set_drawing(Vec::new());
+    let cleared = render(&device, &queue, &mut ui);
+    let after = px(&cleared, x as u32, y as u32);
+    assert!(close(after, [0, 0, 0], 2), "空で消える {after:?}");
+}
+
+#[test]
+fn 描き込みはレターボックスの余白でなく映像の縁に合わせる() {
+    let Some((device, queue)) = gpu() else { return };
+    let mut ui = Ui::new(&device, FORMAT);
+    ui.set_model(model());
+    ui.resize(W, H);
+    // 縦長の映像は Program の領域の左右に余白ができる。
+    let img = RgbaImage::filled(Size::new(9, 16), Rgba::new(0.0, 0.0, 0.0, 1.0));
+    ui.set_frame(&device, &queue, &img);
+    ui.set_drawing(vec![point_shape(0.0, 0.5)]);
+    let out = render(&device, &queue, &mut ui);
+    let area = ui.layout().program;
+    let frame = fit_rect(9.0, 16.0, area);
+    assert!(frame.x > area.x + 20.0, "左に余白がある");
+    let y = (frame.y + frame.h / 2.0) as u32;
+    let edge = px(&out, (frame.x + 1.0) as u32, y);
+    assert!(close(edge, hex(palette::DRAWING), 3), "映像の左端 {edge:?}");
+    let margin = px(&out, (area.x + 2.0) as u32, y);
+    assert!(
+        close(margin, hex(palette::PROGRAM_BACKDROP), 2),
+        "余白 {margin:?}"
+    );
+}
+
+/// 頂点は条件が同じ間は作り直さないので、表示の倍率とウィンドウの大きさを変えたら描き直されることを確かめる。
+#[test]
+fn 描き込みは表示の倍率とウィンドウの大きさが変わると描き直す() {
+    let Some((device, queue)) = gpu() else { return };
+    let mut ui = Ui::new(&device, FORMAT);
+    ui.set_model(model());
+    ui.resize(W, H);
+    let img = RgbaImage::filled(Size::new(16, 9), Rgba::new(0.0, 0.0, 0.0, 1.0));
+    ui.set_frame(&device, &queue, &img);
+    ui.set_drawing(vec![point_shape(0.5, 0.5)]);
+    let first = render(&device, &queue, &mut ui);
+    let [x, y] = frame_point(fit_rect(16.0, 9.0, ui.layout().program), [0.5, 0.5]);
+    // 点の中心から 8 画素の所は、倍率 1（直径 12）では点の外、倍率 2（直径 24）では点の中。
+    let (ox, oy) = (x as u32 + 8, y as u32);
+    let base = px(&first, ox, oy);
+    assert!(close(base, [0, 0, 0], 2), "倍率 1 では点の外 {base:?}");
+    ui.set_scale_factor(2.0);
+    let hidpi = render(&device, &queue, &mut ui);
+    let wide = px(&hidpi, ox, oy);
+    assert!(
+        close(wide, hex(palette::DRAWING), 3),
+        "倍率 2 では点の中 {wide:?}"
+    );
+
+    let small = (W / 2, H / 2);
+    ui.resize(small.0, small.1);
+    let out = render_sized(&device, &queue, &mut ui, small);
+    let [sx, sy] = frame_point(fit_rect(16.0, 9.0, ui.layout().program), [0.5, 0.5]);
+    let at = px_in(&out, small.0, sx as u32, sy as u32);
+    assert!(
+        close(at, hex(palette::DRAWING), 3),
+        "小さくしても映像の中央 {at:?}"
+    );
 }

@@ -83,6 +83,8 @@ export interface ReviewApi {
   replyComment: (id: string, text: string) => Promise<Comment>;
   /** `fresh` は Claude の対応でだけなるので決められない。 */
   setCommentState: (id: string, state: Exclude<CommentState, "fresh">) => Promise<Comment>;
+  /** 選んだコメントをアプリに知らせる。その描き込みを、再生位置がコメントの時刻か範囲にある間だけ Program に重ねる。`null` で外す。 */
+  focusComment: (id: string | null) => Promise<void>;
   /** 再生位置を秒で動かす（`transport` の `seek`）。 */
   seek: (seconds: number) => Promise<void>;
   onCommentsChanged: (handler: (event: CommentEvent) => void) => Promise<() => void>;
@@ -116,6 +118,9 @@ export const createIpcReviewApi = (
     comments: () => run("review_comments"),
     replyComment: (id, text) => run("review_comment_reply", { id, text }),
     setCommentState: (id, state) => run("review_comment_state", { id, value: state }),
+    focusComment: async (id) => {
+      await run("review_comment_focus", { id });
+    },
     seek: async (seconds) => {
       await run("transport", { action: "seek", value: seconds });
     },

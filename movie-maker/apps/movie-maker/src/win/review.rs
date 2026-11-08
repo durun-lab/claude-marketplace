@@ -13,6 +13,8 @@ use mm_store::ProposalState;
 use crate::win::playback::Command;
 use crate::win::state::Shared;
 
+pub mod drawing;
+
 /// Program に適用して見せている提案。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Preview {

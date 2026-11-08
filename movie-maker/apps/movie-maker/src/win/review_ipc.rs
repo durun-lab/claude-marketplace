@@ -7,7 +7,7 @@ use mm_serve::{Approval, Caller, Core, ProposalView};
 use mm_store::{Comment, CommentFilter, CommentState};
 use tauri::{Emitter, State};
 
-use crate::win::review::{self, Preview};
+use crate::win::review::{self, drawing, Preview};
 use crate::win::state::Shared;
 
 /// このパネルのコマンドを呼び出す。知らない名前には `false` を返す。
@@ -15,6 +15,7 @@ pub fn handler(invoke: tauri::ipc::Invoke) -> bool {
     let h: fn(tauri::ipc::Invoke) -> bool = tauri::generate_handler![
         review_list,
         review_approve,
+        review_comment_focus,
         review_comment_reply,
         review_comment_state,
         review_comments,
@@ -138,14 +139,28 @@ pub async fn review_preview(
 const COMMENTS_CHANGED_EVENT: &str = "mm:comments-changed";
 
 /// コメントの通知を WebView へ転送するスレッドを始める。モバイルや Claude が書いたものも同じ道で届く。
-pub fn forward_comments(app: &tauri::AppHandle, core: &Core) {
-    let handle = app.clone();
+/// 通知のたびに、Program に重ねる描き込みも読み直す。
+pub fn forward_comments(app: &tauri::AppHandle, shared: &Arc<Shared>) {
+    let Some(core) = shared.core.get() else {
+        return;
+    };
+    let (handle, s, c) = (app.clone(), shared.clone(), core.clone());
     let started = core.on_comment(move |event| {
+        drawing::reload(&s, &c);
         let _ = handle.emit(COMMENTS_CHANGED_EVENT, event);
     });
     if let Err(e) = started {
         tracing::warn!("コメントの通知を受けるスレッドを始められない: {e}");
     }
+    // 購読を始めてから読むので、その間に書かれたコメントも取りこぼさない。
+    drawing::reload(shared, core);
+}
+
+/// Review で選んだコメント。その描き込みを、再生位置がコメントの時刻か範囲にある間だけ Program に重ねる。`None` で外す。
+#[tauri::command]
+pub async fn review_comment_focus(state: Review<'_>, id: Option<String>) -> Result<(), String> {
+    state.shared.review_drawing.focus(id);
+    Ok(())
 }
 
 /// 全部のコメント（書いた順）。絞り込みはパネルが持つ。
