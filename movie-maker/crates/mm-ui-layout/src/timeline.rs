@@ -40,6 +40,33 @@ pub struct CutBar {
     pub disabled_after: bool,
 }
 
+/// レイヤーの端のつまみで動かせる範囲（コンポジションの秒）。`trimLayer` が拒否しない範囲に合わせ、
+/// ドラッグを素材の先頭と終わりで止める（Premiere や Resolve のトリムと同じ）。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct TrimBounds {
+    /// 帯の左端を動かせる最も前の時刻（素材の先頭）。
+    pub min_start: f64,
+    /// 帯の右端を動かせる最も後の時刻（素材の終わり）。
+    pub max_end: f64,
+    /// イン点を動かせない（タイムリマップのあるレイヤー）。
+    pub fixed_in: bool,
+}
+
+impl TrimBounds {
+    /// 素材の長さが無いレイヤー（静止画、文字、単色など）。長さを 1 フレーム残す限り縛らない。
+    pub const FREE: Self = Self {
+        min_start: f64::NEG_INFINITY,
+        max_end: f64::INFINITY,
+        fixed_in: false,
+    };
+}
+
+impl Default for TrimBounds {
+    fn default() -> Self {
+        Self::FREE
+    }
+}
+
 /// Timeline に並ぶレイヤー 1 本。
 #[derive(Debug, Clone, PartialEq)]
 pub struct Item {
@@ -50,6 +77,8 @@ pub struct Item {
     pub enabled: bool,
     /// シーケンスのレイヤーのカット。先頭から順。シーケンス以外は空。
     pub cuts: Vec<CutBar>,
+    /// 端のつまみで動かせる範囲。
+    pub trim: TrimBounds,
 }
 
 impl Item {
@@ -61,6 +90,7 @@ impl Item {
             kind,
             enabled,
             cuts: Vec::new(),
+            trim: TrimBounds::FREE,
         }
     }
 }
@@ -140,15 +170,18 @@ pub fn row_top(index: usize) -> f32 {
 
 /// 帯の左端と幅（x、w）。
 pub fn bar_span(view: &TimeView, item: &Item) -> (f32, f32) {
-    let x = view.x_of(item.start);
-    let w = (view.x_of(item.end) - x).max(MIN_BAR_PX);
-    (x, w)
+    span(view, item.start, item.end)
 }
 
 /// カットの帯の左端と幅（x、w）。
 pub fn cut_span(view: &TimeView, bar: &CutBar) -> (f32, f32) {
-    let x = view.x_of(bar.start);
-    let w = (view.x_of(bar.end) - x).max(MIN_BAR_PX);
+    span(view, bar.start, bar.end)
+}
+
+/// 時刻 `[start, end)` の帯の左端と幅（x、w）。短い帯も掴めるように最小の幅を持たせる。
+pub(crate) fn span(view: &TimeView, start: f64, end: f64) -> (f32, f32) {
+    let x = view.x_of(start);
+    let w = (view.x_of(end) - x).max(MIN_BAR_PX);
     (x, w)
 }
 

@@ -1,8 +1,10 @@
 //! レイヤーとその付属（変形、時間、重ね方、マスク、効果、音）。
 
 mod shape;
+mod trim;
 
 pub use shape::{Crop, Fade, FadeCurve, MaskRect};
+pub use trim::TrimRoom;
 
 use serde::{Deserialize, Serialize};
 

@@ -44,6 +44,8 @@ pub enum PointerEvent {
     },
     /// ポインターが Timeline から出た。
     Leave,
+    /// 離す前にドラッグが終わった（Esc、ほかのウィンドウがキャプチャーを取った）。編集を確定せずに捨てる。
+    Cancel,
 }
 
 /// 操作の結果。
@@ -127,6 +129,7 @@ impl TimelineController {
             selected: self.selected,
             selected_cut: self.selected_cut,
             guide: self.guide,
+            preview: self.last_edit,
             palette: Palette::DEFAULT,
         }
     }
@@ -148,6 +151,12 @@ impl TimelineController {
             }
             PointerEvent::Leave => {
                 self.hover = Hit::Empty;
+                Vec::new()
+            }
+            PointerEvent::Cancel => {
+                self.drag = Drag::None;
+                self.guide = None;
+                self.last_edit = None;
                 Vec::new()
             }
         }

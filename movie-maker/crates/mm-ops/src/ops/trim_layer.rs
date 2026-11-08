@@ -2,8 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use mm_doc::{Project, FOOTAGE_KIND, FOOTAGE_PARAM};
-use mm_types::{LayerId, ParamValue, RationalTime, Result};
+use mm_doc::Project;
+use mm_types::{LayerId, Result};
 
 use crate::op::{Apply, Op};
 use crate::ops::{invalid, negate, node_refs, Edge};
@@ -12,6 +12,7 @@ use crate::touches::Touches;
 /// レイヤー `layer` の `edge` を、コンポジションの時間軸で `by` だけ動かす（素材の時間では `by × speed`）。
 /// イン点は帯の左端と素材の位置を一緒に動かし（`start` と `in`）、画は動かない。アウト点は `out` だけ。
 /// 正に動かすとイン点は短く、アウト点は長くなる。タイムリマップのあるレイヤーのイン点は拒否する（写像の起点が動くため）。
+/// 動かせる範囲は素材の余白（`Layer::trim_room`）で、Timeline のつまみも同じ規則で止まる。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TrimLayer {
@@ -30,34 +31,17 @@ impl Apply for TrimLayer {
     }
 
     fn apply(&self, project: &mut Project) -> Result<Op> {
-        let duration = footage_duration(project, &self.layer)?;
+        self.check(project)?;
         let layer = project.layer_mut(&self.layer)?;
         let delta = self.by.scale(layer.speed)?;
-        let (mut start, mut in_point, mut out_point) =
-            (layer.start, layer.in_point, layer.out_point);
         match self.edge {
             Edge::In => {
-                if layer.time_remap.is_some() {
-                    return Err(invalid(format!(
-                        "レイヤー {} はタイムリマップを持つのでイン点を動かせない",
-                        self.layer
-                    )));
-                }
-                start = start.checked_add(self.by)?;
-                in_point = in_point.checked_add(delta)?;
+                let start = layer.start.checked_add(self.by)?;
+                let in_point = layer.in_point.checked_add(delta)?;
+                (layer.start, layer.in_point) = (start, in_point);
             }
-            Edge::Out => out_point = out_point.checked_add(delta)?,
+            Edge::Out => layer.out_point = layer.out_point.checked_add(delta)?,
         }
-        if let Some(duration) = duration {
-            if in_point < RationalTime::ZERO || out_point > duration {
-                return Err(invalid(format!(
-                    "レイヤー {} が素材の外（0 から {} 秒）にはみ出す",
-                    self.layer,
-                    duration.to_f64()
-                )));
-            }
-        }
-        (layer.start, layer.in_point, layer.out_point) = (start, in_point, out_point);
         Ok(TrimLayer {
             layer: self.layer.clone(),
             edge: self.edge,
@@ -67,14 +51,28 @@ impl Apply for TrimLayer {
     }
 }
 
-/// 撮影素材のレイヤーの素材の長さ。撮影素材でなければ `None`（範囲は縛らない）。
-fn footage_duration(project: &Project, layer: &LayerId) -> Result<Option<RationalTime>> {
-    let (_, layer) = project.layer(layer)?;
-    if layer.source.kind != FOOTAGE_KIND {
-        return Ok(None);
-    }
-    match layer.source.params.get(FOOTAGE_PARAM).map(|p| &p.value) {
-        Some(ParamValue::AssetRef(id)) => Ok(Some(project.asset(id)?.duration)),
-        _ => Ok(None),
+impl TrimLayer {
+    /// 素材の余白を越える動かし方と、タイムリマップのあるレイヤーのイン点を拒否する。
+    fn check(&self, project: &Project) -> Result<()> {
+        let (_, layer) = project.layer(&self.layer)?;
+        let room = layer.trim_room(project)?;
+        let allowed = match self.edge {
+            Edge::In if room.fixed_in => {
+                return Err(invalid(format!(
+                    "レイヤー {} はタイムリマップを持つのでイン点を動かせない",
+                    self.layer
+                )));
+            }
+            Edge::In => room.allows_in(self.by)?,
+            Edge::Out => room.allows_out(self.by),
+        };
+        if allowed {
+            Ok(())
+        } else {
+            Err(invalid(format!(
+                "レイヤー {} が素材の外にはみ出す",
+                self.layer
+            )))
+        }
     }
 }

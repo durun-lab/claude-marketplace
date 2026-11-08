@@ -10,8 +10,8 @@ use windows::Win32::Graphics::Gdi::ScreenToClient;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetKeyState, ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
-    VK_CONTROL, VK_F4, VK_MENU, VK_SHIFT,
+    GetCapture, GetKeyState, ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE,
+    TRACKMOUSEEVENT, VK_CONTROL, VK_ESCAPE, VK_F4, VK_MENU, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, IsWindow, LoadCursorW, PostMessageW, RegisterClassW,
@@ -159,12 +159,37 @@ fn key_name(vk: u32) -> String {
 
 /// サーフェスの HWND に、左ボタンを押して `from` から `to` まで動かして離すメッセージを投げる（自動試験用）。
 pub fn post_drag(hwnd: isize, from: (i32, i32), to: (i32, i32)) {
-    let lparam = |(x, y): (i32, i32)| LPARAM((((y & 0xFFFF) << 16) | (x & 0xFFFF)) as isize);
-    let h = HWND(hwnd as *mut _);
+    post_press(hwnd, from, to);
+    post_release(hwnd, to);
+}
+
+/// 左ボタンを押して `from` から `to` まで動かし、離さずに止める（ドラッグ中の画面を撮る自動試験用）。
+pub fn post_press(hwnd: isize, from: (i32, i32), to: (i32, i32)) {
+    post_mouse(hwnd, WM_LBUTTONDOWN, from);
+    post_mouse(hwnd, WM_MOUSEMOVE, to);
+}
+
+/// `at` で左ボタンを離す。
+pub fn post_release(hwnd: isize, at: (i32, i32)) {
+    post_mouse(hwnd, WM_LBUTTONUP, at);
+}
+
+/// Esc を押すメッセージを投げる（ドラッグの取り消しの自動試験用）。
+pub fn post_escape(hwnd: isize) {
     unsafe {
-        let _ = PostMessageW(Some(h), WM_LBUTTONDOWN, WPARAM(0), lparam(from));
-        let _ = PostMessageW(Some(h), WM_MOUSEMOVE, WPARAM(0), lparam(to));
-        let _ = PostMessageW(Some(h), WM_LBUTTONUP, WPARAM(0), lparam(to));
+        let _ = PostMessageW(
+            Some(HWND(hwnd as *mut _)),
+            WM_KEYDOWN,
+            WPARAM(usize::from(VK_ESCAPE.0)),
+            LPARAM(0),
+        );
+    }
+}
+
+fn post_mouse(hwnd: isize, msg: u32, (x, y): (i32, i32)) {
+    let lparam = LPARAM((((y & 0xFFFF) << 16) | (x & 0xFFFF)) as isize);
+    unsafe {
+        let _ = PostMessageW(Some(HWND(hwnd as *mut _)), msg, WPARAM(0), lparam);
     }
 }
 
@@ -227,6 +252,10 @@ fn passes_to_system(vk: u32) -> bool {
     vk == u32::from(VK_F4.0)
 }
 
+fn is_escape(wparam: WPARAM) -> bool {
+    wparam.0 as u32 == u32::from(VK_ESCAPE.0)
+}
+
 /// キーの押下を、押し続けの繰り返しを除いてキーの表に渡す。
 fn key_pressed(wparam: WPARAM, lparam: LPARAM) {
     if is_key_repeat(lparam) {
@@ -254,16 +283,18 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             });
             LRESULT(0)
         }
+        // 離したことを先に送る。キャプチャーを放すと続けて WM_CAPTURECHANGED（取り消し）が届くため。
         WM_LBUTTONUP => {
+            push(PointerEvent::Up);
             unsafe {
                 let _ = ReleaseCapture();
             }
-            push(PointerEvent::Up);
             hotpatch::set_input(false);
             LRESULT(0)
         }
-        // ボタンを離す前にキャプチャーを失ったとき（別のウィンドウが取ったなど）も、ドラッグの終わりとみなす。
+        // 離す前にキャプチャーを失ったとき（Esc、別のウィンドウが取った）は、ドラッグを確定せずに取り消す。
         WM_CAPTURECHANGED => {
+            push(PointerEvent::Cancel);
             hotpatch::set_input(false);
             LRESULT(0)
         }
@@ -280,6 +311,13 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         }
         WM_MOUSEWHEEL => {
             push(wheel_event(hwnd, wparam, lparam));
+            LRESULT(0)
+        }
+        // ドラッグ中の Esc はキャプチャーを放してドラッグを取り消し、キーの表には渡さない。
+        WM_KEYDOWN if is_escape(wparam) && unsafe { GetCapture() } == hwnd => {
+            unsafe {
+                let _ = ReleaseCapture();
+            }
             LRESULT(0)
         }
         WM_KEYDOWN => {
