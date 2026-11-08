@@ -94,7 +94,8 @@ const SELECT: &str =
        p.base_version, p.ops, p.touches, p.state, p.decided_kind, p.decided_name, p.decided_at_ms,
        p.txn_id, p.approved_ops,
        EXISTS (SELECT 1 FROM undo_stack u WHERE u.txn_id = p.txn_id AND u.pos <= ?1),
-       EXISTS (SELECT 1 FROM undo_stack u WHERE u.txn_id = p.txn_id AND u.pos = ?1)
+       EXISTS (SELECT 1 FROM undo_stack u WHERE u.txn_id = p.txn_id AND u.pos = ?1),
+       p.actor_device, p.decided_device
 FROM proposals p";
 
 impl Store {
@@ -144,8 +145,8 @@ impl Store {
         self.conn
             .execute(
                 "INSERT INTO proposals(name, entry, actor_kind, actor_name, at_ms, responds_to,
-                                       base_version, ops, touches, state)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'pending')",
+                                       base_version, ops, touches, state, actor_device)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, 'pending', ?10)",
                 params![
                     txn.name,
                     entry_str(meta.entry)?,
@@ -156,6 +157,7 @@ impl Store {
                     meta.base,
                     serde_json::to_string(&txn.ops)?,
                     serde_json::to_string(&touches.to_vec())?,
+                    meta.actor.device,
                 ],
             )
             .sql()?;
@@ -235,7 +237,7 @@ impl Store {
             let changed = tx
                 .execute(
                     "UPDATE proposals SET state = 'approved', decided_kind = ?2, decided_name = ?3,
-                            decided_at_ms = ?4, txn_id = ?5, approved_ops = ?6
+                            decided_at_ms = ?4, txn_id = ?5, approved_ops = ?6, decided_device = ?7
                      WHERE id = ?1 AND state = 'pending'",
                     params![
                         id,
@@ -243,7 +245,8 @@ impl Store {
                         decider.name,
                         at_ms,
                         stored.id,
-                        serde_json::to_string(&indices)?
+                        serde_json::to_string(&indices)?,
+                        decider.device,
                     ],
                 )
                 .sql()?;
@@ -265,9 +268,9 @@ impl Store {
             .conn
             .execute(
                 "UPDATE proposals SET state = 'rejected', decided_kind = ?2, decided_name = ?3,
-                        decided_at_ms = ?4
+                        decided_at_ms = ?4, decided_device = ?5
                  WHERE id = ?1 AND state = 'pending'",
-                params![id, decider.kind, decider.name, at_ms],
+                params![id, decider.kind, decider.name, at_ms, decider.device],
             )
             .sql()?;
         expect_one(changed, id)?;
@@ -288,7 +291,7 @@ impl Store {
             .conn
             .execute(
                 "UPDATE proposals SET state = 'pending', decided_kind = NULL, decided_name = NULL,
-                        decided_at_ms = NULL
+                        decided_at_ms = NULL, decided_device = NULL
                  WHERE id = ?1 AND state = 'rejected'",
                 [id],
             )
@@ -350,7 +353,7 @@ struct RawProposal {
     ops: String,
     touches: String,
     state: String,
-    decided: Option<(String, String)>,
+    decided: Option<Actor>,
     decided_at_ms: Option<i64>,
     txn_id: Option<i64>,
     approved_ops: Option<String>,
@@ -361,6 +364,7 @@ struct RawProposal {
 fn read_row(r: &Row) -> rusqlite::Result<RawProposal> {
     let decided_kind: Option<String> = r.get(11)?;
     let decided_name: Option<String> = r.get(12)?;
+    let decided_device: Option<String> = r.get(19)?;
     Ok(RawProposal {
         id: r.get(0)?,
         name: r.get(1)?,
@@ -368,6 +372,7 @@ fn read_row(r: &Row) -> rusqlite::Result<RawProposal> {
         actor: Actor {
             kind: r.get(3)?,
             name: r.get(4)?,
+            device: r.get(18)?,
         },
         at_ms: r.get(5)?,
         responds_to: r.get(6)?,
@@ -375,7 +380,11 @@ fn read_row(r: &Row) -> rusqlite::Result<RawProposal> {
         ops: r.get(8)?,
         touches: r.get(9)?,
         state: r.get(10)?,
-        decided: decided_kind.zip(decided_name),
+        decided: decided_kind.zip(decided_name).map(|(kind, name)| Actor {
+            kind,
+            name,
+            device: decided_device,
+        }),
         decided_at_ms: r.get(13)?,
         txn_id: r.get(14)?,
         approved_ops: r.get(15)?,
@@ -399,7 +408,7 @@ impl RawProposal {
             ops: serde_json::from_str(&self.ops)?,
             touches: serde_json::from_str(&self.touches)?,
             state,
-            decided_by: self.decided.map(|(kind, name)| Actor { kind, name }),
+            decided_by: self.decided,
             decided_at_ms: self.decided_at_ms,
             txn_id: self.txn_id,
             approved_ops: self

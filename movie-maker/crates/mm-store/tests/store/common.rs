@@ -49,10 +49,7 @@ pub fn project_with(layers: usize) -> Project {
 }
 
 pub fn actor() -> Actor {
-    Actor {
-        kind: "cli".into(),
-        name: "test".into(),
-    }
+    Actor::new("cli", "test")
 }
 
 /// レイヤー `l{i}` のロックを反転する操作。

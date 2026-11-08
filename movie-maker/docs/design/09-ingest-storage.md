@@ -61,11 +61,11 @@
 | `compositions` | コンポジションごとに 1 行。大きさ、fps、長さ、背景、マーカーの JSON | `id` |
 | `layers` | レイヤーごとに 1 行。`comp_id`、重なりの順 `z`、レイヤーの JSON（`source` のノード、時間、変形、効果、音、ロック） | `(comp_id, id)` |
 | `ops` | 操作の記録。通し番号、トランザクションの ID、操作の名前、引数、逆操作、`touches`、適用した後の `doc_version`（操作ごとに 1 進む）。取り消しの行は逆操作を適用した記録、やり直しの行は元の操作を再適用した記録 | `seq` |
-| `txns` | トランザクション（`mm-ops` の `TxnRecord`）ごとに 1 行。ID（1 からの通し番号）、トランザクションの種類（`normal` / `undo` / `redo`）と元のトランザクション（`of_txn`）、名前（「ドラッグ」「Claude の対応」）、誰が、いつ、どのコメントへの対応か、適用する前と後の `doc_version`、始めと終わりの `seq`。適用した行は後から書き換えない。`mm diff` は `doc_version` が範囲に入る行を読み、取り消しと元のトランザクションを対にして集約する | `id` |
+| `txns` | トランザクション（`mm-ops` の `TxnRecord`）ごとに 1 行。ID（1 からの通し番号）、トランザクションの種類（`normal` / `undo` / `redo`）と元のトランザクション（`of_txn`）、名前（「ドラッグ」「Claude の対応」）、誰が（種類、名前、モバイルの端末の ID `actor_device`）、いつ、どのコメントへの対応か、適用する前と後の `doc_version`、始めと終わりの `seq`。適用した行は後から書き換えない。`mm diff` は `doc_version` が範囲に入る行を読み、取り消しと元のトランザクションを対にして集約する | `id` |
 | `undo_stack` | 取り消しの列。通常のトランザクションの ID の並びと、今の位置（`meta.undo_pos`）。取り消しで位置が戻り、やり直しで進み、新しい操作で先が破棄される | `pos` |
 | `versions` | 名前付きバージョン。名前、日時、誰が、そのときの `doc_version` と `ops.seq`、書き出した JSON のハッシュ、git のコミット（あれば） | `id` |
 | `comments` | レビューのコメント。時刻か範囲、描き込み、返信、状態（`open` → `fresh` → `done`、`wontfix`）の JSON と、検索用の `state`、`comp_id` | `id` |
-| `proposals` | Claude の編集の提案（保留中のトランザクション）。名前、操作経路、発行元、対応するコメント、`base_version`、操作の JSON、`touches`、状態（`pending` / `approved` / `rejected`）、決めた者と時刻、承認で適用した `txn_id`、承認した操作の番号（[操作の「提案」](05-ops.md#提案)） | `id` |
+| `proposals` | Claude の編集の提案（保留中のトランザクション）。名前、操作経路、発行元、対応するコメント、`base_version`、操作の JSON、`touches`、状態（`pending` / `approved` / `rejected`）、決めた者と時刻（発行元と決めた者はモバイルの端末の ID `actor_device`、`decided_device` も持つ）、承認で適用した `txn_id`、承認した操作の番号（[操作の「提案」](05-ops.md#提案)） | `id` |
 | `search` | 段階 1 の検索。FTS5 の仮想表（`text`、`kind`、`owner`）。レイヤーの ID とノードの種類と文字のパラメータ、マーカーの名前、コンポジションの ID、素材のパスを、プロジェクトのデータの行を書くたびに同じトランザクションで入れ替える。トークナイザーは `trigram`（3 文字未満の語は部分一致で探す） | |
 | `marks`、`selections`、`topics`、`word_edits` | プロジェクトのデータの `bins` と `transcript_edits` を要素ごとに 1 行（`(id, json)`）。`marks` の ID は素材の ID、`word_edits` は `<素材>/<単語>`。話題の見出しと選別・話題のタグは `search` にも入れる | `id` |
 | `transcripts` | 素材ごとの文字起こしの元（コンテンツハッシュ、ツールの名前とバージョン、言語）。素材を外しても消さない（取り消しで戻るため） | `asset_id` |

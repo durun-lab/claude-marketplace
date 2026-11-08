@@ -11,7 +11,7 @@ use axum::extract::{Path, Query, State};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Extension, Json, Router};
-use mm_store::{Comment, CommentFilter, CommentState, NewComment, Shape, Store};
+use mm_store::{Actor, Comment, CommentFilter, CommentState, NewComment, Shape, Store};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::sync::broadcast;
@@ -35,6 +35,11 @@ fn require_human(caller: &Caller, what: &str) -> Result<(), ServeError> {
         )));
     }
     Ok(())
+}
+
+/// コメントの書き手。コメントは Claude とほかの端末にもそのまま返すので、端末の ID を除いた発行元の種類と名前だけを残す。
+fn author_of(caller: &Caller) -> Actor {
+    Actor::new(caller.actor.kind.clone(), caller.actor.name.clone())
 }
 
 impl Core {
@@ -82,7 +87,8 @@ impl Core {
     /// コメントを書く（人だけ）。
     pub fn add_comment(&self, new: &NewComment, caller: &Caller) -> Result<Comment, ServeError> {
         require_human(caller, "コメントを書くのは")?;
-        let c = self.with_store(|s| Ok(s.add_comment(new, &caller.actor, now_ms())?))?;
+        let author = author_of(caller);
+        let c = self.with_store(|s| Ok(s.add_comment(new, &author, now_ms())?))?;
         self.announce_comment(&c);
         Ok(c)
     }
@@ -94,7 +100,8 @@ impl Core {
         text: &str,
         caller: &Caller,
     ) -> Result<Comment, ServeError> {
-        let c = self.with_store(|s| Ok(s.reply_comment(id, &caller.actor, text, now_ms())?))?;
+        let author = author_of(caller);
+        let c = self.with_store(|s| Ok(s.reply_comment(id, &author, text, now_ms())?))?;
         self.announce_comment(&c);
         Ok(c)
     }
@@ -305,7 +312,6 @@ mod tests {
     use axum::extract::Request;
     use axum::middleware::{self, Next};
     use mm_doc::{Composition, Project};
-    use mm_store::Actor;
     use mm_types::{Id, Rational, RationalTime};
     use tokio::runtime::Runtime;
 
@@ -315,10 +321,7 @@ mod tests {
     async fn as_phone(mut req: Request, next: Next) -> Response {
         req.extensions_mut().insert(Caller {
             entry: mm_ops::Entry::WebView,
-            actor: Actor {
-                kind: "mobile".into(),
-                name: "Pixel".into(),
-            },
+            actor: Actor::new("mobile", "Pixel").with_device("d-pixel"),
         });
         next.run(req).await
     }
@@ -392,7 +395,10 @@ mod tests {
             .client
             .post("/m/api/comments/c-1/replies", &json!({"text": "追記"}))
             .unwrap();
-        assert_eq!(r.json().unwrap()["replies"][0]["author"]["name"], "Pixel");
+        assert_eq!(
+            r.json().unwrap()["replies"][0]["author"],
+            json!({"kind": "mobile", "name": "Pixel"})
+        );
         let s = p
             .client
             .post("/m/api/comments/c-1/state", &json!({"state": "done"}))
