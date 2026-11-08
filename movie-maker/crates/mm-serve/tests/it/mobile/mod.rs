@@ -11,6 +11,7 @@ mod ops;
 mod pairing;
 
 use std::path::Path;
+use std::sync::Arc;
 use std::time::Duration;
 
 use mm_doc::Project;
@@ -36,6 +37,11 @@ pub fn rig() -> Rig {
 }
 
 pub fn rig_with(tweak: impl FnOnce(&mut MobileConfig)) -> Rig {
+    rig_with_core(tweak).0
+}
+
+/// `rig_with` に加えて、PC のアプリ側の呼び出し（承認など）に使う `Core` を返す。
+pub fn rig_with_core(tweak: impl FnOnce(&mut MobileConfig)) -> (Rig, Arc<Core>) {
     let tmp = tempfile::tempdir().unwrap();
     let path =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/projects/stage0/project.json");
@@ -47,13 +53,14 @@ pub fn rig_with(tweak: impl FnOnce(&mut MobileConfig)) -> Rig {
     let mut config = MobileConfig::new(vec![HOST.into()], tmp.path().join("devices.json"));
     config.port = 0;
     tweak(&mut config);
-    let mobile = MobileServer::start(core, config).unwrap();
-    Rig {
+    let mobile = MobileServer::start(core.clone(), config).unwrap();
+    let rig = Rig {
         tmp,
         claude,
         mobile,
         _server: server,
-    }
+    };
+    (rig, core)
 }
 
 /// 人の待ち受けに送るヘッダー。`None` のヘッダーは付けない。
