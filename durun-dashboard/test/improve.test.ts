@@ -42,7 +42,7 @@ test('自動実装の設定を、改善要望のトリガーを持つワーク�
   state.improve = { enabled: true, model: 'opus' };
   startWorkflows();
   const [def] = JSON.parse(fs.readFileSync(WORKFLOWS_FILE, 'utf8')).workflows;
-  assert.deepEqual([def.id, def.enabled, def.model, def.mode, def.triggers], ['improve', true, 'opus', 'new', [{ kind: 'feedback' }]]);
+  assert.deepEqual([def.id, def.enabled, def.model, def.mode, def.compact, def.triggers], ['improve', true, 'opus', 'continue', true, [{ kind: 'feedback' }]]);
   assert.match(def.prompt, /worktree/);
   assert.equal(state.improve, undefined);
 });
