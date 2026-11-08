@@ -3,11 +3,13 @@
 // playwright は repo の依存にせず、PLAYWRIGHT_DIR（playwright を入れた場所）から読む。
 // 使い方: pnpm build && PLAYWRIGHT_DIR=/d/dev/pw node screenshots.mjs
 import { createReadStream } from "node:fs";
-import { mkdir, stat } from "node:fs/promises";
+import { Buffer } from "node:buffer";
+import { mkdir, readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { createRequire } from "node:module";
 import { extname } from "node:path";
 import process from "node:process";
+import { setTimeout } from "node:timers";
 import { URL, fileURLToPath } from "node:url";
 
 const require = createRequire(`${process.env.PLAYWRIGHT_DIR ?? "."}/`);
@@ -27,8 +29,18 @@ const frameSvg = (query) => {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 405"><rect width="720" height="405" fill="${bg}"/>
 <circle cx="${240 + shift}" cy="200" r="90" fill="${fg}"/><text x="360" y="360" font-size="34" font-family="sans-serif" fill="#fff" text-anchor="middle">${after ? "After" : "Before"} t=${query.get("t")}s</text></svg>`;
 };
+// 提案の短い動画は demo/media の初期化の区間と最初の 2 区間をつないだ MP4。PC が作る間の待ちも真似る。
+const CLIP_PATH = /^\/m\/api\/proposals\/\d+\/clip\.mp4$/;
+const CLIP_DELAY_MS = 1500;
+const serveClip = async (res) => {
+  await new Promise((r) => setTimeout(r, CLIP_DELAY_MS));
+  const parts = await Promise.all(["360p_init.mp4", "360p_0.m4s", "360p_1.m4s"].map((f) => readFile(MEDIA + f)));
+  res.writeHead(200, { "Content-Type": "video/mp4" });
+  res.end(Buffer.concat(parts));
+};
 const serveMedia = async (url, res) => {
   const file = url.pathname.split("/").pop();
+  if (CLIP_PATH.test(url.pathname)) return serveClip(res);
   if (url.pathname === "/m/api/frame") {
     res.writeHead(200, { "Content-Type": "image/svg+xml" });
     return res.end(frameSvg(url.searchParams));
@@ -44,7 +56,7 @@ const serve = () =>
     const server = createServer(async (req, res) => {
       const url = new URL(req.url, "http://x");
       const path = url.pathname;
-      if (/^\/m\/api\/(stream\/|frame)/.test(path)) return serveMedia(url, res);
+      if (/^\/m\/api\/(stream\/|frame)/.test(path) || CLIP_PATH.test(path)) return serveMedia(url, res);
       const file = path === "/m/" ? "index.html" : path.replace(/^\/m\//, "");
       const ok = path.startsWith("/m/") && !file.includes("..") && (await stat(DIST + file).catch(() => null));
       res.writeHead(ok ? 200 : 404, { "Content-Type": TYPES[extname(file)] ?? "text/plain" });
@@ -80,6 +92,10 @@ const SHOTS = [
   ["offline-queue", "state=queued&tab=Watch"],
   ["proposals", "state=online&tab=Proposals"],
   ["proposal-detail", "state=online&tab=Proposals&view=detail"],
+  ["proposal-clip-loading", "state=online&tab=Proposals&view=detail", async (page) => {
+    await page.getByRole("button", { name: "Play" }).click();
+    await page.getByRole("status").filter({ hasText: "Rendering clip" }).waitFor();
+  }],
 ];
 
 const shoot = async (base, target) => {
@@ -134,12 +150,28 @@ const checkPlayback = async (base) => {
   if (order.includes(-1) || order.some((v, i) => i > 0 && v < order[i - 1])) throw new Error("master playlist was not read first");
 };
 
+/** 提案の Play が短い動画を再生し、映像が出たら作っている知らせを消すことを H.264 の入った Chrome で確かめて撮る。 */
+const checkClip = async (base) => {
+  const browser = await chromium.launch({ channel: process.env.PLAYBACK_CHANNEL ?? "chrome" });
+  const page = await (await browser.newContext({ ...devices["Pixel 7"], colorScheme: "light" })).newPage();
+  await page.goto(`${base}/m/demo.html?state=online&tab=Proposals&view=detail`);
+  await page.getByRole("button", { name: "Play" }).click();
+  await page.waitForFunction(() => (globalThis.document.querySelector(".compare video.on")?.currentTime ?? 0) > 1, null, { timeout: 15000 });
+  await page.locator(".compare video").evaluate((v) => v.pause());
+  const note = await page.locator(".clip-note").count();
+  await page.screenshot({ path: `${OUT}android-light-proposal-clip.png` });
+  await browser.close();
+  process.stdout.write(`proposal clip: played, notes left: ${note}\n`);
+  if (note !== 0) throw new Error("the rendering note stayed after the clip started");
+};
+
 await mkdir(OUT, { recursive: true });
 const server = await serve();
 const base = `http://localhost:${server.address().port}`;
 try {
   await checkServiceWorker(base);
   await checkPlayback(base);
+  await checkClip(base);
   for (const target of TARGETS) await shoot(base, target);
 } finally {
   server.close();

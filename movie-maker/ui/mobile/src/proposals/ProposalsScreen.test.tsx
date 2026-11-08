@@ -3,7 +3,8 @@ import { act } from "preact/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { demoProposals } from "../../demo/fixtures.ts";
 import { createHarness } from "../testing/harness.ts";
-import { frameUrl } from "./api.ts";
+import "../testing/stubMedia.ts";
+import { clipUrl, frameUrl } from "./api.ts";
 import { ProposalsScreen } from "./ProposalsScreen.tsx";
 import { UNDO_WINDOW_MS } from "./useUndo.ts";
 
@@ -34,7 +35,7 @@ describe("Proposals の一覧", () => {
 });
 
 describe("提案の 1 件", () => {
-  it("前後のフレームは時刻と提案の ID で引き、押すと切り替わる。PC が配らない短い動画のボタンは出さない", async () => {
+  it("前後のフレームは時刻と提案の ID で引き、押すと切り替わる", async () => {
     await open();
     await h.press("Slow the zoom");
     const imgs = [...h.host.querySelectorAll("img")].map((i) => i.getAttribute("src"));
@@ -42,10 +43,49 @@ describe("提案の 1 件", () => {
     expect(h.host.querySelector("img.show")?.getAttribute("alt")).toBe("After");
     await h.press("Before");
     expect(h.host.querySelector("img.show")?.getAttribute("alt")).toBe("Before");
+  });
+});
+
+describe("提案の区間の短い動画", () => {
+  it("Play は押した操作の中で短い動画を再生し、映像が出るまで作っている知らせを出す", async () => {
+    await open();
+    await h.press("Slow the zoom");
+    const play = vi.spyOn(HTMLMediaElement.prototype, "play");
+    await h.press("Play");
+    const video = h.host.querySelector<HTMLVideoElement>(".compare video");
+    expect(video?.getAttribute("src")).toBe(clipUrl(2, { comp: "c1" }));
+    expect(play).toHaveBeenCalledTimes(1);
+    expect(h.host.querySelector(".clip-note")?.textContent).toBe("Rendering clip…");
+    expect(video?.classList.contains("on")).toBe(false);
+    await act(() => void video?.dispatchEvent(new Event("playing")));
+    expect(h.host.querySelector(".clip-note")).toBeNull();
+    expect(video?.classList.contains("on")).toBe(true);
+    await h.press("After");
+    expect(video?.getAttribute("src")).toBeNull();
+    expect(h.host.querySelector("img.show")?.getAttribute("alt")).toBe("After");
+    play.mockRestore();
+  });
+
+  it("一部の操作だけを選ぶとその操作の短い動画にし、読めなければ知らせる", async () => {
+    await open();
+    await h.press("Slow the zoom");
+    await act(() => void h.host.querySelectorAll<HTMLInputElement>('.ops input[type="checkbox"]')[1]?.click());
+    await h.press("Play");
+    const video = h.host.querySelector<HTMLVideoElement>(".compare video");
+    expect(video?.getAttribute("src")).toBe(clipUrl(2, { comp: "c1", ops: [0, 2] }));
+    await act(() => void video?.dispatchEvent(new Event("error")));
+    expect(h.host.querySelector(".clip-note")?.textContent).toBe("Could not play the clip.");
+  });
+
+  it("決めた提案には Play を出さない", async () => {
+    await open();
+    await h.press("Remove the long pause");
     expect(h.texts(".compare button")).not.toContain("Play");
     expect(h.host.querySelector(".compare video")).toBeNull();
   });
+});
 
+describe("提案の決定", () => {
   it("操作を外すと一部だけ承認し、後の編集と重なる提案は承認できない", async () => {
     await open();
     await h.press("Slow the zoom");
