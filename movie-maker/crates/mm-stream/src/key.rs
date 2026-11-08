@@ -17,9 +17,10 @@ use mm_doc::{
 use mm_eval::{node_params_at, place_cuts, source_time, PlacedCut};
 use mm_node_api::NodeRegistry;
 use mm_render_api::digest_bytes;
-use mm_types::{AssetId, Id, MmError, Params, RationalTime, Result, TimeRange};
+use mm_types::{AssetId, CompositionId, Id, MmError, Params, RationalTime, Result, TimeRange};
 use serde::Serialize;
 
+use crate::clip::ClipPlan;
 use crate::hls::Plan;
 
 /// 区間のバイトの作り方（コンテナ、符号化の設定）のバージョン。作り方を変えたら上げ、前のキーを使わせない。
@@ -28,6 +29,10 @@ const FORMAT: &str = "mm-stream/ts-2";
 const MAX_DEPTH: u32 = 16;
 /// 区間のファイルの拡張子。
 pub(crate) const SEGMENT_EXT: &str = "ts";
+/// 提案の区間の短い動画のバイトの作り方のバージョン。区間の `FORMAT` と同じく、作り方を変えたら上げる。
+const CLIP_FORMAT: &str = "mm-stream/clip-1";
+/// 短い動画のファイルの拡張子。
+pub(crate) const CLIP_EXT: &str = "mp4";
 
 /// 配信の区間のキー。URL の `seg/{key}.ts` とキャッシュのファイル名に入る。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -60,6 +65,50 @@ impl FromStr for SegmentKey {
     }
 }
 
+/// 提案の区間の短い動画のキー。キャッシュのファイル名と `ETag` に入る。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct ClipKey(u64);
+
+impl ClipKey {
+    /// キャッシュのファイル名（`<16 桁の 16 進>.mp4`）。
+    pub(crate) fn file_name(self) -> String {
+        format!("{self}.{CLIP_EXT}")
+    }
+}
+
+impl fmt::Display for ClipKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{:016x}", self.0)
+    }
+}
+
+impl FromStr for ClipKey {
+    type Err = MmError;
+
+    /// 16 桁の 16 進。
+    fn from_str(s: &str) -> Result<Self> {
+        let bad = || MmError::InvalidArgument(format!("短い動画のキーとして読めない: {s}"));
+        if s.len() != 16 {
+            return Err(bad());
+        }
+        u64::from_str_radix(s, 16).map(Self).map_err(|_| bad())
+    }
+}
+
+/// 提案の区間の短い動画のキー。提案を適用したプロジェクトの範囲に掛かるもののハッシュに、適用した操作の JSON（`ops`）を添える。
+pub(crate) fn clip_key(env: &KeyEnv<'_>, plan: &ClipPlan, ops: &str) -> Result<ClipKey> {
+    let header = format!(
+        "{CLIP_FORMAT}|{}|{}x{}@{}|{}-{}|ops={ops}",
+        env.backends,
+        plan.width,
+        plan.height,
+        plan.fps.to_f64(),
+        plan.range.start,
+        plan.range.end
+    );
+    range_hash(env, &plan.composition, plan.range, header).map(ClipKey)
+}
+
 /// キーを作る材料のうち、区間によらないもの。
 pub(crate) struct KeyEnv<'a> {
     pub project: &'a Project,
@@ -73,26 +122,37 @@ pub(crate) struct KeyEnv<'a> {
 /// 区間 `index` のキー。
 pub(crate) fn segment_key(env: &KeyEnv<'_>, plan: &Plan, index: u64) -> Result<SegmentKey> {
     let range = plan.range(index)?;
-    let comp = env.project.composition(&plan.composition)?;
+    let header = format!(
+        "{FORMAT}|{}|{}|{}x{}@{}|{}-{}",
+        env.backends,
+        plan.quality.as_str(),
+        plan.width,
+        plan.height,
+        plan.fps.to_f64(),
+        range.start,
+        range.end
+    );
+    range_hash(env, &plan.composition, range, header).map(SegmentKey)
+}
+
+/// コンポジション `composition` の `range` に掛かるもののハッシュ。`header` は出力の作り方（形式、大きさ、範囲など）。
+fn range_hash(
+    env: &KeyEnv<'_>,
+    composition: &CompositionId,
+    range: TimeRange,
+    header: String,
+) -> Result<u64> {
+    let comp = env.project.composition(composition)?;
     let mut walk = Walk {
         env,
-        text: format!(
-            "{FORMAT}|{}|{}|{}x{}@{}|{}-{}",
-            env.backends,
-            plan.quality.as_str(),
-            plan.width,
-            plan.height,
-            plan.fps.to_f64(),
-            range.start,
-            range.end
-        ),
+        text: header,
         volatile: false,
     };
     walk.composition(comp, range, 0);
     if walk.volatile {
         walk.push(&format!("|version={}", env.version));
     }
-    Ok(SegmentKey(digest_bytes(walk.text.as_bytes())))
+    Ok(digest_bytes(walk.text.as_bytes()))
 }
 
 /// 区間に掛かるものをたどって、指紋の文字列を作る。

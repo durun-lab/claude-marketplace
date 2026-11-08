@@ -10,6 +10,12 @@ export const sortProposals = (items: Proposal[]): Proposal[] =>
  */
 export const frameTime = (p: Proposal): number => p.scope.sequences[0]?.start ?? 0;
 
+/**
+ * 区間の短い動画を出せるか。PC は保留中の提案だけを適用して描き、範囲はシーケンスの範囲か触るレイヤーの区間から決める。
+ */
+export const hasClip = (p: Proposal): boolean =>
+  p.state === "pending" && (p.scope.sequences.length > 0 || p.scope.layers.length > 0);
+
 /** 承認に渡す操作の番号。全部を選んでいれば null（提案の全体）。 */
 export const approvalOps = (p: Proposal, selected: ReadonlySet<number>): number[] | null =>
   selected.size === p.ops.length ? null : [...selected].sort((a, b) => a - b);

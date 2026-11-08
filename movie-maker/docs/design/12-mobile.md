@@ -178,12 +178,15 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 | 静止画のフレーム（`GET /m/api/frame` の WebP、幅 360〜720） | コメントの時刻、カットの先頭、提案の前後、スクラブのつまみの上 | 1 枚 20〜60 KB | 採る。最初に作る |
 | 区間ごとに作る HLS（MPEG-TS、4 秒の区間、H.264。360p 約 0.5 Mbps と 540p 約 1.2 Mbps、AAC 64 kbps） | 編集した結果を通して見る | 360p で 1 時間約 250 MB | 採る |
 | 素材の音だけ（AAC 64 kbps の m4a、Range で読む） | Story で文字起こしの所を聞く | 1 時間約 29 MB | 採る |
-| 提案の区間の短い動画（範囲の前後 2 秒、MP4） | 提案を動きで確かめる | 1 本 数百 KB〜数 MB | 採る。HLS の後。未実装（[後の段階の注意](15-roadmap.md#試作で分かった後の段階の注意)） |
+| 提案の区間の短い動画（範囲の前後 2 秒、MP4） | 提案を動きで確かめる | 1 本 数百 KB〜数 MB（6 秒で約 0.7 MB） | 採る。HLS の後 |
 | WebRTC で Program を流す | 再生の操作をその場で返す | 見ている間ずっと 1〜3 Mbps、PC は常にエンコード | 採らない。レビューに 60 fps のスクラブは要らず、電池と回線を食う |
 | プレビュー動画をそのまま | | 1 時間 2.6 GB | 採らない |
 
 - HLS の区間は見られたときに作る。プレイリストは今のバージョンのコンポジションの全区間を並べ、区間の要求が来たら描いて符号化して返し、次の 2 区間を先に作る。符号化は `mm-export` から `mm-encode-ffmpeg` の `h264_ts` で、目標のビットレートの H.264 と AAC の MPEG-TS に 1 回で書く。親のプレイリスト（`Streamer::master_playlist`）の `BANDWIDTH` は、VBV が許す 1 区間の最大（区間ごとにバッファーが 9 割埋まった所から始まり、4 秒の区間で上限の 1.45 倍）を見込んだピークの値。`mm-serve` は `/m/api/stream/{comp}/index.m3u8` で親のプレイリストを配り、端末はそれを読んで画質を選ぶ。親のプレイリストは `EXT-X-INDEPENDENT-SEGMENTS`（区間は 1 つずつ別に符号化して IDR から始まる）を持ち、`CODECS` は `mm-encode-ffmpeg` の `h264_ts` が固定する High profile、level 4.0（`avc1.640028`）と AAC-LC（`mp4a.40.2`）。描くのは `mm-stream` の専用のスレッドの 1 つの `Engine` で、PC の再生を止めない。`GET /frame` も `Streamer::with_engine` で同じ `Engine` を使える。
 - 区間のキーは区間の時間の範囲に掛かるもの（レイヤーとカットの JSON、区間の中の相対の位置、ノードの種類のバージョンと `cache_fingerprint`、素材の `contentHash`。[RFC 0013](../rfcs/0013-render-order-and-cache-keys.md) のフレームのキャッシュと同じ考え方）と画質から作り、URL に入れる。編集で変わらない区間はキーが同じなので作り直さず、端末のブラウザーにも残る（`Cache-Control: immutable`）。キーにはデコーダーの名乗りうる名前の全部（`Engine::decoder_backend_ids`。フレームのキャッシュの `unopened_decoder` と同じ）を入れ、どれかの画素の作り方のバージョンが上がったら前の区間を使わない。`decode=auto` は素材ごとにデコーダーを選ぶので、開くまでどれが画素を作るか分からない。区間は `cache/mobile/hls/` に置き、上限（既定 2 GiB）を超えたら使った時刻の古いものから捨てる。消しても作り直せる。
+- 提案の区間の短い動画は `Play` を押したときに作る。書くのは提案を適用した後（`Before` と `After` の `After`）。`mm-serve` が提案を適用したプロジェクトと範囲（`comp_spans` と、触るレイヤーの見えている区間を適用の前と後の両方で引いたものを全部含む範囲。提案が足すレイヤーと動かすレイヤーの行き先も入る）を渡し、`mm-stream` の `Streamer::clip` が前後に 2 秒のプリロールとポストロールを足して（上限 30 秒）、`mm-export` から `mm-encode-ffmpeg` の `h264`（CRF 18、AAC）で 360p の MP4 に 1 回で書く。moov を先頭に置く（`+faststart`）ので、端末は `Range` で読みながら再生を始められる。描くのは HLS と同じ `Engine` で、描いた後に適用した操作が触る所を描画のキャッシュから捨てる（`GET /frame?proposal=` と同じ）。キーは適用する操作の JSON、範囲、範囲に掛かるもののハッシュ（区間のキーと同じたどり方）で、`ETag` に入れる。提案の更新、却下、承認、範囲の中の編集のどれでもキーが変わるので、消す処理は持たず、置き場所の `cache/mobile/clips/` が上限 256 MiB を超えたら使った時刻の古いものから捨てる。
+- 短い動画は作り終えるまで要求を待たせ、202 で再試行させない。`<video>` は 202 を再試行せず、作るのは 6 秒の範囲で 1 秒足らず（RTX 5090）なので、HLS の区間と同じく待たせる方が、押した操作の中の `play()` のまま再生が始まる。同じキーの要求は 1 つの出来上がりを待ち、同時に作るのは 2 本まで（超えた要求は 503）、待つのは 120 秒まで（超えたら 503 `timeout`。作るのは続け、出来たものはキャッシュに残る）。
+- 符号化は 360p の CRF 18 のまま（6 秒で約 0.7 MB、約 1 Mbps）。YouTube や Vimeo の 360p（0.5〜1 Mbps）の上の端と同じ程度で、30 秒の上限でも数 MB に収まり、moov が先頭なので読み始めてすぐ再生できる。HLS の 360p（約 0.5 Mbps）のように上限を付けるには `mm-encode-ffmpeg` に MP4 の配信用のコーデックが要るので、[後の段階の注意](15-roadmap.md#試作で分かった後の段階の注意)に回す。
 - コンテナは fMP4 でなく MPEG-TS にする。区間を 1 つずつ別に符号化して、編集の前後で作った区間を 1 本のプレイリストに混ぜるので、区間ごとに PAT、PMT、SPS、PPS を持ち、共通の初期化の区間（`EXT-X-MAP`）が要らない形が合う。
 - iOS の Safari は HLS をそのまま再生する。Android の Chrome は直接の再生に頼らず、Media Source Extensions の上の hls.js で再生する。HEVC は端末ごとの差が大きいので使わない。
 - 画質は 360p から始め、帯域に余裕があればプレーヤーが 540p へ上げる。親のプレイリストは軽い順に並べ、iOS のネイティブの再生は先頭の 360p から、hls.js は `startLevel: 0` で 360p から始める。区間は見られたときに作るので、最初の区間の待ちを短くし、作る時間を含む実測の帯域で上げるかを決める。画面に画質の切り替えは置かない。
@@ -202,7 +205,7 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 - コメント: 下の大きな `Comment` を押すと再生を止め、その時刻のフレームの上に入力欄を出す。文字は OS の音声入力でも入る。`Range` で今の時刻を始めにし、再生して止めた所を終わりにする。`Draw` で止めたフレームに指で線と矩形を描く（座標は 0〜1 に正規化する。デスクトップは Review の一覧に描き込みの数を出し、Program の上に wgpu で重ねて描く。[UI](08-ui.md)）。スレッドの画面で返信し、下のボタンで `Done`、`Won't fix`、`Reopen` を決める。
 - コメントの形（`comments` の表の `json`。[保存の形](09-ingest-storage.md#表)。型は `ui/sdk/src/comments.ts`）: `{ id, comp, at | range: {in, out}, text, drawing: [{ kind: "stroke" | "rect" | "point", points }], author: { kind, name }, replies: [{ id, author, text, created_ms }], state, created_ms, client_id?, responded_txn? }`。`at` は時刻のコメントの時刻で、範囲のコメントでは `null`（`range` を持つ）。`author` は文字列でなくオブジェクト（端末は `kind: "mobile"`、`name` が端末の名前）。状態は人が書いて `open`、Claude の対応（`responds_to` を持つトランザクションの適用か提案の承認）で `fresh`（`responded_txn` がそのトランザクション）、人が確かめて `done` か `wontfix`。`fresh` は人からは決められず（400）、済みのコメントは対応で動かない。
 - コメントの API: `POST /comments` は `{ comp, at | range, text?, drawing?, client_id? }`。本文か描き込みが要り、座標は 0〜1。`client_id` が同じ再送は書かずに先のコメントを返す（送信待ちのキューの再送用）。`GET /comments?state=&comp=&from=&to=` は `{ comments }`（書いた順）で、`from` と `to`（秒）は両方渡すとその区間と重なる時刻と範囲のコメントだけ。`POST /comments/{id}/replies` は `{ text }`、`POST /comments/{id}/state` は `{ state }`。どれも成功は `Comment` を返し、失敗は `{ error: { code, message } }`。書く、状態、描き込みは人の操作経路だけで、Claude の待ち受けは 403。変更は SSE の `comment`（`{ id, state }`）で流れる。
-- 提案: カードを開くと前後のフレームを並べ、押すと切り替える（デスクトップの Program の切り替えと同じ）。区間の短い動画（`Play`）は `clip.mp4` が未実装なので置かない。下の `Approve`（操作を選べば一部だけ）と `Reject`。決めた後の 5 秒は `Undo` を出す（全体の直前のときだけ効く）。
+- 提案: カードを開くと前後のフレームを並べ、押すと切り替える（デスクトップの Program の切り替えと同じ）。`Play` は区間の短い動画（`clip.mp4`、選んだ操作だけを適用）に替え、映像が出るまでフレームの上に `Rendering clip…` を重ねる。iOS の Safari は押した操作の中で呼んだ `play()` だけを許すので、`<video>` を先に置き、押した操作の中で `src` を入れて `play()` を呼ぶ。`Play` は保留中で範囲（シーケンスの範囲か触るレイヤー）を持つ提案だけに出す。下の `Approve`（操作を選べば一部だけ）と `Reject`。決めた後の 5 秒は `Undo` を出す（全体の直前のときだけ効く）。
 - Story: 単語を 1 回押すと始め、別の単語を押すと終わりになり、間を範囲にする（ドラッグはスクロールとぶつかるので使わない）。下の操作バーに `Keep`、`Reject`、`Hold`（`rate`）、`Topic`（範囲から話題）、`Delete`（`deleteWords`）、`Play`（その単語から素材の音）。話題の一覧は長押しで並べ替え、離すと開いているシーケンスへ `insertTopics`。上に検索。
 - 「PC で決める」: 操作の前に切り替えると、即時に適用せず提案（`entry` は `mobile`）として出す。PC の Review かモバイルの `Proposals` で決める。
 - 片手で使う要点: 決める操作は画面の下の 3 分の 1 に置く。押す所は 44 pt 以上。スワイプの操作には同じことをするボタンも置く。確認の画面は出さず、`Undo` で戻せるようにする。横にすると映像だけを全画面にする。
@@ -230,12 +233,14 @@ movie-maker の取り込みが作るプレビュー動画（540p、cq 28）は 1
 | `GET /m/api/proposals`、`GET /m/api/proposals/{id}`、`POST /m/api/proposals`、`POST /m/api/proposals/{id}/approve`、`/reject`、`/reopen` | 提案。形は Claude の待ち受けの `/proposals` と同じで、`comp_spans: [{ comp, layer, sequence, start, end }]`（`scope.sequences` の範囲を、そのシーケンスを置いたレイヤーのコンポジションの秒に変換したもの。時間の写像を持つレイヤーは変換しない）を足す |
 | `GET /m/api/frame?comp=&t=&width=&proposal=&ops=` | 静止画のフレーム。`t` は `comp`（省くと先頭のコンポジション）の時間軸の秒。保存したデータは WebP（`ETag` に `If-None-Match` で 304）、`proposal` つきは提案を適用した PNG |
 | `GET /m/api/stream/{comp}/index.m3u8`、`GET /m/api/stream/{comp}/{quality}.m3u8`、`GET /m/api/stream/{comp}/seg/{key}.ts` | HLS の親のプレイリスト、画質ごとのプレイリスト、区間。親のプレイリストは画質ごとのプレイリストを相対パス `{quality}.m3u8` で指し、画質ごとのプレイリストは区間を相対パス `seg/{key}.ts` で指す（どの名前のコンポジションともパスがぶつからない） |
-| `GET /m/api/audio/{asset}.m4a`、`GET /m/api/proposals/{id}/clip.mp4` | 素材の音だけ、提案の区間の短い動画（`clip.mp4` は未実装） |
+| `GET /m/api/audio/{asset}.m4a` | 素材の音だけ |
+| `GET /m/api/proposals/{id}/clip.mp4?comp=&ops=` | 提案の区間の短い動画（MP4）。`comp` は範囲を見るコンポジション（省くと範囲の最初のコンポジション）、`ops` は適用する操作の番号。作り終えるまで待たせ、`Range` に 206、`ETag` に `If-None-Match` で 304。保留中でない提案は `GET /m/api/frame?proposal=` と同じ 422、範囲が無ければ 404 `no_range`、同時に作る数か待つ時間の上限を超えたら 503 |
 | `GET /m/api/events` | SSE。`hello`、`change`、`resync`、`proposal` に加えて `comment`（`{ id, state }`）。返信では `state` が変わらないので、端末は `comment` を受けたら `GET /m/api/comments/{id}` で 1 件を読み直す |
 
 人の待ち受けのルーターは `crates/mm-serve/src/mobile/mod.rs` の `router` で、ほかのモジュールの `/m/api/` は名前の順に `merge` か `nest` で 1 行ずつ載せる。ガードは全体に掛かり、通った要求に `Extension<DeviceInfo>`（登録した端末）と `Extension<Caller>`（`Entry::Mobile`、発行元の名前は端末の名前で、端末の ID も持つ）を入れる。
 
 Claude の待ち受けにはコメントの `GET /comments`、`POST /comments/{id}/replies` と、MCP のツール `comments`、`comment_reply` を足す（操作でないツール。`mcp_tools.rs` に名前の順で 1 つずつ）。
+提案の区間の短い動画は Claude の待ち受けに置かない。Claude は動画を見ないので、`GET /frame?proposal=` のフレームで前後を比べる。
 
 ## 段階 9 の実装の分け方
 

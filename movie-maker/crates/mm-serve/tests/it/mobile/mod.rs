@@ -2,6 +2,7 @@
 //! `Tailscale-User-Login` を自分で付けて送る。
 
 mod assets;
+mod clip;
 mod comments;
 mod events;
 mod guard;

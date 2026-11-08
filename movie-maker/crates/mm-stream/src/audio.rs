@@ -1,14 +1,13 @@
 //! 素材の音だけ。Story で文字起こしの所を聞くための、低いビットレートの m4a。
 
 use std::fs;
-use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 
 use mm_doc::Project;
-use mm_types::{Id, MmError, Result};
+use mm_types::{Id, Result};
 
 use crate::cache::{CacheDir, PARTIAL_EXT};
-use crate::payload::{ByteRange, Payload, REVALIDATE};
+use crate::payload::{ranged_file, Payload};
 use crate::quality::AUDIO_BITS_PER_SECOND;
 use crate::tools::{args, path_arg, run_ffmpeg};
 
@@ -62,33 +61,5 @@ pub(crate) fn ensure_audio(
 
 /// `path` の m4a を、`Range` ヘッダーに合わせて返す。長さの外を指す `Range` は 416。
 pub(crate) fn respond(path: &Path, content_hash: &str, range: Option<&str>) -> Result<Payload> {
-    let mut file = fs::File::open(path)?;
-    let len = file.metadata()?.len();
-    let etag = format!("\"{content_hash}\"");
-    let base = |status: u16, body: Vec<u8>| Payload {
-        status,
-        ..Payload::ok("audio/mp4", REVALIDATE, body)
-            .with_header("Accept-Ranges", "bytes".into())
-            .with_header("ETag", etag.clone())
-    };
-    match ByteRange::parse(range, len) {
-        Ok(None) => {
-            let mut body = Vec::with_capacity(len as usize);
-            file.read_to_end(&mut body)?;
-            Ok(base(200, body))
-        }
-        Ok(Some(r)) => {
-            file.seek(SeekFrom::Start(r.start))?;
-            let mut body = vec![0u8; (r.end - r.start + 1) as usize];
-            file.read_exact(&mut body)?;
-            Ok(base(206, body).with_header(
-                "Content-Range",
-                format!("bytes {}-{}/{len}", r.start, r.end),
-            ))
-        }
-        Err(MmError::InvalidArgument(_)) => {
-            Ok(base(416, Vec::new()).with_header("Content-Range", format!("bytes */{len}")))
-        }
-        Err(e) => Err(e),
-    }
+    ranged_file(path, "audio/mp4", &format!("\"{content_hash}\""), range)
 }

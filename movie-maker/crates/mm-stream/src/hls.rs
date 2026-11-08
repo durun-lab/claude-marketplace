@@ -36,11 +36,7 @@ impl Plan {
         let comp = project.composition(&composition)?;
         let fps = stream_fps(comp.fps);
         let (width, height) = req.quality.size_for(comp.width, comp.height);
-        let duration = comp.duration;
-        let total_frames = ceil_div(
-            duration.num() * i128::from(fps.num()),
-            i128::from(duration.den()) * i128::from(fps.den()),
-        );
+        let total_frames = frame_count(comp.duration, fps);
         if total_frames <= 0 {
             return Err(MmError::InvalidArgument(format!(
                 "コンポジション {} の長さが 0",
@@ -58,7 +54,7 @@ impl Plan {
             width,
             height,
             segment_frames: segment_frames as i64,
-            total_frames: total_frames as i64,
+            total_frames,
         })
     }
 
@@ -131,6 +127,14 @@ pub(crate) fn master_playlist(variants: &[(Plan, String)]) -> String {
         ));
     }
     out
+}
+
+/// `duration` を `fps` のフレームに切り上げた数。端のフレームも描くので切り上げる。
+pub(crate) fn frame_count(duration: RationalTime, fps: Rational) -> i64 {
+    ceil_div(
+        duration.num() * i128::from(fps.num()),
+        i128::from(duration.den()) * i128::from(fps.den()),
+    ) as i64
 }
 
 fn ceil_div(a: i128, b: i128) -> i128 {
