@@ -13,8 +13,7 @@ circle.shape { fill: #ff3b6b; }
   background: rgb(0 0 0 / 0.55); display: grid; place-items: center;
 }
 .stage .play svg { width: 32px; height: 32px; fill: #fff; }
-/* 映像を読めないときの知らせは、下の描き込みの面への指を通す（映像が無くても描いて書ける） */
-.overlay { position: absolute; inset: 0; margin: 0; display: grid; place-items: center; color: #fff; background: rgb(0 0 0 / 0.6); pointer-events: none; }
+.overlay { position: absolute; inset: 0; margin: 0; display: grid; place-items: center; color: #fff; background: rgb(0 0 0 / 0.6); }
 
 .scrub { display: flex; align-items: center; gap: 10px; padding: 0 12px; background: var(--surface); border-bottom: 1px solid var(--line); flex: none; }
 .clock { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 34px; text-align: center; }
