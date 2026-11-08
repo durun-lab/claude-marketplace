@@ -3,7 +3,7 @@
 //! 時間軸で持つので、提案の応答に `comp_spans` として足す。
 
 use mm_doc::{Composition, Layer, Project};
-use mm_ops::{ProposalScope, SequenceSpan};
+use mm_ops::{LayerRef, ProposalScope, SequenceSpan};
 use mm_story::layer_sequence;
 use serde::Serialize;
 use serde_json::Value;
@@ -64,27 +64,19 @@ fn on_layer(
 
 /// 提案の区間の短い動画の範囲（コンポジション、始まりと終わりの秒）。`comp`（省くと最初に見つかったコンポジション）の上の、
 /// `comp_spans` と触るレイヤーの見えている区間を全部含む範囲。どちらも無ければ `None`。
+/// 触るレイヤーは保存したデータ（`saved`）と提案を適用したもの（`applied`）の両方で引き、提案が足すレイヤーと動かすレイヤーの行き先も含める。
 pub(super) fn clip_span(
-    project: &Project,
+    saved: &Project,
+    applied: &Project,
     scope: &ProposalScope,
     comp: Option<&str>,
 ) -> Option<(String, f64, f64)> {
-    let spans = comp_spans(project, scope)
+    let spans = comp_spans(saved, scope)
         .into_iter()
         .map(|s| (s.comp, s.start, s.end));
-    let layers = scope.layers.iter().filter_map(|r| {
-        let c = project
-            .compositions
-            .iter()
-            .find(|c| c.id.as_str() == r.comp)?;
-        let range = c
-            .layers
-            .iter()
-            .find(|l| l.id.as_str() == r.id)?
-            .range()
-            .ok()?;
-        Some((r.comp.clone(), range.start.to_f64(), range.end.to_f64()))
-    });
+    let layers = [saved, applied]
+        .into_iter()
+        .flat_map(|p| scope.layers.iter().filter_map(move |r| layer_span(p, r)));
     let all: Vec<(String, f64, f64)> = spans.chain(layers).collect();
     let want = comp.map_or_else(|| all.first().map(|s| s.0.clone()), |c| Some(c.to_owned()))?;
     all.into_iter()
@@ -92,6 +84,20 @@ pub(super) fn clip_span(
         .map(|s| (s.1, s.2))
         .reduce(|a, b| (a.0.min(b.0), a.1.max(b.1)))
         .map(|(start, end)| (want, start, end))
+}
+
+/// `project` の中のレイヤー `r` の区間（コンポジション、始まりと終わりの秒）。無いレイヤーは `None`。
+fn layer_span(project: &Project, r: &LayerRef) -> Option<(String, f64, f64)> {
+    let range = project
+        .compositions
+        .iter()
+        .find(|c| c.id.as_str() == r.comp)?
+        .layers
+        .iter()
+        .find(|l| l.id.as_str() == r.id)?
+        .range()
+        .ok()?;
+    Some((r.comp.clone(), range.start.to_f64(), range.end.to_f64()))
 }
 
 /// 提案の応答の JSON に `comp_spans` を足す。
@@ -189,18 +195,54 @@ mod tests {
     fn 短い動画の範囲はシーケンスの範囲と触るレイヤーの区間を合わせる() {
         let p = project();
         assert_eq!(
-            clip_span(&p, &scope(4.0, 6.0), None),
+            clip_span(&p, &p, &scope(4.0, 6.0), None),
             Some(("main".into(), 6.0, 7.0))
         );
         let mut both = scope(4.0, 6.0);
-        both.layers.push(mm_ops::LayerRef {
-            comp: "main".into(),
-            id: "l".into(),
-        });
+        both.layers.push(layer_ref("l"));
         // レイヤー l は 5〜9 秒に見える。
-        assert_eq!(clip_span(&p, &both, None), Some(("main".into(), 5.0, 9.0)));
-        assert_eq!(clip_span(&p, &both, Some("other")), None);
-        assert_eq!(clip_span(&p, &ProposalScope::default(), None), None);
+        assert_eq!(
+            clip_span(&p, &p, &both, None),
+            Some(("main".into(), 5.0, 9.0))
+        );
+        assert_eq!(clip_span(&p, &p, &both, Some("other")), None);
+        assert_eq!(clip_span(&p, &p, &ProposalScope::default(), None), None);
+    }
+
+    fn layer_ref(id: &str) -> LayerRef {
+        LayerRef {
+            comp: "main".into(),
+            id: id.into(),
+        }
+    }
+
+    #[test]
+    fn 短い動画の範囲は提案が足すレイヤーと動かしたレイヤーの行き先も含める() {
+        let saved = project();
+        let mut applied = saved.clone();
+        let mut added = applied.compositions[0].layers[0].clone();
+        added.id = Id::new("new");
+        added.start = RationalTime::seconds(1);
+        applied.compositions[0].layers.push(added);
+        let adds = ProposalScope {
+            layers: vec![layer_ref("new")],
+            ..ProposalScope::default()
+        };
+        // 足したレイヤー new は 1〜5 秒に見える。保存したデータには無い。
+        assert_eq!(
+            clip_span(&saved, &applied, &adds, None),
+            Some(("main".into(), 1.0, 5.0))
+        );
+        applied.compositions[0].layers[0].start = RationalTime::seconds(7);
+        let moves = ProposalScope {
+            layers: vec![layer_ref("l")],
+            ..ProposalScope::default()
+        };
+        // l は 5〜9 秒から 7〜11 秒へ動く。
+        assert_eq!(
+            clip_span(&saved, &applied, &moves, None),
+            Some(("main".into(), 5.0, 11.0))
+        );
     }
 
     #[test]

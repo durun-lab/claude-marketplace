@@ -3,6 +3,7 @@
 //! 提案を適用したプロジェクトを `mm-stream` の `Streamer::clip` に渡し、MP4 を `Range` に合わせて返す。
 //! 作るのは 6 秒の範囲で 1 秒足らずなので、202 で再試行させず、作り終えるまで要求を待たせる（HLS の区間と同じ）。
 //! `<video>` は 202 を再試行せず、待たせれば押した操作の中の `play()` のまま再生が始まる。
+//! 同時に作る数の上限を超えた要求と、待つ上限を超えた要求は 503 で返し、描画のスレッドに要求を積み上げない。
 
 use std::sync::Arc;
 
@@ -73,11 +74,13 @@ fn prepare(
     selection: Option<&[usize]>,
     comp: Option<&str>,
 ) -> Result<Option<(Project, u64, ClipRequest)>, ServeError> {
+    // バージョンは適用より先に読む。間に編集が入っても、新しいバージョンのキーで古い中身をキャッシュに残さない。
+    let saved = core.project()?;
     // 適用を先に試し、無い提案と保留中でない提案を `GET /m/api/frame?proposal=` と同じ拒否にする。
     let (applied, touched) = core.preview_project(id, selection)?;
     let view = core.proposal(id)?;
-    let saved = core.project()?;
-    let Some((composition, start, end)) = clip_span(&saved.project, &view.scope, comp) else {
+    let Some((composition, start, end)) = clip_span(&saved.project, &applied, &view.scope, comp)
+    else {
         return Ok(None);
     };
     let ops: Vec<_> = view
