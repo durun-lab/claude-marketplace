@@ -8,8 +8,9 @@ use mm_runtime::Registry;
 use mm_types::color::ColorSpace;
 use mm_types::{Id, ParamValue, Rational, RationalTime};
 
+use crate::clip::{ClipPlan, ClipRequest};
 use crate::hls::{HlsRequest, Plan};
-use crate::key::{segment_key, KeyEnv, SegmentKey};
+use crate::key::{clip_key, segment_key, ClipKey, KeyEnv, SegmentKey};
 use crate::quality::HlsQuality;
 
 const FPS: u32 = 30;
@@ -228,8 +229,8 @@ fn 素材の中身が変わると使う区間が変わり_取り込み前の素�
     assert_eq!(same(&v1, &v2), [true, true, false]);
 }
 
-/// SDR の区間はプロジェクトの素材から決まるトーンマップの上限で符号化するので、どの区間にも置いていない
-/// HDR の素材を足すと全区間のキーが変わる。SDR の素材なら変わらない。
+/// SDR の区間と短い動画はプロジェクトの素材から決まるトーンマップの上限で符号化するので、どこにも置いていない
+/// HDR の素材を足すと全区間と短い動画のキーが変わる。SDR の素材なら変わらない。
 #[test]
 fn hdr_の素材を足すと区間に掛からなくても全区間のキーが変わる() {
     let unused = |color_space: ColorSpace| Asset {
@@ -242,10 +243,58 @@ fn hdr_の素材を足すと区間に掛からなくても全区間のキーが�
         timebase_offset: RationalTime::ZERO,
     };
     let before = keys(&project());
+    let before_clip = clip(&project(), 3.0, 3.0, "[1]");
     let mut sdr = project();
     sdr.assets.push(unused(ColorSpace::bt709()));
     assert_eq!(same(&before, &keys(&sdr)), [true, true, true]);
+    assert_eq!(clip(&sdr, 3.0, 3.0, "[1]"), before_clip);
     let mut hdr = project();
     hdr.assets.push(unused(ColorSpace::bt2100_pq()));
     assert_eq!(same(&before, &keys(&hdr)), [false, false, false]);
+    assert_ne!(clip(&hdr, 3.0, 3.0, "[1]"), before_clip);
+}
+
+fn clip(p: &Project, start: f64, end: f64, ops: &str) -> ClipKey {
+    let registry = Registry::new();
+    let env = KeyEnv {
+        project: p,
+        nodes: &registry,
+        backends: "test",
+        version: 1,
+    };
+    let req = ClipRequest {
+        composition: "main".into(),
+        start,
+        end,
+        ops: ops.into(),
+        touched: Vec::new(),
+    };
+    clip_key(&env, &ClipPlan::new(p, &req).unwrap(), ops).unwrap()
+}
+
+#[test]
+fn 短い動画のキーは操作と範囲と範囲に掛かる中身で決まる() {
+    let p = project();
+    // 前後に 2 秒を足した範囲は 1〜5 秒（カット a と b）。
+    let k = clip(&p, 3.0, 3.0, "[1]");
+    assert_eq!(clip(&project(), 3.0, 3.0, "[1]"), k, "同じ中身なら同じキー");
+    let name = k.file_name();
+    assert_eq!(name.trim_end_matches(".mp4").parse::<ClipKey>().unwrap(), k);
+    assert_ne!(clip(&p, 3.0, 3.0, "[2]"), k, "操作が違えば別");
+    assert_ne!(clip(&p, 3.0, 4.0, "[1]"), k, "範囲が違えば別");
+
+    let mut inside = project();
+    inside.sequences[0].cuts[1].source = solid("changed");
+    assert_ne!(
+        clip(&inside, 3.0, 3.0, "[1]"),
+        k,
+        "範囲の中のカットを直すと別"
+    );
+    let mut outside = project();
+    outside.sequences[0].cuts[3].source = solid("changed");
+    assert_eq!(
+        clip(&outside, 3.0, 3.0, "[1]"),
+        k,
+        "範囲の外のカットは掛からない"
+    );
 }

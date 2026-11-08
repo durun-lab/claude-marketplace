@@ -46,17 +46,22 @@ impl Slot {
     }
 
     pub(crate) fn wait(&self) -> Result<()> {
+        self.wait_for("区間を作る", SEGMENT_TIMEOUT)
+    }
+
+    /// 出来上がりを `limit` まで待つ。時間切れは `Timeout`（`what` は待っていたもの）。
+    pub(crate) fn wait_for(&self, what: &str, limit: Duration) -> Result<()> {
         let guard = lock(&self.outcome);
         let (guard, _) = self
             .done
-            .wait_timeout_while(guard, SEGMENT_TIMEOUT, |o| o.is_none())
+            .wait_timeout_while(guard, limit, |o| o.is_none())
             .unwrap_or_else(|e| e.into_inner());
         match guard.as_ref() {
             Some(Ok(())) => Ok(()),
             Some(Err(msg)) => Err(MmError::Internal(msg.clone())),
             None => Err(MmError::Timeout {
-                what: "区間を作る".into(),
-                limit: SEGMENT_TIMEOUT,
+                what: what.into(),
+                limit,
             }),
         }
     }

@@ -8,7 +8,9 @@ const message = (e: unknown): string => (e instanceof Error ? e.message : String
 export interface CommentsState {
   comments: Comment[] | null;
   error: string | null;
-  /** 再生位置をコメントの時刻（範囲は始め）へ動かす。 */
+  /** Review で選んだコメントの ID。その描き込みを Program に重ねる。 */
+  focused: string | null;
+  /** コメントを選び、再生位置をその時刻（範囲は始め）へ動かす。 */
   seek: (c: Comment) => void;
   /** 返信を送る。送れたら `true`（入力欄を空にしてよい）。 */
   reply: (c: Comment, text: string) => Promise<boolean>;
@@ -55,7 +57,15 @@ const useCommentList = (api: ReviewApi, onError: (m: string) => void) => {
 /** コメントの一覧と、再生位置の移動、返信、状態の決定。失敗の理由は `error` に残す。 */
 export const useComments = (api: ReviewApi): CommentsState => {
   const [error, setError] = useState<string | null>(null);
+  const [focused, setFocused] = useState<string | null>(null);
   const { comments, reload } = useCommentList(api, setError);
+
+  // 選択はパネルの中にだけあり、開き直すと空になる。開いたときと閉じたときにアプリの選択も外し、Program の表示と揃える。
+  useEffect(() => {
+    const clear = () => void api.focusComment(null).catch(() => undefined);
+    clear();
+    return clear;
+  }, [api]);
 
   const run = async (action: () => Promise<unknown>): Promise<boolean> => {
     setError(null);
@@ -73,7 +83,14 @@ export const useComments = (api: ReviewApi): CommentsState => {
   return {
     comments,
     error,
-    seek: (c) => void run(() => api.seek(commentSeconds(c))),
+    focused,
+    seek: (c) => {
+      setFocused(c.id);
+      void run(async () => {
+        await api.focusComment(c.id);
+        await api.seek(commentSeconds(c));
+      });
+    },
     reply: (c, text) => run(() => api.replyComment(c.id, text)),
     decide: (c, state) => void run(() => api.setCommentState(c.id, state)),
   };

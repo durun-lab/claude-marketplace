@@ -10,7 +10,7 @@ use std::path::Path;
 use mm_doc::{Project, RenderTarget};
 use mm_export::{export_project, ExportOptions, StreamOutput};
 use mm_runtime::Engine;
-use mm_types::{Id, MmError, RenderTargetId, Result, TimeRange};
+use mm_types::{CompositionId, Id, MmError, Rational, RenderTargetId, Result, TimeRange};
 
 use crate::hls::Plan;
 use crate::quality::AUDIO_BITS_PER_SECOND;
@@ -34,7 +34,14 @@ pub(crate) fn render_segment(
         fs::create_dir_all(dir)?;
     }
     let range = plan.range(index)?;
-    let (project, target) = with_stream_target(project, plan);
+    let spec = TargetSpec {
+        composition: &plan.composition,
+        width: plan.width,
+        height: plan.height,
+        fps: plan.fps,
+        codec: STREAM_CODEC,
+    };
+    let (project, target) = with_target(project, &spec, out);
     let options = ExportOptions {
         output: Some(out.to_path_buf()),
         target: Some(target),
@@ -59,19 +66,32 @@ fn stream_output(plan: &Plan, range: TimeRange) -> Result<StreamOutput> {
     })
 }
 
+/// 配信の書き出しのレンダーターゲットの中身。
+pub(crate) struct TargetSpec<'a> {
+    pub composition: &'a CompositionId,
+    pub width: u32,
+    pub height: u32,
+    pub fps: Rational,
+    pub codec: &'static str,
+}
+
 /// 配信の大きさと fps のレンダーターゲットを足したプロジェクトのデータ。
-fn with_stream_target(project: &Project, plan: &Plan) -> (Project, RenderTargetId) {
+pub(crate) fn with_target(
+    project: &Project,
+    spec: &TargetSpec<'_>,
+    out: &Path,
+) -> (Project, RenderTargetId) {
     let id: RenderTargetId = Id::new(TARGET_ID);
     let mut project = project.clone();
     project.render_targets.retain(|t| t.id != id);
     project.render_targets.push(RenderTarget {
         id: id.clone(),
-        composition: plan.composition.clone(),
-        width: plan.width,
-        height: plan.height,
-        fps: plan.fps,
-        codec: STREAM_CODEC.into(),
-        output_path: "mm-stream.ts".into(),
+        composition: spec.composition.clone(),
+        width: spec.width,
+        height: spec.height,
+        fps: spec.fps,
+        codec: spec.codec.into(),
+        output_path: out.to_string_lossy().into_owned(),
         loudness_lufs: None,
         delivery: Default::default(),
     });

@@ -33,3 +33,15 @@ export const frameUrl = (t: number, opts: { comp?: string; proposal?: number; op
   if (opts.ops) q.set("ops", opts.ops.join(","));
   return `${API_ROOT}/frame?${q}`;
 };
+
+/**
+ * 提案の区間の短い動画（範囲の前後 2 秒、MP4）。`comp` は範囲を見るコンポジション、`ops` は一部だけ適用するときの番号。
+ * PC は作り終えるまで応答を待たせるので、`<video>` にそのまま渡せる。
+ */
+export const clipUrl = (id: number, opts: { comp?: string; ops?: number[] | null } = {}): string => {
+  const q = new URLSearchParams();
+  if (opts.comp) q.set("comp", opts.comp);
+  if (opts.ops) q.set("ops", opts.ops.join(","));
+  const query = q.toString();
+  return `${PROPOSALS}/${id}/clip.mp4${query ? `?${query}` : ""}`;
+};

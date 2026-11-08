@@ -3,10 +3,11 @@
 use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
-    fit_rect, split_viewers, timeline_quads, Action, PaintState, PointerEvent, Quad, Rect,
-    SurfaceLayout, TimeView, TimelineController, TimelineModel, VIEW_MARGIN,
+    fit_rect, split_viewers, timeline_quads, Action, DrawingShape, PaintState, PointerEvent, Quad,
+    Rect, SurfaceLayout, TimeView, TimelineController, TimelineModel, VIEW_MARGIN,
 };
 
+use crate::drawing::{DrawingFit, DrawingLayer};
 use crate::program::ProgramViewer;
 use crate::quads::QuadRenderer;
 
@@ -23,6 +24,10 @@ pub enum Region {
 pub struct Ui {
     quads: QuadRenderer,
     program: ProgramViewer,
+    /// Program の上に重ねる描き込み。
+    drawing: DrawingLayer,
+    /// 表示の倍率（DPI / 96）。描き込みの太さに掛ける。
+    scale: f32,
     source: ProgramViewer,
     model: TimelineModel,
     controller: TimelineController,
@@ -39,6 +44,8 @@ impl Ui {
         Self {
             quads: QuadRenderer::new(device, format),
             program: ProgramViewer::new(device, format),
+            drawing: DrawingLayer::new(device, format),
+            scale: 1.0,
             source: ProgramViewer::new(device, format),
             model: TimelineModel::default(),
             controller: TimelineController::new(TimeView {
@@ -152,6 +159,16 @@ impl Ui {
         }
     }
 
+    /// Program の映像に重ねる描き込み。空で消す。座標は映像の左上を (0, 0)、右下を (1, 1) に正規化したもの。
+    pub fn set_drawing(&mut self, drawing: Vec<DrawingShape>) {
+        self.drawing.set_shapes(drawing);
+    }
+
+    /// 表示の倍率（DPI / 96）。描き込みの太さを論理ピクセルで揃えるのに使う。
+    pub fn set_scale_factor(&mut self, scale: f32) {
+        self.scale = scale;
+    }
+
     /// Program に出すフレームを、同じデバイスのテクスチャのまま渡す。
     pub fn set_frame_texture(&mut self, device: &wgpu::Device, texture: &wgpu::Texture) {
         self.program.set_texture(device, texture);
@@ -213,9 +230,19 @@ impl Ui {
         let count = self
             .quads
             .prepare(device, queue, &self.timeline_quads(), (w, h));
+        let mut drawing = 0;
         if let Some((iw, ih)) = self.program.image_size() {
-            let rect = fit_rect(iw as f32, ih as f32, self.layout.program);
+            let image = (iw as f32, ih as f32);
+            let rect = fit_rect(image.0, image.1, self.layout.program);
             self.program.prepare(queue, rect, (w, h));
+            let fit = DrawingFit {
+                image,
+                area: self.layout.program,
+                viewport: (w, h),
+                scale: self.scale,
+                color: self.palette.drawing,
+            };
+            drawing = self.drawing.prepare(device, queue, fit);
         }
         if let (Some((iw, ih)), Some(area)) = (self.source.image_size(), self.layout.source) {
             let rect = fit_rect(iw as f32, ih as f32, area);
@@ -225,6 +252,7 @@ impl Ui {
         {
             let mut pass = begin_pass(&mut enc, target);
             self.program.draw(&mut pass);
+            self.drawing.draw(&mut pass, drawing);
             self.source.draw(&mut pass);
             self.quads.draw(&mut pass, count);
         }

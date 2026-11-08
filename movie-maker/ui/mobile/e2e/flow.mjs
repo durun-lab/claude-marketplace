@@ -146,14 +146,43 @@ const checkFrames = async (page) => {
   await page.locator(".compare img.show[alt=Before]").waitFor({ timeout: UI_TIMEOUT_MS });
 };
 
-/** 4. モバイルの Proposals で前後を見て承認する。別の画面（同じ端末）に SSE でコメントの fresh が届く。 */
-export const approve = async ({ page, context, relay, mcp, state }) => {
+/** 短い動画の先頭を画面と同じ資格で取る。MP4 の先頭の箱（ftyp）と、Range への 206。 */
+const fetchClip = (page, id) =>
+  page.evaluate(async (pid) => {
+    const res = await globalThis.fetch(`/m/api/proposals/${pid}/clip.mp4`, { headers: { Range: "bytes=0-7" } });
+    const bytes = new Uint8Array(await res.arrayBuffer());
+    return { status: res.status, type: res.headers.get("content-type"), box: String.fromCharCode(...bytes.slice(4, 8)) };
+  }, id);
+
+/**
+ * 提案の区間の短い動画が MP4 で取れること。Chromium は Play で再生が進むことまで。
+ * WebKit の Windows 版は H.264 を再生できないので、押すと作っている間の表示が出て、失敗の表示で終わることまで。
+ */
+const checkClip = async (page, browserName, id) => {
+  const c = await fetchClip(page, id);
+  assert.equal(c.status, 206);
+  assert.equal(c.type, "video/mp4");
+  assert.equal(c.box, "ftyp");
+  await page.getByRole("button", { name: "Play", exact: true }).click();
+  if (browserName !== "chromium") {
+    await page.locator(".clip-note").first().waitFor({ timeout: MEDIA_TIMEOUT_MS });
+    await page.getByRole("button", { name: "After", exact: true }).click();
+    return "clip.mp4 answered 206 (WebKit on Windows cannot decode H.264)";
+  }
+  await page.waitForFunction((min) => (globalThis.document.querySelector(".compare video.on")?.currentTime ?? 0) > min, PLAYED_SECONDS, { timeout: MEDIA_TIMEOUT_MS });
+  await page.getByRole("button", { name: "After", exact: true }).click();
+  return "clip.mp4 played";
+};
+
+/** 4. モバイルの Proposals で前後を見て、短い動画を再生して承認する。別の画面（同じ端末）に SSE でコメントの fresh が届く。 */
+export const approve = async ({ page, context, relay, mcp, state, browserName }) => {
   const watcher = await context.newPage();
   await watcher.goto(`${relay.origin}/m/`);
   await item(watcher, COMMENT_TEXT).locator(".state.open").waitFor({ timeout: UI_TIMEOUT_MS });
   await page.getByRole("tab", { name: "Proposals" }).click();
   await item(page, PROPOSAL_NAME).click();
   await checkFrames(page);
+  const clip = await checkClip(page, browserName, state.proposalId);
   await page.getByRole("button", { name: /^Approve/ }).click();
   await page.getByRole("status").filter({ hasText: `Approved ${PROPOSAL_NAME}` }).waitFor({ timeout: UI_TIMEOUT_MS });
   await item(watcher, COMMENT_TEXT).locator(".state.fresh").waitFor({ timeout: UI_TIMEOUT_MS });
@@ -163,7 +192,7 @@ export const approve = async ({ page, context, relay, mcp, state }) => {
   assert.ok(c.responded_txn, "対応したトランザクションが付く");
   const { proposals } = await mcp.call("proposals");
   assert.equal(proposals.find((p) => p.id === state.proposalId)?.state, "approved");
-  return "approved on mobile, comment turned fresh over SSE";
+  return `${clip}, approved on mobile, comment turned fresh over SSE`;
 };
 
 /** 単語を 2 回押して範囲を選ぶ。 */
