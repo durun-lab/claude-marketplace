@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 
 use mm_audio_api::{AudioBlock, NormalizeReport, NormalizeSpec};
 use mm_decode_api::{ExtraTracks, SubtitleCue};
-use mm_doc::{Composition, Project, RenderTarget, SubtitleOutput};
+use mm_doc::{hdr_signal_from_sdr_range, Composition, Project, RenderTarget, SubtitleOutput};
 use mm_runtime::Engine;
 use mm_types::{MmError, Result, TimeRange};
 
@@ -46,6 +46,9 @@ pub(crate) fn prepare(
     transcript: Option<&TranscriptWords>,
 ) -> Result<Prepared> {
     let mut out = Prepared::default();
+    if let Some(w) = hdr_signal_warning(project, target) {
+        out.warnings.push(w);
+    }
     let d = &target.delivery;
     if d.subtitles != SubtitleOutput::None {
         let words = transcript.ok_or_else(|| {
@@ -76,6 +79,18 @@ pub(crate) fn prepare(
         out.tracks.chapters = marks;
     }
     Ok(out)
+}
+
+/// 作業の明るさが SDR のまま HDR の素材を HDR の信号で書き出すと、ハイライトが SDR の白の下に収まったまま出る。
+/// 書き出しは止めず（SDR の白を揃えたい HDR の納品もある）、切り替え方を警告に出す。
+pub(crate) fn hdr_signal_warning(project: &Project, target: &RenderTarget) -> Option<String> {
+    hdr_signal_from_sdr_range(project, &target.codec).then(|| {
+        format!(
+            "作業の明るさが sdr なので、HDR の素材のハイライトを SDR の白の下に収めたまま {} で書き出す。\
+             残すには setColorConfig で working_range を hdr にする",
+            target.codec
+        )
+    })
 }
 
 /// 字幕の形式の文字列を作る関数。

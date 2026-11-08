@@ -2,8 +2,8 @@
 //! 効果と合成の前に BT.2390 の EETF（`TONEMAP_WGSL`）で SDR の白（線形 1.0）に収める。SDR の素材、文字、画像の
 //! レイヤーは通らないので白は 1.0 のまま。Premiere Pro の「メディアを自動でトーンマップ」と同じ位置。
 //!
-//! フレームのキャッシュが覚えるレイヤーの画像はトーンマップの前（デコードしたままの線形）で、入れ子の画像は後。
-//! どちらのキーにも作業の明るさの印が入る（`WgpuRenderer::key_color`）。
+//! フレームのキャッシュが覚えるレイヤーの画像はトーンマップの前（デコードしたままの線形）で、キーに作業の明るさを
+//! 入れない。入れ子の画像は後なので、そのキーにだけ作業の明るさが入る（`WgpuRenderer::key_color`）。
 
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
@@ -19,7 +19,7 @@ use crate::frame_cache::asset_of;
 use crate::layers::{CompCx, LayerImage};
 use crate::renderer::WgpuRenderer;
 
-/// フレームのキャッシュのキーの色の指紋に足す印。入力の側のトーンマップが掛かるプロジェクトだけに付ける。
+/// 入れ子の画像のキーの設定の指紋に足す文字列。入力の側のトーンマップが掛かるプロジェクトだけに付ける。
 const KEY_MARK: &str = "+input_tonemap:bt2390";
 
 /// premultiplied のまま EETF を掛けると半透明の縁で比が崩れるので、straight に戻して掛けてから掛け直す。
@@ -186,8 +186,8 @@ fn create_pipeline(device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> wgp
 }
 
 impl WgpuRenderer {
-    /// フレームのキャッシュのキーに入れる色の指紋（[`Self::config_fingerprint`]）に、入力の側のトーンマップの印を足す。
-    /// 掛からないプロジェクトの指紋は変えない。
+    /// 入れ子の画像のキーに入れる設定の指紋（[`Self::config_fingerprint`]）に、入力の側のトーンマップの有無を足す。
+    /// 入れ子の画像はトーンマップの後の画素を覚えるため。掛からないプロジェクトの指紋は変えない。
     pub(crate) fn key_color(&self, project: &mm_doc::Project) -> String {
         let color = self.config_fingerprint();
         if input_tone_mapped(project) {

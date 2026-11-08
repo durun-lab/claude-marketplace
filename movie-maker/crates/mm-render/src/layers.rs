@@ -243,7 +243,8 @@ impl WgpuRenderer {
         params: &Params,
         transform: &LayerTransform,
     ) -> Result<Option<LayerImage>> {
-        let color = self.key_color(cx.project);
+        // 覚える画像は入力の側のトーンマップの前なので、作業の明るさを切り替えてもデコードし直さない。
+        let color = self.config_fingerprint();
         let Self {
             sources,
             decoders,

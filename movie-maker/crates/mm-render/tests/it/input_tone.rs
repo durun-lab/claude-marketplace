@@ -10,8 +10,8 @@ use crate::tone_map::{
     expected_yuv, export_nv12, pq_asset, white_and_highlight_luma, CODE_TOLERANCE, SIZE,
 };
 
-use common::{comp, gpu, layer, project, render_at, services, shader};
-use mm_doc::{Node, Project, WorkingRange, NESTED_KIND, NESTED_PARAM};
+use common::{comp, gpu, layer, project, render_at, services, shader, solid};
+use mm_doc::{BlendMode, Node, Project, WorkingRange, NESTED_KIND, NESTED_PARAM};
 use mm_render::{GpuContext, WgpuRenderer};
 use mm_testkit::audio::SampleMixerFactory;
 use mm_testkit::decode::{SampleDecoderFactory, SampleMedia};
@@ -154,6 +154,48 @@ fn 作業の明るさを変えると入れ子の画像を引き直す() {
             WorkingRange::Sdr => mapped,
             WorkingRange::Hdr => HIGHLIGHT,
         };
+        let got = highlight_at(&mut r, &p);
+        assert!(
+            (got - want).abs() < TOLERANCE,
+            "{range:?}: {got} 期待 {want}"
+        );
+    }
+}
+
+/// レイヤーの画像はトーンマップの前を覚えるので、作業の明るさを切り替えても素材の画像を作り直さない。
+#[test]
+fn 作業の明るさを切り替えてもレイヤーの画像は覚えたものを使う() {
+    let Some(ctx) = gpu() else { return };
+    let mut r = highlight_renderer(&ctx);
+    highlight_at(
+        &mut r,
+        &scene(ColorSpace::bt2100_pq(), WorkingRange::Sdr, false),
+    );
+    let inserted = r.frame_cache_stats().inserted;
+    for range in [WorkingRange::Hdr, WorkingRange::Sdr] {
+        highlight_at(&mut r, &scene(ColorSpace::bt2100_pq(), range, false));
+        assert_eq!(r.frame_cache_stats().inserted, inserted, "{range:?}");
+    }
+}
+
+/// 効果と合成モードは入力の側のトーンマップの後で掛かる。加算の合成は SDR に収めた素材の値を下の色に足す。
+#[test]
+fn 作業の明るさが_sdr_なら加算の合成は収めた後の素材を足す() {
+    let Some(ctx) = gpu() else { return };
+    let mut r = highlight_renderer(&ctx);
+    let base = 0.25;
+    let mut clip = layer("clip", footage(), 1);
+    clip.blend = BlendMode::Add;
+    let under = layer("base", solid(Rgba::new(base, base, base, 1.0)), 1);
+    let mut p = project(vec![comp("main", SIZE, 1, vec![under, clip])], vec![]);
+    p.assets.push(pq_asset());
+    let peak = hdr_source_peak([&ColorSpace::bt2100_pq()]);
+    let mapped = bt2390_to_sdr([HIGHLIGHT, 0.0, HIGHLIGHT], peak)[0];
+    for (range, want) in [
+        (WorkingRange::Sdr, base + mapped),
+        (WorkingRange::Hdr, base + HIGHLIGHT),
+    ] {
+        p.color_config.working_range = range;
         let got = highlight_at(&mut r, &p);
         assert!(
             (got - want).abs() < TOLERANCE,

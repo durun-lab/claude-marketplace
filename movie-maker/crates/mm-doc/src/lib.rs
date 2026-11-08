@@ -51,7 +51,7 @@ pub use bins::{
     Bins, Rating, Selection, SelectionId, SelectionMarker, SourceMarks, Topic, TopicId,
     TopicMarker, WordEdit, WordId, WordMarker,
 };
-pub use color_config::{ColorConfig, WorkingRange};
+pub use color_config::{hdr_signal_from_sdr_range, ColorConfig, WorkingRange, HDR_SIGNAL_CODECS};
 pub use delivery::{Delivery, SubtitleOutput, DEFAULT_TRUE_PEAK_DBTP};
 pub use layer::{
     BlendMode, CaptionPlacement, Crop, CutReframe, Effect, EffectId, EffectMarker, Fade, FadeCurve,

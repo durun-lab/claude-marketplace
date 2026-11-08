@@ -153,6 +153,16 @@ mod tests {
         assert!(spec_of("vp9").is_none());
     }
 
+    /// プロジェクトの移行と書き出しの警告は `mm_doc::HDR_SIGNAL_CODECS` で HDR の信号の書き出しを見分ける。
+    #[test]
+    fn hdr_の信号で書き出す名前はプロジェクトのデータの表と同じ() {
+        let hdr: Vec<&str> = SUPPORTED_NAMES
+            .into_iter()
+            .filter(|n| spec_of(n).is_some_and(|s| s.signal.is_hdr()))
+            .collect();
+        assert_eq!(hdr, mm_doc::HDR_SIGNAL_CODECS);
+    }
+
     #[test]
     fn コンテナと画素形式はコーデックで決まる() {
         let x = spec_of("h264").unwrap();

@@ -65,7 +65,7 @@ pub fn input_tone_map_peak(project: &Project, space: &ColorSpace) -> f32 {
 }
 
 /// プロジェクトのどれかの素材に入力の側のトーンマップが掛かるか。真なら同じ素材でも描いた画素が作業の明るさで
-/// 変わるので、フレームのキャッシュと配信の区間のキーに入れる。偽のプロジェクトのキーは変えない。
+/// 変わるので、トーンマップの後の画素を覚える入れ子の画像のキーに入れる。偽のプロジェクトのキーは変えない。
 pub fn input_tone_mapped(project: &Project) -> bool {
     project
         .assets

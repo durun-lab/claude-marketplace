@@ -7,7 +7,7 @@
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-use mm_doc::{Asset, Composition, Layer, Node, Project};
+use mm_doc::{Asset, ColorConfig, Composition, Layer, Node, Project};
 use mm_types::{AssetId, CompositionId, Id, Rational, RationalTime};
 use serde::Serialize;
 
@@ -84,7 +84,7 @@ impl SourceSlot {
             .expect("source options")
             .clone()
             .unwrap_or_default();
-        let (synthetic, fps) = source_project(found, comp)?;
+        let (synthetic, fps) = source_project(found, comp, &project.color_config)?;
         let shared = Arc::new(Shared::new());
         shared.cpu_frames.store(true, Ordering::SeqCst);
         let comp_id: CompositionId = Id::new(SOURCE_COMPOSITION);
@@ -122,9 +122,15 @@ impl SourceSlot {
 }
 
 /// 素材 1 本を、素材の長さ全体を映すコンポジションにしたプロジェクト。大きさは Program のコンポジションに合わせる。
-fn source_project(asset: &Asset, program: &Composition) -> Result<(Project, Rational), String> {
+/// Program と Source は同じ合成の後のトーンマップ（`Ui::set_hdr_peak`）を受けるので、作業の明るさを本体に揃える。
+fn source_project(
+    asset: &Asset,
+    program: &Composition,
+    color_config: &ColorConfig,
+) -> Result<(Project, Rational), String> {
     let fps = asset.fps.unwrap_or(program.fps);
     let mut project = Project::new();
+    project.color_config = color_config.clone();
     project.assets.push(asset.clone());
     project.compositions.push(
         Composition::new(
@@ -222,13 +228,24 @@ mod tests {
     #[test]
     fn 素材だけを載せたコンポジションは素材の長さ全体を映す() {
         let p = sample_project();
-        let (src, fps) = source_project(&p.assets[0], &p.compositions[0]).unwrap();
+        let (src, fps) = source_project(&p.assets[0], &p.compositions[0], &p.color_config).unwrap();
         let comp = src.composition(&Id::new(SOURCE_COMPOSITION)).unwrap();
         assert_eq!(comp.duration, p.assets[0].duration);
         assert_eq!(comp.layers.len(), 1);
         assert_eq!(comp.layers[0].source.kind, "footage");
         assert_eq!(fps, Rational::integer(30));
         assert_eq!((comp.width, comp.height), (64, 36));
+    }
+
+    /// Program と同じ合成の後のトーンマップを受けるので、HDR の素材に入力の側と合成の後の二重に掛けない。
+    #[test]
+    fn source_のプロジェクトは本体の作業の明るさを写す() {
+        let p = sample_project();
+        let hdr = ColorConfig {
+            working_range: mm_doc::WorkingRange::Hdr,
+        };
+        let (src, _) = source_project(&p.assets[0], &p.compositions[0], &hdr).unwrap();
+        assert_eq!(src.color_config, hdr);
     }
 
     #[test]

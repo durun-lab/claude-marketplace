@@ -17,6 +17,7 @@ mm-encode-ffmpeg-core = { workspace = true }
 ffmpeg = ["mm-encode-ffmpeg-core/ffmpeg", "mm-decode-ffmpeg/ffmpeg"]
 
 [dev-dependencies]
+mm-doc = { workspace = true }
 mm-testkit = { workspace = true }
 # 書き出した MP4 をリードバックしてフレームの番号を確かめる。テストだけの依存で、実装どうしの依存にはならない。
 mm-decode-ffmpeg = { path = "../mm-decode-ffmpeg" }

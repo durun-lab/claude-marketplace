@@ -5,6 +5,10 @@
 
 use serde::{Deserialize, Serialize};
 
+use mm_types::ColorSpace;
+
+use crate::Project;
+
 /// タイムラインの作業の明るさ。Resolve のタイムラインの色空間、Premiere Pro のシーケンスの作業色空間に当たる。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[cfg_attr(feature = "schema", derive(schemars::JsonSchema))]
@@ -42,6 +46,28 @@ impl ColorConfig {
     pub fn is_default(&self) -> bool {
         self == &Self::default()
     }
+}
+
+/// HDR の信号（PQ、HLG）で書き出すレンダーターゲットのコーデックの名前。名前の順。
+/// `mm-encode-ffmpeg` の試験が、コーデックの表の `OutputSignal::is_hdr` と揃うことを確かめる。
+pub const HDR_SIGNAL_CODECS: [&str; 2] = ["hevc_hlg", "hevc_pq"];
+
+/// 色空間の名前が HDR の素材（`bt2100_pq`、`bt2100_hlg`）か。
+pub(crate) fn is_hdr_space_name(name: &str) -> bool {
+    [ColorSpace::bt2100_pq(), ColorSpace::bt2100_hlg()]
+        .iter()
+        .any(|cs| cs.0 == name)
+}
+
+/// 作業の明るさが SDR のまま、HDR の素材があるプロジェクトを HDR の信号のコーデック `codec` で書き出すか。
+/// 真なら HDR の素材のハイライトは入力の側のトーンマップで SDR の白の下に収まったまま書き出される。
+pub fn hdr_signal_from_sdr_range(project: &Project, codec: &str) -> bool {
+    project.color_config.working_range == WorkingRange::Sdr
+        && HDR_SIGNAL_CODECS.contains(&codec)
+        && project
+            .assets
+            .iter()
+            .any(|a| is_hdr_space_name(&a.color_space.0))
 }
 
 #[cfg(test)]
