@@ -175,6 +175,7 @@
 - 期待画像はバックエンドごとに持つ。バックエンドが違うと浮動小数の丸めとフィルタの実装が違う。
 - 許容差は 2 段。(1) 同じバックエンド: 輝度の SSIM 0.995 以上かつチャンネルごとの最大の差 2/255 以下（`mm_testkit::golden`。段階 2 の期待画像 10 枚の値で置いた）。(2) バックエンドをまたぐ比較（プレビューと `mm frame` の一致を RTX と WARP で）: SSIM 0.98 以上〔推〕。
 - NVDEC と NVENC の要るテストは夜間に実機で回す。CI では `ffmpeg` の実装で同じ契約を通す。
+- 別のクレートの実行ファイルに頼るテストは、テストの中で cargo を呼ばず、見つからなければ作り方を書いた文言で失敗する。cargo はワークスペースごとのテスト（`--workspace`）では作るが、`-p` で選んだときは依存先の実行ファイルを作らない。`mm-runtime` の `decode_auto` を `-p mm-runtime` で回すときは、同じ `CARGO_TARGET_DIR` と profile で先に `cargo build -p mm-decode-d3d12va --features d3d12va --bin mm-d3d12va-probe` を実行する（`MM_D3D12VA_PROBE` で別の場所を指してもよい）。
 - wgpu の `gpu_test!` の型（全部の GPU で回し、バックエンドごとに「失敗を期待する」を管理する）[62] を `mm-testkit` の `gpu_contract!` に取り入れる。
 - 実機の夜間はこの PC で回す。録画中と書き出し中は回さない（[計装](17-instrumentation.md)の「使用中」のフラグを見る）。
 - GPU のコンテキストを失った後の復帰（device lost）もテストに入れる。WARP では `DXGI_ERROR_DEVICE_REMOVED` を起こせないので、`mm-render-api` のインターフェースで device lost を注入する。

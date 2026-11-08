@@ -25,7 +25,7 @@ fn scale(value: u32, percent: u32) -> u32 {
     (u64::from(value) * u64::from(percent) / 100) as u32
 }
 
-/// HLS の画質。画面の切り替えで選ぶ（既定は 360p）。
+/// HLS の画質。親のプレイリストから端末のプレーヤーが帯域に合わせて選ぶ（360p から始める）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum HlsQuality {
     /// 短い辺 360 画素、映像と音で約 0.5 Mbps。
@@ -36,7 +36,7 @@ pub enum HlsQuality {
 }
 
 impl HlsQuality {
-    /// 選べる画質。親のプレイリストが並べる順。
+    /// 選べる画質。親のプレイリストが並べる順（軽い順）。
     pub const ALL: [HlsQuality; 2] = [HlsQuality::P360, HlsQuality::P540];
 
     /// URL とキャッシュのパスに使う名前。
