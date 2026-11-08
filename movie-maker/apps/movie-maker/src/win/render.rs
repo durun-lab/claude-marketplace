@@ -148,7 +148,11 @@ type OwnDevice = (
 );
 
 fn own_device(hwnd: isize) -> Result<OwnDevice, String> {
-    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+    // プレビューのサーフェス（`RuntimeConfig::present`）と同じく、`WGPU_BACKEND` に依らず D3D12 だけで作る。
+    // Vulkan のアダプターは子ウィンドウのサーフェスの形式を返さないことがあり、ドライバーの破棄でクラッシュもする。
+    let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+    desc.backends = wgpu::Backends::DX12;
+    let instance = wgpu::Instance::new(desc);
     let surface = create_surface(&instance, hwnd)?;
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
         power_preference: wgpu::PowerPreference::HighPerformance,
