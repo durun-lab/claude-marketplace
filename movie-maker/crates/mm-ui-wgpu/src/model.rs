@@ -3,7 +3,7 @@
 use mm_doc::{Composition, Layer, Project, Sequence, SequenceId, SEQUENCE_KIND, SEQUENCE_PARAM};
 use mm_eval::{place_cuts, PlacedCut};
 use mm_types::Id;
-use mm_ui_layout::{CutBar, Item, ItemKind, TimelineModel};
+use mm_ui_layout::{CutBar, Item, ItemKind, TimelineModel, TrimBounds};
 
 fn kind_of(layer: &Layer) -> ItemKind {
     match layer.source.kind.as_str() {
@@ -70,12 +70,33 @@ pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
             kind: kind_of(layer),
             enabled: layer.enabled,
             cuts: cut_bars(project, layer),
+            trim: trim_bounds(project, layer, range),
         })
         .collect();
     TimelineModel {
         duration: comp.duration.to_f64(),
         fps: comp.fps.to_f64(),
         items,
+    }
+}
+
+/// 端のつまみで動かせる範囲。`trimLayer` の検査と同じ素材の余白（`Layer::trim_room`）から作る。
+/// 素材が引けないレイヤーは長さで止めず、離したときの操作の拒否に任せる。
+fn trim_bounds(project: &Project, layer: &Layer, range: mm_types::TimeRange) -> TrimBounds {
+    let Ok(room) = layer.trim_room(project) else {
+        return TrimBounds {
+            fixed_in: layer.time_remap.is_some(),
+            ..TrimBounds::FREE
+        };
+    };
+    TrimBounds {
+        min_start: room.head.map_or(f64::NEG_INFINITY, |head| {
+            range.start.to_f64() - head.to_f64()
+        }),
+        max_end: room
+            .tail
+            .map_or(f64::INFINITY, |tail| range.end.to_f64() + tail.to_f64()),
+        fixed_in: room.fixed_in,
     }
 }
 
@@ -230,6 +251,31 @@ mod tests {
         assert!(body_edit(&m, 0, 1, shift, 0.5).is_none());
         assert!(edge_edit(&m, 0, Some(1), Part::OutHandle, alt, 5.5).is_some());
         assert!(body_edit(&m, 0, 1, Mods::default(), 0.5).is_some());
+    }
+
+    #[test]
+    fn 撮影素材のつまみは素材の先頭と終わりまで_素材の長さが無いレイヤーは縛らない() {
+        let mut project = Project::new();
+        project.assets.push(mm_doc::Asset {
+            id: Id::new("a"),
+            path: "a.mp4".into(),
+            content_hash: "hash-a".into(),
+            color_space: mm_types::ColorSpace::bt709(),
+            duration: RationalTime::seconds(20),
+            fps: Some(Rational::integer(30)),
+            timebase_offset: RationalTime::ZERO,
+        });
+        // 2 倍速で素材の 4 秒から 10 秒を使う帯 [3, 6)。先頭まで 2 秒、終わりまで 5 秒（コンポジションの秒）。
+        let mut fast = layer("fast", "footage", 3, 4, 10);
+        fast.source = Node::footage(&Id::new("a"));
+        fast.speed = Rational::integer(2);
+        let mut c = comp();
+        c.layers = vec![fast, layer("text", "text", 0, 0, 5)];
+        let m = timeline_model(&project, &c);
+        let trim = m.items[1].trim;
+        assert_eq!((trim.min_start, trim.max_end), (1.0, 11.0));
+        assert!(!trim.fixed_in);
+        assert_eq!(m.items[0].trim, TrimBounds::FREE);
     }
 
     #[test]

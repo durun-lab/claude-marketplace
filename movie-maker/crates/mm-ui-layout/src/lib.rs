@@ -36,5 +36,5 @@ pub use snap::{quantize, snap, Snapped, SNAP_PX};
 pub use time_view::{TimeView, MAX_PX_PER_SEC, MIN_PX_PER_SEC};
 pub use timeline::{
     bar_span, cut_span, hit_test, row_top, CutBar, Hit, Item, ItemKind, Part, TimelineModel,
-    HANDLE_PX, ROW_GAP, ROW_H, RULER_H,
+    TrimBounds, HANDLE_PX, ROW_GAP, ROW_H, RULER_H,
 };
