@@ -37,7 +37,7 @@ fn require_human(caller: &Caller, what: &str) -> Result<(), ServeError> {
     Ok(())
 }
 
-/// コメントの書き手。画面に出す名乗り（`{kind, name}`）だけを残し、端末の ID は取り消しで見分ける操作の記録にだけ置く。
+/// コメントの書き手。コメントは Claude とほかの端末にもそのまま返すので、端末の ID を除いた発行元の種類と名前だけを残す。
 fn author_of(caller: &Caller) -> Actor {
     Actor::new(caller.actor.kind.clone(), caller.actor.name.clone())
 }
@@ -321,7 +321,7 @@ mod tests {
     async fn as_phone(mut req: Request, next: Next) -> Response {
         req.extensions_mut().insert(Caller {
             entry: mm_ops::Entry::WebView,
-            actor: Actor::new("mobile", "Pixel"),
+            actor: Actor::new("mobile", "Pixel").with_device("d-pixel"),
         });
         next.run(req).await
     }
@@ -395,7 +395,10 @@ mod tests {
             .client
             .post("/m/api/comments/c-1/replies", &json!({"text": "追記"}))
             .unwrap();
-        assert_eq!(r.json().unwrap()["replies"][0]["author"]["name"], "Pixel");
+        assert_eq!(
+            r.json().unwrap()["replies"][0]["author"],
+            json!({"kind": "mobile", "name": "Pixel"})
+        );
         let s = p
             .client
             .post("/m/api/comments/c-1/state", &json!({"state": "done"}))

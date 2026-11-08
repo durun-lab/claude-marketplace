@@ -11,7 +11,7 @@ pub struct Actor {
     pub kind: String,
     pub name: String,
     /// 登録した端末の ID（`mobile` だけ）。名前は登録を外すと別の端末が使えるので、端末の見分けはこちらでする。
-    /// 端末の ID を記録する前の行と、端末でない発行元は `None`。
+    /// DB のスキーマ 5 より前に書いた行と、端末でない発行元は `None`。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub device: Option<String>,
 }
@@ -146,5 +146,22 @@ pub(crate) fn kind_of(kind: &str, of: Option<i64>) -> TxnKind {
         ("undo", Some(of)) => TxnKind::Undo { of: of as u64 },
         ("redo", Some(of)) => TxnKind::Redo { of: of as u64 },
         _ => TxnKind::Normal,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 端末の_id_の無い発行元の_json_を読め_端末の_id_が無ければ書かない() {
+        let old: Actor = serde_json::from_str(r#"{"kind":"mobile","name":"phone"}"#).unwrap();
+        assert_eq!(old, Actor::new("mobile", "phone"));
+        assert_eq!(
+            serde_json::to_value(&old).unwrap(),
+            serde_json::json!({"kind": "mobile", "name": "phone"})
+        );
+        let phone = old.with_device("d1");
+        assert_eq!(serde_json::to_value(&phone).unwrap()["device"], "d1");
     }
 }

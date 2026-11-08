@@ -38,7 +38,7 @@ impl Caller {
         }
     }
 
-    /// モバイル版の登録した端末（人の操作）。名乗りは端末の名前で、記録には端末の ID も残す。ロックの付いた所には触れない。
+    /// モバイル版の登録した端末（人の操作）。発行元の名前は端末の名前で、取り消しで見分けるために端末の ID も持つ。ロックの付いた所には触れない。
     pub fn mobile(device_id: &str, device_name: &str) -> Self {
         Self {
             entry: Entry::Mobile,
