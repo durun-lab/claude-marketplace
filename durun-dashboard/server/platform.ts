@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import type { AgentPriority, HostOs, MemoryStatus, ToolName } from '../shared/types.ts';
 import { toMemoryStatus, toMemoryUsage } from './memory.ts';
-import { run as runOffThread } from './run.ts';
+import { type RunError, run as runOffThread } from './run.ts';
 
 /** 外のコマンドを動かして標準出力を返す。テストでは偽物に差し替える。 */
 export type Run = (file: string, args: string[]) => Promise<string>;
@@ -138,6 +138,8 @@ export type Platform = {
   localSocketPath: (dir: string, name: string) => string;
   /** この端末を tailnet の中から指す名前と IP。Tailscale が入っていないか、つながっていなければ空。 */
   tailnetHosts: (run?: Run) => Promise<string[]>;
+  /** tailscale の CLI を引数つきで動かして標準出力を返す。CLI が無いか、失敗するか、5 秒のうちに答えなければ投げる。 */
+  tailscale: (args: string[], run?: Run) => Promise<string>;
   /** 画面に渡すパス。画面がどの OS でも / で分けられるよう、区切りを / にそろえる。 */
   displayPath: (file: string) => string;
   /** エクスプローラーの最上位に並べる場所。Windows ではつながっているドライブで、ほかの OS では /。exists はテストで偽物に差し替える。 */
@@ -297,18 +299,39 @@ export const hostsInTailscaleStatus = (status: string): string[] => {
   return [...names, ...(Self.TailscaleIPs ?? []).map((ip) => (ip.includes(':') ? `[${ip}]` : ip))].filter(Boolean);
 };
 
-/** commands を順に試し、最初に動いた tailscale の CLI に聞く。どれも動かなければ、Tailscale が無いものとして空を返す。 */
-const tailnetHostsVia =
+const MAC_TAILSCALE = ['tailscale', '/Applications/Tailscale.app/Contents/MacOS/Tailscale'];
+// 公式のインストーラーは PATH に足すが、PATH を読み直す前に起動したサーバーからも見つける。
+const WIN_TAILSCALE = ['tailscale', String.raw`C:\Program Files\Tailscale\tailscale.exe`];
+
+/** tailscaled が止まりかけていると CLI が返らないので、答えを待つ上限を置く。 */
+const TAILSCALE_TIMEOUT_MS = 5000;
+const timedRun: Run = async (file, args) => (await runOffThread(file, args, { timeout: TAILSCALE_TIMEOUT_MS })).stdout;
+
+/** commands を順に試し、最初に動いた CLI の出力を返す。時間切れの CLI は在るので、ほかの場所を試して待ちを重ねない。 */
+const tailscaleVia =
   (commands: string[]) =>
-  async (run: Run = realRun): Promise<string[]> => {
+  async (args: string[], run: Run = timedRun): Promise<string> => {
+    let failure: unknown = new Error('tailscale の CLI が見つかりません');
     for (const command of commands) {
       try {
-        return hostsInTailscaleStatus(await run(command, ['status', '--json', '--peers=false']));
-      } catch {
-        // CLI が無いか、Tailscale が止まっている。次の場所を試す。
+        return await run(command, args);
+      } catch (e) {
+        failure = e;
+        if ((e as Partial<RunError>).killed) break;
       }
     }
-    return [];
+    throw failure;
+  };
+
+/** tailscale の CLI に聞く。CLI が無いか、Tailscale が止まっていれば空を返す。 */
+const tailnetHostsVia =
+  (commands: string[]) =>
+  async (run: Run = timedRun): Promise<string[]> => {
+    try {
+      return hostsInTailscaleStatus(await tailscaleVia(commands)(['status', '--json', '--peers=false'], run));
+    } catch {
+      return [];
+    }
   };
 
 const SYSCTL_NAMES = ['kern.memorystatus_vm_pressure_level', 'kern.memorystatus_level', 'hw.memsize', 'vm.swapusage'];
@@ -327,6 +350,7 @@ const posix = {
     path.posix.join('/tmp', `cc-daemon-${process.getuid?.() ?? 0}`, createHash('sha256').update(path.posix.resolve(claudeDir)).digest('hex').slice(0, 8), 'control.sock'),
   localSocketPath: (dir: string, name: string) => path.posix.join(dir, `${name}.sock`),
   tailnetHosts: tailnetHostsVia(['tailscale']),
+  tailscale: tailscaleVia(['tailscale']),
   displayPath: (file: string) => file,
   fileRoots: () => ['/'],
   shellCommand: (line: string) => ({ file: '/bin/sh', args: ['-c', line] }),
@@ -366,7 +390,8 @@ const darwin: Platform = {
     return toMemoryStatus(sysctl, vmStat);
   },
   // App Store と配布版の Tailscale は、CLI を PATH に置かず、アプリの中に持つ。
-  tailnetHosts: tailnetHostsVia(['tailscale', '/Applications/Tailscale.app/Contents/MacOS/Tailscale']),
+  tailnetHosts: tailnetHostsVia(MAC_TAILSCALE),
+  tailscale: tailscaleVia(MAC_TAILSCALE),
   slackAppState: (files = realFiles) => readOrUndefined(files, path.posix.join(os.homedir(), 'Library', 'Application Support', 'Slack', 'storage', 'root-state.json')),
   claudeCredentials: async (run = realRun) => {
     try {
@@ -472,7 +497,8 @@ const win32: Platform = {
   },
   // Windows でプロセス間の接続を listen できるのは、ファイルシステムではなく名前付きパイプの名前空間。
   localSocketPath: (dir, name) => `\\\\.\\pipe\\${path.win32.basename(dir)}-${name}`,
-  tailnetHosts: tailnetHostsVia(['tailscale']),
+  tailnetHosts: tailnetHostsVia(WIN_TAILSCALE),
+  tailscale: tailscaleVia(WIN_TAILSCALE),
   displayPath: (file) => file.replaceAll('\\', '/'),
   fileRoots: (exists = fs.existsSync) => DRIVE_LETTERS.filter((d) => exists(`${d}:\\`)).map((d) => `${d}:/`),
   // node-pty は配列の引数を引用符でくくり直し、行の中の引用符を崩すので、cmd.exe の引数を 1 つの文字列で渡す。

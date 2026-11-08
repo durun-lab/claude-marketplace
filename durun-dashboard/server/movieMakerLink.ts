@@ -2,6 +2,7 @@
 // HTTP の形は movie-maker/docs/design/05-ops.md の「HTTP サーバー」に従う。ここの関数はダッシュボードの状態に触れないので、テストで確かめる。
 import fs from 'node:fs';
 import path from 'node:path';
+import { MOBILE_HTTPS_PORT } from '../shared/mmMobile.ts';
 import type { MmChange } from '../shared/types.ts';
 
 /** 書き手が `.mm/lock.info` に書く情報。トークンそのものは持たず、置き場所の識別子だけを持つ。 */
@@ -62,9 +63,6 @@ const HUMAN_ACTORS = new Set(['gui', 'mobile']);
 
 /** change を送ったのが人間か。 */
 export const isHuman = (change: MmChange): boolean => HUMAN_ACTORS.has(change.actor);
-
-/** モバイル版の待ち受けの tailnet 上の HTTPS のポート。movie-maker の MOBILE_HTTPS_PORT と同じ。 */
-const MOBILE_HTTPS_PORT = 8443;
 
 /**
  * モバイル版の URL。tailnet での名前は `tailscale status --json` の Self.DNSName で、movie-maker の MobileServer::url と同じ元から作る。

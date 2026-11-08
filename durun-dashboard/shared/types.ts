@@ -1020,6 +1020,9 @@ export type MmInstallView = {
   error?: string;
 };
 
+/** モバイル版につながる 3 つの条件。url は Tailscale が動いて tailnet の名前が読めるときだけ、enableUrl は Serve と HTTPS 証明書を有効にする管理画面。 */
+export type MmMobileView = { tailscale: boolean; url?: string; serve: boolean; enableUrl?: string; listening: boolean };
+
 export type MmLinkStatus = 'no-project' | 'waiting' | 'connected';
 
 /** ムービーメーカーのウィンドウに描くもの。ウィンドウがつないでいる間、サーバーが変わるたびに送る。 */
@@ -1031,8 +1034,8 @@ export type MovieMakerView = {
   /** 最近開いたプロジェクトのフォルダー。新しい順。 */
   recent: string[];
   hasStore: boolean;
-  /** モバイル版の URL（tailnet での名前から作る）。Tailscale が動いていなければ無い。 */
-  mobileUrl?: string;
+  /** モバイル版につながる条件の確認結果。最初の確認が終わるまでは無い。 */
+  mobile?: MmMobileView;
   link: { status: MmLinkStatus; message?: string; port?: number; version?: number; undoDepth?: number };
   log: MmLogEntry[];
   logFile?: string;

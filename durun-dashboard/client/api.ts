@@ -85,6 +85,7 @@ export const api = {
   mmProject: (project?: string) => postJson('/api/moviemaker/project', { project }),
   mmInstall: () => postJson<{ message: string }>('/api/moviemaker/install'),
   mmLaunch: () => postJson<{ message: string }>('/api/moviemaker/launch'),
+  mmMobileCheck: () => postJson<{ message: string }>('/api/moviemaker/mobile/check'),
   cdripEventsUrl: '/api/cdrip/events',
   cdripList: (text: string) => postJson('/api/cdrip/list', { text }),
   cdripAccepting: (on: boolean) => postJson('/api/cdrip/accepting', { on }),
