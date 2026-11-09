@@ -1,6 +1,9 @@
 use std::sync::mpsc::channel;
 
+use mm_types::Id;
+
 use super::*;
+use crate::win::sequence_edit::tests::sample_project;
 
 /// Shell が読むパネルの登録の列。パネルが持ち主のコマンドは、ここにあるパネルを指す。
 const PANELS_TS: &str = include_str!("../../../../../ui/shell/src/panels.ts");
@@ -85,14 +88,23 @@ fn 押せるかが変わると表を送り直す() {
     let enabled = |table: &[CommandView], id: &str| row(table, id).state.enabled;
     let first = changed(&shared, &mut sent).expect("最初は送る");
     assert!(
+        !enabled(&first, "clip.split"),
+        "シーケンスのレイヤーが無ければ split は押せない"
+    );
+    assert!(
         !enabled(&first, "clip.lift"),
         "カットを選ぶまで lift は押せない"
     );
-    assert!(enabled(&first, "clip.split"));
+    assert!(enabled(&first, "playback.toggle"));
     assert!(
         changed(&shared, &mut sent).is_none(),
         "変わらなければ送らない"
     );
+
+    shared.publish_doc(Arc::new(sample_project()), Id::new("main"));
+    let opened = changed(&shared, &mut sent).expect("シーケンスのあるプロジェクトを開くと送る");
+    assert!(enabled(&opened, "clip.split"));
+    assert!(!enabled(&opened, "clip.lift"));
 
     shared.edit.select_cut(Some("k1".to_owned()));
     let selected = changed(&shared, &mut sent).expect("カットを選ぶと送る");

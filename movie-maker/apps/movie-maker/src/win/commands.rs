@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use mm_doc::SEQUENCE_KIND;
 use serde::Serialize;
 
 use crate::win::edit_actions::{self, EditAction};
@@ -224,22 +225,32 @@ pub struct State {
 struct Ready {
     /// Source に素材を開いている。イン点・アウト点と insert、overwrite は Source の範囲を使う。
     source_open: bool,
+    /// 開いているコンポジションにシーケンスのレイヤーがある。split、insert、overwrite はそのカットを編集する。
+    sequence: bool,
     /// Timeline でカットを選んでいる。lift と extract は選んだカットを抜く。
     cut_selected: bool,
 }
 
 impl Ready {
     fn of(shared: &Shared) -> Self {
+        let sequence = shared.doc().is_some_and(|doc| {
+            doc.project
+                .composition(&doc.comp)
+                .is_ok_and(|c| c.layers.iter().any(|l| l.source.kind == SEQUENCE_KIND))
+        });
         Self {
             source_open: shared.source.handle().is_some(),
+            sequence,
             cut_selected: shared.edit.selected_cut().is_some(),
         }
     }
 
     fn state(&self, spec: &Spec) -> State {
-        use EditAction::{Extract, Insert, Lift, MarkIn, MarkOut, Overwrite};
+        use EditAction::{Extract, Insert, Lift, MarkIn, MarkOut, Overwrite, Split};
         let enabled = match spec.owner {
-            Owner::App(Action::Edit(MarkIn | MarkOut | Insert | Overwrite)) => self.source_open,
+            Owner::App(Action::Edit(MarkIn | MarkOut)) => self.source_open,
+            Owner::App(Action::Edit(Insert | Overwrite)) => self.source_open && self.sequence,
+            Owner::App(Action::Edit(Split)) => self.sequence,
             Owner::App(Action::Edit(Lift | Extract)) => self.cut_selected,
             Owner::App(_) | Owner::Panel(_) => true,
         };
