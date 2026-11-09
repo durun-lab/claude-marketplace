@@ -8,7 +8,8 @@ use mm_types::{LayerId, Result};
 use crate::op::{Apply, Op};
 use crate::touches::Touches;
 
-/// 有効を `enabled` にする。無効のレイヤーは描かず、鳴らさない（Timeline の見出しの目のボタン）。
+/// 有効を `enabled` にする（レイヤーの見出しの有効のボタン）。無効のレイヤーは描かず、鳴らさない。
+/// トラックマットに使うレイヤーは無効でもマットとして効く（After Effects と同じ）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SetLayerEnabled {

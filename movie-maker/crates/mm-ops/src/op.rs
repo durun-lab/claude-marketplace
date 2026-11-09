@@ -82,7 +82,7 @@ define_ops! {
     RemoveMask => "removeMask",
     /// レイヤーの重なりの位置を変える。
     MoveLayer => "moveLayer",
-    /// レイヤーを時間の上で動かす（開始とレイヤーのキーフレームを一緒に動かす）。
+    /// レイヤーをコンポジションの時間軸で前後に動かす（始まりとキーフレームを一緒に動かす）。
     ShiftLayer => "shiftLayer",
     /// パラメータの固定の値を置く。
     SetParam => "setParam",

@@ -1,4 +1,4 @@
-//! レイヤーの時間の操作（`shiftLayer`、`setLayerEnabled`）の種。
+//! レイヤーの時間と有効の操作（`shiftLayer`、`setLayerEnabled`）の種。
 
 use super::build::layer_id;
 use crate::common::secs;
@@ -6,7 +6,7 @@ use mm_doc::Project;
 use mm_ops::*;
 use proptest::prelude::*;
 
-/// レイヤーの時間の操作の種。
+/// レイヤーの時間と有効の操作の種。
 #[derive(Debug, Clone)]
 pub enum TimeSpec {
     /// レイヤーの番号と、動かす秒。

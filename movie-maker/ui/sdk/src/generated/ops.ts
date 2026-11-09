@@ -501,7 +501,7 @@ export type MoveLayerOp = {
   "layer": string;
   "op": "moveLayer";
 };
-/** レイヤーを時間の上で動かす（開始とレイヤーのキーフレームを一緒に動かす）。 */
+/** レイヤーをコンポジションの時間軸で前後に動かす（始まりとキーフレームを一緒に動かす）。 */
 export type ShiftLayerOp = {
   "by": RationalTime;
   /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
