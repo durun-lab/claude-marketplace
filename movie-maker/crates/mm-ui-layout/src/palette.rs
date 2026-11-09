@@ -22,6 +22,9 @@ pub const GAP: Color = Color::hex(0x6b7280);
 pub const CUT_SEAM: Color = Color::hex(0x14161a);
 /// コメントの描き込みの線。テーマの `accent` が無いときの色。
 pub const DRAWING: Color = Color::hex(0x5b8def);
+/// 帯の上の名前の、明るい字と暗い字。帯の色に合わせてどちらかを選ぶ（[`text_on`]）。
+pub const BAR_TEXT_LIGHT: Color = Color::hex(0xf5f7fa);
+pub const BAR_TEXT_DARK: Color = Color::hex(0x15171c);
 
 /// サーフェスの UI の色の一式。既定は上の定数で、`ui/theme` の theme.json の色で差し替えられる。
 /// 再生位置、スナップのガイド線、帯の種類の色、Program の背景はテーマに無いので既定のまま。
@@ -113,4 +116,52 @@ pub fn lighten(c: Color, amount: f32) -> Color {
         c.0[2] + (1.0 - c.0[2]) * amount,
         c.0[3],
     ])
+}
+
+/// 色 `background` の帯に置く名前の色。明るい字と暗い字のうち、コントラストの比（WCAG 2 の式）が高い方。
+/// 帯の色は種類ごとに明るさが違うので、どの種類でも比 4.5 以上の字にする。
+pub fn text_on(background: Color) -> Color {
+    let bg = luminance(background);
+    let ratio = |fg: Color| {
+        let fg = luminance(fg);
+        (fg.max(bg) + 0.05) / (fg.min(bg) + 0.05)
+    };
+    if ratio(BAR_TEXT_LIGHT) >= ratio(BAR_TEXT_DARK) {
+        BAR_TEXT_LIGHT
+    } else {
+        BAR_TEXT_DARK
+    }
+}
+
+/// 相対輝度。表示の値をこのアプリの表示の式（Rec.1886 の `v^2.4`）で線形にし、BT.709 の重みで足す。
+fn luminance(c: Color) -> f32 {
+    let linear = |v: f32| v.max(0.0).powf(2.4);
+    0.2126 * linear(c.0[0]) + 0.7152 * linear(c.0[1]) + 0.0722 * linear(c.0[2])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn 帯の名前はどの種類の色の上でもコントラストの比が_4_5_以上() {
+        let kinds = [
+            ItemKind::Footage,
+            ItemKind::Image,
+            ItemKind::Solid,
+            ItemKind::Text,
+            ItemKind::Composition,
+            ItemKind::Sequence,
+            ItemKind::Other,
+        ];
+        for kind in kinds {
+            let bg = item_color(kind);
+            let fg = text_on(bg);
+            let (a, b) = (luminance(fg), luminance(bg));
+            let ratio = (a.max(b) + 0.05) / (a.min(b) + 0.05);
+            assert!(ratio >= 4.5, "{kind:?}: {ratio}");
+        }
+        assert_eq!(text_on(item_color(ItemKind::Text)), BAR_TEXT_DARK);
+        assert_eq!(text_on(item_color(ItemKind::Footage)), BAR_TEXT_LIGHT);
+    }
 }

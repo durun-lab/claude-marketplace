@@ -1,5 +1,7 @@
 //! Timeline のモデルと当たり判定。座標は Timeline の矩形の左上を (0, 0) とする。
 
+use std::sync::Arc;
+
 use crate::time_view::TimeView;
 
 /// 目盛りの帯の高さ。
@@ -27,10 +29,12 @@ pub enum ItemKind {
 }
 
 /// シーケンスのカット 1 つ（有効なものだけ）。コンポジションの時間軸での始まりと終わり（秒）。
-#[derive(Debug, Clone, Copy, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct CutBar {
     pub start: f64,
     pub end: f64,
+    /// 帯に出す名前。空なら出さない。
+    pub label: Arc<str>,
     /// 隙間（`lift` で抜いた所）。空きとして描く。
     pub gap: bool,
     /// シーケンスのカット列（無効なカットも含む）で、すぐ前のカットが無効。
@@ -75,6 +79,8 @@ pub struct Item {
     pub end: f64,
     pub kind: ItemKind,
     pub enabled: bool,
+    /// 帯に出す名前。空なら出さない。シーケンスのレイヤーはカットの名前を出す。
+    pub label: Arc<str>,
     /// シーケンスのレイヤーのカット。先頭から順。シーケンス以外は空。
     pub cuts: Vec<CutBar>,
     /// 端のつまみで動かせる範囲。
@@ -89,9 +95,16 @@ impl Item {
             end,
             kind,
             enabled,
+            label: Arc::default(),
             cuts: Vec::new(),
             trim: TrimBounds::FREE,
         }
+    }
+
+    /// 帯に出す名前を付ける。
+    pub fn with_label(mut self, label: &str) -> Self {
+        self.label = label.into();
+        self
     }
 }
 

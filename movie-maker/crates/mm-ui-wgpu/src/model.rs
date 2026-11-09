@@ -5,6 +5,8 @@ use mm_eval::{place_cuts, PlacedCut};
 use mm_types::Id;
 use mm_ui_layout::{CutBar, Item, ItemKind, TimelineModel, TrimBounds};
 
+use crate::names::Namer;
+
 fn kind_of(layer: &Layer) -> ItemKind {
     match layer.source.kind.as_str() {
         "footage" => ItemKind::Footage,
@@ -63,13 +65,15 @@ pub fn timeline_cut_ids(project: &Project, comp: &Composition) -> Vec<Vec<String
 /// コンポジションのレイヤーを Timeline に並べる。上のレイヤーが先頭。時間軸が壊れたレイヤーはスキップする。
 /// シーケンスのレイヤーには、有効なカットを先頭から並べる（隙間は空きとして区別する）。
 pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
+    let names = Namer::new(project);
     let items = visible_layers(comp)
         .map(|(layer, range)| Item {
             start: range.start.to_f64(),
             end: range.end.to_f64(),
             kind: kind_of(layer),
             enabled: layer.enabled,
-            cuts: cut_bars(project, layer),
+            label: names.label(&layer.source),
+            cuts: cut_bars(project, layer, &names),
             trim: trim_bounds(project, layer, range),
         })
         .collect();
@@ -100,7 +104,7 @@ fn trim_bounds(project: &Project, layer: &Layer, range: mm_types::TimeRange) -> 
     }
 }
 
-fn cut_bars(project: &Project, layer: &Layer) -> Vec<CutBar> {
+fn cut_bars(project: &Project, layer: &Layer, names: &Namer) -> Vec<CutBar> {
     let Some((seq, placed)) = layer_cuts(project, layer) else {
         return Vec::new();
     };
@@ -109,6 +113,7 @@ fn cut_bars(project: &Project, layer: &Layer) -> Vec<CutBar> {
         .map(|p| CutBar {
             start: comp_secs(layer, p.range.start.to_f64()),
             end: comp_secs(layer, p.range.end.to_f64()),
+            label: names.label(&seq.cuts[p.index].source),
             gap: seq.cuts[p.index].source.is_gap(),
             disabled_before: p.index.checked_sub(1).is_some_and(|i| !seq.cuts[i].enabled),
             disabled_after: seq.cuts.get(p.index + 1).is_some_and(|c| !c.enabled),
@@ -199,6 +204,9 @@ mod tests {
         );
         assert_eq!(timeline_cut_ids(&project, &c)[0], ["k1", "k2"]);
         assert!(timeline_cut_ids(&project, &c)[1].is_empty());
+        let labels: Vec<&str> = item.cuts.iter().map(|b| &*b.label).collect();
+        assert_eq!(labels, ["Footage: a", ""], "カットの名前。隙間は空");
+        assert_eq!(&*item.label, "Sequence: s");
     }
 
     /// k1、無効な k2、k3、k4 の順に並べたシーケンスのレイヤーを持つコンポジション。

@@ -3,16 +3,20 @@
 //! Program の映像の上にはコメントの描き込みを重ねる。重ねるのはサーフェスへの描画だけで、フレームのテクスチャには書かない。
 //!
 //! 計算は `mm-ui-layout` に置き、このクレートは wgpu の資源と描画だけを持つ。
-//! 文字を描く仕組みは持たない（目盛りは 7 セグメントの矩形）。文字は WebView 側のパネルが出す。
+//! Timeline の文字（目盛りの時刻、帯の名前）は cosmic-text で組み（`fonts.rs`）、glyphon で描く（`text.rs`）。
 
 mod drawing;
+mod fonts;
 mod model;
+mod names;
 mod program;
 mod quads;
+mod text;
 mod ui;
 
 pub use drawing::DrawingRenderer;
 pub use model::{timeline_cut_ids, timeline_layer_ids, timeline_model};
 pub use program::ProgramViewer;
 pub use quads::QuadRenderer;
+pub use text::TextStats;
 pub use ui::{Region, Ui};

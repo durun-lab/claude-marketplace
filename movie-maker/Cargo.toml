@@ -87,6 +87,8 @@ cosmic-text = { version = "0.19", default-features = false, features = ["std", "
 # 日本語の文節の切れ目（BudouX の Rust 版。Chromium の `word-break: auto-phrase` の元になった分け方）。
 budoux = "0.1.1"
 glyphon = { version = "0.12", default-features = false }
+# mm-ui-wgpu が日本語の字の代わりの書体を、字の種類（Script）で選ぶ。cosmic-text の Fallback が受ける型と同じバージョン。
+unicode-script = "0.5"
 # mm-nodes-lottie。Lottie の読み込み（velato、vello の連携は切る）と CPU の 2D の描画（vello_cpu）。
 velato = { version = "0.12", default-features = false }
 vello_cpu = { version = "0.3", default-features = false, features = ["std", "u8_pipeline"] }

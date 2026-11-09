@@ -5,7 +5,7 @@
 | 論理ピクセル | 表示の倍率に依らない UI の長さの単位。WebView の CSS の px と同じ大きさで、サーフェスの割り付けと Timeline の寸法と当たり判定はこれで持つ | `Scale::to_logical`、`ROW_H`、`HANDLE_PX` |
 | 物理ピクセル | サーフェスのテクスチャとウィンドウのクライアント座標の画素。論理ピクセルに表示の倍率を掛けたもの。サーフェスと WebView の矩形、ポインターの入力、`Ui` の外とやりとりする座標はこれ | `Scale::rect_to_physical`、`split_rects`、`Ui::layout` |
 | 割り付け（サーフェスの） | サーフェスを Program、Source、Timeline の矩形に分けたもの。`Ui` の中では論理ピクセル、`Ui::layout` が返すのは物理ピクセル | `SurfaceLayout`、`split_viewers` |
-| 細い線（サーフェスの UI の） | 太さが 2 論理ピクセル以下の矩形（目盛り、カットの境、外枠、再生位置の線、目盛りの数字の画）。物理ピクセルに換えるとき、太さを整数の画素にそろえる | `Scale::rect_to_physical`（`THIN_MAX`） |
+| 細い線（サーフェスの UI の） | 太さが 2 論理ピクセル以下の矩形（目盛り、カットの境、外枠、再生位置の線）。物理ピクセルに換えるとき、太さを整数の画素にそろえる | `Scale::rect_to_physical`（`THIN_MAX`） |
 
 ## 置き換えた語
 

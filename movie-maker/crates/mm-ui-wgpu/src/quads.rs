@@ -104,15 +104,15 @@ impl QuadRenderer {
         data.len() as u32
     }
 
-    /// `prepare` が返した数だけ描く。
-    pub fn draw(&self, pass: &mut wgpu::RenderPass<'_>, count: u32) {
-        if count == 0 {
+    /// `prepare` で渡した並びの `range` の矩形を描く。並びを分けて描くと、間に別のもの（文字）を挟める。
+    pub fn draw(&self, pass: &mut wgpu::RenderPass<'_>, range: std::ops::Range<u32>) {
+        if range.is_empty() {
             return;
         }
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind, &[]);
         pass.set_vertex_buffer(0, self.instances.slice(..));
-        pass.draw(0..6, 0..count);
+        pass.draw(0..6, range);
     }
 }
 

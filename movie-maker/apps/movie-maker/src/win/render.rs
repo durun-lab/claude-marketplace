@@ -244,6 +244,7 @@ impl View {
         let mut ui = Ui::new(&gpu.device, gpu.config.format);
         ui.set_model(model.clone());
         ui.set_palette(theme::surface_palette());
+        ui.set_font(theme::surface_font());
         Ok(Self {
             gpu,
             ui,
@@ -346,7 +347,9 @@ fn frame(shared: &Shared, gpu: &Gpu, ui: &mut Ui, seen: &mut u64) -> Result<(), 
     let uploaded = upload_frame(shared, gpu, ui, seen);
     ui.set_playhead(shared.playhead());
     let view = texture.texture.create_view(&Default::default());
+    let started = Instant::now();
     ui.render(&gpu.device, &gpu.queue, &view);
+    shared.record("ui_ms", started.elapsed().as_secs_f64() * 1000.0);
     {
         let _present = tracing::info_span!("preview.present").entered();
         gpu.queue.present(texture);
