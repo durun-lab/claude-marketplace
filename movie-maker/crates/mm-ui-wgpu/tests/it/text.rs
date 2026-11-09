@@ -198,7 +198,14 @@ fn 表示が変わらない間はシェーピングし直さず_頂点も作り�
     render_sized(&device, &queue, &mut ui, size);
     ui.set_playhead(3.0);
     render_sized(&device, &queue, &mut ui, size);
-    assert_eq!(ui.text_stats(), first, "再生位置の線だけが動く間");
+    let moved = ui.text_stats();
+    assert_eq!(
+        moved.uploads, 2,
+        "見出しの列の上の角のタイムコードだけが変わる"
+    );
+    assert!(moved.shaped <= first.shaped + 1, "{moved:?} {first:?}");
+    render_sized(&device, &queue, &mut ui, size);
+    assert_eq!(ui.text_stats(), moved, "再生位置が止まっている間");
     let t = ui.layout().timeline;
     ui.pointer(PointerEvent::Wheel {
         x: t.x + t.w / 2.0,
@@ -209,7 +216,7 @@ fn 表示が変わらない間はシェーピングし直さず_頂点も作り�
     });
     render_sized(&device, &queue, &mut ui, size);
     let zoomed = ui.text_stats();
-    assert_eq!(zoomed.uploads, 2, "拡大すると置き場所が変わる");
+    assert_eq!(zoomed.uploads, 3, "拡大すると置き場所が変わる");
     render_sized(&device, &queue, &mut ui, size);
     assert_eq!(ui.text_stats(), zoomed);
 }

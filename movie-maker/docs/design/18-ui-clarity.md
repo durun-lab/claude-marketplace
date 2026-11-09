@@ -106,9 +106,11 @@ Timeline の 1 行がレイヤー 1 本（今と同じく、上が前のレイ�
 - 既定は Medium、sequence の行は Large。高さは View > Track Height で全部の行を、レイヤーの見出しの右クリックでその行だけを変える。
 - 縦のスクロール: 中身が Timeline の高さを超えたら、右に縦のスクロールバーを出す。目盛りの帯、ツールバー、ズームバーは動かない。ホイールは横に動かし（今と同じ）、Shift+ホイールと見出しの上のホイールは縦に動かす。
 - 開いたときは sequence の行が見える位置までスクロールする。sequence の行が無ければいちばん下の行を見せる。
-- レイヤーの見出しは幅 180 論理ピクセル。左から、種類の色の帯と種類の略号（V: Footage、I: Image、T: Text、S: Solid、C: Composition、Seq: Sequence。Other は無し）、名前（レイヤーの ID）、有効のボタン（目の形）、ロックのボタン（鍵の形。`lockLayer`。Claude の操作経路から守る）、音のあるレイヤーだけ Mute と Solo のボタン（M、S。`setLayerAudio`。Mixer と同じ値）、キーフレームがあれば ▸。
-- 見出しをクリックするとレイヤーを選ぶ（帯のクリックと同じ）。縦にドラッグすると重なりの順を変える（`moveLayer`、AE と同じ）。
-- 見出しの列の上（目盛りの帯の左の角）に、再生位置の時刻と隠した行の数を出す〔推。Premiere と Resolve は Timeline の左上に時刻を出す〕。
+- レイヤーの見出しは幅 180 論理ピクセル。左から、種類の色の帯と種類の略号（V: Footage、I: Image、T: Text、S: Solid、C: Composition、Seq: Sequence。Other は無し）、名前（レイヤーの ID）、有効のボタン（目の形）、ロックのボタン（鍵の形。`lockLayer`。Claude の操作経路から守る）、音を持てるレイヤー（撮影素材、入れ子、sequence。Mixer のトラックと同じ）だけ Mute と Solo のボタン（M、S。`setLayerAudio`。Mixer と同じ値で、入の色も Mixer と同じテーマの `danger` と `accent`）、キーフレームがあれば ▸。ボタンは入を明るく、切を薄く描く。
+- 幅 180 は、今の割り付け（サーフェスが 800 論理ピクセル）で行の領域に 78%、[割り付け](#割り付け)の後（940）で 81% を残す。Premiere と Resolve も見出しの幅はウィンドウの幅で変わらない〔推〕。
+- 名前は ID にする。ID は Claude と CLI がレイヤーを指す名前で、コンポジションの中で重ならない。素材の名前は帯に出す（[帯](#帯)）。AE はレイヤーの名前の列に名前（無ければ素材の名前）を出すが、AE の帯には名前が無い。ここは帯が素材の名前を持つので、見出しは行を見分けられる ID を出す。取り込みで振った ID（ep03 の `lyrics-3430` は元のトラックの名前とクリップの番号）も、素材の名前（`f_1351.png`）より中身が分かる。
+- 見出しをクリックするとレイヤーを選ぶ（帯のクリックと同じ）。T3 までは、ボタンの上を押してもレイヤーを選ぶ。縦にドラッグすると重なりの順を変える（`moveLayer`、AE と同じ）。
+- 見出しの列の上の角（目盛りの帯の左）に、再生位置のタイムコード（`HH:MM:SS:FF`）と隠した行の数を出す〔推。Premiere と Resolve は Timeline の左上に時刻を出す〕。フレームは WebView の Frame の数と同じく、再生位置を含むフレーム（切り捨て）。
 - Shy（AE [98]）: View > Shy Selected Layers（D3 の後は見出しの右クリックからも）でレイヤーに Shy のフラグを立て、View > Hide Shy Layers でフラグの立った行を Timeline から外す。描画と書き出しは変わらない。隠した数は見出しの列の上に出す（「4 hidden」）。
 
 表示の状態（ズーム、スクロール、行の高さ、Shy、スナップの入/切）はプロジェクトのデータに入れず、`.mm/view.json` に置く。操作ではないので、取り消しの列と `versions/` に入らない。`.mm/` は [保存の形](09-ingest-storage.md#保存の形) では動作中を示すファイル（`lock`、`lock.info`）の置き場所で「消してよい」ので、T1 が 09 の木の説明に表示の状態を足す。消しても表示が既定に戻るだけで、バックアップ（`backups/`）と `mm import` の復旧には関わらない。
@@ -408,7 +410,7 @@ T1 が決めた形: 矩形の型は `TimelineLayout`（`mm-ui-layout/src/timelin
 | PR | 中身 | 依存 | 触る範囲 | 終わりの条件 |
 |---|---|---|---|---|
 | T1 `feature/movie-maker-timeline-rows` | 行の高さ（Small、Medium、Large）、縦のスクロールとスクロールバー、Shift+ホイール、Timeline の高さをサーフェスの割合に、開いたときに sequence の行を見せる、表示の状態（`.mm/view.json`）、Timeline の中の矩形の型と `paint.rs` の分割 | 文字の PR | `crates/mm-ui-layout/src/` の `timeline.rs`、`paint.rs`（分ける）、`controller.rs`、`screen.rs`、`lib.rs`、`crates/mm-ui-wgpu/src/ui.rs`、`apps/movie-maker/src/win/verify_edit.rs`、`apps/movie-maker/src/win/view_state.rs`（新）、`docs/design/08-ui.md`（帯の高さ 24）、`docs/design/09-ingest-storage.md`（`.mm/` の中身） | ep03 で Timeline の右に縦のスクロールバー、下に高い sequence の行が見え、文字のレイヤーの行はその上に続く |
-| T2 `feature/movie-maker-timeline-headers` | レイヤーの見出し（種類の色と略号、名前、有効、ロック、Mute、Solo の表示）、見出しの列の上の時刻、見出しの上のホイール | 文字の PR、T1 | `crates/mm-ui-layout/src/header.rs`（新）、`timeline.rs`（`Item` にロックと音の状態。帯の名前は文字の PR の `Item::label`）、`crates/mm-ui-wgpu/src/model.rs` | 見出しに fxtext-32 などの名前と種類の色、ロックと有効の状態が並び、左上の角に時刻が出る |
+| T2 `feature/movie-maker-timeline-headers` | レイヤーの見出し（種類の色と略号、名前、有効、ロック、Mute、Solo の表示）、見出しの列の上の角のタイムコード、見出しの上のホイール | 文字の PR、T1 | `crates/mm-ui-layout/src/header.rs`（新）、`timeline.rs`（`Item` にロックと音の状態。帯の名前は文字の PR の `Item::label`）、`crates/mm-ui-wgpu/src/model.rs` | 見出しに fxtext-32 などの名前と種類の色、ロックと有効の状態が並び、見出しの列の上の角にタイムコードが出る |
 | T3 `feature/movie-maker-header-toggles` | 見出しのボタンで `setLayerEnabled`、`lockLayer`、`setLayerAudio`。見出しのドラッグで `moveLayer`。Shy（View > Shy Selected Layers）と Hide Shy Layers | T2、B1、D1 | `header.rs`、`controller.rs`、`apps/movie-maker/src/win/sequence_edit.rs`（操作を作る所）、`view_state.rs`、`commands.rs` | 有効を切ったレイヤーの行が薄くなり、Program からそのレイヤーが消える。Hide Shy Layers で Shy の行が消え、左上の角に隠した数が出る |
 | T4 `feature/movie-maker-timeline-waveform` | 音のあるレイヤーとカットの波形 | T1 | `crates/mm-ui-layout/src/wave.rs`（新）、`crates/mm-ui-wgpu/src/model.rs`、`apps/movie-maker/src/win/render.rs`（波形を読む） | sequence の行のカットに波形が出る |
 | T5 `feature/movie-maker-timeline-thumb` | 帯の先頭のサムネイル（キャッシュの `thumbs/`）。テクスチャの Quad の描き方 | T1、B2（`quads.rs` が重なる） | `crates/mm-ui-wgpu/src/thumbs.rs`（新）、`quads.rs`、`render.rs` | Medium と Large の行の帯の左にサムネイルが出る |

@@ -51,6 +51,10 @@ const EDIT_LIMIT: Duration = Duration::from_secs(90);
 
 /// スクラブで狙う時刻（秒）。
 const SCRUB_TARGET: f64 = 3.0;
+/// スクラブの許容誤差の下限（フレーム）。
+const SCRUB_MIN_FRAMES: f64 = 2.0;
+/// スクラブの許容誤差に足す、浮動小数の誤差の分（秒）。
+const SCRUB_EPS: f64 = 1e-9;
 /// クリックで選ぶ帯に要る、見えている幅（論理ピクセル）。中央が端のつまみに掛からない幅。
 const CLICK_MIN_PX: f32 = 3.0 * HANDLE_PX;
 /// 入力を投げてから結果を見るまでの待ち。
@@ -335,6 +339,7 @@ fn interaction(shared: &Shared, info: &PlaybackInfo, target: &Target) -> Value {
         return json!({ "skipped": "表示の状態がまだ無い" });
     };
     let (x, y) = place.ruler_point(SCRUB_TARGET);
+    let tolerance = scrub_tolerance(place.px_per_sec() * f64::from(place.scale.get()), info.fps);
     surface::post_click(target.surface_hwnd, x, y);
     std::thread::sleep(INPUT_WAIT);
     let scrubbed = shared.playhead();
@@ -350,10 +355,19 @@ fn interaction(shared: &Shared, info: &PlaybackInfo, target: &Target) -> Value {
         "scale_factor": place.scale.get(),
         "scrub_target_secs": SCRUB_TARGET,
         "scrub_result_secs": scrubbed,
-        "scrub_ok": (scrubbed - SCRUB_TARGET).abs() <= 2.0 / info.fps,
+        "scrub_tolerance_secs": tolerance,
+        "scrub_ok": (scrubbed - SCRUB_TARGET).abs() <= tolerance,
         "space_starts_playback": !before && started,
         "space_stops_playback": stopped,
     })
+}
+
+/// スクラブの許容誤差（秒）。クリックを物理ピクセルに丸めた半画素（1 秒が `phys_px_per_sec` 物理ピクセル）と、
+/// シークをフレームに丸めた半フレームの和。長いコンポジションの全体表示は 1 物理ピクセルが 2 フレームより長いので、
+/// 2 フレームに決めた許容誤差では、狙った所を押しても外れる。
+fn scrub_tolerance(phys_px_per_sec: f64, fps: f64) -> f64 {
+    let rounding = 0.5 / phys_px_per_sec + 0.5 / fps;
+    (SCRUB_MIN_FRAMES / fps).max(rounding) + SCRUB_EPS
 }
 
 fn layer_opacity(shared: &Shared, id: &str) -> Option<f64> {
@@ -429,4 +443,23 @@ fn timeline_edit(env: &TestEnv) -> Value {
         window_hwnd: env.hwnd,
         test: &env.test,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn スクラブの許容誤差は_1_物理ピクセルが長い全体表示で広がり_下限は_2_フレーム() {
+        // 9:38 の全体表示（1 秒が約 1.25 物理ピクセル）。半画素は 0.4 秒。
+        let wide = scrub_tolerance(1.25, 30.0);
+        assert!((wide - (0.4 + 0.5 / 30.0)).abs() < 1e-6, "{wide}");
+        // 1 秒 125 物理ピクセルなら 2 フレーム。ちょうど 2 フレームずれた結果も許す。
+        let zoomed = scrub_tolerance(125.0, 30.0);
+        assert!(
+            (2.0 / 30.0..2.0 / 30.0 + 1e-6).contains(&zoomed),
+            "{zoomed}"
+        );
+        assert!((3.066_666_666_666_667_f64 - 3.0).abs() <= zoomed);
+    }
 }

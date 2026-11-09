@@ -3,7 +3,7 @@ use crate::gesture::Side;
 use crate::palette;
 use crate::timeline::{CutBar, Item, ItemKind};
 use crate::timeline_layout::tests::TestViewport;
-use crate::timeline_layout::RULER_H;
+use crate::timeline_layout::{HEADER_W, RULER_H};
 
 /// 幅 800、高さ 120 の Timeline。
 const SIZE: (f32, f32) = (800.0, 120.0);
@@ -28,9 +28,13 @@ pub(crate) fn state(playhead: f64) -> PaintState {
     }
 }
 
+/// 行の領域と目盛りの帯の矩形（見出しの列の矩形は除く。背景は含む）。
 fn quads(m: &TimelineModel, st: &PaintState) -> Vec<Quad> {
     let f = TestViewport::new(m, SIZE);
     timeline_quads(m, &f.vp(), st)
+        .into_iter()
+        .filter(|q| q.rect.x >= HEADER_W || q.rect.w >= SIZE.0)
+        .collect()
 }
 
 /// 同じ高さ Medium の画像のレイヤーを `n` 本。
@@ -69,7 +73,7 @@ fn 再生位置の線は時刻の_x_に立ち_文字の上に重ねる側に入�
         .iter()
         .find(|q| q.color == palette::PLAYHEAD && q.rect.h == SIZE.1)
         .expect("再生位置の線");
-    assert!((line.rect.x + line.rect.w / 2.0 - 200.0).abs() < 1e-3);
+    assert!((line.rect.x + line.rect.w / 2.0 - (HEADER_W + 200.0)).abs() < 1e-3);
     let under = timeline_quads(&m, &f.vp(), &state(2.0));
     assert!(!under.iter().any(|q| q.color == palette::PLAYHEAD));
 }
@@ -79,7 +83,7 @@ fn 時刻の列の外にある再生位置は描かない() {
     let m = model();
     let f = TestViewport::new(&m, SIZE);
     let over = timeline_overlay(&m, &f.vp(), &state(-1.0));
-    assert!(over.iter().all(|q| q.rect.x >= 0.0), "{over:?}");
+    assert!(over.iter().all(|q| q.rect.x >= HEADER_W), "{over:?}");
     let far = timeline_overlay(&m, &f.vp(), &state(100.0));
     assert!(far.is_empty(), "{far:?}");
 }
@@ -91,7 +95,7 @@ fn 帯は始まりから終わりの幅で描く() {
         .into_iter()
         .find(|q| q.color == color)
         .expect("レイヤーの帯");
-    assert_eq!((bar.rect.x, bar.rect.w), (100.0, 200.0));
+    assert_eq!((bar.rect.x, bar.rect.w), (HEADER_W + 100.0, 200.0));
     assert_eq!(bar.rect.h, 25.0, "Medium の行の帯");
 }
 
@@ -112,9 +116,9 @@ fn bar_of(m: &TimelineModel, preview: Option<(EditKind, f64)>) -> Rect {
 fn ドラッグ中の_trim_layer_は帯の端を動かして描く() {
     let trim = |side, by| Some((EditKind::TrimLayer { item: 0, side }, by));
     let r = bar_of(&model(), trim(Side::In, -0.5));
-    assert_eq!((r.x, r.w), (50.0, 250.0), "イン点を前へ");
+    assert_eq!((r.x, r.w), (HEADER_W + 50.0, 250.0), "イン点を前へ");
     let r = bar_of(&model(), trim(Side::Out, -1.0));
-    assert_eq!((r.x, r.w), (100.0, 100.0), "アウト点を前へ");
+    assert_eq!((r.x, r.w), (HEADER_W + 100.0, 100.0), "アウト点を前へ");
     let other = Some((
         EditKind::TrimLayer {
             item: 1,
@@ -124,7 +128,7 @@ fn ドラッグ中の_trim_layer_は帯の端を動かして描く() {
     ));
     assert_eq!(
         bar_of(&model(), other).x,
-        100.0,
+        HEADER_W + 100.0,
         "別のレイヤーの編集は映さない"
     );
 }
@@ -155,7 +159,7 @@ fn シーケンスのアウト点を縮めると帯の外のカットは描か�
         -3.5,
     ));
     let r = bar_of(&seq_model(), trim);
-    assert_eq!((r.x, r.w), (0.0, 150.0));
+    assert_eq!((r.x, r.w), (HEADER_W, 150.0));
     let st = PaintState {
         preview: trim,
         ..state(0.0)
@@ -166,7 +170,11 @@ fn シーケンスのアウト点を縮めると帯の外のカットは描か�
         .iter()
         .find(|q| q.color == base && q.rect.y > RULER_H)
         .expect("カット 0");
-    assert_eq!((cut.rect.x, cut.rect.w), (0.0, 150.0), "帯の右端で切る");
+    assert_eq!(
+        (cut.rect.x, cut.rect.w),
+        (HEADER_W, 150.0),
+        "帯の右端で切る"
+    );
     assert!(!all.iter().any(|q| q.color == palette::GAP.with_alpha(0.5)));
 }
 
@@ -184,17 +192,21 @@ fn シーケンスはカットを並べ_隙間は空きの色で_選んだカッ
         .expect("カット 0 の帯");
     assert_eq!(
         (cut.rect.x, cut.rect.h),
-        (0.0, 53.0),
+        (HEADER_W, 53.0),
         "sequence の行は Large"
     );
     let gap = all
         .iter()
         .find(|q| q.color == palette::GAP.with_alpha(0.5))
         .expect("隙間");
-    assert_eq!((gap.rect.x, gap.rect.w), (200.0, 100.0));
+    assert_eq!((gap.rect.x, gap.rect.w), (HEADER_W + 200.0, 100.0));
     let outline = all
         .iter()
-        .filter(|q| q.color == st.palette.selection && q.rect.x >= 0.0 && q.rect.right() <= 200.5)
+        .filter(|q| {
+            q.color == st.palette.selection
+                && q.rect.x >= HEADER_W
+                && q.rect.right() <= HEADER_W + 200.5
+        })
         .count();
     assert_eq!(outline, 4, "選んだカットの外枠は 4 辺");
 }
@@ -204,7 +216,7 @@ fn 終わりより右は暗くする() {
     let all = quads(&model(), &state(0.0));
     assert!(all
         .iter()
-        .any(|q| q.color == palette::OUTSIDE && q.rect.x == 500.0));
+        .any(|q| q.color == palette::OUTSIDE && q.rect.x == HEADER_W + 500.0));
 }
 
 #[test]
