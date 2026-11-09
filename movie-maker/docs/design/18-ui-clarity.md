@@ -152,10 +152,10 @@ Timeline の上端に置く（Resolve と CapCut と同じ）。左から並べ�
 
 ### ズーム
 
-- キー: `=` と `Ctrl+=` で Zoom In、`-` と `Ctrl+-` で Zoom Out、`Shift+Z` で Full Extent Zoom。`+` も Zoom In にする（US の配列では Shift+=、JIS の配列では Shift+; で出る）。もう一度 `Shift+Z` で元の倍率と位置に戻る。キーとボタンの拡大の中心は再生位置、Ctrl+ホイールの中心はポインター（今と同じ）。
+- キー: `=` と `Ctrl+=` で Zoom In、`-` と `Ctrl+-` で Zoom Out、`Shift+Z` で Full Extent Zoom。`+` も Zoom In にする（US の配列では Shift+=、JIS の配列では Shift+; で出る）。もう一度 `Shift+Z` で元の倍率と位置に戻る（間にほかの操作で表示を変えたら、もう一度全体表示にする）。キーとボタンの拡大の中心は再生位置、Ctrl+ホイールの中心はポインター（今と同じ）。1 回の倍率は √2（2 回で 2 倍。ホイールの 1 目盛りの 1.15 倍より大きく、押した分が見て分かる）。再生位置が見えていなければ、拡大した後に再生位置を中央に置く（拡大した所が見えるように）。
 - ツールバーのスライダーは秒あたりの論理ピクセルを対数で動かす（縮小の下限 `TimeView::zoom_floor` から `MAX_PX_PER_SEC`）。縮小の下限は全体表示の倍率と `MIN_PX_PER_SEC` の小さい方で、長いコンポジションも全体が収まるまで縮められる。
-- ズームバー: Timeline の下端の横のバー。全体の長さの上に見えている範囲のつまみを出し、中のドラッグで動かし、両端のドラッグで拡大縮小する。再生位置もバーの上に細い線で出す（Resolve は再生位置が画面の外にあるとき、バーの上にその位置を出す [100]）。
-- 再生中に再生位置が右端を越えたら、1 画面ぶん送る〔推。Premiere の Page Scroll〕。
+- ズームバー: Timeline の下端の横のバー（高さ 14 論理ピクセル。横は行の領域と同じ範囲で、縦のスクロールバーの下の角も溝の色で埋める）。ズームバーが表す範囲（コンポジションの全体と見えている範囲を合わせたもの）の上に、見えている範囲のスクロールボックスを出し、中のドラッグで動かし、両端（幅 7。スクロールボックスの幅の 1/3 まで）のドラッグで反対の端を保って拡大縮小する（Premiere のズームスクロールバー [94]）。スクロールボックスの幅の下限は 24 論理ピクセルで、縦のスクロールバーと同じ色。溝を押すと押した側へ 1 画面ぶん送る（縦のスクロールバーと同じ）。再生位置もバーの上に再生位置の色の細い線で出す（Resolve は再生位置が画面の外にあるとき、バーの上にその位置を出す [100]）。
+- 再生中に再生位置が右端を越えたら、越えた先が見えるまで 1 画面ずつ送る〔推。Premiere の Page Scroll〕。右端の外にあった再生位置が進んでも送らず、人が動かした表示を保つ。
 
 ### スナップ
 
@@ -188,8 +188,8 @@ Timeline の上端に置く（Resolve と CapCut と同じ）。左から並べ�
 |---|---|---|---|
 | `=`、`+`、`Ctrl+=` / `-`、`Ctrl+-` | Zoom In / Zoom Out | Premiere [94]、Resolve [100] | Z1 |
 | `Shift+Z` | Full Extent Zoom | Resolve [100]、FCP [106] | Z1 |
-| `↑` / `↓` | Previous Edit / Next Edit | Resolve [101] | Z1 |
-| `Shift+←` / `Shift+→` | Step One Second Back / Forward | Resolve [101] | Z1 |
+| `↑` / `↓` | Previous Edit / Next Edit（前後の帯の端へ。レイヤーとカットの始まりと終わり、0、終わり） | Resolve [101] | Z1 |
+| `Shift+←` / `Shift+→` | Step One Second Back / Forward（fps を丸めたフレームの数） | Resolve [101] | Z1 |
 | `N` | Snapping | Resolve [100]、FCP [106] | Z2 |
 | `A`、`T`、`B` | Selection Tool、Trim Tool、Blade Tool | Resolve [100]、FCP [107] | Z4 |
 | `Ctrl+B` | Split Clip | FCP [107]、CapCut [111] | Z4 |
@@ -199,9 +199,9 @@ Timeline の上端に置く（Resolve と CapCut と同じ）。左から並べ�
 | `Ctrl+I` | Import Media | Resolve [101] | D1 |
 | `?` | Keyboard Shortcuts | Shotcut [116] | D2 |
 
-- キーの名前の決まりは Z1 が `keys.rs` の `with_modifiers` と `transport.js` の `keyName` に入れ、後の PR は割り当てだけを足す。今は Shift を Ctrl と一緒のときだけ付けるので、`Shift+Z` と `Shift+←` のために、英字と矢印には Shift を付ける形に変える。Shift+Space は今どおり Space として扱う。
-- 記号のキー（`=`、`+`、`-`、`[`、`]`、`?`）は配列でキーの位置が違う（JIS の配列では `=` が Shift+-）。記号は押された文字で引く（サーフェスは `WM_KEYDOWN` の仮想キーを今の配列で文字にし、WebView は `KeyboardEvent.key`）。Shift は文字に含まれるので、記号の名前には付けない（JIS の配列の `Ctrl+=` は Ctrl+Shift+- で押すが、名前は `Ctrl+=`）。サーフェスで文字にするときは Shift だけを押した状態で引く（Ctrl を含めると制御文字になる）。画面のキーの見た目も文字で出す。英字、数字、矢印、Space は今どおり `KeyZ` の形の名前で引く（サーフェスは仮想キー、WebView は `KeyboardEvent.code` から作る。JIS と US の配列で同じ）〔推。Z1 で JIS の配列で確かめる〕。
-- 日本語の IME が入っていると、サーフェスの `WM_KEYDOWN` は英字が `VK_PROCESSKEY` で届き、英字のキーが効かない〔推〕。サーフェスの HWND には IME を結び付けない（`ImmAssociateContextEx`）。Z1 で JIS の配列と一緒に確かめる。
+- キーの名前の決まりは Z1 が `keys.rs` の `with_modifiers` と `transport.js` の `keyName` に入れ、後の PR は割り当てだけを足す。修飾キーは Ctrl、Shift、Alt の順に付ける。Shift は英字、数字、矢印に付け（`Shift+KeyZ`、`Shift+ArrowLeft`）、Space、Home、Delete などほかの名前のキーには今どおり Ctrl と一緒のときだけ付ける（Shift+Space は Space）。
+- 記号のキー（`=`、`+`、`-`、`,`、`.`、`[`、`]`、`?` など）は配列でキーの位置が違う（JIS の配列では `=` が Shift+-）。記号は押された文字で引く（サーフェスは `WM_KEYDOWN` の仮想キーを今の配列で文字にし〔`ToUnicodeEx`。デッドキーの途中の状態を変えない指定で引く〕、WebView は `KeyboardEvent.key`）。Shift は文字に含まれるので、記号の名前には付けない（JIS の配列の `Ctrl+=` は Ctrl+Shift+- で押すが、名前は `Ctrl+=`）。サーフェスで文字にするときは Shift だけを押した状態で引く（Ctrl を含めると制御文字になる）。画面のキーの見た目も文字で出す。テンキーの数字と記号も押された文字（`1`、`+`）。英字、数字、矢印、Space、Home、End、Delete、Backspace、Enter、Escape、Tab、PageUp、PageDown、Insert、F1〜F12 は `KeyZ` の形の名前で引く（サーフェスは仮想キー、WebView は `KeyboardEvent.code` から作る。JIS と US の配列で同じ）。
+- 日本語の IME が入っていると、サーフェスの `WM_KEYDOWN` は英字が `VK_PROCESSKEY` で届き、英字のキーが効かない〔推〕。サーフェスの HWND には IME を結び付けない（`ImmAssociateContextEx` に空の入力のコンテキストを渡す）。外した HWND が入力のコンテキストを持たないことは単体テストで、JIS の配列の記号のキーは `--play-test` で確かめた（2026-11-10）。IME をオンにして打つ確かめは、キーを送る試験では IME を通らないので手で行う。
 
 ## キーフレーム
 
@@ -248,7 +248,7 @@ Timeline の上端に置く（Resolve と CapCut と同じ）。左から並べ�
 | File | Import Media…、Export…（Deliver を開く）、Exit |
 | Edit | Undo、Redo、Lift、Extract、Mark In、Mark Out、Clear In and Out、Insert、Overwrite |
 | View | Zoom In、Zoom Out、Full Extent Zoom、Snapping、Track Height、Show Keyframe Editor、Hide Shy Layers、パネル（Tasks、Media、Story、Inspector など）、Diagnostics、Reset UI Layout |
-| Playback | Play / Stop、Play Reverse、Play Forward、Step One Frame Back / Forward、Go to Start、Go to End、Previous Edit、Next Edit、Go to Previous / Next Keyframe |
+| Playback | Play / Stop、Play Reverse、Play Forward、Step One Frame Back / Forward、Step One Second Back / Forward、Go to Start、Go to End、Previous Edit、Next Edit、Go to Previous / Next Keyframe |
 | Timeline | Selection Tool、Trim Tool、Blade Tool、Split Clip、Add Transition… |
 | Help | Keyboard Shortcuts…、About |
 
@@ -303,7 +303,8 @@ Timeline の上端に置く（Resolve と CapCut と同じ）。左から並べ�
 | 再生 / 停止 | Play / Stop (Space) | Space で再生と停止 [94] | Play and stop、Pause/Start Playback [101] |
 | 先頭 / 末尾 | Go to Start (Home) / Go to End (End) | 〔推〕Go to Sequence Start / End | 先頭と末尾へ（Home / End）[101] |
 | 1 フレーム | Step One Frame Back (←) / Step One Frame Forward (→) | ← と → でフレーム単位 [94] | Step One Frame Back / Forward [101] |
-| 編集点 | Previous Edit (↑) / Next Edit (↓) | 〔推〕Go to Previous / Next Edit Point | Previous Edit / Next Edit [101] |
+| 前後の帯の端 | Previous Edit (↑) / Next Edit (↓) | 〔推〕Go to Previous / Next Edit Point | Previous Edit / Next Edit [101] |
+| 1 秒 | Step One Second Back (Shift+←) / Step One Second Forward (Shift+→) | — | Step One Second Back / Forward [101] |
 | J/K/L | Play Reverse (J) / Stop (K) / Play Forward (L) | 〔推〕Shuttle Left / Stop / Right | Play Reverse / Stop / Play Forward [101] |
 | マーク | Mark In (I) / Mark Out (O) / Clear In and Out (Alt+X) | Mark In / Mark Out / Clear In and Out [94] | Mark In / Mark Out / Clear In and Out [101] |
 | 3 点編集 | Insert (,) / Overwrite (.) | `,` と `.` [94] | Insert / Overwrite [103] |
@@ -392,6 +393,8 @@ flowchart TB
 同じ波の中でも Timeline の Rust（`mm-ui-layout`、`mm-ui-wgpu`）に触る PR（第 3 波の T2、T4、T5、Z1、Z2、K1、L1、D4）は同じファイルに足す。T1 が Timeline の中の矩形（ツールバー、目盛り、見出しの列、レイヤーの行、ズームバー、ステータスバー）を 1 つの型に決め、`paint.rs` を領域ごとのファイルに分けておく（文字の PR の、文字の下に描く `timeline_quads` と上に描く `timeline_overlay` の分け方は保つ）。後の PR は自分の領域のファイルを足し、共有のファイルには名前の順の位置に 1 行で足す。
 
 T1 が決めた形: 矩形の型は `TimelineLayout`（`mm-ui-layout/src/timeline_layout.rs`）。まだ無い領域は大きさ 0 の定数で場所だけを決めてあり、足す PR が自分の定数を変える。Timeline の高さの下限（`MIN_TIMELINE_H`）はその定数から求める。行の高さと上端は `Rows`、それにズームと縦のスクロールを合わせた見えている所は `Viewport` で、当たり判定、描画、文字、`--play-test` のクリックの位置（`verify_place.rs`）が同じ値を見る。描く関数は `paint/<領域>.rs` に置き、`paint.rs` の `timeline_quads`（文字の下）か `timeline_overlay`（文字の上）の呼び出しに名前の順で 1 行足す。重ね順は呼ぶ順でなく `Depth` で決める（帯の中に描く矩形〔T4 の波形〕は、帯〔`Bar`〕と、帯に重ねるもの〔`OnBar`。端のつまみ、外枠〕の間に区分を 1 つ足す）。テクスチャで描くサムネイルとフィルムストリップ（T5、T6）は矩形の並びの外なので、`Bar` までの矩形の後、残りの矩形の前に描く（文字と同じく、境目の数を `Canvas` の区分から出す）。行の領域からはみ出す矩形は `Canvas::push_in` で切る。ひし形と三角（`QuadShape`）は切ると形が変わるので、切らずに描く扱いを足す PR が決める。全体表示は長いコンポジションでも全体を収め（`MIN_PX_PER_SEC` より細かく、下限は `MIN_FIT_PX_PER_SEC`）、Ctrl+ホイールの縮小も全体が収まる所まで（`TimeView::zoom_floor`）。
+
+Z1 が決めた形: Timeline の表示や再生位置を変える UI のコマンドは、`mm-ui-layout` の `TimelineCommand` に足し、コマンドの表の持ち主を `Owner::App(Action::Timeline(..))` にする。キーとメニューから呼ぶと `Shared::timeline_commands` に積み、Timeline の表示を持つ描画スレッドが `Ui::command` から `TimelineController::command` に渡す（前後の帯の端へのシークは `Action::Seek` で返り、Home と End と同じく再生を止めずに送る）。キーの名前は `keys::vk_name`（名前で引くキー）、`keys::symbol_name`（記号は押された文字）、`keys::with_modifiers`（修飾キー）で作り、サーフェスの記号の文字は `surface::key_name_in` が今の配列で引く。ズームバーの高さは `ZOOMBAR_H`（14）で、高さが足りないときは目盛りの帯を先に取る。ズームバーの当たり判定は `Hit::ZoomBar`、スクロールボックスと端とドラッグの計算は `zoombar.rs`、描く関数は `paint/zoombar.rs`（縦のスクロールバーの下の角もここが塗る）。
 
 ### 前提と文言
 
