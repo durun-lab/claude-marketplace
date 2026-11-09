@@ -10,8 +10,9 @@ use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
     clear_tooltip_area, drag_tooltip, fit_rect, split_viewers, timeline_labels, timeline_overlay,
-    timeline_quads, Action, DrawingShape, PaintState, PointerEvent, Quad, Rect, RowHeights, Scale,
-    SurfaceLayout, TimeView, TimelineController, TimelineModel, UiFont, ViewState,
+    timeline_quads_with, Action, DrawingShape, PaintState, Peaks, PointerEvent, Quad, Rect,
+    RowHeights, Scale, SurfaceLayout, TimeView, TimelineController, TimelineModel, UiFont,
+    ViewState, Waves,
 };
 
 use crate::drawing::{DrawingFit, DrawingLayer};
@@ -58,6 +59,8 @@ pub struct Ui {
     /// 最初の表示（戻した表示の状態か、全体表示と sequence の行）を当てたか。
     opened: bool,
     palette: Palette,
+    /// 帯の波形のピーク（読み込みが終わった素材から）。
+    waves: Waves,
 }
 
 impl Ui {
@@ -88,6 +91,7 @@ impl Ui {
             playhead: 0.0,
             opened: false,
             palette: Palette::DEFAULT,
+            waves: Waves::default(),
         }
     }
 
@@ -138,6 +142,16 @@ impl Ui {
         self.controller.model_changed(&model);
         self.model = model;
         self.relayout_rows();
+    }
+
+    /// 素材 `asset` のピークを置く。置くと、その素材の帯に波形が出る。
+    pub fn set_wave(&mut self, asset: std::sync::Arc<str>, peaks: Peaks) {
+        self.waves.insert(asset, peaks);
+    }
+
+    /// 素材のピークを置いてあるか。
+    pub fn has_wave(&self, asset: &str) -> bool {
+        self.waves.contains(asset)
     }
 
     /// 選択を置く（`None` で外す）。添字は `TimelineModel::items` のもの。
@@ -337,7 +351,7 @@ impl Ui {
         let t = self.layout.timeline;
         let state = self.paint_state();
         let vp = self.controller.viewport();
-        let mut quads = timeline_quads(&self.model, &vp, &state);
+        let mut quads = timeline_quads_with(&self.model, &vp, &state, &self.waves);
         let overlay = clear_tooltip_area(timeline_overlay(&self.model, &vp, &state), &tooltip);
         quads.extend(tooltip);
         let under = quads.len() as u32;

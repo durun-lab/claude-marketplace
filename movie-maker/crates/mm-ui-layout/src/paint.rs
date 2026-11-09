@@ -11,6 +11,7 @@ mod rows;
 mod ruler;
 mod scrollbar;
 mod snap;
+mod wave;
 
 use crate::drag_tooltip::DragTooltip;
 use crate::geom::{Color, Quad, Rect};
@@ -19,6 +20,7 @@ use crate::palette::Palette;
 use crate::snap::SnapTarget;
 use crate::timeline::{Hit, TimelineModel};
 use crate::timeline_layout::Viewport;
+use crate::wave::Waves;
 
 pub(crate) use rows::{bar_color, stripe, trimmed};
 
@@ -48,15 +50,18 @@ pub(crate) struct PaintInput<'a> {
     pub model: &'a TimelineModel,
     pub vp: &'a Viewport<'a>,
     pub state: &'a PaintState,
+    pub waves: &'a Waves,
 }
 
-/// 重ね順。下から順に描く。帯の中に描く矩形（波形）は `Bar` と `OnBar` の間に足す。
+/// 重ね順。下から順に描く。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Depth {
     /// 背景と行の縞。
     Back,
     /// 帯とカット。
     Bar,
+    /// 帯の中の波形。帯の上、端のつまみと外枠の下。
+    Wave,
     /// 帯に重ねるもの（端のつまみ、選んだ外枠）。
     OnBar,
     /// 帯のマーカー（帯の下端のキーフレームの印）。端のつまみと外枠より上。
@@ -106,7 +111,22 @@ impl Canvas {
 
 /// 文字の下に描く矩形（背景、行の縞、帯、吸い付いた帯の端の強調、目盛りの帯、スクロールバー）。
 pub fn timeline_quads(model: &TimelineModel, vp: &Viewport, state: &PaintState) -> Vec<Quad> {
-    let input = PaintInput { model, vp, state };
+    timeline_quads_with(model, vp, state, &Waves::default())
+}
+
+/// [`timeline_quads`] に、帯の波形（`waves` にピークのある素材）を足したもの。
+pub fn timeline_quads_with(
+    model: &TimelineModel,
+    vp: &Viewport,
+    state: &PaintState,
+    waves: &Waves,
+) -> Vec<Quad> {
+    let input = PaintInput {
+        model,
+        vp,
+        state,
+        waves,
+    };
     let mut canvas = Canvas::default();
     canvas.push(Depth::Back, vp.layout.bounds, state.palette.panel);
     header::paint(&input, &mut canvas);
@@ -115,12 +135,18 @@ pub fn timeline_quads(model: &TimelineModel, vp: &Viewport, state: &PaintState) 
     ruler::paint(&input, &mut canvas);
     scrollbar::paint(&input, &mut canvas);
     snap::edge_highlight(&input, &mut canvas);
+    wave::paint(&input, &mut canvas);
     canvas.into_quads()
 }
 
 /// 文字の上に重ねる矩形（再生位置の線とスナップの表示）。目盛りの帯と行の領域を縦に貫く。
 pub fn timeline_overlay(model: &TimelineModel, vp: &Viewport, state: &PaintState) -> Vec<Quad> {
-    let input = PaintInput { model, vp, state };
+    let input = PaintInput {
+        model,
+        vp,
+        state,
+        waves: &Waves::default(),
+    };
     let mut canvas = Canvas::default();
     playhead::paint(&input, &mut canvas);
     snap::paint(&input, &mut canvas);

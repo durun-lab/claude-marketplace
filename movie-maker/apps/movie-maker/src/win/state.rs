@@ -138,6 +138,8 @@ pub struct Shared {
     pub edits: Mutex<Vec<PendingEdit>>,
     /// キーとドラッグの編集を順に計画して適用するキュー。最初の編集で作る。
     pub edit_lane: Mutex<Option<Sender<EditJob>>>,
+    /// プロジェクトの `cache/`。波形の読み込みが探す。開いたときに置く。
+    pub cache_dir: OnceLock<std::path::PathBuf>,
     /// 書き手として開いた `project.mmdb` の中心。操作はここで保存してから描き直す。JSON のプロジェクトでは空。
     pub core: OnceLock<Arc<mm_serve::Core>>,
     /// JSON のプロジェクトで操作を適用したとき、WebView へ `mm:doc-changed` を送る関数。`core` があるときは使わない。
@@ -192,6 +194,7 @@ impl Shared {
             cpu_frames: AtomicBool::new(false),
             edits: Mutex::new(Vec::new()),
             edit_lane: Mutex::new(None),
+            cache_dir: OnceLock::new(),
             core: OnceLock::new(),
             json_notify: OnceLock::new(),
             window_hook: crate::win::commands::WindowHook::default(),

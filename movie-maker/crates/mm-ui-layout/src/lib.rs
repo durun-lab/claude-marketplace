@@ -35,6 +35,7 @@ mod time_view;
 mod timeline;
 mod timeline_layout;
 mod view_state;
+mod wave;
 
 pub use controller::{Action, Mods, PointerEvent, TimelineController};
 pub use drag_tooltip::{clear_tooltip_area, drag_amount, drag_tooltip, DragTooltip};
@@ -46,7 +47,7 @@ pub use geom::{fit_rect, Color, Quad, QuadShape, Rect};
 pub use gesture::{body_edit, edge_edit, EditKind, Side};
 pub use keymarks::MARK_PX;
 pub use labels::{timeline_labels, LABEL_PAD};
-pub use paint::{timeline_overlay, timeline_quads, PaintState};
+pub use paint::{timeline_overlay, timeline_quads, timeline_quads_with, PaintState};
 pub use rows::{RowHeight, RowHeights, Rows};
 pub use ruler::{label, major_step, ticks, Tick};
 pub use scale::{Scale, TextPlacement};
@@ -62,3 +63,4 @@ pub use timeline::{
 };
 pub use timeline_layout::{TimelineLayout, Viewport, HEADER_W, RULER_H, SCROLLBAR_W};
 pub use view_state::ViewState;
+pub use wave::{Peaks, WaveSource, Waves};
