@@ -28,9 +28,16 @@ pub(crate) fn render_sized(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     ui: &mut Ui,
-    (w, h): (u32, u32),
+    size: (u32, u32),
 ) -> Vec<u8> {
-    let texture = device.create_texture(&wgpu::TextureDescriptor {
+    let texture = target(device, size);
+    ui.render(device, queue, &texture.create_view(&Default::default()));
+    read_back(device, queue, &texture, 4)
+}
+
+/// 描いてリードバックする `w`x`h` のテクスチャ（`FORMAT`）。
+pub(crate) fn target(device: &wgpu::Device, (w, h): (u32, u32)) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
         label: None,
         size: wgpu::Extent3d {
             width: w,
@@ -43,9 +50,7 @@ pub(crate) fn render_sized(
         format: FORMAT,
         usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
-    });
-    ui.render(device, queue, &texture.create_view(&Default::default()));
-    read_back(device, queue, &texture, 4)
+    })
 }
 
 /// テクスチャの画素をリードバックする（行は詰めてある）。`bpp` は 1 画素のバイト数。
