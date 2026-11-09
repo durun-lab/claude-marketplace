@@ -66,16 +66,101 @@ impl Color {
     }
 }
 
-/// 塗りつぶしの矩形 1 つ。UI の部品はこれの並びに落とす。
+/// `Quad` の形。矩形の中に収まる（外接する矩形が `Quad::rect`）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Shape {
+    /// 矩形全体（既定）。
+    #[default]
+    Rect,
+    /// 矩形に内接するひし形。
+    Diamond,
+    /// 頂点が上の二等辺三角形（底辺は矩形の下端）。
+    TriUp,
+    /// 頂点が下の二等辺三角形（底辺は矩形の上端）。
+    TriDown,
+    /// 頂点が左の二等辺三角形（底辺は矩形の右端）。
+    TriLeft,
+    /// 頂点が右の二等辺三角形（底辺は矩形の左端）。
+    TriRight,
+}
+
+impl Shape {
+    /// GPU の頂点属性へ渡す番号。シェーダーの分岐と同じ並び。
+    pub const fn id(self) -> u32 {
+        match self {
+            Self::Rect => 0,
+            Self::Diamond => 1,
+            Self::TriUp => 2,
+            Self::TriDown => 3,
+            Self::TriLeft => 4,
+            Self::TriRight => 5,
+        }
+    }
+
+    /// 矩形の中心を原点とした座標 `(x, y)`（y は下向き）が、半幅 `hw`、半高 `hh` の形の中にあるか（縁は含む）。
+    /// シェーダーは同じ形を距離で判定して縁をなめらかにする。
+    pub fn contains(self, x: f32, y: f32, hw: f32, hh: f32) -> bool {
+        if x.abs() > hw || y.abs() > hh {
+            return false;
+        }
+        // 三角形は頂点が上の形に畳んでから、斜めの辺の内側にあるか見る。
+        let tri = |x: f32, y: f32, hw: f32, hh: f32| (y + hh) * hw >= x.abs() * 2.0 * hh;
+        match self {
+            Self::Rect => true,
+            Self::Diamond => x.abs() * hh + y.abs() * hw <= hw * hh,
+            Self::TriUp => tri(x, y, hw, hh),
+            Self::TriDown => tri(x, -y, hw, hh),
+            Self::TriLeft => tri(y, x, hh, hw),
+            Self::TriRight => tri(y, -x, hh, hw),
+        }
+    }
+}
+
+/// 塗りつぶしの図形 1 つ（既定は矩形）。UI の部品はこれの並びに落とす。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Quad {
+    /// 図形に外接する矩形。
     pub rect: Rect,
     pub color: Color,
+    pub shape: Shape,
 }
 
 impl Quad {
     pub const fn new(rect: Rect, color: Color) -> Self {
-        Self { rect, color }
+        Self {
+            rect,
+            color,
+            shape: Shape::Rect,
+        }
+    }
+
+    /// 中心 `center`、外接する矩形の大きさ `size`（幅、高さ）の `shape`。
+    pub const fn shaped(center: (f32, f32), size: (f32, f32), shape: Shape, color: Color) -> Self {
+        Self {
+            rect: Rect::new(
+                center.0 - size.0 / 2.0,
+                center.1 - size.1 / 2.0,
+                size.0,
+                size.1,
+            ),
+            color,
+            shape,
+        }
+    }
+
+    /// 中心 `center`、大きさ `size`（幅、高さ）のひし形。
+    pub const fn diamond(center: (f32, f32), size: (f32, f32), color: Color) -> Self {
+        Self::shaped(center, size, Shape::Diamond, color)
+    }
+
+    /// 中心 `center`、外接する矩形の大きさ `size`（幅、高さ）の三角形。`shape` は `Tri*`。
+    pub const fn triangle(
+        center: (f32, f32),
+        size: (f32, f32),
+        shape: Shape,
+        color: Color,
+    ) -> Self {
+        Self::shaped(center, size, shape, color)
     }
 }
 
@@ -110,6 +195,45 @@ mod tests {
     fn 大きさ0の入れ物は空の矩形を返す() {
         let r = fit_rect(16.0, 9.0, Rect::new(5.0, 5.0, 0.0, 10.0));
         assert_eq!((r.w, r.h), (0.0, 0.0));
+    }
+
+    #[test]
+    fn ひし形は中心と頂点の内側だけを含む() {
+        let (hw, hh) = (4.0, 6.0);
+        let inside = |s: Shape, x, y| s.contains(x, y, hw, hh);
+        assert!(inside(Shape::Diamond, 0.0, 0.0) && inside(Shape::Diamond, 4.0, 0.0));
+        assert!(inside(Shape::Diamond, 0.0, -6.0) && inside(Shape::Diamond, 2.0, 3.0));
+        assert!(!inside(Shape::Diamond, 3.0, 4.0) && !inside(Shape::Diamond, 4.0, 6.0));
+        assert!(!inside(Shape::Diamond, 4.1, 0.0));
+    }
+
+    #[test]
+    fn 三角形は頂点の向きに細くなり底辺は矩形の端に沿う() {
+        let (hw, hh) = (4.0, 4.0);
+        let inside = |s: Shape, x, y| s.contains(x, y, hw, hh);
+        // 頂点が上: 上端は中央だけ、下端は端まで。
+        assert!(inside(Shape::TriUp, 0.0, -4.0) && !inside(Shape::TriUp, 1.0, -4.0));
+        assert!(inside(Shape::TriUp, 4.0, 4.0) && inside(Shape::TriUp, 0.0, 0.0));
+        assert!(!inside(Shape::TriUp, 3.0, 0.0));
+        // 向きごとに頂点と底辺が入れ替わる。
+        assert!(inside(Shape::TriDown, 0.0, 4.0) && !inside(Shape::TriDown, 4.0, 4.0));
+        assert!(inside(Shape::TriLeft, -4.0, 0.0) && !inside(Shape::TriLeft, -4.0, 4.0));
+        assert!(inside(Shape::TriRight, 4.0, 0.0) && !inside(Shape::TriRight, 4.0, 4.0));
+        assert!(inside(Shape::TriRight, -4.0, 4.0) && inside(Shape::TriLeft, 4.0, -4.0));
+    }
+
+    #[test]
+    fn 矩形は外接する矩形の全体を含み外は含まない() {
+        assert!(Shape::Rect.contains(4.0, 6.0, 4.0, 6.0));
+        assert!(!Shape::Rect.contains(4.1, 0.0, 4.0, 6.0));
+    }
+
+    #[test]
+    fn 中心と大きさから外接する矩形を作る() {
+        let q = Quad::diamond((10.0, 20.0), (8.0, 12.0), Color::hex(0xFFFFFF));
+        assert_eq!(q.rect, Rect::new(6.0, 14.0, 8.0, 12.0));
+        assert_eq!(q.shape, Shape::Diamond);
+        assert_eq!(Quad::new(q.rect, q.color).shape, Shape::Rect);
     }
 
     #[test]

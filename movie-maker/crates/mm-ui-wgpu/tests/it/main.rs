@@ -2,5 +2,6 @@
 
 mod offscreen;
 mod perf;
+mod shapes;
 mod support;
 mod text;
