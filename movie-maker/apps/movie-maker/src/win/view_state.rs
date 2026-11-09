@@ -11,7 +11,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use mm_types::CompositionId;
-use mm_ui_layout::{RowHeight, RowHeights, TimeView, ViewState, MAX_PX_PER_SEC, MIN_PX_PER_SEC};
+use mm_ui_layout::{
+    RowHeight, RowHeights, TimeView, ViewState, MAX_PX_PER_SEC, MIN_FIT_PX_PER_SEC,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::win::state::Shared;
@@ -96,14 +98,15 @@ impl TimelineView {
         }
     }
 
-    /// 表示の状態。手で書き換えた値も、拡大の範囲と 0 以上のスクロールに収める。有限でない値なら `None`。
+    /// 表示の状態。手で書き換えた値も、拡大の範囲（全体表示の下限から）と 0 以上のスクロールに収める。
+    /// 有限でない値なら `None`。
     fn state(&self) -> Option<ViewState> {
         let finite =
             self.origin.is_finite() && self.px_per_sec.is_finite() && self.scroll_y.is_finite();
         finite.then(|| ViewState {
             time: TimeView {
                 origin: self.origin,
-                px_per_sec: self.px_per_sec.clamp(MIN_PX_PER_SEC, MAX_PX_PER_SEC),
+                px_per_sec: self.px_per_sec.clamp(MIN_FIT_PX_PER_SEC, MAX_PX_PER_SEC),
             },
             scroll_y: self.scroll_y.max(0.0),
             heights: RowHeights {
@@ -138,6 +141,9 @@ struct Inner {
 #[derive(Default)]
 pub struct ViewSlot {
     inner: Mutex<Inner>,
+    /// ファイルに書く間だけ取る。書くスレッドと閉じるときの書き残しを 1 つずつにし、`inner` は書く間に持たない
+    /// （描画スレッドが毎フレーム `publish` で取るので、ファイルの遅さで描画を待たせない）。
+    writing: Mutex<()>,
     /// 書くスレッドを起こす。
     wake: Mutex<Option<Sender<()>>>,
 }
@@ -165,30 +171,35 @@ impl ViewSlot {
 
     /// 書いていない状態を `.mm/view.json` に書く。書けなくても表示は続ける（消してよいファイルなので）。
     pub fn flush(&self) {
-        let mut inner = self.inner.lock().expect("view");
-        if !inner.dirty {
+        let _writing = self.writing.lock().expect("view writing");
+        let Some((path, file)) = self.take_dirty() else {
             return;
+        };
+        if let Err(e) = write(&path, &file) {
+            tracing::warn!("表示の状態を書けない（{}）: {e}", path.display());
         }
-        inner.dirty = false;
-        let Some(state) = inner.current.clone() else {
-            return;
-        };
-        let Some(target) = inner.target.as_mut() else {
-            return;
-        };
+    }
+
+    /// まだ書いていない状態を書き先の中身に入れ、書くファイルの場所と中身を返す。書くものが無ければ `None`。
+    fn take_dirty(&self) -> Option<(PathBuf, ViewFile)> {
+        let mut inner = self.inner.lock().expect("view");
+        if !std::mem::take(&mut inner.dirty) {
+            return None;
+        }
+        let state = inner.current.clone()?;
+        let target = inner.target.as_mut()?;
         target
             .file
             .timelines
             .insert(target.comp.clone(), TimelineView::of(&state));
         target.file.version = VERSION;
-        if let Err(e) = write(&target.path, &target.file) {
-            tracing::warn!("表示の状態を書けない（{}）: {e}", target.path.display());
-        }
+        Some((target.path.clone(), target.file.clone()))
     }
 }
 
 /// `project` の `.mm/view.json` から、コンポジション `comp` の表示の状態を読んで置き、書くスレッドを始める。
-pub fn open(shared: &Arc<Shared>, project: &Path, comp: &CompositionId) {
+/// 読むだけで開いたとき（`read_only`。別のプロセスが書き手）は戻すだけで書かない（`.mm/` は書き手の置き場所なので）。
+pub fn open(shared: &Arc<Shared>, project: &Path, comp: &CompositionId, read_only: bool) {
     let path = view_path(project);
     let file = read(&path);
     let current = file
@@ -198,11 +209,14 @@ pub fn open(shared: &Arc<Shared>, project: &Path, comp: &CompositionId) {
     {
         let mut inner = shared.view.inner.lock().expect("view");
         inner.current = current;
-        inner.target = Some(Target {
+        inner.target = (!read_only).then(|| Target {
             path,
             comp: comp.to_string(),
             file,
         });
+    }
+    if read_only {
+        return;
     }
     let (tx, rx) = mpsc::channel();
     *shared.view.wake.lock().expect("view wake") = Some(tx);

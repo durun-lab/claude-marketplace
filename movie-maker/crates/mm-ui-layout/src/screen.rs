@@ -1,14 +1,12 @@
 //! サーフェス全体の割り付け。上に Program、下に Timeline。
 
 use crate::geom::Rect;
-use crate::timeline_layout::RULER_H;
+use crate::timeline_layout::MIN_TIMELINE_H;
 
 /// Program と Timeline の間隔。
 const GAP: f32 = 4.0;
 /// Timeline を全体表示にしたときの左右の余白（px）。
 pub const VIEW_MARGIN: f32 = 16.0;
-/// Timeline の高さの下限（目盛りとレイヤー 2 本）。
-const MIN_TIMELINE_H: f32 = RULER_H + 60.0;
 /// Timeline の高さ（サーフェスに対する比）。中身の高さには合わせず、入らない行は縦にスクロールする。
 pub const TIMELINE_RATIO: f32 = 0.45;
 

@@ -76,6 +76,11 @@ mod tests {
             let step = major_step(px);
             assert!(step * px >= MIN_MAJOR_PX || step == STEPS[STEPS.len() - 1]);
         }
+        let widest = crate::time_view::MIN_FIT_PX_PER_SEC;
+        assert!(
+            major_step(widest) * widest >= MIN_MAJOR_PX,
+            "全体表示の下限でもいちばん粗い間隔で時刻が重ならない"
+        );
     }
 
     #[test]

@@ -1,6 +1,7 @@
 use super::*;
 use crate::gesture::Side;
 use crate::rows::{RowHeights, Rows};
+use crate::time_view::MIN_PX_PER_SEC;
 use crate::timeline::{CutBar, Item, ItemKind};
 
 fn model() -> TimelineModel {
@@ -245,6 +246,34 @@ fn ホイールは_ctrl_で拡大_なしで移動() {
         0.0,
     );
     assert!(c.view.origin > origin, "奥へ回すと先の時刻が見える");
+}
+
+#[test]
+fn ctrl_ホイールの縮小は長いコンポジションでも全体が収まるところまで() {
+    let zoom_out = PointerEvent::Wheel {
+        x: 300.0,
+        y: 0.0,
+        dy: -100.0,
+        ctrl: true,
+        shift: false,
+    };
+    let mut long = model();
+    long.duration = 3600.0;
+    let mut c = ctl(&long);
+    c.handle(zoom_out, &long, 0.0);
+    let fit = TimeView::fit(3600.0, c.layout().rows.w, VIEW_MARGIN).px_per_sec;
+    assert!(
+        (c.view.px_per_sec - fit).abs() < 1e-9,
+        "{}",
+        c.view.px_per_sec
+    );
+    let short = model();
+    let mut c = ctl(&short);
+    c.handle(zoom_out, &short, 0.0);
+    assert_eq!(
+        c.view.px_per_sec, MIN_PX_PER_SEC,
+        "短ければ MIN_PX_PER_SEC まで"
+    );
 }
 
 #[test]

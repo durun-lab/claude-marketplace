@@ -9,6 +9,7 @@ use crate::gesture::{body_edit, edge_edit, EditKind};
 use crate::paint::PaintState;
 use crate::palette::Palette;
 use crate::rows::Rows;
+use crate::screen::VIEW_MARGIN;
 use crate::scroll::{clamp_scroll, reveal, scroll_for_thumb};
 use crate::snap::{quantize, snap, SNAP_PX};
 use crate::time_view::TimeView;
@@ -219,7 +220,7 @@ impl TimelineController {
                 ctrl,
                 shift,
             } => {
-                self.wheel((x, y), dy, (ctrl, shift));
+                self.wheel((x, y), dy, (ctrl, shift), model.duration);
                 if self.drag == Drag::None {
                     self.hover = hit_test(model, &self.viewport(), x, y);
                 }
@@ -405,11 +406,14 @@ impl TimelineController {
         }
     }
 
-    /// ホイール。Ctrl でポインターの下を中心に拡大、Shift かスクロールバーの上なら縦にスクロール、それ以外は横に動かす。
-    fn wheel(&mut self, (x, y): (f32, f32), dy: f32, (ctrl, shift): (bool, bool)) {
+    /// ホイール。Ctrl でポインターの下を中心に拡大（縮小は長さ `duration` の全体が収まるまで）、
+    /// Shift かスクロールバーの上なら縦にスクロール、それ以外は横に動かす。
+    fn wheel(&mut self, (x, y): (f32, f32), dy: f32, (ctrl, shift): (bool, bool), duration: f64) {
         if ctrl {
             let anchor = x - self.layout.rows.x;
-            self.view = self.view.zoom_at(anchor, ZOOM_STEP.powf(f64::from(dy)));
+            let floor = TimeView::zoom_floor(duration, self.layout.rows.w, VIEW_MARGIN);
+            let factor = ZOOM_STEP.powf(f64::from(dy));
+            self.view = self.view.zoom_at(anchor, factor, floor);
         } else if shift || self.layout.scrollbar.contains(x, y) {
             self.scroll_to(self.scroll_y - dy * SCROLL_STEP_PX);
         } else {

@@ -7,7 +7,7 @@
 use std::ops::Range;
 
 use crate::geom::Rect;
-use crate::rows::Rows;
+use crate::rows::{RowHeight, Rows};
 use crate::scroll;
 use crate::time_view::TimeView;
 use crate::timeline::span;
@@ -29,6 +29,10 @@ const ZOOMBAR_H: f32 = 0.0;
 
 /// ステータスバーの高さ。
 const STATUS_H: f32 = 0.0;
+
+/// Timeline の高さの下限。どの領域も潰さずに、Medium の行が 2 本見える高さ（領域の大きさを変える PR は、ここを変えなくてよい）。
+pub const MIN_TIMELINE_H: f32 =
+    TOOLBAR_H + RULER_H + 2.0 * RowHeight::Medium.px() + ZOOMBAR_H + STATUS_H;
 
 /// Timeline の割り付け。どの矩形も大きさは 0 を下回らない。
 #[derive(Debug, Clone, Copy, PartialEq, Default)]

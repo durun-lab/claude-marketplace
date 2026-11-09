@@ -26,7 +26,7 @@ fn json_project(dir: &Path) -> PathBuf {
 
 fn opened(project: &Path, comp: &str) -> Arc<Shared> {
     let shared = Arc::new(Shared::new());
-    open(&shared, project, &Id::new(comp));
+    open(&shared, project, &Id::new(comp), false);
     shared
 }
 
@@ -44,6 +44,34 @@ fn 書いた表示の状態を開き直すと同じ値で戻る() {
     assert!(text.contains("\"trackHeight\": \"medium\""), "{text}");
     let again = opened(&project, "main");
     assert_eq!(again.view.current(), Some(state(42.0, 280.0)));
+}
+
+#[test]
+fn 読むだけで開いたときは表示の状態を戻すが書かない() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = json_project(tmp.path());
+    let writer = opened(&project, "main");
+    writer.view.publish(state(42.0, 280.0));
+    writer.view.flush();
+    let path = tmp.path().join(".mm").join("view.json");
+    let before = std::fs::read_to_string(&path).unwrap();
+    let reader = Arc::new(Shared::new());
+    open(&reader, &project, &Id::new("main"), true);
+    assert_eq!(reader.view.current(), Some(state(42.0, 280.0)), "戻す");
+    reader.view.publish(state(10.0, 0.0));
+    reader.view.flush();
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), before, "書かない");
+}
+
+#[test]
+fn 長いコンポジションの全体表示の倍率は_min_px_per_sec_より細かくても戻す() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = json_project(tmp.path());
+    let shared = opened(&project, "main");
+    shared.view.publish(state(1.3, 0.0));
+    shared.view.flush();
+    let again = opened(&project, "main").view.current().expect("読める");
+    assert_eq!(again.time.px_per_sec, 1.3);
 }
 
 #[test]

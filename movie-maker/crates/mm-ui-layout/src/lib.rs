@@ -50,7 +50,7 @@ pub use snap::{quantize, snap, Snapped, SNAP_PX};
 pub use text::{
     fit, line_height, place, Align, Fit, Label, TextMeasure, TextStyle, UiFont, ELLIPSIS,
 };
-pub use time_view::{TimeView, MAX_PX_PER_SEC, MIN_PX_PER_SEC};
+pub use time_view::{TimeView, MAX_PX_PER_SEC, MIN_FIT_PX_PER_SEC, MIN_PX_PER_SEC};
 pub use timeline::{
     bar_span, cut_span, hit_test, CutBar, Hit, Item, ItemKind, Part, TimelineModel, TrimBounds,
     HANDLE_PX,

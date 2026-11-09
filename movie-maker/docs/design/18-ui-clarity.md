@@ -153,7 +153,7 @@ Timeline の上端に置く（Resolve と CapCut と同じ）。左から並べ�
 ### ズーム
 
 - キー: `=` と `Ctrl+=` で Zoom In、`-` と `Ctrl+-` で Zoom Out、`Shift+Z` で Full Extent Zoom。`+` も Zoom In にする（US の配列では Shift+=、JIS の配列では Shift+; で出る）。もう一度 `Shift+Z` で元の倍率と位置に戻る。キーとボタンの拡大の中心は再生位置、Ctrl+ホイールの中心はポインター（今と同じ）。
-- ツールバーのスライダーは秒あたりの論理ピクセルを対数で動かす（`MIN_PX_PER_SEC` から `MAX_PX_PER_SEC`）。
+- ツールバーのスライダーは秒あたりの論理ピクセルを対数で動かす（縮小の下限 `TimeView::zoom_floor` から `MAX_PX_PER_SEC`）。縮小の下限は全体表示の倍率と `MIN_PX_PER_SEC` の小さい方で、長いコンポジションも全体が収まるまで縮められる。
 - ズームバー: Timeline の下端の横のバー。全体の長さの上に見えている範囲のつまみを出し、中のドラッグで動かし、両端のドラッグで拡大縮小する。再生位置もバーの上に細い線で出す（Resolve は再生位置が画面の外にあるとき、バーの上にその位置を出す [100]）。
 - 再生中に再生位置が右端を越えたら、1 画面ぶん送る〔推。Premiere の Page Scroll〕。
 
@@ -391,7 +391,7 @@ flowchart TB
 
 同じ波の中でも Timeline の Rust（`mm-ui-layout`、`mm-ui-wgpu`）に触る PR（第 3 波の T2、T4、T5、Z1、Z2、K1、L1、D4）は同じファイルに足す。T1 が Timeline の中の矩形（ツールバー、目盛り、見出しの列、レイヤーの行、ズームバー、ステータスバー）を 1 つの型に決め、`paint.rs` を領域ごとのファイルに分けておく（文字の PR の、文字の下に描く `timeline_quads` と上に描く `timeline_overlay` の分け方は保つ）。後の PR は自分の領域のファイルを足し、共有のファイルには名前の順の位置に 1 行で足す。
 
-T1 が決めた形: 矩形の型は `TimelineLayout`（`mm-ui-layout/src/timeline_layout.rs`）。まだ無い領域は大きさ 0 の定数で場所だけを決めてあり、足す PR が自分の定数を変える。行の高さと上端は `Rows`、それにズームと縦のスクロールを合わせた見えている所は `Viewport` で、当たり判定、描画、文字、`verify_edit.rs` のクリックの位置が同じ値を見る。描く関数は `paint/<領域>.rs` に置き、`paint.rs` の `timeline_quads`（文字の下）か `timeline_overlay`（文字の上）の呼び出しに名前の順で 1 行足す。重ね順は呼ぶ順でなく `Depth` で決める（帯の中に描く波形とサムネイルは、帯と、帯に重ねるもの〔つまみ、外枠〕の間に 1 つ足す）。行の領域からはみ出す矩形は `Canvas::push_in` で切る。ひし形と三角（`QuadShape`）は切ると形が変わるので、切らずに描く扱いを足す PR が決める。
+T1 が決めた形: 矩形の型は `TimelineLayout`（`mm-ui-layout/src/timeline_layout.rs`）。まだ無い領域は大きさ 0 の定数で場所だけを決めてあり、足す PR が自分の定数を変える。Timeline の高さの下限（`MIN_TIMELINE_H`）はその定数から求める。行の高さと上端は `Rows`、それにズームと縦のスクロールを合わせた見えている所は `Viewport` で、当たり判定、描画、文字、`--play-test` のクリックの位置（`verify_place.rs`）が同じ値を見る。描く関数は `paint/<領域>.rs` に置き、`paint.rs` の `timeline_quads`（文字の下）か `timeline_overlay`（文字の上）の呼び出しに名前の順で 1 行足す。重ね順は呼ぶ順でなく `Depth` で決める（帯の中に描く矩形〔T4 の波形〕は、帯と、帯に重ねるもの〔つまみ、外枠〕の間に区分を 1 つ足す）。テクスチャで描くサムネイルとフィルムストリップ（T5、T6）は矩形の並びの外なので、`Bar` までの矩形の後、残りの矩形の前に描く（文字と同じく、境目の数を `Canvas` の区分から出す）。行の領域からはみ出す矩形は `Canvas::push_in` で切る。ひし形と三角（`QuadShape`）は切ると形が変わるので、切らずに描く扱いを足す PR が決める。全体表示は長いコンポジションでも全体を収め（`MIN_PX_PER_SEC` より細かく、下限は `MIN_FIT_PX_PER_SEC`）、Ctrl+ホイールの縮小も全体が収まる所まで（`TimeView::zoom_floor`）。
 
 ### 前提と文言
 
