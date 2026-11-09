@@ -1,6 +1,5 @@
-//! メニューバー。メニューごとに、コマンドの ID の並びを区切りで分けたグループとして持ち、項目の名前、キーの見た目、
-//! 押せるかは UI のコマンドの表から作る。VS Code の `menus` と KDE の ui.rc と同じく、コマンドの表とは別に並びだけを持つ。
-//! 右クリックのメニューも、当たった所ごとに同じ形の並びを置けば `items` で作れる。
+//! メニューバー。メニューの中の並びを、区切りで分けたコマンドの ID のグループとして表とは別に持ち（VS Code の `menus`、
+//! KDE の ui.rc と同じ）、項目の名前、キーの見た目、押せるかは UI のコマンドの表から作る。右クリックのメニューも同じ形。
 
 use std::sync::Arc;
 
@@ -131,9 +130,8 @@ pub fn lines<'a>(groups: Groups, table: &'a [CommandView]) -> Vec<Line<'a>> {
     out
 }
 
-/// 項目の文字。キーがあれば `\t` の後ろにキーの見た目を置き、Windows のメニューが右のキーの列に出す。
-/// キーはアクセラレーターに登録しない。Tauri はキーを受けたウィンドウに `WM_COMMAND` を送るので、サーフェスに
-/// フォーカスがあるとメニューのイベントにならずにキーが消える。キーは今どおり `keys::dispatch` が受ける。
+/// 項目の文字。キーの見た目は `\t` の後ろに書き、Windows のメニューが右の列に出す。アクセラレーターに登録すると Tauri が
+/// キーを受けたウィンドウ（サーフェス）に `WM_COMMAND` を送り、キーが消えるので、キーは `keys::dispatch` が受ける。
 pub fn label(command: &CommandView) -> String {
     let name = command.name.replace('&', "&&");
     match &command.key_label {
