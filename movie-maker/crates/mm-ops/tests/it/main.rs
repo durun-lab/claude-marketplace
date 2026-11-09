@@ -4,6 +4,7 @@ mod common;
 mod cut_words;
 mod editor;
 mod keyframes;
+mod layer_time;
 mod mask_crop;
 mod mixer;
 mod order;

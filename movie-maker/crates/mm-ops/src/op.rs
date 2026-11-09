@@ -82,6 +82,8 @@ define_ops! {
     RemoveMask => "removeMask",
     /// レイヤーの重なりの位置を変える。
     MoveLayer => "moveLayer",
+    /// レイヤーを時間の上で動かす（開始とレイヤーのキーフレームを一緒に動かす）。
+    ShiftLayer => "shiftLayer",
     /// パラメータの固定の値を置く。
     SetParam => "setParam",
     /// パラメータを外す（無くてもよいフィールドだけ）。
@@ -100,6 +102,8 @@ define_ops! {
     AttachLayer => "attachLayer",
     /// ロックを付ける・外す。
     LockLayer => "lockLayer",
+    /// レイヤーの有効と無効を切り替える。
+    SetLayerEnabled => "setLayerEnabled",
     /// レイヤーの組を新しいコンポジションに入れ、入れ子のレイヤーで置き換える。
     Precompose => "precompose",
     /// 入れ子のレイヤーを中のレイヤーに戻す（precompose の逆）。

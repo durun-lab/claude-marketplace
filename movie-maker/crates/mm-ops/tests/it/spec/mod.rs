@@ -6,6 +6,7 @@
 mod bins;
 mod build;
 mod doc;
+mod layer_time;
 mod mask;
 mod mixer;
 mod params;
@@ -29,6 +30,8 @@ pub enum Spec {
     Short(shorts::ShortSpec),
     /// レイヤーの音の設定とコンポジションのミキサー。
     Mix(mixer::MixSpec),
+    /// レイヤーの時間と有効。
+    Time(layer_time::TimeSpec),
     /// レイヤーのマスク。
     Mask(mask::MaskSpec),
 }
@@ -41,6 +44,7 @@ pub fn arb_spec() -> impl Strategy<Value = Spec> {
         1 => shorts::arb_short_spec().prop_map(Spec::Short),
         1 => mixer::arb().prop_map(Spec::Mix),
         1 => mask::arb().prop_map(Spec::Mask),
+        1 => layer_time::arb().prop_map(Spec::Time),
     ]
 }
 
@@ -53,5 +57,6 @@ pub fn materialize(spec: &Spec, p: &Project) -> Option<Op> {
         Spec::Short(s) => shorts::short_op(s, p),
         Spec::Mix(s) => mixer::op(s, p),
         Spec::Mask(s) => mask::op(s, p),
+        Spec::Time(s) => layer_time::op(s, p),
     }
 }

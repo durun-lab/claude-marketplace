@@ -501,6 +501,13 @@ export type MoveLayerOp = {
   "layer": string;
   "op": "moveLayer";
 };
+/** レイヤーを時間の上で動かす（開始とレイヤーのキーフレームを一緒に動かす）。 */
+export type ShiftLayerOp = {
+  "by": RationalTime;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "layer": string;
+  "op": "shiftLayer";
+};
 /** パラメータの固定の値を置く。 */
 export type SetParamOp = {
   "keyframes"?: Keyframe[] | null;
@@ -566,6 +573,13 @@ export type LockLayerOp = {
   "layer": string;
   "lock": boolean;
   "op": "lockLayer";
+};
+/** レイヤーの有効と無効を切り替える。 */
+export type SetLayerEnabledOp = {
+  "enabled": boolean;
+  /** ID（種類ごとにプロジェクトの中で重複しない文字列） */
+  "layer": string;
+  "op": "setLayerEnabled";
 };
 /** レイヤーの組を新しいコンポジションに入れ、入れ子のレイヤーで置き換える。 */
 export type PrecomposeOp = {
@@ -914,6 +928,7 @@ export type Op =
   | AddMaskOp
   | RemoveMaskOp
   | MoveLayerOp
+  | ShiftLayerOp
   | SetParamOp
   | RemoveParamOp
   | SetKeyframeOp
@@ -923,6 +938,7 @@ export type Op =
   | ParentLayerOp
   | AttachLayerOp
   | LockLayerOp
+  | SetLayerEnabledOp
   | PrecomposeOp
   | UnprecomposeOp
   | AddCompositionOp
@@ -988,6 +1004,7 @@ export const OP_NAMES: readonly OpName[] = [
   "addMask",
   "removeMask",
   "moveLayer",
+  "shiftLayer",
   "setParam",
   "removeParam",
   "setKeyframe",
@@ -997,6 +1014,7 @@ export const OP_NAMES: readonly OpName[] = [
   "parentLayer",
   "attachLayer",
   "lockLayer",
+  "setLayerEnabled",
   "precompose",
   "unprecompose",
   "addComposition",
