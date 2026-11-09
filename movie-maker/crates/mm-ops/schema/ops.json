@@ -174,6 +174,29 @@
       ]
     },
     {
+      "description": "レイヤーをコンポジションの時間軸で前後に動かす（始まりとキーフレームを一緒に動かす）。",
+      "type": "object",
+      "properties": {
+        "by": {
+          "$ref": "#/$defs/RationalTime"
+        },
+        "layer": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "shiftLayer"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "layer",
+        "by"
+      ]
+    },
+    {
       "description": "パラメータの固定の値を置く。",
       "type": "object",
       "properties": {
@@ -411,6 +434,29 @@
         "op",
         "layer",
         "lock"
+      ]
+    },
+    {
+      "description": "レイヤーの有効と無効を切り替える。",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "layer": {
+          "description": "ID（種類ごとにプロジェクトの中で重複しない文字列）",
+          "type": "string"
+        },
+        "op": {
+          "type": "string",
+          "const": "setLayerEnabled"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "op",
+        "layer",
+        "enabled"
       ]
     },
     {
