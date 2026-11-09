@@ -1,13 +1,14 @@
 import { useEffect, useState } from "preact/hooks";
 import {
-  invoke,
   onDocChanged,
   type AnyPanel,
+  type CommandsApi,
   type LayerSelection,
   type MediaListen,
   type Op,
   type PanelColumn,
   type PanelContext,
+  type UiCommand,
 } from "@mm/sdk";
 import { PANELS } from "./registry.ts";
 
@@ -25,6 +26,8 @@ export interface ShellProps {
   listen?: MediaListen;
   /** 出すパネルの候補。無ければ `panels.ts` の登録。テストで差し替える。 */
   panels?: readonly AnyPanel[];
+  /** UI のコマンドの表を読んで実行する API。本番は IPC。無ければ表なしで動かし、Tasks の項目は何もしない。 */
+  commands?: CommandsApi;
 }
 
 const COLUMN_VIEW: Record<PanelColumn, { tabsClass: string; label: string; bodyClass: string; asideClass: string }> = {
@@ -58,11 +61,11 @@ const useLayerSelection = (): LayerSelection => {
   return selection;
 };
 
-/** 操作を送り、拒否された理由を持つ。次に成功した操作で消える。 */
+/** 操作を送り、拒否された理由を持つ。次に成功した操作で消える。コマンドを実行できなかった理由も同じ所に出す。 */
 const useSendOp = (sendOp: ShellProps["sendOp"]) => {
   const [opError, setOpError] = useState<string | null>(null);
   const send = async (op: Op) => setOpError((await sendOp(op)) ?? null);
-  return { send, opError };
+  return { send, opError, setOpError };
 };
 
 /** `mm:doc-changed` が届いた回数。パネルの読み直しの合図にする。 */
@@ -88,6 +91,41 @@ const useDocChanges = (listen: MediaListen | undefined): number => {
   return count;
 };
 
+/** アプリから読んだ UI のコマンドの表。押せるかが変わるたびに届く表に置き換える。読めない間は null。 */
+const useCommandTable = (api: CommandsApi | undefined): UiCommand[] | null => {
+  const [table, setTable] = useState<UiCommand[] | null>(null);
+  useEffect(() => {
+    if (!api) return undefined;
+    let stopped = false;
+    let off: (() => void) | null = null;
+    // 購読してから読む。読む間にイベントが届いたら、そちらが新しいので読んだ表は捨てる。
+    let pushed = false;
+    const start = async () => {
+      try {
+        const unlisten = await api.onChanged((next) => {
+          pushed = true;
+          if (!stopped) setTable(next);
+        });
+        if (stopped) {
+          unlisten();
+          return;
+        }
+        off = unlisten;
+        const first = await api.table();
+        if (!stopped && !pushed) setTable(first);
+      } catch {
+        // Tauri の外（デモ）では読めないので、表なしで動かす。
+      }
+    };
+    void start();
+    return () => {
+      stopped = true;
+      off?.();
+    };
+  }, [api]);
+  return table;
+};
+
 const bump = (counts: Record<string, number>, id: string): Record<string, number> => ({ ...counts, [id]: (counts[id] ?? 0) + 1 });
 
 /** 1 つの列のタブの選択。最初は `order` の先頭のタブを見せる。 */
@@ -108,7 +146,7 @@ const useColumn = (panels: AnyPanel[]) => {
 };
 
 type ColumnState = ReturnType<typeof useColumn>;
-type SharedContext = Pick<PanelContext<unknown>, "docChanges" | "selection" | "sendOp" | "runCommand">;
+type SharedContext = Pick<PanelContext<unknown>, "docChanges" | "selection" | "sendOp" | "commands" | "runCommand">;
 
 interface ColumnProps {
   name: PanelColumn;
@@ -137,22 +175,28 @@ const Column = ({ name, panels, state, apis, shared }: ColumnProps) => (
 );
 
 /** 2 つの列。パネルは記述子の `column` の列に `order` の順でタブとして並ぶ。API の要るパネルは API があるときだけ出す。 */
-export const Shell = ({ sendOp, apis = {}, listen, panels = PANELS }: ShellProps) => {
+export const Shell = ({ sendOp, apis = {}, listen, panels = PANELS, commands: commandsApi }: ShellProps) => {
   const docChanges = useDocChanges(listen);
-  const { send, opError } = useSendOp(sendOp);
+  const { send, opError, setOpError } = useSendOp(sendOp);
   const selection = useLayerSelection();
+  const commands = useCommandTable(commandsApi);
   const shown = panels.filter((p) => !p.createApi || apis[p.id] !== undefined);
   const columns = {
     left: shown.filter((p) => p.column === "left"),
     right: shown.filter((p) => p.column === "right"),
   };
   const state = { left: useColumn(columns.left), right: useColumn(columns.right) };
-  const runCommand = (command: string) => {
-    const owner = shown.find((p) => p.commands?.includes(command));
+  // 持ち主がパネルならそのタブを開き、アプリならアプリで実行する。押せないコマンドと表に無いコマンドは何もしない。
+  const runCommand = (id: string) => {
+    const command = commands?.find((c) => c.id === id);
+    if (!command?.enabled) return;
+    const owner = shown.find((p) => p.id === command.panel);
     if (owner) state[owner.column].open(owner.id);
-    else void invoke(command);
+    else if (command.panel === null && commandsApi) {
+      void commandsApi.run(id).then((error) => error && setOpError(error));
+    }
   };
-  const shared = { docChanges, selection, sendOp: send, runCommand };
+  const shared = { docChanges, selection, sendOp: send, commands, runCommand };
   return (
     <>
       <aside class={COLUMN_VIEW.left.asideClass}>

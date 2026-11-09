@@ -33,6 +33,29 @@ await client.send("setParam", { target: { layer: "l1", path: "opacity" }, value:
 
 Rust の側は `#[tauri::command] fn apply_op(op: mm_ops::Op, ...) -> Result<_, String>` の形。
 
+## UI のコマンドの表
+
+画面の操作の入口（Tasks の項目、キー）が ID で指すコマンドの表。表はアプリの `apps/movie-maker/src/win/commands.rs`、キーの割り当ては `keys.rs` が持つ。型と関数は `src/commands.ts`（`createIpcCommandsApi`、`commandTitle`）。表は人の操作の入口だけを持ち、データの変更は実行した先の編集が操作（`Op`）で出す。
+
+| コマンド | 引数 | 成功 |
+|---|---|---|
+| `command_table` | なし | `UiCommand[]`（ID の名前の順） |
+| `run_command` | `{ id }` | 編集をキューに積んですぐ `()`。編集の失敗は Source の状態の `message`（`mm:source`）に出る。アプリが持ち主のコマンドだけを受け、知らない ID とパネルが持ち主のコマンドは `Err` |
+
+| `UiCommand` の項目 | 中身 |
+|---|---|
+| `id` | `<組>.<動詞>`（`clip.split`） |
+| `name` | 画面の名前（英語） |
+| `keys` | キーの表の名前（`Ctrl+KeyZ`）。先頭が画面に出すキー |
+| `key_label` | 先頭のキーの見た目（`Ctrl+Z`）。キーが無ければ `null` |
+| `description` | ツールチップの 2 行目。無ければ `null` |
+| `menu` | メニューバーでの場所（`file`、`edit`、`playback`）。無ければ `null` |
+| `panel` | 持ち主の WebView のパネルの id。アプリが実行するコマンドは `null` |
+| `enabled` | 今押せるか |
+| `checked` | 入/切のあるコマンドのチェックの状態。それ以外は `null` |
+
+押せるかが変わると、Tauri のイベント `mm:commands-changed`（`COMMANDS_CHANGED_EVENT`）が同じ形の表を丸ごと届ける。Shell は表を `PanelContext.commands` でパネルに渡し、`runCommand` は持ち主がパネルならそのタブを開き、アプリなら `run_command` を呼ぶ。ボタンの `title` は `commandTitle` で作る（1 行目が「名前 (キー)」、2 行目が説明。表に無いコマンドは `Not available yet`）。
+
 ## Media のコマンド
 
 Media パネル（`ui/panels/media`）が使う Tauri のコマンド。ハンドラーは `apps/movie-maker/src/media_ipc.rs`、型は `ui/panels/media/src/api.ts`（`createIpcMediaApi` が呼ぶ）。失敗は `Err(String)`。

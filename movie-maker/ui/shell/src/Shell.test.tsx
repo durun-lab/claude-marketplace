@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { render } from "preact";
 import { act } from "preact/test-utils";
-import type { Layer } from "@mm/sdk";
+import type { CommandsApi, Layer, UiCommand } from "@mm/sdk";
 import type { DeliverApi } from "../../panels/deliver/src/api.ts";
 import type { FeedbackApi } from "../../panels/feedback/src/api.ts";
 import type { MediaApi } from "../../panels/media/src/api.ts";
@@ -107,6 +107,43 @@ const click = (el: Element | null | undefined) =>
     (el as HTMLElement).click();
   });
 
+const command = (id: string, over: Partial<UiCommand> = {}): UiCommand => ({
+  id,
+  name: id,
+  keys: [],
+  key_label: null,
+  description: null,
+  menu: null,
+  panel: null,
+  enabled: true,
+  checked: null,
+  ...over,
+});
+
+/** アプリの UI のコマンドの表の代わり。`push` で押せるかが変わったイベントを届ける。 */
+const fakeCommands = (table: UiCommand[]) => {
+  let push: (next: UiCommand[]) => void = () => undefined;
+  const api: CommandsApi = {
+    table: vi.fn().mockResolvedValue(table),
+    run: vi.fn().mockResolvedValue(null),
+    onChanged: vi.fn(async (handler: (next: UiCommand[]) => void) => {
+      push = handler;
+      return () => undefined;
+    }),
+  };
+  return { api, push: (next: UiCommand[]) => push(next) };
+};
+
+const TABLE = [
+  command("clip.split", { name: "Split Clip", key_label: "B" }),
+  command("export.start", { name: "Export…", panel: "deliver" }),
+  command("media.import", { name: "Import Media…", panel: "media" }),
+];
+
+const settle = () => act(() => new Promise<void>((ok) => setTimeout(ok, 0)));
+
+const taskLink = (label: string) => [...host.querySelectorAll(".mm-tasks-link")].find((b) => b.textContent === label);
+
 describe("Shell の左の列", () => {
   it("Media を渡さないときはタブを出さず Tasks だけ", () => {
     act(() => render(<Shell sendOp={vi.fn()} />, host));
@@ -138,16 +175,18 @@ describe("Shell の左の列", () => {
   });
 
   it("Deliver を渡すとタブが出て、Tasks の書き出しの項目から開ける", async () => {
-    act(() => render(<Shell sendOp={vi.fn()} apis={{ deliver: fakeDeliver() }} />, host));
+    const { api } = fakeCommands(TABLE);
+    act(() => render(<Shell sendOp={vi.fn()} apis={{ deliver: fakeDeliver() }} commands={api} />, host));
+    await settle();
     const tabs = host.querySelectorAll(".mm-shell-tab");
     expect([...tabs].map((t) => t.textContent)).toEqual(["Tasks", "Deliver"]);
     const panels = host.querySelectorAll<HTMLElement>(".mm-shell-left-body");
     expect(panels[1]?.hidden).toBe(true);
-    const link = [...host.querySelectorAll(".mm-tasks button")].find((b) => b.textContent === "Export to a file");
-    click(link);
-    await act(() => new Promise<void>((ok) => setTimeout(ok, 0)));
+    click(taskLink("Export to a file"));
+    await settle();
     expect(panels[1]?.hidden).toBe(false);
     expect(host.querySelector(".mm-deliver")).not.toBeNull();
+    expect(api.run).not.toHaveBeenCalled();
   });
 });
 
@@ -243,11 +282,58 @@ describe("Shell の外からの変更", () => {
 
   it("Tasks の取り込みの項目は Media を開いてファイルの選択を始める", async () => {
     const media = fakeMedia();
-    act(() => render(<Shell sendOp={vi.fn()} apis={{ media }} />, host));
-    click(host.querySelector(".mm-tasks-link"));
-    await act(() => new Promise<void>((ok) => setTimeout(ok, 0)));
+    act(() => render(<Shell sendOp={vi.fn()} apis={{ media }} commands={fakeCommands(TABLE).api} />, host));
+    await settle();
+    click(taskLink("Import video and audio"));
+    await settle();
     expect(host.querySelectorAll<HTMLElement>(".mm-shell-left-body")[1]?.hidden).toBe(false);
     expect(media.pickFiles).toHaveBeenCalled();
+  });
+});
+
+describe("Shell と UI のコマンドの表", () => {
+  it("アプリが持ち主の項目は run_command で実行する", async () => {
+    const { api } = fakeCommands(TABLE);
+    act(() => render(<Shell sendOp={vi.fn()} commands={api} />, host));
+    await settle();
+    expect(taskLink("Split at playhead")?.getAttribute("title")).toBe("Split Clip (B)");
+    click(taskLink("Split at playhead"));
+    await settle();
+    expect(api.run).toHaveBeenCalledWith("clip.split");
+  });
+
+  it("実行できなかった理由を画面に出す", async () => {
+    const { api } = fakeCommands(TABLE);
+    vi.mocked(api.run).mockResolvedValue("Unknown command: clip.split");
+    act(() => render(<Shell sendOp={vi.fn()} commands={api} />, host));
+    await settle();
+    click(taskLink("Split at playhead"));
+    await settle();
+    expect(host.querySelector(".mm-shell-error")?.textContent).toBe("Unknown command: clip.split");
+  });
+
+  it("押せるかが変わったイベントの表で、Tasks の項目が薄くなり、押しても実行しない", async () => {
+    const { api, push } = fakeCommands(TABLE);
+    act(() => render(<Shell sendOp={vi.fn()} commands={api} />, host));
+    await settle();
+    expect(taskLink("Split at playhead")?.getAttribute("aria-disabled")).toBeNull();
+    expect(taskLink("Remove silent parts")?.getAttribute("aria-disabled")).toBe("true");
+    act(() => push(TABLE.map((c) => (c.id === "clip.split" ? { ...c, enabled: false } : c))));
+    expect(taskLink("Split at playhead")?.getAttribute("aria-disabled")).toBe("true");
+    click(taskLink("Split at playhead"));
+    await settle();
+    expect(api.run).not.toHaveBeenCalled();
+  });
+
+  it("読む前に届いたイベントの表を、後から読み終えた表で上書きしない", async () => {
+    const { api, push } = fakeCommands(TABLE);
+    let finish: (table: UiCommand[]) => void = () => undefined;
+    vi.mocked(api.table).mockReturnValue(new Promise((ok) => (finish = ok)));
+    act(() => render(<Shell sendOp={vi.fn()} commands={api} />, host));
+    await settle();
+    act(() => push([command("clip.split", { enabled: false })]));
+    await act(async () => finish(TABLE));
+    expect(taskLink("Split at playhead")?.getAttribute("aria-disabled")).toBe("true");
   });
 });
 

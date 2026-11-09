@@ -10,6 +10,5 @@ export const panel = definePanel({
   column: "left",
   order: 20,
   createApi: createIpcMediaApi,
-  commands: ["media.import"],
   render: ({ api, requests, docChanges }) => h(MediaPanel, { api, importRequest: requests, refreshKey: docChanges }),
 });

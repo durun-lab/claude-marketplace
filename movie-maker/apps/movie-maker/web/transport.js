@@ -15,7 +15,7 @@
   const TEXT_ENTRY = "input, select, textarea, [contenteditable]";
   // ボタンや単語などフォーカスを受ける部品。編集のキーはここから送らない（Timeline と Source はネイティブのサーフェスで、キーは Rust 側が受ける）。
   const FOCUSABLE = "button, a[href], summary, [role=button], [role=tab], [role=option], [tabindex]";
-  // keys.rs の edit_for と同じ。WebView の部品にフォーカスがあるときの Delete などが Timeline の編集にならないよう、送る前に選ぶ。
+  // keys.rs の BINDINGS のうち編集（clip.*、edit.*、source.*）のキーと同じ。WebView の部品にフォーカスがあるときの Delete などが Timeline の編集にならないよう、送る前に選ぶ。
   const EDIT_KEYS = new Set([
     "KeyI", "KeyO", "Comma", "Period", "KeyB", "Delete", "Backspace", "Ctrl+KeyZ", "Ctrl+KeyY", "Ctrl+Shift+KeyZ",
   ]);

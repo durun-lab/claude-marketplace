@@ -1,4 +1,5 @@
 import type { ComponentChild } from "preact";
+import type { UiCommand } from "./commands.ts";
 import type { Asset, Layer, Op } from "./generated/ops.ts";
 
 /** パネルを出す列。列の中のタブは `order` の小さい順に並ぶ。 */
@@ -17,14 +18,16 @@ export interface PanelContext<A> {
   docChanges: number;
   /** タブを選んだ回数。開くたびに読み直したいパネルが使う。 */
   visits: number;
-  /** Tasks の項目で `commands` のどれかが選ばれた回数。 */
+  /** このパネルが持ち主のコマンドが実行された回数。 */
   requests: number;
   /** このパネルのタブが選ばれているか。 */
   active: boolean;
   selection: LayerSelection;
   /** 操作を送る。拒否の理由は Shell が画面に出す。 */
   sendOp: (op: Op) => Promise<void>;
-  /** Tasks の項目を実行する。担当のパネルがあればそのタブを開く。 */
+  /** UI のコマンドの表。アプリから読めるまでは null。 */
+  commands: readonly UiCommand[] | null;
+  /** 表のコマンドを ID で実行する。持ち主がパネルならそのタブを開き、アプリなら `run_command` を呼ぶ。 */
   runCommand: (command: string) => void;
 }
 
@@ -38,8 +41,6 @@ export interface PanelDescriptor<A = undefined> {
   column: PanelColumn;
   order: number;
   createApi?: () => A;
-  /** Tasks の項目のうち、このパネルを開いて `requests` を増やすもの。 */
-  commands?: readonly string[];
   render: (ctx: PanelContext<A>) => ComponentChild;
 }
 
@@ -50,7 +51,6 @@ export interface AnyPanel {
   column: PanelColumn;
   order: number;
   createApi?: () => unknown;
-  commands?: readonly string[];
   render: (ctx: PanelContext<unknown>) => ComponentChild;
 }
 

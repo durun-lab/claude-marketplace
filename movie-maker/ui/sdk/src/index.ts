@@ -1,18 +1,3 @@
-/** 操作の呼び出しの結果。成功なら value、失敗なら error を持つ。 */
-export type InvokeResult<T = unknown> = { ok: true; value: T } | { ok: false; error: string };
-
-/** UI のコマンドの呼び出し。command は Tasks パネルなどの項目の名前で、mm-ops の操作ではない。 */
-export type Invoke = (command: string, args?: Record<string, unknown>) => Promise<InvokeResult>;
-
-/**
- * UI のコマンドを呼ぶ関数の形。
- * コマンドのハンドラーがアプリに出来るまでの仮の中身で、呼ばれた名前を記録して失敗を返す。
- */
-export const invoke: Invoke = async (command, args) => {
-  console.debug("[mm-sdk] invoke", command, args ?? {});
-  return { ok: false, error: `sdk is not connected to mm-ops yet: ${command}` };
-};
-
 export * from "./generated/ops.ts";
 export {
   createClient,
@@ -24,6 +9,16 @@ export {
   type Transport,
 } from "./client.ts";
 export type { JsonSchema, SchemaObject } from "./codegen.ts";
+export {
+  COMMANDS_CHANGED_EVENT,
+  commandTitle,
+  createIpcCommandsApi,
+  IPC_COMMAND_TABLE,
+  IPC_RUN_COMMAND,
+  NOT_AVAILABLE,
+  type CommandsApi,
+  type UiCommand,
+} from "./commands.ts";
 export * from "./keyframes.ts";
 export type * from "./comments.ts";
 export type { MediaInvoke, MediaListen } from "./ipc.ts";

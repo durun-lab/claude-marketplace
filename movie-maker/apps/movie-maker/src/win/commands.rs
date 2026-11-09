@@ -1,0 +1,330 @@
+//! UI のコマンドの表。画面の操作の入口（キー、Tasks の項目）は、この表の ID でコマンドを指す。
+//! 表は入口だけを持ち、データの変更は実行した先の編集が操作（`Op`）で出す。
+
+use std::sync::Arc;
+
+use serde::Serialize;
+
+use crate::win::edit_actions::{self, EditAction};
+use crate::win::keys;
+use crate::win::playback::Command;
+use crate::win::state::Shared;
+
+/// 押せるかが変わったことを WebView に知らせる Tauri のイベント名。中身は新しい表（`Vec<CommandView>`）。
+pub const COMMANDS_CHANGED_EVENT: &str = "mm:commands-changed";
+
+/// メニューバーのメニュー。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Menu {
+    File,
+    Edit,
+    Playback,
+}
+
+/// コマンドを実行する所。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Owner {
+    /// アプリ（Rust）が実行する。
+    App(Action),
+    /// WebView のパネル（`definePanel` の id）。開くのは WebView の Shell。
+    Panel(&'static str),
+}
+
+/// アプリが実行するコマンドの中身。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Action {
+    /// 名前のついた編集。編集のキューで計画して適用する。
+    Edit(EditAction),
+    /// 再生のコマンド。Source の領域をクリックしていれば Source の、そうでなければ Program の再生に向く。
+    Playback(Command),
+}
+
+/// 表の 1 行。キーはキーの表（`keys.rs`）が持ち、WebView に送るときに ID で引いて足す。
+#[derive(Debug)]
+pub struct Spec {
+    /// `<組>.<動詞>`。Tasks の項目の `command` と同じ形。
+    pub id: &'static str,
+    /// 画面の名前（英語）。
+    pub name: &'static str,
+    /// ツールチップの 2 行目。名前だけで分かるコマンドは持たない。
+    pub description: Option<&'static str>,
+    /// メニューバーでの場所。
+    pub menu: Option<Menu>,
+    pub owner: Owner,
+}
+
+/// コマンドの表。ID の名前の順に並べ、足すときもその位置に入れる。
+pub static TABLE: &[Spec] = &[
+    Spec {
+        id: "clip.add_transition",
+        name: "Add Transition…",
+        description: None,
+        menu: None,
+        owner: Owner::Panel("transition"),
+    },
+    Spec {
+        id: "clip.extract",
+        name: "Extract",
+        description: Some("Remove the selected clip and close the gap"),
+        menu: Some(Menu::Edit),
+        owner: Owner::App(Action::Edit(EditAction::Extract)),
+    },
+    Spec {
+        id: "clip.insert",
+        name: "Insert",
+        description: Some("Insert the Source range at the edit point nearest the playhead"),
+        menu: Some(Menu::Edit),
+        owner: Owner::App(Action::Edit(EditAction::Insert)),
+    },
+    Spec {
+        id: "clip.lift",
+        name: "Lift",
+        description: Some("Remove the selected clip and leave a gap"),
+        menu: Some(Menu::Edit),
+        owner: Owner::App(Action::Edit(EditAction::Lift)),
+    },
+    Spec {
+        id: "clip.overwrite",
+        name: "Overwrite",
+        description: Some(
+            "Replace the selected clip, or the one at the playhead, with the Source range",
+        ),
+        menu: Some(Menu::Edit),
+        owner: Owner::App(Action::Edit(EditAction::Overwrite)),
+    },
+    Spec {
+        id: "clip.split",
+        name: "Split Clip",
+        description: Some("Split the clip at the playhead"),
+        menu: Some(Menu::Edit),
+        owner: Owner::App(Action::Edit(EditAction::Split)),
+    },
+    Spec {
+        id: "edit.redo",
+        name: "Redo",
+        description: None,
+        menu: Some(Menu::Edit),
+        owner: Owner::App(Action::Edit(EditAction::Redo)),
+    },
+    Spec {
+        id: "edit.undo",
+        name: "Undo",
+        description: None,
+        menu: Some(Menu::Edit),
+        owner: Owner::App(Action::Edit(EditAction::Undo)),
+    },
+    Spec {
+        id: "export.choose_target",
+        name: "Choose Render Target…",
+        description: None,
+        menu: None,
+        owner: Owner::Panel("deliver"),
+    },
+    Spec {
+        id: "export.start",
+        name: "Export…",
+        description: None,
+        menu: Some(Menu::File),
+        owner: Owner::Panel("deliver"),
+    },
+    Spec {
+        id: "media.import",
+        name: "Import Media…",
+        description: None,
+        menu: Some(Menu::File),
+        owner: Owner::Panel("media"),
+    },
+    Spec {
+        id: "playback.forward",
+        name: "Play Forward",
+        description: None,
+        menu: Some(Menu::Playback),
+        owner: Owner::App(Action::Playback(Command::Play)),
+    },
+    Spec {
+        id: "playback.go_to_end",
+        name: "Go to End",
+        description: None,
+        menu: Some(Menu::Playback),
+        owner: Owner::App(Action::Playback(Command::Seek(f64::MAX))),
+    },
+    Spec {
+        id: "playback.go_to_start",
+        name: "Go to Start",
+        description: None,
+        menu: Some(Menu::Playback),
+        owner: Owner::App(Action::Playback(Command::Seek(0.0))),
+    },
+    Spec {
+        id: "playback.reverse",
+        name: "Play Reverse",
+        description: Some("Play the video backward without sound"),
+        menu: Some(Menu::Playback),
+        owner: Owner::App(Action::Playback(Command::Reverse)),
+    },
+    Spec {
+        id: "playback.step_back",
+        name: "Step One Frame Back",
+        description: None,
+        menu: Some(Menu::Playback),
+        owner: Owner::App(Action::Playback(Command::Step(-1))),
+    },
+    Spec {
+        id: "playback.step_forward",
+        name: "Step One Frame Forward",
+        description: None,
+        menu: Some(Menu::Playback),
+        owner: Owner::App(Action::Playback(Command::Step(1))),
+    },
+    Spec {
+        id: "playback.stop",
+        name: "Stop",
+        description: None,
+        menu: None,
+        owner: Owner::App(Action::Playback(Command::Pause)),
+    },
+    Spec {
+        id: "playback.toggle",
+        name: "Play / Stop",
+        description: None,
+        menu: Some(Menu::Playback),
+        owner: Owner::App(Action::Playback(Command::Toggle)),
+    },
+    Spec {
+        id: "source.mark_in",
+        name: "Mark In",
+        description: Some("Mark the In point of the clip open in Source"),
+        menu: Some(Menu::Edit),
+        owner: Owner::App(Action::Edit(EditAction::MarkIn)),
+    },
+    Spec {
+        id: "source.mark_out",
+        name: "Mark Out",
+        description: Some("Mark the Out point of the clip open in Source"),
+        menu: Some(Menu::Edit),
+        owner: Owner::App(Action::Edit(EditAction::MarkOut)),
+    },
+];
+
+/// ID で表の行を引く。
+pub fn find(id: &str) -> Option<&'static Spec> {
+    TABLE.iter().find(|s| s.id == id)
+}
+
+/// 押せるかとチェックの状態。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+pub struct State {
+    pub enabled: bool,
+    /// 入/切のあるコマンドだけが持つ。
+    pub checked: Option<bool>,
+}
+
+/// 押せるかを決める今の状態。表を作るたびに 1 度だけ読む。
+struct Ready {
+    /// Source に素材を開いている。イン点・アウト点と insert、overwrite は Source の範囲を使う。
+    source_open: bool,
+    /// Timeline でカットを選んでいる。lift と extract は選んだカットを抜く。
+    cut_selected: bool,
+}
+
+impl Ready {
+    fn of(shared: &Shared) -> Self {
+        Self {
+            source_open: shared.source.handle().is_some(),
+            cut_selected: shared.edit.selected_cut().is_some(),
+        }
+    }
+
+    fn state(&self, spec: &Spec) -> State {
+        use EditAction::{Extract, Insert, Lift, MarkIn, MarkOut, Overwrite};
+        let enabled = match spec.owner {
+            Owner::App(Action::Edit(MarkIn | MarkOut | Insert | Overwrite)) => self.source_open,
+            Owner::App(Action::Edit(Lift | Extract)) => self.cut_selected,
+            Owner::App(_) | Owner::Panel(_) => true,
+        };
+        State {
+            enabled,
+            checked: None,
+        }
+    }
+}
+
+/// WebView に送る表の 1 行。`ui/sdk` の `UiCommand` と同じ形。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct CommandView {
+    pub id: &'static str,
+    pub name: &'static str,
+    /// キーの表の名前（`Ctrl+KeyZ`）。先頭が画面に出すキー。
+    pub keys: Vec<&'static str>,
+    /// 先頭のキーの見た目（`Ctrl+Z`）。キーが無ければ `None`。
+    pub key_label: Option<String>,
+    pub description: Option<&'static str>,
+    pub menu: Option<Menu>,
+    /// 持ち主の WebView のパネルの id。アプリが実行するコマンドは `None`。
+    pub panel: Option<&'static str>,
+    #[serde(flatten)]
+    pub state: State,
+}
+
+fn view(spec: &'static Spec, state: State) -> CommandView {
+    let keys = keys::keys_of(spec.id);
+    CommandView {
+        id: spec.id,
+        name: spec.name,
+        key_label: keys.first().map(|k| keys::label(k)),
+        keys,
+        description: spec.description,
+        menu: spec.menu,
+        panel: match spec.owner {
+            Owner::Panel(panel) => Some(panel),
+            Owner::App(_) => None,
+        },
+        state,
+    }
+}
+
+/// 今の押せるかを付けた表。
+pub fn table(shared: &Shared) -> Vec<CommandView> {
+    let ready = Ready::of(shared);
+    TABLE.iter().map(|s| view(s, ready.state(s))).collect()
+}
+
+/// 押せるかが前に送った表から変わっていれば、新しい表を返す。同期のスレッドが周期ごとに呼び、イベントで送る。
+pub fn changed(shared: &Shared, sent: &mut Option<Vec<State>>) -> Option<Vec<CommandView>> {
+    let ready = Ready::of(shared);
+    let states: Vec<State> = TABLE.iter().map(|s| ready.state(s)).collect();
+    if sent.as_ref() == Some(&states) {
+        return None;
+    }
+    let table = TABLE
+        .iter()
+        .zip(&states)
+        .map(|(s, st)| view(s, *st))
+        .collect();
+    *sent = Some(states);
+    Some(table)
+}
+
+/// コマンドを実行する。パネルが持ち主のコマンドは WebView の Shell がパネルを開くので、ここでは断る。
+pub fn run(shared: &Arc<Shared>, id: &str) -> Result<(), String> {
+    let spec = find(id).ok_or_else(|| format!("Unknown command: {id}"))?;
+    match spec.owner {
+        Owner::App(Action::Edit(action)) => edit_actions::run(shared, action),
+        Owner::App(Action::Playback(command)) => play(shared, command),
+        Owner::Panel(panel) => return Err(format!("{id} runs in the {panel} panel")),
+    }
+    Ok(())
+}
+
+/// Source の領域をクリックしていて素材を開いていれば Source の、そうでなければ Program の再生へ送る。
+fn play(shared: &Shared, command: Command) {
+    if shared.source.is_active() && shared.source.handle().is_some() {
+        shared.source.send(command);
+    } else {
+        shared.send(command);
+    }
+}
+
+#[cfg(test)]
+mod tests;
