@@ -1,5 +1,6 @@
 use super::*;
 use crate::controller::{Action, Mods, PointerEvent, TimelineController};
+use crate::paint::bar_color;
 use crate::paint::tests::state;
 use crate::palette::{item_color, tests::KINDS};
 use crate::rows::{RowHeights, Rows};
@@ -46,7 +47,7 @@ fn 見出しの列は幅_180_で_行の領域と目盛りの帯はその右か�
 }
 
 #[test]
-fn 部品は左から帯_略号_名前_有効_ロック_mute_solo_で_音の無いレイヤーは名前が広い() {
+fn 見出しの部品は左から帯_略号_名前_有効_ロック_mute_solo_で_音を持てないレイヤーは名前が広い() {
     let row = Rect::new(0.0, 26.0, HEADER_W, 28.0);
     let plain = cells(row, &Item::layer(0.0, 1.0, ItemKind::Image, true));
     let voice = cells(
@@ -54,7 +55,7 @@ fn 部品は左から帯_略号_名前_有効_ロック_mute_solo_で_音の無�
         &Item::layer(0.0, 1.0, ItemKind::Footage, true).with_audio(false, false),
     );
     for c in [plain, voice] {
-        assert!(c.stripe.right() <= c.abbr.x && c.abbr.right() <= c.name.x);
+        assert!(c.kind_strip.right() <= c.abbr.x && c.abbr.right() <= c.name.x);
         assert!(c.name.right() <= c.enabled.x && c.enabled.right() <= c.lock.x);
         assert_eq!(c.lock.right().min(row.right()), c.lock.right());
     }
@@ -63,7 +64,11 @@ fn 部品は左から帯_略号_名前_有効_ロック_mute_solo_で_音の無�
     assert!(voice.lock.right() <= mute.x && mute.right() <= solo.x);
     assert!(solo.right() <= row.right());
     assert!(plain.name.w > voice.name.w);
-    assert_eq!(plain.stripe.y, row.y + 1.0, "行の上端の 1 px は境の線");
+    assert_eq!(
+        plain.kind_strip.y,
+        row.y + 1.0,
+        "行の上端の 1 px は行の境界の線"
+    );
 }
 
 #[test]
@@ -97,21 +102,32 @@ fn 略号は種類ごとに決まり_other_は無い() {
 fn 種類の色の帯は種類の色で_無効なレイヤーは薄い() {
     for kind in KINDS {
         let on = Item::layer(0.0, 1.0, kind, true);
-        assert_eq!(crate::paint::bar_color(&on), item_color(kind));
+        assert_eq!(bar_color(&on), item_color(kind));
+        let off = bar_color(&Item::layer(0.0, 1.0, kind, false));
+        assert!(off.0[3] < 1.0, "{kind:?}");
     }
 }
 
 #[test]
-fn 時刻は_時_分_秒_フレームで出す() {
+fn タイムコードは_時_分_秒_フレームで_フレームは時刻を含むフレーム() {
     assert_eq!(timecode(0.0, 30.0), "00:00:00:00");
     assert_eq!(timecode(83.0 + 12.0 / 30.0, 30.0), "00:01:23:12");
     assert_eq!(timecode(3661.5, 30.0), "01:01:01:15");
+    assert_eq!(
+        timecode(2.0 + 5.9 / 30.0, 30.0),
+        "00:00:02:05",
+        "フレームの途中は切り捨て"
+    );
     assert_eq!(timecode(-1.0, 30.0), "00:00:00:00");
-    assert_eq!(timecode(1.0, 0.0), "00:00:01:00", "fps が 0 でも壊れない");
+    assert_eq!(
+        timecode(1.0, 0.0),
+        "00:00:01:00",
+        "fps が 0 でもおかしくならない"
+    );
 }
 
 #[test]
-fn 見出しの文字は略号と名前_音のあるレイヤーは_m_と_s_で_名前は_id() {
+fn 見出しの文字は略号と名前_音を持てるレイヤーは_m_と_s_で_名前は_id() {
     let m = model(vec![
         Item::layer(0.0, 5.0, ItemKind::Text, true).with_id("fxtext-32"),
         Item::layer(0.0, 5.0, ItemKind::Footage, true)
@@ -124,6 +140,19 @@ fn 見出しの文字は略号と名前_音のあるレイヤーは_m_と_s_で_
         assert!(texts.contains(&want), "{want} in {texts:?}");
     }
     assert_eq!(texts.iter().filter(|t| **t == "M").count(), 1);
+}
+
+#[test]
+fn mute_と_solo_の字は入なら背景の上で読める字_切なら薄い字() {
+    let m = model(vec![Item::layer(0.0, 5.0, ItemKind::Footage, true)
+        .with_id("v1")
+        .with_audio(true, false)]);
+    let out = labels_of(&m, 0.0);
+    let color = |text: &str| out.iter().find(|l| &*l.text == text).expect(text).color;
+    let p = Palette::DEFAULT;
+    assert_eq!(color("M"), text_on(p.mute), "入");
+    assert_eq!(color("S"), mark_color(&p, false), "切");
+    assert!(color("S").0[3] < 1.0);
 }
 
 #[test]
@@ -143,33 +172,33 @@ fn 長い名前は切り詰めて_見出しの列の外に描かない() {
 }
 
 #[test]
-fn 角に再生位置の時刻を出す() {
+fn 見出しの列の上の角に再生位置のタイムコードを出す() {
     let m = model(vec![Item::layer(0.0, 5.0, ItemKind::Text, true)]);
     let out = labels_of(&m, 2.0 + 5.0 / 30.0);
     let t = out
         .iter()
         .find(|l| &*l.text == "00:00:02:05")
-        .expect("時刻");
+        .expect("タイムコード");
     let corner = Rect::new(0.0, 0.0, HEADER_W, RULER_H);
     assert_eq!(t.clip, corner);
     assert!(t.x >= corner.x && t.y >= corner.y);
 }
 
 #[test]
-fn 見出しの上に当たると_header_角は_corner() {
+fn 見出しの上に当たると_header_見出しの列の上の角は_corner() {
     let m = model(vec![
         Item::layer(0.0, 5.0, ItemKind::Text, true),
         Item::layer(0.0, 5.0, ItemKind::Image, true),
     ]);
     let f = TestViewport::new(&m, SIZE);
     let vp = f.vp();
-    let y1 = vp.row(1).y + 5.0;
+    let y1 = f.in_bar(1);
     assert_eq!(hit_test(&m, &vp, 20.0, y1), Hit::Header { index: 1 });
     assert_eq!(hit_test(&m, &vp, 20.0, 5.0), Hit::Corner);
     assert_eq!(hit_test(&m, &vp, 20.0, 190.0), Hit::Empty, "行の無い所");
     assert!(matches!(
-        hit_test(&m, &vp, HEADER_W + 10.0, y1),
-        Hit::Layer { index: 1, .. } | Hit::Empty
+        hit_test(&m, &vp, HEADER_W + 50.0, y1),
+        Hit::Layer { index: 1, .. }
     ));
 }
 
@@ -221,4 +250,37 @@ fn 見出しの上のホイールは縦にスクロールし_横は動かさな�
     c.handle(wheel, &m, 0.0);
     assert!(c.scroll_y > 0.0);
     assert_eq!(c.view, view);
+}
+
+#[test]
+fn 見出しの上の_ctrl_ホイールは行の領域の左端を中心に拡大する() {
+    let m = many(3);
+    let mut c = controller(&m);
+    let left = c.view.t_of(0.0);
+    let zoom = PointerEvent::Wheel {
+        x: 20.0,
+        y: 60.0,
+        dy: 2.0,
+        ctrl: true,
+        shift: false,
+    };
+    c.handle(zoom, &m, 0.0);
+    assert!(c.view.px_per_sec > 100.0);
+    assert!((c.view.t_of(0.0) - left).abs() < 1e-9);
+}
+
+#[test]
+fn 見出しの列の上の角のクリックは選択を変えない() {
+    let m = many(3);
+    let mut c = controller(&m);
+    let click = |x: f32, y: f32| PointerEvent::Down {
+        x,
+        y,
+        mods: Mods::default(),
+    };
+    let y = c.viewport().row(1).y + 5.0;
+    c.handle(click(20.0, y), &m, 0.0);
+    c.handle(PointerEvent::Up, &m, 0.0);
+    assert!(c.handle(click(20.0, 5.0), &m, 0.0).is_empty());
+    assert_eq!(c.paint_state(0.0).selected, Some(1));
 }

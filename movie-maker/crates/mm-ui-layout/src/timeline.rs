@@ -66,7 +66,7 @@ impl Default for TrimBounds {
     }
 }
 
-/// 音のあるレイヤーの Mute と Solo。見出しに出す。
+/// 音を持てるレイヤー（撮影素材、入れ子、sequence）の Mute と Solo。レイヤーの見出しに出す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct AudioState {
     pub mute: bool,
@@ -76,7 +76,7 @@ pub struct AudioState {
 /// Timeline に並ぶレイヤー 1 本。
 #[derive(Debug, Clone, PartialEq)]
 pub struct Item {
-    /// レイヤーの ID。表示の状態（行の高さ）をレイヤーごとに引く。
+    /// レイヤーの ID。レイヤーの見出しに名前として出し、表示の状態（行の高さ）をレイヤーごとに引く。
     pub id: Arc<str>,
     /// コンポジションの時間軸での始まりと終わり（秒）。
     pub start: f64,
@@ -85,7 +85,7 @@ pub struct Item {
     pub enabled: bool,
     /// ロック（`lockLayer`）。Claude の操作経路から守る。
     pub locked: bool,
-    /// 音のあるレイヤーの Mute と Solo。音の無いレイヤーは `None`。
+    /// 音を持てるレイヤーの Mute と Solo。音を持てないレイヤーは `None`。
     pub audio: Option<AudioState>,
     /// 帯に出す名前。空なら出さない。シーケンスのレイヤーはカットの名前を出す。
     pub label: Arc<str>,
@@ -124,7 +124,7 @@ impl Item {
         self
     }
 
-    /// 音のあるレイヤーにする。
+    /// 音を持てるレイヤーにし、Mute と Solo を付ける。
     pub fn with_audio(mut self, mute: bool, solo: bool) -> Self {
         self.audio = Some(AudioState { mute, solo });
         self
