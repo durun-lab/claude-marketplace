@@ -1,4 +1,4 @@
-//! サーフェスの UI の文字を描く（glyphon）。`mm-ui-layout` が置いた文字（[`Label`]）を、[`Shaper`] が組んだ結果から描く。
+//! サーフェスの UI の文字を描く（glyphon）。`mm-ui-layout` が置いた文字（[`Label`]）を、[`Shaper`] のシェーピングの結果から描く。
 //! 文字列と置き場所と色が前のフレームと同じなら、glyphon の頂点を作り直さず前のものを描く
 //! （再生中は Timeline の文字が動かないので、グリフを毎フレーム引き直さない）。
 
@@ -21,10 +21,10 @@ struct Placed {
     at: TextPlacement,
 }
 
-/// 文字の層の数（計装と試験に使う）。
+/// 文字の描画の数（計装と試験に使う）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct TextStats {
-    /// 字を組んだ回数。同じ文字列は組み直さないので、表示する文字列が変わらない間は増えない。
+    /// シェーピングした回数。同じ文字列はシェーピングし直さないので、表示する文字列が変わらない間は増えない。
     pub shaped: u64,
     /// glyphon の頂点を作った回数。文字の置き場所と色が変わらない間は増えない。
     pub uploads: u64,
@@ -34,12 +34,10 @@ pub struct TextStats {
 #[derive(Debug, Clone, PartialEq)]
 struct Prepared {
     labels: Vec<Placed>,
-    /// 字を描いてよい矩形（物理ピクセルの左、上、右、下）。
-    clip: [i32; 4],
     viewport: (u32, u32),
 }
 
-/// サーフェスの文字の層。字を組んで覚え、glyphon の atlas と頂点で描く。
+/// サーフェスの文字の描画。字をシェーピングしてキャッシュし、glyphon のアトラスと頂点で描く。
 pub(crate) struct TextLayer {
     shaper: Shaper,
     swash: SwashCache,
@@ -53,7 +51,7 @@ pub(crate) struct TextLayer {
 }
 
 impl TextLayer {
-    /// `format` はサーフェスのフォーマット、`family` は書体の名前。
+    /// `format` はサーフェスのフォーマット、`family` はフォントの名前。
     pub(crate) fn new(
         device: &wgpu::Device,
         queue: &wgpu::Queue,
@@ -81,13 +79,13 @@ impl TextLayer {
         &mut self.shaper
     }
 
-    /// 書体を替える。
+    /// フォントを替える。
     pub(crate) fn set_family(&mut self, family: &str) {
         self.shaper.set_family(family);
         self.prepared = None;
     }
 
-    /// 組んだ回数と頂点を作った回数。
+    /// シェーピングした回数と頂点を作った回数。
     pub(crate) fn stats(&self) -> TextStats {
         TextStats {
             shaped: self.shaper.cache().count(),
@@ -95,7 +93,7 @@ impl TextLayer {
         }
     }
 
-    /// 文字を物理ピクセルに置き、前のフレームと違えば頂点を作り直す。`clip` は字を描いてよい矩形（物理ピクセル）、
+    /// 文字を物理ピクセルに置き、前のフレームと違えば頂点を作り直す。字は文字ごとの [`Label::clip`] の外に描かない。
     /// `viewport` はサーフェスの大きさ。パスの外（`submit` の前）で 1 フレームに 1 回呼ぶ。
     pub(crate) fn prepare(
         &mut self,
@@ -103,12 +101,10 @@ impl TextLayer {
         queue: &wgpu::Queue,
         labels: &[Label],
         scale: Scale,
-        clip: Rect,
         viewport: (u32, u32),
     ) {
         let next = Prepared {
             labels: labels.iter().map(|l| placed(l, scale)).collect(),
-            clip: pixel_bounds(clip),
             viewport,
         };
         if self.prepared.as_ref() != Some(&next) {
@@ -118,7 +114,7 @@ impl TextLayer {
             };
             self.viewport.update(queue, resolution);
             let done = self.upload(device, queue, &next).is_ok();
-            // 使ったグリフの印を外し、次に頂点を作るときに atlas から追い出せるようにする。
+            // 使ったグリフを使用中から外し、次に頂点を作るときにアトラスから追い出せるようにする。
             self.atlas.trim();
             self.uploads += 1;
             self.prepared = done.then_some(next);
@@ -166,18 +162,12 @@ fn placed(label: &Label, scale: Scale) -> Placed {
 
 /// 文字ごとの glyphon の描く範囲。切り詰めた文字は右端で切り、そこから「…」を描く。
 fn text_areas<'a>(cache: &'a ShapeCache, next: &Prepared) -> Vec<TextArea<'a>> {
-    let [left, top, right, bottom] = next.clip;
-    let bounds = TextBounds {
-        left,
-        top,
-        right,
-        bottom,
-    };
     let mut areas = Vec::with_capacity(next.labels.len() + 8);
     for p in &next.labels {
         let Some(shaped) = cache.get(&p.text, p.size) else {
             continue;
         };
+        let bounds = pixel_bounds(p.at.clip);
         let cut = p.at.cut.map(|c| c as i32);
         let right = cut.map_or(bounds.right, |c| c.min(bounds.right));
         let clipped = TextBounds { right, ..bounds };
@@ -189,7 +179,7 @@ fn text_areas<'a>(cache: &'a ShapeCache, next: &Prepared) -> Vec<TextArea<'a>> {
     areas
 }
 
-/// 組んだ `buffer` を、文字 `p` の行に左端 `left` から描く範囲。
+/// シェーピングした `buffer` を、文字 `p` の行に左端 `left` から描く範囲。
 fn area<'a>(buffer: &'a Buffer, p: &Placed, left: f32, bounds: TextBounds) -> TextArea<'a> {
     TextArea {
         buffer,
@@ -203,13 +193,13 @@ fn area<'a>(buffer: &'a Buffer, p: &Placed, left: f32, bounds: TextBounds) -> Te
 }
 
 /// 物理ピクセルの矩形を、それを覆う整数の画素の範囲にする。
-fn pixel_bounds(r: Rect) -> [i32; 4] {
-    [
-        r.x.floor() as i32,
-        r.y.floor() as i32,
-        r.right().ceil() as i32,
-        r.bottom().ceil() as i32,
-    ]
+fn pixel_bounds(r: Rect) -> TextBounds {
+    TextBounds {
+        left: r.x.floor() as i32,
+        top: r.y.floor() as i32,
+        right: r.right().ceil() as i32,
+        bottom: r.bottom().ceil() as i32,
+    }
 }
 
 /// 表示の値の色を glyphon の 8 bit の色にする。

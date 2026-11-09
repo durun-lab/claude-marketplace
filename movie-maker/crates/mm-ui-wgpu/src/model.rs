@@ -205,8 +205,12 @@ mod tests {
         assert_eq!(timeline_cut_ids(&project, &c)[0], ["k1", "k2"]);
         assert!(timeline_cut_ids(&project, &c)[1].is_empty());
         let labels: Vec<&str> = item.cuts.iter().map(|b| &*b.label).collect();
-        assert_eq!(labels, ["Footage: a", ""], "カットの名前。隙間は空");
-        assert_eq!(&*item.label, "Sequence: s");
+        assert_eq!(
+            labels,
+            ["a", ""],
+            "カットの名前は素材の ID（素材が無い）。隙間は空"
+        );
+        assert_eq!(&*item.label, "s");
     }
 
     /// k1、無効な k2、k3、k4 の順に並べたシーケンスのレイヤーを持つコンポジション。

@@ -1,7 +1,7 @@
-//! Timeline を矩形の並びに落とす。座標は Timeline の矩形の左上を (0, 0) とする。
+//! Timeline を矩形の並びにする。座標は Timeline の矩形の左上を (0, 0) とする。
 //! 文字（[`crate::timeline_labels`]）は [`timeline_quads`] の上、[`timeline_overlay`] の下に描く。
 
-use crate::geom::{Quad, Rect};
+use crate::geom::{Color, Quad, Rect};
 use crate::gesture::{EditKind, Side};
 use crate::palette::{self, Palette};
 use crate::ruler::ticks;
@@ -10,6 +10,8 @@ use crate::timeline::{
     cut_span, row_top, span, Hit, Item, Part, TimelineModel, HANDLE_PX, ROW_H, RULER_H,
 };
 
+/// 無効なレイヤーの帯の不透明度。
+const DISABLED_BAR_ALPHA: f32 = 0.35;
 /// 再生位置の線の幅。
 const PLAYHEAD_W: f32 = 2.0;
 /// 再生位置の線の上端に付ける四角の一辺。
@@ -34,7 +36,7 @@ pub struct PaintState {
     pub palette: Palette,
 }
 
-/// Timeline の矩形の大きさ `(w, h)` の中に、文字の下に描く矩形の並び（地、帯、目盛り）。
+/// Timeline の矩形の大きさ `(w, h)` の中に、文字の下に描く矩形の並び（背景、帯、目盛り）。
 pub fn timeline_quads(
     model: &TimelineModel,
     view: &TimeView,
@@ -60,7 +62,7 @@ pub fn timeline_overlay(view: &TimeView, h: f32, state: &PaintState) -> Vec<Quad
     q
 }
 
-fn vline(x: f32, h: f32, width: f32, color: crate::geom::Color) -> Quad {
+fn vline(x: f32, h: f32, width: f32, color: Color) -> Quad {
     Quad::new(Rect::new(x - width / 2.0, 0.0, width, h), color)
 }
 
@@ -76,14 +78,13 @@ fn rows(model: &TimelineModel, view: &TimeView, w: f32, state: &PaintState, q: &
     let p = &state.palette;
     for (i, item) in model.items.iter().enumerate() {
         let top = row_top(i);
-        let stripe = if i % 2 == 0 { p.row_even } else { p.row_odd };
-        q.push(Quad::new(Rect::new(0.0, top - 1.0, w, ROW_H + 2.0), stripe));
+        q.push(Quad::new(
+            Rect::new(0.0, top - 1.0, w, ROW_H + 2.0),
+            stripe(p, i),
+        ));
         let (start, end) = trimmed(item, i, state.preview);
         let (x, bw) = span(view, start, end);
-        let mut color = palette::item_color(item.kind);
-        if !item.enabled {
-            color = color.with_alpha(0.35);
-        }
+        let mut color = bar_color(item);
         let hovered = matches!(state.hover, Hit::Layer { index, .. } if index == i);
         if hovered {
             color = palette::lighten(color, 0.18);
@@ -101,6 +102,25 @@ fn rows(model: &TimelineModel, view: &TimeView, w: f32, state: &PaintState, q: &
         }
     }
     outside(model, view, w, p, q);
+}
+
+/// 行 `index` の背景の色（縞）。
+pub(crate) fn stripe(p: &Palette, index: usize) -> Color {
+    if index.is_multiple_of(2) {
+        p.row_even
+    } else {
+        p.row_odd
+    }
+}
+
+/// レイヤーの帯の色。無効なレイヤーは行の背景に薄く重ねる。
+pub(crate) fn bar_color(item: &Item) -> Color {
+    let color = palette::item_color(item.kind);
+    if item.enabled {
+        color
+    } else {
+        color.with_alpha(DISABLED_BAR_ALPHA)
+    }
 }
 
 /// 帯の始まりと終わり。ドラッグ中の `trimLayer` は動かした後の位置にする。

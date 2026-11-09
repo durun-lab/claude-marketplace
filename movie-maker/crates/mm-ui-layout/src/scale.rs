@@ -12,13 +12,15 @@ const THIN_MAX: f32 = 2.0;
 /// 文字の置き場所（物理ピクセル）。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TextPlacement {
-    /// 行の箱の左上。整数の画素。
+    /// 行の矩形の左上。整数の画素。
     pub x: f32,
     pub y: f32,
-    /// グリフに掛ける表示の倍率。字は論理ピクセルの大きさで組み、描くときにこれを掛ける。
+    /// グリフに掛ける表示の倍率。字は論理ピクセルの大きさでシェーピングし、描くときにこれを掛ける。
     pub scale: f32,
     /// 切り詰めたときの、描く右端と「…」の左端。整数の画素。
     pub cut: Option<f32>,
+    /// 字を描いてよい矩形（[`Label::clip`]）。
+    pub clip: Rect,
 }
 
 /// 表示の倍率（DPI / 96）。1 論理ピクセルあたりの物理ピクセルの数。
@@ -68,15 +70,17 @@ impl Scale {
         }
     }
 
-    /// 文字の置き場所を物理ピクセルにする。行の箱の左上を整数の画素に置き、グリフの基線を画素の境にそろえる
+    /// 文字の置き場所を物理ピクセルにする。行の矩形の左上を整数の画素に置き、グリフの基線を画素の境にそろえる
     /// （1.25 倍でも字が上下の画素ににじまない）。切り詰めの右端は左上から画素の境に切り捨て、次の字を描かない。
     pub fn label_to_physical(self, label: &Label) -> TextPlacement {
         let x = (label.x * self.0).round();
+        let c = label.clip;
         TextPlacement {
             x,
             y: (label.y * self.0).round(),
             scale: self.0,
             cut: label.cut.map(|w| x + (w * self.0).floor()),
+            clip: Rect::new(c.x * self.0, c.y * self.0, c.w * self.0, c.h * self.0),
         }
     }
 
@@ -255,7 +259,7 @@ mod tests {
     }
 
     #[test]
-    fn 文字は表示の倍率_150_と_200_で左上を整数の画素に置き_切り詰めの右端を左上から測る() {
+    fn 文字は表示の倍率_125_から_200_で左上を整数の画素に置き_切り詰めの右端を左上から測る() {
         let label = Label {
             text: "name".into(),
             x: 10.3,
@@ -263,14 +267,25 @@ mod tests {
             size: 12.0,
             color: crate::geom::Color([1.0; 4]),
             cut: Some(30.0),
+            clip: Rect::new(8.0, 2.0, 100.0, 24.0),
         };
-        for (factor, x, y, cut) in [(1.5, 15.0, 7.0, 60.0), (2.0, 21.0, 9.0, 81.0)] {
+        let cases = [
+            (1.25, 13.0, 6.0, 50.0),
+            (1.5, 15.0, 7.0, 60.0),
+            (2.0, 21.0, 9.0, 81.0),
+        ];
+        for (factor, x, y, cut) in cases {
             let p = Scale::new(factor).label_to_physical(&label);
             assert_eq!((p.x, p.y, p.scale), (x, y, factor), "表示の倍率 {factor}");
             assert_eq!(
                 p.cut,
                 Some(cut),
                 "表示の倍率 {factor}: 左上 + 30 論理ピクセル"
+            );
+            let c = p.clip;
+            assert_eq!(
+                (c.x, c.y, c.w, c.h),
+                (8.0 * factor, 2.0 * factor, 100.0 * factor, 24.0 * factor)
             );
         }
         let whole = Label { cut: None, ..label };

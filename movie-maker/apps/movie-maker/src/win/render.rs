@@ -348,7 +348,10 @@ fn frame(shared: &Shared, gpu: &Gpu, ui: &mut Ui, seen: &mut u64) -> Result<(), 
     ui.set_playhead(shared.playhead());
     let view = texture.texture.create_view(&Default::default());
     let started = Instant::now();
-    ui.render(&gpu.device, &gpu.queue, &view);
+    {
+        let _ui = tracing::info_span!("window.ui").entered();
+        ui.render(&gpu.device, &gpu.queue, &view);
+    }
     shared.record("ui_ms", started.elapsed().as_secs_f64() * 1000.0);
     {
         let _present = tracing::info_span!("preview.present").entered();

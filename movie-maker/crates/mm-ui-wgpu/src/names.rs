@@ -1,5 +1,6 @@
-//! Timeline の帯に出す名前。レイヤーにもカットにも名前の欄が無いので、ノードの種類と素材の名前
-//! （`Footage: a.mp4`、`Text: Title`）を名前にする。画面の文言は英語にそろえる。
+//! Timeline の帯に出す名前。レイヤーにもカットにも名前の欄が無いので、素材の名前（撮影素材のファイル名、文字の最初の行など）
+//! を名前にし、種類は帯の色に任せる（Premiere と Resolve の帯もクリップの名前だけを出す）。素材の名前が無いもの（単色）は
+//! 種類の名前を英語で出す。
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -29,15 +30,14 @@ impl<'a> Namer<'a> {
         }
     }
 
-    /// ノードの帯の名前。素材の名前があれば `種類: 素材の名前`、無ければ種類だけ。隙間は空（名前を出さない）。
+    /// ノードの帯の名前。素材の名前があればそれ、無ければ種類の名前。隙間は空（名前を出さない）。
     pub(crate) fn label(&self, node: &Node) -> Arc<str> {
         if node.is_gap() {
             return Arc::default();
         }
-        let kind = kind_label(&node.kind);
         match self.source_name(node) {
-            Some(name) => format!("{kind}: {name}").into(),
-            None => kind.into(),
+            Some(name) => name.into(),
+            None => kind_label(&node.kind).into(),
         }
     }
 
@@ -118,14 +118,14 @@ mod tests {
     }
 
     #[test]
-    fn 素材を持つノードは種類と素材のファイル名() {
+    fn 素材を持つノードは素材のファイル名で_種類を付けない() {
         let p = project();
         let names = Namer::new(&p);
         let footage = Node::footage(&Id::new("a"));
-        assert_eq!(&*names.label(&footage), "Footage: take 3.mp4");
+        assert_eq!(&*names.label(&footage), "take 3.mp4");
         let image = Node::new(IMAGE_KIND, 1)
             .with_param(FOOTAGE_PARAM, ParamValue::AssetRef(Id::new("missing")));
-        assert_eq!(&*names.label(&image), "Image: missing", "素材が無ければ ID");
+        assert_eq!(&*names.label(&image), "missing", "素材が無ければ ID");
     }
 
     #[test]
@@ -134,15 +134,15 @@ mod tests {
         let names = Namer::new(&p);
         assert_eq!(
             &*names.label(&text("\n  ｜東京《とうきょう》へ  \n2 行目")),
-            "Text: 東京へ"
+            "東京へ"
         );
-        assert_eq!(&*names.label(&text("")), "Text");
+        assert_eq!(&*names.label(&text("")), "Text", "空の文字は種類の名前");
         let nested =
             Node::new(NESTED_KIND, 1).with_param(NESTED_PARAM, ParamValue::Text("scene".into()));
-        assert_eq!(&*names.label(&nested), "Composition: scene");
+        assert_eq!(&*names.label(&nested), "scene");
         let seq =
             Node::new(SEQUENCE_KIND, 1).with_param(SEQUENCE_PARAM, ParamValue::Text("talk".into()));
-        assert_eq!(&*names.label(&seq), "Sequence: talk");
+        assert_eq!(&*names.label(&seq), "talk");
     }
 
     #[test]

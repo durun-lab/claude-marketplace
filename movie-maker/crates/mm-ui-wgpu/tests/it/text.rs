@@ -1,5 +1,5 @@
 //! Timeline の文字（目盛りの時刻、帯の名前）を描いて、字の画素の位置と大きさを確かめる。
-//! 字の画素は、地の色から離れて字の色に寄った画素で見分ける。
+//! 字の画素は、背景の色から離れて字の色に寄った画素で見分ける。
 
 use mm_ui_layout::{
     row_top, Item, ItemKind, PointerEvent, TimelineModel, LABEL_PAD, ROW_H, RULER_H, VIEW_MARGIN,
@@ -76,12 +76,12 @@ fn dark_ink(p: [u8; 3]) -> bool {
 }
 
 #[test]
-fn 帯の名前は表示の倍率_150_と_200_でも論理ピクセルの寸法で帯の中に描く() {
+fn 帯の名前は表示の倍率_125_から_200_でも論理ピクセルの寸法で帯の中に描く() {
     let Some((device, queue)) = gpu() else { return };
     let mut base: Option<InkBox> = None;
-    for scale in [1.0_f32, 1.5, 2.0] {
+    for scale in [1.0_f32, 1.25, 1.5, 2.0] {
         let m = model(vec![
-            Item::layer(0.0, DURATION, ItemKind::Footage, true).with_label("Footage: clip.mp4")
+            Item::layer(0.0, DURATION, ItemKind::Footage, true).with_label("clip-0123.mp4")
         ]);
         let (mut ui, size) = ui_at(&device, scale, m);
         let out = render_sized(&device, &queue, &mut ui, size);
@@ -119,10 +119,10 @@ fn 帯の名前は表示の倍率_150_と_200_でも論理ピクセルの寸法�
 }
 
 #[test]
-fn 入らない名前は帯の中で切り詰めて三点を付ける() {
+fn 入らない名前は帯の中で切り詰めて省略記号を付ける() {
     let Some((device, queue)) = gpu() else { return };
-    for scale in [1.0_f32, 1.5] {
-        let long = "Text: a long caption that does not fit in the bar";
+    for scale in [1.0_f32, 1.25, 1.5] {
+        let long = "A long caption that does not fit in the bar";
         let m = model(vec![
             Item::layer(0.0, 1.0, ItemKind::Text, true).with_label(long)
         ]);
@@ -138,11 +138,11 @@ fn 入らない名前は帯の中で切り詰めて三点を付ける() {
         );
         // 右端の数画素は「…」の点だけ。点は字の下の方にあり、上の半分には掛からない。
         let tail = (b.2 - (4.0 * scale) as u32, bar.1, b.2 + 1, bar.3);
-        let dots = ink_box(&out, size.0, tail, dark_ink).expect("三点");
+        let dots = ink_box(&out, size.0, tail, dark_ink).expect("省略記号");
         let middle = (b.1 + b.3) / 2;
         assert!(
             dots.1 > middle,
-            "表示の倍率 {scale}: 右端の字の上端 {} は字の中ほど {middle} より下（三点）",
+            "表示の倍率 {scale}: 右端の字の上端 {} は字の中ほど {middle} より下（省略記号）",
             dots.1
         );
     }
@@ -153,7 +153,7 @@ fn 狭い帯には名前を出さない() {
     let Some((device, queue)) = gpu() else { return };
     // 0.2 秒は約 12 論理ピクセルで、余白を除くと名前を入れる幅が無い。
     let m = model(vec![
-        Item::layer(0.0, 0.2, ItemKind::Text, true).with_label("Text: x")
+        Item::layer(0.0, 0.2, ItemKind::Text, true).with_label("x")
     ]);
     let (mut ui, size) = ui_at(&device, 1.0, m);
     let out = render_sized(&device, &queue, &mut ui, size);
@@ -166,7 +166,7 @@ fn 目盛りの時刻と日本語の名前を描く() {
     let Some((device, queue)) = gpu() else { return };
     let scale = 1.5;
     let m = model(vec![
-        Item::layer(0.0, DURATION, ItemKind::Text, true).with_label("Text: 日本語の字幕")
+        Item::layer(0.0, DURATION, ItemKind::Text, true).with_label("日本語の字幕")
     ]);
     let (mut ui, size) = ui_at(&device, scale, m);
     let out = render_sized(&device, &queue, &mut ui, size);
@@ -185,17 +185,15 @@ fn 目盛りの時刻と日本語の名前を描く() {
     assert!((r.3 as f32) < ruler_bottom, "目盛りの帯の中");
     let bar = bar_box(&ui, scale, 0, (0.0, DURATION as f32));
     let b = ink_box(&out, size.0, bar, dark_ink).expect("名前の字");
-    // 「Text: 」に続く全角 6 字は、字の大きさ 12 の 1.5 倍で 1 字 18 画素。
-    assert!(b.2 - b.0 > 6 * 18, "幅 {}", b.2 - b.0);
+    // 全角 6 字は、字の大きさ 12 の 1.5 倍で 1 字 18 画素（字の左右の空きを除いて 5 字分より広い）。
+    assert!(b.2 - b.0 > 5 * 18, "幅 {}", b.2 - b.0);
 }
 
 #[test]
-fn 表示が変わらない間は字を組み直さず_頂点も作り直さない() {
+fn 表示が変わらない間はシェーピングし直さず_頂点も作り直さない() {
     let Some((device, queue)) = gpu() else { return };
     let items = (0..5)
-        .map(|i| {
-            Item::layer(0.0, DURATION, ItemKind::Image, true).with_label(&format!("Image: {i}.png"))
-        })
+        .map(|i| Item::layer(0.0, DURATION, ItemKind::Image, true).with_label(&format!("{i}.png")))
         .collect();
     let (mut ui, size) = ui_at(&device, 1.0, model(items));
     render_sized(&device, &queue, &mut ui, size);

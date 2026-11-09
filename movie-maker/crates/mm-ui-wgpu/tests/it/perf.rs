@@ -18,13 +18,12 @@ const SIZE: (u32, u32) = (2880, 1620);
 
 /// 2 秒のカットを並べた sequence と、静止画のレイヤー。名前は全部ちがう。
 fn model() -> TimelineModel {
-    let mut seq =
-        Item::layer(0.0, CUTS as f64 * 2.0, ItemKind::Sequence, true).with_label("Sequence: main");
+    let mut seq = Item::layer(0.0, CUTS as f64 * 2.0, ItemKind::Sequence, true).with_label("main");
     seq.cuts = (0..CUTS)
         .map(|i| CutBar {
             start: i as f64 * 2.0,
             end: i as f64 * 2.0 + 2.0,
-            label: format!("Footage: take-{i:04}.mp4").into(),
+            label: format!("take-{i:04}.mp4").into(),
             ..CutBar::default()
         })
         .collect();
@@ -32,7 +31,7 @@ fn model() -> TimelineModel {
     items.extend((1..LAYERS).map(|i| {
         let start = (i % 500) as f64 * 12.0;
         Item::layer(start, start + 8.0, ItemKind::Image, true)
-            .with_label(&format!("Image: overlay-{i}.png"))
+            .with_label(&format!("overlay-{i}.png"))
     }));
     TimelineModel {
         duration: CUTS as f64 * 2.0,
@@ -41,7 +40,7 @@ fn model() -> TimelineModel {
     }
 }
 
-/// 1 つの場面の測定。`cpu` は `Ui::render` が返るまで、`total` は GPU の完了まで（ミリ秒）。
+/// 1 つのシナリオの測定。`cpu` は `Ui::render` が返るまで、`total` は GPU の完了まで（ミリ秒）。
 struct Phase {
     name: &'static str,
     cpu: Vec<f64>,
@@ -137,7 +136,7 @@ fn bench() -> Option<Bench> {
 fn 数千のカットの_timeline_を拡大と移動と再生で描く時間() {
     let Some(mut b) = bench() else { return };
     let (first, _) = b.frame();
-    println!("最初のフレーム（書体の読み込みを含む）: {first:.2} ms");
+    println!("最初のフレーム（フォントの読み込みを含む）: {first:.2} ms");
     let t = b.ui.layout().timeline;
     let at = (t.x + t.w / 2.0, t.y + t.h / 2.0);
     let wheel = |dy, ctrl| PointerEvent::Wheel {
@@ -157,7 +156,7 @@ fn 数千のカットの_timeline_を拡大と移動と再生で描く時間() {
         b.phase("再生", 120, |ui, i| ui.set_playhead(i as f64 / 60.0)),
     ];
     println!(
-        "場面 | CPU p50 / p99 / 最大 | GPU の完了まで p50 / p99 / 最大 | 組んだ数 | 頂点を作った数"
+        "シナリオ | CPU p50 / p99 / 最大 | GPU の完了まで p50 / p99 / 最大 | シェーピングした数 | 頂点を作った数"
     );
     for p in &phases {
         println!(
@@ -177,6 +176,6 @@ fn 数千のカットの_timeline_を拡大と移動と再生で描く時間() {
     assert_eq!(
         play.text.shaped + play.text.uploads,
         0,
-        "再生中は組まず、頂点も作らない"
+        "再生中はシェーピングせず、頂点も作らない"
     );
 }
