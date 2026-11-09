@@ -19,6 +19,7 @@ fn seq_model() -> TimelineModel {
         duration: 20.0,
         fps: 30.0,
         items: vec![seq, Item::layer(10.0, 14.0, ItemKind::Text, true)],
+        ..TimelineModel::default()
     }
 }
 

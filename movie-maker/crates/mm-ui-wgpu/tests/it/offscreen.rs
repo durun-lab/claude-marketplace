@@ -14,6 +14,7 @@ fn model() -> TimelineModel {
         duration: 10.0,
         fps: 30.0,
         items: vec![Item::layer(0.0, 10.0, ItemKind::Footage, true)],
+        ..TimelineModel::default()
     }
 }
 

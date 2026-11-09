@@ -82,28 +82,27 @@ fn 項目は並びの順にコマンドの表の名前とキーの見た目で�
         "ツールは後の PR が表に足す"
     );
     assert_eq!(menu_texts(Menu::Help, &table), ["About"]);
-    assert!(
-        menu_texts(Menu::View, &table).is_empty(),
-        "ズームとスナップは後の PR が表に足す"
+    assert_eq!(
+        menu_texts(Menu::View, &table),
+        ["Snapping\tN"],
+        "ズームは後の PR が表に足す"
     );
 }
 
 #[test]
 fn 項目の無いメニューはメニューバーに出さない() {
-    let table = table(&Shared::new());
-    let menus: Vec<Menu> = shown(&table).into_iter().map(|(m, _)| m).collect();
-    assert_eq!(
-        menus,
-        [
-            Menu::File,
-            Menu::Edit,
-            Menu::Playback,
-            Menu::Timeline,
-            Menu::Help
-        ],
-        "View は表に最初の View のコマンドが入ると出る"
-    );
-    assert!(shown(&table).iter().all(|(_, lines)| !lines.is_empty()));
+    let full = table(&Shared::new());
+    let menus: Vec<Menu> = shown(&full).into_iter().map(|(m, _)| m).collect();
+    assert_eq!(menus.len(), BAR.len(), "どのメニューにも項目がある");
+    let without_view: Vec<CommandView> = full
+        .into_iter()
+        .filter(|c| menu_of(c.id) != Some(Menu::View))
+        .collect();
+    let menus: Vec<Menu> = shown(&without_view).into_iter().map(|(m, _)| m).collect();
+    assert!(!menus.contains(&Menu::View), "{menus:?}");
+    assert!(shown(&without_view)
+        .iter()
+        .all(|(_, lines)| !lines.is_empty()));
 }
 
 #[test]

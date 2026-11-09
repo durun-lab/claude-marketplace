@@ -14,6 +14,7 @@ fn model(keys: &[f64]) -> TimelineModel {
         duration: 10.0,
         fps: 30.0,
         items: vec![Item::layer(0.0, 10.0, ItemKind::Text, true).with_keyframes(keys)],
+        ..TimelineModel::default()
     }
 }
 
@@ -154,6 +155,7 @@ fn 見えない行のマーカーは描かない() {
         duration: 10.0,
         fps: 30.0,
         items,
+        ..TimelineModel::default()
     };
     let mut f = TestViewport::new(&m, SIZE);
     f.scroll_y = 28.0 * 10.0;
@@ -186,6 +188,7 @@ fn レイヤーの始まりのマーカーは端のつまみより勝ち_つま�
         duration: 10.0,
         fps: 30.0,
         items: vec![Item::layer(2.0, 6.0, ItemKind::Text, true).with_keyframes(&[2.0])],
+        ..TimelineModel::default()
     };
     let f = TestViewport::new(&m, SIZE);
     let vp = f.vp();

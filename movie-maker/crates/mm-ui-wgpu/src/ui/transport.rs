@@ -20,8 +20,8 @@ impl Ui {
             .handle(logical, &self.layout, &self.transport)
     }
 
-    /// Program のバーの再生位置、長さ、フレームレートを今の値にする。
-    fn sync_program(&mut self) {
+    /// Program のバーの再生位置、長さ、フレームレートを今の値にする。入力を受ける前と描く前に呼ぶ。
+    pub(super) fn sync_program(&mut self) {
         let p = &mut self.transport.program;
         p.t = self.playhead;
         p.duration = self.model.duration;
@@ -29,8 +29,7 @@ impl Ui {
     }
 
     /// 再生の操作のバーの矩形。サーフェスの座標（物理ピクセル）。
-    pub(super) fn transport_quads(&mut self) -> Vec<Quad> {
-        self.sync_program();
+    pub(super) fn transport_quads(&self) -> Vec<Quad> {
         let mut quads = transport_quads(
             &self.layout,
             &self.transport,

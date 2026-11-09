@@ -126,6 +126,56 @@ fn 押せるかが変わると表を送り直す() {
 }
 
 #[test]
+fn snapping_はチェックの状態に表示の状態の入_切を出し_変われば表を送り直す() {
+    let shared = Shared::new();
+    let mut sent = None;
+    let checked = |table: &[CommandView]| row(table, "timeline.toggle_snapping").state.checked;
+    let first = changed(&shared, &mut sent).expect("最初は送る");
+    assert_eq!(checked(&first), Some(true), "表示の状態が無ければ入");
+    assert_eq!(
+        row(&first, "clip.lift").state.checked,
+        None,
+        "入/切の無いコマンド"
+    );
+    let mut state = mm_ui_layout::ViewState {
+        time: mm_ui_layout::TimeView {
+            origin: 0.0,
+            px_per_sec: 100.0,
+        },
+        scroll_y: 0.0,
+        heights: mm_ui_layout::RowHeights::default(),
+        snapping: false,
+    };
+    shared.view.publish(state.clone());
+    let off = changed(&shared, &mut sent).expect("切ると送る");
+    assert_eq!(checked(&off), Some(false));
+    state.scroll_y = 10.0;
+    shared.view.publish(state);
+    assert!(
+        changed(&shared, &mut sent).is_none(),
+        "スクロールでは送らない"
+    );
+}
+
+#[test]
+fn snapping_はメニューからもキーからも描画スレッドへ入_切を渡す() {
+    use mm_ui_layout::PointerEvent;
+    let shared = Arc::new(Shared::new());
+    run(&shared, "timeline.toggle_snapping").expect("メニュー");
+    run_from_key(&shared, "timeline.toggle_snapping").expect("キー");
+    release_from_key(&shared, "timeline.toggle_snapping");
+    release_from_key(&shared, "playback.toggle");
+    assert_eq!(
+        *shared.input.lock().unwrap(),
+        [
+            PointerEvent::ToggleSnapping,
+            PointerEvent::ToggleSnapping,
+            PointerEvent::SnapKeyUp
+        ]
+    );
+}
+
+#[test]
 fn 再生のコマンドを_program_に送り_表に無い_id_は拒否する() {
     let shared = Arc::new(Shared::new());
     let (tx, rx) = channel();

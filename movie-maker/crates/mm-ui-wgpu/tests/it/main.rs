@@ -4,6 +4,7 @@ mod offscreen;
 mod perf;
 mod rows;
 mod shapes;
+mod snap;
 mod support;
 mod text;
 mod transport;

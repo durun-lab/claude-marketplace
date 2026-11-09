@@ -60,7 +60,10 @@ impl TransportController {
                 self.hover = None;
                 Vec::new()
             }
-            PointerEvent::Wheel { .. } => Vec::new(),
+            // スナップのキーは Timeline のドラッグだけに効く。
+            PointerEvent::Wheel { .. } | PointerEvent::ToggleSnapping | PointerEvent::SnapKeyUp => {
+                Vec::new()
+            }
         }
     }
 
