@@ -178,6 +178,9 @@ pub fn run() {
         .unwrap_or_else(|e| fail(&e.to_string()));
 
     let shared = Arc::new(Shared::new());
+    // 書き手として開けなかった project.mmdb（別のプロセスが書き手）は、表示の状態も書かない。
+    let read_only = opened.store.is_none() && mm_store::store_dir(&args.project).is_some();
+    crate::win::view_state::open(&shared, &args.project, &comp_id, read_only);
     let mobile_cache = media::project_cache_dir(&args.project).join("mobile");
     let server = start_serve(&shared, opened.store.take(), mobile_cache);
     if args.play_test.is_some() {

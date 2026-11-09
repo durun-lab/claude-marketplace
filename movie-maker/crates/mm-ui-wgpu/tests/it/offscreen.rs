@@ -2,12 +2,12 @@
 
 use mm_types::{Rgba, RgbaImage, Size};
 use mm_ui_layout::{
-    fit_rect, frame_point, palette, row_top, DrawingShape, DrawingShapeKind, Item, ItemKind,
-    PointerEvent, TimelineModel, HANDLE_PX, ROW_H, VIEW_MARGIN,
+    fit_rect, frame_point, palette, DrawingShape, DrawingShapeKind, Item, ItemKind, PointerEvent,
+    RowHeight, Rows, TimelineModel, HANDLE_PX, VIEW_MARGIN,
 };
 use mm_ui_wgpu::{Region, Ui};
 
-use crate::support::{close, gpu, hex, px_in, read_back, render_sized, FORMAT, H, W};
+use crate::support::{bar_rect, close, gpu, hex, px_in, read_back, render_sized, FORMAT, H, W};
 
 fn model() -> TimelineModel {
     TimelineModel {
@@ -341,7 +341,8 @@ fn timeline_の帯とつまみは表示の倍率を掛けても論理ピクセ�
         let t = ui.layout().timeline;
         // 全体表示の帯の右端は右の余白（論理）の内側。その 2 論理ピクセル内側でつまみに乗る。
         let end = t.right() - VIEW_MARGIN * scale;
-        let row_y = t.y + (row_top(0) + ROW_H / 2.0) * scale;
+        let rect = bar_rect(&ui, &model(), scale, 0, (0.0, 10.0));
+        let row_y = rect.y + rect.h / 2.0;
         ui.pointer(PointerEvent::Move {
             x: end - 2.0 * scale,
             y: row_y,
@@ -353,8 +354,9 @@ fn timeline_の帯とつまみは表示の倍率を掛けても論理ピクセ�
         let height = longest_run(column, |p| close(p, bar, 3));
         let row = (t.x as u32..t.right() as u32).map(|x| at(x, row_y as u32));
         let handle = longest_run(row, |p| p.iter().all(|c| *c >= 200));
+        let bar_h = Rows::new([RowHeight::Medium]).bar(0).1;
         for (name, got, logical) in [
-            ("帯の高さ", height, ROW_H),
+            ("帯の高さ", height, bar_h),
             ("つまみの幅", handle, HANDLE_PX),
         ] {
             let want = logical * scale;

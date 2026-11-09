@@ -169,6 +169,8 @@ pub struct Shared {
     series: Mutex<BTreeMap<&'static str, Vec<f64>>>,
     /// Mixer のメーター。再生スレッドが音を混ぜるたびに記録し、同期のスレッドが送る。
     pub meters: Mutex<crate::win::mixer::MeterLane>,
+    /// Timeline の表示の状態（ズーム、スクロール、行の高さ）。描画スレッドが置き、`.mm/view.json` に書く。
+    pub view: crate::win::view_state::ViewSlot,
 }
 
 impl Shared {
@@ -206,6 +208,7 @@ impl Shared {
             collect_series: AtomicBool::new(false),
             series: Mutex::new(BTreeMap::new()),
             meters: Mutex::new(crate::win::mixer::MeterLane::default()),
+            view: crate::win::view_state::ViewSlot::default(),
         }
     }
 

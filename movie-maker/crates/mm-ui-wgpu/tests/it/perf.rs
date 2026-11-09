@@ -139,19 +139,23 @@ fn 数千のカットの_timeline_を拡大と移動と再生で描く時間() {
     println!("最初のフレーム（フォントの読み込みを含む）: {first:.2} ms");
     let t = b.ui.layout().timeline;
     let at = (t.x + t.w / 2.0, t.y + t.h / 2.0);
-    let wheel = |dy, ctrl| PointerEvent::Wheel {
+    let wheel = |dy, ctrl, shift| PointerEvent::Wheel {
         x: at.0,
         y: at.1,
         dy,
         ctrl,
+        shift,
     };
     let phases = [
         b.phase("全体表示", 60, |_, _| {}),
         b.phase("拡大", 40, |ui, _| {
-            ui.pointer(wheel(1.0, true));
+            ui.pointer(wheel(1.0, true, false));
         }),
         b.phase("移動", 120, |ui, _| {
-            ui.pointer(wheel(1.0, false));
+            ui.pointer(wheel(1.0, false, false));
+        }),
+        b.phase("縦のスクロール", 120, |ui, _| {
+            ui.pointer(wheel(-1.0, false, true));
         }),
         b.phase("再生", 120, |ui, i| ui.set_playhead(i as f64 / 60.0)),
     ];
@@ -172,7 +176,7 @@ fn 数千のカットの_timeline_を拡大と移動と再生で描く時間() {
             p.text.uploads,
         );
     }
-    let play = &phases[3];
+    let play = &phases[4];
     assert_eq!(
         play.text.shaped + play.text.uploads,
         0,

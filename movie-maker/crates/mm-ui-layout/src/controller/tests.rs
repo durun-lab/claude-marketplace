@@ -1,6 +1,8 @@
 use super::*;
 use crate::gesture::Side;
-use crate::timeline::{row_top, CutBar, Item, ItemKind};
+use crate::rows::{RowHeights, Rows};
+use crate::time_view::MIN_PX_PER_SEC;
+use crate::timeline::{CutBar, Item, ItemKind};
 
 fn model() -> TimelineModel {
     TimelineModel {
@@ -30,14 +32,23 @@ fn seq_model() -> TimelineModel {
     }
 }
 
-fn ctl() -> TimelineController {
-    TimelineController::new(TimeView {
+/// `m` の行を既定の高さで並べた、幅 2000、高さ 300 の Timeline の操作。1 秒 100 px、左端が 0 秒。
+pub(super) fn ctl(m: &TimelineModel) -> TimelineController {
+    let mut c = TimelineController::new(TimeView {
         origin: 0.0,
         px_per_sec: 100.0,
-    })
+    });
+    c.set_rows(Rows::of(&m.items, &RowHeights::default()));
+    c.resize((2000.0, 300.0));
+    c
 }
 
-fn down(x: f32, y: f32) -> PointerEvent {
+/// 行 `i` の帯の上端から 4 の y。
+pub(super) fn in_bar(c: &TimelineController, i: usize) -> f32 {
+    c.viewport().bar(i, 0.0, 0.0).y + 4.0
+}
+
+pub(super) fn down(x: f32, y: f32) -> PointerEvent {
     PointerEvent::Down {
         x,
         y,
@@ -47,8 +58,8 @@ fn down(x: f32, y: f32) -> PointerEvent {
 
 #[test]
 fn 目盛りの上のドラッグは再生位置をフレームの境目で追う() {
-    let mut c = ctl();
     let m = model();
+    let mut c = ctl(&m);
     let a = c.handle(down(251.0, 5.0), &m, 0.0);
     assert_eq!(a, vec![Action::Seek(quantize(2.51, 30.0))]);
     let b = c.handle(PointerEvent::Move { x: 5000.0, y: 80.0 }, &m, 0.0);
@@ -60,9 +71,9 @@ fn 目盛りの上のドラッグは再生位置をフレームの境目で追�
 
 #[test]
 fn レイヤーのつまみのドラッグは別のレイヤーの端と再生位置に吸い付き_trim_layer_になる() {
-    let mut c = ctl();
     let m = model();
-    let y = row_top(1) + 4.0;
+    let mut c = ctl(&m);
+    let y = in_bar(&c, 1);
     // 先頭の帯の終わり(10 秒)ではなく、2 番目の帯の出つまみを掴む。
     let a = c.handle(down(399.0, y), &m, 0.0);
     assert_eq!(a, vec![Action::Select(Some(1))]);
@@ -85,9 +96,9 @@ fn レイヤーのつまみのドラッグは別のレイヤーの端と再生�
 
 #[test]
 fn スナップしないドラッグも離したときに確定する() {
-    let mut c = ctl();
     let m = model();
-    let y = row_top(1) + 4.0;
+    let mut c = ctl(&m);
+    let y = in_bar(&c, 1);
     c.handle(down(399.0, y), &m, 0.0);
     // どの目標からも遠い所（5.55 秒）で離す。
     let moved = c.handle(PointerEvent::Move { x: 555.0, y }, &m, 0.0);
@@ -114,9 +125,9 @@ fn スナップしないドラッグも離したときに確定する() {
 
 #[test]
 fn ドラッグ中だけ描く状態にドラッグ中の見た目を載せる() {
-    let mut c = ctl();
     let m = model();
-    let y = row_top(1) + 4.0;
+    let mut c = ctl(&m);
+    let y = in_bar(&c, 1);
     c.handle(down(399.0, y), &m, 0.0);
     let moved = c.handle(PointerEvent::Move { x: 555.0, y }, &m, 0.0);
     let Action::Edit { kind, by, .. } = moved[0] else {
@@ -129,9 +140,9 @@ fn ドラッグ中だけ描く状態にドラッグ中の見た目を載せる()
 
 #[test]
 fn 取り消したドラッグは確定せず_見た目も戻す() {
-    let mut c = ctl();
     let m = model();
-    let y = row_top(1) + 4.0;
+    let mut c = ctl(&m);
+    let y = in_bar(&c, 1);
     c.handle(down(399.0, y), &m, 0.0);
     c.handle(PointerEvent::Move { x: 555.0, y }, &m, 0.0);
     assert!(c.handle(PointerEvent::Cancel, &m, 0.0).is_empty());
@@ -145,10 +156,10 @@ fn 取り消したドラッグは確定せず_見た目も戻す() {
 
 #[test]
 fn 撮影素材のレイヤーのつまみは素材の終わりより先へ引けない() {
-    let mut c = ctl();
     let mut m = model();
+    let mut c = ctl(&m);
     m.items[1].trim.max_end = 5.0;
-    let y = row_top(1) + 4.0;
+    let y = in_bar(&c, 1);
     c.handle(down(399.0, y), &m, 0.0);
     let moved = c.handle(PointerEvent::Move { x: 777.0, y }, &m, 0.0);
     let Action::Edit { by, .. } = moved[0] else {
@@ -162,9 +173,9 @@ fn 撮影素材のレイヤーのつまみは素材の終わりより先へ引�
 
 #[test]
 fn 動かさずに離したクリックは編集にしない() {
-    let mut c = ctl();
     let m = model();
-    let y = row_top(1) + 4.0;
+    let mut c = ctl(&m);
+    let y = in_bar(&c, 1);
     c.handle(down(399.0, y), &m, 0.0);
     c.handle(PointerEvent::Move { x: 399.0, y }, &m, 0.0);
     assert!(c.handle(PointerEvent::Up, &m, 0.0).is_empty());
@@ -172,9 +183,9 @@ fn 動かさずに離したクリックは編集にしない() {
 
 #[test]
 fn モデルの並びが変わったら範囲の外の選択とドラッグを捨てる() {
-    let mut c = ctl();
     let m = model();
-    let y = row_top(1) + 4.0;
+    let mut c = ctl(&m);
+    let y = in_bar(&c, 1);
     c.handle(down(399.0, y), &m, 0.0);
     assert_eq!(c.selected, Some(1));
     c.model_changed(&TimelineModel {
@@ -190,9 +201,9 @@ fn モデルの並びが変わったら範囲の外の選択とドラッグを�
 
 #[test]
 fn 本体のクリックは選ぶだけ_空きで選択を外す() {
-    let mut c = ctl();
     let m = model();
-    let y = row_top(1) + 4.0;
+    let mut c = ctl(&m);
+    let y = in_bar(&c, 1);
     assert_eq!(
         c.handle(down(300.0, y), &m, 0.0),
         vec![Action::Select(Some(1))]
@@ -206,8 +217,8 @@ fn 本体のクリックは選ぶだけ_空きで選択を外す() {
 
 #[test]
 fn ホイールは_ctrl_で拡大_なしで移動() {
-    let mut c = ctl();
     let m = model();
+    let mut c = ctl(&m);
     let t = c.view.t_of(300.0);
     c.handle(
         PointerEvent::Wheel {
@@ -215,6 +226,7 @@ fn ホイールは_ctrl_で拡大_なしで移動() {
             y: 0.0,
             dy: 2.0,
             ctrl: true,
+            shift: false,
         },
         &m,
         0.0,
@@ -228,6 +240,7 @@ fn ホイールは_ctrl_で拡大_なしで移動() {
             y: 0.0,
             dy: 1.0,
             ctrl: false,
+            shift: false,
         },
         &m,
         0.0,
@@ -236,10 +249,38 @@ fn ホイールは_ctrl_で拡大_なしで移動() {
 }
 
 #[test]
+fn ctrl_ホイールの縮小は長いコンポジションでも全体が収まるところまで() {
+    let zoom_out = PointerEvent::Wheel {
+        x: 300.0,
+        y: 0.0,
+        dy: -100.0,
+        ctrl: true,
+        shift: false,
+    };
+    let mut long = model();
+    long.duration = 3600.0;
+    let mut c = ctl(&long);
+    c.handle(zoom_out, &long, 0.0);
+    let fit = TimeView::fit(3600.0, c.layout().row_area.w, VIEW_MARGIN).px_per_sec;
+    assert!(
+        (c.view.px_per_sec - fit).abs() < 1e-9,
+        "{}",
+        c.view.px_per_sec
+    );
+    let short = model();
+    let mut c = ctl(&short);
+    c.handle(zoom_out, &short, 0.0);
+    assert_eq!(
+        c.view.px_per_sec, MIN_PX_PER_SEC,
+        "短ければ MIN_PX_PER_SEC まで"
+    );
+}
+
+#[test]
 fn ポインターが乗った所を覚え_出たら消す() {
-    let mut c = ctl();
     let m = model();
-    let y = row_top(1) + 4.0;
+    let mut c = ctl(&m);
+    let y = in_bar(&c, 1);
     c.handle(PointerEvent::Move { x: 300.0, y }, &m, 0.0);
     assert_eq!(
         c.hover,
@@ -254,9 +295,9 @@ fn ポインターが乗った所を覚え_出たら消す() {
 
 #[test]
 fn カットのクリックはレイヤーとカットの両方を選ぶ() {
-    let mut c = ctl();
     let m = seq_model();
-    let y = row_top(0) + 4.0;
+    let mut c = ctl(&m);
+    let y = in_bar(&c, 0);
     let a = c.handle(down(150.0, y), &m, 0.0);
     assert_eq!(
         a,
@@ -273,9 +314,9 @@ fn カットのクリックはレイヤーとカットの両方を選ぶ() {
 
 #[test]
 fn カットの出つまみのドラッグは_ripple_離したときに確定() {
-    let mut c = ctl();
     let m = seq_model();
-    let y = row_top(0) + 4.0;
+    let mut c = ctl(&m);
+    let y = in_bar(&c, 0);
     c.handle(down(298.0, y), &m, 0.0);
     let moved = c.handle(PointerEvent::Move { x: 250.0, y }, &m, 0.0);
     assert_eq!(
@@ -296,9 +337,9 @@ fn カットの出つまみのドラッグは_ripple_離したときに確定() 
 
 #[test]
 fn alt_を押してつかんだカットの端は_roll() {
-    let mut c = ctl();
     let m = seq_model();
-    let y = row_top(0) + 4.0;
+    let mut c = ctl(&m);
+    let y = in_bar(&c, 0);
     c.handle(
         PointerEvent::Down {
             x: 298.0,
@@ -322,8 +363,8 @@ fn alt_を押してつかんだカットの端は_roll() {
 #[test]
 fn カットの中のドラッグは_slip_で_shift_なら_slide() {
     let m = seq_model();
-    let y = row_top(0) + 4.0;
-    let mut c = ctl();
+    let mut c = ctl(&m);
+    let y = in_bar(&c, 0);
     c.handle(down(100.0, y), &m, 0.0);
     let moved = c.handle(PointerEvent::Move { x: 140.0, y }, &m, 0.0);
     let Action::Edit { kind, by, .. } = moved[0] else {
@@ -355,9 +396,9 @@ fn カットの中のドラッグは_slip_で_shift_なら_slide() {
 
 #[test]
 fn カットの端は他のカットの端に吸い付く() {
-    let mut c = ctl();
     let m = seq_model();
-    let y = row_top(0) + 4.0;
+    let mut c = ctl(&m);
+    let y = in_bar(&c, 0);
     // カット 0 の出つまみを 6.97 秒付近へ。カット 2 の出（7 秒）に吸い付く。
     c.handle(down(298.0, y), &m, 0.0);
     let moved = c.handle(PointerEvent::Move { x: 697.0, y }, &m, 0.0);
@@ -369,10 +410,10 @@ fn カットの端は他のカットの端に吸い付く() {
 
 #[test]
 fn カットからレイヤーへ選び直すとカットの選択が外れる() {
-    let mut c = ctl();
     let m = seq_model();
-    c.handle(down(150.0, row_top(0) + 4.0), &m, 0.0);
+    let mut c = ctl(&m);
+    c.handle(down(150.0, in_bar(&c, 0)), &m, 0.0);
     c.handle(PointerEvent::Up, &m, 0.0);
-    let a = c.handle(down(1200.0, row_top(1) + 4.0), &m, 0.0);
+    let a = c.handle(down(1200.0, in_bar(&c, 1)), &m, 0.0);
     assert_eq!(a, vec![Action::Select(Some(1)), Action::SelectCut(None)]);
 }

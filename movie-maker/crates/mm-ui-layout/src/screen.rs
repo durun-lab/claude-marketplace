@@ -1,16 +1,14 @@
 //! サーフェス全体の割り付け。上に Program、下に Timeline。
 
 use crate::geom::Rect;
-use crate::timeline::RULER_H;
+use crate::timeline_layout::MIN_TIMELINE_H;
 
 /// Program と Timeline の間隔。
 const GAP: f32 = 4.0;
 /// Timeline を全体表示にしたときの左右の余白（px）。
 pub const VIEW_MARGIN: f32 = 16.0;
-/// Timeline の高さの下限（目盛りとレイヤー 2 本）。
-const MIN_TIMELINE_H: f32 = RULER_H + 60.0;
-/// Timeline が占める高さの上限（サーフェスに対する比）。
-const MAX_TIMELINE_RATIO: f32 = 0.5;
+/// Timeline の高さ（サーフェスに対する比）。中身の高さには合わせず、入らない行は縦にスクロールする。
+pub const TIMELINE_RATIO: f32 = 0.45;
 
 /// サーフェスの割り付け。
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -21,13 +19,13 @@ pub struct SurfaceLayout {
     pub source: Option<Rect>,
 }
 
-/// 幅 `w`、高さ `h` のサーフェスを割る。Timeline は中身の高さ `timeline_content_h` に合わせ、上限は半分。
+/// 幅 `w`、高さ `h` のサーフェスを割る。Timeline の高さはサーフェスの [`TIMELINE_RATIO`]（下限は目盛りとレイヤー 2 本）。
 /// `with_source` なら上の段を左の Source と右の Program に半分ずつ割る。
-pub fn split_viewers(w: f32, h: f32, timeline_content_h: f32, with_source: bool) -> SurfaceLayout {
-    let max_h = (h * MAX_TIMELINE_RATIO).max(0.0);
-    let th = (timeline_content_h + GAP).max(MIN_TIMELINE_H).min(max_h);
+pub fn split_viewers(w: f32, h: f32, with_source: bool) -> SurfaceLayout {
+    let h = h.max(0.0);
+    let th = (h * TIMELINE_RATIO).max(MIN_TIMELINE_H).min(h);
     let ph = (h - th - GAP).max(0.0);
-    let timeline = Rect::new(0.0, ph + GAP, w, th);
+    let timeline = Rect::new(0.0, h - th, w, th);
     if !with_source {
         return SurfaceLayout {
             program: Rect::new(0.0, 0.0, w, ph),
@@ -49,7 +47,7 @@ mod tests {
 
     #[test]
     fn 二つの領域はサーフェスを隙間つきで埋める() {
-        let l = split_viewers(1000.0, 800.0, 100.0, false);
+        let l = split_viewers(1000.0, 800.0, false);
         assert_eq!(l.program.bottom() + GAP, l.timeline.y);
         assert_eq!(l.timeline.bottom(), 800.0);
         assert_eq!((l.program.w, l.timeline.w), (1000.0, 1000.0));
@@ -57,8 +55,8 @@ mod tests {
 
     #[test]
     fn source_を開くと上の段を左右に半分ずつ割り_timeline_は変わらない() {
-        let plain = split_viewers(1000.0, 800.0, 100.0, false);
-        let l = split_viewers(1000.0, 800.0, 100.0, true);
+        let plain = split_viewers(1000.0, 800.0, false);
+        let l = split_viewers(1000.0, 800.0, true);
         let source = l.source.expect("Source");
         assert_eq!(source.right() + GAP, l.program.x);
         assert_eq!(l.program.right(), 1000.0);
@@ -68,14 +66,23 @@ mod tests {
     }
 
     #[test]
-    fn timeline_は半分を超えない() {
-        let l = split_viewers(1000.0, 800.0, 5000.0, false);
-        assert_eq!(l.timeline.h, 400.0);
+    fn timeline_はサーフェスの_45_パーセントの高さ() {
+        assert_eq!(split_viewers(1000.0, 800.0, false).timeline.h, 360.0);
+        assert_eq!(split_viewers(1000.0, 1200.0, false).timeline.h, 540.0);
+    }
+
+    #[test]
+    fn 低いサーフェスでも_timeline_は目盛りと行_2_本の高さを保つ() {
+        assert_eq!(
+            split_viewers(1000.0, 150.0, false).timeline.h,
+            MIN_TIMELINE_H
+        );
     }
 
     #[test]
     fn 小さなサーフェスでも矩形が負にならない() {
-        let l = split_viewers(10.0, 20.0, 100.0, false);
+        let l = split_viewers(10.0, 20.0, false);
         assert!(l.program.h >= 0.0 && l.timeline.h >= 0.0);
+        assert_eq!(l.timeline.bottom(), 20.0);
     }
 }

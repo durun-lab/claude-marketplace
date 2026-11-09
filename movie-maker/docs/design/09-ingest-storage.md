@@ -27,7 +27,8 @@
     review.json       コメント
   backups/            自動のバックアップ（project.<時刻>.mmdb）。消してよい
   media/              プロジェクトの中にコピーした素材（設定で選ぶ。既定は元の場所を参照）
-  .mm/                動作中を示すファイル（lock は書き手の OS のファイルロック、lock.info に pid と HTTP のポート）。消してよい
+  .mm/                動作中を示すファイル（lock は書き手の OS のファイルロック、lock.info に pid と HTTP のポート）と、
+                      Timeline の表示の状態（view.json。下）。消してよい
   cache/              消してよい。作り直せるものだけ（下）
     preview/<contentHash>/   プレビュー動画（540p.mp4、要れば 1080p.mp4）
     audio/<contentHash>/     トラックごとの PCM、波形
@@ -39,6 +40,8 @@
     telemetry/               プロジェクトに固有の計測の数（[計装](17-instrumentation.md#置き場所と大きさ)）
   .gitignore          project.mmdb*、backups/、media/、.mm/、cache/ を外す
 ```
+
+`.mm/view.json` は Timeline の表示の状態（コンポジションごとのズームと横の位置、縦のスクロール、行の高さ）を持つ。プロジェクトのデータではないので操作にせず、取り消しの列、`versions/`、バックアップ（`backups/`）、`mm import` の復旧に入らない。アプリが変化の落ち着いたところ（0.5 秒止まったとき）と閉じるときに書き、開いたときに戻す。読むだけで開いたとき（別のプロセスが書き手）は戻すだけで書かない。壊れたファイルと知らないバージョンのファイルは無いものとして読み、次に書くときに置き換える。消すと既定の表示（全体表示にし、sequence の行が見える所までスクロール）に戻る。決め方は [UI の分かりやすさ](18-ui-clarity.md#レイヤーの行とレイヤーの見出し)。
 
 ### なぜ DB を正本にするか
 

@@ -1,19 +1,16 @@
 //! Timeline の文字（目盛りの時刻、帯の名前）を描いて、字の画素の位置と大きさを確かめる。
 //! 字の画素は、背景の色から離れて字の色に寄った画素で見分ける。
 
-use mm_ui_layout::{
-    row_top, Item, ItemKind, PointerEvent, TimelineModel, LABEL_PAD, ROW_H, RULER_H, VIEW_MARGIN,
-};
+use mm_ui_layout::{Item, ItemKind, PointerEvent, TimelineModel, LABEL_PAD, RULER_H, VIEW_MARGIN};
 use mm_ui_wgpu::Ui;
 
-use crate::support::{gpu, px_in, render_sized, FORMAT, H, W};
+use crate::support::{bar_rect, gpu, px_in, render_sized, FORMAT, H, W};
 
 /// 字の画素の範囲（左、上、右、下。両端を含む）。
 type InkBox = (u32, u32, u32, u32);
 
-/// 試験のモデルの長さ（秒）と、全体表示の 1 秒の論理ピクセル（余白を除いた幅を長さで割る）。
+/// 試験のモデルの長さ（秒）。
 const DURATION: f64 = 10.0;
-const PX_PER_SEC: f32 = (W as f32 - 2.0 * VIEW_MARGIN) / DURATION as f32;
 
 fn model(items: Vec<Item>) -> TimelineModel {
     TimelineModel {
@@ -33,16 +30,14 @@ fn ui_at(device: &wgpu::Device, scale: f32, m: TimelineModel) -> (Ui, (u32, u32)
     (ui, size)
 }
 
-/// 全体表示で行 `row` の時刻 `[start, end)` の帯の、物理ピクセルの矩形（左、上、右、下。右と下は含まない）。
-fn bar_box(ui: &Ui, scale: f32, row: usize, (start, end): (f32, f32)) -> InkBox {
-    let t = ui.layout().timeline;
-    let x = |secs: f32| t.x + (VIEW_MARGIN + secs * PX_PER_SEC) * scale;
-    let top = t.y + row_top(row) * scale;
+/// 行 `row` の時刻 `[start, end)` の帯の、物理ピクセルの矩形（左、上、右、下。右と下は含まない）。
+fn bar_box(ui: &Ui, m: &TimelineModel, scale: f32, row: usize, (start, end): (f32, f32)) -> InkBox {
+    let r = bar_rect(ui, m, scale, row, (f64::from(start), f64::from(end)));
     (
-        x(start).ceil() as u32,
-        top.ceil() as u32,
-        x(end).floor() as u32,
-        (top + ROW_H * scale).floor() as u32,
+        r.x.ceil() as u32,
+        r.y.ceil() as u32,
+        r.right().floor() as u32,
+        r.bottom().floor() as u32,
     )
 }
 
@@ -83,9 +78,9 @@ fn 帯の名前は表示の倍率_125_から_200_でも論理ピクセルの寸�
         let m = model(vec![
             Item::layer(0.0, DURATION, ItemKind::Footage, true).with_label("clip-0123.mp4")
         ]);
-        let (mut ui, size) = ui_at(&device, scale, m);
+        let (mut ui, size) = ui_at(&device, scale, m.clone());
         let out = render_sized(&device, &queue, &mut ui, size);
-        let bar = bar_box(&ui, scale, 0, (0.0, DURATION as f32));
+        let bar = bar_box(&ui, &m, scale, 0, (0.0, DURATION as f32));
         let b = ink_box(&out, size.0, bar, light_ink).expect("帯の名前の字");
         // 字は帯の左端から余白を空けた所から始まる（最初の字の左の空きは 2 論理ピクセルまで）。
         let left = bar.0 as f32 + LABEL_PAD * scale;
@@ -126,9 +121,9 @@ fn 入らない名前は帯の中で切り詰めて省略記号を付ける() {
         let m = model(vec![
             Item::layer(0.0, 1.0, ItemKind::Text, true).with_label(long)
         ]);
-        let (mut ui, size) = ui_at(&device, scale, m);
+        let (mut ui, size) = ui_at(&device, scale, m.clone());
         let out = render_sized(&device, &queue, &mut ui, size);
-        let bar = bar_box(&ui, scale, 0, (0.0, 1.0));
+        let bar = bar_box(&ui, &m, scale, 0, (0.0, 1.0));
         let b = ink_box(&out, size.0, bar, dark_ink).expect("帯の名前の字");
         let limit = bar.2 as f32 - LABEL_PAD * scale;
         assert!(
@@ -155,9 +150,9 @@ fn 狭い帯には名前を出さない() {
     let m = model(vec![
         Item::layer(0.0, 0.2, ItemKind::Text, true).with_label("x")
     ]);
-    let (mut ui, size) = ui_at(&device, 1.0, m);
+    let (mut ui, size) = ui_at(&device, 1.0, m.clone());
     let out = render_sized(&device, &queue, &mut ui, size);
-    let bar = bar_box(&ui, 1.0, 0, (0.0, 0.2));
+    let bar = bar_box(&ui, &m, 1.0, 0, (0.0, 0.2));
     assert_eq!(ink_box(&out, size.0, bar, dark_ink), None);
 }
 
@@ -168,7 +163,7 @@ fn 目盛りの時刻と日本語の名前を描く() {
     let m = model(vec![
         Item::layer(0.0, DURATION, ItemKind::Text, true).with_label("日本語の字幕")
     ]);
-    let (mut ui, size) = ui_at(&device, scale, m);
+    let (mut ui, size) = ui_at(&device, scale, m.clone());
     let out = render_sized(&device, &queue, &mut ui, size);
     let t = ui.layout().timeline;
     // 目盛りの時刻は灰色の明るい字。目盛りの線（赤が 107）と再生位置の線（緑が 90）は字にしない。
@@ -183,7 +178,7 @@ fn 目盛りの時刻と日本語の名前を描く() {
     );
     let r = ink_box(&out, size.0, ruler, ruler_ink).expect("0:00 の字");
     assert!((r.3 as f32) < ruler_bottom, "目盛りの帯の中");
-    let bar = bar_box(&ui, scale, 0, (0.0, DURATION as f32));
+    let bar = bar_box(&ui, &m, scale, 0, (0.0, DURATION as f32));
     let b = ink_box(&out, size.0, bar, dark_ink).expect("名前の字");
     // 全角 6 字は、字の大きさ 12 の 1.5 倍で 1 字 18 画素（字の左右の空きを除いて 5 字分より広い）。
     assert!(b.2 - b.0 > 5 * 18, "幅 {}", b.2 - b.0);
@@ -210,6 +205,7 @@ fn 表示が変わらない間はシェーピングし直さず_頂点も作り�
         y: t.y + 40.0,
         dy: 1.0,
         ctrl: true,
+        shift: false,
     });
     render_sized(&device, &queue, &mut ui, size);
     let zoomed = ui.text_stats();
