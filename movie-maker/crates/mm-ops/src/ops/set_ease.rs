@@ -35,7 +35,7 @@ impl Apply for SetEase {
             .keyframes
             .iter_mut()
             .find(|k| k.time == self.time)
-            .ok_or_else(|| MmError::NotFound(format!("時刻 {} のキーフレーム", self.time)))?;
+            .ok_or_else(|| MmError::NotFound(format!("keyframe at {}", self.time)))?;
         let inverse = SetEase {
             target: self.target.clone(),
             time: self.time,

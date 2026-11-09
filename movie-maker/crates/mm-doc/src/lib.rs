@@ -169,7 +169,7 @@ impl Project {
         self.sequences
             .iter()
             .find_map(|s| s.cuts.iter().find(|c| &c.id == id).map(|c| (s, c)))
-            .ok_or_else(|| MmError::NotFound(format!("cut {id}")))
+            .ok_or_else(|| MmError::NotFound(format!("clip {id}")))
     }
 
     /// コンポジションを ID で引く（書き換え用）。
@@ -219,7 +219,7 @@ impl Project {
                     .position(|c| &c.id == id)
                     .map(|i| (s.id.clone(), i))
             })
-            .ok_or_else(|| MmError::NotFound(format!("cut {id}")))
+            .ok_or_else(|| MmError::NotFound(format!("clip {id}")))
     }
 
     /// カットを ID で引く（書き換え用）。
@@ -227,7 +227,7 @@ impl Project {
         self.sequences
             .iter_mut()
             .find_map(|s| s.cuts.iter_mut().find(|c| &c.id == id))
-            .ok_or_else(|| MmError::NotFound(format!("cut {id}")))
+            .ok_or_else(|| MmError::NotFound(format!("clip {id}")))
     }
 
     /// ID で引く列を ID の順に並べる。保存の前に通すと JSON がバイトで決まる。

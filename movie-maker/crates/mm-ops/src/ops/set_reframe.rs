@@ -26,7 +26,7 @@ impl SetReframe {
         let (_, layer) = project.layer(&self.layer)?;
         if layer.source.kind != SEQUENCE_KIND {
             return Err(invalid(format!(
-                "レイヤー {} は sequence のレイヤーでない",
+                "Layer {} is not a sequence layer",
                 self.layer
             )));
         }
@@ -34,7 +34,7 @@ impl SetReframe {
         let (owner, _) = project.cut(&self.cut)?;
         if owner.id.as_str() != seq {
             return Err(invalid(format!(
-                "カット {} はレイヤー {} の sequence {seq} に無い",
+                "Clip {} is not in sequence {seq} of layer {}",
                 self.cut, self.layer
             )));
         }

@@ -26,7 +26,7 @@ impl Apply for AddSelection {
     fn apply(&self, project: &mut Project) -> Result<Op> {
         let id = &self.selection.id;
         if project.selection(id).is_ok() {
-            return Err(invalid(format!("選別 {id} は既に在る")));
+            return Err(invalid(format!("Selection {id} already exists")));
         }
         let list = &mut project.bins.selections;
         let pos = list.partition_point(|s| s.id < *id);

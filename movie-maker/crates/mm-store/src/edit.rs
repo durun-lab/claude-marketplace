@@ -131,7 +131,7 @@ impl Store {
         let outcome = apply_transaction(&mut project, &ops, ctx)?;
         let input = TxnInput {
             kind,
-            name: kind.record_name(&plan.name),
+            name: plan.name.clone(),
             actor,
             at_ms,
             responds_to: None,

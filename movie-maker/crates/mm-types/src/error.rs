@@ -6,10 +6,10 @@ use std::time::Duration;
 #[derive(Debug, thiserror::Error)]
 pub enum MmError {
     /// 引数が契約に合わない。呼ぶ側の誤り。
-    #[error("引数が不正: {0}")]
+    #[error("{0}")]
     InvalidArgument(String),
     /// 名前や ID で引いたものが無い。
-    #[error("見つからない: {0}")]
+    #[error("Not found: {0}")]
     NotFound(String),
     /// この実装が対応していない形式や操作。
     #[error("未対応: {0}")]

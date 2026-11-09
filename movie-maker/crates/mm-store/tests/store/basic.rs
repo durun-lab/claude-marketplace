@@ -89,7 +89,7 @@ fn 取り消しとやり直しは位置を動かし_バージョンと記録を�
     let undo = s.undo_last(&human, actor(), NOW).unwrap().unwrap();
     assert_eq!(undo.kind, TxnKind::Undo { of: 2 });
     assert_eq!((undo.id, undo.base_version, undo.doc_version), (3, 2, 3));
-    assert_eq!(undo.name, "取り消し: t2");
+    assert_eq!(undo.name, "t2");
     assert_eq!(s.project(), &p1);
     assert_eq!(s.undo_depth(), 1);
     assert_eq!(s.redo_plan().unwrap().unwrap().txn_id, 2);

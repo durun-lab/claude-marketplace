@@ -25,7 +25,7 @@ impl ExtractCuts {
         match end {
             Some(end) if self.count > 0 => Ok(self.index..end),
             _ => Err(invalid(format!(
-                "カットの範囲 {}+{} がシーケンスの {len} 個の中に無い",
+                "Clip range {}+{} is outside the {len} clips of the sequence",
                 self.index, self.count
             ))),
         }

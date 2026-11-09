@@ -31,7 +31,10 @@ impl Apply for AddSequence {
 
     fn apply(&self, project: &mut Project) -> Result<Op> {
         if project.sequence(&self.sequence.id).is_ok() {
-            return Err(invalid(format!("sequence {} は既に在る", self.sequence.id)));
+            return Err(invalid(format!(
+                "Sequence {} already exists",
+                self.sequence.id
+            )));
         }
         project.sequences.push(self.sequence.clone());
         Ok(RemoveSequence {

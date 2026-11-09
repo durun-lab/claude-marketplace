@@ -170,7 +170,7 @@ impl Store {
         self.require_writer()?;
         if input.ops.is_empty() {
             return Err(MmError::InvalidArgument(
-                "操作の無いトランザクション".into(),
+                "Transaction has no operations".into(),
             ));
         }
         let pos = self.next_undo_pos(input.kind)?;

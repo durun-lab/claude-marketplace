@@ -37,7 +37,7 @@ impl Apply for RemoveLayer {
         });
         if let Some(l) = referenced {
             return Err(invalid(format!(
-                "レイヤー {} はレイヤー {} から参照されている",
+                "Layer {} is referenced by layer {}",
                 self.layer, l.id
             )));
         }

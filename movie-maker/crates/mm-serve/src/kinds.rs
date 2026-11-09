@@ -36,7 +36,7 @@ pub fn describe_kinds(registry: &dyn NodeRegistry, query: &KindQuery) -> Result<
         .map(|id| {
             let kind = registry
                 .get(id)
-                .ok_or_else(|| MmError::NotFound(format!("種類 {id} は登録されていない")))?;
+                .ok_or_else(|| MmError::NotFound(format!("node kind {id}")))?;
             Ok(KindInfo {
                 id: kind.id().to_owned(),
                 version: kind.version(),

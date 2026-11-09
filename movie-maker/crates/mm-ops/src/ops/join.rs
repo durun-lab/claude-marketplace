@@ -37,7 +37,7 @@ impl Apply for Join {
         let seq = project.sequence_mut(&seq_id)?;
         let Some(next) = seq.cuts.get(index + 1).filter(|c| c.id == self.next) else {
             return Err(invalid(format!(
-                "カット {} はカット {} のすぐ後ろでない",
+                "Clip {} does not directly follow clip {}",
                 self.next, self.cut
             )));
         };
@@ -50,7 +50,7 @@ impl Apply for Join {
             && first.origin == next.origin;
         if !continuous {
             return Err(invalid(format!(
-                "カット {} と {} は続きでない",
+                "Clips {} and {} are not contiguous",
                 self.cut, self.next
             )));
         }
