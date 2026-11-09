@@ -1,8 +1,8 @@
-//! レイヤーの見出しの列。行の背景、種類の色の帯、有効とロックのボタンのアイコン、Mute と Solo のボタンの枠と背景と、
-//! 見出しの列の上の角の背景。文字（略号、名前、M、S、タイムコード）は `header.rs`。矩形は見出しの列の中だけに描く。
+//! レイヤーの見出しの列。行の背景、種類の色の帯、有効とロックのボタンのアイコン、Mute と Solo のボタンの枠と背景、
+//! キーフレームの開閉の ▸ と、見出しの列の上の角の背景。文字（略号、名前、M、S、タイムコード）は `header.rs`。矩形は見出しの列の中だけに描く。
 
 use super::{Canvas, Depth, PaintInput};
-use crate::geom::{Color, Rect};
+use crate::geom::{Color, Quad, QuadShape, Rect};
 use crate::header::{cells, mark_color, row_rect, BUTTON_W};
 use crate::palette::Palette;
 use crate::timeline::{Hit, Item};
@@ -26,6 +26,8 @@ const LOCK_SHACKLE: (f32, f32) = (6.0, 5.0);
 const LOCK_OPEN: f32 = 3.0;
 /// Mute と Solo のボタンの枠。
 const AUDIO_BUTTON: (f32, f32) = (14.0, 13.0);
+/// キーフレームの開閉の ▸（右向きの三角形）の外接する矩形。
+const DISCLOSURE: (f32, f32) = (6.0, 8.0);
 /// アイコンと枠の線の太さ。
 const LINE: f32 = 1.0;
 
@@ -83,6 +85,19 @@ fn buttons(c: &mut Canvas, row: Rect, item: &Item, p: &Palette, area: Rect) {
         if let Some(cell) = cell {
             audio_button(c, centered(cell, AUDIO_BUTTON), lit, p, area);
         }
+    }
+    if item.has_keyframes() {
+        disclosure(c, centered(cells.disclosure, DISCLOSURE), p, area);
+    }
+}
+
+/// キーフレームの開閉の ▸。三角形は切ると形が変わるので、見出しの列に全部収まる行だけに描く。
+fn disclosure(c: &mut Canvas, r: Rect, p: &Palette, area: Rect) {
+    let horizontal = r.x >= area.x && r.right() <= area.right();
+    if horizontal && r.y >= area.y && r.bottom() <= area.bottom() {
+        let center = (r.x + r.w / 2.0, r.y + r.h / 2.0);
+        let tri = Quad::shaped(center, (r.w, r.h), QuadShape::TriRight, mark_color(p, true));
+        c.push_quad(Depth::OnBar, tri);
     }
 }
 

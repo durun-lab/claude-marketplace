@@ -25,6 +25,8 @@ pub const GAP: Color = Color::hex(0x6b7280);
 pub const CUT_SEAM: Color = Color::hex(0x14161a);
 /// コメントの描き込みの線。テーマの `accent` が無いときの色。
 pub const DRAWING: Color = Color::hex(0x5b8def);
+/// ポインターが指している操作の対象（ホバーした帯のマーカー）。テーマの `accent` が無いときの色。
+pub const ACCENT: Color = Color::hex(0x5b8def);
 /// 帯の上の名前の、明るい字と暗い字。帯の色に合わせてどちらかを選ぶ（[`text_on`]）。
 pub const BAR_TEXT_LIGHT: Color = Color::hex(0xf5f7fa);
 pub const BAR_TEXT_DARK: Color = Color::hex(0x15171c);
@@ -48,6 +50,8 @@ pub struct Palette {
     pub selection: Color,
     /// Program に重ねるコメントの描き込みの色。
     pub drawing: Color,
+    /// ポインターが指している操作の対象の色（テーマの `accent`）。Inspector で選んだキーフレームと同じ色。
+    pub accent: Color,
 }
 
 impl Palette {
@@ -66,6 +70,7 @@ impl Palette {
         guide: GUIDE,
         selection: SELECTION,
         drawing: DRAWING,
+        accent: ACCENT,
     };
 
     /// theme.json の 1 つのモードの `color` から。`color(name)` は色の名前（`bg`、`surface` など）の値を返す。
@@ -85,6 +90,7 @@ impl Palette {
             outside: pick("bg", d.outside).with_alpha(d.outside.0[3]),
             selection: pick("text", d.selection),
             drawing: pick("accent", d.drawing),
+            accent: pick("accent", d.accent),
             ..d
         }
     }
