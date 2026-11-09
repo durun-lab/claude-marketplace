@@ -1,6 +1,6 @@
 //! `--play-test` の Timeline のズームと移動の通し。実際のウィンドウへのキーとドラッグで、キーの拡大縮小（JIS の配列の
-//! Shift+- を含む）、全体表示の行き来（Shift+Z）、ズームバーのドラッグ、前後の帯の端と 1 秒の移動、再生中のページ送りを
-//! 順に行い、そのたびに表示の状態と再生位置が期待どおり変わったかを確かめて、段ごとにスクリーンショットを残す。
+//! Shift+- を含む）、全体表示の行き来（Shift+Z）、ズームバーのドラッグ、前後の帯の端と 1 秒の移動、キーの押し続け、
+//! 再生中のページ送りを順に行い、そのたびに表示の状態と再生位置が期待どおり変わったかを確かめて、段ごとにスクリーンショットを残す。
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -10,6 +10,8 @@ use mm_ui_layout::{edit_target, TimeView, TimelineModel, VIEW_MARGIN};
 use mm_ui_wgpu::timeline_model;
 use serde_json::{json, Value};
 use tauri::Webview;
+use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_KEYDOWN};
 
 use crate::win::capture;
 use crate::win::cli::PlayTest;
@@ -21,9 +23,13 @@ use crate::win::verify_place::{placement, Placement};
 use crate::win::verify_stage::{checkpoint, wait_until};
 
 /// 仮想キーコード。
+const VK_SPACE: u32 = 0x20;
 const VK_UP: u32 = 0x26;
+const VK_RIGHT: u32 = 0x27;
 const VK_DOWN: u32 = 0x28;
 const VK_OEM_MINUS: u32 = 0xBD;
+/// 押し続けの繰り返しの WM_KEYDOWN の lParam（直前も押されていたことを示す 30 ビット目と、繰り返しの数 1）。
+const REPEAT_LPARAM: isize = (1 << 30) | 1;
 /// JIS の配列で ^ のキー（US の配列では '）。配列が JIS かを見分ける。
 const VK_OEM_7: u32 = 0xDE;
 /// 入力を投げてから結果を見るまでの待ち。
@@ -56,6 +62,9 @@ pub struct Env<'a> {
 const WEBVIEW_JIS_EQUAL: &str = r#"window.dispatchEvent(new KeyboardEvent("keydown", { key: "=", code: "Minus", shiftKey: true }))"#;
 const WEBVIEW_MINUS: &str =
     r#"window.dispatchEvent(new KeyboardEvent("keydown", { key: "-", code: "Minus" }))"#;
+/// 押し続けの繰り返しの - と Space の keydown を WebView に投げる。
+const WEBVIEW_REPEAT_MINUS: &str = r#"window.dispatchEvent(new KeyboardEvent("keydown", { key: "-", code: "Minus", repeat: true }))"#;
+const WEBVIEW_REPEAT_SPACE: &str = r#"window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space", repeat: true }))"#;
 
 /// 結果の記録。段ごとの合否と、撮ったスクリーンショット。
 #[derive(Default)]
@@ -313,6 +322,65 @@ fn second_keys_step(env: &Env<'_>, log: &mut Log, fps: f64) {
     );
 }
 
+/// 押し続けの繰り返しの WM_KEYDOWN をサーフェスに投げる。
+fn post_repeat(hwnd: isize, vk: u32) {
+    let (wparam, lparam) = (WPARAM(vk as usize), LPARAM(REPEAT_LPARAM));
+    unsafe {
+        let _ = PostMessageW(Some(HWND(hwnd as *mut _)), WM_KEYDOWN, wparam, lparam);
+    }
+}
+
+/// 表示が `start` から 1 回ぶん縮小されるのを待ち、`=` で戻す。縮小されたかを返す。
+fn zoomed_out_once(shared: &Arc<Shared>, start: TimeView) -> bool {
+    let out = |v: &TimeView| close(v.px_per_sec * std::f64::consts::SQRT_2, start.px_per_sec);
+    let zoomed = wait_view(shared, out).is_some_and(|v| out(&v));
+    keys::dispatch(shared, "play-test", "=");
+    wait_view(shared, |v| close(v.px_per_sec, start.px_per_sec));
+    zoomed
+}
+
+/// `send` で Space の繰り返しを投げた後も止まったままか。動き出していたら止める。
+fn space_ignored(shared: &Shared, send: impl FnOnce()) -> bool {
+    send();
+    std::thread::sleep(SETTLE);
+    let still = !shared.playing.load(Ordering::SeqCst);
+    shared.send(Command::Pause);
+    still
+}
+
+/// サーフェスへの押し続けの繰り返しで、→ は繰り返しのたびに 1 フレーム進み、- は縮小し、Space は再生を始めない。
+/// WebView でも、`transport.js` が付けて送る `repeat` で同じになる。
+fn repeat_keys_step(env: &Env<'_>, log: &mut Log, fps: f64) {
+    let (shared, hwnd) = (env.shared, env.surface_hwnd);
+    let (from, Some(start)) = (shared.playhead(), view(shared)) else {
+        log.step("repeat_keys", false, json!("表示の状態が無い"));
+        return;
+    };
+    for _ in 0..3 {
+        post_repeat(hwnd, VK_RIGHT);
+    }
+    let stepped = wait_until(WAIT, || {
+        (shared.playhead() - from - 3.0 / fps).abs() < 0.5 / fps
+    });
+    post_repeat(hwnd, VK_OEM_MINUS);
+    let zoomed = zoomed_out_once(shared, start);
+    let still = space_ignored(shared, || post_repeat(hwnd, VK_SPACE));
+    let webview = env.webview.as_ref().map(|w| {
+        let _ = w.eval(WEBVIEW_REPEAT_MINUS);
+        let zoomed = zoomed_out_once(shared, start);
+        let still = space_ignored(shared, || {
+            let _ = w.eval(WEBVIEW_REPEAT_SPACE);
+        });
+        (zoomed, still)
+    });
+    let ok = stepped && zoomed && still && webview == Some((true, true));
+    log.step(
+        "repeat_keys",
+        ok,
+        json!({ "from": from, "playhead": shared.playhead(), "zoomed_out": zoomed, "space_ignored": still, "webview": webview }),
+    );
+}
+
 /// 見えている範囲が [`PAGE_SPAN`] 秒より短くなるまでキーで拡大する。
 fn zoom_until_short(shared: &Arc<Shared>, width: f32) -> Option<TimeView> {
     for _ in 0..40 {
@@ -367,6 +435,7 @@ pub fn run(env: &Env<'_>) -> Value {
     zoombar_step(env, &mut log);
     edit_keys_step(env, &mut log, &m);
     second_keys_step(env, &mut log, m.fps);
+    repeat_keys_step(env, &mut log, m.fps);
     page_scroll_step(env, &mut log);
     log.into_json()
 }

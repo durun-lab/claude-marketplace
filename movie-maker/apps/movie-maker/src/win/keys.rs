@@ -41,6 +41,19 @@ const BINDINGS: &[(&str, &str)] = &[
     ("timeline.zoom_out", "Ctrl+-"),
 ];
 
+/// キーを押し続けたときに、OS のキーの繰り返しのたびに実行するコマンドの ID（ズームと、フレーム、秒、帯の端の移動）。
+/// ID の名前の順。再生と停止、編集、全体表示の行き来は、繰り返すと押した回数より多く働くので最初の押下だけにする。
+const REPEATS: &[&str] = &[
+    "playback.next_edit",
+    "playback.previous_edit",
+    "playback.step_back",
+    "playback.step_back_second",
+    "playback.step_forward",
+    "playback.step_forward_second",
+    "timeline.zoom_in",
+    "timeline.zoom_out",
+];
+
 /// 名前で引くキー（英字、数字、矢印、Space など）の仮想キーコードの名前。WebView の `KeyboardEvent.code` と同じ名前にする。
 /// 記号のキーは配列でキーの位置が違うので `None` にし、押された文字で引く（[`symbol_name`]）。
 pub fn vk_name(vk: u32) -> Option<String> {
@@ -106,6 +119,11 @@ fn shift_in_name(name: &str, ctrl: bool) -> bool {
 /// キーに割り当てたコマンドの ID。
 pub fn command_for(key: &str) -> Option<&'static str> {
     BINDINGS.iter().find(|(_, k)| *k == key).map(|(id, _)| *id)
+}
+
+/// キー `key` を押し続けたときの繰り返しも、コマンドを実行するか（[`REPEATS`]）。
+pub fn repeats(key: &str) -> bool {
+    command_for(key).is_some_and(|id| REPEATS.contains(&id))
 }
 
 /// コマンドに割り当てたキー。先頭が画面に出すキー。
@@ -335,6 +353,34 @@ mod tests {
             *shared.timeline_commands.lock().unwrap(),
             [ZoomIn, FullExtentZoom, NextEdit]
         );
+    }
+
+    #[test]
+    fn 押し続けで繰り返すのはズームと移動のキーだけ() {
+        for key in [
+            "=",
+            "+",
+            "Ctrl+-",
+            "ArrowLeft",
+            "Shift+ArrowRight",
+            "ArrowUp",
+        ] {
+            assert!(repeats(key), "{key}");
+        }
+        for key in [
+            "Space",
+            "KeyL",
+            "Shift+KeyZ",
+            "Delete",
+            "Ctrl+KeyZ",
+            "Home",
+            "KeyQ",
+        ] {
+            assert!(!repeats(key), "{key}");
+        }
+        for id in REPEATS {
+            assert!(!keys_of(id).is_empty(), "{id} はキーの表にある");
+        }
     }
 
     /// ウィンドウのフックに渡ったものを記録する。

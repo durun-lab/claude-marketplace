@@ -241,7 +241,8 @@ fn post_mouse(hwnd: isize, msg: u32, (x, y): (i32, i32)) {
     }
 }
 
-/// 押し続けの繰り返しか。Space の押し続けで再生と停止を繰り返さないよう、最初の押下だけをキー操作にする。
+/// 押し続けの繰り返しか。Space の押し続けで再生と停止を繰り返さないよう、繰り返しはズームと移動のキー
+/// （`keys::repeats`）だけをキー操作にする。
 fn is_key_repeat(lparam: LPARAM) -> bool {
     lparam.0 & KEY_REPEAT_BIT != 0
 }
@@ -306,10 +307,10 @@ fn is_escape(wparam: WPARAM) -> bool {
     wparam.0 as u32 == u32::from(VK_ESCAPE.0)
 }
 
-/// キーの押下を、押し続けの繰り返しを除いてキーの表に渡す。キーの表にあるキーなら（繰り返しでも）true を返す。
+/// キーの押下をキーの表に渡す（押し続けの繰り返しは、繰り返すキーだけ）。キーの表にあるキーなら（繰り返しでも）true を返す。
 fn key_pressed(wparam: WPARAM, lparam: LPARAM) -> bool {
     let name = key_name(wparam.0 as u32);
-    if !is_key_repeat(lparam) {
+    if !is_key_repeat(lparam) || keys::repeats(&name) {
         if let Some(shared) = SHARED.get() {
             keys::dispatch(shared, "surface", &name);
         }
@@ -439,32 +440,47 @@ mod tests {
     }
 
     #[test]
-    fn ime_を外した_hwnd_は入力のコンテキストを持たない() {
-        use windows::Win32::UI::Input::Ime::ImmGetContext;
+    fn ime_を外すのはその_hwnd_だけで_親と隣の窓の入力のコンテキストは変えない() {
+        use windows::Win32::UI::Input::Ime::{ImmGetContext, ImmReleaseContext};
         use windows::Win32::UI::WindowsAndMessaging::{
             DestroyWindow, WINDOW_EX_STYLE, WINDOW_STYLE,
         };
-        let hwnd = unsafe {
-            CreateWindowExW(
-                WINDOW_EX_STYLE::default(),
-                w!("STATIC"),
-                w!("ime"),
-                WINDOW_STYLE::default(),
-                0,
-                0,
-                10,
-                10,
-                None,
-                None,
-                None,
-                None,
-            )
-        }
-        .expect("試験の HWND");
-        detach_ime(hwnd);
-        let context = unsafe { ImmGetContext(hwnd) };
-        let _ = unsafe { DestroyWindow(hwnd) };
-        assert!(context.is_invalid(), "IME のコンテキストが残っている");
+        let window = |parent: Option<HWND>| {
+            let style = parent.map_or(WINDOW_STYLE::default(), |_| WS_CHILD);
+            let class = w!("STATIC");
+            unsafe {
+                CreateWindowExW(
+                    WINDOW_EX_STYLE::default(),
+                    class,
+                    w!("ime"),
+                    style,
+                    0,
+                    0,
+                    10,
+                    10,
+                    parent,
+                    None,
+                    None,
+                    None,
+                )
+            }
+            .expect("試験の HWND")
+        };
+        let has_context = |hwnd: HWND| unsafe {
+            let context = ImmGetContext(hwnd);
+            let _ = ImmReleaseContext(hwnd, context);
+            !context.is_invalid()
+        };
+        // サーフェスと WebView の HWND は同じ親の子どうし。
+        let parent = window(None);
+        let (surface, sibling) = (window(Some(parent)), window(Some(parent)));
+        let before = (has_context(parent), has_context(sibling));
+        detach_ime(surface);
+        let after = (has_context(parent), has_context(sibling));
+        let detached = !has_context(surface);
+        let _ = unsafe { DestroyWindow(parent) };
+        assert!(detached, "IME のコンテキストが残っている");
+        assert_eq!(after, before, "親と隣の窓の IME は変えない");
     }
 
     #[test]

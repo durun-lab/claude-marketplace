@@ -230,14 +230,14 @@
     channel.onmessage = onTick;
     await invoke("subscribe", { onTick: channel });
     window.addEventListener("keydown", (e) => {
-      // パネルが処理したキー（単語の矢印など）は二重に送らない。
-      if (e.repeat || e.defaultPrevented) return;
+      // パネルが処理したキー（単語の矢印など）は二重に送らない。押し続けの繰り返しも送り、繰り返すかは keys.rs が決める。
+      if (e.defaultPrevented) return;
       const target = e.target instanceof Element ? e.target : null;
       if (target?.closest(TEXT_ENTRY)) return;
       const key = keyName(e);
       if (EDIT_KEYS.has(key) && target?.closest(FOCUSABLE)) return;
       if (e.code === "Space") e.preventDefault();
-      invoke("key_event", { source: "webview", key });
+      invoke("key_event", { source: "webview", key, repeat: e.repeat });
     });
     // 選択かプロジェクトのデータが変わったら、Inspector に中身を渡し、レイヤーの一覧を取り直す。
     window.__TAURI__.event.listen(LAYER_SELECTED_EVENT, async (e) => {

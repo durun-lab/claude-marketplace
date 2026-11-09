@@ -355,13 +355,17 @@ pub async fn project_info(state: State<'_, Arc<SyncState>>) -> Result<ProjectInf
     })
 }
 
+/// WebView のキー（`transport.js`）。押し続けの繰り返しは、繰り返すキー（`keys::repeats`）だけを実行する。
 #[tauri::command]
 pub async fn key_event(
     state: State<'_, Arc<SyncState>>,
     source: String,
     key: String,
+    repeat: bool,
 ) -> Result<(), String> {
-    hotpatch::call(|| keys::dispatch(&state.shared, &source, &key));
+    if !repeat || keys::repeats(&key) {
+        hotpatch::call(|| keys::dispatch(&state.shared, &source, &key));
+    }
     Ok(())
 }
 
