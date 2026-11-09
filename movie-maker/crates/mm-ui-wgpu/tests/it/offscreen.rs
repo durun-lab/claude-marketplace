@@ -3,7 +3,7 @@
 use mm_types::{Rgba, RgbaImage, Size};
 use mm_ui_layout::{
     fit_rect, frame_point, palette, DrawingShape, DrawingShapeKind, Item, ItemKind, PointerEvent,
-    RowHeight, Rows, TimelineModel, HANDLE_PX, VIEW_MARGIN,
+    RowHeight, Rows, TimelineModel, HANDLE_PX, HEADER_W, VIEW_MARGIN,
 };
 use mm_ui_wgpu::{Region, Ui};
 
@@ -203,7 +203,7 @@ fn 再生位置の線が時刻の位置に立つ() {
     let out = render(&device, &queue, &mut ui);
     let t = ui.layout().timeline;
     // 全体表示は 10 秒が余白 16 px を除いた幅に収まる。5 秒はその中央。
-    let x = (t.x + 16.0 + (t.w - 32.0) / 2.0) as u32;
+    let x = (t.x + HEADER_W + 16.0 + (t.w - HEADER_W - 32.0) / 2.0) as u32;
     let y = (t.y + t.h - 3.0) as u32;
     let found =
         (x.saturating_sub(2)..=x + 2).any(|xx| close(px(&out, xx, y), hex(palette::PLAYHEAD), 3));

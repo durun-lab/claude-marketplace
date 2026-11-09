@@ -18,6 +18,7 @@ mod controller;
 mod drawing;
 mod geom;
 mod gesture;
+mod header;
 mod labels;
 mod paint;
 pub mod palette;
@@ -55,8 +56,8 @@ pub use text::{
 };
 pub use time_view::{TimeView, MAX_PX_PER_SEC, MIN_FIT_PX_PER_SEC, MIN_PX_PER_SEC};
 pub use timeline::{
-    bar_span, cut_span, hit_test, CutBar, Hit, Item, ItemKind, Part, TimelineModel, TrimBounds,
-    HANDLE_PX,
+    bar_span, cut_span, hit_test, AudioState, CutBar, Hit, Item, ItemKind, Part, TimelineModel,
+    TrimBounds, HANDLE_PX,
 };
-pub use timeline_layout::{TimelineLayout, Viewport, RULER_H, SCROLLBAR_W};
+pub use timeline_layout::{TimelineLayout, Viewport, HEADER_W, RULER_H, SCROLLBAR_W};
 pub use view_state::ViewState;

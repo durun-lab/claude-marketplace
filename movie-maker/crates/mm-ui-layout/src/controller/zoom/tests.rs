@@ -1,10 +1,11 @@
 //! キーとメニューのコマンド（拡大縮小、全体表示、前後の帯の端）、ズームバーのドラッグ、再生中のページ送りの試験。
 
-use super::super::tests::{ctl, down};
+use super::super::tests::{ctl, down, move_to};
 use super::*;
 use crate::controller::{edit_target, Action, PointerEvent, TimelineCommand};
 use crate::time_view::MIN_PX_PER_SEC;
 use crate::timeline::{CutBar, Item, ItemKind, TimelineModel};
+use crate::timeline_layout::HEADER_W;
 
 /// 長さ `duration` 秒の、画像のレイヤー 2 本。
 fn model(duration: f64) -> TimelineModel {
@@ -32,6 +33,14 @@ fn edits() -> TimelineModel {
         fps: 30.0,
         items: vec![seq, Item::layer(10.0, 14.0, ItemKind::Text, true)],
     }
+}
+
+/// 行の領域とズームバーの幅が 2000 の Timeline の操作。1 秒 100 px で、0 秒から 20 秒が見えている。
+/// 試験の x は [`ctl`] と同じく行の領域（ズームバーも同じ）の左端を 0 とする。
+fn wide(m: &TimelineModel) -> TimelineController {
+    let mut c = ctl(m);
+    c.resize((2000.0 + HEADER_W, 300.0));
+    c
 }
 
 /// ズームバーの縦の中央。
@@ -104,11 +113,11 @@ fn 全体表示は大きさを変えても全体表示のままとみなし_前�
 #[test]
 fn ズームバーのスクロールボックスを引くと倍率を保って動き_離しても編集にならない() {
     let m = model(100.0);
-    let mut c = ctl(&m);
+    let mut c = wide(&m);
     // 100 秒を幅 2000 の溝に並べるので 1 px は 0.05 秒。スクロールボックスは x 0 から 400。
     let y = bar_y(&c);
     assert!(c.handle(down(200.0, y), &m, 0.0).is_empty());
-    c.handle(PointerEvent::Move { x: 300.0, y }, &m, 0.0);
+    c.handle(move_to(300.0, y), &m, 0.0);
     assert!((c.view.origin - 5.0).abs() < 1e-9, "100 px で 5 秒");
     assert_eq!(c.view.px_per_sec, 100.0);
     assert_eq!(
@@ -124,10 +133,10 @@ fn ズームバーのスクロールボックスを引くと倍率を保って�
 #[test]
 fn ズームバーの右端を引くと始まりを保って拡大縮小し_左端は終わりを保つ() {
     let m = model(100.0);
-    let mut c = ctl(&m);
+    let mut c = wide(&m);
     let y = bar_y(&c);
     c.handle(down(397.0, y), &m, 0.0);
-    c.handle(PointerEvent::Move { x: 797.0, y }, &m, 0.0);
+    c.handle(move_to(797.0, y), &m, 0.0);
     c.handle(PointerEvent::Up, &m, 0.0);
     assert_eq!(c.view.origin, 0.0);
     assert!(
@@ -135,15 +144,9 @@ fn ズームバーの右端を引くと始まりを保って拡大縮小し_左�
         "終わりを 20 秒から 40 秒へ"
     );
     let thumb = zoombar::thumb_of(&c.viewport(), m.duration);
-    c.handle(down(thumb.x + 2.0, y), &m, 0.0);
-    c.handle(
-        PointerEvent::Move {
-            x: thumb.x + 202.0,
-            y,
-        },
-        &m,
-        0.0,
-    );
+    let left = thumb.x - c.layout().zoombar.x;
+    c.handle(down(left + 2.0, y), &m, 0.0);
+    c.handle(move_to(left + 202.0, y), &m, 0.0);
     let (start, end) = c.view.visible(c.layout().row_area.w);
     assert!((start - 10.0).abs() < 1e-9 && (end - 40.0).abs() < 1e-9);
 }
@@ -151,7 +154,7 @@ fn ズームバーの右端を引くと始まりを保って拡大縮小し_左�
 #[test]
 fn ズームバーの溝を押すと押した側へ_1_画面ぶん送る() {
     let m = model(100.0);
-    let mut c = ctl(&m);
+    let mut c = wide(&m);
     let y = bar_y(&c);
     c.handle(down(1000.0, y), &m, 0.0);
     assert_eq!(c.view.origin, 20.0);
@@ -163,7 +166,7 @@ fn ズームバーの溝を押すと押した側へ_1_画面ぶん送る() {
 #[test]
 fn 再生位置が右端を越えたら_1_画面ぶん送り_右端の外から進んでも送らない() {
     let m = model(100.0);
-    let mut c = ctl(&m);
+    let mut c = wide(&m);
     c.page_scroll(19.9, 20.1);
     assert_eq!(c.view.origin, 20.0, "右端が左端になる");
     c.page_scroll(25.0, 26.0);

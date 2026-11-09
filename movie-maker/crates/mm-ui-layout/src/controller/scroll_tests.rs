@@ -4,6 +4,7 @@ use super::tests::{ctl, down, in_bar};
 use super::*;
 use crate::rows::{RowHeights, Rows};
 use crate::timeline::{Item, ItemKind};
+use crate::timeline_layout::HEADER_W;
 
 /// 画像のレイヤーを `n` 本（Medium の行が `n` 本）。
 fn many(n: usize) -> TimelineModel {
@@ -73,7 +74,8 @@ fn スクロールボックスを引くとスクロールし_溝を押すと_1_�
     let thumb = c.viewport().thumb();
     let x = track.x + track.w / 2.0;
     assert!(
-        c.handle(down(x, thumb.y + 5.0), &m, 0.0).is_empty(),
+        c.handle(down(x - HEADER_W, thumb.y + 5.0), &m, 0.0)
+            .is_empty(),
         "選択は変えない"
     );
     c.handle(
@@ -90,7 +92,7 @@ fn スクロールボックスを引くとスクロールし_溝を押すと_1_�
     c.handle(PointerEvent::Up, &m, 0.0);
     let before = c.scroll_y;
     let below = c.viewport().thumb().bottom() + 20.0;
-    c.handle(down(x, below), &m, 0.0);
+    c.handle(down(x - HEADER_W, below), &m, 0.0);
     assert_eq!(
         c.scroll_y,
         before + c.layout().row_area.h,
