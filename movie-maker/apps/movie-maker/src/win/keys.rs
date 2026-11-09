@@ -1,5 +1,7 @@
 //! キーの表。キーの名前からコマンドの ID を引き、中身の実行は UI のコマンドの表（`commands.rs`）に任せる。
 //! サーフェスと WebView のどちらから来たキーも同じ関数に入れる。
+//! キーの名前は、英字、数字、矢印、Space などは `KeyboardEvent.code` の名前（`KeyZ`）、記号は押された文字（`=`）で、
+//! JIS と US の配列で記号のキーの位置が違っても同じ名前になる。WebView の側は `web/transport.js` の `keyName` が同じ決まりで作る。
 
 use std::sync::Arc;
 
@@ -9,9 +11,9 @@ use crate::win::state::Shared;
 /// コマンドの ID とキーの名前の組。ID の名前の順に並べ、同じ ID の中は画面に出すキーを先に置く。
 const BINDINGS: &[(&str, &str)] = &[
     ("clip.extract", "Backspace"),
-    ("clip.insert", "Comma"),
+    ("clip.insert", ","),
     ("clip.lift", "Delete"),
-    ("clip.overwrite", "Period"),
+    ("clip.overwrite", "."),
     ("clip.split", "KeyB"),
     ("edit.redo", "Ctrl+KeyY"),
     ("edit.redo", "Ctrl+Shift+KeyZ"),
@@ -19,49 +21,86 @@ const BINDINGS: &[(&str, &str)] = &[
     ("media.import", "Ctrl+KeyI"),
     ("playback.go_to_end", "End"),
     ("playback.go_to_start", "Home"),
+    ("playback.next_edit", "ArrowDown"),
     ("playback.play_forward", "KeyL"),
     ("playback.play_reverse", "KeyJ"),
+    ("playback.previous_edit", "ArrowUp"),
     ("playback.step_back", "ArrowLeft"),
+    ("playback.step_back_second", "Shift+ArrowLeft"),
     ("playback.step_forward", "ArrowRight"),
+    ("playback.step_forward_second", "Shift+ArrowRight"),
     ("playback.stop", "KeyK"),
     ("playback.toggle", "Space"),
     ("source.mark_in", "KeyI"),
     ("source.mark_out", "KeyO"),
+    ("timeline.full_extent_zoom", "Shift+KeyZ"),
+    ("timeline.zoom_in", "="),
+    ("timeline.zoom_in", "+"),
+    ("timeline.zoom_in", "Ctrl+="),
+    ("timeline.zoom_out", "-"),
+    ("timeline.zoom_out", "Ctrl+-"),
 ];
 
-/// 仮想キーコードをキー名にする（WebView の `KeyboardEvent.code` に寄せた名前）。
-pub fn vk_name(vk: u32) -> String {
-    match vk {
-        0x41..=0x5A => format!("Key{}", char::from_u32(vk).unwrap_or('?')),
-        0x30..=0x39 => format!("Digit{}", char::from_u32(vk).unwrap_or('?')),
-        0x20 => "Space".to_owned(),
-        0x23 => "End".to_owned(),
-        0x24 => "Home".to_owned(),
-        0x08 => "Backspace".to_owned(),
-        0x2E => "Delete".to_owned(),
-        0xBC => "Comma".to_owned(),
-        0xBE => "Period".to_owned(),
-        0x25 => "ArrowLeft".to_owned(),
-        0x27 => "ArrowRight".to_owned(),
-        _ => format!("Vk{vk:02X}"),
+/// 名前で引くキー（英字、数字、矢印、Space など）の仮想キーコードの名前。WebView の `KeyboardEvent.code` と同じ名前にする。
+/// 記号のキーは配列でキーの位置が違うので `None` にし、押された文字で引く（[`symbol_name`]）。
+pub fn vk_name(vk: u32) -> Option<String> {
+    let name = match vk {
+        0x41..=0x5A => return Some(format!("Key{}", char::from_u32(vk)?)),
+        0x30..=0x39 => return Some(format!("Digit{}", char::from_u32(vk)?)),
+        0x70..=0x7B => return Some(format!("F{}", vk - 0x6F)),
+        0x08 => "Backspace",
+        0x09 => "Tab",
+        0x0D => "Enter",
+        0x1B => "Escape",
+        0x20 => "Space",
+        0x21 => "PageUp",
+        0x22 => "PageDown",
+        0x23 => "End",
+        0x24 => "Home",
+        0x25 => "ArrowLeft",
+        0x26 => "ArrowUp",
+        0x27 => "ArrowRight",
+        0x28 => "ArrowDown",
+        0x2D => "Insert",
+        0x2E => "Delete",
+        _ => return None,
+    };
+    Some(name.to_owned())
+}
+
+/// 記号のキーの名前。押された文字（今の配列で、Shift だけを押した状態で引いたもの）か、文字にならなければ仮想キーの番号。
+pub fn symbol_name(vk: u32, typed: Option<char>) -> String {
+    match typed {
+        Some(c) => c.to_string(),
+        None => format!("Vk{vk:02X}"),
     }
 }
 
-/// 修飾キーをキー名の前に付ける。Ctrl と Alt は常に、Shift は Ctrl と一緒のときだけ付ける
-/// （Shift を押しながらの Space や矢印は、これまでどおりそのキーとして扱う）。
+/// 修飾キーをキー名の前に Ctrl、Shift、Alt の順に付ける。Shift は英字、数字、矢印には付け、記号には付けない
+/// （押された文字に Shift が入っている。JIS の配列の `=` は Shift+- で押すが、名前は `=`）。Space などほかの名前のキーは
+/// Ctrl と一緒のときだけ付ける（Shift を押しながらの Space は Space のまま）。
 pub fn with_modifiers(name: &str, ctrl: bool, shift: bool, alt: bool) -> String {
     let mut out = String::new();
     if ctrl {
         out.push_str("Ctrl+");
-        if shift {
-            out.push_str("Shift+");
-        }
+    }
+    if shift && shift_in_name(name, ctrl) {
+        out.push_str("Shift+");
     }
     if alt {
         out.push_str("Alt+");
     }
     out.push_str(name);
     out
+}
+
+/// Shift を押したときに、名前 `name` のキーの名前に Shift を付けるか。記号のキーの名前は押された文字 1 字。
+fn shift_in_name(name: &str, ctrl: bool) -> bool {
+    let symbol = name.chars().count() == 1;
+    let named = ["Key", "Digit", "Arrow"]
+        .iter()
+        .any(|p| name.starts_with(p));
+    !symbol && (named || ctrl)
 }
 
 /// キーに割り当てたコマンドの ID。
@@ -97,8 +136,6 @@ pub fn label(key: &str) -> String {
         "ArrowRight" => "→",
         "ArrowUp" => "↑",
         "ArrowDown" => "↓",
-        "Comma" => ",",
-        "Period" => ".",
         _ => name
             .strip_prefix("Key")
             .or_else(|| name.strip_prefix("Digit"))
@@ -138,10 +175,42 @@ mod tests {
     use std::sync::mpsc::channel;
 
     #[test]
-    fn 英字と矢印は_code_の名前にする() {
-        assert_eq!(vk_name(0x4A), "KeyJ");
-        assert_eq!(vk_name(0x20), "Space");
-        assert_eq!(vk_name(0x27), "ArrowRight");
+    fn 英字と数字と矢印は_code_の名前にし_記号のキーは押された文字で引く() {
+        assert_eq!(vk_name(0x4A).as_deref(), Some("KeyJ"));
+        assert_eq!(vk_name(0x31).as_deref(), Some("Digit1"));
+        assert_eq!(vk_name(0x20).as_deref(), Some("Space"));
+        assert_eq!(vk_name(0x27).as_deref(), Some("ArrowRight"));
+        assert_eq!(vk_name(0x26).as_deref(), Some("ArrowUp"));
+        assert_eq!(vk_name(0x28).as_deref(), Some("ArrowDown"));
+        assert_eq!(vk_name(0x71).as_deref(), Some("F2"));
+        assert_eq!(vk_name(0xBD), None, "VK_OEM_MINUS は配列で文字が違う");
+        assert_eq!(vk_name(0xBC), None, "VK_OEM_COMMA も記号");
+        assert_eq!(symbol_name(0xBD, Some('=')), "=");
+        assert_eq!(symbol_name(0xBA, None), "VkBA", "文字にならない記号のキー");
+    }
+
+    #[test]
+    fn 記号は押された文字の名前で_shift_を付けず_jis_の_shift_マイナスはズームイン() {
+        // JIS の配列の VK_OEM_MINUS（0xBD）は - と、Shift で =。VK_OEM_PLUS（0xBB）は ; と、Shift で +。
+        // US の配列の VK_OEM_PLUS は = と、Shift で +。
+        let name = |vk, typed, ctrl, shift| {
+            with_modifiers(&symbol_name(vk, Some(typed)), ctrl, shift, false)
+        };
+        assert_eq!(name(0xBD, '=', false, true), "=", "JIS の Shift+-");
+        assert_eq!(name(0xBD, '-', false, false), "-");
+        assert_eq!(name(0xBD, '=', true, true), "Ctrl+=", "JIS の Ctrl+Shift+-");
+        assert_eq!(
+            name(0xBB, '+', false, true),
+            "+",
+            "JIS の Shift+; と US の Shift+="
+        );
+        assert_eq!(name(0xBB, '=', true, false), "Ctrl+=", "US の Ctrl+=");
+        for key in ["=", "+", "Ctrl+="] {
+            assert_eq!(command_for(key), Some("timeline.zoom_in"), "{key}");
+        }
+        for key in ["-", "Ctrl+-"] {
+            assert_eq!(command_for(key), Some("timeline.zoom_out"), "{key}");
+        }
     }
 
     #[test]
@@ -158,25 +227,37 @@ mod tests {
     }
 
     #[test]
-    fn 修飾キーはキー名の前に付く_shift_は_ctrl_と一緒のときだけ() {
+    fn 修飾キーは_ctrl_shift_alt_の順に付き_shift_は英字と数字と矢印か_ctrl_と一緒のときだけ() {
         assert_eq!(with_modifiers("KeyZ", true, false, false), "Ctrl+KeyZ");
         assert_eq!(with_modifiers("KeyZ", true, true, false), "Ctrl+Shift+KeyZ");
+        assert_eq!(with_modifiers("KeyZ", false, true, false), "Shift+KeyZ");
+        assert_eq!(
+            with_modifiers("ArrowLeft", false, true, false),
+            "Shift+ArrowLeft"
+        );
+        assert_eq!(with_modifiers("Digit1", false, true, false), "Shift+Digit1");
         assert_eq!(with_modifiers("Space", false, true, false), "Space");
+        assert_eq!(with_modifiers("Home", false, true, false), "Home");
+        assert_eq!(
+            with_modifiers("Delete", true, true, false),
+            "Ctrl+Shift+Delete"
+        );
         assert_eq!(with_modifiers("KeyX", false, false, true), "Alt+KeyX");
+        assert_eq!(with_modifiers("KeyF", false, true, true), "Shift+Alt+KeyF");
     }
 
-    #[test]
-    fn キーからコマンドの_id_を引き_持ち主の編集か再生のコマンドを実行する() {
+    type Expected = Vec<(&'static str, &'static str, commands::Owner)>;
+
+    /// 編集と取り込みのキーと、指すコマンドの ID と持ち主。
+    fn expected_edits() -> Expected {
         use crate::win::commands::{Action, Owner};
         use crate::win::edit_actions::EditAction as E;
-        use Command::{Pause, Play, Reverse, Seek, Step, Toggle};
         let edit = |a| Owner::App(Action::Edit(a));
-        let play = |c| Owner::App(Action::Playback(c));
-        let cases = [
+        vec![
             ("KeyI", "source.mark_in", edit(E::MarkIn)),
             ("KeyO", "source.mark_out", edit(E::MarkOut)),
-            ("Comma", "clip.insert", edit(E::Insert)),
-            ("Period", "clip.overwrite", edit(E::Overwrite)),
+            (",", "clip.insert", edit(E::Insert)),
+            (".", "clip.overwrite", edit(E::Overwrite)),
             ("KeyB", "clip.split", edit(E::Split)),
             ("Delete", "clip.lift", edit(E::Lift)),
             ("Backspace", "clip.extract", edit(E::Extract)),
@@ -184,15 +265,53 @@ mod tests {
             ("Ctrl+KeyY", "edit.redo", edit(E::Redo)),
             ("Ctrl+Shift+KeyZ", "edit.redo", edit(E::Redo)),
             ("Ctrl+KeyI", "media.import", Owner::Panel("media")),
-            ("Space", "playback.toggle", play(Toggle)),
-            ("KeyJ", "playback.play_reverse", play(Reverse)),
-            ("KeyK", "playback.stop", play(Pause)),
-            ("KeyL", "playback.play_forward", play(Play)),
-            ("ArrowLeft", "playback.step_back", play(Step(-1))),
-            ("ArrowRight", "playback.step_forward", play(Step(1))),
-            ("Home", "playback.go_to_start", play(Seek(0.0))),
-            ("End", "playback.go_to_end", play(Seek(f64::MAX))),
-        ];
+        ]
+    }
+
+    /// 再生と Timeline のキーと、指すコマンドの ID と持ち主。
+    fn expected_moves() -> Expected {
+        use crate::win::commands::{Action, Owner};
+        use mm_ui_layout::TimelineCommand::{FullExtentZoom, NextEdit, PreviousEdit};
+        use mm_ui_layout::TimelineCommand::{ZoomIn, ZoomOut};
+        use Command::{Pause, Play, Reverse, Seek, Step, StepSeconds, Toggle};
+        let p = |c| Owner::App(Action::Playback(c));
+        let t = |c| Owner::App(Action::Timeline(c));
+        vec![
+            ("Space", "playback.toggle", p(Toggle)),
+            ("KeyJ", "playback.play_reverse", p(Reverse)),
+            ("KeyK", "playback.stop", p(Pause)),
+            ("KeyL", "playback.play_forward", p(Play)),
+            ("ArrowLeft", "playback.step_back", p(Step(-1))),
+            ("ArrowRight", "playback.step_forward", p(Step(1))),
+            (
+                "Shift+ArrowLeft",
+                "playback.step_back_second",
+                p(StepSeconds(-1)),
+            ),
+            (
+                "Shift+ArrowRight",
+                "playback.step_forward_second",
+                p(StepSeconds(1)),
+            ),
+            ("ArrowUp", "playback.previous_edit", t(PreviousEdit)),
+            ("ArrowDown", "playback.next_edit", t(NextEdit)),
+            ("Home", "playback.go_to_start", p(Seek(0.0))),
+            ("End", "playback.go_to_end", p(Seek(f64::MAX))),
+            ("Shift+KeyZ", "timeline.full_extent_zoom", t(FullExtentZoom)),
+            ("=", "timeline.zoom_in", t(ZoomIn)),
+            ("+", "timeline.zoom_in", t(ZoomIn)),
+            ("Ctrl+=", "timeline.zoom_in", t(ZoomIn)),
+            ("-", "timeline.zoom_out", t(ZoomOut)),
+            ("Ctrl+-", "timeline.zoom_out", t(ZoomOut)),
+        ]
+    }
+
+    #[test]
+    fn キーからコマンドの_id_を引き_持ち主のコマンドを実行する() {
+        let cases: Expected = expected_edits()
+            .into_iter()
+            .chain(expected_moves())
+            .collect();
         assert_eq!(cases.len(), BINDINGS.len(), "全部のキーを確かめる");
         for (key, id, owner) in cases {
             assert_eq!(command_for(key), Some(id), "{key}");
@@ -201,7 +320,21 @@ mod tests {
         }
         assert_eq!(command_for("KeyZ"), None);
         assert_eq!(keys_of("edit.redo"), ["Ctrl+KeyY", "Ctrl+Shift+KeyZ"]);
+        assert_eq!(keys_of("timeline.zoom_in"), ["=", "+", "Ctrl+="]);
         assert!(keys_of("export.start").is_empty());
+    }
+
+    #[test]
+    fn timeline_のコマンドのキーは描画スレッドに積む() {
+        let shared = Arc::new(Shared::new());
+        dispatch(&shared, "surface", "=");
+        dispatch(&shared, "webview", "Shift+KeyZ");
+        dispatch(&shared, "surface", "ArrowDown");
+        use mm_ui_layout::TimelineCommand::{FullExtentZoom, NextEdit, ZoomIn};
+        assert_eq!(
+            *shared.timeline_commands.lock().unwrap(),
+            [ZoomIn, FullExtentZoom, NextEdit]
+        );
     }
 
     /// ウィンドウのフックに渡ったものを記録する。
@@ -264,9 +397,11 @@ mod tests {
         assert_eq!(label("KeyB"), "B");
         assert_eq!(label("Ctrl+KeyZ"), "Ctrl+Z");
         assert_eq!(label("Ctrl+Shift+KeyZ"), "Ctrl+Shift+Z");
-        assert_eq!(label("Comma"), ",");
-        assert_eq!(label("Period"), ".");
+        assert_eq!(label(","), ",");
+        assert_eq!(label("."), ".");
         assert_eq!(label("ArrowLeft"), "←");
+        assert_eq!(label("Shift+ArrowRight"), "Shift+→");
+        assert_eq!(label("ArrowDown"), "↓");
         assert_eq!(label("Digit1"), "1");
         assert_eq!(label("Space"), "Space");
         assert_eq!(label("Delete"), "Delete");

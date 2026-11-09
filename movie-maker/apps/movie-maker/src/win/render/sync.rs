@@ -1,5 +1,5 @@
 //! 描画スレッドの、共有状態と UI の行き来。Timeline に出すプロジェクトのデータ、Source のフレーム、
-//! ポインターの入力から選択とシークとドラッグの編集へ。
+//! ポインターの入力から選択とシークとドラッグの編集へ、キーとメニューの Timeline のコマンドから表示とシークへ。
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -128,6 +128,19 @@ pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
             shared.send(Command::Pause);
         }
         shared.send(Command::Seek(t));
+    }
+}
+
+/// キーとメニューの Timeline のコマンドを UI に渡す。前後の帯の端へ動かすシークは、Home と End と同じく再生を止めない。
+pub(super) fn handle_commands(shared: &Shared, ui: &mut Ui) {
+    let commands =
+        std::mem::take(&mut *shared.timeline_commands.lock().expect("timeline commands"));
+    for command in commands {
+        for action in ui.command(command) {
+            if let Action::Seek(t) = action {
+                shared.send(Command::Seek(t));
+            }
+        }
     }
 }
 

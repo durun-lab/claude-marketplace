@@ -146,6 +146,30 @@ fn 再生のコマンドを_program_に送り_表に無い_id_は拒否する() 
 }
 
 #[test]
+fn timeline_のコマンドは描画スレッドへ積み_秒の移動は再生へ送る() {
+    let shared = Arc::new(Shared::new());
+    let (tx, rx) = channel();
+    *shared.commands.lock().unwrap() = Some(tx);
+    run(&shared, "timeline.zoom_in").expect("Zoom In");
+    run_from_key(&shared, "timeline.full_extent_zoom").expect("Full Extent Zoom");
+    run(&shared, "playback.next_edit").expect("Next Edit");
+    assert_eq!(
+        *shared.timeline_commands.lock().unwrap(),
+        [
+            TimelineCommand::ZoomIn,
+            TimelineCommand::FullExtentZoom,
+            TimelineCommand::NextEdit
+        ]
+    );
+    assert!(
+        rx.try_recv().is_err(),
+        "Timeline のコマンドは再生へ送らない"
+    );
+    run(&shared, "playback.step_back_second").expect("Step One Second Back");
+    assert_eq!(rx.try_recv(), Ok(Command::StepSeconds(-1)));
+}
+
+#[test]
 fn パネルとウィンドウのコマンドはウィンドウのフックへ渡す() {
     let shared = Arc::new(Shared::new());
     let seen = Arc::new(std::sync::Mutex::new(Vec::new()));

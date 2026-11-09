@@ -17,8 +17,10 @@
   const FOCUSABLE = "button, a[href], summary, [role=button], [role=tab], [role=option], [tabindex]";
   // keys.rs の BINDINGS のうち編集（clip.*、edit.*、source.*）のキーと同じ。WebView の部品にフォーカスがあるときの Delete などが Timeline の編集にならないよう、送る前に選ぶ。
   const EDIT_KEYS = new Set([
-    "KeyI", "KeyO", "Comma", "Period", "KeyB", "Delete", "Backspace", "Ctrl+KeyZ", "Ctrl+KeyY", "Ctrl+Shift+KeyZ",
+    "KeyI", "KeyO", ",", ".", "KeyB", "Delete", "Backspace", "Ctrl+KeyZ", "Ctrl+KeyY", "Ctrl+Shift+KeyZ",
   ]);
+  // 名前で引くキーのうち、Shift を名前に付けるもの（英字、数字、矢印）。keys.rs の with_modifiers と同じ。
+  const SHIFT_NAMED = /^(Key[A-Z]|Digit[0-9]|Arrow(Up|Down|Left|Right))$/;
   // Program と Source の -1 と +1 で共通の title。矢印のキーは、Source をクリックした後は Source の再生に向く（keys.rs の dispatch）。
   const STEP_BACK = "Step One Frame Back (←)";
   const STEP_FORWARD = "Step One Frame Forward (→)";
@@ -87,8 +89,15 @@
   const srcAct = (action, value) => invoke("source_transport", { action, value: value ?? null });
   const edit = (action) => invoke("edit_action", { action });
   const openSource = (asset) => invoke("source_open", { asset });
-  const keyName = (e) =>
-    (e.ctrlKey ? `Ctrl+${e.shiftKey ? "Shift+" : ""}` : "") + (e.altKey ? "Alt+" : "") + e.code;
+  // キーの表（keys.rs）の名前。英字、数字、矢印、Space などは code の名前（KeyZ）、記号は押された文字（key の 1 字）で引き、
+  // JIS と US の配列で記号のキーの位置が違っても同じ名前にする。Shift は英字、数字、矢印に付け、記号には付けない
+  // （押された文字に入っている）。Space などほかの名前のキーは Ctrl と一緒のときだけ付ける。
+  const keyName = (e) => {
+    const symbol = e.key.length === 1 && !SHIFT_NAMED.test(e.code) && e.code !== "Space";
+    const shift = e.shiftKey && !symbol && (SHIFT_NAMED.test(e.code) || e.ctrlKey);
+    const mods = (e.ctrlKey ? "Ctrl+" : "") + (shift ? "Shift+" : "") + (e.altKey ? "Alt+" : "");
+    return mods + (symbol ? e.key : e.code);
+  };
 
   const build = () => {
     const style = el("style", { textContent: CSS });

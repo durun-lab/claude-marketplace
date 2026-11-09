@@ -70,9 +70,13 @@ fn 項目は並びの順にコマンドの表の名前とキーの見た目で�
             "-",
             "Step One Frame Back\t←",
             "Step One Frame Forward\t→",
+            "Step One Second Back\tShift+←",
+            "Step One Second Forward\tShift+→",
             "-",
             "Go to Start\tHome",
             "Go to End\tEnd",
+            "Previous Edit\t↑",
+            "Next Edit\t↓",
         ]
     );
     assert_eq!(
@@ -81,26 +85,28 @@ fn 項目は並びの順にコマンドの表の名前とキーの見た目で�
         "ツールは後の PR が表に足す"
     );
     assert_eq!(menu_texts(Menu::Help, &table), ["About"]);
-    assert!(
-        menu_texts(Menu::View, &table).is_empty(),
-        "ズームとスナップは後の PR が表に足す"
+    assert_eq!(
+        menu_texts(Menu::View, &table),
+        ["Zoom In\t=", "Zoom Out\t-", "Full Extent Zoom\tShift+Z"],
+        "スナップは後の PR が表に足す"
     );
 }
 
 #[test]
 fn 項目の無いメニューはメニューバーに出さない() {
     let table = table(&Shared::new());
-    let menus: Vec<Menu> = shown(&table).into_iter().map(|(m, _)| m).collect();
+    let menus = |t: &[CommandView]| -> Vec<Menu> { shown(t).into_iter().map(|(m, _)| m).collect() };
+    use Menu::{Edit, File, Help, Playback, Timeline, View};
+    assert_eq!(menus(&table), [File, Edit, View, Playback, Timeline, Help]);
+    let without_view: Vec<CommandView> = table
+        .iter()
+        .filter(|c| menu_of(c.id) != Some(View))
+        .cloned()
+        .collect();
     assert_eq!(
-        menus,
-        [
-            Menu::File,
-            Menu::Edit,
-            Menu::Playback,
-            Menu::Timeline,
-            Menu::Help
-        ],
-        "View は表に最初の View のコマンドが入ると出る"
+        menus(&without_view),
+        [File, Edit, Playback, Timeline, Help],
+        "View のコマンドが表に無ければ View を出さない"
     );
     assert!(shown(&table).iter().all(|(_, lines)| !lines.is_empty()));
 }
@@ -136,14 +142,14 @@ fn 表のコマンドはメニューバーに一度だけ出るか_not_in_menus_
 fn 表に無い_id_はスキップし_空のグループは区切り線ごと消える() {
     let table = table(&Shared::new());
     let groups: Groups = &[
-        &["timeline.zoom_in"],
-        &["edit.undo", "timeline.zoom_out"],
-        &["timeline.blade_tool"],
+        &["test.absent_one"],
+        &["edit.undo", "test.absent_two"],
+        &["test.absent_three"],
         &["app.exit"],
-        &["view.reset_ui_layout"],
+        &["test.absent_four"],
     ];
     assert_eq!(texts(&lines(groups, &table)), ["Undo\tCtrl+Z", "-", "Exit"]);
-    assert!(lines(&[&["timeline.zoom_in"]], &table).is_empty());
+    assert!(lines(&[&["test.absent_one"]], &table).is_empty());
 }
 
 #[test]
@@ -218,7 +224,7 @@ fn 押せるかが変わった表を同じ_id_の項目に反映する() {
         Fake::new(Some("clip.split")),
         Fake::new(None),
         Fake::new(Some("playback.toggle")),
-        Fake::new(Some("timeline.zoom_in")),
+        Fake::new(Some("test.absent")),
     ];
     apply(&items, &states(&table(&shared)));
     let enabled = |i: usize| items[i].last().map(|s| s.enabled);

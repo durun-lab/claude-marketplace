@@ -9,13 +9,15 @@ use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::ScreenToClient;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
+use windows::Win32::UI::Input::Ime::{ImmAssociateContextEx, HIMC};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetCapture, GetKeyState, ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE,
-    TRACKMOUSEEVENT, VK_CONTROL, VK_ESCAPE, VK_F10, VK_F4, VK_MENU, VK_SHIFT,
+    GetCapture, GetKeyState, GetKeyboardLayout, ReleaseCapture, SetCapture, SetFocus, ToUnicodeEx,
+    TrackMouseEvent, HKL, TME_LEAVE, TRACKMOUSEEVENT, VK_CONTROL, VK_ESCAPE, VK_F10, VK_F4,
+    VK_MENU, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, IsWindow, LoadCursorW, PostMessageW, RegisterClassW,
-    SetWindowPos, CS_HREDRAW, CS_VREDRAW, IDC_ARROW, SWP_NOACTIVATE, SWP_NOZORDER,
+    CreateWindowExW, DefWindowProcW, GetWindowThreadProcessId, IsWindow, LoadCursorW, PostMessageW,
+    RegisterClassW, SetWindowPos, CS_HREDRAW, CS_VREDRAW, IDC_ARROW, SWP_NOACTIVATE, SWP_NOZORDER,
     WM_CAPTURECHANGED, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE,
     WM_MOUSEWHEEL, WM_SYSCHAR, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW, WS_CHILD, WS_CLIPSIBLINGS,
     WS_EX_NOPARENTNOTIFY, WS_VISIBLE,
@@ -38,6 +40,10 @@ const KEY_REPEAT_BIT: isize = 1 << 30;
 const INPUT_LIMIT: usize = 512;
 /// 表示の倍率が 1 のときの DPI（Windows の既定）。
 const BASE_DPI: f32 = 96.0;
+/// キーの状態の配列で、押しているキーを示す上位ビット。
+const KEY_PRESSED: u8 = 0x80;
+/// `ToUnicodeEx` の flags の、キーボードの状態（デッドキーの途中など）を変えずに引く指定（Windows 10 1607 から）。
+const KEEP_KEYBOARD_STATE: u32 = 0x4;
 
 static SHARED: OnceLock<Arc<Shared>> = OnceLock::new();
 static TRACKING: AtomicBool = AtomicBool::new(false);
@@ -79,8 +85,16 @@ pub fn create(parent: isize, shared: Arc<Shared>, rect: PixelRect) -> windows::c
             Some(hinstance.into()),
             None,
         )?;
+        detach_ime(hwnd);
         Ok(hwnd.0 as isize)
     }
+}
+
+/// HWND から IME を外す。日本語の IME が付いていると英字のキーが `VK_PROCESSKEY` で届いてキーの表に当たらないので、
+/// 文字を打たないサーフェスでは IME を使わない。
+fn detach_ime(hwnd: HWND) {
+    // IME の無い環境では失敗するが、そのときはキーがそのまま届くので、結果は破棄する。
+    let _ = unsafe { ImmAssociateContextEx(hwnd, HIMC::default(), 0) };
 }
 
 /// 子 HWND の位置と大きさを変える（親のクライアント座標、物理ピクセル）。
@@ -151,14 +165,44 @@ fn pointer_mods() -> Mods {
     }
 }
 
-/// 修飾キーを前に付けたキー名。
+/// いま押している修飾キーを前に付けたキー名。記号のキーはこのスレッドの今の配列で文字にする。
 fn key_name(vk: u32) -> String {
-    keys::with_modifiers(
-        &keys::vk_name(vk),
+    let mods = (
         key_down(VK_CONTROL.0),
         key_down(VK_SHIFT.0),
         key_down(VK_MENU.0),
-    )
+    );
+    key_name_in(vk, mods, unsafe { GetKeyboardLayout(0) })
+}
+
+/// 修飾キー（Ctrl、Shift、Alt）を前に付けたキー名。名前で引くキーは仮想キーの名前、記号のキーは配列 `layout` で押された文字。
+pub fn key_name_in(vk: u32, (ctrl, shift, alt): (bool, bool, bool), layout: HKL) -> String {
+    let name =
+        keys::vk_name(vk).unwrap_or_else(|| keys::symbol_name(vk, typed_char(vk, shift, layout)));
+    keys::with_modifiers(&name, ctrl, shift, alt)
+}
+
+/// サーフェスの HWND の UI スレッドの、今のキーボードの配列。
+pub fn layout_of(hwnd: isize) -> HKL {
+    unsafe {
+        let thread = GetWindowThreadProcessId(HWND(hwnd as *mut _), None);
+        GetKeyboardLayout(thread)
+    }
+}
+
+/// 記号のキーを配列 `layout` で押したときの文字。Shift だけを押した状態で引く（Ctrl を含めると制御文字になる）。
+/// デッドキーと、文字にならないキーは `None`。
+fn typed_char(vk: u32, shift: bool, layout: HKL) -> Option<char> {
+    let mut state = [0u8; 256];
+    if shift {
+        state[usize::from(VK_SHIFT.0)] = KEY_PRESSED;
+    }
+    let mut buf = [0u16; 4];
+    let n = unsafe { ToUnicodeEx(vk, 0, &state, &mut buf, KEEP_KEYBOARD_STATE, Some(layout)) };
+    let c = (n == 1)
+        .then(|| char::from_u32(u32::from(buf[0])))
+        .flatten()?;
+    (!c.is_control()).then_some(c)
 }
 
 /// サーフェスの HWND に、左ボタンを押して `from` から `to` まで動かして離すメッセージを投げる（自動試験用）。
@@ -367,6 +411,60 @@ mod tests {
             "Alt を離してもメニューモードに入らない"
         );
         assert!(!passes_to_system(0x4B), "Alt+K はキーの表へ");
+    }
+
+    /// このスレッドの今の配列で引いたキーの名前。
+    fn name(vk: u32, ctrl: bool, shift: bool) -> String {
+        key_name_in(vk, (ctrl, shift, false), unsafe { GetKeyboardLayout(0) })
+    }
+
+    #[test]
+    fn 英字と矢印は配列に依らず_shift_付きの名前_記号は今の配列で押された文字() {
+        assert_eq!(name(0x5A, false, true), "Shift+KeyZ");
+        assert_eq!(name(0x25, false, true), "Shift+ArrowLeft");
+        assert_eq!(
+            name(0xBD, false, false),
+            "-",
+            "VK_OEM_MINUS は JIS でも US でも -"
+        );
+        assert_eq!(name(0xBD, true, false), "Ctrl+-");
+        assert_eq!(name(0xBC, false, false), ",");
+        assert_eq!(name(0xBE, false, false), ".");
+        // JIS の配列（VK_OEM_7 が ^ のキー）の Shift+- は = で、Ctrl+Shift+- も Ctrl+= になる。
+        if name(0xDE, false, false) == "^" {
+            assert_eq!(name(0xBD, false, true), "=");
+            assert_eq!(name(0xBD, true, true), "Ctrl+=");
+            assert_eq!(name(0xBB, false, true), "+", "Shift+; は +");
+        }
+    }
+
+    #[test]
+    fn ime_を外した_hwnd_は入力のコンテキストを持たない() {
+        use windows::Win32::UI::Input::Ime::ImmGetContext;
+        use windows::Win32::UI::WindowsAndMessaging::{
+            DestroyWindow, WINDOW_EX_STYLE, WINDOW_STYLE,
+        };
+        let hwnd = unsafe {
+            CreateWindowExW(
+                WINDOW_EX_STYLE::default(),
+                w!("STATIC"),
+                w!("ime"),
+                WINDOW_STYLE::default(),
+                0,
+                0,
+                10,
+                10,
+                None,
+                None,
+                None,
+                None,
+            )
+        }
+        .expect("試験の HWND");
+        detach_ime(hwnd);
+        let context = unsafe { ImmGetContext(hwnd) };
+        let _ = unsafe { DestroyWindow(hwnd) };
+        assert!(context.is_invalid(), "IME のコンテキストが残っている");
     }
 
     #[test]

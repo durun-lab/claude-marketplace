@@ -4,6 +4,7 @@
 use std::sync::{Arc, OnceLock};
 
 use mm_doc::SEQUENCE_KIND;
+use mm_ui_layout::TimelineCommand;
 use serde::Serialize;
 
 use crate::win::edit_actions::{self, EditAction};
@@ -33,6 +34,8 @@ pub enum Action {
     Edit(EditAction),
     /// 再生のコマンド。Source を最後にクリックしていれば Source の、そうでなければ Program の再生に向く。
     Playback(Command),
+    /// Timeline の表示と再生位置のコマンド。Timeline の表示を持つ描画スレッドが実行する。
+    Timeline(TimelineCommand),
     /// Tauri のウィンドウが実行するコマンド。
     Window(WindowAction),
 }
@@ -154,6 +157,12 @@ pub static TABLE: &[Spec] = &[
         owner: Owner::App(Action::Playback(Command::Seek(0.0))),
     },
     Spec {
+        id: "playback.next_edit",
+        name: "Next Edit",
+        description: Some("Move the playhead to the next clip or layer boundary"),
+        owner: Owner::App(Action::Timeline(TimelineCommand::NextEdit)),
+    },
+    Spec {
         id: "playback.play_forward",
         name: "Play Forward",
         description: None,
@@ -166,16 +175,34 @@ pub static TABLE: &[Spec] = &[
         owner: Owner::App(Action::Playback(Command::Reverse)),
     },
     Spec {
+        id: "playback.previous_edit",
+        name: "Previous Edit",
+        description: Some("Move the playhead to the previous clip or layer boundary"),
+        owner: Owner::App(Action::Timeline(TimelineCommand::PreviousEdit)),
+    },
+    Spec {
         id: "playback.step_back",
         name: "Step One Frame Back",
         description: None,
         owner: Owner::App(Action::Playback(Command::Step(-1))),
     },
     Spec {
+        id: "playback.step_back_second",
+        name: "Step One Second Back",
+        description: None,
+        owner: Owner::App(Action::Playback(Command::StepSeconds(-1))),
+    },
+    Spec {
         id: "playback.step_forward",
         name: "Step One Frame Forward",
         description: None,
         owner: Owner::App(Action::Playback(Command::Step(1))),
+    },
+    Spec {
+        id: "playback.step_forward_second",
+        name: "Step One Second Forward",
+        description: None,
+        owner: Owner::App(Action::Playback(Command::StepSeconds(1))),
     },
     Spec {
         id: "playback.stop",
@@ -200,6 +227,26 @@ pub static TABLE: &[Spec] = &[
         name: "Mark Out",
         description: Some("Mark the Out point of the clip open in Source"),
         owner: Owner::App(Action::Edit(EditAction::MarkOut)),
+    },
+    Spec {
+        id: "timeline.full_extent_zoom",
+        name: "Full Extent Zoom",
+        description: Some(
+            "Fit the whole composition in the Timeline, or return to the previous zoom",
+        ),
+        owner: Owner::App(Action::Timeline(TimelineCommand::FullExtentZoom)),
+    },
+    Spec {
+        id: "timeline.zoom_in",
+        name: "Zoom In",
+        description: Some("Zoom in around the playhead"),
+        owner: Owner::App(Action::Timeline(TimelineCommand::ZoomIn)),
+    },
+    Spec {
+        id: "timeline.zoom_out",
+        name: "Zoom Out",
+        description: Some("Zoom out around the playhead"),
+        owner: Owner::App(Action::Timeline(TimelineCommand::ZoomOut)),
     },
 ];
 
@@ -331,11 +378,16 @@ pub fn run_from_key(shared: &Arc<Shared>, id: &str) -> Result<(), String> {
     execute(shared, spec_of(id)?)
 }
 
-/// 編集と再生はここで実行し、パネルとウィンドウのコマンドはウィンドウのフックへ渡す。
+/// 編集と再生はここで実行し、Timeline のコマンドは描画スレッドへ、パネルとウィンドウのコマンドはウィンドウのフックへ渡す。
 fn execute(shared: &Arc<Shared>, spec: &'static Spec) -> Result<(), String> {
     match spec.owner {
         Owner::App(Action::Edit(action)) => edit_actions::run(shared, action),
         Owner::App(Action::Playback(command)) => play(shared, command),
+        Owner::App(Action::Timeline(command)) => shared
+            .timeline_commands
+            .lock()
+            .expect("timeline commands")
+            .push(command),
         Owner::App(Action::Window(action)) => {
             return shared.window_hook.send(Forward::Window(action))
         }
