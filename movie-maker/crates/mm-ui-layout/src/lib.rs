@@ -17,6 +17,7 @@ mod controller;
 mod drawing;
 mod geom;
 mod gesture;
+mod keymarks;
 mod labels;
 mod paint;
 pub mod palette;

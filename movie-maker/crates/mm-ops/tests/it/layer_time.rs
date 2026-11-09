@@ -150,6 +150,39 @@ fn コンポジションの時刻のキーフレームを全部動かし_ほか�
     assert!(moved.iter().all(|t| *t == json!(secs(3))), "{moved:?}");
 }
 
+/// `keyframe_times`（Timeline のマーカー）が `shiftLayer` の動かすパラメータを全部読む。
+/// 全部のパラメータに別々の時刻を置き、個数が合うことで読み漏らしを見つける。
+#[test]
+fn キーフレームの時刻の一覧は_shift_layer_が動かすパラメータと同じ() {
+    fn distinct(v: &mut Value, n: &mut i64) {
+        match v {
+            Value::Object(o) => {
+                let animated = o.contains_key("value");
+                if let (true, Some(Value::Array(keys))) = (animated, o.get_mut("keyframes")) {
+                    for k in keys {
+                        *n += 1;
+                        k["time"] = json!(secs(*n));
+                    }
+                }
+                o.values_mut().for_each(|c| distinct(c, n));
+            }
+            Value::Array(a) => a.iter_mut().for_each(|c| distinct(c, n)),
+            _ => {}
+        }
+    }
+    let mut p = project();
+    let layer = p.layer_mut(&Id::new("l1")).unwrap();
+    fill_optional(layer);
+    let mut keyed = serde_json::to_value(&*layer).unwrap();
+    key_all(&mut keyed);
+    keyed["framing"]["cuts"] = json!([]);
+    distinct(&mut keyed, &mut 0);
+    let expected = comp_key_times(&keyed).len();
+    let layer: Layer = serde_json::from_value(keyed).unwrap();
+    assert!(expected >= 20, "keyed params: {expected}");
+    assert_eq!(mm_ops::keyframe_times(&layer).len(), expected);
+}
+
 #[test]
 fn 逆操作で元に戻り_触るのはレイヤーだけ() {
     let mut p = project();

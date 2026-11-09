@@ -81,3 +81,52 @@ fn comp_time_params(layer: &mut Layer) -> Vec<&mut Param> {
     }
     out
 }
+
+/// レイヤーのパラメータのキーフレームの時刻（コンポジションの時刻）を、前から順に重複なしで返す。
+/// `shiftLayer` が動かすパラメータと同じ一覧（`comp_time_params`）を読む向きでたどる。
+/// 再フレーミング（素材の時刻）とタイムリマップは含めない。
+pub fn keyframe_times(layer: &Layer) -> Vec<RationalTime> {
+    let mut times: Vec<RationalTime> = comp_time_params_ref(layer)
+        .into_iter()
+        .flat_map(|p| p.keyframes.iter().map(|k| k.time))
+        .collect();
+    times.sort();
+    times.dedup();
+    times
+}
+
+/// `comp_time_params` の読む向き。一覧を足すときは両方に足す（試験が個数を突き合わせる）。
+fn comp_time_params_ref(layer: &Layer) -> Vec<&Param> {
+    let mut out: Vec<&Param> = vec![
+        &layer.opacity,
+        &layer.transform.position,
+        &layer.transform.scale,
+        &layer.transform.rotation,
+    ];
+    out.extend(layer.transform.anchor.as_ref());
+    let crop = &layer.crop;
+    out.extend(
+        [&crop.left, &crop.top, &crop.right, &crop.bottom]
+            .into_iter()
+            .flat_map(Option::as_ref),
+    );
+    for mask in &layer.masks {
+        out.extend([&mask.path, &mask.feather, &mask.opacity]);
+        if let Some(rect) = &mask.rect {
+            out.extend([&rect.position, &rect.size, &rect.radius]);
+        }
+    }
+    if let Some(audio) = &layer.audio {
+        out.extend([&audio.gain_db, &audio.pan]);
+    }
+    if let Some(caption) = &layer.framing.caption {
+        out.extend([&caption.position, &caption.width]);
+    }
+    let mut nodes = vec![&layer.source];
+    nodes.extend(layer.effects.iter().map(|e| &e.node));
+    while let Some(node) = nodes.pop() {
+        out.extend(node.params.values());
+        nodes.extend(node.inputs.iter());
+    }
+    out
+}

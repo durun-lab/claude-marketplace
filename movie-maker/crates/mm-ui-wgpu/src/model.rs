@@ -1,5 +1,7 @@
 //! プロジェクトのデータから Timeline のモデルを作る。
 
+use std::sync::Arc;
+
 use mm_doc::{Composition, Layer, Project, Sequence, SequenceId, SEQUENCE_KIND, SEQUENCE_PARAM};
 use mm_eval::{place_cuts, PlacedCut};
 use mm_types::Id;
@@ -73,6 +75,7 @@ pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
             end: range.end.to_f64(),
             kind: kind_of(layer),
             enabled: layer.enabled,
+            keyframes: keyframe_secs(layer),
             label: names.label(&layer.source),
             cuts: cut_bars(project, layer, &names),
             trim: trim_bounds(project, layer, range),
@@ -83,6 +86,14 @@ pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
         fps: comp.fps.to_f64(),
         items,
     }
+}
+
+/// レイヤーのキーフレームの時刻（コンポジションの秒、前から順）。`shiftLayer` が動かすパラメータと同じ一覧から引く。
+fn keyframe_secs(layer: &Layer) -> Arc<[f64]> {
+    mm_ops::keyframe_times(layer)
+        .into_iter()
+        .map(|t| t.to_f64())
+        .collect()
 }
 
 /// 端のつまみで動かせる範囲。`trimLayer` の検査と同じ素材の余白（`Layer::trim_room`）から作る。
@@ -291,6 +302,30 @@ mod tests {
         assert_eq!((trim.min_start, trim.max_end), (1.0, 11.0));
         assert!(!trim.fixed_in);
         assert_eq!(m.items[0].trim, TrimBounds::FREE);
+    }
+
+    #[test]
+    fn キーフレームの時刻は全部のパラメータから集め_重複なしで前から順() {
+        use mm_doc::{Interpolation, Keyframe};
+        use mm_types::ParamValue;
+        let key = |s: i64| {
+            Keyframe::new(
+                RationalTime::seconds(s),
+                ParamValue::Number(1.0),
+                Interpolation::Linear,
+            )
+        };
+        let mut c = comp();
+        let top = c
+            .layers
+            .iter_mut()
+            .find(|l| l.id.as_str() == "top")
+            .unwrap();
+        top.opacity.keyframes = vec![key(2), key(4)];
+        top.transform.rotation.keyframes = vec![key(2), key(3)];
+        let m = timeline_model(&Project::new(), &c);
+        assert_eq!(&*m.items[0].keyframes, [2.0, 3.0, 4.0]);
+        assert!(m.items[0].has_keyframes() && !m.items[1].has_keyframes());
     }
 
     #[test]

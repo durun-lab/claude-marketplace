@@ -10,6 +10,7 @@ publish.workspace = true
 mm-types = { workspace = true }
 mm-doc = { workspace = true }
 mm-eval = { workspace = true }
+mm-ops = { workspace = true }
 mm-text-api = { workspace = true }
 mm-ui-layout = { workspace = true }
 wgpu = { workspace = true }

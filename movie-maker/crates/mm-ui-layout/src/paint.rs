@@ -5,6 +5,7 @@
 //! 重ね順は呼ぶ順でなく [`Depth`] で決めるので、領域を足す PR はファイルを 1 つと、呼び出しを 1 行足せばよい。
 
 mod guide;
+mod keymarks;
 mod playhead;
 mod rows;
 mod ruler;
@@ -53,6 +54,8 @@ pub(crate) enum Depth {
     Bar,
     /// 帯に重ねるもの（端のつまみ、選んだ外枠）。
     OnBar,
+    /// 帯の下端のキーフレームのマーカー。端のつまみと外枠より上。
+    Mark,
     /// 行に重ねる暗がり（コンポジションの終わりより右）。
     Shade,
     /// 行の領域を囲む部品（目盛りの帯、スクロールバー）と、それを貫く時刻の線。いちばん上。
@@ -71,6 +74,11 @@ pub(crate) struct Canvas {
 impl Canvas {
     pub(crate) fn push(&mut self, depth: Depth, rect: Rect, color: Color) {
         self.depths[depth as usize].push(Quad::new(rect, color));
+    }
+
+    /// ひし形や三角（`QuadShape`）。切ると形が変わるので、行の領域に収まるかは呼ぶ側が決める。
+    pub(crate) fn push_quad(&mut self, depth: Depth, quad: Quad) {
+        self.depths[depth as usize].push(quad);
     }
 
     /// `rect` の `clip` に入る所だけを入れる。全部外なら入れない。
@@ -96,6 +104,7 @@ pub fn timeline_quads(model: &TimelineModel, vp: &Viewport, state: &PaintState) 
     let input = PaintInput { model, vp, state };
     let mut canvas = Canvas::default();
     canvas.push(Depth::Back, vp.layout.bounds, state.palette.panel);
+    keymarks::paint(&input, &mut canvas);
     rows::paint(&input, &mut canvas);
     ruler::paint(&input, &mut canvas);
     scrollbar::paint(&input, &mut canvas);

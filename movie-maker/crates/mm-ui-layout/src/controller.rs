@@ -240,12 +240,17 @@ impl TimelineController {
     }
 
     fn seek_at(&self, x: f32, model: &TimelineModel) -> f64 {
+        Self::seek_to(self.viewport().t_of(x), model)
+    }
+
+    /// 時刻 `t` を、再生位置にできるフレームの境目に丸める（コンポジションの中）。
+    fn seek_to(t: f64, model: &TimelineModel) -> f64 {
         let frame = if model.fps > 0.0 {
             1.0 / model.fps
         } else {
             0.0
         };
-        let t = quantize(self.viewport().t_of(x), model.fps);
+        let t = quantize(t, model.fps);
         t.clamp(0.0, (model.duration - frame).max(0.0))
     }
 
@@ -277,6 +282,14 @@ impl TimelineController {
                 deselect_cut(Action::Select(Some(index)), had_cut)
             }
             Hit::Cut { item, cut, part } => self.press_cut((item, cut, part), x, mods),
+            Hit::Key { item, key } => {
+                self.selected = Some(item);
+                let t = model.items.get(item).and_then(|it| it.keyframes.get(key));
+                let seek = t.map(|t| Action::Seek(Self::seek_to(*t, model)));
+                let mut out = deselect_cut(Action::Select(Some(item)), had_cut);
+                out.extend(seek);
+                out
+            }
             _ => {
                 self.selected = None;
                 deselect_cut(Action::Select(None), had_cut)

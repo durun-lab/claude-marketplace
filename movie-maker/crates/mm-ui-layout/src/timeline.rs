@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use crate::keymarks;
 use crate::time_view::TimeView;
 use crate::timeline_layout::Viewport;
 
@@ -78,6 +79,8 @@ pub struct Item {
     pub enabled: bool,
     /// 帯に出す名前。空なら出さない。シーケンスのレイヤーはカットの名前を出す。
     pub label: Arc<str>,
+    /// レイヤーのパラメータのキーフレームの時刻（コンポジションの秒、前から順、重複なし）。
+    pub keyframes: Arc<[f64]>,
     /// シーケンスのレイヤーのカット。先頭から順。シーケンス以外は空。
     pub cuts: Vec<CutBar>,
     /// 端のつまみで動かせる範囲。
@@ -93,6 +96,7 @@ impl Item {
             end,
             kind,
             enabled,
+            keyframes: Arc::default(),
             label: Arc::default(),
             cuts: Vec::new(),
             trim: TrimBounds::FREE,
@@ -103,6 +107,17 @@ impl Item {
     pub fn with_label(mut self, label: &str) -> Self {
         self.label = label.into();
         self
+    }
+
+    /// キーフレームの時刻（前から順）を付ける。
+    pub fn with_keyframes(mut self, times: &[f64]) -> Self {
+        self.keyframes = times.into();
+        self
+    }
+
+    /// キーフレームを持つか（見出しの ▸ が引く）。
+    pub fn has_keyframes(&self) -> bool {
+        !self.keyframes.is_empty()
     }
 
     /// レイヤーの ID を付ける。
@@ -165,6 +180,11 @@ pub enum Hit {
     Layer {
         index: usize,
         part: Part,
+    },
+    /// 帯の下端のキーフレームのマーカー。`item` はレイヤーの添字、`key` は `Item::keyframes` の添字。
+    Key {
+        item: usize,
+        key: usize,
     },
     /// シーケンスのカット。`item` はレイヤーの添字、`cut` はそのカットの添字。
     Cut {
@@ -229,6 +249,12 @@ pub fn hit_test(model: &TimelineModel, vp: &Viewport, x: f32, y: f32) -> Hit {
     else {
         return Hit::Empty;
     };
+    if let Some(mark) = keymarks::mark_at(vp, index, item, (x, y)) {
+        return Hit::Key {
+            item: index,
+            key: mark.key,
+        };
+    }
     let bar = vp.bar(index, item.start, item.end);
     if !bar.contains(x, y) {
         return Hit::Empty;
