@@ -26,6 +26,10 @@ pub struct GpuEval {
 
 impl GpuEval {
     /// アダプターを探す。無ければ None。
+    ///
+    /// # Panics
+    ///
+    /// `MM_GPU` が読めないか、合う GPU が無いとき（指定の誤りを GPU 無しのスキップに紛れさせない）。
     pub fn new() -> Option<Self> {
         // レンダラーと同じバックエンドで比べ、Windows では Vulkan のドライバーを読み込まない。
         let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();

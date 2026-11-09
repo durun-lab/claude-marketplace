@@ -2,7 +2,7 @@
 //!
 //! 書き方は `CUDA_VISIBLE_DEVICES` と DXVK の `DXVK_FILTER_DEVICE_NAME` に倣う。指定があれば、
 //! そのプロセスには合う GPU が 1 つだけ見え、ほかの GPU にはデバイスを作らない。合わなければ
-//! 一覧を添えてエラーにし、別の GPU に黙って落ちない。
+//! 一覧を添えてエラーにし、黙って別の GPU に替えない。
 
 mod adapter;
 #[cfg(windows)]

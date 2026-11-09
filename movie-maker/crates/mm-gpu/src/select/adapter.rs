@@ -18,13 +18,17 @@ pub async fn find_adapter(
 ) -> Result<wgpu::Adapter> {
     #[cfg(windows)]
     if let Some(listing) = super::dx12::list(instance) {
-        let index = choose(label, selector, &listing.candidates)?;
-        return super::dx12::expose(instance, &listing, index).ok_or_else(|| {
-            MmError::Unsupported(format!(
-                "GPU {} は D3D12 で使えない",
-                listing.candidates[index].name
-            ))
-        });
+        let first = choose(label, selector, &listing.candidates)?;
+        // GPU の無い PC の DXGI は WARP を 2 つ並べ、wgpu は前の 1 つを捨てるので、合う中で開ける最初の 1 つを使う。
+        return (first..listing.candidates.len())
+            .filter(|&i| selector.matches(i, &listing.candidates[i]))
+            .find_map(|i| super::dx12::expose(instance, &listing, i))
+            .ok_or_else(|| {
+                MmError::Unsupported(format!(
+                    "{label}={selector} に合う GPU {} は D3D12 で使えない",
+                    listing.candidates[first].name
+                ))
+            });
     }
     let mut all = instance.enumerate_adapters(wgpu::Backends::all()).await;
     let candidates: Vec<AdapterCandidate> = all
