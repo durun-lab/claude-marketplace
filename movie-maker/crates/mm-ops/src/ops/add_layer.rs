@@ -6,7 +6,7 @@ use mm_doc::{Layer, Project};
 use mm_types::{CompositionId, Result};
 
 use crate::op::{Apply, Op};
-use crate::ops::{invalid, layer_refs_reach, RemoveLayer};
+use crate::ops::{invalid, layer_owned_ids, layer_refs_reach, RemoveLayer};
 use crate::touches::Touches;
 
 /// レイヤーを足す。`index` は下から数えた位置で、無ければ一番上。
@@ -23,6 +23,7 @@ impl Apply for AddLayer {
     fn touches(&self, project: &Project) -> Result<Touches> {
         let mut t = Touches::of(&self.composition);
         t.add(&self.layer.id);
+        layer_owned_ids(&self.layer, &mut t);
         layer_refs_reach(project, &self.layer, &mut t);
         Ok(t)
     }

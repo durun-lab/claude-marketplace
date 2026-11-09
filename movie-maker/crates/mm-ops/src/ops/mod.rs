@@ -168,6 +168,16 @@ pub(crate) fn node_refs(node: &Node, t: &mut Touches) {
     }
 }
 
+/// レイヤーが持つ効果とマスクの ID。どちらもプロジェクト全体で重ならないので、レイヤーごと増減する操作が触る所に含める。
+pub(crate) fn layer_owned_ids(layer: &Layer, t: &mut Touches) {
+    for e in &layer.effects {
+        t.add(&e.id);
+    }
+    for m in &layer.masks {
+        t.add(&m.id);
+    }
+}
+
 /// レイヤーが参照する所（親、接続先、トラックマット、入れ子、効果の入れ子）。
 pub(crate) fn layer_refs(layer: &Layer, t: &mut Touches) {
     if let Some(p) = &layer.parent {
