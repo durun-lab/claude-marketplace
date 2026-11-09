@@ -21,7 +21,7 @@ fn id_は重ならず名前の順に並ぶ() {
 }
 
 #[test]
-fn id_は組と動詞の形() {
+fn id_は分類と動詞の形() {
     for spec in TABLE {
         let parts: Vec<&str> = spec.id.split('.').collect();
         assert_eq!(parts.len(), 2, "{}", spec.id);
@@ -123,7 +123,7 @@ fn 押せるかが変わると表を送り直す() {
 }
 
 #[test]
-fn 再生のコマンドを_program_に送り_知らない_id_とパネルのコマンドは断る() {
+fn 再生のコマンドを_program_に送り_表に無い_id_とパネルのコマンドは拒否する() {
     let shared = Arc::new(Shared::new());
     let (tx, rx) = channel();
     *shared.commands.lock().unwrap() = Some(tx);
@@ -138,7 +138,7 @@ fn 再生のコマンドを_program_に送り_知らない_id_とパネルのコ
         "パネルは WebView が開く"
     );
     assert!(run(&shared, "clip.nope").is_err());
-    assert!(rx.try_recv().is_err(), "断ったコマンドは何も送らない");
+    assert!(rx.try_recv().is_err(), "拒否したコマンドは何も送らない");
 }
 
 #[test]

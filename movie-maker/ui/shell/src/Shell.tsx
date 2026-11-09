@@ -114,7 +114,7 @@ const useCommandTable = (api: CommandsApi | undefined): UiCommand[] | null => {
         const first = await api.table();
         if (!stopped && !pushed) setTable(first);
       } catch {
-        // Tauri の外（デモ）では読めないので、表なしで動かす。
+        // Tauri の外（ブラウザーで開いた画面）では読めないので、表なしで動かす。
       }
     };
     void start();

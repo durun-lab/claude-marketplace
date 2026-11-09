@@ -35,16 +35,16 @@ Rust の側は `#[tauri::command] fn apply_op(op: mm_ops::Op, ...) -> Result<_, 
 
 ## UI のコマンドの表
 
-画面の操作の入口（Tasks の項目、キー）が ID で指すコマンドの表。表はアプリの `apps/movie-maker/src/win/commands.rs`、キーの割り当ては `keys.rs` が持つ。型と関数は `src/commands.ts`（`createIpcCommandsApi`、`commandTitle`）。表は人の操作の入口だけを持ち、データの変更は実行した先の編集が操作（`Op`）で出す。
+呼び出し箇所（Tasks の項目、キー）が ID で指すコマンドの表。表はアプリの `apps/movie-maker/src/win/commands.rs`、キーの割り当ては `keys.rs` が持つ。型と関数は `src/commands.ts`（`createIpcCommandsApi`、`commandTitle`）。表は人が呼ぶコマンドだけを持ち、データの変更は実行した先の編集が操作（`Op`）で出す。
 
 | コマンド | 引数 | 成功 |
 |---|---|---|
 | `command_table` | なし | `UiCommand[]`（ID の名前の順） |
-| `run_command` | `{ id }` | すぐ `()`（編集は編集のキューに積む）。編集の失敗は Source の状態の `message`（`mm:source`）に出る。アプリが持ち主の、今押せるコマンドだけを受け、知らない ID、パネルが持ち主のコマンド、今押せないコマンドは `Err`。キー（`key_event`）は押せるかを見ずに実行し、拒否した理由は編集の `message` に出る |
+| `run_command` | `{ id }` | すぐ `()`（編集は編集のキューに積む）。編集の失敗は Source の状態の `message`（`mm:source`）に出る。アプリが持ち主の、今押せるコマンドだけを受け、表に無い ID、パネルが持ち主のコマンド、今押せないコマンドは `Err`。キー（`key_event`）は押せるかを見ずに実行し、拒否した理由は編集の `message` に出る |
 
 | `UiCommand` の項目 | 中身 |
 |---|---|
-| `id` | `<組>.<動詞>`（`clip.split`） |
+| `id` | `<分類>.<動詞>`（`clip.split`） |
 | `name` | 画面の名前（英語） |
 | `keys` | キーの表の名前（`Ctrl+KeyZ`）。先頭が画面に出すキー |
 | `key_label` | 先頭のキーの見た目（`Ctrl+Z`）。キーが無ければ `null` |

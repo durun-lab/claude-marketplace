@@ -1,5 +1,5 @@
-//! UI のコマンドの表。画面の操作の入口（キー、Tasks の項目）は、この表の ID でコマンドを指す。
-//! 表は入口だけを持ち、データの変更は実行した先の編集が操作（`Op`）で出す。
+//! UI のコマンドの表。呼び出し箇所（キー、Tasks の項目）は、この表の ID でコマンドを指す。
+//! 表は人が呼ぶコマンドだけを持ち、データの変更は実行した先の編集が操作（`Op`）で出す。
 
 use std::sync::Arc;
 
@@ -37,14 +37,14 @@ pub enum Owner {
 pub enum Action {
     /// 名前のついた編集。編集のキューで計画して適用する。
     Edit(EditAction),
-    /// 再生のコマンド。Source の領域をクリックしていれば Source の、そうでなければ Program の再生に向く。
+    /// 再生のコマンド。Source を最後にクリックしていれば Source の、そうでなければ Program の再生に向く。
     Playback(Command),
 }
 
 /// 表の 1 行。キーはキーの表（`keys.rs`）が持ち、WebView に送るときに ID で引いて足す。
 #[derive(Debug)]
 pub struct Spec {
-    /// `<組>.<動詞>`。Tasks の項目の `command` と同じ形。
+    /// `<分類>.<動詞>`。Tasks の項目の `command` と同じ形。
     pub id: &'static str,
     /// 画面の名前（英語）。
     pub name: &'static str,
@@ -345,7 +345,7 @@ fn execute(shared: &Arc<Shared>, spec: &Spec) -> Result<(), String> {
     Ok(())
 }
 
-/// Source の領域をクリックしていて素材を開いていれば Source の、そうでなければ Program の再生へ送る。
+/// Source を最後にクリックしていて素材を開いていれば Source の、そうでなければ Program の再生へ送る。
 fn play(shared: &Shared, command: Command) {
     if shared.source.is_active() && shared.source.handle().is_some() {
         shared.source.send(command);

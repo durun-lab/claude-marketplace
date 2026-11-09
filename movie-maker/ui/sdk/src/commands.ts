@@ -4,7 +4,7 @@ import type { MediaInvoke, MediaListen } from "./ipc.ts";
 
 /** UI のコマンド 1 つ。アプリの UI のコマンドの表（`apps/movie-maker/src/win/commands.rs`）の 1 行と、今押せるか。 */
 export interface UiCommand {
-  /** `<組>.<動詞>`（`clip.split`）。Tasks の項目の `command` が指す。 */
+  /** `<分類>.<動詞>`（`clip.split`）。Tasks の項目の `command` が指す。 */
   id: string;
   /** 画面の名前。 */
   name: string;
