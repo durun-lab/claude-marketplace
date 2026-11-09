@@ -200,6 +200,7 @@ mod tests {
             duration: 10.0,
             fps: 30.0,
             items,
+            ..TimelineModel::default()
         }
     }
 

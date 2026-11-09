@@ -37,6 +37,7 @@ fn model() -> TimelineModel {
         duration: CUTS as f64 * 2.0,
         fps: 60.0,
         items,
+        ..TimelineModel::default()
     }
 }
 

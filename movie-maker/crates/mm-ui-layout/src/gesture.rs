@@ -180,6 +180,7 @@ mod tests {
             duration: 20.0,
             fps: 30.0,
             items: vec![seq, Item::layer(1.0, 5.0, ItemKind::Text, true)],
+            ..TimelineModel::default()
         }
     }
 

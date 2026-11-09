@@ -2,15 +2,16 @@
 //!
 //! 外とやりとりする座標と大きさは物理ピクセル、割り付けと Timeline の寸法は論理ピクセルで持つ。
 //! 換算は描く所（[`Ui::render`]）と入力を受ける所（[`Ui::pointer`]、[`Ui::region_at`]）で [`Scale`] を 1 回だけ通す。
-//! Timeline は矩形（背景、帯、目盛り）、文字（目盛りの時刻、帯の名前）、矩形（ガイド線、再生位置の線）の順に重ねる。
-//! Timeline の表示の状態（ズーム、スクロール、行の高さ）は [`Ui::view_state`] で出し、[`Ui::restore_view`] で戻す。
+//! Timeline は矩形（背景、帯、目盛り、ドラッグ中のツールチップの矩形）、文字（目盛りの時刻、帯の名前、ツールチップの量）、
+//! 矩形（再生位置の線、スナップの表示）の順に重ねる。
+//! Timeline の表示の状態（ズーム、スクロール、行の高さ、スナップの入/切）は [`Ui::view_state`] で出し、[`Ui::restore_view`] で戻す。
 
 use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
-    fit_rect, split_viewers, timeline_labels, timeline_overlay, timeline_quads, Action,
-    DrawingShape, PaintState, PointerEvent, Quad, Rect, RowHeights, Scale, SurfaceLayout, TimeView,
-    TimelineController, TimelineModel, UiFont, ViewState,
+    drag_tooltip, fit_rect, split_viewers, timeline_labels, timeline_overlay, timeline_quads,
+    Action, DrawingShape, PaintState, PointerEvent, Quad, Rect, RowHeights, Scale, SurfaceLayout,
+    TimeView, TimelineController, TimelineModel, UiFont, ViewState,
 };
 
 use crate::drawing::{DrawingFit, DrawingLayer};
@@ -292,9 +293,9 @@ impl Ui {
     /// 描くもの（矩形、文字、Program と Source の映像、描き込み）を GPU に渡し、パスで描く数を返す。
     fn prepare(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> Counts {
         let (w, h) = self.size;
-        let (quads, under) = self.timeline_quads();
+        let tip = self.prepare_text(device, queue);
+        let (quads, under) = self.timeline_quads(tip);
         let count = self.quads.prepare(device, queue, &quads, (w, h));
-        self.prepare_text(device, queue);
         let layout = self.layout();
         let mut drawing = 0;
         if let Some((iw, ih)) = self.program.image_size() {
@@ -330,12 +331,14 @@ impl Ui {
     }
 
     /// Timeline の矩形を、サーフェスの座標（物理ピクセル）に置いた並びにする。文字の下に描く矩形が先で、
-    /// その数も返す（残りは文字の上に重ねるガイド線と再生位置の線）。
-    fn timeline_quads(&self) -> (Vec<Quad>, u32) {
+    /// その数も返す（残りは文字の上に重ねる再生位置の線とスナップの表示）。`tip` はドラッグ中のツールチップの矩形で、
+    /// 文字の下に描く矩形のいちばん上に重ねる。
+    fn timeline_quads(&self, tip: Vec<Quad>) -> (Vec<Quad>, u32) {
         let t = self.layout.timeline;
         let state = self.paint_state();
         let vp = self.controller.viewport();
         let mut quads = timeline_quads(&self.model, &vp, &state);
+        quads.extend(tip);
         let under = quads.len() as u32;
         quads.extend(timeline_overlay(&self.model, &vp, &state));
         for q in &mut quads {
@@ -345,7 +348,8 @@ impl Ui {
     }
 
     /// Timeline の文字を置き、文字の描画に渡す。文字の描画は最初に描くときに作る（OS のフォントを読み込む）。
-    fn prepare_text(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+    /// ドラッグ中のツールチップの矩形は文字を測って決まるので、ここで置いて返す（Timeline の座標）。
+    fn prepare_text(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> Vec<Quad> {
         let _span = tracing::info_span!("ui.text").entered();
         let t = self.layout.timeline;
         let state = self.paint_state();
@@ -354,7 +358,9 @@ impl Ui {
             .text
             .get_or_insert_with(|| TextLayer::new(device, queue, format, family));
         let vp = self.controller.viewport();
-        let mut labels = timeline_labels(&self.model, &vp, &state, &self.font, text.measure());
+        let (model, font) = (&self.model, &self.font);
+        let mut labels = timeline_labels(model, &vp, &state, font, text.measure());
+        let tip = drag_tooltip(model, &vp, &state, font, text.measure(), &mut labels);
         for l in &mut labels {
             l.x += t.x;
             l.y += t.y;
@@ -362,6 +368,7 @@ impl Ui {
         }
         let viewport = (self.size.0 as u32, self.size.1 as u32);
         text.prepare(device, queue, &labels, self.scale, viewport);
+        tip
     }
 }
 

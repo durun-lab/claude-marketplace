@@ -74,6 +74,8 @@ pub struct Item {
     /// コンポジションの時間軸での始まりと終わり（秒）。
     pub start: f64,
     pub end: f64,
+    /// レイヤーの全部のパラメータのキーフレームの時刻（コンポジションの秒）。スナップの目標にする。
+    pub keyframes: Vec<f64>,
     pub kind: ItemKind,
     pub enabled: bool,
     /// 帯に出す名前。空なら出さない。シーケンスのレイヤーはカットの名前を出す。
@@ -91,6 +93,7 @@ impl Item {
             id: Arc::default(),
             start,
             end,
+            keyframes: Vec::new(),
             kind,
             enabled,
             label: Arc::default(),
@@ -118,36 +121,8 @@ pub struct TimelineModel {
     pub duration: f64,
     pub fps: f64,
     pub items: Vec<Item>,
-}
-
-impl TimelineModel {
-    /// スナップの目標（0、終わり、各レイヤーとカットの端）。`skip` のレイヤーは除く。
-    pub fn snap_targets(&self, skip: Option<usize>) -> Vec<f64> {
-        self.targets_without(skip, None)
-    }
-
-    /// カット `(item, cut)` の端を動かすときのスナップの目標。そのカット自身の端は除く。
-    pub fn cut_snap_targets(&self, item: usize, cut: usize) -> Vec<f64> {
-        self.targets_without(None, Some((item, cut)))
-    }
-
-    fn targets_without(&self, skip: Option<usize>, skip_cut: Option<(usize, usize)>) -> Vec<f64> {
-        let mut out = vec![0.0, self.duration];
-        for (i, it) in self.items.iter().enumerate() {
-            if Some(i) != skip {
-                out.extend([it.start, it.end]);
-            }
-            if Some(i) == skip {
-                continue;
-            }
-            for (c, bar) in it.cuts.iter().enumerate() {
-                if Some((i, c)) != skip_cut {
-                    out.extend([bar.start, bar.end]);
-                }
-            }
-        }
-        out
-    }
+    /// コンポジションのマーカーの時刻（秒）。スナップの目標にする。
+    pub markers: Vec<f64>,
 }
 
 /// 帯の上の位置。
@@ -270,6 +245,7 @@ mod tests {
                 Item::layer(0.0, 10.0, ItemKind::Text, true),
                 Item::layer(2.0, 4.0, ItemKind::Footage, true),
             ],
+            ..TimelineModel::default()
         }
     }
 
@@ -348,6 +324,7 @@ mod tests {
             duration: 10.0,
             fps: 30.0,
             items,
+            ..TimelineModel::default()
         };
         let mut f = viewport(&m);
         f.scroll_y = 28.0 * 5.0;
@@ -369,6 +346,7 @@ mod tests {
             duration: 10.0,
             fps: 30.0,
             items,
+            ..TimelineModel::default()
         };
         let f = viewport(&m);
         let thumb = f.vp().thumb();
@@ -391,6 +369,7 @@ mod tests {
             duration: 10.0,
             fps: 30.0,
             items: vec![seq],
+            ..TimelineModel::default()
         }
     }
 
@@ -432,19 +411,5 @@ mod tests {
                 part: Part::InHandle
             }
         );
-    }
-
-    #[test]
-    fn カットの端のスナップの目標は他のカットの端を含み_自分の端を除く() {
-        let t = seq_model().cut_snap_targets(0, 0);
-        assert!(t.contains(&4.0) && t.contains(&3.0), "次のカットの端");
-        assert_eq!(t.iter().filter(|x| **x == 3.0).count(), 1, "自分の出は除く");
-    }
-
-    #[test]
-    fn スナップの目標は自分の端を除く() {
-        let t = model().snap_targets(Some(1));
-        assert!(t.contains(&0.0) && t.contains(&10.0));
-        assert!(!t.contains(&2.0) && !t.contains(&4.0));
     }
 }

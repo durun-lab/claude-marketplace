@@ -14,6 +14,7 @@ fn many(n: usize) -> TimelineModel {
         items: (0..n)
             .map(|_| Item::layer(0.0, 10.0, ItemKind::Image, true))
             .collect(),
+        ..TimelineModel::default()
     }
 }
 

@@ -12,6 +12,7 @@ fn model() -> TimelineModel {
             Item::layer(0.0, 10.0, ItemKind::Text, true),
             Item::layer(2.0, 4.0, ItemKind::Footage, true),
         ],
+        ..TimelineModel::default()
     }
 }
 
@@ -29,6 +30,7 @@ fn seq_model() -> TimelineModel {
         duration: 20.0,
         fps: 30.0,
         items: vec![seq, Item::layer(10.0, 14.0, ItemKind::Text, true)],
+        ..TimelineModel::default()
     }
 }
 
@@ -147,7 +149,7 @@ fn 取り消したドラッグは確定せず_見た目も戻す() {
     c.handle(PointerEvent::Move { x: 555.0, y }, &m, 0.0);
     assert!(c.handle(PointerEvent::Cancel, &m, 0.0).is_empty());
     let st = c.paint_state(0.0);
-    assert_eq!((st.preview, st.guide), (None, None));
+    assert_eq!((st.preview, st.snap, st.drag), (None, None, None));
     assert!(
         c.handle(PointerEvent::Up, &m, 0.0).is_empty(),
         "取り消した後に離しても操作にしない"

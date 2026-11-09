@@ -1,5 +1,6 @@
 //! `--play-test` の Timeline 編集の通し。実際のウィンドウへのキーとドラッグで、Source を開いてイン点・アウト点を付け、
-//! insert、端のドラッグ（ripple）、中のドラッグ（slip）、split、lift、取り消し、レイヤーの端のドラッグ（Esc での取り消しと trimLayer）を順に行い、そのたびに
+//! insert、端のドラッグ（ripple）、中のドラッグ（slip）、split、lift、取り消し、レイヤーの端のドラッグ（Esc での取り消しと trimLayer）、
+//! スナップ（再生位置とカットの端、N を押している間の反転）を順に行い、そのたびに
 //! プロジェクトのデータが期待どおり変わったかを確かめて、段ごとにスクリーンショットを残す。
 
 use std::sync::Arc;
@@ -25,6 +26,7 @@ const VK_O: u32 = 0x4F;
 const VK_B: u32 = 0x42;
 const VK_COMMA: u32 = 0xBC;
 const VK_DELETE: u32 = 0x2E;
+const VK_N: u32 = 0x4E;
 /// 入力を投げてから結果を見るまでの待ち。
 const SETTLE: Duration = Duration::from_millis(300);
 /// 結果が出るのを待つ上限。
@@ -40,6 +42,8 @@ const DRAG_SECS: f64 = 0.25;
 const TRIM_SECS: f64 = 1.5;
 /// 端のつまみの中心を掴むための x の内側へのずれ（論理ピクセル）。
 const HANDLE_INSET: f32 = 3.0;
+/// スナップの目標の右へ引く量（論理ピクセル）。吸い付く距離（8）の内側にし、吸い付かなければ端がずれて分かるようにする。
+const SNAP_NEAR: f32 = 4.0;
 
 /// 試験の対象。
 pub struct Env<'a> {
@@ -385,6 +389,64 @@ fn trim_step(env: &Env<'_>, log: &mut Log) {
     log.step("undo_trim", undone, json!({}));
 }
 
+/// レイヤー `id` の、コンポジションの時間軸での終わり（秒）。
+fn layer_end(shared: &Shared, id: &str) -> Option<f64> {
+    let doc = shared.doc()?;
+    let (_, layer) = doc.project.layer(&Id::new(id)).ok()?;
+    Some(layer.range().ok()?.end.to_f64())
+}
+
+/// 隙間でないカットのうち、いちばん後ろの終わり（秒）。
+fn last_cut_end(shared: &Shared) -> Option<f64> {
+    let doc = shared.doc()?;
+    let comp = doc.project.composition(&doc.comp).ok()?;
+    let model = timeline_model(&doc.project, comp);
+    let cuts = model.items.iter().flat_map(|it| it.cuts.iter());
+    cuts.filter(|c| !c.gap).map(|c| c.end).reduce(f64::max)
+}
+
+/// レイヤーのアウト点のつまみを再生位置の近くへ引いたまま撮り（スナップの表示とドラッグ中のツールチップ）、N を押している間は
+/// 吸い付きが外れることも撮る。続けてカットの端の近くへ引いて撮り、離してアウト点がその端に吸い付いたかを確かめる。
+fn snap_step(env: &Env<'_>, log: &mut Log) {
+    let (shared, hwnd) = (env.shared, env.surface_hwnd);
+    let found = geometry(shared, hwnd).and_then(|g| {
+        let target = trim_target(shared, &g.place)?;
+        Some((g, target, last_cut_end(shared)?))
+    });
+    let Some((g, (row, id, end), edge)) = found else {
+        log.step("snap_drag", false, json!("Timeline の位置を引けない"));
+        return;
+    };
+    let from = g.at(row, end, -HANDLE_INSET);
+    seek_main(shared, end - TRIM_SECS);
+    surface::post_press(hwnd, from, g.at(row, shared.playhead(), SNAP_NEAR));
+    shot(env, log, "10-snap-playhead");
+    surface::post_key(hwnd, VK_N);
+    shot(env, log, "11-snap-held-n");
+    surface::post_key_up(hwnd, VK_N);
+    surface::post_escape(hwnd);
+    surface::post_release(hwnd, from);
+    std::thread::sleep(SETTLE);
+    let to = g.at(row, edge, SNAP_NEAR);
+    surface::post_press(hwnd, from, to);
+    shot(env, log, "12-snap-clip-edge");
+    surface::post_release(hwnd, to);
+    let moved = wait_until(WAIT, || layer_end(shared, &id) != Some(end));
+    let after = layer_end(shared, &id);
+    let snapped = after.is_some_and(|e| (e - edge).abs() < 1e-6);
+    let kept = shared.view.snapping();
+    log.step(
+        "snap_drag",
+        moved && snapped && kept,
+        json!({ "layer": id, "edge": edge, "end_after": after, "snapping_kept": kept }),
+    );
+    if moved {
+        keys::dispatch(shared, "play-test", "Ctrl+KeyZ");
+        let undone = wait_until(WAIT, || layer_end(shared, &id) == Some(end));
+        log.step("undo_snap", undone, json!({}));
+    }
+}
+
 /// Timeline 編集の通しを行って結果を返す。シーケンスのレイヤーが無いプロジェクトではスキップする。
 pub fn run(env: &Env<'_>) -> Value {
     let mut log = Log::default();
@@ -402,5 +464,6 @@ pub fn run(env: &Env<'_>) -> Value {
         }
     }
     trim_step(env, &mut log);
+    snap_step(env, &mut log);
     log.into_json()
 }

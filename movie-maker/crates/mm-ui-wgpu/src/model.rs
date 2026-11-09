@@ -71,6 +71,7 @@ pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
             id: layer.id.as_str().into(),
             start: range.start.to_f64(),
             end: range.end.to_f64(),
+            keyframes: Vec::new(),
             kind: kind_of(layer),
             enabled: layer.enabled,
             label: names.label(&layer.source),
@@ -82,6 +83,7 @@ pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
         duration: comp.duration.to_f64(),
         fps: comp.fps.to_f64(),
         items,
+        markers: comp.markers.iter().map(|m| m.time.to_f64()).collect(),
     }
 }
 
@@ -160,6 +162,18 @@ mod tests {
         assert_eq!((m.items[0].start, m.items[0].end), (2.0, 7.0));
         assert_eq!(m.items[1].kind, ItemKind::Footage);
         assert_eq!((m.duration, m.fps), (10.0, 30.0));
+    }
+
+    #[test]
+    fn マーカーの時刻をスナップの目標に渡す() {
+        let mut c = comp();
+        c.markers = vec![mm_doc::Marker {
+            id: mm_types::Id::new("m1"),
+            time: RationalTime::new(5, 2).unwrap(),
+            duration: RationalTime::zero(),
+            name: "Chapter".into(),
+        }];
+        assert_eq!(timeline_model(&Project::new(), &c).markers, [2.5]);
     }
 
     #[test]

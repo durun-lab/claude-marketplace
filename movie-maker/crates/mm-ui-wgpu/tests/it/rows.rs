@@ -29,6 +29,7 @@ fn model(texts: usize) -> TimelineModel {
         duration: 10.0,
         fps: 30.0,
         items,
+        ..TimelineModel::default()
     }
 }
 
@@ -184,6 +185,7 @@ fn 戻した表示の状態はズームとスクロールと行の高さを当�
             all: Some(RowHeight::Small),
             ..RowHeights::default()
         },
+        snapping: false,
     };
     ui.restore_view(saved.clone());
     assert_eq!(ui.view_state(), None, "大きさが決まる前");

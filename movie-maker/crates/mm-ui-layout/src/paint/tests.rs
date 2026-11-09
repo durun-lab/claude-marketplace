@@ -13,6 +13,7 @@ fn model() -> TimelineModel {
         duration: 5.0,
         fps: 30.0,
         items: vec![Item::layer(1.0, 3.0, ItemKind::Footage, true)],
+        ..TimelineModel::default()
     }
 }
 
@@ -22,8 +23,9 @@ pub(crate) fn state(playhead: f64) -> PaintState {
         hover: Hit::Empty,
         selected: None,
         selected_cut: None,
-        guide: None,
+        snap: None,
         preview: None,
+        drag: None,
         palette: Palette::DEFAULT,
     }
 }
@@ -41,6 +43,7 @@ fn many(n: usize) -> TimelineModel {
         items: (0..n)
             .map(|_| Item::layer(0.0, 5.0, ItemKind::Image, true))
             .collect(),
+        ..TimelineModel::default()
     }
 }
 
@@ -142,6 +145,7 @@ fn seq_model() -> TimelineModel {
         duration: 5.0,
         fps: 30.0,
         items: vec![seq],
+        ..TimelineModel::default()
     }
 }
 
