@@ -41,7 +41,7 @@ pub fn extent(duration: f64, view: &TimeView, width: f32) -> (f64, f64) {
     (start.min(0.0), end.max(duration.max(0.0)))
 }
 
-/// 範囲 `extent` を溝 `track` に並べたときの、時刻 `t` の x。
+/// ズームバーが表す範囲 `extent` を溝 `track` に並べたときの、時刻 `t` の x。
 pub fn x_of(track: Rect, (lo, hi): (f64, f64), t: f64) -> f32 {
     let span = hi - lo;
     if span <= 0.0 {
@@ -94,8 +94,8 @@ pub fn page(view: &TimeView, width: f32, duration: f64, forward: bool) -> TimeVi
     }
 }
 
-/// スクロールボックスとその端のドラッグ。溝の 1 px あたりの秒は押したときの範囲で決め、ドラッグ中に範囲が変わっても
-/// ポインターと表示の動きの比を保つ。
+/// スクロールボックスとその端のドラッグ。溝の 1 px あたりの秒は押したときにズームバーが表した範囲で決め、ドラッグ中に
+/// その範囲が変わってもポインターと表示の動きの比を保つ。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct ZoomBarDrag {
     pub part: ZoomBarPart,
@@ -191,7 +191,7 @@ mod tests {
     }
 
     #[test]
-    fn 終わりより右まで見えていても範囲を広げてスクロールボックスを溝に収める() {
+    fn 終わりより右まで見えていてもズームバーが表す範囲を広げてスクロールボックスを溝に収める() {
         let past = TimeView {
             origin: 95.0,
             px_per_sec: 80.0,
@@ -235,7 +235,7 @@ mod tests {
     }
 
     #[test]
-    fn 溝を押すと押した側へ_1_画面ぶん送り_範囲の端で止まる() {
+    fn 溝を押すと押した側へ_1_画面ぶん送り_ズームバーが表す範囲の端で止まる() {
         let v = zoomed();
         assert_eq!(page(&v, WIDTH, 100.0, true).origin, 20.0);
         assert_eq!(page(&v, WIDTH, 100.0, false).origin, 0.0);
@@ -249,7 +249,7 @@ mod tests {
     }
 
     #[test]
-    fn 中のドラッグは倍率を保って動かし_範囲の外へは出さない() {
+    fn 中のドラッグは倍率を保って動かし_ズームバーが表す範囲の外へは出さない() {
         let d = drag(ZoomBarPart::Thumb, 120.0);
         assert_eq!(d.secs_per_px, 0.125, "100 秒を 800 px に");
         let moved = d.view_at(200.0, WIDTH, 2.0);
@@ -285,7 +285,7 @@ mod tests {
         let all = d.view_at(10_000.0, WIDTH, 2.0);
         assert!(
             (all.px_per_sec - 800.0 / 90.0).abs() < 1e-9,
-            "範囲の終わりまで"
+            "ズームバーが表す範囲の終わりまで"
         );
     }
 

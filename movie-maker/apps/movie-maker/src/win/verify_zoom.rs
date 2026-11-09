@@ -1,4 +1,4 @@
-//! `--play-test` の Timeline のズームと移動の通し。実際のウィンドウへのキーとドラッグで、キーの拡大縮小（JIS の配列の
+//! `--play-test` の Timeline のズームと移動の通し。実際のウィンドウへのキーとドラッグで、キーの拡大縮小（JIS のキー配列の
 //! Shift+- を含む）、全体表示の行き来（Shift+Z）、ズームバーのドラッグ、前後の帯の端と 1 秒の移動、キーの押し続け、
 //! 再生中のページ送りを順に行い、そのたびに表示の状態と再生位置が期待どおり変わったかを確かめて、段ごとにスクリーンショットを残す。
 
@@ -30,7 +30,7 @@ const VK_DOWN: u32 = 0x28;
 const VK_OEM_MINUS: u32 = 0xBD;
 /// 押し続けの繰り返しの WM_KEYDOWN の lParam（直前も押されていたことを示す 30 ビット目と、繰り返しの数 1）。
 const REPEAT_LPARAM: isize = (1 << 30) | 1;
-/// JIS の配列で ^ のキー（US の配列では '）。配列が JIS かを見分ける。
+/// JIS のキー配列で ^ のキー（US のキー配列では '）。キー配列が JIS かを見分ける。
 const VK_OEM_7: u32 = 0xDE;
 /// 入力を投げてから結果を見るまでの待ち。
 const SETTLE: Duration = Duration::from_millis(300);
@@ -40,7 +40,7 @@ const WAIT: Duration = Duration::from_secs(5);
 const PAGE_SPAN: f64 = 3.0;
 /// ページ送りを確かめるとき、右端のこの秒だけ手前から再生する。
 const PAGE_LEAD: f64 = 0.5;
-/// ズームバーのスクロールボックスを引く量と、端を引く量（論理ピクセル）。
+/// ズームバーのスクロールボックスをドラッグする量と、端をドラッグする量（論理ピクセル）。
 const THUMB_DRAG: f32 = 80.0;
 const EDGE_DRAG: f32 = 40.0;
 /// 端を掴むための、スクロールボックスの縁から内側へのずれ（論理ピクセル）。
@@ -58,7 +58,7 @@ pub struct Env<'a> {
     pub webview: Option<Webview>,
 }
 
-/// JIS の配列の Shift+-（押された文字は =、キーの位置は Minus）と、- の keydown を WebView に投げる。
+/// JIS のキー配列の Shift+-（押された文字は =、キーの位置は Minus）と、- の keydown を WebView に投げる。
 const WEBVIEW_JIS_EQUAL: &str = r#"window.dispatchEvent(new KeyboardEvent("keydown", { key: "=", code: "Minus", shiftKey: true }))"#;
 const WEBVIEW_MINUS: &str =
     r#"window.dispatchEvent(new KeyboardEvent("keydown", { key: "-", code: "Minus" }))"#;
@@ -162,13 +162,13 @@ fn zoom_keys_step(env: &Env<'_>, log: &mut Log, duration: f64) -> Option<TimeVie
     Some(after)
 }
 
-/// `-` のキーをサーフェスに投げて縮小し、JIS の配列の Shift+-（`=`）で拡大して戻す。記号のキーは今の配列で文字にする。
+/// `-` のキーをサーフェスに投げて縮小し、JIS のキー配列の Shift+-（`=`）で拡大して戻す。記号のキーは今のキー配列で文字にする。
 fn jis_keys_step(env: &Env<'_>, log: &mut Log, start: TimeView) {
     let shared = env.shared;
-    let layout = surface::layout_of(env.surface_hwnd);
-    let jis = surface::key_name_in(VK_OEM_7, (false, false, false), layout) == "^";
-    let minus = surface::key_name_in(VK_OEM_MINUS, (false, false, false), layout);
-    let shift_minus = surface::key_name_in(VK_OEM_MINUS, (false, true, false), layout);
+    let keyboard = surface::keyboard_layout(env.surface_hwnd);
+    let jis = surface::key_name_in(VK_OEM_7, (false, false, false), keyboard) == "^";
+    let minus = surface::key_name_in(VK_OEM_MINUS, (false, false, false), keyboard);
+    let shift_minus = surface::key_name_in(VK_OEM_MINUS, (false, true, false), keyboard);
     surface::post_key(env.surface_hwnd, VK_OEM_MINUS);
     let step = std::f64::consts::SQRT_2;
     let out = wait_view(shared, |v| close(v.px_per_sec * step, start.px_per_sec));
@@ -181,7 +181,7 @@ fn jis_keys_step(env: &Env<'_>, log: &mut Log, start: TimeView) {
         "symbol_keys",
         ok,
         json!({
-            "layout": format!("{:08X}", layout.0 as usize),
+            "keyboard_layout": format!("{:08X}", keyboard.0 as usize),
             "jis": jis,
             "minus": minus,
             "shift_minus": shift_minus,
@@ -191,7 +191,7 @@ fn jis_keys_step(env: &Env<'_>, log: &mut Log, start: TimeView) {
     );
 }
 
-/// WebView に JIS の配列の Shift+- と - の keydown を投げ、`transport.js` の `keyName` が記号を押された文字で引いて
+/// WebView に JIS のキー配列の Shift+- と - の keydown を投げ、`transport.js` の `keyName` が記号を押された文字の名前にして
 /// 拡大と縮小になるかを確かめる。
 fn webview_keys_step(env: &Env<'_>, log: &mut Log) {
     let shared = env.shared;
@@ -246,11 +246,15 @@ fn place(shared: &Shared, hwnd: isize) -> Option<Placement> {
     placement(shared, hwnd, &model(shared)?)
 }
 
-/// ズームバーのスクロールボックスを右へ引いて表示を動かし、右端を左へ引いて拡大する。
+/// ズームバーのスクロールボックスを右へドラッグして表示を動かし、右端を左へドラッグして拡大する。
 fn zoombar_step(env: &Env<'_>, log: &mut Log) {
     let (shared, hwnd) = (env.shared, env.surface_hwnd);
     let (Some(p), Some(before)) = (place(shared, hwnd), view(shared)) else {
-        log.step("zoombar_drag", false, json!("ズームバーの位置を引けない"));
+        log.step(
+            "zoombar_drag",
+            false,
+            json!("ズームバーの位置を求められない"),
+        );
         return;
     };
     let thumb = p.zoom_thumb();
@@ -398,7 +402,7 @@ fn zoom_until_short(shared: &Arc<Shared>, width: f32) -> Option<TimeView> {
 fn page_scroll_step(env: &Env<'_>, log: &mut Log) {
     let shared = env.shared;
     let Some(width) = row_width(shared, env.surface_hwnd) else {
-        log.step("page_scroll", false, json!("行の領域の幅を引けない"));
+        log.step("page_scroll", false, json!("行の領域の幅を求められない"));
         return;
     };
     let Some(v) = zoom_until_short(shared, width) else {

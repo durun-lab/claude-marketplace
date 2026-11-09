@@ -1,7 +1,7 @@
 //! キーの表。キーの名前からコマンドの ID を引き、中身の実行は UI のコマンドの表（`commands.rs`）に任せる。
 //! サーフェスと WebView のどちらから来たキーも同じ関数に入れる。
 //! キーの名前は、英字、数字、矢印、Space などは `KeyboardEvent.code` の名前（`KeyZ`）、記号は押された文字（`=`）で、
-//! JIS と US の配列で記号のキーの位置が違っても同じ名前になる。WebView の側は `web/transport.js` の `keyName` が同じ決まりで作る。
+//! JIS と US のキー配列で記号のキーの位置が違っても同じ名前になる。WebView の側は `web/transport.js` の `keyName` が同じ決まりで作る。
 
 use std::sync::Arc;
 
@@ -54,8 +54,8 @@ const REPEATS: &[&str] = &[
     "timeline.zoom_out",
 ];
 
-/// 名前で引くキー（英字、数字、矢印、Space など）の仮想キーコードの名前。WebView の `KeyboardEvent.code` と同じ名前にする。
-/// 記号のキーは配列でキーの位置が違うので `None` にし、押された文字で引く（[`symbol_name`]）。
+/// code の名前のキー（英字、数字、矢印、Space など）の仮想キーコードの名前。WebView の `KeyboardEvent.code` と同じ名前にする。
+/// 記号のキーはキー配列でキーの位置が違うので `None` にし、押された文字を名前にする（[`symbol_name`]）。
 pub fn vk_name(vk: u32) -> Option<String> {
     let name = match vk {
         0x41..=0x5A => return Some(format!("Key{}", char::from_u32(vk)?)),
@@ -81,7 +81,7 @@ pub fn vk_name(vk: u32) -> Option<String> {
     Some(name.to_owned())
 }
 
-/// 記号のキーの名前。押された文字（今の配列で、Shift だけを押した状態で引いたもの）か、文字にならなければ仮想キーの番号。
+/// 記号のキーの名前。押された文字（今のキー配列で、Shift だけを押した状態で文字にしたもの）か、文字にならなければ仮想キーの番号。
 pub fn symbol_name(vk: u32, typed: Option<char>) -> String {
     match typed {
         Some(c) => c.to_string(),
@@ -89,8 +89,8 @@ pub fn symbol_name(vk: u32, typed: Option<char>) -> String {
     }
 }
 
-/// 修飾キーをキー名の前に Ctrl、Shift、Alt の順に付ける。Shift は英字、数字、矢印には付け、記号には付けない
-/// （押された文字に Shift が入っている。JIS の配列の `=` は Shift+- で押すが、名前は `=`）。Space などほかの名前のキーは
+/// 修飾キーをキーの名前の前に Ctrl、Shift、Alt の順に付ける。Shift は英字、数字、矢印には付け、記号には付けない
+/// （押された文字に Shift が入っている。JIS のキー配列の `=` は Shift+- で押すが、名前は `=`）。Space などほかの名前のキーは
 /// Ctrl と一緒のときだけ付ける（Shift を押しながらの Space は Space のまま）。
 pub fn with_modifiers(name: &str, ctrl: bool, shift: bool, alt: bool) -> String {
     let mut out = String::new();
@@ -193,7 +193,7 @@ mod tests {
     use std::sync::mpsc::channel;
 
     #[test]
-    fn 英字と数字と矢印は_code_の名前にし_記号のキーは押された文字で引く() {
+    fn 英字と数字と矢印は_code_の名前にし_記号のキーは押された文字を名前にする() {
         assert_eq!(vk_name(0x4A).as_deref(), Some("KeyJ"));
         assert_eq!(vk_name(0x31).as_deref(), Some("Digit1"));
         assert_eq!(vk_name(0x20).as_deref(), Some("Space"));
@@ -201,7 +201,7 @@ mod tests {
         assert_eq!(vk_name(0x26).as_deref(), Some("ArrowUp"));
         assert_eq!(vk_name(0x28).as_deref(), Some("ArrowDown"));
         assert_eq!(vk_name(0x71).as_deref(), Some("F2"));
-        assert_eq!(vk_name(0xBD), None, "VK_OEM_MINUS は配列で文字が違う");
+        assert_eq!(vk_name(0xBD), None, "VK_OEM_MINUS はキー配列で文字が違う");
         assert_eq!(vk_name(0xBC), None, "VK_OEM_COMMA も記号");
         assert_eq!(symbol_name(0xBD, Some('=')), "=");
         assert_eq!(symbol_name(0xBA, None), "VkBA", "文字にならない記号のキー");
@@ -209,8 +209,8 @@ mod tests {
 
     #[test]
     fn 記号は押された文字の名前で_shift_を付けず_jis_の_shift_マイナスはズームイン() {
-        // JIS の配列の VK_OEM_MINUS（0xBD）は - と、Shift で =。VK_OEM_PLUS（0xBB）は ; と、Shift で +。
-        // US の配列の VK_OEM_PLUS は = と、Shift で +。
+        // JIS のキー配列の VK_OEM_MINUS（0xBD）は - と、Shift で =。VK_OEM_PLUS（0xBB）は ; と、Shift で +。
+        // US のキー配列の VK_OEM_PLUS は = と、Shift で +。
         let name = |vk, typed, ctrl, shift| {
             with_modifiers(&symbol_name(vk, Some(typed)), ctrl, shift, false)
         };

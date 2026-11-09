@@ -48,8 +48,8 @@ fn seek(target: Option<f64>) -> Vec<Action> {
 }
 
 /// Previous Edit（`forward` が false）と Next Edit の移動先。再生位置の前か後ろの、いちばん近い帯の端（レイヤーとカットの
-/// 始まりと終わり）か 0 か終わりを、フレームの境目に丸め、最後のフレームの始まりまでに収める。再生位置から半フレームより
-/// 近い端は今いる所として飛ばし、端に止まった再生位置から同じ端へ戻らない。無ければ `None`。
+/// 始まりと終わり）か 0 か終わりを、いちばん近いフレームの先頭にそろえ、最後のフレームの始まりまでに収める。
+/// 再生位置から半フレームより近い端は今いる所として数えず、端に止まった再生位置から同じ端へ戻らない。無ければ `None`。
 pub fn edit_target(model: &TimelineModel, playhead: f64, forward: bool) -> Option<f64> {
     let frame = if model.fps > 0.0 {
         1.0 / model.fps

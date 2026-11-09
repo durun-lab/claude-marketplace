@@ -42,7 +42,7 @@ const INPUT_LIMIT: usize = 512;
 const BASE_DPI: f32 = 96.0;
 /// キーの状態の配列で、押しているキーを示す上位ビット。
 const KEY_PRESSED: u8 = 0x80;
-/// `ToUnicodeEx` の flags の、キーボードの状態（デッドキーの途中など）を変えずに引く指定（Windows 10 1607 から）。
+/// `ToUnicodeEx` の flags の、キーボードの状態（デッドキーの途中など）を変えずに文字にする指定（Windows 10 1607 から）。
 const KEEP_KEYBOARD_STATE: u32 = 0x4;
 
 static SHARED: OnceLock<Arc<Shared>> = OnceLock::new();
@@ -90,7 +90,7 @@ pub fn create(parent: isize, shared: Arc<Shared>, rect: PixelRect) -> windows::c
     }
 }
 
-/// HWND から IME を外す。日本語の IME が付いていると英字のキーが `VK_PROCESSKEY` で届いてキーの表に当たらないので、
+/// HWND から IME を外す。日本語の IME が付いていると英字のキーが `VK_PROCESSKEY` で届いてキーの表に無い名前になるので、
 /// 文字を打たないサーフェスでは IME を使わない。
 fn detach_ime(hwnd: HWND) {
     // IME の無い環境では失敗するが、そのときはキーがそのまま届くので、結果は破棄する。
@@ -165,7 +165,7 @@ fn pointer_mods() -> Mods {
     }
 }
 
-/// いま押している修飾キーを前に付けたキー名。記号のキーはこのスレッドの今の配列で文字にする。
+/// いま押している修飾キーを前に付けたキーの名前。記号のキーはこのスレッドの今のキー配列で文字にする。
 fn key_name(vk: u32) -> String {
     let mods = (
         key_down(VK_CONTROL.0),
@@ -175,30 +175,30 @@ fn key_name(vk: u32) -> String {
     key_name_in(vk, mods, unsafe { GetKeyboardLayout(0) })
 }
 
-/// 修飾キー（Ctrl、Shift、Alt）を前に付けたキー名。名前で引くキーは仮想キーの名前、記号のキーは配列 `layout` で押された文字。
-pub fn key_name_in(vk: u32, (ctrl, shift, alt): (bool, bool, bool), layout: HKL) -> String {
+/// 修飾キー（Ctrl、Shift、Alt）を前に付けたキーの名前。code の名前のキーは仮想キーの名前、記号のキーはキー配列 `keyboard` で押された文字。
+pub fn key_name_in(vk: u32, (ctrl, shift, alt): (bool, bool, bool), keyboard: HKL) -> String {
     let name =
-        keys::vk_name(vk).unwrap_or_else(|| keys::symbol_name(vk, typed_char(vk, shift, layout)));
+        keys::vk_name(vk).unwrap_or_else(|| keys::symbol_name(vk, typed_char(vk, shift, keyboard)));
     keys::with_modifiers(&name, ctrl, shift, alt)
 }
 
-/// サーフェスの HWND の UI スレッドの、今のキーボードの配列。
-pub fn layout_of(hwnd: isize) -> HKL {
+/// サーフェスの HWND の UI スレッドの、今のキー配列。
+pub fn keyboard_layout(hwnd: isize) -> HKL {
     unsafe {
         let thread = GetWindowThreadProcessId(HWND(hwnd as *mut _), None);
         GetKeyboardLayout(thread)
     }
 }
 
-/// 記号のキーを配列 `layout` で押したときの文字。Shift だけを押した状態で引く（Ctrl を含めると制御文字になる）。
+/// 記号のキーをキー配列 `keyboard` で押したときの文字。Shift だけを押した状態で文字にする（Ctrl を含めると制御文字になる）。
 /// デッドキーと、文字にならないキーは `None`。
-fn typed_char(vk: u32, shift: bool, layout: HKL) -> Option<char> {
+fn typed_char(vk: u32, shift: bool, keyboard: HKL) -> Option<char> {
     let mut state = [0u8; 256];
     if shift {
         state[usize::from(VK_SHIFT.0)] = KEY_PRESSED;
     }
     let mut buf = [0u16; 4];
-    let n = unsafe { ToUnicodeEx(vk, 0, &state, &mut buf, KEEP_KEYBOARD_STATE, Some(layout)) };
+    let n = unsafe { ToUnicodeEx(vk, 0, &state, &mut buf, KEEP_KEYBOARD_STATE, Some(keyboard)) };
     let c = (n == 1)
         .then(|| char::from_u32(u32::from(buf[0])))
         .flatten()?;
@@ -414,13 +414,13 @@ mod tests {
         assert!(!passes_to_system(0x4B), "Alt+K はキーの表へ");
     }
 
-    /// このスレッドの今の配列で引いたキーの名前。
+    /// このスレッドの今のキー配列で作ったキーの名前。
     fn name(vk: u32, ctrl: bool, shift: bool) -> String {
         key_name_in(vk, (ctrl, shift, false), unsafe { GetKeyboardLayout(0) })
     }
 
     #[test]
-    fn 英字と矢印は配列に依らず_shift_付きの名前_記号は今の配列で押された文字() {
+    fn 英字と矢印はキー配列に依らず_shift_付きの名前_記号は今のキー配列で押された文字() {
         assert_eq!(name(0x5A, false, true), "Shift+KeyZ");
         assert_eq!(name(0x25, false, true), "Shift+ArrowLeft");
         assert_eq!(
@@ -431,7 +431,7 @@ mod tests {
         assert_eq!(name(0xBD, true, false), "Ctrl+-");
         assert_eq!(name(0xBC, false, false), ",");
         assert_eq!(name(0xBE, false, false), ".");
-        // JIS の配列（VK_OEM_7 が ^ のキー）の Shift+- は = で、Ctrl+Shift+- も Ctrl+= になる。
+        // JIS のキー配列（VK_OEM_7 が ^ のキー）の Shift+- は = で、Ctrl+Shift+- も Ctrl+= になる。
         if name(0xDE, false, false) == "^" {
             assert_eq!(name(0xBD, false, true), "=");
             assert_eq!(name(0xBD, true, true), "Ctrl+=");

@@ -215,7 +215,7 @@ fn ドラッグの間は送らず_離した後の移動から送る() {
 }
 
 #[test]
-fn 前後の帯の端は_0_とカットとレイヤーの端と終わりで_今いる端は飛ばす() {
+fn 前後の帯の端は_0_とカットとレイヤーの端と終わりで_今いる端は数えない() {
     let m = edits();
     let next = |t| edit_target(&m, t, true);
     let previous = |t| edit_target(&m, t, false);

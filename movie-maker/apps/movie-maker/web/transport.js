@@ -19,7 +19,7 @@
   const EDIT_KEYS = new Set([
     "KeyI", "KeyO", ",", ".", "KeyB", "Delete", "Backspace", "Ctrl+KeyZ", "Ctrl+KeyY", "Ctrl+Shift+KeyZ",
   ]);
-  // 名前で引くキーのうち、Shift を名前に付けるもの（英字、数字、矢印）。keys.rs の with_modifiers と同じ。
+  // code の名前のキーのうち、Shift を名前に付けるもの（英字、数字、矢印）。keys.rs の with_modifiers と同じ。
   const SHIFT_NAMED = /^(Key[A-Z]|Digit[0-9]|Arrow(Up|Down|Left|Right))$/;
   // Program と Source の -1 と +1 で共通の title。矢印のキーは、Source をクリックした後は Source の再生に向く（keys.rs の dispatch）。
   const STEP_BACK = "Step One Frame Back (←)";
@@ -89,8 +89,8 @@
   const srcAct = (action, value) => invoke("source_transport", { action, value: value ?? null });
   const edit = (action) => invoke("edit_action", { action });
   const openSource = (asset) => invoke("source_open", { asset });
-  // キーの表（keys.rs）の名前。英字、数字、矢印、Space などは code の名前（KeyZ）、記号は押された文字（key の 1 字）で引き、
-  // JIS と US の配列で記号のキーの位置が違っても同じ名前にする。Shift は英字、数字、矢印に付け、記号には付けない
+  // キーの表（keys.rs）の名前。英字、数字、矢印、Space などは code の名前（KeyZ）、記号は押された文字（key の 1 字）を名前にし、
+  // JIS と US のキー配列で記号のキーの位置が違っても同じ名前にする。Shift は英字、数字、矢印に付け、記号には付けない
   // （押された文字に入っている）。Space などほかの名前のキーは Ctrl と一緒のときだけ付ける。
   const keyName = (e) => {
     const symbol = e.key.length === 1 && !SHIFT_NAMED.test(e.code) && e.code !== "Space";

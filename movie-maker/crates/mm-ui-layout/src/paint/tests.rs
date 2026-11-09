@@ -111,16 +111,18 @@ fn ズームバーは見えている範囲のスクロールボックスと再�
         .find(|q| q.color == palette::PLAYHEAD)
         .expect("見えている範囲の外の再生位置");
     assert!((line.rect.x + line.rect.w / 2.0 - at(0.8)).abs() < 1e-3);
-    let lit = PaintState {
+    let hovered = PaintState {
         hover: Hit::ZoomBar {
             part: ZoomBarPart::EndEdge,
         },
         ..state(4.0)
     };
-    let quads = timeline_quads(&m, &f.vp(), &lit);
+    let quads = timeline_quads(&m, &f.vp(), &hovered);
     let bright = quads.iter().filter(in_bar);
     assert_eq!(
-        bright.filter(|q| q.color == lit.palette.selection).count(),
+        bright
+            .filter(|q| q.color == hovered.palette.selection)
+            .count(),
         1
     );
 }
