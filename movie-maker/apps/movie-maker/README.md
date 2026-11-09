@@ -41,7 +41,7 @@ dx serve --hot-patch --platform desktop -p movie-maker --features hotpatch \
   | `mm-ops`（`mm-pack`、`mm-store`、`mm-serve` も作り直す） | 31.4 秒 | 8.8 秒 |
 - 差し替わるのは `hotpatch::call`（`src/win/hotpatch.rs`）の中で呼ぶ関数だけ。呼び出し箇所は次の所に置いてある。
   - 操作の適用: `edit::submit_based`（WebView、キー、ドラッグの編集）と、JSON のプロジェクトの再生スレッドの `apply_edits`。ここから呼ぶ `mm-ops`、`mm-store`、`mm-serve` の関数が差し替わる。
-  - 共通の IPC のハンドラー: `ipc.rs` の `sync_ack`、`transport`、`project_info`、`key_event`。パネルの IPC のハンドラー（`*_ipc.rs`）は、各パネルの担当が本体を `hotpatch::call` で囲むと差し替わる。
+  - 共通の IPC のハンドラー: `ipc.rs` の `sync_ack`、`transport`、`project_info`、`key_event`、`command_table`、`run_command`。パネルの IPC のハンドラー（`*_ipc.rs`）は、各パネルの担当が本体を `hotpatch::call` で囲むと差し替わる。
 - 構造体の形やトレイトを変える変更は差し替えられない（subsecond の制約）。そのときは dx を止めて起動し直す。
 - 差し替わるのは `dx` で起動したワークスペースのメンバーだけ。外のクレートの変更は起動し直す。
 - `dx` 0.7.10 は、変えたクレートに依存するワークスペースのメンバーを、アプリが依存しないもの（`apps/mm` など）まで作り直そうとし、`Missing rustc args for replay: 'mm'` で失敗する。`mm-ops` のように `apps/mm` も使うクレートを差し替えるときは、ルートの `Cargo.toml` の `[workspace]` に `exclude = ["apps/mm"]` を一時的に足してから `dx` を起動する（コミットしない）。上流への報告の文案は[試作](../../docs/design/spikes/subsecond.md#上流への報告の文案)にある。

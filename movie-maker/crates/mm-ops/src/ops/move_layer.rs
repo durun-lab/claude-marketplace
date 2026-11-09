@@ -30,7 +30,7 @@ impl Apply for MoveLayer {
         let comp = project.composition_mut(&comp_id)?;
         if self.index >= comp.layers.len() {
             return Err(invalid(format!(
-                "レイヤーの位置 {} が {} 以上",
+                "Layer index {} must be less than the layer count ({})",
                 self.index,
                 comp.layers.len()
             )));

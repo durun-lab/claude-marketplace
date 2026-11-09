@@ -32,7 +32,7 @@ impl Apply for AddMask {
         let index = self.index.unwrap_or(layer.masks.len());
         if index > layer.masks.len() {
             return Err(invalid(format!(
-                "マスクの位置 {index} がレイヤー {} のマスクの数 {} を超える",
+                "Mask index {index} exceeds the mask count of layer {} ({})",
                 self.layer,
                 layer.masks.len()
             )));

@@ -35,14 +35,14 @@ impl Apply for AddRenderTarget {
     fn apply(&self, project: &mut Project) -> Result<Op> {
         if project.render_target(&self.target.id).is_ok() {
             return Err(invalid(format!(
-                "レンダーターゲット {} は既に在る",
+                "Render target {} already exists",
                 self.target.id
             )));
         }
         let index = self.index.unwrap_or(project.render_targets.len());
         if index > project.render_targets.len() {
             return Err(invalid(format!(
-                "レンダーターゲットの位置 {index} が {} を超える",
+                "Render target index {index} exceeds the render target count ({})",
                 project.render_targets.len()
             )));
         }

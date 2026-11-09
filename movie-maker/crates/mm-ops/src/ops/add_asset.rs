@@ -25,12 +25,12 @@ impl Apply for AddAsset {
 
     fn apply(&self, project: &mut Project) -> Result<Op> {
         if project.asset(&self.asset.id).is_ok() {
-            return Err(invalid(format!("素材 {} は既に在る", self.asset.id)));
+            return Err(invalid(format!("Asset {} already exists", self.asset.id)));
         }
         let index = self.index.unwrap_or(project.assets.len());
         if index > project.assets.len() {
             return Err(invalid(format!(
-                "素材の位置 {index} が {} を超える",
+                "Asset index {index} exceeds the asset count ({})",
                 project.assets.len()
             )));
         }

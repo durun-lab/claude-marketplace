@@ -33,7 +33,7 @@ impl Apply for AddComposition {
     fn apply(&self, project: &mut Project) -> Result<Op> {
         if project.composition(&self.composition.id).is_ok() {
             return Err(invalid(format!(
-                "コンポジション {} は既に在る",
+                "Composition {} already exists",
                 self.composition.id
             )));
         }

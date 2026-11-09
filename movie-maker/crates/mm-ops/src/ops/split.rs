@@ -34,7 +34,7 @@ impl Apply for Split {
 
     fn apply(&self, project: &mut Project) -> Result<Op> {
         if project.cut(&self.new_cut).is_ok() {
-            return Err(invalid(format!("カット {} は既に在る", self.new_cut)));
+            return Err(invalid(format!("Clip {} already exists", self.new_cut)));
         }
         let (seq_id, index) = project.cut_index(&self.cut)?;
         let seq = project.sequence_mut(&seq_id)?;
@@ -42,7 +42,7 @@ impl Apply for Split {
         let duration = first.duration()?;
         if self.at <= RationalTime::ZERO || self.at >= duration {
             return Err(invalid(format!(
-                "割る位置 {} がカット {} の中（0 < at < {duration}）に無い",
+                "Split point {} must be inside clip {} (0 < at < {duration})",
                 self.at, self.cut
             )));
         }

@@ -56,7 +56,7 @@ impl HistoryMirror {
 
     /// 取り消し（`undo` が偽ならやり直し）の結果の文言。`done` は Store が返した結果。
     /// `before` は戻す前に [`Self::next`] で見た発行元と名前。開く前の履歴で `None` のときは、Store が返す元のトランザクション
-    /// （`Change::of`）を使う。取り消しの記録の名前（`Change::name`）は操作の層が付けた接頭辞を含むので、文言に出さない。
+    /// （`Change::of`）を使う。取り消しの記録の発行元（`Change::actor`）は戻した側なので、元の発行元と名前は `Change::of` から取る。
     pub fn message(
         undo: bool,
         done: Result<Option<Change>, String>,
@@ -119,12 +119,12 @@ mod tests {
         h.record(&change("apply", "gui", "WebView の操作"));
         h.record(&change("apply", "mcp", "extract k2"));
         let before = h.next(true);
-        let done = Ok(Some(change("undo", "gui", "取り消し: extract k2")));
+        let done = Ok(Some(change("undo", "gui", "extract k2")));
         assert_eq!(
             HistoryMirror::message(true, done, before),
             "Undo: extract k2 (mcp)"
         );
-        h.record(&change("undo", "gui", "取り消し: extract k2"));
+        h.record(&change("undo", "gui", "extract k2"));
         assert_eq!(h.next(true), Some(("gui".into(), "WebView の操作".into())));
         assert_eq!(h.next(false), Some(("mcp".into(), "extract k2".into())));
     }
@@ -142,8 +142,8 @@ mod tests {
     }
 
     #[test]
-    fn 開く前の履歴は_store_が返す元のトランザクションを出し_接頭辞の付いた記録の名前は出さない() {
-        let mut done = change("undo", "gui", "取り消し: 前の起動の操作");
+    fn 開く前の履歴は_store_が返す元のトランザクションの名前と発行元を出す() {
+        let mut done = change("undo", "gui", "前の起動の操作");
         done.of = Some(mm_serve::ChangeOf {
             txn_id: 1,
             name: "前の起動の操作".into(),
@@ -154,7 +154,7 @@ mod tests {
             HistoryMirror::message(true, Ok(Some(done)), None),
             "Undo: 前の起動の操作 (mcp)"
         );
-        let redone = change("redo", "gui", "やり直し: a");
+        let redone = change("redo", "gui", "a");
         assert_eq!(
             HistoryMirror::message(false, Ok(Some(redone)), None),
             "Redo"
@@ -167,7 +167,7 @@ mod tests {
         let a = change("apply", "cli", "a");
         h.record(&a);
         h.record(&a);
-        let undone = change("undo", "gui", "取り消し: a");
+        let undone = change("undo", "gui", "a");
         h.record(&undone);
         h.record(&undone);
         assert_eq!((h.next(true), h.next(false).is_some()), (None, true));
@@ -177,7 +177,7 @@ mod tests {
     fn 新しい操作はやり直しのスタックを捨てる() {
         let h = HistoryMirror::default();
         h.record(&change("apply", "gui", "a"));
-        h.record(&change("undo", "gui", "取り消し: a"));
+        h.record(&change("undo", "gui", "a"));
         h.record(&change("apply", "cli", "b"));
         assert_eq!(h.next(false), None);
     }

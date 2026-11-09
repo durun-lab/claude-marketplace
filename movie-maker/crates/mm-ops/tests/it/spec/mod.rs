@@ -6,6 +6,7 @@
 mod bins;
 mod build;
 mod doc;
+mod layer_time;
 mod mask;
 mod mixer;
 mod params;
@@ -31,16 +32,20 @@ pub enum Spec {
     Mix(mixer::MixSpec),
     /// レイヤーのマスク。
     Mask(mask::MaskSpec),
+    /// レイヤーの時間と有効。
+    Time(layer_time::TimeSpec),
 }
 
 pub fn arb_spec() -> impl Strategy<Value = Spec> {
     prop_oneof![
-        3 => doc::arb().prop_map(Spec::Doc),
-        2 => seq::arb().prop_map(Spec::Seq),
-        3 => bins::arb_bin_spec().prop_map(Spec::Bin),
-        1 => shorts::arb_short_spec().prop_map(Spec::Short),
-        1 => mixer::arb().prop_map(Spec::Mix),
-        1 => mask::arb().prop_map(Spec::Mask),
+        6 => doc::arb().prop_map(Spec::Doc),
+        4 => seq::arb().prop_map(Spec::Seq),
+        6 => bins::arb_bin_spec().prop_map(Spec::Bin),
+        2 => shorts::arb_short_spec().prop_map(Spec::Short),
+        2 => mixer::arb().prop_map(Spec::Mix),
+        2 => mask::arb().prop_map(Spec::Mask),
+        // 操作が 2 つだけの組で、入れ子のレイヤーを動かすと unprecompose が通らなくなるので軽くする。
+        1 => layer_time::arb().prop_map(Spec::Time),
     ]
 }
 
@@ -53,5 +58,6 @@ pub fn materialize(spec: &Spec, p: &Project) -> Option<Op> {
         Spec::Short(s) => shorts::short_op(s, p),
         Spec::Mix(s) => mixer::op(s, p),
         Spec::Mask(s) => mask::op(s, p),
+        Spec::Time(s) => layer_time::op(s, p),
     }
 }

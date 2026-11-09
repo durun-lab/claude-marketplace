@@ -2,7 +2,7 @@
 
 | 用語 | 定義 | 識別子 |
 |---|---|---|
-| コマンドの表（UI の） | 画面の操作の一覧。ID、英語の名前、キー、説明、メニューの場所、持ち主（Rust か WebView のパネル）、押せるかを持つ。メニュー、ツールチップ、Keyboard Shortcuts のウィンドウ、ステータスバー、Tasks が同じ表を読む。データの変更は操作（`Op`）のまま | `commands.rs`、`run_command` |
+| コマンドの表（UI の） | 画面の操作の一覧。ID、英語の名前、キー、説明、メニューの場所、持ち主（Rust か WebView のパネル）、押せるかを持つ。メニュー、ツールチップ、Keyboard Shortcuts のウィンドウ、ステータスバー、Tasks が同じ表を読む。データの変更は操作（`Op`）のまま | `commands.rs`、`command_table`、`run_command`、`mm:commands-changed` |
 | 割り付け（ウィンドウの） | ウィンドウをサーフェスと WebView の矩形に分けたもの | `split_rects`、`win/layout.rs` |
 | 仕切り | 割り付けの境界（サーフェスと WebView の境界、Program と Timeline の境界）。ドラッグで動かす | `win/layout.rs` |
 | Diagnostics | 開発の情報（GPU、実装、通知の遅れ、時計、レイヤーの生の一覧）を出すパネル | `ui/panels/diagnostics` |

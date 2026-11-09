@@ -14,6 +14,7 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter, State};
 use tracing::Span;
 
+use crate::win::commands::{self, CommandView, COMMANDS_CHANGED_EVENT};
 use crate::win::hotpatch;
 use crate::win::keys;
 use crate::win::playback::Command;
@@ -27,6 +28,8 @@ pub fn handler(invoke: tauri::ipc::Invoke) -> bool {
         transport,
         project_info,
         key_event,
+        command_table,
+        run_command,
         crate::win::edit::apply_op,
         crate::win::edit::apply_ops,
     ];
@@ -192,6 +195,7 @@ pub fn spawn(app: AppHandle, state: Arc<SyncState>) {
             let mut last: (f64, bool, Instant) = (f64::NAN, false, Instant::now());
             let mut sent_selection = (0, 0);
             let mut sent_source = None;
+            let mut sent_commands = None;
             let mut meters_playing = false;
             while !state.shared.quit.load(Ordering::SeqCst) {
                 deadline += TICK;
@@ -203,6 +207,9 @@ pub fn spawn(app: AppHandle, state: Arc<SyncState>) {
                 }
                 emit_selection_if_changed(&app, &state.shared, &mut sent_selection);
                 crate::win::source_ipc::emit_if_changed(&app, &state.shared, &mut sent_source);
+                if let Some(table) = commands::changed(&state.shared, &mut sent_commands) {
+                    let _ = app.emit(COMMANDS_CHANGED_EVENT, table);
+                }
                 let t = state.shared.playhead();
                 crate::win::mixer_ipc::emit_meters(&app, &state.shared, t, &mut meters_playing);
                 let playing = state.shared.playing.load(Ordering::SeqCst);
@@ -355,4 +362,16 @@ pub async fn key_event(
 ) -> Result<(), String> {
     hotpatch::call(|| keys::dispatch(&state.shared, &source, &key));
     Ok(())
+}
+
+/// UI のコマンドの表と、今押せるか。押せるかが変わると同じ形の表を `mm:commands-changed` で送る。
+#[tauri::command]
+pub async fn command_table(state: State<'_, Arc<SyncState>>) -> Result<Vec<CommandView>, String> {
+    hotpatch::call(|| Ok(commands::table(&state.shared)))
+}
+
+/// 表のコマンドを ID で実行する。Tasks の項目のうち、アプリが持ち主のものが呼ぶ。今押せないコマンドは拒否する。
+#[tauri::command]
+pub async fn run_command(state: State<'_, Arc<SyncState>>, id: String) -> Result<(), String> {
+    hotpatch::call(|| commands::run(&state.shared, &id))
 }

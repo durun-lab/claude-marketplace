@@ -152,6 +152,24 @@ fn features(p: &Project) -> Vec<&'static str> {
         .collect()
 }
 
+/// 生成器が少なくとも 1 回はプロジェクトのデータに出す参照と付属（[`features`] の名前）。
+const WANTED_FEATURES: [&str; 14] = [
+    "入れ子",
+    "sequence のノードの種類",
+    "効果",
+    "マスク",
+    "音",
+    "タイムリマップ",
+    "トランジション",
+    "カットの origin",
+    "カットの上書き",
+    "複製の元の値",
+    "再フレーミング",
+    "親",
+    "トラックマット",
+    "接続",
+];
+
 #[test]
 fn 生成器は全部の操作と参照の種類を通す() {
     // 空回りしていないことを守る。どの操作も、各種の参照や付属も、少なくとも 1 回はプロジェクトのデータに出る。
@@ -163,6 +181,13 @@ fn 生成器は全部の操作と参照の種類を通す() {
     let mut precompose_elsewhere = false;
     let human = OpContext::human();
     for _ in 0..20000 {
+        // 上限まで回すと数秒かかるので、全部が通った所で打ち切る。
+        if precompose_elsewhere
+            && hit.len() == Op::NAMES.len()
+            && WANTED_FEATURES.iter().all(|f| seen.contains(f))
+        {
+            break;
+        }
         let p = arb_project().new_tree(&mut runner).unwrap().current();
         seen.extend(features(&p));
         let spec = arb_spec().new_tree(&mut runner).unwrap().current();
@@ -183,22 +208,7 @@ fn 生成器は全部の操作と参照の種類を通す() {
         precompose_elsewhere,
         "最初でないコンポジションの precompose が適用できない"
     );
-    for want in [
-        "入れ子",
-        "sequence のノードの種類",
-        "効果",
-        "マスク",
-        "音",
-        "タイムリマップ",
-        "トランジション",
-        "カットの origin",
-        "カットの上書き",
-        "複製の元の値",
-        "再フレーミング",
-        "親",
-        "トラックマット",
-        "接続",
-    ] {
+    for want in WANTED_FEATURES {
         assert!(
             seen.contains(want),
             "プロジェクトのデータに出ない: {want}（出た: {seen:?}）"

@@ -71,14 +71,18 @@
   cursor: pointer;
 }
 
-.mm-tasks-link:hover:not(:disabled) {
+.mm-tasks-link:hover:not([aria-disabled="true"]) {
   color: var(--mm-color-task-link-hover);
   text-decoration: underline;
 }
 
-.mm-tasks-link:disabled {
+.mm-tasks-link[aria-disabled="true"] {
   color: var(--mm-color-task-link-disabled);
   cursor: default;
+}
+
+.mm-tasks-link[aria-disabled="true"] .mm-tasks-bullet {
+  border-color: var(--mm-color-task-link-disabled);
 }
 
 .mm-tasks-bullet {
