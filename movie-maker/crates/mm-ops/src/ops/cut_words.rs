@@ -60,13 +60,13 @@ impl CutWords {
         let seq = project.sequence(&self.sequence)?;
         if !self.splices.is_empty() {
             if !self.ranges.is_empty() {
-                return Err(invalid("ranges and splices cannot be given together"));
+                return Err(invalid("Can't pass both ranges and splices"));
             }
             return Ok(self.splices.clone());
         }
         if self.restore && !self.ranges.is_empty() {
             return Err(invalid(
-                "ranges must be empty when restoring (use undo to restore clips)",
+                "Can't pass ranges when restoring (use undo to restore clips)",
             ));
         }
         let ranges = normalize(&self.ranges)?;

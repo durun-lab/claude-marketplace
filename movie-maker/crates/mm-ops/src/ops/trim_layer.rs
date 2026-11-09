@@ -59,7 +59,7 @@ impl TrimLayer {
         let allowed = match self.edge {
             Edge::In if room.fixed_in => {
                 return Err(invalid(format!(
-                    "Layer {} has a time remap, so its in point cannot be moved",
+                    "Layer {} has a time remap, so its in point can't be moved",
                     self.layer
                 )));
             }
@@ -70,7 +70,7 @@ impl TrimLayer {
             Ok(())
         } else {
             Err(invalid(format!(
-                "Layer {} would extend beyond its source",
+                "Layer {} would extend beyond its asset",
                 self.layer
             )))
         }

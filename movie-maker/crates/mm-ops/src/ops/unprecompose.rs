@@ -26,7 +26,12 @@ impl Unprecompose {
             .source
             .text_param(NESTED_PARAM)
             .filter(|_| layer.source.kind == NESTED_KIND)
-            .ok_or_else(|| invalid(format!("Layer {} is not a nested composition", self.layer)))?;
+            .ok_or_else(|| {
+                invalid(format!(
+                    "Layer {} is not a nested composition layer",
+                    self.layer
+                ))
+            })?;
         Ok(Id::new(id))
     }
 }

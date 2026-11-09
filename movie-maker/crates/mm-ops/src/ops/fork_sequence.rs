@@ -53,7 +53,7 @@ impl ForkSequence {
         let (first, last) = (at(&range.first)?, at(&range.last)?);
         if first > last {
             return Err(invalid(format!(
-                "Range start {} is after range end {}",
+                "First clip {} of the range comes after last clip {}",
                 range.first, range.last
             )));
         }

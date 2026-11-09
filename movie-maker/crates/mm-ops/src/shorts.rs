@@ -54,7 +54,7 @@ pub(crate) fn reference_pair<'a>(project: &'a Project, id: &CutId) -> Result<(&'
     let (seq, cut) = project.cut(id)?;
     let not_reference = || {
         invalid(format!(
-            "Clip {id} is not a clip of a reference short that has an origin clip"
+            "Clip {id} is not a reference short clip linked to an origin clip"
         ))
     };
     if !is_reference(seq) {

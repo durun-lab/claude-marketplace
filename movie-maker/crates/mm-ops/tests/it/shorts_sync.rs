@@ -127,7 +127,7 @@ fn 本編の変更を反映するとショートの上書きした_in_以下に�
     )
     .unwrap_err();
     assert!(err.contains("k2") && err.contains("r0"), "{err}");
-    assert!(err.contains("上書き"), "{err}");
+    assert!(err.contains("it overrides in;"), "{err}");
     assert_eq!(canon(&p), canon(&before), "拒否したら変わらない");
 }
 

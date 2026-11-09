@@ -4,6 +4,7 @@
 //! 順を入れ替えても同じプロジェクトのデータになる（性質テストが守る）。ID は文字列で、保存の表には列として書く。
 
 use std::collections::BTreeSet;
+use std::fmt;
 
 use mm_types::Id;
 
@@ -70,6 +71,14 @@ impl Touches {
     /// 中の集合。
     pub fn iter(&self) -> impl Iterator<Item = &str> {
         self.0.iter().map(String::as_str)
+    }
+}
+
+/// 拒否の文に入れる形。ID を名前の順にカンマで並べる（`l-title, l-title-fx`）。
+impl fmt::Display for Touches {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let ids: Vec<&str> = self.iter().collect();
+        f.write_str(&ids.join(", "))
     }
 }
 

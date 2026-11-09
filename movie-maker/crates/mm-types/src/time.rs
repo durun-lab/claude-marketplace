@@ -46,7 +46,7 @@ impl Rational {
     pub fn new(num: u32, den: u32) -> Result<Self> {
         if num == 0 || den == 0 {
             return Err(MmError::InvalidArgument(format!(
-                "Rational: 正の数でない（{num}/{den}）"
+                "Rational: {num}/{den} is not positive"
             )));
         }
         let g = gcd(num as u128, den as u128) as u32;
@@ -153,14 +153,14 @@ impl RationalTime {
     /// 約分して、分母が u32、分子が上限に収まるか確かめる。
     fn reduced(num: i128, den: u128) -> Result<Self> {
         if den == 0 {
-            return Err(MmError::InvalidArgument("RationalTime: den が 0".into()));
+            return Err(MmError::InvalidArgument("RationalTime: den is 0".into()));
         }
         let g = gcd(num.unsigned_abs(), den);
         let (num, den) = (num / g as i128, den / g);
         match u32::try_from(den) {
             Ok(den) if num.abs() <= MAX_NUM => Ok(Self { num, den }),
             _ => Err(MmError::InvalidArgument(format!(
-                "RationalTime: {num}/{den} は表せる範囲を超えた"
+                "RationalTime: {num}/{den} is out of range"
             ))),
         }
     }
@@ -315,7 +315,7 @@ impl TimeRange {
     pub fn new(start: RationalTime, end: RationalTime) -> Result<Self> {
         if end < start {
             return Err(MmError::InvalidArgument(format!(
-                "TimeRange: end {end} が start {start} より前"
+                "TimeRange: end {end} is before start {start}"
             )));
         }
         Ok(Self { start, end })

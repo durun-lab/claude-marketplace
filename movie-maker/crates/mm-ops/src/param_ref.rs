@@ -167,7 +167,7 @@ fn resolve_caption<'a>(layer: &'a mut Layer, rest: &str, path: &str) -> Result<P
         .framing
         .caption
         .as_mut()
-        .ok_or_else(|| MmError::NotFound(format!("caption slot of layer {id}")))?;
+        .ok_or_else(|| MmError::NotFound(format!("caption placement of layer {id}")))?;
     match rest {
         "position" => Ok(ParamSlot::Fixed(&mut caption.position)),
         "width" => Ok(ParamSlot::Fixed(&mut caption.width)),
@@ -249,7 +249,7 @@ impl ParamSlot<'_> {
         let removed = match self {
             Self::Fixed(_) => {
                 return Err(MmError::InvalidArgument(
-                    "A required parameter cannot be removed".into(),
+                    "Can't remove a required parameter".into(),
                 ))
             }
             Self::Optional(p) => p.take(),

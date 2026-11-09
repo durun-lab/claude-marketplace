@@ -141,7 +141,7 @@ fn validate_composition(project: &Project, comp: &Composition) -> Result<()> {
         }
         if last_marker.is_some_and(|t| m.time <= t) {
             return Err(invalid(format!(
-                "Marker {} time must be later than the previous marker",
+                "Marker {}: time must be after the previous marker",
                 m.id
             )));
         }
@@ -304,7 +304,7 @@ fn validate_time_remap(id: &LayerId, remap: &crate::TimeRemap) -> Result<()> {
     for k in &remap.keyframes {
         if k.interpolation == Interpolation::Bezier {
             return Err(invalid(format!(
-                "Layer {id}: time remap cannot use Bezier interpolation"
+                "Layer {id}: time remap can't use Bezier interpolation"
             )));
         }
         if last.is_some_and(|t| k.time <= t) {
@@ -452,7 +452,7 @@ impl<'a> Nesting<'a> {
     fn visit(&mut self, target: Visit<'a>) -> Result<()> {
         if self.path.contains(&target) {
             return Err(invalid(format!(
-                "Nesting is circular at {}",
+                "{}: nesting is circular",
                 target.describe()
             )));
         }

@@ -24,17 +24,17 @@ pub fn select_ops(ops: &[Op], selection: Option<&[usize]>) -> OpResult<Vec<Op>> 
     sorted.sort_unstable();
     sorted.dedup();
     if sorted.len() != indices.len() {
-        return Err(invalid("Approved op indexes contain duplicates"));
+        return Err(invalid("Approved operation indexes contain duplicates"));
     }
     if sorted.is_empty() {
-        return Err(invalid("No ops approved"));
+        return Err(invalid("No operations approved"));
     }
     sorted
         .iter()
         .map(|&i| {
             ops.get(i).cloned().ok_or_else(|| {
                 invalid(&format!(
-                    "Op index {i} is not in the proposal ({} ops)",
+                    "Operation index {i} is not in the proposal ({} operations)",
                     ops.len()
                 ))
             })

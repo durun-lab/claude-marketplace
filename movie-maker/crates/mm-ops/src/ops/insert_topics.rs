@@ -32,7 +32,7 @@ impl InsertTopics {
     fn build(&self, project: &Project) -> Result<Vec<Cut>> {
         if self.topics.len() != self.cuts.len() {
             return Err(invalid(format!(
-                "Topic count ({}) does not match clip ID count ({})",
+                "Topic count ({}) does not match the clip ID count ({})",
                 self.topics.len(),
                 self.cuts.len()
             )));

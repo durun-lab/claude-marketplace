@@ -44,7 +44,12 @@ impl Apply for DeleteWords {
             }
             let old = update_edit(project, &self.asset, word, |e| e.deleted = want)?;
             if old.deleted == want {
-                return Err(invalid(format!("Word {word} is already in that state")));
+                let state = if want {
+                    "already deleted"
+                } else {
+                    "not deleted"
+                };
+                return Err(invalid(format!("Word {word} is {state}")));
             }
         }
         Ok(DeleteWords {

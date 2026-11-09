@@ -85,7 +85,11 @@ fn mm_op_は書き手のアプリへ_http_で転送され_変更が_sse_で届�
         "1",
     ]);
     assert!(!stale.status.success());
-    assert!(stderr(&stale).contains("overlaps"), "{}", stderr(&stale));
+    assert!(
+        stderr(&stale).contains("Conflicts with operations applied after version 1"),
+        "{}",
+        stderr(&stale)
+    );
 }
 
 #[test]

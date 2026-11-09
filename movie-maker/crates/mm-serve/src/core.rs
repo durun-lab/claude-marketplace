@@ -151,7 +151,10 @@ impl From<MmError> for ServeError {
     fn from(e: MmError) -> Self {
         match e {
             MmError::Unsupported(m) => Self::Unavailable(m),
-            MmError::InvalidArgument(m) | MmError::NotFound(m) => Self::BadRequest(m),
+            // `NotFound` の中の文字列は種類と ID だけなので、`Display` の文（`Not found: <種類> <ID>`）で渡す。
+            bad @ (MmError::InvalidArgument(_) | MmError::NotFound(_)) => {
+                Self::BadRequest(bad.to_string())
+            }
             other => Self::Internal(other.to_string()),
         }
     }

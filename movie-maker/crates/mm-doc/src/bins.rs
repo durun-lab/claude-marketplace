@@ -172,10 +172,10 @@ impl Project {
     pub(crate) fn validate_bins(&self) -> Result<()> {
         let mut assets = HashSet::new();
         for m in &self.bins.marks {
-            self.require_asset("In/out marks", &m.asset)?;
+            self.require_asset("In/out points", &m.asset)?;
             if !assets.insert(m.asset.as_str()) {
                 return Err(invalid(format!(
-                    "Asset {} has duplicate in/out marks",
+                    "Asset {} has duplicate in/out points",
                     m.asset
                 )));
             }
@@ -230,13 +230,13 @@ fn invalid(msg: String) -> MmError {
 
 fn validate_marks(project: &Project, m: &SourceMarks) -> Result<()> {
     if m.in_point.is_none() && m.out_point.is_none() {
-        return Err(invalid(format!("Asset {} has empty in/out marks", m.asset)));
+        return Err(invalid(format!("Asset {} has no in or out point", m.asset)));
     }
     let duration = project.asset(&m.asset)?.duration;
     for t in [m.in_point, m.out_point].into_iter().flatten() {
         if t.is_negative() || t > duration {
             return Err(invalid(format!(
-                "Asset {}: in/out mark {t} is outside the asset",
+                "Asset {}: in/out point {t} is outside the asset",
                 m.asset
             )));
         }
@@ -244,7 +244,7 @@ fn validate_marks(project: &Project, m: &SourceMarks) -> Result<()> {
     if let (Some(i), Some(o)) = (m.in_point, m.out_point) {
         if i >= o {
             return Err(invalid(format!(
-                "Asset {}: in/out mark in point must be before out point",
+                "Asset {}: in point must be before out point",
                 m.asset
             )));
         }
@@ -270,7 +270,7 @@ fn check_item<'a>(
         .duration;
     if in_point.is_negative() || out_point > duration || in_point >= out_point {
         return Err(invalid(format!(
-            "{id}: range [{in_point}, {out_point}) must be inside the asset with in before out"
+            "{id}: range [{in_point}, {out_point}) must be within the asset, with in before out"
         )));
     }
     Ok(())
@@ -278,7 +278,7 @@ fn check_item<'a>(
 
 fn check_tags(id: &str, tags: &[String]) -> Result<()> {
     if tags.iter().any(String::is_empty) {
-        return Err(invalid(format!("{id}: empty tag")));
+        return Err(invalid(format!("{id} has an empty tag")));
     }
     if tags.windows(2).any(|w| w[0] >= w[1]) {
         return Err(invalid(format!("{id}: tags must be unique and sorted")));

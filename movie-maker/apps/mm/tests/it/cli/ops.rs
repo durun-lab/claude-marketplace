@@ -55,24 +55,23 @@ fn 操作から取り消しとやり直しと_export_import_の往復() {
         "op", ps, "ripple", "--cut", "c2", "--edge", "out", "--by", "1/2",
     ]);
     // バージョン 3。取り消してバージョン 4（c2 の ripple の逆操作）。
+    // 取り消しの記録の名前は元のトランザクションの名前のまま。
     let undo = stdout(&mm_ok(&["undo", ps]));
-    assert!(
-        undo.contains("バージョン 4") && undo.contains("ripple"),
-        "{undo}"
-    );
+    assert!(undo.contains("バージョン 4: ripple"), "{undo}");
 
     // バージョン 3 を元にした c2 への操作は、バージョン 4 の取り消しと触る所が重なるので拒否される。
     let out = mm(&[
         "op", ps, "ripple", "--cut", "c2", "--edge", "out", "--by", "1", "--base", "3",
     ]);
     assert!(!out.status.success());
-    assert!(stderr(&out).contains("overlaps"), "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains("Conflicts with operations applied after version 3"),
+        "{}",
+        stderr(&out)
+    );
 
     let redo = stdout(&mm_ok(&["redo", ps]));
-    assert!(
-        redo.contains("バージョン 5") && redo.contains("ripple"),
-        "{redo}"
-    );
+    assert!(redo.contains("バージョン 5: ripple"), "{redo}");
     let log = stdout(&mm_ok(&["log", ps]));
     assert!(log.contains("取消") && log.contains("再適用"), "{log}");
     assert!(
@@ -206,7 +205,11 @@ fn ロックした所に触る操作は拒否され_プロジェクトのデー�
         r#"{"value":{"type":"number","value":0.5}}"#,
     ]);
     assert!(!out.status.success());
-    assert!(stderr(&out).contains("locked"), "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains("Can't edit locked items: l-text"),
+        "{}",
+        stderr(&out)
+    );
     assert_eq!(stdout(&mm_ok(&["log", ps])), before);
 
     // ロックの付いていないレイヤーは動かせる。
@@ -235,7 +238,11 @@ fn 古いバージョンを元にした操作は触る所が重なれば拒否�
         "op", ps, "ripple", "--cut", "c1", "--edge", "out", "--by", "1", "--base", "1",
     ]);
     assert!(!out.status.success());
-    assert!(stderr(&out).contains("overlaps"), "{}", stderr(&out));
+    assert!(
+        stderr(&out).contains("Conflicts with operations applied after version 1"),
+        "{}",
+        stderr(&out)
+    );
     // c2 はバージョン 1 の後に誰も触っていない。
     mm_ok(&[
         "op", ps, "ripple", "--cut", "c2", "--edge", "out", "--by", "1", "--base", "1",
