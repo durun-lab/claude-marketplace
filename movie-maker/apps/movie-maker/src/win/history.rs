@@ -1,8 +1,8 @@
 //! `project.mmdb` の取り消しとやり直しの文言。取り消しは発行元を問わずトランザクションごとに戻すので
 //! （`08-ui.md` の「取り消し」）、Claude や CLI の操作を戻したときは、誰の何を戻したかを画面に出す。
 //!
-//! 戻す前に先頭を見るため、変更の通知から取り消しのスタックをコピーして持つ。開く前の履歴はコピーに無いので、
-//! Store が返す元のトランザクション（`Change::of`）で補う。
+//! 戻す前に次に戻すトランザクション（スタックの一番上）を見るため、変更の通知から取り消しのスタックをコピーして持つ。
+//! 開く前の履歴はコピーに無いので、Store が返す元のトランザクション（`Change::of`）で補う。
 
 use std::sync::Mutex;
 
@@ -98,7 +98,7 @@ mod tests {
 
     use super::*;
 
-    /// 試験ごとに増えるトランザクションの ID。コピーする側は前より大きい ID だけを受ける。
+    /// テストごとに増えるトランザクションの ID。コピーする側は前より大きい ID だけを受ける。
     static NEXT_TXN: AtomicI64 = AtomicI64::new(1);
 
     fn change(kind: &'static str, actor: &str, name: &str) -> Change {
@@ -114,7 +114,7 @@ mod tests {
     }
 
     #[test]
-    fn claude_の操作を取り消すと書き手と名前を出す() {
+    fn claude_の操作を取り消すと発行元と名前を出す() {
         let h = HistoryMirror::default();
         h.record(&change("apply", "gui", "WebView の操作"));
         h.record(&change("apply", "mcp", "extract k2"));
@@ -162,7 +162,7 @@ mod tests {
     }
 
     #[test]
-    fn 同じトランザクションを_2_度写しても列は_1_つ分だけ動く() {
+    fn 同じトランザクションを_2_度コピーしてもスタックは_1_つ分だけ動く() {
         let h = HistoryMirror::default();
         let a = change("apply", "cli", "a");
         h.record(&a);
@@ -174,7 +174,7 @@ mod tests {
     }
 
     #[test]
-    fn 新しい操作はやり直しの列を捨てる() {
+    fn 新しい操作はやり直しのスタックを捨てる() {
         let h = HistoryMirror::default();
         h.record(&change("apply", "gui", "a"));
         h.record(&change("undo", "gui", "取り消し: a"));

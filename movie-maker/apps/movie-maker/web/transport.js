@@ -19,7 +19,7 @@
   const EDIT_KEYS = new Set([
     "KeyI", "KeyO", "Comma", "Period", "KeyB", "Delete", "Backspace", "Ctrl+KeyZ", "Ctrl+KeyY", "Ctrl+Shift+KeyZ",
   ]);
-  // Program と Source の -1 と +1 で共通の title。矢印のキーは、Source の領域をクリックしていれば Source に向く（keys.rs の dispatch）。
+  // Program と Source の -1 と +1 で共通の title。矢印のキーは、Source をクリックした後は Source の再生に向く（keys.rs の dispatch）。
   const STEP_BACK = "Step One Frame Back (←)";
   const STEP_FORWARD = "Step One Frame Forward (→)";
   const nowUs = () => Math.round((performance.timeOrigin + performance.now()) * 1000);
@@ -100,7 +100,7 @@
     ui.bar = el("div", { className: "bar" }, [ui.fill]);
     ui.play = el("button", { className: "primary", textContent: "Play", title: "Play / Stop (Space)" });
     ui.play.onclick = () => act("toggle");
-    // 列が狭いので、ボタンの文字は短くし、コマンドの名前とキーは title に出す。
+    // WebView の中央の列は狭いので、ボタンの文字は短くし、コマンドの名前とキーは title に出す。
     const btn = (label, fn, title = "") => el("button", { textContent: label, onclick: fn, title });
     const buttons = el("div", { className: "buttons" }, [
       btn("Start", () => act("home"), "Go to Start (Home)"),
