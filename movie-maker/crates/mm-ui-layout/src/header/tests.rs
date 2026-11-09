@@ -1,7 +1,9 @@
 use super::*;
 use crate::controller::{Action, Mods, PointerEvent, TimelineController};
+use crate::geom::QuadShape;
 use crate::paint::bar_color;
 use crate::paint::tests::state;
+use crate::paint::timeline_quads;
 use crate::palette::{item_color, tests::KINDS};
 use crate::rows::{RowHeights, Rows};
 use crate::text::tests::FakeMeasure;
@@ -69,6 +71,30 @@ fn 見出しの部品は左から帯_略号_名前_有効_ロック_mute_solo_�
         row.y + 1.0,
         "行の上端の 1 px は行の境界の線"
     );
+}
+
+#[test]
+fn キーフレームの開閉は見出しの右端に置き_キーフレームのあるレイヤーだけに描く() {
+    let row = Rect::new(0.0, 26.0, HEADER_W, 28.0);
+    let voice = Item::layer(0.0, 1.0, ItemKind::Footage, true).with_audio(false, false);
+    let c = cells(row, &voice);
+    assert!(c.solo.unwrap().right() <= c.disclosure.x);
+    assert!(c.disclosure.right() <= row.right());
+    let m = model(vec![
+        Item::layer(0.0, 5.0, ItemKind::Text, true).with_keyframes(&[1.0]),
+        Item::layer(0.0, 5.0, ItemKind::Image, true),
+    ]);
+    let f = TestViewport::new(&m, SIZE);
+    let vp = f.vp();
+    let tris: Vec<Rect> = timeline_quads(&m, &vp, &state(0.0))
+        .into_iter()
+        .filter(|q| q.shape == QuadShape::TriRight)
+        .map(|q| q.rect)
+        .collect();
+    let first = cells(row_rect(&vp, 0), &m.items[0]).disclosure;
+    assert_eq!(tris.len(), 1, "キーフレームのある行だけ");
+    assert!(tris[0].x >= first.x && tris[0].right() <= first.right());
+    assert!(tris[0].y >= first.y && tris[0].bottom() <= first.bottom());
 }
 
 #[test]

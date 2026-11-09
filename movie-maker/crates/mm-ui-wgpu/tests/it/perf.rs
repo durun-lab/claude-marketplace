@@ -1,4 +1,4 @@
-//! 数千のカットの Timeline を描く時間（測定用）。release で手で動かす:
+//! 数千のカットとキーフレームの多いレイヤーの Timeline を描く時間（測定用）。release で手で動かす:
 //! `MM_GPU=5090 MM_REQUIRE_GPU=1 cargo nextest run --release -p mm-ui-wgpu --run-ignored only --no-capture`
 //! 数は予算の表（docs/design/17-instrumentation.md の「操作から画面まで（wgpu のサーフェス）」）と比べる。
 
@@ -12,11 +12,14 @@ use crate::support::{gpu, FORMAT};
 /// sequence のカットの数と、全部のレイヤーの数（ep03 の 7502 と同じくらい）。
 const CUTS: usize = 3000;
 const LAYERS: usize = 7500;
+/// 毎フレームにキーフレームを持つレイヤー（10 分のトラッキングの結果、30 fps で 18001 個）の数。開いたときに見える上の行に置く。
+const TRACKED: usize = 3;
 /// 1920x1080 の論理ピクセルを表示の倍率 1.5 で描くサーフェス。
 const SCALE: f32 = 1.5;
 const SIZE: (u32, u32) = (2880, 1620);
 
 /// 2 秒のカットを並べた sequence と、静止画のレイヤー。名前は全部ちがう。
+/// 静止画のレイヤーは始まりと終わりの 0.5 秒にフェードのキーフレームを持ち、上の `TRACKED` 本は毎フレームに持つ。
 fn model() -> TimelineModel {
     let mut seq = Item::layer(0.0, CUTS as f64 * 2.0, ItemKind::Sequence, true).with_label("main");
     seq.cuts = (0..CUTS)
@@ -27,11 +30,18 @@ fn model() -> TimelineModel {
             ..CutBar::default()
         })
         .collect();
+    let tracked: Vec<f64> = (0..=18_000).map(|f| f64::from(f) / 30.0).collect();
     let mut items = vec![seq];
     items.extend((1..LAYERS).map(|i| {
+        if i <= TRACKED {
+            return Item::layer(0.0, 600.0, ItemKind::Image, true)
+                .with_label(&format!("tracked-{i}.png"))
+                .with_keyframes(&tracked);
+        }
         let start = (i % 500) as f64 * 12.0;
         Item::layer(start, start + 8.0, ItemKind::Image, true)
             .with_label(&format!("overlay-{i}.png"))
+            .with_keyframes(&[start, start + 0.5, start + 7.5, start + 8.0])
     }));
     TimelineModel {
         duration: CUTS as f64 * 2.0,

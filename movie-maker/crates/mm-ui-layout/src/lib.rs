@@ -19,6 +19,7 @@ mod drawing;
 mod geom;
 mod gesture;
 mod header;
+mod keymarks;
 mod labels;
 mod paint;
 pub mod palette;
@@ -44,6 +45,7 @@ pub use drawing::{
 };
 pub use geom::{fit_rect, Color, Quad, QuadShape, Rect};
 pub use gesture::{body_edit, edge_edit, EditKind, Side};
+pub use keymarks::MARK_PX;
 pub use labels::{timeline_labels, LABEL_PAD};
 pub use paint::{timeline_overlay, timeline_quads, PaintState};
 pub use rows::{RowHeight, RowHeights, Rows};
