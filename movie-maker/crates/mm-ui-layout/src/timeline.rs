@@ -158,36 +158,8 @@ pub struct TimelineModel {
     pub duration: f64,
     pub fps: f64,
     pub items: Vec<Item>,
-}
-
-impl TimelineModel {
-    /// スナップの目標（0、終わり、各レイヤーとカットの端）。`skip` のレイヤーは除く。
-    pub fn snap_targets(&self, skip: Option<usize>) -> Vec<f64> {
-        self.targets_without(skip, None)
-    }
-
-    /// カット `(item, cut)` の端を動かすときのスナップの目標。そのカット自身の端は除く。
-    pub fn cut_snap_targets(&self, item: usize, cut: usize) -> Vec<f64> {
-        self.targets_without(None, Some((item, cut)))
-    }
-
-    fn targets_without(&self, skip: Option<usize>, skip_cut: Option<(usize, usize)>) -> Vec<f64> {
-        let mut out = vec![0.0, self.duration];
-        for (i, it) in self.items.iter().enumerate() {
-            if Some(i) != skip {
-                out.extend([it.start, it.end]);
-            }
-            if Some(i) == skip {
-                continue;
-            }
-            for (c, bar) in it.cuts.iter().enumerate() {
-                if Some((i, c)) != skip_cut {
-                    out.extend([bar.start, bar.end]);
-                }
-            }
-        }
-        out
-    }
+    /// コンポジションのマーカーの時刻（秒）。スナップの目標にする。
+    pub markers: Vec<f64>,
 }
 
 /// 帯の上の位置。

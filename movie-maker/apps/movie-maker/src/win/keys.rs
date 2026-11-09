@@ -27,6 +27,7 @@ const BINDINGS: &[(&str, &str)] = &[
     ("playback.toggle", "Space"),
     ("source.mark_in", "KeyI"),
     ("source.mark_out", "KeyO"),
+    ("timeline.toggle_snapping", "KeyN"),
 ];
 
 /// 仮想キーコードをキー名にする（WebView の `KeyboardEvent.code` に寄せた名前）。
@@ -131,6 +132,14 @@ pub fn dispatch(shared: &Arc<Shared>, source: &str, key: &str) {
     tracing::debug!(source, key, "key");
 }
 
+/// キーを離した（サーフェスだけが送る）。押している間だけ効くコマンド（ドラッグ中のスナップの反転）を戻す。
+/// 修飾キーを先に離しても戻るよう、修飾キーを付けない名前で引く。
+pub fn release(shared: &Shared, key: &str) {
+    if let Some(id) = command_for(key) {
+        commands::release_from_key(shared, id);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -167,7 +176,7 @@ mod tests {
 
     #[test]
     fn キーからコマンドの_id_を引き_持ち主の編集か再生のコマンドを実行する() {
-        use crate::win::commands::{Action, Owner};
+        use crate::win::commands::{Action, Owner, TimelineAction};
         use crate::win::edit_actions::EditAction as E;
         use Command::{Pause, Play, Reverse, Seek, Step, Toggle};
         let edit = |a| Owner::App(Action::Edit(a));
@@ -192,6 +201,11 @@ mod tests {
             ("ArrowRight", "playback.step_forward", play(Step(1))),
             ("Home", "playback.go_to_start", play(Seek(0.0))),
             ("End", "playback.go_to_end", play(Seek(f64::MAX))),
+            (
+                "KeyN",
+                "timeline.toggle_snapping",
+                Owner::App(Action::Timeline(TimelineAction::ToggleSnapping)),
+            ),
         ];
         assert_eq!(cases.len(), BINDINGS.len(), "全部のキーを確かめる");
         for (key, id, owner) in cases {
@@ -277,6 +291,25 @@ mod tests {
         assert_eq!(label("Ctrl+="), "Ctrl+=");
         assert_eq!(label("Ctrl++"), "Ctrl++");
         assert_eq!(label("-"), "-");
+    }
+
+    #[test]
+    fn n_はスナップの入_切を描画スレッドへ渡し_離すとドラッグ中の反転を戻す() {
+        use mm_ui_layout::PointerEvent;
+        let shared = Arc::new(Shared::new());
+        dispatch(&shared, "surface", "KeyN");
+        release(&shared, "KeyN");
+        release(&shared, "KeyK");
+        dispatch(&shared, "webview", "KeyN");
+        assert_eq!(
+            *shared.input.lock().unwrap(),
+            [
+                PointerEvent::ToggleSnapping,
+                PointerEvent::SnapKeyUp,
+                PointerEvent::ToggleSnapping
+            ],
+            "ドラッグとの前後を保つため、ポインターの入力のキューに入れる。K を離しても何もしない"
+        );
     }
 
     #[test]

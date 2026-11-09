@@ -1,4 +1,4 @@
-//! 表示の状態（Timeline の）。ズームと横の位置、縦のスクロール、行の高さ。
+//! 表示の状態（Timeline の）。ズームと横の位置、縦のスクロール、行の高さ、スナップの入/切。
 //! プロジェクトのデータではないので操作にせず、アプリが `.mm/view.json` に置く（取り消しの列に入らない）。
 
 use crate::rows::RowHeights;
@@ -13,4 +13,6 @@ pub struct ViewState {
     pub scroll_y: f32,
     /// 行の高さ。
     pub heights: RowHeights,
+    /// スナップの入/切。
+    pub snapping: bool,
 }

@@ -1,4 +1,4 @@
-//! Timeline の表示の状態（ズーム、スクロール、行の高さ）。開いたときの最初の表示と、`.mm/view.json` との出し入れ。
+//! Timeline の表示の状態（ズーム、スクロール、行の高さ、スナップの入/切）。開いたときの最初の表示と、`.mm/view.json` との出し入れ。
 
 use mm_ui_layout::{ItemKind, RowHeights, Rows, TimeView, ViewState, VIEW_MARGIN};
 
@@ -13,10 +13,11 @@ impl Ui {
         }
     }
 
-    /// 開いたときに戻す表示の状態（アプリが `.mm/view.json` から読んだもの）。行の高さはすぐに、ズームと
+    /// 開いたときに戻す表示の状態（アプリが `.mm/view.json` から読んだもの）。行の高さとスナップの入/切はすぐに、ズームと
     /// スクロールは最初に Timeline の大きさが決まったときに、全体表示と sequence の行を見せる代わりに当てる。
     pub fn restore_view(&mut self, state: ViewState) {
         self.heights = state.heights.clone();
+        self.controller.snapping = state.snapping;
         self.restore = Some(state);
         self.opened = false;
         self.relayout_rows();
@@ -34,6 +35,7 @@ impl Ui {
             time: self.controller.view,
             scroll_y: self.controller.scroll_y,
             heights: self.heights.clone(),
+            snapping: self.controller.snapping,
         })
     }
 

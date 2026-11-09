@@ -19,6 +19,7 @@ fn model(items: Vec<Item>) -> TimelineModel {
         duration: DURATION,
         fps: 30.0,
         items,
+        ..TimelineModel::default()
     }
 }
 

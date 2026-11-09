@@ -16,9 +16,9 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, IsWindow, LoadCursorW, PostMessageW, RegisterClassW,
     SetWindowPos, CS_HREDRAW, CS_VREDRAW, IDC_ARROW, SWP_NOACTIVATE, SWP_NOZORDER,
-    WM_CAPTURECHANGED, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE,
-    WM_MOUSEWHEEL, WM_SYSCHAR, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW, WS_CHILD, WS_CLIPSIBLINGS,
-    WS_EX_NOPARENTNOTIFY, WS_VISIBLE,
+    WM_CAPTURECHANGED, WM_ERASEBKGND, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP,
+    WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_SYSCHAR, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW, WS_CHILD,
+    WS_CLIPSIBLINGS, WS_EX_NOPARENTNOTIFY, WS_VISIBLE,
 };
 
 use crate::win::hotpatch;
@@ -128,10 +128,19 @@ pub fn post_click(hwnd: isize, x: i32, y: i32) {
 
 /// サーフェスの HWND にキー押下のメッセージを投げる（自動試験用）。
 pub fn post_key(hwnd: isize, vk: u32) {
+    post_key_message(hwnd, WM_KEYDOWN, vk);
+}
+
+/// サーフェスの HWND にキーを離したメッセージを投げる（押している間だけ効くキーの自動試験用）。
+pub fn post_key_up(hwnd: isize, vk: u32) {
+    post_key_message(hwnd, WM_KEYUP, vk);
+}
+
+fn post_key_message(hwnd: isize, msg: u32, vk: u32) {
     unsafe {
         let _ = PostMessageW(
             Some(HWND(hwnd as *mut _)),
-            WM_KEYDOWN,
+            msg,
             WPARAM(vk as usize),
             LPARAM(0),
         );
@@ -273,6 +282,14 @@ fn key_pressed(wparam: WPARAM, lparam: LPARAM) -> bool {
     keys::command_for(&name).is_some()
 }
 
+/// キーを離したことをキーの表に渡し（ドラッグ中のスナップの反転を戻す）、既定のウィンドウプロシージャにもそのまま渡す。
+fn key_released(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if let Some(shared) = SHARED.get() {
+        keys::release(shared, &keys::vk_name(wparam.0 as u32));
+    }
+    unsafe { DefWindowProcW(hwnd, WM_KEYUP, wparam, lparam) }
+}
+
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
         // 子 HWND は自動ではフォーカスを取らないので、クリックで自分に移す。ドラッグ中は外に出ても追う。
@@ -331,6 +348,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             key_pressed(wparam, lparam);
             LRESULT(0)
         }
+        WM_KEYUP => key_released(hwnd, wparam, lparam),
         // Alt を押している間のキーと F10 は WM_SYSKEYDOWN で届く。Alt+F4 と F10 は既定のウィンドウプロシージャに渡す。
         WM_SYSKEYDOWN if !passes_to_system(wparam.0 as u32) => {
             SYSKEY_IN_TABLE.store(key_pressed(wparam, lparam), Ordering::SeqCst);
