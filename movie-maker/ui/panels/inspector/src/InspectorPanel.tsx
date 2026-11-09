@@ -1,8 +1,10 @@
+import { useState } from "preact/hooks";
 import { type Asset, type Layer, type Op, type ParamRef, type ParamValue, evalParam } from "@mm/sdk";
 import { Editor } from "./editors.tsx";
 import { AddMaskButton, FadeRows, RemoveMaskButton } from "./Extras.tsx";
 import { fieldSpecFor } from "./fields.ts";
 import { KeyframeNav } from "./KeyframeNav.tsx";
+import { KeyframeStrip, KeyframeSummary, layerSpan, type LayerSpan } from "./KeyframeStrip.tsx";
 import type { LayerKinds } from "./kinds.ts";
 import { valueAtOp, type Playhead } from "./keyframes.ts";
 import {
@@ -13,6 +15,7 @@ import {
   shownValue,
   type FieldRow,
   type ParamHints,
+  type Section,
 } from "./model.ts";
 
 /** fps が渡されないときのフレームの数え方。 */
@@ -45,6 +48,7 @@ interface RowViewProps {
   target: ParamRef;
   assets: readonly Asset[];
   at: Playhead | null;
+  span: LayerSpan;
   selected: boolean;
   onOp: (op: Op) => void;
   onSeek?: (sec: number) => void;
@@ -76,7 +80,7 @@ const RowLabel = ({ row, onSelect }: { row: FieldRow; onSelect?: () => void }) =
   );
 };
 
-const RowView = ({ row, target, assets, at, selected, onOp, onSeek, onSelect }: RowViewProps) => {
+const RowView = ({ row, target, assets, at, span, selected, onOp, onSeek, onSelect }: RowViewProps) => {
   const animated = hasKeyframes(row.param);
   const value: ParamValue = at && animated ? evalParam(row.param, at.sec) : shownValue(row.param);
   const commit = (next: ParamValue) =>
@@ -96,9 +100,67 @@ const RowView = ({ row, target, assets, at, selected, onOp, onSeek, onSelect }: 
         />
         {at && <KeyframeNav target={target} param={row.param} at={at} label={row.label} onOp={onOp} onSeek={onSeek} />}
       </div>
+      <KeyframeStrip
+        target={target}
+        param={row.param}
+        label={row.label}
+        span={span}
+        fps={at?.fps ?? DEFAULT_FPS}
+        playheadSec={at?.sec}
+        onOp={onOp}
+        onSeek={onSeek}
+      />
     </div>
   );
 };
+
+interface SectionViewProps {
+  layer: Layer;
+  section: Section;
+  assets: readonly Asset[];
+  at: Playhead | null;
+  span: LayerSpan;
+  /** 音量の区画にフェードの行を出すか（Show Only Keyframed Properties の間は出さない）。 */
+  showFades: boolean;
+  selectedPath?: string | null;
+  onOp: (op: Op) => void;
+  onSeek?: (sec: number) => void;
+  onSelectParam?: (path: string) => void;
+}
+
+/** 区画の見出し（右にキーフレームのまとめの欄）と、パラメータの行。 */
+const SectionView = ({ layer, section, assets, at, span, showFades, selectedPath, onOp, onSeek, onSelectParam }: SectionViewProps) => (
+  <section class="mm-insp-section">
+    <h3 class="mm-insp-title">
+      <span class="mm-insp-titletext">
+        {section.title}
+        {section.maskId !== undefined && <RemoveMaskButton maskId={section.maskId} onOp={onOp} />}
+      </span>
+      <KeyframeSummary
+        span={span}
+        times={section.rows.flatMap((r) => (r.param.keyframes ?? []).map((k) => k.time))}
+        playheadSec={at?.sec}
+      />
+    </h3>
+    <div class="mm-insp-body">
+      {section.rows.map((row) => (
+        <RowView
+          key={`${layer.id}:${row.path}`}
+          row={row}
+          target={{ layer: layer.id, path: row.path }}
+          assets={assets}
+          at={at}
+          span={span}
+          selected={selectedPath === row.path}
+          onOp={onOp}
+          onSeek={onSeek}
+          onSelect={onSelectParam && (() => onSelectParam(row.path))}
+        />
+      ))}
+      {section.id === "audio" && showFades && <FadeRows layer={layer} onOp={onOp} />}
+    </div>
+  </section>
+);
 
 /**
  * 選んだレイヤーのパラメータを、値の型の JSON Schema から作った入力欄で編集する。
@@ -106,43 +168,47 @@ const RowView = ({ row, target, assets, at, selected, onOp, onSeek, onSelect }: 
  */
 export const InspectorPanel = (props: InspectorPanelProps) => {
   const { layer, assets = [], hints = DEFAULT_HINTS, kinds, onOp, time, onSeek, selectedPath, onSelectParam } = props;
+  const [keyedOnly, setKeyedOnly] = useState(false);
   if (!layer) {
     return <div class="mm-insp mm-insp-empty">No layer selected</div>;
   }
   const at: Playhead | null = time === undefined ? null : { sec: time, fps: props.fps ?? DEFAULT_FPS };
+  const span = layerSpan(layer);
+  const sections = describeLayer(layer, hints, kinds)
+    .map((s) => (keyedOnly ? { ...s, rows: s.rows.filter((r) => hasKeyframes(r.param)) } : s))
+    .filter((s) => !keyedOnly || s.rows.length > 0);
   return (
     <div class="mm-insp">
       <h2 class="mm-insp-header">{layer.id}</h2>
-      {describeLayer(layer, hints, kinds).map((section) => (
-        <section key={section.id} class="mm-insp-section">
+      <label class="mm-insp-keyedonly">
+        <input type="checkbox" checked={keyedOnly} onChange={(e) => setKeyedOnly(e.currentTarget.checked)} />
+        <span>Show Only Keyframed Properties</span>
+      </label>
+      {sections.map((section) => (
+        <SectionView
+          key={section.id}
+          layer={layer}
+          section={section}
+          assets={assets}
+          at={at}
+          span={span}
+          showFades={!keyedOnly}
+          selectedPath={selectedPath}
+          onOp={onOp}
+          onSeek={onSeek}
+          onSelectParam={onSelectParam}
+        />
+      ))}
+      {!keyedOnly && (
+        <section class="mm-insp-section">
           <h3 class="mm-insp-title">
-            {section.title}
-            {section.maskId !== undefined && <RemoveMaskButton maskId={section.maskId} onOp={onOp} />}
+            <span class="mm-insp-titletext">Masks</span>
           </h3>
           <div class="mm-insp-body">
-            {section.rows.map((row) => (
-              <RowView
-                key={row.path}
-                row={row}
-                target={{ layer: layer.id, path: row.path }}
-                assets={assets}
-                at={at}
-                selected={selectedPath === row.path}
-                onOp={onOp}
-                onSeek={onSeek}
-                onSelect={onSelectParam && (() => onSelectParam(row.path))}
-              />
-            ))}
-            {section.id === "audio" && <FadeRows layer={layer} onOp={onOp} />}
+            <AddMaskButton layer={layer} onOp={onOp} />
           </div>
         </section>
-      ))}
-      <section class="mm-insp-section">
-        <h3 class="mm-insp-title">Masks</h3>
-        <div class="mm-insp-body">
-          <AddMaskButton layer={layer} onOp={onOp} />
-        </div>
-      </section>
+      )}
     </div>
   );
 };

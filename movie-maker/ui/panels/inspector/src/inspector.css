@@ -210,6 +210,119 @@
   color: var(--mm-color-accent);
 }
 
+/* Show Only Keyframed Properties の切り替え。 */
+.mm-insp-keyedonly {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-sm);
+  color: var(--mm-color-text-muted);
+}
+
+/* 時間の欄。狭い列では行の下の段に全幅で出し、広い列（コンテナーが 380px 以上）では行の右に出す。 */
+.mm-insp {
+  container-type: inline-size;
+}
+
+.mm-insp-title {
+  display: grid;
+  grid-template-columns: auto minmax(5em, 1fr);
+}
+
+.mm-insp-titletext {
+  display: flex;
+  align-items: center;
+  gap: var(--mm-space-sm);
+  min-width: 0;
+}
+
+.mm-insp-row:has(> .mm-insp-strip) > .mm-insp-strip {
+  grid-column: 1 / -1;
+}
+
+.mm-insp-strip {
+  position: relative;
+  box-sizing: border-box;
+  height: 1.7em;
+  min-width: 0;
+  border: var(--mm-border-width) solid var(--mm-color-border);
+  border-radius: var(--mm-radius-sm);
+  background: var(--mm-color-bg);
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+/* 端のひし形が欄からはみ出さないよう、時刻の目盛りは内側の track に取る。 */
+.mm-insp-strip-track {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--mm-size-bullet);
+  right: var(--mm-size-bullet);
+}
+
+.mm-insp-strip:focus-visible {
+  outline: var(--mm-stroke-focus) solid var(--mm-color-focus);
+  outline-offset: var(--mm-size-focus-offset);
+}
+
+/* 組の見出しの欄は見るだけ。 */
+.mm-insp-strip-summary {
+  height: 1.4em;
+  cursor: default;
+  pointer-events: none;
+}
+
+.mm-insp-strip-head {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--mm-stroke-focus);
+  transform: translateX(-50%);
+  background: var(--mm-color-text);
+  pointer-events: none;
+}
+
+/* キーフレームのひし形。選んだものは accent で塗る。 */
+.mm-insp-strip-key {
+  position: absolute;
+  top: 50%;
+  box-sizing: border-box;
+  width: var(--mm-size-bullet);
+  height: var(--mm-size-bullet);
+  border: var(--mm-border-width) solid var(--mm-color-text-muted);
+  background: var(--mm-color-surface);
+  transform: translate(-50%, -50%) rotate(45deg);
+  cursor: grab;
+}
+
+.mm-insp-strip-key[data-selected="true"],
+.mm-insp-strip-key[data-dragging="true"] {
+  border-color: var(--mm-color-accent);
+  background: var(--mm-color-accent);
+}
+
+.mm-insp-strip-summary .mm-insp-strip-key {
+  cursor: default;
+}
+
+@container (min-width: 380px) {
+  .mm-insp-row:has(> .mm-insp-strip) {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) minmax(0, 2fr);
+  }
+
+  .mm-insp-row:has(> .mm-insp-strip) > .mm-insp-strip {
+    grid-column: auto;
+  }
+
+  .mm-insp-title {
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) minmax(0, 2fr);
+  }
+
+  .mm-insp-titletext {
+    grid-column: 1 / 3;
+  }
+}
+
 .mm-insp-kfinterp {
   flex: 1 1 auto;
   min-width: 0;
