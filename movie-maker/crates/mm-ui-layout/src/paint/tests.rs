@@ -232,7 +232,8 @@ fn スクロールで目盛りの帯の下に隠れた行は行の領域の上�
     f.scroll_y = 14.0;
     let all = timeline_quads(&m, &f.vp(), &state(0.0));
     let rows = f.layout.rows;
-    let in_rows = |q: &&Quad| q.color != palette::RULER && q.color != palette::TICK;
+    let outside_rows = [palette::RULER, palette::TICK, palette::LABEL];
+    let in_rows = |q: &&Quad| !outside_rows.contains(&q.color);
     for q in all.iter().skip(1).filter(in_rows) {
         assert!(
             q.rect.y >= rows.y - 1e-3 && q.rect.right() <= rows.right() + 1e-3,
@@ -251,9 +252,25 @@ fn 中身が入らなければ縦のスクロールバーを描き_入ればつ�
     let thumb = |m: &TimelineModel| {
         quads(m, &state(0.0))
             .into_iter()
-            .filter(|q| q.color == palette::TICK && q.rect.w > 1.0)
+            .filter(|q| q.color == palette::LABEL)
             .count()
     };
     assert_eq!(thumb(&many(50)), 1, "つまみ");
     assert_eq!(thumb(&many(2)), 0);
+}
+
+#[test]
+fn つまみは溝と見分けられ_乗ると選んだ外枠の色になる() {
+    let p = Palette::DEFAULT;
+    assert!(palette::contrast(p.label, p.ruler) >= 3.0);
+    let m = many(50);
+    let st = PaintState {
+        hover: Hit::Scrollbar { thumb: true },
+        ..state(0.0)
+    };
+    let lit = quads(&m, &st)
+        .into_iter()
+        .filter(|q| q.color == st.palette.selection && q.rect.w > 1.0)
+        .count();
+    assert_eq!(lit, 1);
 }

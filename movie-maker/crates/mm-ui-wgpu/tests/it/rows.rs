@@ -92,7 +92,7 @@ fn 開くと縦のスクロールバーを出し_下の高い_sequence_の行の
         let (kx, ky) = centre(&ui, scale, knob);
         let at = |x, y| px_in(&out, size.0, x, y);
         assert!(
-            close(at(kx, ky), hex(palette::TICK), 3),
+            close(at(kx, ky), hex(palette::LABEL), 3),
             "表示の倍率 {scale}: つまみ"
         );
         let seq = bar_rect(&ui, &m, scale, 30, (1.0, 5.0));

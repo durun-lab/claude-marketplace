@@ -2,7 +2,7 @@
 //! 文字（[`crate::timeline_labels`]）は [`timeline_quads`] の上、[`timeline_overlay`] の下に描く。
 //!
 //! 領域ごとの描く関数は `paint/` の下のファイルに置き、ここから名前の順に呼ぶ。描く関数は自分の領域の矩形の外に描かず、
-//! 重ねる順は呼ぶ順でなく [`Layer`] で決めるので、領域を足す PR はファイルを 1 つと、呼び出しを 1 行足せばよい。
+//! 重ね順は呼ぶ順でなく [`Depth`] で決めるので、領域を足す PR はファイルを 1 つと、呼び出しを 1 行足せばよい。
 
 mod guide;
 mod playhead;
@@ -44,9 +44,9 @@ pub(crate) struct Scene<'a> {
     pub state: &'a PaintState,
 }
 
-/// 重ねる順。下から順に描く。帯の中に描くもの（波形、サムネイル）は `Bar` と `Over` の間に層を足す。
+/// 重ね順。下から順に描く。帯の中に描くもの（波形、サムネイル）は `Bar` と `Over` の間に足す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Layer {
+pub(crate) enum Depth {
     /// 背景と行の縞。
     Back,
     /// 帯とカット。
@@ -55,38 +55,39 @@ pub(crate) enum Layer {
     Over,
     /// 行に重ねる暗がり（コンポジションの終わりより右）。
     Shade,
-    /// 行の領域の外の部品（目盛りの帯、スクロールバー）。最後の層。
+    /// 行の領域の外の部品（目盛りの帯、スクロールバー）。いちばん上。
     Chrome,
 }
 
-/// 層の数。
-const LAYERS: usize = Layer::Chrome as usize + 1;
+/// 重ね順の数。
+const DEPTHS: usize = Depth::Chrome as usize + 1;
 
-/// 層ごとに矩形を貯め、最後に下の層から並べる。
+/// 重ね順ごとに矩形を貯め、最後に下から並べる。
 #[derive(Debug, Default)]
 pub(crate) struct Canvas {
-    layers: [Vec<Quad>; LAYERS],
+    depths: [Vec<Quad>; DEPTHS],
 }
 
 impl Canvas {
-    pub(crate) fn push(&mut self, layer: Layer, rect: Rect, color: Color) {
-        self.layers[layer as usize].push(Quad::new(rect, color));
+    pub(crate) fn push(&mut self, depth: Depth, rect: Rect, color: Color) {
+        self.depths[depth as usize].push(Quad::new(rect, color));
     }
 
     /// `rect` の `clip` に入る所だけを入れる。全部外なら入れない。
-    pub(crate) fn push_in(&mut self, layer: Layer, rect: Rect, color: Color, clip: Rect) {
+    /// 切ってよいのは矩形だけで、ひし形や三角（`QuadShape`）は切ると形が変わるのでここを通さない。
+    pub(crate) fn push_in(&mut self, depth: Depth, rect: Rect, color: Color, clip: Rect) {
         let (x0, y0) = (rect.x.max(clip.x), rect.y.max(clip.y));
         let (x1, y1) = (
             rect.right().min(clip.right()),
             rect.bottom().min(clip.bottom()),
         );
         if x1 > x0 && y1 > y0 {
-            self.push(layer, Rect::new(x0, y0, x1 - x0, y1 - y0), color);
+            self.push(depth, Rect::new(x0, y0, x1 - x0, y1 - y0), color);
         }
     }
 
     fn into_quads(self) -> Vec<Quad> {
-        self.layers.into_iter().flatten().collect()
+        self.depths.into_iter().flatten().collect()
     }
 }
 
@@ -94,7 +95,7 @@ impl Canvas {
 pub fn timeline_quads(model: &TimelineModel, vp: &Viewport, state: &PaintState) -> Vec<Quad> {
     let scene = Scene { model, vp, state };
     let mut canvas = Canvas::default();
-    canvas.push(Layer::Back, vp.layout.bounds, state.palette.panel);
+    canvas.push(Depth::Back, vp.layout.bounds, state.palette.panel);
     rows::paint(&scene, &mut canvas);
     ruler::paint(&scene, &mut canvas);
     scrollbar::paint(&scene, &mut canvas);
@@ -115,7 +116,7 @@ fn vline(canvas: &mut Canvas, vp: &Viewport, t: f64, width: f32, color: Color) {
     let column = vp.layout.time_column();
     let x = vp.x_of(t) - width / 2.0;
     let line = Rect::new(x, column.y, width, column.h);
-    canvas.push_in(Layer::Over, line, color, column);
+    canvas.push_in(Depth::Over, line, color, column);
 }
 
 #[cfg(test)]

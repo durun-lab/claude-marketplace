@@ -428,4 +428,6 @@ fn deselect_cut(select: Action, had_cut: Option<(usize, usize)>) -> Vec<Action> 
 }
 
 #[cfg(test)]
+mod scroll_tests;
+#[cfg(test)]
 mod tests;

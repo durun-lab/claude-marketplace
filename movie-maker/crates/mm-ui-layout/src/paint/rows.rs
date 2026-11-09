@@ -1,7 +1,7 @@
 //! 行の領域。見えている行の縞、帯、カット、つまみ、選んだ外枠と、コンポジションの終わりより右の暗がり。
 //! 行の領域の外（目盛りの帯の下に隠れた所）にはみ出す分は切って描く。
 
-use super::{Canvas, Layer, Scene};
+use super::{Canvas, Depth, Scene};
 use crate::geom::{Color, Rect};
 use crate::gesture::{EditKind, Side};
 use crate::palette::{self, Palette};
@@ -19,13 +19,13 @@ pub(super) fn paint(s: &Scene, c: &mut Canvas) {
         let row = s.vp.row(i);
         // 行の上端の 1 px は背景のまま残し、行どうしの境の線にする。
         let band = Rect::new(row.x, row.y + 1.0, row.w, row.h - 1.0);
-        c.push_in(Layer::Back, band, stripe(&s.state.palette, i), clip);
+        c.push_in(Depth::Back, band, stripe(&s.state.palette, i), clip);
         let (start, end) = trimmed(item, i, s.state.preview);
         let bar = s.vp.bar(i, start, end);
         if item.cuts.is_empty() {
             layer_bar(s, c, (i, item), bar);
         } else {
-            c.push_in(Layer::Bar, bar, bar_color(item).with_alpha(0.25), clip);
+            c.push_in(Depth::Bar, bar, bar_color(item).with_alpha(0.25), clip);
             cuts(s, c, (i, item), bar);
         }
         if s.state.selected == Some(i) {
@@ -44,7 +44,7 @@ fn layer_bar(s: &Scene, c: &mut Canvas, (index, item): (usize, &Item), bar: Rect
     } else {
         color
     };
-    c.push_in(Layer::Bar, bar, color, s.vp.layout.rows);
+    c.push_in(Depth::Bar, bar, color, s.vp.layout.rows);
     handles(s, c, bar, |hit| match hit {
         Hit::Layer { index: i, part } if i == index => Some(part),
         _ => None,
@@ -100,7 +100,7 @@ fn cuts(s: &Scene, c: &mut Canvas, (index, item): (usize, &Item), layer: Rect) {
         let hovered =
             matches!(s.state.hover, Hit::Cut { item: i, cut, .. } if i == index && cut == k);
         if cut.gap {
-            c.push_in(Layer::Bar, r, palette::GAP.with_alpha(0.5), clip);
+            c.push_in(Depth::Bar, r, palette::GAP.with_alpha(0.5), clip);
             outline(c, r, p.selection, clip);
         } else {
             let color = if hovered {
@@ -108,10 +108,10 @@ fn cuts(s: &Scene, c: &mut Canvas, (index, item): (usize, &Item), layer: Rect) {
             } else {
                 base
             };
-            c.push_in(Layer::Bar, r, color, clip);
+            c.push_in(Depth::Bar, r, color, clip);
             // 隣のカットとの編集点が見えるように、左端に暗い線を引く。
             let seam = Rect::new(x, layer.y, 1.0, layer.h);
-            c.push_in(Layer::Bar, seam, palette::CUT_SEAM, clip);
+            c.push_in(Depth::Bar, seam, palette::CUT_SEAM, clip);
         }
         if hovered {
             handles(s, c, r, |hit| match hit {
@@ -134,7 +134,7 @@ fn handles(s: &Scene, c: &mut Canvas, bar: Rect, lit: impl Fn(Hit) -> Option<Par
         let alpha = if on == Some(part) { 0.85 } else { 0.14 };
         let r = Rect::new(x, bar.y, hw, bar.h);
         c.push_in(
-            Layer::Over,
+            Depth::Over,
             r,
             selection.with_alpha(alpha),
             s.vp.layout.rows,
@@ -149,7 +149,7 @@ fn outline(c: &mut Canvas, r: Rect, color: Color, clip: Rect) {
         Rect::new(r.x, r.y, 1.0, r.h),
         Rect::new(r.right() - 1.0, r.y, 1.0, r.h),
     ] {
-        c.push_in(Layer::Over, edge, color, clip);
+        c.push_in(Depth::Over, edge, color, clip);
     }
 }
 
@@ -159,5 +159,5 @@ fn outside(s: &Scene, c: &mut Canvas) {
     let end = s.vp.x_of(s.model.duration).max(rows.x);
     let content = s.vp.rows.content_height() - s.vp.scroll_y;
     let shade = Rect::new(end, rows.y, rows.right() - end, content.min(rows.h));
-    c.push_in(Layer::Shade, shade, s.state.palette.outside, rows);
+    c.push_in(Depth::Shade, shade, s.state.palette.outside, rows);
 }

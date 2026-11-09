@@ -1,6 +1,6 @@
 //! 再生位置の線と、その上端の四角。
 
-use super::{vline, Canvas, Layer, Scene};
+use super::{vline, Canvas, Depth, Scene};
 use crate::geom::Rect;
 
 /// 再生位置の線の幅。
@@ -19,5 +19,5 @@ pub(super) fn paint(s: &Scene, c: &mut Canvas) {
         PLAYHEAD_CAP,
         PLAYHEAD_CAP * 0.8,
     );
-    c.push_in(Layer::Over, cap, color, column);
+    c.push_in(Depth::Over, cap, color, column);
 }

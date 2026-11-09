@@ -12,12 +12,12 @@
 
 | 用語 | 定義 | 識別子 |
 |---|---|---|
-| レイヤーの行（Timeline の） | Timeline でレイヤー 1 本を表す横長の行。帯とレイヤーの見出しを持ち、上が前のレイヤー。ほかのソフトのトラックにあたる | `row_top` |
+| レイヤーの行（Timeline の） | Timeline でレイヤー 1 本を表す横長の行。帯とレイヤーの見出しを持ち、上が前のレイヤー。ほかのソフトのトラックにあたる | `Rows`、`Viewport::row` |
 | レイヤーの見出し | レイヤーの行の左端の、種類の色と略号、名前、有効のボタン、ロックのボタン、Mute と Solo のボタン、▸ を並べた所。ほかのソフトのトラックの見出し（track header）にあたる | `header.rs` |
 | 種類の略号（レイヤーの見出しの） | V: Footage、I: Image、T: Text、S: Solid、C: Composition、Seq: Sequence。Other は無し | `ItemKind` |
 | 有効のボタン / ロックのボタン | レイヤーの見出しの、`setLayerEnabled` を切り替える目の形のボタン / `lockLayer` を切り替える鍵の形のボタン | `header.rs` |
 | 行の高さ（Timeline の） | レイヤーの行の 3 つの高さ（Small 18、Medium 28、Large 56 論理ピクセル）。高さに応じて、帯に名前、先頭のサムネイル、フィルムストリップ、波形を出し分ける | `RowHeight` |
-| 表示の状態（Timeline の） | ズーム、スクロール、行の高さ、Shy、スナップの入/切。プロジェクトのデータに入れず、取り消しの列と `versions/` にも入らない | `.mm/view.json` |
+| 表示の状態（Timeline の） | ズーム、スクロール、行の高さ、Shy、スナップの入/切。プロジェクトのデータに入れず、取り消しの列と `versions/` にも入らない | `.mm/view.json`、`ViewState`、`view_state.rs` |
 | Shy | Timeline の表示からだけ外すレイヤーのフラグ（AE の Shy）。描画と書き出しは変わらない | 表示の状態 |
 | ツールバー（Timeline の） | Timeline の上端の横長の領域。取り消し、ツール、編集、スナップ、ズームのボタンを並べる | `toolbar.rs` |
 | ツール（Timeline の） | 帯の中と端のドラッグが何をするかを決める状態。Selection、Trim、Blade | `Tool` |
