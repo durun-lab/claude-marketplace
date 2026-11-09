@@ -184,7 +184,7 @@ mod tests {
         let mut seq = Item::layer(0.0, 10.0, ItemKind::Sequence, true);
         seq.cuts = vec![cut(0.0, 3.0), cut(3.0, 4.0)];
         let mut text = Item::layer(2.0, 4.0, ItemKind::Text, true);
-        text.keyframes = vec![2.5, 3.5];
+        text.keyframes = [2.5, 3.5].into();
         TimelineModel {
             duration: 10.0,
             fps: 30.0,

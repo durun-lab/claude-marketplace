@@ -74,12 +74,12 @@ pub struct Item {
     /// コンポジションの時間軸での始まりと終わり（秒）。
     pub start: f64,
     pub end: f64,
-    /// レイヤーの全部のパラメータのキーフレームの時刻（コンポジションの秒）。スナップの目標にする。
-    pub keyframes: Vec<f64>,
     pub kind: ItemKind,
     pub enabled: bool,
     /// 帯に出す名前。空なら出さない。シーケンスのレイヤーはカットの名前を出す。
     pub label: Arc<str>,
+    /// レイヤーのパラメータのキーフレームの時刻（コンポジションの秒、前から順、重複なし）。
+    pub keyframes: Arc<[f64]>,
     /// シーケンスのレイヤーのカット。先頭から順。シーケンス以外は空。
     pub cuts: Vec<CutBar>,
     /// 端のつまみで動かせる範囲。
@@ -93,9 +93,9 @@ impl Item {
             id: Arc::default(),
             start,
             end,
-            keyframes: Vec::new(),
             kind,
             enabled,
+            keyframes: Arc::default(),
             label: Arc::default(),
             cuts: Vec::new(),
             trim: TrimBounds::FREE,

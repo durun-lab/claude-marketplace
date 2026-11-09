@@ -10,7 +10,7 @@ use crate::timeline::{CutBar, Item, ItemKind};
 /// 文字のレイヤー（0-10 秒、キーフレームは 6 秒）と撮影素材のレイヤー（2-4 秒）。マーカーは 8 秒。
 fn model() -> TimelineModel {
     let mut text = Item::layer(0.0, 10.0, ItemKind::Text, true);
-    text.keyframes = vec![6.0];
+    text.keyframes = [6.0].into();
     TimelineModel {
         duration: 10.0,
         fps: 30.0,
