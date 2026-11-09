@@ -7,10 +7,13 @@ use mm_types::{Rational, RationalTime};
 
 /// 浮動小数の秒を有理数に直すときの分母。単語の時刻（ミリ秒）より十分細かい。
 const SECS_DEN: u32 = 1_000_000;
+/// フレームの境目の丸めの誤差の幅（フレームの数）。境目の時刻 k / fps を f64 にして fps を掛けると、k をわずかに
+/// 下回ることがある（0.7 × 30 は 20.999…）ので、境目にこれより近い手前の時刻は境目のフレームに数える。
+const BOUNDARY_EPS: f64 = 1e-6;
 
 /// 秒 `secs` に映るフレームの番号。Program の表示と同じく、フレームの途中は切り捨てる。
 pub fn frame_index(secs: f64, fps: f64) -> i64 {
-    (secs * fps).floor() as i64
+    (secs * fps + BOUNDARY_EPS).floor() as i64
 }
 
 /// 秒 `secs` に映るフレームの始まりの時刻。イン点・アウト点と split と再生位置の判定に使う。
