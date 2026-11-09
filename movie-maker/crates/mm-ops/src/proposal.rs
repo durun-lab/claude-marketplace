@@ -24,17 +24,20 @@ pub fn select_ops(ops: &[Op], selection: Option<&[usize]>) -> OpResult<Vec<Op>> 
     sorted.sort_unstable();
     sorted.dedup();
     if sorted.len() != indices.len() {
-        return Err(invalid("承認する操作の番号が重なっている"));
+        return Err(invalid("Approved operation indexes contain duplicates"));
     }
     if sorted.is_empty() {
-        return Err(invalid("承認する操作が 1 つも無い"));
+        return Err(invalid("No operations approved"));
     }
     sorted
         .iter()
         .map(|&i| {
-            ops.get(i)
-                .cloned()
-                .ok_or_else(|| invalid(&format!("操作の番号 {i} は提案に無い（{} 個）", ops.len())))
+            ops.get(i).cloned().ok_or_else(|| {
+                invalid(&format!(
+                    "Operation index {i} is not in the proposal ({} operations)",
+                    ops.len()
+                ))
+            })
         })
         .collect()
 }

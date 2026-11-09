@@ -34,17 +34,22 @@ impl Apply for DeleteWords {
 
     fn apply(&self, project: &mut Project) -> Result<Op> {
         if self.words.is_empty() {
-            return Err(invalid("消す単語が無い"));
+            return Err(invalid("No words to delete"));
         }
         let mut seen = HashSet::new();
         let want = !self.restore;
         for word in &self.words {
             if !seen.insert(word) {
-                return Err(invalid(format!("単語 {word} を 2 回挙げている")));
+                return Err(invalid(format!("Word {word} is listed twice")));
             }
             let old = update_edit(project, &self.asset, word, |e| e.deleted = want)?;
             if old.deleted == want {
-                return Err(invalid(format!("単語 {word} は既にその状態")));
+                let state = if want {
+                    "already deleted"
+                } else {
+                    "not deleted"
+                };
+                return Err(invalid(format!("Word {word} is {state}")));
             }
         }
         Ok(DeleteWords {

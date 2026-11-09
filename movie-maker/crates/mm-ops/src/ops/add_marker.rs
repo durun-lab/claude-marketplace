@@ -28,7 +28,7 @@ impl Apply for AddMarker {
         let comp = project.composition_mut(&self.composition)?;
         if comp.markers.iter().any(|m| m.time == self.marker.time) {
             return Err(invalid(format!(
-                "時刻 {} にマーカーが既に在る",
+                "A marker already exists at {}",
                 self.marker.time
             )));
         }

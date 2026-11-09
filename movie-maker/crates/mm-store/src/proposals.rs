@@ -119,7 +119,7 @@ impl Store {
             });
         }
         if txn.ops.is_empty() {
-            return Err(MmError::InvalidArgument("操作の無い提案".into()).into());
+            return Err(MmError::InvalidArgument("Proposal has no operations".into()).into());
         }
         let (after, outcome) = preview_ops(self.project(), &txn.ops, ctx)?;
         self.check_edited_words(&after)?;
@@ -183,7 +183,7 @@ impl Store {
             .query_row(&sql, params![self.undo_depth(), id], read_row)
             .optional()
             .sql()?
-            .ok_or_else(|| MmError::NotFound(format!("提案 {id}")))?
+            .ok_or_else(|| MmError::NotFound(format!("proposal {id}")))?
             .into_stored()
     }
 

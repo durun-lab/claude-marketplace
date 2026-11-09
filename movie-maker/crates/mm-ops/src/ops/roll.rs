@@ -26,7 +26,7 @@ pub(crate) fn next_cut(project: &Project, cut: &CutId) -> Result<CutId> {
         .cuts
         .get(index + 1)
         .map(|c| c.id.clone())
-        .ok_or_else(|| invalid(format!("カット {cut} の後ろにカットが無い")))
+        .ok_or_else(|| invalid(format!("No clip after clip {cut}")))
 }
 
 /// `cut` のすぐ前のカットの ID。
@@ -42,7 +42,7 @@ pub(crate) fn prev_cut(project: &Project, cut: &CutId) -> Result<CutId> {
                 .get(i)
                 .map(|c| c.id.clone())
         })
-        .ok_or_else(|| invalid(format!("カット {cut} の前にカットが無い")))
+        .ok_or_else(|| invalid(format!("No clip before clip {cut}")))
 }
 
 impl Apply for Roll {

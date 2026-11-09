@@ -26,7 +26,7 @@ impl Apply for AddTopic {
     fn apply(&self, project: &mut Project) -> Result<Op> {
         let id = &self.topic.id;
         if project.topic(id).is_ok() {
-            return Err(invalid(format!("話題 {id} は既に在る")));
+            return Err(invalid(format!("Topic {id} already exists")));
         }
         let list = &mut project.bins.topics;
         let pos = list.partition_point(|t| t.id < *id);

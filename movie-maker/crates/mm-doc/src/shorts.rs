@@ -175,7 +175,7 @@ fn origin_depth(project: &Project, id: &SequenceId) -> usize {
 fn sync_cut(cut: &mut Cut, prev: Option<&Cut>, main: &Cut) -> Result<()> {
     let base = prev.unwrap_or(main);
     if cut.source != base.source || cut.speed != base.speed || cut.enabled != base.enabled {
-        return Err(follow_error(cut, "素材と速さと有効"));
+        return Err(follow_error(cut, "asset, speed, and enabled state"));
     }
     cut.source = main.source.clone();
     cut.speed = main.speed;
@@ -186,13 +186,13 @@ fn sync_cut(cut: &mut Cut, prev: Option<&Cut>, main: &Cut) -> Result<()> {
         prev_point(|p| (p.overrides.in_point, p.in_point)),
         main.in_point,
     )
-    .ok_or_else(|| follow_error(cut, "上書きしていない in"))?;
+    .ok_or_else(|| follow_error(cut, "in point"))?;
     let out_point = sync_point(
         (cut.overrides.out_point, cut.out_point),
         prev_point(|p| (p.overrides.out_point, p.out_point)),
         main.out_point,
     )
-    .ok_or_else(|| follow_error(cut, "上書きしていない out"))?;
+    .ok_or_else(|| follow_error(cut, "out point"))?;
     cut.in_point = in_point;
     cut.out_point = out_point;
     Ok(())
@@ -222,13 +222,13 @@ fn check_synced(short: &SequenceId, cut: &Cut, main: &Cut) -> Result<()> {
         return Ok(());
     }
     let which = match (cut.overrides.in_point, cut.overrides.out_point) {
-        (true, true) => "in と out",
+        (true, true) => "in and out",
         (true, false) => "in",
         _ => "out",
     };
     Err(MmError::InvalidArgument(format!(
-        "本編のカット {} の変更を反映すると、ショート {short} のカット {} が in {} >= out {} になる（{} は {which} を上書きしている。先に overrideCut か resetCut で上書きを直す）",
-        main.id, cut.id, cut.in_point, cut.out_point, cut.id
+        "Changing origin clip {} would leave clip {} in short {short} with in {} >= out {} (it overrides {which}; fix the override with overrideCut or resetCut first)",
+        main.id, cut.id, cut.in_point, cut.out_point
     )))
 }
 
@@ -253,7 +253,7 @@ fn split_parts(main: &[Cut], index: usize, base: &CutBase) -> Vec<CutId> {
 
 fn follow_error(cut: &Cut, what: &str) -> MmError {
     MmError::InvalidArgument(format!(
-        "カット {} は参照のショートのカットで、{what}は元のカットに従う（in/out は overrideCut で上書きする）",
+        "Clip {} is in a reference short, so its {what} must match the origin clip (override in/out with overrideCut)",
         cut.id
     ))
 }
