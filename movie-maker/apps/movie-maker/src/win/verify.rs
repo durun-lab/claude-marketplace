@@ -1,7 +1,7 @@
 //! `--play-test` の自動の再生試験。プロジェクトを先頭から最後まで再生して、ドロップしたフレームの数、
 //! 映像と音のずれ、WebView の時計の誤差を測り、途中のスクリーンショットと一緒に残して終わる。
 
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -17,6 +17,7 @@ use tauri::{AppHandle, Manager, Window};
 
 use crate::win::capture;
 use crate::win::cli::PlayTest;
+use crate::win::keys;
 use crate::win::playback::{Command, PlaybackInfo};
 use crate::win::state::Shared;
 use crate::win::surface;
@@ -93,6 +94,7 @@ pub fn spawn(
     std::thread::Builder::new()
         .name("play-test".into())
         .spawn(move || {
+            let (target, test) = (Arc::new(target), Arc::new(test));
             let report = run(&app, &target, &shared, &info, &telemetry, &test);
             let text = serde_json::to_string_pretty(&report).unwrap_or_default();
             if let Err(e) = std::fs::write(&test.report, text) {
@@ -115,7 +117,7 @@ fn write_telemetry(t: &Telemetry, test: &PlayTest) {
 
 pub(crate) fn wait_until(limit: Duration, mut done: impl FnMut() -> bool) -> bool {
     let start = Instant::now();
-    while start.elapsed() < limit {
+    while start.elapsed() < limit && !cancelled() {
         if done() {
             return true;
         }
@@ -150,13 +152,96 @@ pub(crate) fn client_point(scale: Scale, (x, y): (f32, f32)) -> (i32, i32) {
     (p(x), p(y))
 }
 
+/// 段ごとの上限。超えた段は report に失敗として書き、次へ進む。
+const INTERACTION_LIMIT: Duration = Duration::from_secs(20);
+const INSPECTOR_LIMIT: Duration = Duration::from_secs(30);
+const EDIT_LIMIT: Duration = Duration::from_secs(90);
+/// 再生を止めてから止まった表示になるまでの待ち。
+const PAUSE_WAIT: Duration = Duration::from_secs(2);
+/// 打ち切った段のスレッドが終わるのを待つ余裕。以降の後始末と編集を取り合わせない。
+const CANCEL_GRACE: Duration = Duration::from_secs(10);
+/// 編集を戻すために取り消しを送る回数の上限と、1 回ごとの待ち。
+const RESTORE_MAX_UNDO: usize = 8;
+const RESTORE_WAIT: Duration = Duration::from_secs(2);
+
+thread_local! {
+    /// 段のスレッドを打ち切る合図。立つと `wait_until` が待たずに偽を返し、段が速やかに終わる。
+    static CANCEL: std::cell::RefCell<Option<Arc<AtomicBool>>> = const { std::cell::RefCell::new(None) };
+}
+
+fn cancelled() -> bool {
+    CANCEL.with(|c| {
+        c.borrow()
+            .as_ref()
+            .is_some_and(|f| f.load(Ordering::SeqCst))
+    })
+}
+
+/// 段を別のスレッドで走らせ、上限までに返らなければ打ち切る。ウィンドウへの呼び出しなどで段が固まっても、
+/// 試験全体は進んで report を書ける。
+fn stage<T: Send + 'static>(
+    name: &str,
+    limit: Duration,
+    f: impl FnOnce() -> T + Send + 'static,
+) -> Result<T, String> {
+    let flag = Arc::new(AtomicBool::new(false));
+    let (tx, rx) = std::sync::mpsc::channel();
+    let thread_flag = flag.clone();
+    std::thread::Builder::new()
+        .name(format!("play-test-{name}"))
+        .spawn(move || {
+            CANCEL.with(|c| *c.borrow_mut() = Some(thread_flag));
+            let _ = tx.send(f());
+        })
+        .map_err(|e| format!("段を始められない: {e}"))?;
+    match rx.recv_timeout(limit) {
+        Ok(v) => Ok(v),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err("段が異常終了した".into()),
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+            flag.store(true, Ordering::SeqCst);
+            let _ = rx.recv_timeout(CANCEL_GRACE);
+            Err(format!("上限 {} 秒で打ち切った", limit.as_secs()))
+        }
+    }
+}
+
+/// 段の結果を report の値にする。打ち切りや異常は失敗として書き、`failed` に段の名前を積む。
+fn settle(name: &str, result: Result<Value, String>, failed: &mut Vec<String>) -> Value {
+    result.unwrap_or_else(|e| {
+        eprintln!("[play-test] {name}: {e}");
+        failed.push(name.to_owned());
+        json!({ "ok": false, "failed": e })
+    })
+}
+
+/// 試験が当てた編集を、試験の前のプロジェクトと同じになるまで取り消す。途中で打ち切った段が編集を残しても、
+/// 開いたプロジェクトに跡を残さない。
+fn restore_project(shared: &Arc<Shared>, baseline: Option<Arc<mm_doc::Project>>) -> Value {
+    let Some(baseline) = baseline else {
+        return json!({ "restored": true, "undos": 0 });
+    };
+    let same = || shared.doc().is_some_and(|d| *d.project == *baseline);
+    let mut undos = 0;
+    while !same() && undos < RESTORE_MAX_UNDO {
+        let before = shared.doc().map(|d| Arc::as_ptr(&d.project));
+        keys::dispatch(shared, "play-test", "Ctrl+KeyZ");
+        undos += 1;
+        if !wait_until(RESTORE_WAIT, || {
+            shared.doc().map(|d| Arc::as_ptr(&d.project)) != before
+        }) {
+            break;
+        }
+    }
+    json!({ "restored": same(), "undos": undos })
+}
+
 fn run(
     app: &AppHandle,
-    target: &Target,
+    target: &Arc<Target>,
     shared: &Arc<Shared>,
     info: &PlaybackInfo,
     telemetry: &Telemetry,
-    test: &PlayTest,
+    test: &Arc<PlayTest>,
 ) -> Value {
     let window = &target.window;
     let hwnd = window.hwnd().map(|h| h.0 as isize).unwrap_or(0);
@@ -172,27 +257,63 @@ fn run(
     let _ = shared.drain_series();
     let base = Baseline::take(shared);
     let _ = telemetry.metrics.drain();
+    let baseline_project = shared.doc().map(|d| d.project);
+    let mut failed = Vec::new();
 
     shared.send(Command::Play);
     let started = wait_until(START_TIMEOUT, || shared.playing.load(Ordering::SeqCst));
     let t0 = Instant::now();
-    let (shot, shot_at) = play_and_capture(shared, info, test, hwnd, t0);
+    let play_for = Duration::from_secs_f64(info.duration.min(test.secs));
+    let played = {
+        let (s, i, t) = (shared.clone(), info.clone(), test.clone());
+        stage("play", play_for + FINISH_SLACK * 2, move || {
+            play_and_capture(&s, &i, &t, hwnd, t0, play_for)
+        })
+    };
     let wall = t0.elapsed().as_secs_f64();
+    let (shot, shot_at) = played.unwrap_or_else(|e| {
+        eprintln!("[play-test] play: {e}");
+        failed.push("play".to_owned());
+        (None, Value::Null)
+    });
     let mut report = report(shared, info, test, &base, started, wall, shot);
     report["screenshot_at"] = shot_at;
-    report["interaction"] = interaction(shared, info, target);
-    report["inspector"] = inspector_flow(app, shared, target, hwnd, test);
-    report["timeline_edit"] = verify_edit::run(&verify_edit::Env {
-        shared,
-        surface_hwnd: target.surface_hwnd,
-        window_hwnd: hwnd,
-        test,
-    });
+    shared.send(Command::Pause);
+    wait_until(PAUSE_WAIT, || !shared.playing.load(Ordering::SeqCst));
+
+    let r = {
+        let (s, i, t) = (shared.clone(), info.clone(), target.clone());
+        stage("interaction", INTERACTION_LIMIT, move || {
+            interaction(&s, &i, &t)
+        })
+    };
+    report["interaction"] = settle("interaction", r, &mut failed);
+    let r = {
+        let (a, s, t, p) = (app.clone(), shared.clone(), target.clone(), test.clone());
+        stage("inspector", INSPECTOR_LIMIT, move || {
+            inspector_flow(&a, &s, &t, hwnd, &p)
+        })
+    };
+    report["inspector"] = settle("inspector", r, &mut failed);
+    let r = {
+        let (s, t, p) = (shared.clone(), target.clone(), test.clone());
+        stage("timeline_edit", EDIT_LIMIT, move || {
+            verify_edit::run(&verify_edit::Env {
+                shared: &s,
+                surface_hwnd: t.surface_hwnd,
+                window_hwnd: hwnd,
+                test: &p,
+            })
+        })
+    };
+    report["timeline_edit"] = settle("timeline_edit", r, &mut failed);
+    report["restore"] = restore_project(shared, baseline_project);
+    report["failed_stages"] = json!(failed);
     let _ = window.set_always_on_top(false);
     report
 }
 
-/// 再生が終わるまで待ち、半分まで進んだところでスクリーンショットを撮る。撮った時の再生位置と、Program に
+/// 再生が終わるか `limit`（要求の秒数）になるまで待ち、半分まで進んだところでスクリーンショットを撮る。撮った時の再生位置と、Program に
 /// 渡した最新のフレームの時刻も返す。WebView の時刻の表示は画面への反映がサーフェスより約 2 フレーム遅れるので、
 /// スクリーンショットの画像と比べるのはこちらの時刻にする。
 fn play_and_capture(
@@ -201,31 +322,30 @@ fn play_and_capture(
     test: &PlayTest,
     hwnd: isize,
     t0: Instant,
+    limit: Duration,
 ) -> (Option<String>, Value) {
     let mut shot = None;
     let mut at = Value::Null;
     let half = Duration::from_secs_f64((info.duration.min(test.secs) / 2.0).max(0.1));
-    wait_until(
-        Duration::from_secs_f64(info.duration) + FINISH_SLACK,
-        || {
-            if shot.is_none() && t0.elapsed() >= half {
-                at = json!({
-                    "playhead_secs": shared.playhead(),
-                    "frame_secs": shared.frames.newer_than(0).map(|f| f.time),
+    wait_until(limit, || {
+        if shot.is_none() && t0.elapsed() >= half {
+            at = json!({
+                "playhead_secs": shared.playhead(),
+                "frame_secs": shared.frames.newer_than(0).map(|f| f.time),
+            });
+            shot = test
+                .screenshot
+                .as_ref()
+                .map(|path| match capture::capture_window(hwnd, path) {
+                    Ok(()) => path.display().to_string(),
+                    Err(e) => format!("失敗: {e}"),
                 });
-                shot = test.screenshot.as_ref().map(|path| {
-                    match capture::capture_window(hwnd, path) {
-                        Ok(()) => path.display().to_string(),
-                        Err(e) => format!("失敗: {e}"),
-                    }
-                });
-                if shot.is_none() {
-                    shot = Some(String::new());
-                }
+            if shot.is_none() {
+                shot = Some(String::new());
             }
-            !shared.playing.load(Ordering::SeqCst)
-        },
-    );
+        }
+        !shared.playing.load(Ordering::SeqCst)
+    });
     (shot.filter(|s| !s.is_empty()), at)
 }
 
