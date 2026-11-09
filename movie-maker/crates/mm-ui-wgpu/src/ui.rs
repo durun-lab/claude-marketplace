@@ -8,9 +8,10 @@
 use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
-    fit_rect, split_viewers, timeline_labels, timeline_overlay, timeline_quads, Action,
-    DrawingShape, PaintState, PointerEvent, Quad, Rect, RowHeights, Scale, SurfaceLayout, TimeView,
-    TimelineController, TimelineModel, UiFont, ViewState,
+    fit_rect, split_viewers, timeline_labels, timeline_overlay, timeline_quads, transport_labels,
+    Action, DrawingShape, PaintState, PointerEvent, Quad, Rect, RowHeights, Scale, SurfaceLayout,
+    TimeView, TimelineController, TimelineModel, TransportController, TransportState, UiFont,
+    ViewState,
 };
 
 use crate::drawing::{DrawingFit, DrawingLayer};
@@ -18,6 +19,7 @@ use crate::program::ProgramViewer;
 use crate::quads::QuadRenderer;
 use crate::text::{TextLayer, TextStats};
 
+mod transport;
 mod view;
 
 /// サーフェスの上のどの領域か。
@@ -51,6 +53,9 @@ pub struct Ui {
     restore: Option<ViewState>,
     /// 割り付け（論理ピクセル）。
     layout: SurfaceLayout,
+    /// 再生の操作のバーの状態。Program の再生位置、長さ、フレームレートは Timeline のモデルと再生位置から埋める。
+    transport: TransportState,
+    transport_controller: TransportController,
     /// サーフェスの大きさ（物理ピクセル）。
     size: (f32, f32),
     playhead: f64,
@@ -80,9 +85,13 @@ impl Ui {
             restore: None,
             layout: SurfaceLayout {
                 program: Rect::default(),
+                program_bar: Rect::default(),
                 timeline: Rect::default(),
                 source: None,
+                source_bar: None,
             },
+            transport: TransportState::default(),
+            transport_controller: TransportController::default(),
             size: (0.0, 0.0),
             playhead: 0.0,
             opened: false,
@@ -221,11 +230,12 @@ impl Ui {
     pub fn region_at(&self, x: f32, y: f32) -> Region {
         let (x, y) = (self.scale.to_logical(x), self.scale.to_logical(y));
         let l = self.layout;
+        let in_source = |r: Option<Rect>| r.is_some_and(|r| r.contains(x, y));
         if l.timeline.contains(x, y) {
             Region::Timeline
-        } else if l.source.is_some_and(|s| s.contains(x, y)) {
+        } else if in_source(l.source) || in_source(l.source_bar) {
             Region::Source
-        } else if l.program.contains(x, y) {
+        } else if l.program.contains(x, y) || l.program_bar.contains(x, y) {
             Region::Program
         } else {
             Region::Outside
@@ -331,7 +341,7 @@ impl Ui {
 
     /// Timeline の矩形を、サーフェスの座標（物理ピクセル）に置いた並びにする。文字の下に描く矩形が先で、
     /// その数も返す（残りは文字の上に重ねるガイド線と再生位置の線）。
-    fn timeline_quads(&self) -> (Vec<Quad>, u32) {
+    fn timeline_quads(&mut self) -> (Vec<Quad>, u32) {
         let t = self.layout.timeline;
         let state = self.paint_state();
         let vp = self.controller.viewport();
@@ -341,7 +351,11 @@ impl Ui {
         for q in &mut quads {
             q.rect = self.scale.rect_to_physical(q.rect.translated(t.x, t.y));
         }
-        (quads, under)
+        // 再生の操作のバーの矩形も文字の下に描く。
+        let mut under_quads = self.transport_quads();
+        let under = under + under_quads.len() as u32;
+        under_quads.extend(quads);
+        (under_quads, under)
     }
 
     /// Timeline の文字を置き、文字の描画に渡す。文字の描画は最初に描くときに作る（OS のフォントを読み込む）。
@@ -360,6 +374,13 @@ impl Ui {
             l.y += t.y;
             l.clip = l.clip.translated(t.x, t.y);
         }
+        labels.extend(transport_labels(
+            &self.layout,
+            &self.transport,
+            &self.palette,
+            &self.font,
+            text.measure(),
+        ));
         let viewport = (self.size.0 as u32, self.size.1 as u32);
         text.prepare(device, queue, &labels, self.scale, viewport);
     }

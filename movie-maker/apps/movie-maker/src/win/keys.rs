@@ -25,6 +25,7 @@ const BINDINGS: &[(&str, &str)] = &[
     ("playback.step_forward", "ArrowRight"),
     ("playback.stop", "KeyK"),
     ("playback.toggle", "Space"),
+    ("source.clear_in_out", "Alt+KeyX"),
     ("source.mark_in", "KeyI"),
     ("source.mark_out", "KeyO"),
 ];
@@ -173,6 +174,7 @@ mod tests {
         let edit = |a| Owner::App(Action::Edit(a));
         let play = |c| Owner::App(Action::Playback(c));
         let cases = [
+            ("Alt+KeyX", "source.clear_in_out", edit(E::ClearMarks)),
             ("KeyI", "source.mark_in", edit(E::MarkIn)),
             ("KeyO", "source.mark_out", edit(E::MarkOut)),
             ("Comma", "clip.insert", edit(E::Insert)),

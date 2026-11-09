@@ -15,6 +15,8 @@ use crate::win::timebase;
 /// 名前のついた編集。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EditAction {
+    /// Source に開いた素材のイン点とアウト点を外す。
+    ClearMarks,
     /// Source の今の位置を素材のイン点・アウト点にする。
     MarkIn,
     MarkOut,
@@ -34,6 +36,7 @@ impl EditAction {
     /// WebView のボタンの名前から。
     pub fn parse(name: &str) -> Option<Self> {
         Some(match name {
+            "clear_marks" => Self::ClearMarks,
             "mark_in" => Self::MarkIn,
             "mark_out" => Self::MarkOut,
             "insert" => Self::Insert,
@@ -73,6 +76,10 @@ pub fn run(shared: &Arc<Shared>, action: EditAction) {
 /// 計画に使ったデータのバージョンを付けて適用するので、間に CLI などが同じ所を触っていたら衝突で断られる。
 pub fn plan_and_apply(shared: &Shared, action: EditAction) -> Result<(), String> {
     let doc = shared.doc().ok_or("No project open")?;
+    if action == EditAction::ClearMarks {
+        let ops = clear_marks(shared, &doc.project)?;
+        return edit::submit_based(shared, ops, doc.version).map(drop);
+    }
     let comp = doc
         .project
         .composition(&doc.comp)
@@ -100,6 +107,7 @@ pub fn plan_and_apply(shared: &Shared, action: EditAction) -> Result<(), String>
 fn plan_action(shared: &Shared, ctx: &Ctx<'_>, action: EditAction) -> Result<Planned, String> {
     let new_id = || shared.edit.fresh_cut_id(ctx.project);
     match action {
+        EditAction::ClearMarks => Err("Clear In and Out is planned from the project".into()),
         EditAction::MarkIn | EditAction::MarkOut => mark(shared, action == EditAction::MarkIn),
         EditAction::Insert => plan::plan_insert(ctx, &source_range(shared, ctx)?, new_id()),
         EditAction::Overwrite => plan::plan_overwrite(ctx, &source_range(shared, ctx)?, new_id()),
@@ -119,6 +127,29 @@ fn open_source(shared: &Shared) -> Result<Arc<SourceHandle>, String> {
 
 fn source_range(shared: &Shared, ctx: &Ctx<'_>) -> Result<plan::SourceRange, String> {
     plan::source_range(ctx.project, &open_source(shared)?.asset)
+}
+
+/// Source の素材のイン点とアウト点を外す操作。付いている点だけを外し、1 回の取り消しで両方戻せるよう 1 つの適用にまとめる。
+fn clear_marks(shared: &Shared, project: &mm_doc::Project) -> Result<Vec<Op>, String> {
+    let asset = open_source(shared)?.asset.clone();
+    let marks = project.bins.marks.iter().find(|m| m.asset == asset);
+    let mut ops: Vec<Op> = Vec::new();
+    if marks.is_some_and(|m| m.in_point.is_some()) {
+        ops.push(
+            MarkIn {
+                asset: asset.clone(),
+                at: None,
+            }
+            .into(),
+        );
+    }
+    if marks.is_some_and(|m| m.out_point.is_some()) {
+        ops.push(MarkOut { asset, at: None }.into());
+    }
+    if ops.is_empty() {
+        return Err("No In or Out point to clear".to_owned());
+    }
+    Ok(ops)
 }
 
 /// Source の今の位置（素材のフレーム）にイン点・アウト点を付ける操作。

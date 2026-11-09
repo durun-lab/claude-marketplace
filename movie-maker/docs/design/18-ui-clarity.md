@@ -395,6 +395,8 @@ flowchart TB
 
 T1 が決めた形: 矩形の型は `TimelineLayout`（`mm-ui-layout/src/timeline_layout.rs`）。まだ無い領域は大きさ 0 の定数で場所だけを決めてあり、足す PR が自分の定数を変える。Timeline の高さの下限（`MIN_TIMELINE_H`）はその定数から求める。行の高さと上端は `Rows`、それにズームと縦のスクロールを合わせた見えている所は `Viewport` で、当たり判定、描画、文字、`--play-test` のクリックの位置（`verify_place.rs`）が同じ値を見る。描く関数は `paint/<領域>.rs` に置き、`paint.rs` の `timeline_quads`（文字の下）か `timeline_overlay`（文字の上）の呼び出しに名前の順で 1 行足す。重ね順は呼ぶ順でなく `Depth` で決める（帯の中に描く矩形〔T4 の波形〕は、帯〔`Bar`〕と、帯に重ねるもの〔`OnBar`。端のつまみ、外枠〕の間に区分を 1 つ足す）。テクスチャで描くサムネイルとフィルムストリップ（T5、T6）は矩形の並びの外なので、`Bar` までの矩形の後、残りの矩形の前に描く（文字と同じく、境目の数を `Canvas` の区分から出す）。行の領域からはみ出す矩形は `Canvas::push_in` で切る。ひし形と三角（`QuadShape`）は切ると形が変わるので、切らずに描く扱いを足す PR が決める。全体表示は長いコンポジションでも全体を収め（`MIN_PX_PER_SEC` より細かく、下限は `MIN_FIT_PX_PER_SEC`）、Ctrl+ホイールの縮小も全体が収まる所まで（`TimeView::zoom_floor`）。
 
+L1 が決めた形: 再生の操作のバーは `mm-ui-layout/src/transport.rs`（高さ `TRANSPORT_H` の 44 論理ピクセル。上にジョグバー、下に左から再生位置、ボタン、右に全体の長さ〔Source はイン点とアウト点〕）。`SurfaceLayout` の `program_bar` と `source_bar` が映像の真下の矩形で、映像の矩形（`program`、`source`）はバーの分だけ低い（レターボックスと Review の描き込みは映像の矩形に合わせるので、ずれない）。ボタンはコマンドの表の ID を持ち、押せるかはアプリがコマンドの表から渡す（`ViewerState::disabled`）。三角と棒は `QuadShape` と細い矩形で描き、切らない。Program のバーに Play / Stop と Play Forward の両方があるのは設計表のとおりで、Play / Stop は止まっている間は再生の三角、再生中は停止の四角を出す。
+
 ### 前提と文言
 
 | PR | 中身 | 依存 | 触る範囲 | 終わりの条件 |

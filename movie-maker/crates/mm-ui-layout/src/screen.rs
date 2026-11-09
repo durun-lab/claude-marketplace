@@ -1,7 +1,8 @@
-//! サーフェス全体の割り付け。上に Program、下に Timeline。
+//! サーフェス全体の割り付け。上に Program（素材を開いていれば左に Source）と、それぞれの下の再生の操作のバー、下に Timeline。
 
 use crate::geom::Rect;
 use crate::timeline_layout::MIN_TIMELINE_H;
+use crate::transport::TRANSPORT_H;
 
 /// Program と Timeline の間隔。
 const GAP: f32 = 4.0;
@@ -13,31 +14,47 @@ pub const TIMELINE_RATIO: f32 = 0.45;
 /// サーフェスの割り付け。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SurfaceLayout {
+    /// Program の映像を出す矩形（再生の操作のバーを除く）。
     pub program: Rect,
+    /// Program の下の再生の操作のバー。
+    pub program_bar: Rect,
     pub timeline: Rect,
     /// Source のビューアー。素材を開いているときだけ、Program の左に並ぶ。
     pub source: Option<Rect>,
+    /// Source の下の再生の操作のバー。`source` と一緒に現れる。
+    pub source_bar: Option<Rect>,
 }
 
 /// 幅 `w`、高さ `h` のサーフェスを割る。Timeline の高さはサーフェスの [`TIMELINE_RATIO`]（下限は目盛りとレイヤー 2 本）。
-/// `with_source` なら上の段を左の Source と右の Program に半分ずつ割る。
+/// 上の段は映像の下に再生の操作のバー（[`TRANSPORT_H`]）を取り、`with_source` なら左の Source と右の Program に半分ずつ割る。
 pub fn split_viewers(w: f32, h: f32, with_source: bool) -> SurfaceLayout {
     let h = h.max(0.0);
     let th = (h * TIMELINE_RATIO).max(MIN_TIMELINE_H).min(h);
     let ph = (h - th - GAP).max(0.0);
+    let bar_h = TRANSPORT_H.min(ph);
+    let vh = ph - bar_h;
     let timeline = Rect::new(0.0, h - th, w, th);
+    // 映像の矩形と、その真下のバー。
+    let column = |x: f32, cw: f32| (Rect::new(x, 0.0, cw, vh), Rect::new(x, vh, cw, bar_h));
     if !with_source {
+        let (program, program_bar) = column(0.0, w);
         return SurfaceLayout {
-            program: Rect::new(0.0, 0.0, w, ph),
+            program,
+            program_bar,
             timeline,
             source: None,
+            source_bar: None,
         };
     }
     let half = ((w - GAP) / 2.0).max(0.0);
+    let (source, source_bar) = column(0.0, half);
+    let (program, program_bar) = column(half + GAP, half);
     SurfaceLayout {
-        source: Some(Rect::new(0.0, 0.0, half, ph)),
-        program: Rect::new(half + GAP, 0.0, half, ph),
+        program,
+        program_bar,
         timeline,
+        source: Some(source),
+        source_bar: Some(source_bar),
     }
 }
 
@@ -48,7 +65,7 @@ mod tests {
     #[test]
     fn 二つの領域はサーフェスを隙間つきで埋める() {
         let l = split_viewers(1000.0, 800.0, false);
-        assert_eq!(l.program.bottom() + GAP, l.timeline.y);
+        assert_eq!(l.program_bar.bottom() + GAP, l.timeline.y);
         assert_eq!(l.timeline.bottom(), 800.0);
         assert_eq!((l.program.w, l.timeline.w), (1000.0, 1000.0));
     }

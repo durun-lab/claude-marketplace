@@ -5,10 +5,10 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use mm_render_api::tone_map_peak;
-use mm_ui_layout::{Action, EditKind, PointerEvent};
+use mm_ui_layout::{Action, EditKind, PointerEvent, TransportAction, Viewer};
 use mm_ui_wgpu::{timeline_cut_ids, timeline_layer_ids, timeline_model, Region, Ui};
 
-use super::View;
+use super::{transport, View};
 use crate::win::playback::Command;
 use crate::win::sequence_edit::{gesture_op, TimelineIds};
 use crate::win::state::{FrameImage, OpenDoc, Shared};
@@ -102,6 +102,15 @@ pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
     for ev in events {
         if let PointerEvent::Down { x, y, .. } = ev {
             focus_viewer(shared, ui.region_at(x, y));
+        }
+        for action in ui.transport_pointer(ev) {
+            match action {
+                TransportAction::Seek {
+                    viewer: Viewer::Program,
+                    t,
+                } => seek = Some(t),
+                other => transport::run(shared, other),
+            }
         }
         for action in ui.pointer(ev) {
             match action {
