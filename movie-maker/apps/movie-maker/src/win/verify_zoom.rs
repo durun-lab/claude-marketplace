@@ -15,6 +15,7 @@ use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, WM_KEYDOWN};
 
 use crate::win::capture;
 use crate::win::cli::PlayTest;
+use crate::win::keyboard;
 use crate::win::keys;
 use crate::win::playback::Command;
 use crate::win::state::Shared;
@@ -165,10 +166,10 @@ fn zoom_keys_step(env: &Env<'_>, log: &mut Log, duration: f64) -> Option<TimeVie
 /// `-` のキーをサーフェスに投げて縮小し、JIS のキー配列の Shift+-（`=`）で拡大して戻す。記号のキーは今のキー配列で文字にする。
 fn jis_keys_step(env: &Env<'_>, log: &mut Log, start: TimeView) {
     let shared = env.shared;
-    let keyboard = surface::keyboard_layout(env.surface_hwnd);
-    let jis = surface::key_name_in(VK_OEM_7, (false, false, false), keyboard) == "^";
-    let minus = surface::key_name_in(VK_OEM_MINUS, (false, false, false), keyboard);
-    let shift_minus = surface::key_name_in(VK_OEM_MINUS, (false, true, false), keyboard);
+    let current = keyboard::keyboard_layout(env.surface_hwnd);
+    let jis = keyboard::key_name_in(VK_OEM_7, keyboard::NO_MODS, current) == "^";
+    let minus = keyboard::key_name_in(VK_OEM_MINUS, keyboard::NO_MODS, current);
+    let shift_minus = keyboard::key_name_in(VK_OEM_MINUS, (false, true, false), current);
     surface::post_key(env.surface_hwnd, VK_OEM_MINUS);
     let step = std::f64::consts::SQRT_2;
     let out = wait_view(shared, |v| close(v.px_per_sec * step, start.px_per_sec));
@@ -181,7 +182,7 @@ fn jis_keys_step(env: &Env<'_>, log: &mut Log, start: TimeView) {
         "symbol_keys",
         ok,
         json!({
-            "keyboard_layout": format!("{:08X}", keyboard.0 as usize),
+            "keyboard_layout": format!("{:08X}", current.0 as usize),
             "jis": jis,
             "minus": minus,
             "shift_minus": shift_minus,

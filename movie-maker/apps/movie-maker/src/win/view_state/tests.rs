@@ -14,6 +14,7 @@ fn state(px: f64, scroll: f32) -> ViewState {
             all: Some(RowHeight::Medium),
             layers,
         },
+        snapping: true,
     }
 }
 
@@ -44,6 +45,33 @@ fn 書いた表示の状態を開き直すと同じ値で戻る() {
     assert!(text.contains("\"trackHeight\": \"medium\""), "{text}");
     let again = opened(&project, "main");
     assert_eq!(again.view.current(), Some(state(42.0, 280.0)));
+}
+
+#[test]
+fn スナップの入_切を書いて戻し_書いていないファイルは入() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = json_project(tmp.path());
+    let shared = opened(&project, "main");
+    assert!(shared.view.snapping(), "表示の状態が無ければ入");
+    let off = ViewState {
+        snapping: false,
+        ..state(42.0, 0.0)
+    };
+    shared.view.publish(off.clone());
+    shared.view.flush();
+    let path = tmp.path().join(".mm").join("view.json");
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("\"snapping\": false"), "{text}");
+    let again = opened(&project, "main");
+    assert_eq!(again.view.current(), Some(off));
+    assert!(!again.view.snapping());
+    let older =
+        r#"{"version": 1, "timelines": {"main": {"origin": 0, "pxPerSec": 50, "scrollY": 0}}}"#;
+    std::fs::write(&path, older).unwrap();
+    assert!(
+        opened(&project, "main").view.snapping(),
+        "入/切の無いファイルは入"
+    );
 }
 
 #[test]

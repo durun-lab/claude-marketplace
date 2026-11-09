@@ -4,18 +4,20 @@
 //! 領域ごとの描く関数は `paint/` の下のファイルに置き、ここから名前の順に呼ぶ。描く関数は自分の領域の矩形の外に描かず、
 //! 重ね順は呼ぶ順でなく [`Depth`] で決めるので、領域を足す PR はファイルを 1 つと、呼び出しを 1 行足せばよい。
 
-mod guide;
 mod header;
 mod keymarks;
 mod playhead;
 mod rows;
 mod ruler;
 mod scrollbar;
+mod snap;
 mod zoombar;
 
+use crate::drag_tooltip::DragTooltip;
 use crate::geom::{Color, Quad, Rect};
 use crate::gesture::EditKind;
 use crate::palette::Palette;
+use crate::snap::SnapTarget;
 use crate::timeline::{Hit, TimelineModel};
 use crate::timeline_layout::Viewport;
 
@@ -32,10 +34,12 @@ pub struct PaintState {
     pub selected: Option<usize>,
     /// 選ばれたカット（レイヤーの添字、カットの添字）。
     pub selected_cut: Option<(usize, usize)>,
-    /// スナップのガイド線（秒）。
-    pub guide: Option<f64>,
+    /// ドラッグで吸い付いた目標。吸い付いたときだけスナップの表示（ガイド線と上下の三角形、帯の端なら端の強調）を出す。
+    pub snap: Option<SnapTarget>,
     /// ドラッグ中の見た目（離す前の編集と動かす量）。`trimLayer` は帯の端を動かして描く。
     pub preview: Option<(EditKind, f64)>,
+    /// ドラッグ中のツールチップ。編集のドラッグの間だけ。
+    pub drag_tooltip: Option<DragTooltip>,
     /// 色。
     pub palette: Palette,
 }
@@ -101,7 +105,7 @@ impl Canvas {
     }
 }
 
-/// 文字の下に描く矩形（背景、行の縞、帯、目盛りの帯、スクロールバー、ズームバー）。
+/// 文字の下に描く矩形（背景、行の縞、帯、吸い付いた帯の端の強調、目盛りの帯、スクロールバー、ズームバー）。
 pub fn timeline_quads(model: &TimelineModel, vp: &Viewport, state: &PaintState) -> Vec<Quad> {
     let input = PaintInput { model, vp, state };
     let mut canvas = Canvas::default();
@@ -111,16 +115,17 @@ pub fn timeline_quads(model: &TimelineModel, vp: &Viewport, state: &PaintState) 
     rows::paint(&input, &mut canvas);
     ruler::paint(&input, &mut canvas);
     scrollbar::paint(&input, &mut canvas);
+    snap::edge_highlight(&input, &mut canvas);
     zoombar::paint(&input, &mut canvas);
     canvas.into_quads()
 }
 
-/// 文字の上に重ねる矩形（スナップのガイド線と再生位置の線）。目盛りの帯と行の領域を縦に貫く。
+/// 文字の上に重ねる矩形（再生位置の線とスナップの表示）。目盛りの帯と行の領域を縦に貫く。
 pub fn timeline_overlay(model: &TimelineModel, vp: &Viewport, state: &PaintState) -> Vec<Quad> {
     let input = PaintInput { model, vp, state };
     let mut canvas = Canvas::default();
-    guide::paint(&input, &mut canvas);
     playhead::paint(&input, &mut canvas);
+    snap::paint(&input, &mut canvas);
     canvas.into_quads()
 }
 

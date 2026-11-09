@@ -159,36 +159,8 @@ pub struct TimelineModel {
     pub duration: f64,
     pub fps: f64,
     pub items: Vec<Item>,
-}
-
-impl TimelineModel {
-    /// スナップの目標（0、終わり、各レイヤーとカットの端）。`skip` のレイヤーは除く。
-    pub fn snap_targets(&self, skip: Option<usize>) -> Vec<f64> {
-        self.targets_without(skip, None)
-    }
-
-    /// カット `(item, cut)` の端を動かすときのスナップの目標。そのカット自身の端は除く。
-    pub fn cut_snap_targets(&self, item: usize, cut: usize) -> Vec<f64> {
-        self.targets_without(None, Some((item, cut)))
-    }
-
-    fn targets_without(&self, skip: Option<usize>, skip_cut: Option<(usize, usize)>) -> Vec<f64> {
-        let mut out = vec![0.0, self.duration];
-        for (i, it) in self.items.iter().enumerate() {
-            if Some(i) != skip {
-                out.extend([it.start, it.end]);
-            }
-            if Some(i) == skip {
-                continue;
-            }
-            for (c, bar) in it.cuts.iter().enumerate() {
-                if Some((i, c)) != skip_cut {
-                    out.extend([bar.start, bar.end]);
-                }
-            }
-        }
-        out
-    }
+    /// コンポジションのマーカーの時刻（秒）。スナップの目標にする。
+    pub markers: Vec<f64>,
 }
 
 /// 帯の上の位置。
@@ -266,29 +238,10 @@ fn part_at(bx: f32, bw: f32, x: f32) -> Part {
 
 /// 点 (x, y)（Timeline の座標）に当たるもの。つまみは帯の幅の 1/3 を超えない。
 pub fn hit_test(model: &TimelineModel, vp: &Viewport, x: f32, y: f32) -> Hit {
+    if let Some(hit) = region_hit(model, vp, x, y) {
+        return hit;
+    }
     let l = vp.layout;
-    if l.ruler.contains(x, y) {
-        return Hit::Ruler;
-    }
-    if l.corner.contains(x, y) {
-        return Hit::Corner;
-    }
-    if l.headers.contains(x, y) {
-        return vp
-            .rows
-            .at(y - l.headers.y + vp.scroll_y)
-            .filter(|i| *i < model.items.len())
-            .map_or(Hit::Empty, |index| Hit::Header { index });
-    }
-    if l.scrollbar.contains(x, y) {
-        return Hit::Scrollbar {
-            thumb: vp.thumb().contains(x, y),
-        };
-    }
-    if l.zoombar.contains(x, y) {
-        let part = zoombar::part_at(zoombar::thumb_of(vp, model.duration), x);
-        return Hit::ZoomBar { part };
-    }
     if !l.row_area.contains(x, y) {
         return Hit::Empty;
     }
@@ -318,6 +271,32 @@ pub fn hit_test(model: &TimelineModel, vp: &Viewport, x: f32, y: f32) -> Hit {
         index,
         part: part_at(bar.x, bar.w, x),
     }
+}
+
+/// 行の領域のほかの矩形（目盛りの帯、見出しの列の上の角、見出しの列、縦のスクロールバー、ズームバー）に当たるもの。
+/// どれにも入らなければ `None`。
+fn region_hit(model: &TimelineModel, vp: &Viewport, x: f32, y: f32) -> Option<Hit> {
+    let l = vp.layout;
+    if l.ruler.contains(x, y) {
+        return Some(Hit::Ruler);
+    }
+    if l.corner.contains(x, y) {
+        return Some(Hit::Corner);
+    }
+    if l.headers.contains(x, y) {
+        let row = vp.rows.at(y - l.headers.y + vp.scroll_y);
+        let index = row.filter(|i| *i < model.items.len());
+        return Some(index.map_or(Hit::Empty, |index| Hit::Header { index }));
+    }
+    if l.scrollbar.contains(x, y) {
+        let thumb = vp.thumb().contains(x, y);
+        return Some(Hit::Scrollbar { thumb });
+    }
+    if l.zoombar.contains(x, y) {
+        let part = zoombar::part_at(zoombar::thumb_of(vp, model.duration), x);
+        return Some(Hit::ZoomBar { part });
+    }
+    None
 }
 
 /// シーケンスのレイヤーの上の `x` に当たるカット。

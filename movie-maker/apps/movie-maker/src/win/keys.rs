@@ -34,6 +34,7 @@ const BINDINGS: &[(&str, &str)] = &[
     ("source.mark_in", "KeyI"),
     ("source.mark_out", "KeyO"),
     ("timeline.full_extent_zoom", "Shift+KeyZ"),
+    ("timeline.toggle_snapping", "KeyN"),
     ("timeline.zoom_in", "="),
     ("timeline.zoom_in", "+"),
     ("timeline.zoom_in", "Ctrl+="),
@@ -186,6 +187,14 @@ pub fn dispatch(shared: &Arc<Shared>, source: &str, key: &str) {
     tracing::debug!(source, key, "key");
 }
 
+/// キーを離した（サーフェスだけが送る）。押している間だけ効くコマンド（ドラッグ中のスナップの反転）を戻す。
+/// 修飾キーを先に離しても戻るよう、修飾キーを付けない名前で引く。
+pub fn release(shared: &Shared, key: &str) {
+    if let Some(id) = command_for(key) {
+        commands::release_from_key(shared, id);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -290,7 +299,7 @@ mod tests {
     fn expected_moves() -> Expected {
         use crate::win::commands::{Action, Owner};
         use mm_ui_layout::TimelineCommand::{FullExtentZoom, NextEdit, PreviousEdit};
-        use mm_ui_layout::TimelineCommand::{ZoomIn, ZoomOut};
+        use mm_ui_layout::TimelineCommand::{ToggleSnapping, ZoomIn, ZoomOut};
         use Command::{Pause, Play, Reverse, Seek, Step, StepSeconds, Toggle};
         let p = |c| Owner::App(Action::Playback(c));
         let t = |c| Owner::App(Action::Timeline(c));
@@ -316,6 +325,7 @@ mod tests {
             ("Home", "playback.go_to_start", p(Seek(0.0))),
             ("End", "playback.go_to_end", p(Seek(f64::MAX))),
             ("Shift+KeyZ", "timeline.full_extent_zoom", t(FullExtentZoom)),
+            ("KeyN", "timeline.toggle_snapping", t(ToggleSnapping)),
             ("=", "timeline.zoom_in", t(ZoomIn)),
             ("+", "timeline.zoom_in", t(ZoomIn)),
             ("Ctrl+=", "timeline.zoom_in", t(ZoomIn)),
@@ -343,15 +353,16 @@ mod tests {
     }
 
     #[test]
-    fn timeline_のコマンドのキーは描画スレッドに積む() {
+    fn timeline_のコマンドのキーはポインターの入力のキューに積む() {
+        use mm_ui_layout::PointerEvent::Command;
+        use mm_ui_layout::TimelineCommand::{FullExtentZoom, NextEdit, ZoomIn};
         let shared = Arc::new(Shared::new());
         dispatch(&shared, "surface", "=");
         dispatch(&shared, "webview", "Shift+KeyZ");
         dispatch(&shared, "surface", "ArrowDown");
-        use mm_ui_layout::TimelineCommand::{FullExtentZoom, NextEdit, ZoomIn};
         assert_eq!(
-            *shared.timeline_commands.lock().unwrap(),
-            [ZoomIn, FullExtentZoom, NextEdit]
+            *shared.input.lock().unwrap(),
+            [Command(ZoomIn), Command(FullExtentZoom), Command(NextEdit)]
         );
     }
 
@@ -458,6 +469,22 @@ mod tests {
         assert_eq!(label("Ctrl+="), "Ctrl+=");
         assert_eq!(label("Ctrl++"), "Ctrl++");
         assert_eq!(label("-"), "-");
+    }
+
+    #[test]
+    fn n_はスナップの入_切を描画スレッドへ渡し_離すとドラッグ中の反転を戻す() {
+        use mm_ui_layout::{PointerEvent, TimelineCommand};
+        let toggle = PointerEvent::Command(TimelineCommand::ToggleSnapping);
+        let shared = Arc::new(Shared::new());
+        dispatch(&shared, "surface", "KeyN");
+        release(&shared, "KeyN");
+        release(&shared, "KeyK");
+        dispatch(&shared, "webview", "KeyN");
+        assert_eq!(
+            *shared.input.lock().unwrap(),
+            [toggle, PointerEvent::SnapKeyUp, toggle],
+            "ドラッグとの前後を保つため、ポインターの入力のキューに入れる。K を離しても何もしない"
+        );
     }
 
     #[test]

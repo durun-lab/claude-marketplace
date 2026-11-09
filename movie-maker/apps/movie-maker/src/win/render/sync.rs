@@ -1,5 +1,5 @@
 //! 描画スレッドの、共有状態と UI の行き来。Timeline に出すプロジェクトのデータ、Source のフレーム、
-//! ポインターの入力から選択とシークとドラッグの編集へ、キーとメニューの Timeline のコマンドから表示とシークへ。
+//! ポインターの入力から選択とシークとドラッグの編集へ。
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -95,7 +95,8 @@ impl DocSync {
 
 /// ポインターの入力を UI に渡し、起きた操作を送る。選択は共有状態へ、シークは再生スレッドへ、
 /// 端のつまみと中のドラッグの確定は編集の操作として適用する。
-/// 1 周に溜まったシークは最後の 1 つだけ送る（途中の位置を描いても次に上書きされる）。
+/// 1 周に溜まったシークは最後の 1 つだけ送る（途中の位置を描いても次に上書きされる）。キーとメニューの Timeline の
+/// コマンドのシーク（前後の帯の端）は、Home と End と同じく再生を止めずにすぐ送る。
 pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
     let events = std::mem::take(&mut *shared.input.lock().expect("input"));
     let mut seek = None;
@@ -103,8 +104,13 @@ pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
         if let PointerEvent::Down { x, y, .. } = ev {
             focus_viewer(shared, ui.region_at(x, y));
         }
+        let command = matches!(ev, PointerEvent::Command(_));
         for action in ui.pointer(ev) {
             match action {
+                Action::Seek(t) if command => {
+                    seek = None;
+                    shared.send(Command::Seek(t));
+                }
                 Action::Seek(t) => seek = Some(t),
                 Action::Select(index) => {
                     shared.select_layer(index.and_then(|i| doc.layer_ids.get(i).cloned()));
@@ -128,19 +134,6 @@ pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
             shared.send(Command::Pause);
         }
         shared.send(Command::Seek(t));
-    }
-}
-
-/// キーとメニューの Timeline のコマンドを UI に渡す。前後の帯の端へ動かすシークは、Home と End と同じく再生を止めない。
-pub(super) fn handle_commands(shared: &Shared, ui: &mut Ui) {
-    let commands =
-        std::mem::take(&mut *shared.timeline_commands.lock().expect("timeline commands"));
-    for command in commands {
-        for action in ui.command(command) {
-            if let Action::Seek(t) = action {
-                shared.send(Command::Seek(t));
-            }
-        }
     }
 }
 

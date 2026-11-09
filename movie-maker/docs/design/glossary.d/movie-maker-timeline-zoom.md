@@ -14,11 +14,11 @@
 | ズームの中心（キーとメニューの） | Zoom In と Zoom Out で動かさない時刻。再生位置で、見えていなければ拡大した後に再生位置を行の領域の中央に置く。Ctrl+ホイールの中心はポインター | `TimelineController::zoom_at_playhead` |
 | ページ送り（Timeline の） | 再生位置が行の領域の端を越えて動いたら、越えた先が見えるまで、見えている範囲をその向きへ 1 画面ずつ送ること。再生中（Premiere の Page Scroll）と、止めている間のキーとメニューの移動で送る。左へ送るときは 0 より前を見せない。端の外にあった再生位置が動いても、ドラッグの間も送らない | `TimelineController::page_scroll`、`Ui::set_playhead` |
 | 前後の帯の端（Previous Edit と Next Edit の移動先） | 再生位置の前か後ろの、いちばん近いレイヤーとカットの始まりと終わり、0、終わり。いちばん近いフレームの先頭にそろえ、最後のフレームの始まりまでに収める。半フレームより近い端は今いる所として数えない。スナップの目標とは別に求め、キーフレームとマーカーでは止まらない | `edit_target` |
-| Timeline のコマンド | キーとメニューから Timeline に送る UI のコマンド（拡大縮小、全体表示、前後の帯の端）。描画スレッドの Timeline が実行する | `TimelineCommand`、`Action::Timeline`、`Shared::timeline_commands` |
+| Timeline のコマンド | キーとメニューから Timeline に送る UI のコマンド（拡大縮小、全体表示、前後の帯の端、スナップの入/切）。ドラッグとの前後を保つためポインターの入力のキューで描画スレッドへ渡し、Timeline の操作が実行する | `TimelineCommand`、`Action::Timeline`、`PointerEvent::Command` |
 | 押し続けの繰り返し（キーの） | キーを押し続けたときに OS が送る 2 回目からの押下（`WM_KEYDOWN` の lParam の 30 ビット目、`KeyboardEvent.repeat`）。ズームと移動のコマンド（Zoom In、Zoom Out、← →、Shift+← →、↑ ↓）だけが実行し、ほかは最初の押下だけ | `keys::REPEATS`、`keys::repeats`、`key_event` の `repeat` |
-| キー配列 | 記号のキーの並び（JIS、US など）。Windows のキーボード レイアウト（`HKL`）。記号のキーの名前（押された文字）はキー配列で決まる | `surface::keyboard_layout`、`HKL` |
+| キー配列 | 記号のキーの並び（JIS、US など）。Windows のキーボード レイアウト（`HKL`）。記号のキーの名前（押された文字）はキー配列で決まる | `keyboard::keyboard_layout`、`HKL` |
 | code の名前のキー / 記号のキー | 名前を `KeyboardEvent.code` の名前（`KeyZ`、`ArrowLeft`）にするキー（英字、数字、矢印、Space、Home、Delete、F1 など。キー配列に依らない）/ 押された文字を名前にするキー（`=`、`-`、`,`、テンキーなど）。記号のキーはキー配列でキーの位置が違うので文字を名前にし、Shift は名前に付けない | `keys::vk_name`、`keys::symbol_name`、`keyName` |
-| 押された文字（記号のキーの） | 記号のキーを今のキー配列で、Shift だけを押した状態で文字にしたもの。サーフェスは `ToUnicodeEx`、WebView は `KeyboardEvent.key` | `surface::key_name_in` |
+| 押された文字（記号のキーの） | 記号のキーを今のキー配列で、Shift だけを押した状態で文字にしたもの。サーフェスは `ToUnicodeEx`、WebView は `KeyboardEvent.key` | `keyboard::key_name_in` |
 
 ## 置き換えた語
 
@@ -37,10 +37,11 @@
 | 編集点（Previous Edit と Next Edit の） | 再生位置を動かす先。用語集の編集点はカットの間だけで、レイヤーの端と 0 と終わりを含まない | 前後の帯の端 |
 | フレームの境目に丸める（前後の帯の端の） | 移動先の時刻のそろえ方 | いちばん近いフレームの先頭にそろえる |
 | 飛ばす（今いる端を） | 再生位置から半フレームより近い端を移動先に数えないこと。用語集の「飛ばす」はスキップとドロップに置き換えた語 | 数えない |
-| 配列、JIS の配列、US の配列、今の配列、`layout`（`HKL` の）、`layout_of` | 記号のキーの並び。用語集の配列（数の並び）と、割り付け（layout）と紛れる | キー配列（`keyboard`、`surface::keyboard_layout`） |
+| 配列、JIS の配列、US の配列、今の配列、`layout`（`HKL` の）、`layout_of` | 記号のキーの並び。用語集の配列（数の並び）と、割り付け（layout）と紛れる | キー配列（`keyboard`、`keyboard::keyboard_layout`） |
 | 名前で引くキー | 名前を `KeyboardEvent.code` の名前にするキー。どのキーも名前で表を引くので、何で分けたかが分からない | code の名前のキー |
 | 引く（記号のキーを押された文字で / `ToUnicodeEx` で / ズームバーの位置を / スクロールボックスを / 高さの下限を） | 押された文字を名前にする / 文字にする / 計算で出す / ドラッグする / 差し引く。1 つの差分で 5 つの意味に使っていた | 名前にする / 文字にする / 求める / ドラッグする / 除く |
 | キーの文字、記号の名前 | 記号のキーの名前にする、今のキー配列で押された文字 | 押された文字 |
 | キー名 | キーの表の名前（`KeyZ`、`=`）。同じ差分の「キーの名前」と揺れる | キーの名前 |
 | キーの表に当たらない | キーの名前が表のどの行とも合わない。用語集の「当たり」はキャッシュのヒットに置き換えた語 | キーの表に無い |
 | 繰り返しの印（`WM_KEYDOWN` の） | lParam の 30 ビット目。用語集の「印」はマーカーやフラグに置き換えた語 | 繰り返しのフラグ |
+| `TimelineAction`、`PointerEvent::ToggleSnapping`（Z2 の） | スナップの入/切を描画スレッドへ渡すコマンドと入力。Z1 の Timeline のコマンドと同じ役目の別の型 | Timeline のコマンド（`TimelineCommand::ToggleSnapping`、`PointerEvent::Command`） |

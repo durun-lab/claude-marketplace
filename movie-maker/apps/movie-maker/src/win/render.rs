@@ -23,7 +23,7 @@ use crate::win::state::{FrameImage, PreviewFrame, Shared};
 use crate::win::surface;
 use crate::win::theme;
 use acquire::Recovery;
-use sync::{handle_commands, handle_input, DocSync, SourceSync};
+use sync::{handle_input, DocSync, SourceSync};
 
 /// サーフェスを取れなかったときの待ち。再試行で CPU を回さないための間隔。
 const RETRY_WAIT: Duration = Duration::from_millis(8);
@@ -304,7 +304,6 @@ fn run(
         source.refresh(shared, &mut view);
         drawing.refresh(shared, &mut view.ui);
         handle_input(shared, &mut view.ui, &doc);
-        handle_commands(shared, &mut view.ui);
         if let Some(state) = view.ui.view_state() {
             shared.view.publish(state);
         }

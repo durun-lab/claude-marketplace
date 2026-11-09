@@ -11,19 +11,19 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Input::Ime::{ImmAssociateContextEx, HIMC};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
-    GetCapture, GetKeyState, GetKeyboardLayout, ReleaseCapture, SetCapture, SetFocus, ToUnicodeEx,
-    TrackMouseEvent, HKL, TME_LEAVE, TRACKMOUSEEVENT, VK_CONTROL, VK_ESCAPE, VK_F10, VK_F4,
-    VK_MENU, VK_SHIFT,
+    GetCapture, GetKeyState, ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE,
+    TRACKMOUSEEVENT, VK_CONTROL, VK_ESCAPE, VK_F10, VK_F4, VK_MENU, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateWindowExW, DefWindowProcW, GetWindowThreadProcessId, IsWindow, LoadCursorW, PostMessageW,
-    RegisterClassW, SetWindowPos, CS_HREDRAW, CS_VREDRAW, IDC_ARROW, SWP_NOACTIVATE, SWP_NOZORDER,
-    WM_CAPTURECHANGED, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE,
-    WM_MOUSEWHEEL, WM_SYSCHAR, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW, WS_CHILD, WS_CLIPSIBLINGS,
-    WS_EX_NOPARENTNOTIFY, WS_VISIBLE,
+    CreateWindowExW, DefWindowProcW, IsWindow, LoadCursorW, PostMessageW, RegisterClassW,
+    SetWindowPos, CS_HREDRAW, CS_VREDRAW, IDC_ARROW, SWP_NOACTIVATE, SWP_NOZORDER,
+    WM_CAPTURECHANGED, WM_ERASEBKGND, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP,
+    WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_SYSCHAR, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW, WS_CHILD,
+    WS_CLIPSIBLINGS, WS_EX_NOPARENTNOTIFY, WS_VISIBLE,
 };
 
 use crate::win::hotpatch;
+use crate::win::keyboard;
 use crate::win::keys;
 use crate::win::state::Shared;
 
@@ -40,10 +40,6 @@ const KEY_REPEAT_BIT: isize = 1 << 30;
 const INPUT_LIMIT: usize = 512;
 /// 表示の倍率が 1 のときの DPI（Windows の既定）。
 const BASE_DPI: f32 = 96.0;
-/// キーの状態の配列で、押しているキーを示す上位ビット。
-const KEY_PRESSED: u8 = 0x80;
-/// `ToUnicodeEx` の flags の、キーボードの状態（デッドキーの途中など）を変えずに文字にする指定（Windows 10 1607 から）。
-const KEEP_KEYBOARD_STATE: u32 = 0x4;
 
 static SHARED: OnceLock<Arc<Shared>> = OnceLock::new();
 static TRACKING: AtomicBool = AtomicBool::new(false);
@@ -142,10 +138,19 @@ pub fn post_click(hwnd: isize, x: i32, y: i32) {
 
 /// サーフェスの HWND にキー押下のメッセージを投げる（自動試験用）。
 pub fn post_key(hwnd: isize, vk: u32) {
+    post_key_message(hwnd, WM_KEYDOWN, vk);
+}
+
+/// サーフェスの HWND にキーを離したメッセージを投げる（押している間だけ効くキーの自動試験用）。
+pub fn post_key_up(hwnd: isize, vk: u32) {
+    post_key_message(hwnd, WM_KEYUP, vk);
+}
+
+fn post_key_message(hwnd: isize, msg: u32, vk: u32) {
     unsafe {
         let _ = PostMessageW(
             Some(HWND(hwnd as *mut _)),
-            WM_KEYDOWN,
+            msg,
             WPARAM(vk as usize),
             LPARAM(0),
         );
@@ -172,37 +177,7 @@ fn key_name(vk: u32) -> String {
         key_down(VK_SHIFT.0),
         key_down(VK_MENU.0),
     );
-    key_name_in(vk, mods, unsafe { GetKeyboardLayout(0) })
-}
-
-/// 修飾キー（Ctrl、Shift、Alt）を前に付けたキーの名前。code の名前のキーは仮想キーの名前、記号のキーはキー配列 `keyboard` で押された文字。
-pub fn key_name_in(vk: u32, (ctrl, shift, alt): (bool, bool, bool), keyboard: HKL) -> String {
-    let name =
-        keys::vk_name(vk).unwrap_or_else(|| keys::symbol_name(vk, typed_char(vk, shift, keyboard)));
-    keys::with_modifiers(&name, ctrl, shift, alt)
-}
-
-/// サーフェスの HWND の UI スレッドの、今のキー配列。
-pub fn keyboard_layout(hwnd: isize) -> HKL {
-    unsafe {
-        let thread = GetWindowThreadProcessId(HWND(hwnd as *mut _), None);
-        GetKeyboardLayout(thread)
-    }
-}
-
-/// 記号のキーをキー配列 `keyboard` で押したときの文字。Shift だけを押した状態で文字にする（Ctrl を含めると制御文字になる）。
-/// デッドキーと、文字にならないキーは `None`。
-fn typed_char(vk: u32, shift: bool, keyboard: HKL) -> Option<char> {
-    let mut state = [0u8; 256];
-    if shift {
-        state[usize::from(VK_SHIFT.0)] = KEY_PRESSED;
-    }
-    let mut buf = [0u16; 4];
-    let n = unsafe { ToUnicodeEx(vk, 0, &state, &mut buf, KEEP_KEYBOARD_STATE, Some(keyboard)) };
-    let c = (n == 1)
-        .then(|| char::from_u32(u32::from(buf[0])))
-        .flatten()?;
-    (!c.is_control()).then_some(c)
+    keyboard::key_name(vk, mods)
 }
 
 /// サーフェスの HWND に、左ボタンを押して `from` から `to` まで動かして離すメッセージを投げる（自動試験用）。
@@ -318,6 +293,17 @@ fn key_pressed(wparam: WPARAM, lparam: LPARAM) -> bool {
     keys::command_for(&name).is_some()
 }
 
+/// キーを離したことをキーの表に渡し（ドラッグ中のスナップの反転を戻す）、既定のウィンドウプロシージャにもそのまま渡す。
+fn key_released(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if let Some(shared) = SHARED.get() {
+        keys::release(
+            shared,
+            &keyboard::key_name(wparam.0 as u32, keyboard::NO_MODS),
+        );
+    }
+    unsafe { DefWindowProcW(hwnd, WM_KEYUP, wparam, lparam) }
+}
+
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     match msg {
         // 子 HWND は自動ではフォーカスを取らないので、クリックで自分に移す。ドラッグ中は外に出ても追う。
@@ -376,6 +362,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             key_pressed(wparam, lparam);
             LRESULT(0)
         }
+        WM_KEYUP => key_released(hwnd, wparam, lparam),
         // Alt を押している間のキーと F10 は WM_SYSKEYDOWN で届く。Alt+F4 と F10 は既定のウィンドウプロシージャに渡す。
         WM_SYSKEYDOWN if !passes_to_system(wparam.0 as u32) => {
             SYSKEY_IN_TABLE.store(key_pressed(wparam, lparam), Ordering::SeqCst);
@@ -412,31 +399,6 @@ mod tests {
             "Alt を離してもメニューモードに入らない"
         );
         assert!(!passes_to_system(0x4B), "Alt+K はキーの表へ");
-    }
-
-    /// このスレッドの今のキー配列で作ったキーの名前。
-    fn name(vk: u32, ctrl: bool, shift: bool) -> String {
-        key_name_in(vk, (ctrl, shift, false), unsafe { GetKeyboardLayout(0) })
-    }
-
-    #[test]
-    fn 英字と矢印はキー配列に依らず_shift_付きの名前_記号は今のキー配列で押された文字() {
-        assert_eq!(name(0x5A, false, true), "Shift+KeyZ");
-        assert_eq!(name(0x25, false, true), "Shift+ArrowLeft");
-        assert_eq!(
-            name(0xBD, false, false),
-            "-",
-            "VK_OEM_MINUS は JIS でも US でも -"
-        );
-        assert_eq!(name(0xBD, true, false), "Ctrl+-");
-        assert_eq!(name(0xBC, false, false), ",");
-        assert_eq!(name(0xBE, false, false), ".");
-        // JIS のキー配列（VK_OEM_7 が ^ のキー）の Shift+- は = で、Ctrl+Shift+- も Ctrl+= になる。
-        if name(0xDE, false, false) == "^" {
-            assert_eq!(name(0xBD, false, true), "=");
-            assert_eq!(name(0xBD, true, true), "Ctrl+=");
-            assert_eq!(name(0xBB, false, true), "+", "Shift+; は +");
-        }
     }
 
     #[test]

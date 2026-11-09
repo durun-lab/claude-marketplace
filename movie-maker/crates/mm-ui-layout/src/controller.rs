@@ -5,19 +5,20 @@
 //! 入力は Timeline の矩形の左上を (0, 0) とする座標で受け、操作の結果は [`Action`] で返す。
 //! ドラッグから編集の操作と量を決める所は [`crate::gesture`]。操作の適用（`mm-ops`）はここの外で行う。
 //! 当たり判定と描画が同じ値を見るよう、割り付けと行の並びもここが持つ（[`TimelineController::viewport`]）。
+//! スナップの入/切とドラッグ中の反転、ドラッグ中のツールチップは `controller/snapping.rs`。
 
 mod command;
 mod zoom;
 
 pub use command::{edit_target, TimelineCommand};
 
-use crate::gesture::{body_edit, edge_edit, EditKind};
+use crate::gesture::{body_edit, EditKind};
 use crate::paint::PaintState;
 use crate::palette::Palette;
 use crate::rows::Rows;
 use crate::screen::VIEW_MARGIN;
 use crate::scroll::{clamp_scroll, reveal, scroll_for_thumb};
-use crate::snap::{quantize, snap, SNAP_PX};
+use crate::snap::{quantize, SnapTarget};
 use crate::time_view::TimeView;
 use crate::timeline::{hit_test, Hit, Part, TimelineModel};
 use crate::timeline_layout::{TimelineLayout, Viewport};
@@ -38,7 +39,7 @@ pub struct Mods {
     pub alt: bool,
 }
 
-/// ポインターの入力。
+/// Timeline への入力。ポインターと、ドラッグに効くキー（取り消しとスナップの入/切）。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum PointerEvent {
     Down {
@@ -63,6 +64,11 @@ pub enum PointerEvent {
     Leave,
     /// 離す前にドラッグが終わった（Esc、ほかのウィンドウがキャプチャーを取った）。編集を確定せずに捨てる。
     Cancel,
+    /// キーとメニューの Timeline のコマンド（拡大縮小、全体表示、前後の帯の端、スナップの入/切）。ドラッグとの前後を
+    /// 保つため、ポインターの入力のキューで届く。
+    Command(TimelineCommand),
+    /// ドラッグ中に押したスナップの入/切のキーを離した。
+    SnapKeyUp,
 }
 
 /// 操作の結果。
@@ -116,11 +122,18 @@ pub struct TimelineController {
     pub selected: Option<usize>,
     /// 選んだカット（レイヤーの添字、カットの添字）。
     pub selected_cut: Option<(usize, usize)>,
+    /// スナップの入/切（表示の状態）。
+    pub snapping: bool,
     rows: Rows,
     layout: TimelineLayout,
     /// Timeline の大きさ（論理ピクセル）。
     size: (f32, f32),
-    guide: Option<f64>,
+    /// 端のドラッグで吸い付いた目標。
+    snap: Option<SnapTarget>,
+    /// ドラッグ中にスナップの入/切のキーを押している。押している間だけ入/切を反転する。
+    snap_held: bool,
+    /// ドラッグ中のポインターの位置。入/切を反転したら、同じ位置で吸い付き直す。
+    pointer: (f32, f32),
     /// ドラッグで最後に返した編集。離したときの確定にそのまま使う。
     last_edit: Option<(EditKind, f64)>,
     drag: Drag,
@@ -136,10 +149,13 @@ impl TimelineController {
             hover: Hit::Empty,
             selected: None,
             selected_cut: None,
+            snapping: true,
             rows: Rows::default(),
             layout: TimelineLayout::default(),
             size: (0.0, 0.0),
-            guide: None,
+            snap: None,
+            snap_held: false,
+            pointer: (0.0, 0.0),
             last_edit: None,
             drag: Drag::None,
             full_extent: None,
@@ -197,9 +213,7 @@ impl TimelineController {
             .selected_cut
             .filter(|(i, c)| model.items.get(*i).is_some_and(|it| *c < it.cuts.len()));
         self.hover = Hit::Empty;
-        self.drag = Drag::None;
-        self.guide = None;
-        self.last_edit = None;
+        self.end_drag();
     }
 
     /// 描くときの状態。
@@ -209,8 +223,9 @@ impl TimelineController {
             hover: self.hover,
             selected: self.selected,
             selected_cut: self.selected_cut,
-            guide: self.guide,
+            snap: self.snap,
             preview: self.last_edit,
+            drag_tooltip: self.drag_tooltip(),
             palette: Palette::DEFAULT,
         }
     }
@@ -244,11 +259,11 @@ impl TimelineController {
                 Vec::new()
             }
             PointerEvent::Cancel => {
-                self.drag = Drag::None;
-                self.guide = None;
-                self.last_edit = None;
+                self.end_drag();
                 Vec::new()
             }
+            PointerEvent::Command(command) => self.command(command, model, playhead),
+            PointerEvent::SnapKeyUp => self.release_snap_key(model, playhead),
         }
     }
 
@@ -376,6 +391,7 @@ impl TimelineController {
     }
 
     fn moved(&mut self, x: f32, y: f32, model: &TimelineModel, playhead: f64) -> Vec<Action> {
+        self.pointer = (x, y);
         match self.drag {
             Drag::None => {
                 self.hover = hit_test(model, &self.viewport(), x, y);
@@ -392,26 +408,9 @@ impl TimelineController {
                 self.drag_zoombar(&drag, x, model.duration);
                 Vec::new()
             }
-            Drag::Edge {
-                item,
-                cut,
-                part,
-                mods,
-            } => {
-                let mut targets = match cut {
-                    Some(c) => model.cut_snap_targets(item, c),
-                    None => model.snap_targets(Some(item)),
-                };
-                targets.push(playhead);
-                let t = self.viewport().t_of(x);
-                let s = snap(t, &targets, self.view.px_per_sec, SNAP_PX);
-                let time = if s.target.is_some() {
-                    s.time
-                } else {
-                    quantize(s.time, model.fps)
-                };
-                self.guide = Some(time);
-                self.report(edge_edit(model, item, cut, part, mods, time))
+            Drag::Edge { .. } => {
+                let edit = self.edge_drag(x, model, playhead);
+                self.report(edit)
             }
             Drag::Body {
                 item,
@@ -437,9 +436,8 @@ impl TimelineController {
     }
 
     fn up(&mut self, model: &TimelineModel) -> Vec<Action> {
-        let drag = std::mem::replace(&mut self.drag, Drag::None);
-        self.guide = None;
-        let last = self.last_edit.take();
+        let (drag, last) = (self.drag, self.last_edit);
+        self.end_drag();
         let frame = if model.fps > 0.0 {
             1.0 / model.fps
         } else {
@@ -488,9 +486,13 @@ fn deselect_cut(select: Action, had_cut: Option<(usize, usize)>) -> Vec<Action> 
     out
 }
 
+mod snapping;
+
 #[cfg(test)]
 mod cut_tests;
 #[cfg(test)]
 mod scroll_tests;
+#[cfg(test)]
+mod snap_tests;
 #[cfg(test)]
 mod tests;

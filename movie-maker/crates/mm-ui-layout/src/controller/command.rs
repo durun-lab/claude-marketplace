@@ -1,12 +1,13 @@
-//! キーとメニューから Timeline に送るコマンド。表示の範囲を変えるもの（拡大縮小、全体表示）と、再生位置を前後の帯の端へ
-//! 動かすもの（Previous Edit、Next Edit）。
+//! キーとメニューから Timeline に送るコマンド。表示の範囲を変えるもの（拡大縮小、全体表示）、再生位置を前後の帯の端へ
+//! 動かすもの（Previous Edit、Next Edit）、スナップの入/切。
 
 use super::zoom::ZOOM_KEY_STEP;
 use super::{Action, TimelineController};
 use crate::snap::quantize;
 use crate::timeline::TimelineModel;
 
-/// キーとメニューから Timeline に送るコマンド。UI のコマンドの表の Timeline の行が指す。
+/// キーとメニューから Timeline に送るコマンド。UI のコマンドの表の Timeline の行が指し、ポインターの入力
+/// （[`super::PointerEvent::Command`]）で届く。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimelineCommand {
     /// 再生位置を中心に拡大する（Zoom In）。
@@ -19,11 +20,13 @@ pub enum TimelineCommand {
     PreviousEdit,
     /// 再生位置を次の帯の端へ動かす（Next Edit）。
     NextEdit,
+    /// スナップの入/切（Snapping）。ドラッグ中は入/切を変えず、[`super::PointerEvent::SnapKeyUp`] まで反転する。
+    ToggleSnapping,
 }
 
 impl TimelineController {
     /// コマンドを 1 つ受けて、起きた操作を返す。前後の帯の端へ動かすコマンドは再生位置のシークを返す。
-    pub fn command(
+    pub(super) fn command(
         &mut self,
         command: TimelineCommand,
         model: &TimelineModel,
@@ -38,6 +41,7 @@ impl TimelineController {
             TimelineCommand::FullExtentZoom => self.toggle_full_extent(duration),
             TimelineCommand::PreviousEdit => return seek(edit_target(model, playhead, false)),
             TimelineCommand::NextEdit => return seek(edit_target(model, playhead, true)),
+            TimelineCommand::ToggleSnapping => return self.toggle_snapping(model, playhead),
         }
         Vec::new()
     }

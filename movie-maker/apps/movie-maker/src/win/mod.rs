@@ -17,6 +17,7 @@ mod history;
 mod hotpatch;
 mod inspector_ipc;
 mod ipc;
+mod keyboard;
 mod keys;
 mod layout;
 mod media;

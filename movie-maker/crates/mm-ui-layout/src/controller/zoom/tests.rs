@@ -16,11 +16,12 @@ fn model(duration: f64) -> TimelineModel {
             Item::layer(0.0, duration, ItemKind::Image, true),
             Item::layer(0.0, duration, ItemKind::Image, true),
         ],
+        ..TimelineModel::default()
     }
 }
 
 /// 先頭がシーケンスのレイヤー（カット 0-3、3-4、4-7 秒）、次が 10 秒から 14 秒のレイヤー（12 秒にキーフレーム）。
-/// 20 秒、30 fps。
+/// 16 秒にマーカー。20 秒、30 fps。
 fn edits() -> TimelineModel {
     let cut = |start, end| CutBar {
         start,
@@ -35,6 +36,7 @@ fn edits() -> TimelineModel {
         duration: 20.0,
         fps: 30.0,
         items: vec![seq, text],
+        markers: vec![16.0],
     }
 }
 
@@ -227,7 +229,7 @@ fn 前後の帯の端は_0_とカットとレイヤーの端と終わりで_今�
     assert_eq!(
         next(14.0),
         Some(20.0 - 1.0 / 30.0),
-        "終わりは最後のフレーム"
+        "マーカーでは止まらず、終わりは最後のフレーム"
     );
     assert_eq!(next(20.0 - 1.0 / 30.0), None);
     assert_eq!(previous(3.5), Some(3.0));

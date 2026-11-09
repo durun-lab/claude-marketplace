@@ -10,6 +10,7 @@ fn model() -> TimelineModel {
             Item::layer(0.0, 10.0, ItemKind::Text, true),
             Item::layer(2.0, 4.0, ItemKind::Footage, true),
         ],
+        ..TimelineModel::default()
     }
 }
 
@@ -88,6 +89,7 @@ fn スクロールした分だけ下の行に当たり_目盛りの帯の下に�
         duration: 10.0,
         fps: 30.0,
         items,
+        ..TimelineModel::default()
     };
     let mut f = viewport(&m);
     f.scroll_y = 28.0 * 5.0;
@@ -109,6 +111,7 @@ fn 縦のスクロールバーはスクロールボックスとそれ以外を�
         duration: 10.0,
         fps: 30.0,
         items,
+        ..TimelineModel::default()
     };
     let f = viewport(&m);
     let thumb = f.vp().thumb();
@@ -154,6 +157,7 @@ fn seq_model() -> TimelineModel {
         duration: 10.0,
         fps: 30.0,
         items: vec![seq],
+        ..TimelineModel::default()
     }
 }
 
@@ -195,18 +199,4 @@ fn カットの外にあるシーケンスのレイヤーの端はレイヤー�
             part: Part::InHandle
         }
     );
-}
-
-#[test]
-fn カットの端のスナップの目標は他のカットの端を含み_自分の端を除く() {
-    let t = seq_model().cut_snap_targets(0, 0);
-    assert!(t.contains(&4.0) && t.contains(&3.0), "次のカットの端");
-    assert_eq!(t.iter().filter(|x| **x == 3.0).count(), 1, "自分の出は除く");
-}
-
-#[test]
-fn スナップの目標は自分の端を除く() {
-    let t = model().snap_targets(Some(1));
-    assert!(t.contains(&0.0) && t.contains(&10.0));
-    assert!(!t.contains(&2.0) && !t.contains(&4.0));
 }

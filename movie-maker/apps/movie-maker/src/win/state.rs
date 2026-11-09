@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use mm_doc::Project;
 use mm_runtime::{GpuContext, GpuFrame};
 use mm_types::{CompositionId, RgbaImage};
-use mm_ui_layout::{PointerEvent, TimelineCommand};
+use mm_ui_layout::PointerEvent;
 use serde::Serialize;
 
 use crate::win::clock::PlayClock;
@@ -124,8 +124,6 @@ pub struct Shared {
     pub frames: FrameSlot,
     /// サーフェスが受けたポインターの入力。描画スレッドが取り出す。
     pub input: Mutex<Vec<PointerEvent>>,
-    /// キーとメニューから Timeline に送るコマンド。Timeline の表示を持つ描画スレッドが取り出す。
-    pub timeline_commands: Mutex<Vec<TimelineCommand>>,
     /// 再生スレッドへのコマンド。再生スレッドが立ち上がるまでは `None`。
     pub commands: Mutex<Option<Sender<Command>>>,
     /// 再生の主の時計。再生スレッドが立ち上がったときに置く。
@@ -187,7 +185,6 @@ impl Shared {
             rendered_frames: AtomicU64::new(0),
             frames: FrameSlot::default(),
             input: Mutex::new(Vec::new()),
-            timeline_commands: Mutex::new(Vec::new()),
             commands: Mutex::new(None),
             clock: OnceLock::new(),
             adapter: Mutex::new(String::new()),

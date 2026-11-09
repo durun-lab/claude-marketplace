@@ -2,8 +2,8 @@
 //! スクロールボックスの位置は `Ui::view_state` と `mm-ui-layout` の関数から求める（`Ui` と同じ計算）。
 
 use mm_ui_layout::{
-    palette, zoombar, Item, ItemKind, Rect, RowHeights, Rows, TimeView, TimelineCommand,
-    TimelineLayout, TimelineModel, ViewState,
+    palette, zoombar, Item, ItemKind, PointerEvent, Rect, RowHeights, Rows, TimeView,
+    TimelineCommand, TimelineLayout, TimelineModel, ViewState,
 };
 use mm_ui_wgpu::Ui;
 
@@ -18,6 +18,7 @@ fn model() -> TimelineModel {
             Item::layer(0.0, 10.0, ItemKind::Text, true),
             Item::layer(2.0, 6.0, ItemKind::Text, true),
         ],
+        ..TimelineModel::default()
     }
 }
 
@@ -37,6 +38,7 @@ fn zoomed_ui(device: &wgpu::Device, scale: f32, m: &TimelineModel) -> (Ui, (u32,
         time: ZOOMED,
         scroll_y: 0.0,
         heights: RowHeights::default(),
+        snapping: true,
     });
     ui.resize(size.0, size.1);
     (ui, size)
@@ -85,14 +87,14 @@ fn timeline_の下端にズームバーを描き_全体表示でスクロール�
             "表示の倍率 {scale}: 溝 {track:?}"
         );
 
-        ui.command(TimelineCommand::FullExtentZoom);
+        ui.pointer(PointerEvent::Command(TimelineCommand::FullExtentZoom));
         let whole = render_sized(&device, &queue, &mut ui, size);
         let near_end = l.zoombar.right() - 10.0;
         assert!(
             close(at(&whole, near_end), label, 3),
             "表示の倍率 {scale}: 全体表示"
         );
-        ui.command(TimelineCommand::FullExtentZoom);
+        ui.pointer(PointerEvent::Command(TimelineCommand::FullExtentZoom));
         let back = ui.view_state().expect("表示の状態").time;
         assert_eq!(back, ZOOMED, "表示の倍率 {scale}: もう一度で元の倍率と位置");
     }

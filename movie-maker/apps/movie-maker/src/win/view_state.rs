@@ -1,4 +1,4 @@
-//! Timeline の表示の状態（ズーム、スクロール、行の高さ）を `.mm/view.json` に置く。
+//! Timeline の表示の状態（ズーム、スクロール、行の高さ、スナップの入/切）を `.mm/view.json` に置く。
 //! プロジェクトのデータではないので操作にせず、取り消しの列と `versions/` にも入らない。消すと既定の表示に戻る。
 //!
 //! 描画スレッドが変わった状態を [`ViewSlot::publish`] で置き、書くスレッドが変化の落ち着いたところで書く。
@@ -51,6 +51,13 @@ struct TimelineView {
     /// レイヤーごとの行の高さ。キーはレイヤーの ID。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     layer_heights: BTreeMap<String, Height>,
+    /// スナップの入/切。無ければ入（Premiere と Resolve の既定と同じ）。
+    #[serde(default = "snapping_on")]
+    snapping: bool,
+}
+
+fn snapping_on() -> bool {
+    true
 }
 
 /// 行の高さの、ファイルの中の名前。
@@ -95,6 +102,7 @@ impl TimelineView {
                 .iter()
                 .map(|(k, v)| (k.clone(), (*v).into()))
                 .collect(),
+            snapping: s.snapping,
         }
     }
 
@@ -117,6 +125,7 @@ impl TimelineView {
                     .map(|(k, v)| (k.clone(), (*v).into()))
                     .collect(),
             },
+            snapping: self.snapping,
         })
     }
 }
@@ -167,6 +176,12 @@ impl ViewSlot {
     /// 今の状態。描画スレッドが最初の表示を当てるまでは、開いたときに読んだもの（無ければ `None`）。
     pub fn current(&self) -> Option<ViewState> {
         self.inner.lock().expect("view").current.clone()
+    }
+
+    /// スナップの入/切。表示の状態がまだ無ければ既定の入。コマンドの表のチェックの状態に出す。
+    pub fn snapping(&self) -> bool {
+        let inner = self.inner.lock().expect("view");
+        inner.current.as_ref().is_none_or(|s| s.snapping)
     }
 
     /// 書いていない状態を `.mm/view.json` に書く。書けなくても表示は続ける（消してよいファイルなので）。
