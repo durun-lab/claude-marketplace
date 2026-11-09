@@ -243,6 +243,10 @@ impl View {
         let gpu = init_gpu(shared, hwnd, context)?;
         let mut ui = Ui::new(&gpu.device, gpu.config.format);
         ui.set_model(model.clone());
+        // 開いたときは `.mm/view.json` の、作り直したときは直前の表示の状態に戻す。
+        if let Some(view) = shared.view.current() {
+            ui.restore_view(view);
+        }
         ui.set_palette(theme::surface_palette());
         ui.set_font(theme::surface_font());
         Ok(Self {
@@ -300,6 +304,9 @@ fn run(
         source.refresh(shared, &mut view);
         drawing.refresh(shared, &mut view.ui);
         handle_input(shared, &mut view.ui, &doc);
+        if let Some(state) = view.ui.view_state() {
+            shared.view.publish(state);
+        }
         match frame(shared, &view.gpu, &mut view.ui, &mut seen) {
             Ok(()) => failed_frames = 0,
             Err(recovery) => {
@@ -310,6 +317,8 @@ fn run(
             }
         }
     }
+    // 閉じるときは、書くスレッドの待ちの途中でも最後の表示の状態を書き残す。
+    shared.view.flush();
     Ok(())
 }
 

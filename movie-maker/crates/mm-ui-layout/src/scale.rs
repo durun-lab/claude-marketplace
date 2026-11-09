@@ -103,11 +103,18 @@ impl Scale {
                 mods,
             },
             PointerEvent::Move { x, y } => PointerEvent::Move { x: l(x), y: l(y) },
-            PointerEvent::Wheel { x, y, dy, ctrl } => PointerEvent::Wheel {
+            PointerEvent::Wheel {
+                x,
+                y,
+                dy,
+                ctrl,
+                shift,
+            } => PointerEvent::Wheel {
                 x: l(x),
                 y: l(y),
                 dy,
                 ctrl,
+                shift,
             },
             other => other,
         }
@@ -125,15 +132,13 @@ mod tests {
     use super::*;
     use crate::controller::Mods;
     use crate::screen::split_viewers;
-    use crate::time_view::TimeView;
-    use crate::timeline::{
-        hit_test, row_top, Hit, Item, ItemKind, Part, TimelineModel, HANDLE_PX, ROW_H,
-    };
+    use crate::timeline::{hit_test, Hit, Item, ItemKind, Part, TimelineModel, HANDLE_PX};
+    use crate::timeline_layout::tests::Frame;
 
     #[test]
     fn 等倍では矩形も割り付けもポインターも変えない() {
         let s = Scale::ONE;
-        let l = split_viewers(1013.0, 777.0, 120.0, true);
+        let l = split_viewers(1013.0, 777.0, true);
         assert_eq!(s.layout_to_physical(l), l);
         let r = Rect::new(10.3, 4.7, 7.0, 24.0);
         assert_eq!(s.rect_to_physical(r), r);
@@ -143,11 +148,18 @@ mod tests {
 
     #[test]
     fn 表示の倍率_150_と_200_ではつまみと帯の寸法を論理ピクセルのまま物理ピクセルに換える() {
+        let model = TimelineModel {
+            duration: 10.0,
+            fps: 30.0,
+            items: vec![Item::layer(0.0, 5.0, ItemKind::Footage, true)],
+        };
+        let f = Frame::new(&model, (800.0, 200.0));
+        let bar = f.vp().bar(0, 1.0, 5.0);
         for factor in [1.5, 2.0] {
             let s = Scale::new(factor);
-            let handle = s.rect_to_physical(Rect::new(100.0, row_top(0), HANDLE_PX, ROW_H));
+            let handle = s.rect_to_physical(Rect::new(bar.x, bar.y, HANDLE_PX, bar.h));
             assert_eq!(handle.w, HANDLE_PX * factor, "つまみの幅");
-            assert_eq!(handle.h, ROW_H * factor, "帯の高さ");
+            assert_eq!(handle.h, bar.h * factor, "帯の高さ");
             assert_eq!(handle.x, 100.0 * factor);
         }
     }
@@ -155,7 +167,7 @@ mod tests {
     #[test]
     fn 物理ピクセルのサーフェスは論理ピクセルの大きさで割り付けてから物理ピクセルに戻す() {
         let s = Scale::new(1.5);
-        let logical = split_viewers(1000.0, 600.0, 80.0, false);
+        let logical = split_viewers(1000.0, 600.0, false);
         let physical = s.layout_to_physical(logical);
         assert_eq!(physical.timeline.h, logical.timeline.h * 1.5);
         assert_eq!(physical.timeline.right(), 1500.0);
@@ -170,18 +182,16 @@ mod tests {
             fps: 30.0,
             items: vec![Item::layer(0.0, 5.0, ItemKind::Footage, true)],
         };
-        let view = TimeView {
-            origin: 0.0,
-            px_per_sec: 100.0,
-        };
+        let f = Frame::new(&model, (800.0, 200.0));
         // 論理ピクセルの 498（帯の右端 500 の内側 2）は物理ピクセルの 747。
-        let y = (row_top(0) + ROW_H / 2.0) * 1.5;
+        let bar = f.vp().bar(0, 0.0, 5.0);
+        let y = (bar.y + bar.h / 2.0) * 1.5;
         let PointerEvent::Move { x, y } = s.pointer_to_logical(PointerEvent::Move { x: 747.0, y })
         else {
             panic!("Move のまま");
         };
         assert_eq!(
-            hit_test(&model, &view, x, y),
+            hit_test(&model, &f.vp(), x, y),
             Hit::Layer {
                 index: 0,
                 part: Part::OutHandle
@@ -232,21 +242,11 @@ mod tests {
             fps: 30.0,
             items: vec![Item::layer(0.0, 5.0, ItemKind::Footage, true)],
         };
-        let view = TimeView {
-            origin: 0.0,
-            px_per_sec: 37.3,
-        };
-        let state = crate::paint::PaintState {
-            playhead: 0.0,
-            hover: Hit::Empty,
-            selected: None,
-            selected_cut: None,
-            guide: None,
-            preview: None,
-            palette: crate::palette::Palette::DEFAULT,
-        };
+        let mut f = Frame::new(&model, (800.0, 200.0));
+        f.time.px_per_sec = 37.3;
+        let state = crate::paint::tests::state(0.0);
         let s = Scale::new(1.25);
-        let widths: Vec<u32> = crate::paint::timeline_quads(&model, &view, (800.0, 200.0), &state)
+        let widths: Vec<u32> = crate::paint::timeline_quads(&model, &f.vp(), &state)
             .iter()
             .filter(|q| q.rect.w == 1.0)
             .map(|q| {

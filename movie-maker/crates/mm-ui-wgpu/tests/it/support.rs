@@ -1,6 +1,7 @@
 //! 結合テストが共通に使うハーネス。共有の GPU のコンテキスト、オフスクリーンのテクスチャへの描画とリードバック、画素の比べ方。
 
 use mm_gpu::{GpuContext, GpuRequest};
+use mm_ui_layout::{Rect, Rows, TimelineLayout, TimelineModel, Viewport};
 use mm_ui_wgpu::Ui;
 
 pub(crate) const W: u32 = 640;
@@ -93,6 +94,34 @@ pub(crate) fn read_back(
         out.extend_from_slice(&mapped[start..start + (w * bpp) as usize]);
     }
     out
+}
+
+/// `Ui` と同じ `mm-ui-layout` の関数で求めた、行 `row` の時刻 `[start, end)` の帯の矩形（物理ピクセル）。
+/// ズームとスクロールと行の高さは `Ui::view_state` から読む（開いたときのスクロールを含む）。
+pub(crate) fn bar_rect(
+    ui: &Ui,
+    model: &TimelineModel,
+    scale: f32,
+    row: usize,
+    (start, end): (f64, f64),
+) -> Rect {
+    let t = ui.layout().timeline;
+    let state = ui.view_state().expect("最初の表示を当てた後");
+    let rows = Rows::of(&model.items, &state.heights);
+    let layout = TimelineLayout::new((t.w / scale, t.h / scale), rows.content_height());
+    let vp = Viewport {
+        layout: &layout,
+        rows: &rows,
+        time: state.time,
+        scroll_y: state.scroll_y,
+    };
+    let b = vp.bar(row, start, end);
+    Rect::new(
+        t.x + b.x * scale,
+        t.y + b.y * scale,
+        b.w * scale,
+        b.h * scale,
+    )
 }
 
 /// 幅 `w` の画像の画素。

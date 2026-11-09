@@ -7,7 +7,6 @@ use std::time::Duration;
 
 use mm_doc::{Cut, Project, Sequence, SEQUENCE_KIND, SEQUENCE_PARAM};
 use mm_types::{Id, ParamValue};
-use mm_ui_layout::{row_top, Scale, TimeView, ROW_H, VIEW_MARGIN};
 use mm_ui_wgpu::timeline_model;
 use serde_json::{json, Value};
 
@@ -17,7 +16,7 @@ use crate::win::keys;
 use crate::win::playback::Command;
 use crate::win::state::Shared;
 use crate::win::surface;
-use crate::win::verify::{client_point, viewer_layout};
+use crate::win::verify_place::{placement, Placement};
 use crate::win::verify_stage::{checkpoint, wait_until};
 
 /// 仮想キーコード。
@@ -107,12 +106,9 @@ fn shot(env: &Env<'_>, log: &mut Log, name: &str) {
     checkpoint();
 }
 
-/// 画面の位置の計算に要るもの。Timeline の矩形と時間軸（論理ピクセル）、表示の倍率、シーケンスの行の添字。
+/// 画面の位置の計算に要るもの。割り付けと Timeline の見えている所、見えているシーケンスの行の添字。
 struct Geometry {
-    tl_x: f32,
-    tl_y: f32,
-    view: TimeView,
-    scale: Scale,
+    place: Placement,
     row: usize,
 }
 
@@ -120,24 +116,15 @@ fn geometry(shared: &Shared, hwnd: isize) -> Option<Geometry> {
     let doc = shared.doc()?;
     let comp = doc.project.composition(&doc.comp).ok()?;
     let model = timeline_model(&doc.project, comp);
-    let (layout, scale) = viewer_layout(shared, hwnd, model.content_height());
-    let tl = layout.timeline;
-    let row = model.items.iter().position(|i| !i.cuts.is_empty())?;
-    Some(Geometry {
-        tl_x: tl.x,
-        tl_y: tl.y,
-        view: TimeView::fit(model.duration, tl.w, VIEW_MARGIN),
-        scale,
-        row,
-    })
+    let place = placement(shared, hwnd, &model)?;
+    let row = place.first_visible(|i| !model.items[i].cuts.is_empty())?;
+    Some(Geometry { place, row })
 }
 
 impl Geometry {
-    /// 行 `row` の中央で、時刻 `t` から論理ピクセルで `dx` ずらした点（クライアントの物理ピクセル）。
+    /// 行 `row` の帯の縦の中央で、時刻 `t` から論理ピクセルで `dx` ずらした点（クライアントの物理ピクセル）。
     fn at(&self, row: usize, t: f64, dx: f32) -> (i32, i32) {
-        let x = self.tl_x + self.view.x_of(t) + dx;
-        let y = self.tl_y + row_top(row) + ROW_H / 2.0;
-        client_point(self.scale, (x, y))
+        self.place.bar_point(row, t, dx)
     }
 }
 
@@ -256,7 +243,7 @@ fn drag_steps(env: &Env<'_>, log: &mut Log, id: &str) {
 
     let in_before = cut_named(shared, id).map(|c| c.in_point.to_f64());
     let mid = (start + end - DRAG_SECS) / 2.0;
-    let by = (DRAG_SECS * g.view.px_per_sec / 2.0) as f32;
+    let by = (DRAG_SECS * g.place.px_per_sec() / 2.0) as f32;
     surface::post_drag(
         env.surface_hwnd,
         g.at(g.row, mid, 0.0),
@@ -317,13 +304,13 @@ fn cut_steps(env: &Env<'_>, log: &mut Log, id: &str) {
     shot(env, log, "7-undo");
 }
 
-/// 先頭のシーケンスでないレイヤーの、Timeline の行の添字、ID、終わり（秒）。
-fn trim_target(shared: &Shared) -> Option<(usize, String, f64)> {
+/// 行の領域に見えている、シーケンスでない最初のレイヤーの、Timeline の行の添字、ID、終わり（秒）。
+fn trim_target(shared: &Shared, place: &Placement) -> Option<(usize, String, f64)> {
     let doc = shared.doc()?;
     let comp = doc.project.composition(&doc.comp).ok()?;
     let ids = mm_ui_wgpu::timeline_layer_ids(comp);
     let model = timeline_model(&doc.project, comp);
-    let row = model.items.iter().position(|i| i.cuts.is_empty())?;
+    let row = place.first_visible(|i| model.items[i].cuts.is_empty())?;
     Some((row, ids.get(row)?.clone(), model.items[row].end))
 }
 
@@ -341,7 +328,8 @@ struct TrimDrag {
 }
 
 fn trim_drag(shared: &Shared, hwnd: isize) -> Option<TrimDrag> {
-    let (g, (row, id, end)) = (geometry(shared, hwnd)?, trim_target(shared)?);
+    let g = geometry(shared, hwnd)?;
+    let (row, id, end) = trim_target(shared, &g.place)?;
     Some(TrimDrag {
         id,
         from: g.at(row, end, -HANDLE_INSET),

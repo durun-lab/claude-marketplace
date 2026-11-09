@@ -3,19 +3,22 @@
 //! 外とやりとりする座標と大きさは物理ピクセル、割り付けと Timeline の寸法は論理ピクセルで持つ。
 //! 換算は描く所（[`Ui::render`]）と入力を受ける所（[`Ui::pointer`]、[`Ui::region_at`]）で [`Scale`] を 1 回だけ通す。
 //! Timeline は矩形（背景、帯、目盛り）、文字（目盛りの時刻、帯の名前）、矩形（ガイド線、再生位置の線）の順に重ねる。
+//! Timeline の表示の状態（ズーム、スクロール、行の高さ）は [`Ui::view_state`] で出し、[`Ui::restore_view`] で戻す。
 
 use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
     fit_rect, split_viewers, timeline_labels, timeline_overlay, timeline_quads, Action,
-    DrawingShape, PaintState, PointerEvent, Quad, Rect, Scale, SurfaceLayout, TimeView,
-    TimelineController, TimelineModel, UiFont, VIEW_MARGIN,
+    DrawingShape, PaintState, PointerEvent, Quad, Rect, RowHeights, Scale, SurfaceLayout, TimeView,
+    TimelineController, TimelineModel, UiFont, ViewState,
 };
 
 use crate::drawing::{DrawingFit, DrawingLayer};
 use crate::program::ProgramViewer;
 use crate::quads::QuadRenderer;
 use crate::text::{TextLayer, TextStats};
+
+mod view;
 
 /// サーフェスの上のどの領域か。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,12 +45,17 @@ pub struct Ui {
     source: ProgramViewer,
     model: TimelineModel,
     controller: TimelineController,
+    /// 行の高さ（表示の状態）。
+    heights: RowHeights,
+    /// 開いたときに戻す表示の状態。最初に Timeline の大きさが決まったときに当てる。
+    restore: Option<ViewState>,
     /// 割り付け（論理ピクセル）。
     layout: SurfaceLayout,
     /// サーフェスの大きさ（物理ピクセル）。
     size: (f32, f32),
     playhead: f64,
-    fitted: bool,
+    /// 最初の表示（戻した表示の状態か、全体表示と sequence の行）を当てたか。
+    opened: bool,
     palette: Palette,
 }
 
@@ -68,6 +76,8 @@ impl Ui {
                 origin: 0.0,
                 px_per_sec: 100.0,
             }),
+            heights: RowHeights::default(),
+            restore: None,
             layout: SurfaceLayout {
                 program: Rect::default(),
                 timeline: Rect::default(),
@@ -75,7 +85,7 @@ impl Ui {
             },
             size: (0.0, 0.0),
             playhead: 0.0,
-            fitted: false,
+            opened: false,
             palette: Palette::DEFAULT,
         }
     }
@@ -106,26 +116,27 @@ impl Ui {
         self.layout = split_viewers(
             self.scale.to_logical(self.size.0),
             self.scale.to_logical(self.size.1),
-            self.model.content_height(),
             self.source.has_image(),
         );
-        if !self.fitted {
-            self.fit();
+        let t = self.layout.timeline;
+        self.controller.resize((t.w, t.h));
+        if !self.opened {
+            self.open_view();
         }
     }
 
-    /// Timeline に出すもの。最初に渡されたときに全体表示にする。
+    /// Timeline に出すもの。最初に渡されたときに全体表示にし、sequence の行が見える所までスクロールする。
     pub fn set_model(&mut self, model: TimelineModel) {
         self.model = model;
-        self.fitted = false;
-        self.resize(self.size.0 as u32, self.size.1 as u32);
+        self.opened = false;
+        self.relayout_rows();
     }
 
-    /// 編集で並びや長さが変わったモデルに置き換える。拡大と位置は保ち、範囲の外の選択だけ外す。
+    /// 編集で並びや長さが変わったモデルに置き換える。拡大とスクロールは保ち、範囲の外の選択だけ外す。
     pub fn update_model(&mut self, model: TimelineModel) {
         self.controller.model_changed(&model);
         self.model = model;
-        self.resize(self.size.0 as u32, self.size.1 as u32);
+        self.relayout_rows();
     }
 
     /// 選択を置く（`None` で外す）。添字は `TimelineModel::items` のもの。
@@ -141,15 +152,6 @@ impl Ui {
                 .get(*i)
                 .is_some_and(|item| *c < item.cuts.len())
         });
-    }
-
-    /// 全体が収まる表示にする。
-    pub fn fit(&mut self) {
-        if self.layout.timeline.w > 0.0 && self.model.duration > 0.0 {
-            self.controller.view =
-                TimeView::fit(self.model.duration, self.layout.timeline.w, VIEW_MARGIN);
-            self.fitted = true;
-        }
     }
 
     /// 再生位置（秒）。
@@ -245,11 +247,18 @@ impl Ui {
                 x: x - t.x,
                 y: y - t.y,
             },
-            PointerEvent::Wheel { x, y, dy, ctrl } => PointerEvent::Wheel {
+            PointerEvent::Wheel {
+                x,
+                y,
+                dy,
+                ctrl,
+                shift,
+            } => PointerEvent::Wheel {
                 x: x - t.x,
                 y: y - t.y,
                 dy,
                 ctrl,
+                shift,
             },
             other => other,
         };
@@ -325,10 +334,10 @@ impl Ui {
     fn timeline_quads(&self) -> (Vec<Quad>, u32) {
         let t = self.layout.timeline;
         let state = self.paint_state();
-        let view = &self.controller.view;
-        let mut quads = timeline_quads(&self.model, view, (t.w, t.h), &state);
+        let vp = self.controller.viewport();
+        let mut quads = timeline_quads(&self.model, &vp, &state);
         let under = quads.len() as u32;
-        quads.extend(timeline_overlay(view, t.h, &state));
+        quads.extend(timeline_overlay(&self.model, &vp, &state));
         for q in &mut quads {
             q.rect = self.scale.rect_to_physical(q.rect.translated(t.x, t.y));
         }
@@ -344,10 +353,8 @@ impl Ui {
         let text = self
             .text
             .get_or_insert_with(|| TextLayer::new(device, queue, format, family));
-        let size = (t.w, t.h);
-        let view = &self.controller.view;
-        let mut labels =
-            timeline_labels(&self.model, view, size, &state, &self.font, text.measure());
+        let vp = self.controller.viewport();
+        let mut labels = timeline_labels(&self.model, &vp, &state, &self.font, text.measure());
         for l in &mut labels {
             l.x += t.x;
             l.y += t.y;

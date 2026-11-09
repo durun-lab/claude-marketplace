@@ -27,8 +27,9 @@ use crate::win::state::Shared;
 
 /// 1 ノッチあたりのホイールの値。
 const WHEEL_DELTA: f32 = 120.0;
-/// Ctrl キーの修飾（WM_MOUSEWHEEL の wParam の下位語）。
+/// Ctrl キーと Shift キーの修飾（WM_MOUSEWHEEL の wParam の下位語）。
 const MK_CONTROL: usize = 0x0008;
+const MK_SHIFT: usize = 0x0004;
 /// マウスがウィンドウから出た通知（`TrackMouseEvent` で頼んだもの）。
 const WM_MOUSELEAVE: u32 = 0x02A3;
 /// WM_KEYDOWN の lParam で、直前もキーが押されていた（押し続けの繰り返し）ことを示すビット。
@@ -244,6 +245,7 @@ fn wheel_event(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> PointerEvent {
         y: p.y as f32,
         dy: f32::from(delta) / WHEEL_DELTA,
         ctrl: wparam.0 & MK_CONTROL != 0,
+        shift: wparam.0 & MK_SHIFT != 0,
     }
 }
 

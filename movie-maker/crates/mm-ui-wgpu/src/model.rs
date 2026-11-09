@@ -68,6 +68,7 @@ pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
     let names = Namer::new(project);
     let items = visible_layers(comp)
         .map(|(layer, range)| Item {
+            id: layer.id.as_str().into(),
             start: range.start.to_f64(),
             end: range.end.to_f64(),
             kind: kind_of(layer),
@@ -168,7 +169,9 @@ mod tests {
         c.layers.insert(1, layer("broken", "text", 0, 5, 1));
         let ids = timeline_layer_ids(&c);
         assert_eq!(ids, ["top", "bottom"]);
-        assert_eq!(timeline_model(&Project::new(), &c).items.len(), ids.len());
+        let model = timeline_model(&Project::new(), &c);
+        let in_model: Vec<&str> = model.items.iter().map(|i| &*i.id).collect();
+        assert_eq!(in_model, ids, "行の高さをレイヤーごとに引く ID");
     }
 
     #[test]

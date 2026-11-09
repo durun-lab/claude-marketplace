@@ -10,10 +10,7 @@ use std::time::{Duration, Instant};
 use mm_trace::chrome::ChromeTraceHandle;
 use mm_trace::MetricsHandle;
 use mm_types::ParamValue;
-use mm_ui_layout::{
-    row_top, split_viewers, Scale, SurfaceLayout, TimeView, TimelineModel, ROW_H, RULER_H,
-    VIEW_MARGIN,
-};
+use mm_ui_layout::{TimelineModel, HANDLE_PX};
 use serde_json::{json, Value};
 use tauri::{AppHandle, Manager, Window};
 
@@ -24,6 +21,7 @@ use crate::win::playback::{Command, PlaybackInfo};
 use crate::win::state::Shared;
 use crate::win::surface;
 use crate::win::verify_edit;
+use crate::win::verify_place::placement;
 use crate::win::verify_restore::{self, Savepoint};
 use crate::win::verify_stage::{self, checkpoint, wait_until, StageError};
 
@@ -53,6 +51,8 @@ const EDIT_LIMIT: Duration = Duration::from_secs(90);
 
 /// スクラブで狙う時刻（秒）。
 const SCRUB_TARGET: f64 = 3.0;
+/// クリックで選ぶ帯に要る、見えている幅（論理ピクセル）。中央が端のつまみに掛からない幅。
+const CLICK_MIN_PX: f32 = 3.0 * HANDLE_PX;
 /// 入力を投げてから結果を見るまでの待ち。
 const INPUT_WAIT: Duration = Duration::from_millis(400);
 /// スペースキーの仮想キーコード。
@@ -193,32 +193,6 @@ fn write_telemetry(t: &Telemetry, test: &PlayTest) {
     }
 }
 
-/// `Ui` と同じ `split_viewers` で計算した論理ピクセルのサーフェスの割り付けと、表示の倍率。クリックを投げるときは
-/// 倍率を掛けて物理ピクセルに直す。Source の有無はフレームの到着から 1 周遅れて変わる `Ui` の側の値
-/// （`SourceSlot::is_shown`）を読む。
-pub(crate) fn viewer_layout(
-    shared: &Shared,
-    hwnd: isize,
-    timeline_content_h: f32,
-) -> (SurfaceLayout, Scale) {
-    let scale = Scale::new(surface::scale_factor(hwnd));
-    let (w, h) = shared.surface_size();
-    let layout = split_viewers(
-        scale.to_logical(w as f32),
-        scale.to_logical(h as f32),
-        timeline_content_h,
-        shared.source.is_shown(),
-    );
-    (layout, scale)
-}
-
-/// 論理ピクセルの点を、サーフェスのクライアントの物理ピクセルにする。
-/// 切り捨てると最大 1 物理ピクセル左上へ寄るので、近い画素に丸める。
-pub(crate) fn client_point(scale: Scale, (x, y): (f32, f32)) -> (i32, i32) {
-    let p = |v: f32| (v * scale.get()).round() as i32;
-    (p(x), p(y))
-}
-
 fn run(env: &TestEnv, telemetry: &Telemetry) -> Value {
     let shared = &env.shared;
     prepare(env);
@@ -357,13 +331,10 @@ fn report(
 
 /// 実際のウィンドウへの入力で、Timeline のスクラブとキー操作が効くか確かめる。
 fn interaction(shared: &Shared, info: &PlaybackInfo, target: &Target) -> Value {
-    let (layout, scale) = viewer_layout(shared, target.surface_hwnd, target.model.content_height());
-    let tl = layout.timeline;
-    let view = TimeView::fit(target.model.duration, tl.w, VIEW_MARGIN);
-    let (x, y) = client_point(
-        scale,
-        (tl.x + view.x_of(SCRUB_TARGET), tl.y + RULER_H / 2.0),
-    );
+    let Some(place) = placement(shared, target.surface_hwnd, &target.model) else {
+        return json!({ "skipped": "表示の状態がまだ無い" });
+    };
+    let (x, y) = place.ruler_point(SCRUB_TARGET);
     surface::post_click(target.surface_hwnd, x, y);
     std::thread::sleep(INPUT_WAIT);
     let scrubbed = shared.playhead();
@@ -376,7 +347,7 @@ fn interaction(shared: &Shared, info: &PlaybackInfo, target: &Target) -> Value {
     std::thread::sleep(INPUT_WAIT);
     let stopped = !playing();
     json!({
-        "scale_factor": scale.get(),
+        "scale_factor": place.scale.get(),
         "scrub_target_secs": SCRUB_TARGET,
         "scrub_result_secs": scrubbed,
         "scrub_ok": (scrubbed - SCRUB_TARGET).abs() <= 2.0 / info.fps,
@@ -393,6 +364,15 @@ fn layer_opacity(shared: &Shared, id: &str) -> Option<f64> {
         ParamValue::Number(n) => Some(n),
         _ => None,
     }
+}
+
+/// Inspector の工程で選ぶレイヤーの帯の中の点。行の領域に全部見えている行のうち、帯の中を掴める幅が見えている最初の行。
+/// 開いたときは sequence の行（無ければいちばん下の行）までスクロールするので、先頭の行が見えているとは限らない。
+fn layer_click(shared: &Shared, target: &Target) -> Option<(i32, i32)> {
+    let place = placement(shared, target.surface_hwnd, &target.model)?;
+    let span = |i: usize| (target.model.items[i].start, target.model.items[i].end);
+    let row = place.first_visible(|i| place.bar_center(i, span(i), CLICK_MIN_PX).is_some())?;
+    place.bar_center(row, span(row), CLICK_MIN_PX)
 }
 
 /// スクリーンショットを撮る。返るまで長くかかったら、時間切れの工程はここで止まり、後の入力を送らない。
@@ -412,19 +392,9 @@ fn shoot(hwnd: isize, test: &PlayTest, suffix: &str) -> Option<String> {
 /// 選択と値の反映は共有状態で確かめ、Inspector の表示はスクリーンショットで目視する。
 fn inspector_flow(env: &TestEnv) -> Value {
     let (shared, target, hwnd, test) = (&*env.shared, &*env.target, env.hwnd, &*env.test);
-    let (layout, scale) = viewer_layout(shared, target.surface_hwnd, target.model.content_height());
-    let tl = layout.timeline;
-    let view = TimeView::fit(target.model.duration, tl.w, VIEW_MARGIN);
-    let Some(item) = target.model.items.first() else {
-        return json!({ "skipped": "レイヤーが無い" });
+    let Some((x, y)) = layer_click(shared, target) else {
+        return json!({ "skipped": "掴める幅の帯が見えていない" });
     };
-    let (x, y) = client_point(
-        scale,
-        (
-            tl.x + view.x_of((item.start + item.end) / 2.0),
-            tl.y + row_top(0) + ROW_H / 2.0,
-        ),
-    );
     surface::post_click(target.surface_hwnd, x, y);
     let selected = wait_until(FLOW_TIMEOUT, || shared.selected_layer().is_some());
     let id = shared.selected_layer();

@@ -1,21 +1,22 @@
 //! Timeline を矩形の並びにする。座標は Timeline の矩形の左上を (0, 0) とする。
 //! 文字（[`crate::timeline_labels`]）は [`timeline_quads`] の上、[`timeline_overlay`] の下に描く。
+//!
+//! 領域ごとの描く関数は `paint/` の下のファイルに置き、ここから名前の順に呼ぶ。描く関数は自分の領域の矩形の外に描かず、
+//! 重ねる順は呼ぶ順でなく [`Layer`] で決めるので、領域を足す PR はファイルを 1 つと、呼び出しを 1 行足せばよい。
+
+mod guide;
+mod playhead;
+mod rows;
+mod ruler;
+mod scrollbar;
 
 use crate::geom::{Color, Quad, Rect};
-use crate::gesture::{EditKind, Side};
-use crate::palette::{self, Palette};
-use crate::ruler::ticks;
-use crate::time_view::TimeView;
-use crate::timeline::{
-    cut_span, row_top, span, Hit, Item, Part, TimelineModel, HANDLE_PX, ROW_H, RULER_H,
-};
+use crate::gesture::EditKind;
+use crate::palette::Palette;
+use crate::timeline::{Hit, TimelineModel};
+use crate::timeline_layout::Viewport;
 
-/// 無効なレイヤーの帯の不透明度。
-const DISABLED_BAR_ALPHA: f32 = 0.35;
-/// 再生位置の線の幅。
-const PLAYHEAD_W: f32 = 2.0;
-/// 再生位置の線の上端に付ける四角の一辺。
-const PLAYHEAD_CAP: f32 = 10.0;
+pub(crate) use rows::{bar_color, stripe, trimmed};
 
 /// 描く時点の状態。
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -36,408 +37,86 @@ pub struct PaintState {
     pub palette: Palette,
 }
 
-/// Timeline の矩形の大きさ `(w, h)` の中に、文字の下に描く矩形の並び（背景、帯、目盛り）。
-pub fn timeline_quads(
-    model: &TimelineModel,
-    view: &TimeView,
-    size: (f32, f32),
-    state: &PaintState,
-) -> Vec<Quad> {
-    let (w, h) = size;
-    let p = &state.palette;
-    let mut q = vec![Quad::new(Rect::new(0.0, 0.0, w, h), p.panel)];
-    rows(model, view, w, state, &mut q);
-    ruler(view, w, p, &mut q);
-    q
+/// 領域の描く関数が見るもの。
+pub(crate) struct Scene<'a> {
+    pub model: &'a TimelineModel,
+    pub vp: &'a Viewport<'a>,
+    pub state: &'a PaintState,
 }
 
-/// 文字の上に重ねる矩形（スナップのガイド線と再生位置の線）。高さ `h` の Timeline を縦に貫く。
-pub fn timeline_overlay(view: &TimeView, h: f32, state: &PaintState) -> Vec<Quad> {
-    let p = &state.palette;
-    let mut q = Vec::new();
-    if let Some(g) = state.guide {
-        q.push(vline(view.x_of(g), h, 1.0, p.guide));
+/// 重ねる順。下から順に描く。帯の中に描くもの（波形、サムネイル）は `Bar` と `Over` の間に層を足す。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Layer {
+    /// 背景と行の縞。
+    Back,
+    /// 帯とカット。
+    Bar,
+    /// 帯に重ねるもの（つまみ、選んだ外枠）。
+    Over,
+    /// 行に重ねる暗がり（コンポジションの終わりより右）。
+    Shade,
+    /// 行の領域の外の部品（目盛りの帯、スクロールバー）。最後の層。
+    Chrome,
+}
+
+/// 層の数。
+const LAYERS: usize = Layer::Chrome as usize + 1;
+
+/// 層ごとに矩形を貯め、最後に下の層から並べる。
+#[derive(Debug, Default)]
+pub(crate) struct Canvas {
+    layers: [Vec<Quad>; LAYERS],
+}
+
+impl Canvas {
+    pub(crate) fn push(&mut self, layer: Layer, rect: Rect, color: Color) {
+        self.layers[layer as usize].push(Quad::new(rect, color));
     }
-    playhead(view.x_of(state.playhead), h, p, &mut q);
-    q
-}
 
-fn vline(x: f32, h: f32, width: f32, color: Color) -> Quad {
-    Quad::new(Rect::new(x - width / 2.0, 0.0, width, h), color)
-}
-
-fn ruler(view: &TimeView, w: f32, p: &Palette, q: &mut Vec<Quad>) {
-    q.push(Quad::new(Rect::new(0.0, 0.0, w, RULER_H), p.ruler));
-    for t in ticks(view, w) {
-        let len = if t.major { 9.0 } else { 4.0 };
-        q.push(Quad::new(Rect::new(t.x, RULER_H - len, 1.0, len), p.tick));
-    }
-}
-
-fn rows(model: &TimelineModel, view: &TimeView, w: f32, state: &PaintState, q: &mut Vec<Quad>) {
-    let p = &state.palette;
-    for (i, item) in model.items.iter().enumerate() {
-        let top = row_top(i);
-        q.push(Quad::new(
-            Rect::new(0.0, top - 1.0, w, ROW_H + 2.0),
-            stripe(p, i),
-        ));
-        let (start, end) = trimmed(item, i, state.preview);
-        let (x, bw) = span(view, start, end);
-        let mut color = bar_color(item);
-        let hovered = matches!(state.hover, Hit::Layer { index, .. } if index == i);
-        if hovered {
-            color = palette::lighten(color, 0.18);
-        }
-        let bar = Rect::new(x, top, bw, ROW_H);
-        if item.cuts.is_empty() {
-            q.push(Quad::new(bar, color));
-            handles(&bar, (state.hover, i), p, q);
-        } else {
-            q.push(Quad::new(bar, color.with_alpha(0.25)));
-            cuts(item, (i, &bar), view, state, q);
-        }
-        if state.selected == Some(i) {
-            outline(&bar, p, q);
+    /// `rect` の `clip` に入る所だけを入れる。全部外なら入れない。
+    pub(crate) fn push_in(&mut self, layer: Layer, rect: Rect, color: Color, clip: Rect) {
+        let (x0, y0) = (rect.x.max(clip.x), rect.y.max(clip.y));
+        let (x1, y1) = (
+            rect.right().min(clip.right()),
+            rect.bottom().min(clip.bottom()),
+        );
+        if x1 > x0 && y1 > y0 {
+            self.push(layer, Rect::new(x0, y0, x1 - x0, y1 - y0), color);
         }
     }
-    outside(model, view, w, p, q);
-}
 
-/// 行 `index` の背景の色（縞）。
-pub(crate) fn stripe(p: &Palette, index: usize) -> Color {
-    if index.is_multiple_of(2) {
-        p.row_even
-    } else {
-        p.row_odd
+    fn into_quads(self) -> Vec<Quad> {
+        self.layers.into_iter().flatten().collect()
     }
 }
 
-/// レイヤーの帯の色。無効なレイヤーは行の背景に薄く重ねる。
-pub(crate) fn bar_color(item: &Item) -> Color {
-    let color = palette::item_color(item.kind);
-    if item.enabled {
-        color
-    } else {
-        color.with_alpha(DISABLED_BAR_ALPHA)
-    }
+/// 文字の下に描く矩形（背景、行の縞、帯、目盛りの帯、スクロールバー）。
+pub fn timeline_quads(model: &TimelineModel, vp: &Viewport, state: &PaintState) -> Vec<Quad> {
+    let scene = Scene { model, vp, state };
+    let mut canvas = Canvas::default();
+    canvas.push(Layer::Back, vp.layout.bounds, state.palette.panel);
+    rows::paint(&scene, &mut canvas);
+    ruler::paint(&scene, &mut canvas);
+    scrollbar::paint(&scene, &mut canvas);
+    canvas.into_quads()
 }
 
-/// 帯の始まりと終わり。ドラッグ中の `trimLayer` は動かした後の位置にする。
-/// 確定は離したときの 1 回の操作に任せ、ここでは描く位置だけを変える。
-pub(crate) fn trimmed(item: &Item, index: usize, preview: Option<(EditKind, f64)>) -> (f64, f64) {
-    match preview {
-        Some((EditKind::TrimLayer { item: i, side }, by)) if i == index => match side {
-            Side::In => (item.start + by, item.end),
-            Side::Out => (item.start, item.end + by),
-        },
-        _ => (item.start, item.end),
-    }
+/// 文字の上に重ねる矩形（スナップのガイド線と再生位置の線）。目盛りの帯と行の領域を縦に貫く。
+pub fn timeline_overlay(model: &TimelineModel, vp: &Viewport, state: &PaintState) -> Vec<Quad> {
+    let scene = Scene { model, vp, state };
+    let mut canvas = Canvas::default();
+    guide::paint(&scene, &mut canvas);
+    playhead::paint(&scene, &mut canvas);
+    canvas.into_quads()
 }
 
-/// シーケンスのカットを並べて描く。隙間は枠だけの空き、選んだカットは外枠、ホバーしたカットの端はつまみを出す。
-/// カットはレイヤーの帯 `layer` の内側だけを描く（帯の外はレイヤーのイン点とアウト点で切られて映らない）。
-fn cuts(
-    item: &Item,
-    (index, layer): (usize, &Rect),
-    view: &TimeView,
-    state: &PaintState,
-    q: &mut Vec<Quad>,
-) {
-    let p = &state.palette;
-    let base = palette::item_color(item.kind);
-    for (c, bar) in item.cuts.iter().enumerate() {
-        let (cx, cw) = cut_span(view, bar);
-        let x = cx.max(layer.x);
-        let w = (cx + cw).min(layer.right()) - x;
-        if w <= 0.0 {
-            continue;
-        }
-        let r = Rect::new(x, layer.y, w, ROW_H);
-        let hovered =
-            matches!(state.hover, Hit::Cut { item: i, cut, .. } if i == index && cut == c);
-        if bar.gap {
-            q.push(Quad::new(r, palette::GAP.with_alpha(0.5)));
-            outline(&r, p, q);
-        } else {
-            let color = if hovered {
-                palette::lighten(base, 0.18)
-            } else {
-                base
-            };
-            q.push(Quad::new(r, color));
-            // 隣のカットとの編集点が見えるように、左端に暗い線を引く。
-            q.push(Quad::new(
-                Rect::new(x, layer.y, 1.0, ROW_H),
-                palette::CUT_SEAM,
-            ));
-        }
-        if hovered {
-            handles(&r, (state.hover, c), p, q);
-        }
-        if state.selected_cut == Some((index, c)) {
-            outline(&r, p, q);
-        }
-    }
-}
-
-fn handles(bar: &Rect, (hover, index): (Hit, usize), p: &Palette, q: &mut Vec<Quad>) {
-    let hw = HANDLE_PX.min(bar.w / 3.0);
-    let lit = |part| match hover {
-        Hit::Layer { index: i, part: pt } => i == index && pt == part,
-        Hit::Cut { cut, part: pt, .. } => cut == index && pt == part,
-        _ => false,
-    };
-    for (part, x) in [(Part::InHandle, bar.x), (Part::OutHandle, bar.right() - hw)] {
-        if lit(part) {
-            q.push(Quad::new(
-                Rect::new(x, bar.y, hw, bar.h),
-                p.selection.with_alpha(0.85),
-            ));
-        } else {
-            q.push(Quad::new(
-                Rect::new(x, bar.y, hw, bar.h),
-                p.selection.with_alpha(0.14),
-            ));
-        }
-    }
-}
-
-fn outline(r: &Rect, p: &Palette, q: &mut Vec<Quad>) {
-    let c = p.selection;
-    q.push(Quad::new(Rect::new(r.x, r.y, r.w, 1.0), c));
-    q.push(Quad::new(Rect::new(r.x, r.bottom() - 1.0, r.w, 1.0), c));
-    q.push(Quad::new(Rect::new(r.x, r.y, 1.0, r.h), c));
-    q.push(Quad::new(Rect::new(r.right() - 1.0, r.y, 1.0, r.h), c));
-}
-
-/// コンポジションの終わりより右を暗くする。
-fn outside(model: &TimelineModel, view: &TimeView, w: f32, p: &Palette, q: &mut Vec<Quad>) {
-    let end = view.x_of(model.duration);
-    if end < w {
-        let x = end.max(0.0);
-        q.push(Quad::new(
-            Rect::new(x, RULER_H, w - x, model.content_height() - RULER_H),
-            p.outside,
-        ));
-    }
-}
-
-fn playhead(x: f32, h: f32, p: &Palette, q: &mut Vec<Quad>) {
-    q.push(vline(x, h, PLAYHEAD_W, p.playhead));
-    q.push(Quad::new(
-        Rect::new(
-            x - PLAYHEAD_CAP / 2.0,
-            0.0,
-            PLAYHEAD_CAP,
-            PLAYHEAD_CAP * 0.8,
-        ),
-        p.playhead,
-    ));
+/// 時刻の x に立てる幅 `width` の縦の線（目盛りの帯と行の領域の列に収める）。
+fn vline(canvas: &mut Canvas, vp: &Viewport, t: f64, width: f32, color: Color) {
+    let column = vp.layout.time_column();
+    let x = vp.x_of(t) - width / 2.0;
+    let line = Rect::new(x, column.y, width, column.h);
+    canvas.push_in(Layer::Over, line, color, column);
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::timeline::{CutBar, Item, ItemKind};
-
-    fn model() -> TimelineModel {
-        TimelineModel {
-            duration: 5.0,
-            fps: 30.0,
-            items: vec![Item::layer(1.0, 3.0, ItemKind::Footage, true)],
-        }
-    }
-
-    fn state(playhead: f64) -> PaintState {
-        PaintState {
-            playhead,
-            hover: Hit::Empty,
-            selected: None,
-            selected_cut: None,
-            guide: None,
-            preview: None,
-            palette: Palette::DEFAULT,
-        }
-    }
-
-    #[test]
-    fn テーマの色で_surface_と帯の段を塗る() {
-        let v = TimeView {
-            origin: 0.0,
-            px_per_sec: 100.0,
-        };
-        let surface = palette::parse_hex("#123456").unwrap();
-        let themed = Palette::themed(|name| (name == "surface").then_some(surface));
-        let st = PaintState {
-            palette: themed,
-            ..state(0.0)
-        };
-        let quads = timeline_quads(&model(), &v, (800.0, 120.0), &st);
-        assert_eq!(quads[0].color, surface, "surface");
-        assert_eq!(
-            themed.playhead,
-            palette::PLAYHEAD,
-            "テーマに無い色は既定のまま"
-        );
-    }
-
-    #[test]
-    fn 再生位置の線は時刻の_x_に立ち_文字の上に重ねる側に入る() {
-        let v = TimeView {
-            origin: 0.0,
-            px_per_sec: 100.0,
-        };
-        let quads = timeline_overlay(&v, 120.0, &state(2.0));
-        let line = quads
-            .iter()
-            .find(|q| q.color == palette::PLAYHEAD && q.rect.h == 120.0)
-            .expect("再生位置の線");
-        assert!((line.rect.x + line.rect.w / 2.0 - 200.0).abs() < 1e-3);
-        let under = timeline_quads(&model(), &v, (800.0, 120.0), &state(2.0));
-        assert!(!under.iter().any(|q| q.color == palette::PLAYHEAD));
-    }
-
-    #[test]
-    fn 帯は始まりから終わりの幅で描く() {
-        let v = TimeView {
-            origin: 0.0,
-            px_per_sec: 100.0,
-        };
-        let quads = timeline_quads(&model(), &v, (800.0, 120.0), &state(0.0));
-        let color = palette::item_color(ItemKind::Footage);
-        let bar = quads
-            .iter()
-            .find(|q| q.color == color)
-            .expect("レイヤーの帯");
-        assert_eq!((bar.rect.x, bar.rect.w), (100.0, 200.0));
-    }
-
-    fn bar_of(model: &TimelineModel, preview: Option<(EditKind, f64)>) -> Rect {
-        let v = TimeView {
-            origin: 0.0,
-            px_per_sec: 100.0,
-        };
-        let st = PaintState {
-            preview,
-            ..state(0.0)
-        };
-        let color = palette::item_color(model.items[0].kind);
-        timeline_quads(model, &v, (800.0, 120.0), &st)
-            .into_iter()
-            .find(|q| q.color == color || q.color == color.with_alpha(0.25))
-            .expect("レイヤーの帯")
-            .rect
-    }
-
-    #[test]
-    fn ドラッグ中の_trim_layer_は帯の端を動かして描く() {
-        let trim = |side, by| Some((EditKind::TrimLayer { item: 0, side }, by));
-        let r = bar_of(&model(), trim(Side::In, -0.5));
-        assert_eq!((r.x, r.w), (50.0, 250.0), "イン点を前へ");
-        let r = bar_of(&model(), trim(Side::Out, -1.0));
-        assert_eq!((r.x, r.w), (100.0, 100.0), "アウト点を前へ");
-        let other = Some((
-            EditKind::TrimLayer {
-                item: 1,
-                side: Side::In,
-            },
-            1.0,
-        ));
-        assert_eq!(
-            bar_of(&model(), other).x,
-            100.0,
-            "別のレイヤーの編集は映さない"
-        );
-    }
-
-    #[test]
-    fn シーケンスのアウト点を縮めると帯の外のカットは描かない() {
-        let trim = Some((
-            EditKind::TrimLayer {
-                item: 0,
-                side: Side::Out,
-            },
-            -3.5,
-        ));
-        let r = bar_of(&seq_model(), trim);
-        assert_eq!((r.x, r.w), (0.0, 150.0));
-        let v = TimeView {
-            origin: 0.0,
-            px_per_sec: 100.0,
-        };
-        let st = PaintState {
-            preview: trim,
-            ..state(0.0)
-        };
-        let quads = timeline_quads(&seq_model(), &v, (800.0, 120.0), &st);
-        let base = palette::item_color(ItemKind::Sequence);
-        let cut = quads
-            .iter()
-            .find(|q| q.color == base && q.rect.y > RULER_H)
-            .expect("カット 0");
-        assert_eq!((cut.rect.x, cut.rect.w), (0.0, 150.0), "帯の右端で切る");
-        assert!(!quads
-            .iter()
-            .any(|q| q.color == palette::GAP.with_alpha(0.5)));
-    }
-
-    fn seq_model() -> TimelineModel {
-        let cut = |start, end, gap| CutBar {
-            start,
-            end,
-            gap,
-            ..CutBar::default()
-        };
-        let mut seq = Item::layer(0.0, 5.0, ItemKind::Sequence, true);
-        seq.cuts = vec![cut(0.0, 2.0, false), cut(2.0, 3.0, true)];
-        TimelineModel {
-            duration: 5.0,
-            fps: 30.0,
-            items: vec![seq],
-        }
-    }
-
-    #[test]
-    fn シーケンスはカットを並べ_隙間は空きの色で_選んだカットは外枠を付ける() {
-        let v = TimeView {
-            origin: 0.0,
-            px_per_sec: 100.0,
-        };
-        let st = PaintState {
-            selected_cut: Some((0, 0)),
-            ..state(0.0)
-        };
-        let quads = timeline_quads(&seq_model(), &v, (800.0, 120.0), &st);
-        let base = palette::item_color(ItemKind::Sequence);
-        let cut = quads
-            .iter()
-            .find(|q| q.color == base && q.rect.w == 200.0)
-            .expect("カット 0 の帯");
-        assert_eq!((cut.rect.x, cut.rect.h), (0.0, ROW_H));
-        let gap = quads
-            .iter()
-            .find(|q| q.color == palette::GAP.with_alpha(0.5))
-            .expect("隙間");
-        assert_eq!((gap.rect.x, gap.rect.w), (200.0, 100.0));
-        let outline = quads
-            .iter()
-            .filter(|q| {
-                q.color == st.palette.selection && q.rect.x >= 0.0 && q.rect.right() <= 200.5
-            })
-            .count();
-        assert_eq!(outline, 4, "選んだカットの外枠は 4 辺");
-    }
-
-    #[test]
-    fn 終わりより右は暗くする() {
-        let v = TimeView {
-            origin: 0.0,
-            px_per_sec: 100.0,
-        };
-        let quads = timeline_quads(&model(), &v, (800.0, 120.0), &state(0.0));
-        assert!(quads
-            .iter()
-            .any(|q| q.color == palette::OUTSIDE && q.rect.x == 500.0));
-    }
-}
+pub(crate) mod tests;

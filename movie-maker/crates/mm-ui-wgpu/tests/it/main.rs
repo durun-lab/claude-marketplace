@@ -2,5 +2,6 @@
 
 mod offscreen;
 mod perf;
+mod rows;
 mod support;
 mod text;

@@ -1,19 +1,26 @@
-//! Timeline のポインター操作。目盛りのスクラブ、レイヤーとカットの選択、端のつまみと中のドラッグ（スナップ）、拡大縮小と移動。
+//! Timeline のポインター操作。目盛りのスクラブ、レイヤーとカットの選択、端のつまみと中のドラッグ（スナップ）、
+//! 拡大縮小と横の移動、縦のスクロール（Shift+ホイール、スクロールバー）。
 //!
 //! 入力は Timeline の矩形の左上を (0, 0) とする座標で受け、操作の結果は [`Action`] で返す。
 //! ドラッグから編集の操作と量を決める所は [`crate::gesture`]。操作の適用（`mm-ops`）はここの外で行う。
+//! 当たり判定と描画が同じ値を見るよう、割り付けと行の並びもここが持つ（[`TimelineController::viewport`]）。
 
 use crate::gesture::{body_edit, edge_edit, EditKind};
 use crate::paint::PaintState;
 use crate::palette::Palette;
+use crate::rows::Rows;
+use crate::scroll::{clamp_scroll, reveal, scroll_for_thumb};
 use crate::snap::{quantize, snap, SNAP_PX};
 use crate::time_view::TimeView;
 use crate::timeline::{hit_test, Hit, Part, TimelineModel};
+use crate::timeline_layout::{TimelineLayout, Viewport};
 
 /// ホイール 1 目盛りあたりの拡大率。
 const ZOOM_STEP: f64 = 1.15;
 /// ホイールで横に動かす量（px）。
 const PAN_STEP_PX: f32 = 60.0;
+/// Shift+ホイールで縦にスクロールする量（px）。横と同じ量にする。
+const SCROLL_STEP_PX: f32 = 60.0;
 
 /// 押したときの修飾キー。ドラッグの種類を選ぶ（カットの端は `alt` で roll、中は `shift` で slide）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -35,12 +42,13 @@ pub enum PointerEvent {
         y: f32,
     },
     Up,
-    /// `dy` が正で奥へ（拡大や右への移動）。
+    /// `dy` が正で奥へ（拡大、右への移動、上へのスクロール）。`shift` で縦にスクロールする。
     Wheel {
         x: f32,
         y: f32,
         dy: f32,
         ctrl: bool,
+        shift: bool,
     },
     /// ポインターが Timeline から出た。
     Leave,
@@ -80,16 +88,27 @@ enum Drag {
         mods: Mods,
         from: f64,
     },
+    /// スクロールバーのつまみ。`grab` は押した点のつまみの上端からの距離。
+    Thumb {
+        grab: f32,
+    },
 }
 
-/// Timeline の操作の状態。
+/// Timeline の表示と操作の状態。
 #[derive(Debug, Clone)]
 pub struct TimelineController {
+    /// ズームと横の位置。
     pub view: TimeView,
+    /// 縦のスクロール（論理ピクセル）。
+    pub scroll_y: f32,
     pub hover: Hit,
     pub selected: Option<usize>,
     /// 選んだカット（レイヤーの添字、カットの添字）。
     pub selected_cut: Option<(usize, usize)>,
+    rows: Rows,
+    layout: TimelineLayout,
+    /// Timeline の大きさ（論理ピクセル）。
+    size: (f32, f32),
     guide: Option<f64>,
     /// ドラッグで最後に返した編集。離したときの確定にそのまま使う。
     last_edit: Option<(EditKind, f64)>,
@@ -100,12 +119,60 @@ impl TimelineController {
     pub fn new(view: TimeView) -> Self {
         Self {
             view,
+            scroll_y: 0.0,
             hover: Hit::Empty,
             selected: None,
             selected_cut: None,
+            rows: Rows::default(),
+            layout: TimelineLayout::default(),
+            size: (0.0, 0.0),
             guide: None,
             last_edit: None,
             drag: Drag::None,
+        }
+    }
+
+    /// 行の並びを置き直す（モデルか行の高さが変わったとき）。スクロールは範囲に収める。
+    pub fn set_rows(&mut self, rows: Rows) {
+        self.rows = rows;
+        self.relayout();
+    }
+
+    /// Timeline の大きさ（論理ピクセル）を置き直す。
+    pub fn resize(&mut self, size: (f32, f32)) {
+        self.size = size;
+        self.relayout();
+    }
+
+    fn relayout(&mut self) {
+        self.layout = TimelineLayout::new(self.size, self.rows.content_height());
+        self.scroll_to(self.scroll_y);
+    }
+
+    /// 縦のスクロールを `y` にする（範囲に収める）。
+    pub fn scroll_to(&mut self, y: f32) {
+        self.scroll_y = clamp_scroll(y, self.rows.content_height(), self.layout.rows.h);
+    }
+
+    /// 行 `i` が全部見えるまでスクロールする。
+    pub fn reveal(&mut self, i: usize) {
+        if i < self.rows.len() {
+            self.scroll_y = reveal(&self.rows, i, self.scroll_y, self.layout.rows.h);
+        }
+    }
+
+    /// 割り付け。
+    pub fn layout(&self) -> &TimelineLayout {
+        &self.layout
+    }
+
+    /// 見えている所。描画と当たり判定が使う。
+    pub fn viewport(&self) -> Viewport<'_> {
+        Viewport {
+            layout: &self.layout,
+            rows: &self.rows,
+            time: self.view,
+            scroll_y: self.scroll_y,
         }
     }
 
@@ -145,8 +212,17 @@ impl TimelineController {
             PointerEvent::Down { x, y, mods } => self.down(x, y, mods, model),
             PointerEvent::Move { x, y } => self.moved(x, y, model, playhead),
             PointerEvent::Up => self.up(model),
-            PointerEvent::Wheel { x, dy, ctrl, .. } => {
-                self.wheel(x, dy, ctrl);
+            PointerEvent::Wheel {
+                x,
+                y,
+                dy,
+                ctrl,
+                shift,
+            } => {
+                self.wheel((x, y), dy, (ctrl, shift));
+                if self.drag == Drag::None {
+                    self.hover = hit_test(model, &self.viewport(), x, y);
+                }
                 Vec::new()
             }
             PointerEvent::Leave => {
@@ -168,15 +244,22 @@ impl TimelineController {
         } else {
             0.0
         };
-        let t = quantize(self.view.t_of(x), model.fps);
+        let t = quantize(self.viewport().t_of(x), model.fps);
         t.clamp(0.0, (model.duration - frame).max(0.0))
     }
 
     fn down(&mut self, x: f32, y: f32, mods: Mods, model: &TimelineModel) -> Vec<Action> {
-        let hit = hit_test(model, &self.view, x, y);
-        if hit == Hit::Ruler {
-            self.drag = Drag::Scrub;
-            return vec![Action::Seek(self.seek_at(x, model))];
+        let hit = hit_test(model, &self.viewport(), x, y);
+        match hit {
+            Hit::Ruler => {
+                self.drag = Drag::Scrub;
+                return vec![Action::Seek(self.seek_at(x, model))];
+            }
+            Hit::Scrollbar { thumb } => {
+                self.press_scrollbar(thumb, y);
+                return Vec::new();
+            }
+            _ => {}
         }
         let had_cut = self.selected_cut.take();
         match hit {
@@ -192,28 +275,7 @@ impl TimelineController {
                 }
                 deselect_cut(Action::Select(Some(index)), had_cut)
             }
-            Hit::Cut { item, cut, part } => {
-                self.selected = Some(item);
-                self.selected_cut = Some((item, cut));
-                self.drag = match part {
-                    Part::Body => Drag::Body {
-                        item,
-                        cut,
-                        mods,
-                        from: self.view.t_of(x),
-                    },
-                    _ => Drag::Edge {
-                        item,
-                        cut: Some(cut),
-                        part,
-                        mods,
-                    },
-                };
-                vec![
-                    Action::Select(Some(item)),
-                    Action::SelectCut(self.selected_cut),
-                ]
-            }
+            Hit::Cut { item, cut, part } => self.press_cut((item, cut, part), x, mods),
             _ => {
                 self.selected = None;
                 deselect_cut(Action::Select(None), had_cut)
@@ -221,13 +283,60 @@ impl TimelineController {
         }
     }
 
+    /// カットを押した。レイヤーとカットを選び、端ならつまみの、中ならカットのドラッグを始める。
+    fn press_cut(
+        &mut self,
+        (item, cut, part): (usize, usize, Part),
+        x: f32,
+        mods: Mods,
+    ) -> Vec<Action> {
+        self.selected = Some(item);
+        self.selected_cut = Some((item, cut));
+        self.drag = match part {
+            Part::Body => Drag::Body {
+                item,
+                cut,
+                mods,
+                from: self.viewport().t_of(x),
+            },
+            _ => Drag::Edge {
+                item,
+                cut: Some(cut),
+                part,
+                mods,
+            },
+        };
+        vec![
+            Action::Select(Some(item)),
+            Action::SelectCut(self.selected_cut),
+        ]
+    }
+
+    /// スクロールバーを押した。つまみなら掴み、溝なら押した側へ 1 画面ぶんスクロールする（Windows のスクロールバーと同じ）。
+    fn press_scrollbar(&mut self, thumb: bool, y: f32) {
+        let knob = self.viewport().thumb();
+        if thumb {
+            self.drag = Drag::Thumb { grab: y - knob.y };
+            return;
+        }
+        let page = self.layout.rows.h;
+        let by = if y < knob.y { -page } else { page };
+        self.scroll_to(self.scroll_y + by);
+    }
+
     fn moved(&mut self, x: f32, y: f32, model: &TimelineModel, playhead: f64) -> Vec<Action> {
         match self.drag {
             Drag::None => {
-                self.hover = hit_test(model, &self.view, x, y);
+                self.hover = hit_test(model, &self.viewport(), x, y);
                 Vec::new()
             }
             Drag::Scrub => vec![Action::Seek(self.seek_at(x, model))],
+            Drag::Thumb { grab } => {
+                let content = self.rows.content_height();
+                self.scroll_y = scroll_for_thumb(self.layout.scrollbar, content, y - grab);
+                self.hover = Hit::Scrollbar { thumb: true };
+                Vec::new()
+            }
             Drag::Edge {
                 item,
                 cut,
@@ -239,7 +348,8 @@ impl TimelineController {
                     None => model.snap_targets(Some(item)),
                 };
                 targets.push(playhead);
-                let s = snap(self.view.t_of(x), &targets, self.view.px_per_sec, SNAP_PX);
+                let t = self.viewport().t_of(x);
+                let s = snap(t, &targets, self.view.px_per_sec, SNAP_PX);
                 let time = if s.target.is_some() {
                     s.time
                 } else {
@@ -254,7 +364,7 @@ impl TimelineController {
                 mods,
                 from,
             } => {
-                let dt = quantize(self.view.t_of(x) - from, model.fps);
+                let dt = quantize(self.viewport().t_of(x) - from, model.fps);
                 self.report(body_edit(model, item, cut, mods, dt))
             }
         }
@@ -295,9 +405,13 @@ impl TimelineController {
         }
     }
 
-    fn wheel(&mut self, x: f32, dy: f32, ctrl: bool) {
+    /// ホイール。Ctrl でポインターの下を中心に拡大、Shift かスクロールバーの上なら縦にスクロール、それ以外は横に動かす。
+    fn wheel(&mut self, (x, y): (f32, f32), dy: f32, (ctrl, shift): (bool, bool)) {
         if ctrl {
-            self.view = self.view.zoom_at(x, ZOOM_STEP.powf(f64::from(dy)));
+            let anchor = x - self.layout.rows.x;
+            self.view = self.view.zoom_at(anchor, ZOOM_STEP.powf(f64::from(dy)));
+        } else if shift || self.layout.scrollbar.contains(x, y) {
+            self.scroll_to(self.scroll_y - dy * SCROLL_STEP_PX);
         } else {
             self.view = self.view.pan_px(-dy * PAN_STEP_PX);
         }

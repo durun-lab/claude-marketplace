@@ -2,93 +2,91 @@
 //!
 //! 帯の名前は帯の見えている所の左に寄せ（帯の左端が画面の外に出ても読める）、入らない分は切り詰めて「…」を付ける。
 //! 名前を入れる幅が狭い帯は測らずにスキップするので、全体表示で数千のカットが細いときはシェーピングしない。
+//! 置くのは見えている行の名前だけで、字は行の領域の中だけに描く（目盛りの帯の下に隠れた行の字は描かない）。
 
 use std::sync::Arc;
 
 use crate::geom::{Color, Rect};
 use crate::paint::{bar_color, stripe, trimmed, PaintState};
 use crate::palette;
+use crate::rows::RowHeight;
 use crate::ruler::{label, major_step, ticks};
 use crate::text::{place, Align, Label, TextMeasure, TextStyle, UiFont};
-use crate::time_view::TimeView;
-use crate::timeline::{cut_span, row_top, span, Item, TimelineModel, ROW_H, RULER_H};
+use crate::timeline::{cut_span, Item, TimelineModel};
+use crate::timeline_layout::Viewport;
 
 /// 帯の端と名前の間の余白。
 pub const LABEL_PAD: f32 = 4.0;
 /// 名前を入れる幅がこれより狭い帯は、測らずに名前を出さない。
 const MIN_LABEL_PX: f32 = 12.0;
-/// 目盛りの時刻の行の上端。
+/// 目盛りの帯の上端から時刻の行の上端まで。
 const RULER_LABEL_Y: f32 = 3.0;
 /// 目盛りの線と時刻の間隔。
 const TICK_GAP: f32 = 4.0;
 /// 無効なレイヤーの名前の不透明度。帯と同じく薄くする。
 const DISABLED_ALPHA: f32 = 0.6;
+/// Large の行で名前を置く、帯の上の部分の高さ。下は波形とフィルムストリップに空ける。
+const NAME_BAND: f32 = 20.0;
 
-/// Timeline の矩形の大きさ `(w, h)` の中に描く文字。目盛りの時刻と、見えている帯の名前。
+/// Timeline の見えている所 `vp` に描く文字。目盛りの時刻と、見えている帯の名前。
 pub fn timeline_labels(
     model: &TimelineModel,
-    view: &TimeView,
-    size: (f32, f32),
+    vp: &Viewport,
     state: &PaintState,
     font: &UiFont,
     measure: &mut dyn TextMeasure,
 ) -> Vec<Label> {
     let mut placer = Placer {
-        view,
-        width: size.0,
+        vp,
         measure,
         out: Vec::new(),
     };
     placer.ruler(state.palette.label, font.small);
-    placer.bars(model, size.1, state, font.base);
+    placer.bars(model, state, font.base);
     placer.out
 }
 
 /// 文字を置いていく途中の状態。
 struct Placer<'a> {
-    view: &'a TimeView,
-    /// Timeline の幅。
-    width: f32,
+    vp: &'a Viewport<'a>,
     measure: &'a mut dyn TextMeasure,
     out: Vec<Label>,
 }
 
 impl Placer<'_> {
-    /// 主な目盛りの右に時刻を置く。右端の時刻は、Timeline の右端から目盛りとの間隔だけ離して収まるよう左へ寄せる
+    /// 主な目盛りの右に時刻を置く。右端の時刻は、目盛りの帯の右端から目盛りとの間隔だけ離して収まるよう左へ寄せる
     /// （右端に接すると、拡大した倍率で最後の字が切れて見える）。
     /// 目盛りが右端より外にある時刻は置かない（寄せると左の時刻に重なる）。
     fn ruler(&mut self, color: Color, size: f32) {
-        let (step, width) = (major_step(self.view.px_per_sec), self.width);
-        let clip = Rect::new(0.0, 0.0, width, RULER_H);
-        for t in ticks(self.view, width) {
-            if !t.major || t.x > width {
+        let r = self.vp.layout.ruler;
+        let step = major_step(self.vp.time.px_per_sec);
+        for t in ticks(&self.vp.time, r.w) {
+            if !t.major || t.x > r.w {
                 continue;
             }
             let text = label(t.time, step);
-            let right = width - TICK_GAP;
-            let x = (t.x + TICK_GAP).min(right - self.measure.width(&text, size));
+            let right = r.right() - TICK_GAP;
+            let x = (r.x + t.x + TICK_GAP).min(right - self.measure.width(&text, size));
             self.out.push(Label {
                 text: text.into(),
                 x,
-                y: RULER_LABEL_Y,
+                y: r.y + RULER_LABEL_Y,
                 size,
                 color,
                 cut: None,
-                clip,
+                clip: r,
             });
         }
     }
 
-    /// 高さ `h` の Timeline に見えている行の帯の名前。シーケンスのレイヤーはカットごと（隙間を除く）に置く。
-    fn bars(&mut self, model: &TimelineModel, h: f32, state: &PaintState, size: f32) {
-        for (i, item) in model.items.iter().enumerate() {
-            let top = row_top(i);
-            if top >= h {
+    /// 見えている行の帯の名前。シーケンスのレイヤーはカットごと（隙間を除く）に置く。
+    fn bars(&mut self, model: &TimelineModel, state: &PaintState, size: f32) {
+        for i in self.vp.visible_rows() {
+            let Some(item) = model.items.get(i) else {
                 break;
-            }
+            };
             let (start, end) = trimmed(item, i, state.preview);
-            let (x, w) = span(self.view, start, end);
-            let bar = Rect::new(x, top, w, ROW_H);
+            let bar = name_band(self.vp.bar(i, start, end), self.vp.rows.height(i));
             if item.cuts.is_empty() {
                 let color = layer_text(item, stripe(&state.palette, i));
                 self.name(&item.label, bar, TextStyle { size, color });
@@ -98,26 +96,44 @@ impl Placer<'_> {
                 size,
                 color: cut_text(item),
             };
+            let left_edge = self.vp.layout.rows.x;
             for cut in item.cuts.iter().filter(|c| !c.gap) {
                 // カットはレイヤーの帯の内側だけを描くので、名前もその中に収める。
-                let (cx, cw) = cut_span(self.view, cut);
-                let left = cx.max(bar.x);
-                let right = (cx + cw).min(bar.right());
-                self.name(&cut.label, Rect::new(left, top, right - left, ROW_H), style);
+                let (cx, cw) = cut_span(&self.vp.time, cut);
+                let left = (left_edge + cx).max(bar.x);
+                let right = (left_edge + cx + cw).min(bar.right());
+                self.name(
+                    &cut.label,
+                    Rect::new(left, bar.y, right - left, bar.h),
+                    style,
+                );
             }
         }
     }
 
-    /// 帯 `bar` の見えている所に名前を置く。入らなければ切り詰め、1 字と「…」も入らなければ置かない。
+    /// 帯 `bar` の行の領域に見えている所に名前を置く。入らなければ切り詰め、1 字と「…」も入らなければ置かない。
+    /// 縦の位置は帯の矩形で決め（スクロールで帯が隠れかけても字は動かない）、字は行の領域の中だけに描く。
     fn name(&mut self, text: &Arc<str>, bar: Rect, style: TextStyle) {
-        let left = bar.x.max(0.0);
-        let visible = Rect::new(left, bar.y, bar.right().min(self.width) - left, bar.h);
-        if text.is_empty() || visible.w - 2.0 * LABEL_PAD < MIN_LABEL_PX {
+        let rows = self.vp.layout.rows;
+        let left = bar.x.max(rows.x);
+        let visible = Rect::new(left, bar.y, bar.right().min(rows.right()) - left, bar.h);
+        let (top, bottom) = (visible.y.max(rows.y), visible.bottom().min(rows.bottom()));
+        if text.is_empty() || visible.w - 2.0 * LABEL_PAD < MIN_LABEL_PX || bottom <= top {
             return;
         }
-        if let Some(label) = place(text, visible, LABEL_PAD, Align::Left, style, self.measure) {
+        let placed = place(text, visible, LABEL_PAD, Align::Left, style, self.measure);
+        if let Some(mut label) = placed {
+            label.clip = Rect::new(visible.x, top, visible.w, bottom - top);
             self.out.push(label);
         }
+    }
+}
+
+/// 名前を置く帯の部分。Large の行は上の部分だけ（下は波形とフィルムストリップに空ける）。
+fn name_band(bar: Rect, height: RowHeight) -> Rect {
+    match height {
+        RowHeight::Large => Rect::new(bar.x, bar.y, bar.w, NAME_BAND.min(bar.h)),
+        RowHeight::Small | RowHeight::Medium => bar,
     }
 }
 
@@ -146,38 +162,37 @@ fn cut_text(item: &Item) -> Color {
 mod tests {
     use super::*;
     use crate::gesture::{EditKind, Side};
+    use crate::paint::tests::state;
     use crate::palette::tests::KINDS;
     use crate::palette::{contrast, over, Palette};
     use crate::text::line_height;
     use crate::text::tests::FakeMeasure;
-    use crate::timeline::{CutBar, Hit, ItemKind};
+    use crate::time_view::TimeView;
+    use crate::timeline::{CutBar, ItemKind};
+    use crate::timeline_layout::tests::Frame;
+    use crate::timeline_layout::RULER_H;
 
-    const VIEW: TimeView = TimeView {
-        origin: 0.0,
-        px_per_sec: 100.0,
-    };
+    /// 幅 800、高さ 200 の Timeline。
+    const SIZE: (f32, f32) = (800.0, 200.0);
 
-    fn state() -> PaintState {
-        PaintState {
-            playhead: 0.0,
-            hover: Hit::Empty,
-            selected: None,
-            selected_cut: None,
-            guide: None,
-            preview: None,
-            palette: Palette::DEFAULT,
-        }
-    }
-
-    fn labels_of(model: &TimelineModel, state: &PaintState) -> (Vec<Label>, FakeMeasure) {
+    fn labels_in(
+        model: &TimelineModel,
+        f: &Frame,
+        state: &PaintState,
+    ) -> (Vec<Label>, FakeMeasure) {
         let mut m = FakeMeasure::default();
         let font = UiFont::default();
-        let out = timeline_labels(model, &VIEW, (800.0, 200.0), state, &font, &mut m);
+        let out = timeline_labels(model, &f.vp(), state, &font, &mut m);
         (out, m)
     }
 
+    fn labels_of(model: &TimelineModel, state: &PaintState) -> (Vec<Label>, FakeMeasure) {
+        labels_in(model, &Frame::new(model, SIZE), state)
+    }
+
+    /// 帯の名前（字を描く矩形が行の領域にあるもの）。
     fn bar_labels(out: &[Label]) -> Vec<&Label> {
-        out.iter().filter(|l| l.y > RULER_H).collect()
+        out.iter().filter(|l| l.clip.y >= RULER_H).collect()
     }
 
     fn model(items: Vec<Item>) -> TimelineModel {
@@ -193,17 +208,54 @@ mod tests {
         let m = model(vec![
             Item::layer(1.0, 4.0, ItemKind::Footage, true).with_label("a.mp4")
         ]);
-        let (out, _) = labels_of(&m, &state());
+        let (out, _) = labels_of(&m, &state(0.0));
         let bars = bar_labels(&out);
         assert_eq!(bars.len(), 1);
         let l = bars[0];
         assert_eq!((l.x, l.cut), (100.0 + LABEL_PAD, None));
         assert_eq!(&*l.text, "a.mp4");
-        assert_eq!(l.clip, Rect::new(100.0, row_top(0), 300.0, ROW_H));
+        let bar = Frame::new(&m, SIZE).vp().bar(0, 1.0, 4.0);
+        assert_eq!(l.clip, bar);
         // 行の矩形は帯の高さの中央。
-        let line = line_height(l.size);
-        assert_eq!(l.y + line / 2.0, row_top(0) + ROW_H / 2.0);
+        assert_eq!(l.y + line_height(l.size) / 2.0, bar.y + bar.h / 2.0);
         assert_eq!(l.color, palette::BAR_TEXT_LIGHT);
+    }
+
+    #[test]
+    fn large_の行は名前を帯の上の部分に置く() {
+        let mut seq = Item::layer(0.0, 6.0, ItemKind::Sequence, true);
+        seq.cuts = vec![CutBar {
+            start: 0.0,
+            end: 6.0,
+            label: "a.mp4".into(),
+            ..CutBar::default()
+        }];
+        let m = model(vec![seq]);
+        let (out, _) = labels_of(&m, &state(0.0));
+        let l = bar_labels(&out)[0];
+        let bar = Frame::new(&m, SIZE).vp().bar(0, 0.0, 6.0);
+        assert_eq!(bar.h, 53.0, "sequence の行は Large");
+        assert_eq!(l.y + line_height(l.size) / 2.0, bar.y + NAME_BAND / 2.0);
+    }
+
+    #[test]
+    fn 目盛りの帯の下に隠れかけた行の名前は動かさずに行の領域で切り_隠れた行は置かない() {
+        let items = (0..10)
+            .map(|i| Item::layer(0.0, 5.0, ItemKind::Image, true).with_label(&format!("row {i}")))
+            .collect();
+        let m = model(items);
+        let mut f = Frame::new(&m, SIZE);
+        f.scroll_y = 28.0 + 10.0;
+        let (out, _) = labels_in(&m, &f, &state(0.0));
+        let names: Vec<&str> = bar_labels(&out).iter().map(|l| &*l.text).collect();
+        assert!(!names.contains(&"row 0"), "{names:?}");
+        let row1 = bar_labels(&out)
+            .into_iter()
+            .find(|l| &*l.text == "row 1")
+            .expect("一部が見えている行");
+        let bar = f.vp().bar(1, 0.0, 5.0);
+        assert_eq!(row1.y + line_height(row1.size) / 2.0, bar.y + bar.h / 2.0);
+        assert_eq!(row1.clip.y, f.layout.rows.y, "上は行の領域で切る");
     }
 
     #[test]
@@ -212,7 +264,7 @@ mod tests {
         let m = model(vec![
             Item::layer(0.0, 0.5, ItemKind::Text, true).with_label("abcdefghij")
         ]);
-        let (out, _) = labels_of(&m, &state());
+        let (out, _) = labels_of(&m, &state(0.0));
         let l = bar_labels(&out)[0];
         assert_eq!(
             l.cut,
@@ -228,7 +280,7 @@ mod tests {
             Item::layer(0.0, 0.15, ItemKind::Footage, true).with_label("narrow"),
             Item::layer(0.0, 0.25, ItemKind::Footage, true).with_label("日本語"),
         ]);
-        let (out, measure) = labels_of(&m, &state());
+        let (out, measure) = labels_of(&m, &state(0.0));
         assert!(bar_labels(&out).is_empty());
         assert!(
             !measure.asked.iter().any(|t| t == "narrow"),
@@ -245,13 +297,12 @@ mod tests {
         let m = model(vec![
             Item::layer(0.0, 5.0, ItemKind::Footage, true).with_label("long take")
         ]);
-        let view = TimeView {
+        let mut f = Frame::new(&m, SIZE);
+        f.time = TimeView {
             origin: 2.0,
             px_per_sec: 100.0,
         };
-        let mut measure = FakeMeasure::default();
-        let font = UiFont::default();
-        let out = timeline_labels(&m, &view, (800.0, 200.0), &state(), &font, &mut measure);
+        let (out, _) = labels_in(&m, &f, &state(0.0));
         assert_eq!(bar_labels(&out)[0].x, LABEL_PAD);
     }
 
@@ -270,7 +321,7 @@ mod tests {
             cut(2.0, 3.0, true, "gap"),
             cut(3.0, 6.0, false, "b.mp4"),
         ];
-        let (out, _) = labels_of(&model(vec![seq]), &state());
+        let (out, _) = labels_of(&model(vec![seq]), &state(0.0));
         let names: Vec<(&str, f32)> = bar_labels(&out).iter().map(|l| (&*l.text, l.x)).collect();
         assert_eq!(names, [("a.mp4", LABEL_PAD), ("b.mp4", 300.0 + LABEL_PAD)]);
     }
@@ -288,7 +339,7 @@ mod tests {
                 },
                 1.0,
             )),
-            ..state()
+            ..state(0.0)
         };
         let (out, _) = labels_of(&m, &st);
         assert_eq!(bar_labels(&out)[0].x, 200.0 + LABEL_PAD);
@@ -299,7 +350,7 @@ mod tests {
         let m = model(vec![
             Item::layer(0.0, 4.0, ItemKind::Footage, false).with_label("off")
         ]);
-        let (out, _) = labels_of(&m, &state());
+        let (out, _) = labels_of(&m, &state(0.0));
         let c: Color = bar_labels(&out)[0].color;
         assert_eq!(c.0[3], DISABLED_ALPHA);
     }
@@ -332,7 +383,7 @@ mod tests {
         let items = (0..1000)
             .map(|i| Item::layer(0.0, 5.0, ItemKind::Image, true).with_label(&format!("row {i}")))
             .collect();
-        let (out, measure) = labels_of(&model(items), &state());
+        let (out, measure) = labels_of(&model(items), &state(0.0));
         let rows = bar_labels(&out).len();
         assert!(rows > 0 && rows < 10, "高さ 200 に入る行だけ: {rows}");
         assert!(measure.asked.len() < 30, "{}", measure.asked.len());
@@ -340,7 +391,7 @@ mod tests {
 
     #[test]
     fn 目盛りの時刻は主な目盛りの右に置き_右端に収める() {
-        let (out, _) = labels_of(&model(Vec::new()), &state());
+        let (out, _) = labels_of(&model(Vec::new()), &state(0.0));
         let ruler: Vec<&Label> = out.iter().filter(|l| l.y < RULER_H).collect();
         assert_eq!(&*ruler[0].text, "0:00");
         assert_eq!(ruler[0].x, TICK_GAP);
@@ -355,16 +406,9 @@ mod tests {
     #[test]
     fn 目盛りが右端より外にある時刻は置かない() {
         // 幅 799 では 8 秒の目盛り（800 px）が外にある。
-        let mut m = FakeMeasure::default();
-        let font = UiFont::default();
-        let out = timeline_labels(
-            &model(Vec::new()),
-            &VIEW,
-            (799.0, 200.0),
-            &state(),
-            &font,
-            &mut m,
-        );
+        let m = model(Vec::new());
+        let f = Frame::new(&m, (799.0, 200.0));
+        let (out, _) = labels_in(&m, &f, &state(0.0));
         let last = out.iter().rfind(|l| l.y < RULER_H).expect("時刻");
         assert_eq!(&*last.text, "0:07");
     }
