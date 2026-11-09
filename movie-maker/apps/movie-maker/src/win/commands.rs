@@ -214,7 +214,9 @@ pub static TABLE: &[Spec] = &[
     Spec {
         id: "timeline.toggle_snapping",
         name: "Snapping",
-        description: Some("Snap dragged edges to the playhead, edges, keyframes, and markers"),
+        description: Some(
+            "Snap dragged edges to the playhead, clip and layer edges, keyframes, and markers",
+        ),
         owner: Owner::App(Action::Timeline(TimelineAction::ToggleSnapping)),
     },
 ];

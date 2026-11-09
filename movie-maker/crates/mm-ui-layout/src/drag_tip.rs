@@ -96,12 +96,15 @@ fn tip_rect(bounds: Rect, (x, y): (f32, f32), (w, h): (f32, f32)) -> Rect {
 /// 矩形 `tip` に重なる文字を、矩形の手前で切る。字の頭が矩形の中か右にあれば外す。
 fn clear(labels: &mut Vec<Label>, tip: Rect, measure: &mut dyn TextMeasure) {
     labels.retain_mut(|l| {
+        // 字を描いてよい矩形が重ならなければ、測らずに残す（帯の名前の多くはここで済む）。
+        if !overlaps(l.clip, tip) {
+            return true;
+        }
         let w = match l.cut {
             Some(cut) => cut + measure.width(ELLIPSIS, l.size),
             None => measure.width(&l.text, l.size),
         };
-        let line = Rect::new(l.x, l.y, w, line_height(l.size));
-        if !overlaps(line, tip) || !overlaps(l.clip, tip) {
+        if !overlaps(Rect::new(l.x, l.y, w, line_height(l.size)), tip) {
             return true;
         }
         l.clip.w = l.clip.w.min(tip.x - l.clip.x);
@@ -208,12 +211,16 @@ mod tests {
             label("inside", 330.0),
             label("far", 600.0),
         ];
-        let (quads, _) = tooltip((300.0, 100.0), 0.4, &mut labels);
+        let (quads, measure) = tooltip((300.0, 100.0), 0.4, &mut labels);
         let tip = quads[0].rect;
         let texts: Vec<&str> = labels.iter().map(|l| &*l.text).collect();
         assert_eq!(texts, ["long bar name", "far", "+12f"]);
         assert_eq!(labels[0].clip.right(), tip.x, "矩形の手前で切る");
         assert_eq!(labels[1].clip.w, 400.0, "重ならない文字はそのまま");
+        assert!(
+            !measure.asked.iter().any(|t| t == "far"),
+            "字を描いてよい矩形が重ならない文字は測らない"
+        );
     }
 
     #[test]

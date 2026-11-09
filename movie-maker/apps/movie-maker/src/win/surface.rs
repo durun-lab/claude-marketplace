@@ -282,12 +282,12 @@ fn key_pressed(wparam: WPARAM, lparam: LPARAM) -> bool {
     keys::command_for(&name).is_some()
 }
 
-/// キーを離したことをキーの表に渡す（ドラッグ中のスナップの反転を戻す）。
-fn key_released(wparam: WPARAM) -> LRESULT {
+/// キーを離したことをキーの表に渡し（ドラッグ中のスナップの反転を戻す）、既定の処理はそのまま通す。
+fn key_released(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if let Some(shared) = SHARED.get() {
         keys::release(shared, &keys::vk_name(wparam.0 as u32));
     }
-    LRESULT(0)
+    unsafe { DefWindowProcW(hwnd, WM_KEYUP, wparam, lparam) }
 }
 
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
@@ -348,7 +348,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             key_pressed(wparam, lparam);
             LRESULT(0)
         }
-        WM_KEYUP => key_released(wparam),
+        WM_KEYUP => key_released(hwnd, wparam, lparam),
         // Alt を押している間のキーと F10 は WM_SYSKEYDOWN で届く。Alt+F4 と F10 は既定のウィンドウプロシージャに渡す。
         WM_SYSKEYDOWN if !passes_to_system(wparam.0 as u32) => {
             SYSKEY_IN_TABLE.store(key_pressed(wparam, lparam), Ordering::SeqCst);
