@@ -3,7 +3,7 @@
 //! Program の映像の上にはコメントの描き込みを重ねる。重ねるのはサーフェスへの描画だけで、フレームのテクスチャには書かない。
 //!
 //! 計算は `mm-ui-layout` に置き、このクレートは wgpu の資源と描画だけを持つ。
-//! Timeline の文字（目盛りの時刻、帯の名前）は cosmic-text で組み（`fonts.rs`）、glyphon で描く（`text.rs`）。
+//! Timeline の文字（目盛りの時刻、帯の名前）は cosmic-text でシェーピングし（`fonts.rs`）、glyphon で描く（`text.rs`）。
 
 mod drawing;
 mod fonts;

@@ -1,4 +1,4 @@
-//! 結合テストが共通に使う足回り。共有の GPU のコンテキスト、オフスクリーンのテクスチャへの描画と読み戻し、画素の比べ方。
+//! 結合テストが共通に使うハーネス。共有の GPU のコンテキスト、オフスクリーンのテクスチャへの描画とリードバック、画素の比べ方。
 
 use mm_gpu::{GpuContext, GpuRequest};
 use mm_ui_wgpu::Ui;
@@ -47,7 +47,7 @@ pub(crate) fn render_sized(
     read_back(device, queue, &texture, 4)
 }
 
-/// テクスチャの画素を読み戻す（行は詰めてある）。`bpp` は 1 画素のバイト数。
+/// テクスチャの画素をリードバックする（行は詰めてある）。`bpp` は 1 画素のバイト数。
 pub(crate) fn read_back(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
