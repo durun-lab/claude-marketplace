@@ -4,7 +4,7 @@
 |---|---|---|
 | 見出しの列の上の角 | 見出しの列の上、目盛りの帯の左の矩形。再生位置のタイムコードと、隠した行の数（T3）を出す。押しても選択を変えない | `TimelineLayout::corner`、`Hit::Corner` |
 | タイムコード | 時刻を `HH:MM:SS:FF`（時、分、秒、フレーム）で書いたもの。フレームはその時刻を含むフレーム（切り捨て。WebView の Frame の数と同じ）で、1 秒のフレームの数はフレームレートを丸めた数（ノンドロップ） | `header::timecode` |
-| 見出しの部品 | レイヤーの見出しの 1 行に並ぶ、種類の色の帯、種類の略号、名前、有効のボタン、ロックのボタン、Mute と Solo のボタンの矩形。描く関数と文字が同じ矩形を見る | `header::Cells`、`header::cells` |
+| 見出しの部品 | レイヤーの見出しの 1 行に並ぶ、種類の色の帯、種類の略号、名前、有効のボタン、ロックのボタン、Mute と Solo のボタン、キーフレームの開閉の矩形。描く関数と文字が同じ矩形を見る | `header::Cells`、`header::cells` |
 | 種類の色の帯（レイヤーの見出しの） | 見出しの左端の、帯と同じ種類の色の細い矩形。無効なレイヤーは薄い | `Cells::kind_strip` |
 | 音を持てるレイヤー | 撮影素材、入れ子、sequence のレイヤー。Mixer のトラックになり、見出しに Mute と Solo のボタンを出す。音の設定（`Layer::audio`）が無ければ既定（Mute も Solo も切） | `AUDIO_KINDS`（`mm-ui-wgpu` の `model.rs`）、`AudioState`、`Item::audio` |
 | Mute と Solo のボタン | 音を持てるレイヤーの見出しの M と S。入は Mixer と同じテーマの色（Mute は `danger`、Solo は `accent`）で塗り、切は薄い枠と字 | `Palette::mute`、`Palette::solo`、`paint/header.rs` の `audio_button` |
