@@ -99,19 +99,6 @@ impl Canvas {
         }
     }
 
-    /// 形のある図形（ひし形、三角）を、外接する矩形が `clip` に全部入るときだけ入れる。切ると形が変わるので、
-    /// はみ出すものは描かない。
-    pub(crate) fn push_shape(&mut self, depth: Depth, quad: Quad, clip: Rect) {
-        let (r, slack) = (quad.rect, 1e-3);
-        let inside = r.x >= clip.x - slack
-            && r.y >= clip.y - slack
-            && r.right() <= clip.right() + slack
-            && r.bottom() <= clip.bottom() + slack;
-        if inside {
-            self.depths[depth as usize].push(quad);
-        }
-    }
-
     fn into_quads(self) -> Vec<Quad> {
         self.depths.into_iter().flatten().collect()
     }

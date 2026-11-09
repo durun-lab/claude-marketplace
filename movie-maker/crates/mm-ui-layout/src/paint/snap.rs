@@ -15,7 +15,8 @@ const MARK_H: f32 = 7.0;
 /// 吸い付いた帯の端を塗る不透明度。
 const EDGE_ALPHA: f32 = 0.9;
 
-/// ガイド線と上下の三角（文字の上に重ねる）。
+/// ガイド線と上下の三角（文字の上に重ねる）。三角は切ると形が変わるので、時刻の列に全部入るときだけ描く
+/// （列の端に吸い付いたときはガイド線だけになる）。
 pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
     let Some(target) = s.state.snap else {
         return;
@@ -23,7 +24,7 @@ pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
     let color = s.state.palette.guide;
     vline(c, s.vp, target.time, GUIDE_W, color);
     let l = s.vp.layout;
-    let x = s.vp.x_of(target.time);
+    let (x, column) = (s.vp.x_of(target.time), l.time_column());
     let half = MARK_H / 2.0;
     let marks = [
         (l.ruler.bottom() - half, QuadShape::TriDown),
@@ -31,8 +32,19 @@ pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
     ];
     for (y, shape) in marks {
         let mark = Quad::shaped((x, y), (MARK_W, MARK_H), shape, color);
-        c.push_shape(Depth::Surround, mark, l.time_column());
+        if inside(mark.rect, column) {
+            c.push_quad(Depth::Surround, mark);
+        }
     }
+}
+
+/// `r` が `clip` に全部入るか（浮動小数の誤差の分はゆるめる）。
+fn inside(r: Rect, clip: Rect) -> bool {
+    let slack = 1e-3;
+    r.x >= clip.x - slack
+        && r.y >= clip.y - slack
+        && r.right() <= clip.right() + slack
+        && r.bottom() <= clip.bottom() + slack
 }
 
 /// 吸い付いた帯の端（文字の下、帯の上）。端のつまみと同じ幅を、帯の内側にガイド線の色で塗る。
