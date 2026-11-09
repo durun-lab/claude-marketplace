@@ -1,6 +1,6 @@
 //! `--play-test` の Timeline 編集の通し。実際のウィンドウへのキーとドラッグで、Source を開いてイン点・アウト点を付け、
 //! insert、端のドラッグ（ripple）、中のドラッグ（slip）、split、lift、取り消し、レイヤーの端のドラッグ（Esc での取り消しと trimLayer）、
-//! スナップ（再生位置とカットの端、N を押している間の反転）を順に行い、そのたびに
+//! スナップ（再生位置とカットの端、N を押している間の反転、再生位置の線の手前のツールチップ）を順に行い、そのたびに
 //! プロジェクトのデータが期待どおり変わったかを確かめて、段ごとにスクリーンショットを残す。
 
 use std::sync::Arc;
@@ -44,6 +44,8 @@ const TRIM_SECS: f64 = 1.5;
 const HANDLE_INSET: f32 = 3.0;
 /// スナップの目標の右へドラッグする量（論理ピクセル）。吸い付く距離（8）の内側にし、吸い付かなければ端がずれて分かるようにする。
 const SNAP_NEAR: f32 = 4.0;
+/// 再生位置の左へドラッグする量（論理ピクセル）。ポインターの右 16 から始まるツールチップの矩形の中を、再生位置の線が通る。
+const TOOLTIP_LEFT: f32 = 40.0;
 
 /// 試験の対象。
 pub struct Env<'a> {
@@ -405,8 +407,16 @@ fn last_cut_end(shared: &Shared) -> Option<f64> {
     cuts.filter(|c| !c.gap).map(|c| c.end).reduce(f64::max)
 }
 
+/// ドラッグを Esc で取り消して離す。
+fn cancel_drag(hwnd: isize, at: (i32, i32)) {
+    surface::post_escape(hwnd);
+    surface::post_release(hwnd, at);
+    std::thread::sleep(SETTLE);
+}
+
 /// レイヤーのアウト点のつまみを再生位置の近くへドラッグしたまま撮り（スナップの表示とドラッグ中のツールチップ）、N を押している間は
-/// 吸い付きが外れることも撮る。続けてカットの端の近くへドラッグして撮り、離してアウト点がその端に吸い付いたかを確かめる。
+/// 吸い付きが外れることも撮る。再生位置の線がツールチップの中を通る所でも撮り、続けてカットの端の近くへドラッグして撮り、
+/// 離してアウト点がその端に吸い付いたかを確かめる。
 fn snap_step(env: &Env<'_>, log: &mut Log) {
     let (shared, hwnd) = (env.shared, env.surface_hwnd);
     let found = geometry(shared, hwnd).and_then(|g| {
@@ -424,9 +434,11 @@ fn snap_step(env: &Env<'_>, log: &mut Log) {
     surface::post_key(hwnd, VK_N);
     shot(env, log, "11-snap-held-n");
     surface::post_key_up(hwnd, VK_N);
-    surface::post_escape(hwnd);
-    surface::post_release(hwnd, from);
-    std::thread::sleep(SETTLE);
+    cancel_drag(hwnd, from);
+    let left = g.at(row, shared.playhead(), -TOOLTIP_LEFT);
+    surface::post_press(hwnd, from, left);
+    shot(env, log, "13-tooltip-over-playhead");
+    cancel_drag(hwnd, from);
     let to = g.at(row, edge, SNAP_NEAR);
     surface::post_press(hwnd, from, to);
     shot(env, log, "12-snap-clip-edge");
