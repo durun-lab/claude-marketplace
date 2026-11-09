@@ -1,4 +1,4 @@
-//! Timeline のズームバーと、キーとメニューの全体表示のコマンド、再生中のページ送りを、表示の倍率 1 と 1.5 で描いて確かめる。
+//! Timeline のズームバーと、キーとメニューの全体表示のコマンド、再生位置のページ送りを、表示の倍率 1 と 1.5 で描いて確かめる。
 //! スクロールボックスの位置は `Ui::view_state` と `mm-ui-layout` の関数から求める（`Ui` と同じ計算）。
 
 use mm_ui_layout::{
@@ -99,7 +99,7 @@ fn timeline_の下端にズームバーを描き_全体表示でスクロール�
 }
 
 #[test]
-fn 再生中だけ_再生位置が右端を越えると_1_画面ぶん送る() {
+fn 再生位置が右端を越えると_1_画面ぶん送り_左端を越えると戻す() {
     let Some((device, _queue)) = gpu() else {
         return;
     };
@@ -107,20 +107,19 @@ fn 再生中だけ_再生位置が右端を越えると_1_画面ぶん送る() {
     let (mut ui, _) = zoomed_ui(&device, 1.0, &m);
     let width = layout(&ui, &m, 1.0).row_area.w;
     let (_, end) = ZOOMED.visible(width);
+    let time = |ui: &Ui| ui.view_state().expect("表示の状態").time;
     ui.set_playhead(end - 0.01);
+    assert_eq!(time(&ui), ZOOMED, "見えている所へ動いても送らない");
     ui.set_playhead(end + 0.01);
-    assert_eq!(
-        ui.view_state().expect("表示の状態").time,
-        ZOOMED,
-        "止めている間は送らない"
-    );
-    ui.set_playing(true);
-    ui.set_playhead(end - 0.01);
-    ui.set_playhead(end + 0.01);
-    let paged = ui.view_state().expect("表示の状態").time;
+    let paged = time(&ui);
     assert!(
         (paged.origin - end).abs() < 1e-9,
         "右端が左端になる: {paged:?}"
     );
     assert_eq!(paged.px_per_sec, ZOOMED.px_per_sec);
+    ui.set_playhead(end - 0.01);
+    assert!(
+        (time(&ui).origin - ZOOMED.origin).abs() < 1e-9,
+        "左端を越えると戻す"
+    );
 }

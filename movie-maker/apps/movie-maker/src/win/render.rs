@@ -355,7 +355,6 @@ fn frame(shared: &Shared, gpu: &Gpu, ui: &mut Ui, seen: &mut u64) -> Result<(), 
         shared.surface_errors.fetch_add(1, Ordering::SeqCst);
     })?;
     let uploaded = upload_frame(shared, gpu, ui, seen);
-    ui.set_playing(shared.playing.load(Ordering::SeqCst));
     ui.set_playhead(shared.playhead());
     let view = texture.texture.create_view(&Default::default());
     let started = Instant::now();

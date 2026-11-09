@@ -78,16 +78,22 @@ impl TimelineController {
         self.hover = Hit::ZoomBar { part: drag.part };
     }
 
-    /// 再生中に再生位置が `from` から `to` へ進んで行の領域の右端を越えたら、越えた先が見えるまで 1 画面ずつ送る
-    /// （Premiere の Page Scroll）。右端の外にあった再生位置が進んでも送らず、人が動かした表示を保つ。
+    /// 再生位置が `from` から `to` へ動いて行の領域の端を越えたら、越えた先が見えるまでその向きへ 1 画面ずつ送る
+    /// （再生中の Premiere の Page Scroll と、キーで動かした再生位置を見失わないこと）。端の外にあった再生位置が動いても
+    /// 送らず、人が動かした表示を保つ。ドラッグの間は、ポインターの下の時刻が変わって編集の量が飛ぶので送らない。
     pub fn page_scroll(&mut self, from: f64, to: f64) {
         let width = self.layout.row_area.w;
         let (start, end) = self.view.visible(width);
         let page = end - start;
-        if width <= 0.0 || page <= 0.0 || from > end || to <= end {
+        if width <= 0.0 || page <= 0.0 || !matches!(self.drag, Drag::None) {
             return;
         }
-        self.view.origin += ((to - start) / page).floor() * page;
+        if from <= end && to > end {
+            self.view.origin += ((to - start) / page).floor() * page;
+        } else if from >= start && to < start {
+            let back = self.view.origin - ((start - to) / page).ceil() * page;
+            self.view.origin = back.max(0.0);
+        }
     }
 }
 

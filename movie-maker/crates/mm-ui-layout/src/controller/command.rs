@@ -57,10 +57,7 @@ pub fn edit_target(model: &TimelineModel, playhead: f64, forward: bool) -> Optio
         0.0
     };
     let last = (model.duration - frame).max(0.0);
-    let stops = model
-        .snap_targets(None)
-        .into_iter()
-        .map(|t| quantize(t, model.fps).clamp(0.0, last));
+    let stops = edges(model).map(|t| quantize(t, model.fps).clamp(0.0, last));
     let half = frame / 2.0;
     if forward {
         stops
@@ -71,4 +68,13 @@ pub fn edit_target(model: &TimelineModel, playhead: f64, forward: bool) -> Optio
             .filter(|t| *t < playhead - half)
             .max_by(f64::total_cmp)
     }
+}
+
+/// 帯の端（0、終わり、レイヤーとカットの始まりと終わり）。スナップの目標とは別に持ち、キーフレームやマーカーで止まらない。
+fn edges(model: &TimelineModel) -> impl Iterator<Item = f64> + '_ {
+    let items = model.items.iter().flat_map(|it| {
+        let cuts = it.cuts.iter().flat_map(|c| [c.start, c.end]);
+        [it.start, it.end].into_iter().chain(cuts)
+    });
+    [0.0, model.duration].into_iter().chain(items)
 }

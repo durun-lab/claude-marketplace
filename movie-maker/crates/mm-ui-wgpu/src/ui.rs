@@ -55,8 +55,6 @@ pub struct Ui {
     /// サーフェスの大きさ（物理ピクセル）。
     size: (f32, f32),
     playhead: f64,
-    /// 再生中か。再生中は再生位置が行の領域の右端を越えたら 1 画面ぶん送る。
-    playing: bool,
     /// 最初の表示（戻した表示の状態か、全体表示と sequence の行）を当てたか。
     opened: bool,
     palette: Palette,
@@ -88,7 +86,6 @@ impl Ui {
             },
             size: (0.0, 0.0),
             playhead: 0.0,
-            playing: false,
             opened: false,
             palette: Palette::DEFAULT,
         }
@@ -158,11 +155,9 @@ impl Ui {
         });
     }
 
-    /// 再生位置（秒）。再生中に行の領域の右端を越えたら 1 画面ぶん送る（[`Ui::set_playing`]）。
+    /// 再生位置（秒）。再生とキーで行の領域の端を越えたら、その向きへ 1 画面ずつ送る（`TimelineController::page_scroll`）。
     pub fn set_playhead(&mut self, secs: f64) {
-        if self.playing {
-            self.controller.page_scroll(self.playhead, secs);
-        }
+        self.controller.page_scroll(self.playhead, secs);
         self.playhead = secs;
     }
 

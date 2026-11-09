@@ -19,7 +19,8 @@ fn model(duration: f64) -> TimelineModel {
     }
 }
 
-/// 先頭がシーケンスのレイヤー（カット 0-3、3-4、4-7 秒）、次が 10 秒から 14 秒のレイヤー。20 秒、30 fps。
+/// 先頭がシーケンスのレイヤー（カット 0-3、3-4、4-7 秒）、次が 10 秒から 14 秒のレイヤー（12 秒にキーフレーム）。
+/// 20 秒、30 fps。
 fn edits() -> TimelineModel {
     let cut = |start, end| CutBar {
         start,
@@ -28,10 +29,12 @@ fn edits() -> TimelineModel {
     };
     let mut seq = Item::layer(0.0, 7.0, ItemKind::Sequence, true);
     seq.cuts = vec![cut(0.0, 3.0), cut(3.0, 4.0), cut(4.0, 7.0)];
+    let mut text = Item::layer(10.0, 14.0, ItemKind::Text, true);
+    text.keyframes = [12.0].into();
     TimelineModel {
         duration: 20.0,
         fps: 30.0,
-        items: vec![seq, Item::layer(10.0, 14.0, ItemKind::Text, true)],
+        items: vec![seq, text],
     }
 }
 
@@ -179,14 +182,48 @@ fn 再生位置が右端を越えたら_1_画面ぶん送り_右端の外から�
 }
 
 #[test]
+fn 再生位置が左端を越えたら左へ送り_0_より前は見せない() {
+    let m = model(100.0);
+    let mut c = wide(&m);
+    c.view.origin = 60.0;
+    c.page_scroll(60.5, 59.0);
+    assert_eq!(c.view.origin, 40.0, "左端が右端になる");
+    c.page_scroll(41.0, 3.0);
+    assert_eq!(c.view.origin, 0.0, "越えた先が見えるまで");
+    c.view.origin = 5.0;
+    c.page_scroll(10.0, 0.0);
+    assert_eq!(
+        c.view.origin, 0.0,
+        "1 画面ぶん戻すと 0 より前になるときは 0 から"
+    );
+    c.view.origin = 50.0;
+    c.page_scroll(10.0, 9.0);
+    assert_eq!(c.view.origin, 50.0, "左端の外から動いても送らない");
+}
+
+#[test]
+fn ドラッグの間は送らず_離した後の移動から送る() {
+    let m = model(100.0);
+    let mut c = wide(&m);
+    let y = bar_y(&c);
+    c.handle(down(200.0, y), &m, 0.0);
+    c.page_scroll(19.9, 20.1);
+    assert_eq!(c.view.origin, 0.0, "スクロールボックスを掴んでいる間");
+    c.handle(PointerEvent::Up, &m, 0.0);
+    c.page_scroll(19.9, 20.1);
+    assert_eq!(c.view.origin, 20.0);
+}
+
+#[test]
 fn 前後の帯の端は_0_とカットとレイヤーの端と終わりで_今いる端は飛ばす() {
     let m = edits();
     let next = |t| edit_target(&m, t, true);
     let previous = |t| edit_target(&m, t, false);
     assert_eq!(next(0.0), Some(3.0));
     assert_eq!(next(3.0), Some(4.0));
-    assert_eq!(next(3.01), Some(4.0), "半フレームより近い端は今いる所");
+    assert_eq!(next(2.99), Some(4.0), "半フレームより近い端は今いる所");
     assert_eq!(next(7.0), Some(10.0));
+    assert_eq!(next(10.0), Some(14.0), "キーフレームでは止まらない");
     assert_eq!(
         next(14.0),
         Some(20.0 - 1.0 / 30.0),
