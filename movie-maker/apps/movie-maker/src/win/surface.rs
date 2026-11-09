@@ -250,8 +250,8 @@ fn wheel_event(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> PointerEvent {
     }
 }
 
-/// `WM_SYSKEYDOWN` と `WM_SYSKEYUP` のうち、既定の処理に渡すキー。Alt+F4（ウィンドウを閉じる）と、
-/// F10（離したときにメニューバーをキーで開く。Windows の決まりのキー）。
+/// `WM_SYSKEYDOWN` と `WM_SYSKEYUP` のうち、既定のウィンドウプロシージャに渡すキー。Alt+F4（ウィンドウを閉じる）と、
+/// F10（離したときにメニューモードに入る。Windows の標準のキー）。
 fn passes_to_system(vk: u32) -> bool {
     vk == u32::from(VK_F4.0) || vk == u32::from(VK_F10.0)
 }
@@ -329,14 +329,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             key_pressed(wparam, lparam);
             LRESULT(0)
         }
-        // Alt を押している間のキーと F10 は WM_SYSKEYDOWN で届く。Alt+F4 と F10 は既定の処理に渡す。
+        // Alt を押している間のキーと F10 は WM_SYSKEYDOWN で届く。Alt+F4 と F10 は既定のウィンドウプロシージャに渡す。
         WM_SYSKEYDOWN if !passes_to_system(wparam.0 as u32) => {
             SYSKEY_IN_TABLE.store(key_pressed(wparam, lparam), Ordering::SeqCst);
             LRESULT(0)
         }
-        // キーの表が受けた Alt+英字はアクセスキーとして扱わず、表に無い Alt+英字は既定の処理でメニューを開く。
+        // キーの表が受けた Alt+英字はアクセスキーとして扱わず、表に無い Alt+英字は既定のウィンドウプロシージャがメニューを開く。
         WM_SYSCHAR if SYSKEY_IN_TABLE.swap(false, Ordering::SeqCst) => LRESULT(0),
-        // Alt を離したときの既定の処理はメニューモード（SC_KEYMENU）に入り、次のキーを奪うので渡さない。
+        // Alt を離したときの既定のウィンドウプロシージャはメニューモード（SC_KEYMENU）に入り、次のキーを奪うので渡さない。
         WM_SYSKEYUP if !passes_to_system(wparam.0 as u32) => LRESULT(0),
         WM_ERASEBKGND => LRESULT(1),
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
@@ -354,11 +354,11 @@ mod tests {
     }
 
     #[test]
-    fn システムのキーは_f4_と_f10_だけを既定の処理に渡す() {
+    fn システムのキーは_f4_と_f10_だけを既定のウィンドウプロシージャに渡す() {
         assert!(passes_to_system(u32::from(VK_F4.0)));
         assert!(
             passes_to_system(u32::from(VK_F10.0)),
-            "F10 でメニューバーを開く"
+            "F10 でメニューモードに入る"
         );
         assert!(
             !passes_to_system(u32::from(VK_MENU.0)),

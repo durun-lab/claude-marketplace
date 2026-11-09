@@ -56,7 +56,7 @@ Rust の側は `#[tauri::command] fn apply_op(op: mm_ops::Op, ...) -> Result<_, 
 
 押せるかが変わると、Tauri のイベント `mm:commands-changed`（`COMMANDS_CHANGED_EVENT`）が同じ形の表を丸ごと届ける。Shell は表を `PanelContext.commands` でパネルに渡し、`runCommand` は持ち主がパネルならそのタブを開き、アプリなら `run_command` を呼ぶ。ボタンの `title` は `commandTitle` で作る（1 行目が「名前 (キー)」、2 行目が説明。表に無いコマンドは `Not available yet`）。
 
-パネルが持ち主のコマンドをアプリのメニューやキー（Ctrl+I の Import Media…）から呼ぶと、Tauri のイベント `mm:panel-command`（`PANEL_COMMAND_EVENT`）がコマンドの ID を届ける。Shell は `CommandsApi.onPanelCommand` で受け、`runCommand` と同じくタブを開いてパネルに知らせる（`PanelContext.requests` が進む）。
+パネルが持ち主のコマンドをアプリのメニューやキー（Ctrl+I の Import Media…）から呼ぶと、Tauri のイベント `mm:panel-command`（`PANEL_COMMAND_EVENT`）がコマンドの ID を届ける。Shell は `CommandsApi.onPanelCommand` で受け、`runCommand` と同じくタブを開き、パネルの `PanelContext.requests` を進める。
 
 ## Media のコマンド
 

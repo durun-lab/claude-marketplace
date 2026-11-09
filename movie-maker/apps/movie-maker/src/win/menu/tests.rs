@@ -13,7 +13,7 @@ use crate::win::sequence_edit::tests::sample_project;
 /// Deliver のパネルの中の操作なので Tasks の項目から呼ぶ。
 const NOT_IN_MENUS: &[&str] = &["export.choose_target", "playback.stop"];
 
-/// 行を、項目の文字と区切り（`-`）にする。
+/// 項目と区切り線を、項目の文字と `-` にする。
 fn texts(lines: &[Line]) -> Vec<String> {
     lines
         .iter()
@@ -106,7 +106,7 @@ fn 項目の無いメニューはメニューバーに出さない() {
 }
 
 #[test]
-fn 表のコマンドはメニューバーに一度だけ出るか_出さないものに入る() {
+fn 表のコマンドはメニューバーに一度だけ出るか_not_in_menus_に入る() {
     let ids: Vec<&str> = BAR
         .iter()
         .flat_map(|(_, groups)| groups.iter().flat_map(|g| g.iter().copied()))
@@ -133,7 +133,7 @@ fn 表のコマンドはメニューバーに一度だけ出るか_出さない�
 }
 
 #[test]
-fn 表に無い_id_は飛ばし_空のグループは区切りごと消える() {
+fn 表に無い_id_はスキップし_空のグループは区切り線ごと消える() {
     let table = table(&Shared::new());
     let groups: Groups = &[
         &["timeline.zoom_in"],
@@ -178,7 +178,7 @@ fn webview_に送る表のメニューはメニューの並びから引く() {
     assert_eq!(about["menu"], "help");
 }
 
-/// 置かれた押せるかとチェックの状態を記録する項目。
+/// 反映された押せるかとチェックの状態を記録する項目。
 struct Fake {
     id: Option<&'static str>,
     got: RefCell<Vec<State>>,
@@ -212,7 +212,7 @@ fn states(table: &[CommandView]) -> Vec<(&'static str, State)> {
 }
 
 #[test]
-fn 押せるかが変わった表を同じ_id_の項目に置く() {
+fn 押せるかが変わった表を同じ_id_の項目に反映する() {
     let shared = Shared::new();
     let items = [
         Fake::new(Some("clip.split")),
@@ -228,7 +228,7 @@ fn 押せるかが変わった表を同じ_id_の項目に置く() {
         "シーケンスが無ければ split は押せない"
     );
     assert_eq!(enabled(2), Some(true));
-    assert!(items[1].got.borrow().is_empty(), "区切りには置かない");
+    assert!(items[1].got.borrow().is_empty(), "区切り線には反映しない");
     assert!(items[3].got.borrow().is_empty(), "表に無い ID は触らない");
 
     shared.publish_doc(Arc::new(sample_project()), Id::new("main"));
@@ -237,7 +237,7 @@ fn 押せるかが変わった表を同じ_id_の項目に置く() {
 }
 
 #[test]
-fn チェックの状態も項目に置く() {
+fn チェックの状態も項目に反映する() {
     let item = [Fake::new(Some("timeline.toggle_snapping"))];
     let on = State {
         enabled: true,

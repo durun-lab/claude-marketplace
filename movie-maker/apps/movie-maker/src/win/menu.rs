@@ -1,4 +1,4 @@
-//! メニューバー。メニューの中の並びを、区切りで分けたコマンドの ID のグループとして表とは別に持ち（VS Code の `menus`、
+//! メニューバー。メニューの中の並びを、区切り線で分けたコマンドの ID のグループとして表とは別に持ち（VS Code の `menus`、
 //! KDE の ui.rc と同じ）、項目の名前、キーの見た目、押せるかは UI のコマンドの表から作る。右クリックのメニューも同じ形。
 
 use std::sync::Arc;
@@ -40,10 +40,10 @@ impl Menu {
     }
 }
 
-/// 区切りで分けたコマンドの ID のグループの並び。
+/// 区切り線で分けたコマンドの ID のグループの並び。
 pub type Groups = &'static [&'static [&'static str]];
 
-/// メニューバーのメニューと中の並び。表に無い ID は飛ばすので、後の PR が表にコマンドを足すとメニューに出る。
+/// メニューバーのメニューと中の並び。表に無い ID はスキップするので、後の PR が表にコマンドを足すとメニューに出る。
 pub static BAR: &[(Menu, Groups)] = &[
     (
         Menu::File,
@@ -109,14 +109,15 @@ pub static BAR: &[(Menu, Groups)] = &[
     ),
 ];
 
-/// メニューの 1 行。
+/// メニューの項目か区切り線の 1 つ。
 #[derive(Debug, PartialEq)]
 pub enum Line<'a> {
     Command(&'a CommandView),
     Separator,
 }
 
-/// グループの並びを、表にあるコマンドの行にする。空でないグループの間にだけ区切りを入れる（VS Code の menus の group と同じ）。
+/// グループの並びを、表にあるコマンドの項目と区切り線の並びにする。空でないグループの間にだけ区切り線を入れる
+/// （VS Code の menus の group と同じ）。
 pub fn lines<'a>(groups: Groups, table: &'a [CommandView]) -> Vec<Line<'a>> {
     let mut out = Vec::new();
     for group in groups {
@@ -152,7 +153,7 @@ pub fn menu_of(id: &str) -> Option<Menu> {
         .map(|(menu, _)| *menu)
 }
 
-/// メニューの 1 行の Tauri の項目。押せるかとチェックの状態を後から置き直すため、コマンドの ID を持つ。
+/// メニューの項目か区切り線の、Tauri の項目。押せるかとチェックの状態を後から反映するため、コマンドの ID を持つ。
 pub enum Item {
     Separator(PredefinedMenuItem<Wry>),
     Plain(&'static str, MenuItem<Wry>),
@@ -186,9 +187,9 @@ impl Item {
     }
 }
 
-/// 押せるかとチェックの状態を置ける項目。
+/// 押せるかとチェックの状態を反映できる項目。
 trait Reflect {
-    /// 項目のコマンドの ID。区切りは `None`。
+    /// 項目のコマンドの ID。区切り線は `None`。
     fn command(&self) -> Option<&'static str>;
     fn set_state(&self, state: State);
 }
@@ -217,7 +218,7 @@ impl Reflect for Item {
     }
 }
 
-/// 表の押せるかとチェックの状態を、同じ ID の項目に置く。
+/// 表の押せるかとチェックの状態を、同じ ID の項目に反映する。
 fn apply<T: Reflect>(items: &[T], states: &[(&'static str, State)]) {
     for item in items {
         let Some(id) = item.command() else { continue };
@@ -241,7 +242,7 @@ pub fn shown(table: &[CommandView]) -> Vec<(Menu, Vec<Line<'_>>)> {
         .collect()
 }
 
-/// メニューバーの項目。押せるかとチェックの状態を置き直すときに引く。
+/// メニューバーの項目。押せるかとチェックの状態を反映するときに引く。
 pub struct MenuBar(Vec<Item>);
 
 /// メニューバーを作る。項目の押せるかとチェックの状態は `table` のもの。
@@ -257,7 +258,7 @@ pub fn build(app: &AppHandle, table: &[CommandView]) -> tauri::Result<(NativeMen
     Ok((bar, MenuBar(all)))
 }
 
-/// メニューのイベントでコマンドを実行し、パネルとウィンドウのコマンドを受けるウィンドウのフックを置く。
+/// メニューのイベントでコマンドを実行し、パネルとウィンドウのコマンドと WebView のアクセスキーを受けるウィンドウのフックを設定する。
 pub fn connect(app: &App, window: &Window, shared: &Arc<Shared>, bar: MenuBar) {
     app.manage(bar);
     let on_menu = shared.clone();
@@ -290,8 +291,8 @@ fn open_by_access_key(window: &Window, c: char) {
     };
 }
 
-/// 押せるかとチェックの状態をメニューバーに置く。同期のスレッドが表の変化を WebView へ送るときに呼ぶ。
-/// 項目はメインスレッドで置き直し、同期のスレッドはそれを待たない。
+/// 押せるかとチェックの状態をメニューバーに反映する。同期のスレッドが表の変化を WebView へ送るときに呼ぶ。
+/// 項目にはメインスレッドで反映し、同期のスレッドはそれを待たない。
 pub fn reflect(app: &AppHandle, table: &[CommandView]) {
     let states: Vec<(&'static str, State)> = table.iter().map(|c| (c.id, c.state)).collect();
     let handle = app.clone();

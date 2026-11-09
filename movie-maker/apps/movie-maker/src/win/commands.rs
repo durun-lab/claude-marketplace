@@ -33,11 +33,11 @@ pub enum Action {
     Edit(EditAction),
     /// 再生のコマンド。Source を最後にクリックしていれば Source の、そうでなければ Program の再生に向く。
     Playback(Command),
-    /// ウィンドウ（Tauri の側）が実行するコマンド。
+    /// Tauri のウィンドウが実行するコマンド。
     Window(WindowAction),
 }
 
-/// ウィンドウ（Tauri の側）が実行するコマンドの中身。
+/// Tauri のウィンドウが実行するコマンドの中身。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WindowAction {
     /// 閉じるボタンと同じく、描画と再生を止めてからウィンドウを閉じる。
@@ -331,7 +331,7 @@ pub fn run_from_key(shared: &Arc<Shared>, id: &str) -> Result<(), String> {
     execute(shared, spec_of(id)?)
 }
 
-/// 編集と再生はここで実行し、パネルとウィンドウのコマンドはウィンドウのフックで Tauri の側へ渡す。
+/// 編集と再生はここで実行し、パネルとウィンドウのコマンドはウィンドウのフックへ渡す。
 fn execute(shared: &Arc<Shared>, spec: &'static Spec) -> Result<(), String> {
     match spec.owner {
         Owner::App(Action::Edit(action)) => edit_actions::run(shared, action),
@@ -344,10 +344,10 @@ fn execute(shared: &Arc<Shared>, spec: &'static Spec) -> Result<(), String> {
     Ok(())
 }
 
-/// ウィンドウのフックで Tauri の側へ渡すコマンド。
+/// ウィンドウのフックへ渡すもの。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Forward {
-    /// パネルが持ち主のコマンドの ID。WebView の Shell が持ち主のパネルのタブを開き、パネルに知らせる。
+    /// パネルが持ち主のコマンドの ID。WebView の Shell が持ち主のパネルのタブを開き、パネルの `requests` を進める。
     Panel(&'static str),
     Window(WindowAction),
     /// WebView で押した、キーの表に無い Alt+英字の字（小文字）。ウィンドウがその字をアクセスキーとしてメニューを開く。
@@ -357,17 +357,18 @@ pub enum Forward {
 /// ウィンドウのフックの中身。
 type ForwardFn = Box<dyn Fn(Forward) + Send + Sync>;
 
-/// パネルとウィンドウのコマンドを Tauri の側へ渡すフック。メニューバーと同じく、ウィンドウを作ったときに置く。
+/// パネルとウィンドウのコマンドを、Tauri の `AppHandle` と `Window` で実行するフック。メニューバーと同じく、
+/// ウィンドウを作るときに設定する。
 #[derive(Default)]
 pub struct WindowHook(OnceLock<ForwardFn>);
 
 impl WindowHook {
-    /// 渡す先を置く。2 回目からは無視する。
+    /// 渡す先を設定する。2 回目からは無視する。
     pub fn set(&self, forward: impl Fn(Forward) + Send + Sync + 'static) {
         let _ = self.0.set(Box::new(forward));
     }
 
-    /// 置いた先へ渡す。ウィンドウを作る前は渡す先が無いので拒否する。
+    /// 設定した先へ渡す。ウィンドウを作る前は渡す先が無いので拒否する。
     pub fn send(&self, forward: Forward) -> Result<(), String> {
         let f = self
             .0

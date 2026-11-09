@@ -236,7 +236,7 @@ Timeline の上端に置く（Resolve と CapCut と同じ）。左から並べ�
 | 持ち主 | Rust で実行するか、WebView のパネル（パネルを開く。`media.import` は Media） |
 | 押せるか | 今押せるか、チェックの状態（Snapping） |
 
-- WebView は IPC で表を読み、`run_command` で実行する。表が変わったら（押せるかの変化）イベントで知らせる。パネルが持ち主のコマンドを Rust の側（メニュー、キー）から呼ぶときは、Tauri のイベント `mm:panel-command` で Shell に渡す（[メニューバー](#メニューバー)）。
+- WebView は IPC で表を読み、`run_command` で実行する。表が変わったら（押せるかの変化）イベントで知らせる。パネルが持ち主のコマンドをアプリの呼び出し箇所（メニュー、キー）から呼ぶときは、Tauri のイベント `mm:panel-command` で Shell に渡す（[メニューバー](#メニューバー)）。
 - Tasks の項目はこの表の ID を指す。実装の無い項目は薄い色にし、ツールチップに「Not available yet」と出す（`TaskItem::disabled` は今もある）。
 - 表は人の操作の入口だけを持つ。データの変更は今どおり操作（`Op`）で行う。
 - 表から実行したコマンドは、ID と入口（キー、メニュー、ツールバー、右クリック、Keyboard Shortcuts のウィンドウ）を使い方の記録に残す（[計装](17-instrumentation.md#使い方の記録)の「ショートカットとメニューのどちらで呼んだか」）。
@@ -253,13 +253,12 @@ Timeline の上端に置く（Resolve と CapCut と同じ）。左から並べ�
 | Help | Keyboard Shortcuts…、About |
 
 - Split Clip と Add Transition… は Timeline に置く。Resolve の Timeline のメニューは、再生位置でクリップを割る Split Clip と、選んだ編集点に既定のトランジションを足す Add Transition を持つ [103]。Lift と Extract は選んだカットを抜くので、Resolve の Delete Selected と Ripple Delete と同じく Edit に置く [103]。
-
-- 項目は UI のコマンドの表から作り、メニューの中の並びと区切りは `menu.rs` がメニューごとのコマンドの ID の並びとして持つ。VS Code の `contributes.menus` が項目からコマンドを指してグループで区切るのと同じ形で [120]、KDE の KXmlGui も操作の集まりとメニューの並び（ui.rc）を分けて持つ [121]。区切りは空でないグループの間にだけ入れる。右クリックのメニュー（D3）も、当たった所ごとに同じ形の並びを置いて同じ関数（`menu::items`）で作る。
+- 項目は UI のコマンドの表から作り、メニューの中の並びと区切り線は `menu.rs` がメニューごとのコマンドの ID の並びとして持つ。VS Code の `contributes.menus` が項目からコマンドを指してグループで区切るのと同じ形で [120]、KDE の KXmlGui も操作の集まりとメニューの並び（ui.rc）を分けて持つ [121]。区切り線は空でないグループの間にだけ入れる。右クリックのメニュー（D3）も、当たった所ごとに同じ形の並びを置いて同じ関数（`menu::items`）で作る。
 - 表に無い ID はスキップする。後の PR が足すコマンドの ID（`timeline.zoom_in`、`timeline.toggle_snapping`、`timeline.selection_tool`、`playback.previous_edit`、`source.clear_in_out`、`app.show_keyboard_shortcuts` など）は先に並びに置いてあり、表に足すとメニューに出る。項目がまだ無いメニューは、開いても何もできないので出さない（今は View。Z1 が Zoom を表に足すと出る）。View のパネル（Tasks、Media など）、Diagnostics、Track Height の項目は、パネルを選ぶコマンドの形と行の高さを決める PR（L2、L3、T1 の後）が並びに足す。
 - 項目の右にキーを出す。キーはメニューのアクセラレーターに登録せず、項目の文字の `\t` の後ろに見た目だけを書く。Windows のメニューは `\t` の後ろをキーの列に出し [126]、muda はアクセラレーターが無ければ項目の文字をそのまま使う [125]。キーの処理は今どおり `keys::dispatch` が持つ。
 - アクセラレーターを登録しない理由: Tauri は登録したアクセラレーターをアプリのメッセージループで `TranslateAcceleratorW((*msg).hwnd, …)` に通し、`WM_COMMAND` をキーを受けたウィンドウに送る [125]。サーフェスの子 HWND にフォーカスがあると `WM_COMMAND` はサーフェスに届き、メニューのイベントにならないままキーが消える（英字 1 つのキーに限らない）。WebView のキーは WebView2 のプロセスに届くので、この経路を通らない。
-- 押せるかとチェックの状態は、WebView に送る表（`mm:commands-changed`）と同じ元から置く。同期のスレッドが表の変化を見つけたら、メインスレッドで項目に置き直す。メニューから実行するコマンドは押せるかを見る（`commands::run`。押せない項目は Windows が選ばせない）。
-- パネルが持ち主のコマンドをメニューとキーから呼ぶと、Rust はウィンドウのフック（`commands::WindowHook`）で Tauri のイベント `mm:panel-command`（中身はコマンドの ID）を送り、Shell が Tasks の項目と同じくパネルのタブを開いて知らせる。File > Import Media… と Ctrl+I は Media を開いて取り込みを始め、Export… は Deliver を開く。Exit（閉じるボタンと同じく、描画と再生を止めてから閉じる）と About（名前とバージョンのダイアログ）も、ウィンドウ（Tauri の側）が同じフックで受ける。
+- 押せるかとチェックの状態は、WebView に送る表（`mm:commands-changed`）と同じ元から反映する。同期のスレッドが表の変化を見つけたら、メインスレッドで項目に反映する。メニューから実行するコマンドは押せるかを見る（`commands::run`。押せない項目は Windows が選ばせない）。
+- パネルが持ち主のコマンドをメニューとキーから呼ぶと、Rust はウィンドウのフック（`commands::WindowHook`）で Tauri のイベント `mm:panel-command`（中身はコマンドの ID）を送り、Shell が Tasks の項目と同じくパネルのタブを開き、パネルの `requests` を進める。File > Import Media… と Ctrl+I は Media を開いて取り込みを始め、Export… は Deliver を開き、Timeline > Add Transition… は Transitions を開く。Exit（閉じるボタンと同じく、描画と再生を止めてから閉じる）と About（名前とバージョンのダイアログ）も、同じフックで Tauri のウィンドウが実行する。
 - キーでメニューを開くのは F10 とアクセスキー。F10 はメニューモードに入る Windows の標準のキーで [127]、サーフェスは F10 を既定のウィンドウプロシージャ（`DefWindowProcW`）に渡す。メニューの名前は `&File` のように先頭の字をアクセスキーにし [126]、Alt+F、Alt+E、Alt+P、Alt+T、Alt+H で開く（サーフェスでは、Alt+英字の `WM_SYSCHAR` を既定のウィンドウプロシージャが受けて開く）。Alt を離したときのメニューモードは今どおり止める（`surface.rs` が `WM_SYSKEYUP` を既定のウィンドウプロシージャに渡さない。Alt+ドラッグの roll の後に次のキーを奪われないため）。キーの表にある Alt+英字（L1 の Alt+X など）は、サーフェスが `WM_SYSCHAR` を既定のウィンドウプロシージャに渡さない（渡すとアクセスキーとして探され、合う字が無いと警告音が鳴る）。キーの表に Alt+英字を足すときは、アクセスキーの字（F、E、V、P、T、H）と重ねない。
 - WebView にフォーカスがあると、WebView2 は F10 をウィンドウに渡すが、Alt+英字は渡さない（Alt だけを押して離しても渡さないので、メニューモードに入らない）。そこで `transport.js` が `key_event` で送った、キーの表に無い Alt+英字は、ウィンドウのフックがウィンドウに `WM_SYSCOMMAND`（`SC_KEYMENU` とその字）を送ってメニューを開く [127]。どちらも、動いているアプリにキーを送って確かめた（2026-11-10）。
 

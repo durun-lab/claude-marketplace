@@ -146,7 +146,7 @@ fn 再生のコマンドを_program_に送り_表に無い_id_は拒否する() 
 }
 
 #[test]
-fn パネルとウィンドウのコマンドはウィンドウのフックで_tauri_の側へ渡す() {
+fn パネルとウィンドウのコマンドはウィンドウのフックへ渡す() {
     let shared = Arc::new(Shared::new());
     let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
     let sink = seen.clone();

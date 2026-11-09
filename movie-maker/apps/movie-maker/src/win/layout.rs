@@ -27,8 +27,8 @@ pub struct Layout {
     pub surface_hwnd: isize,
 }
 
-/// サーフェスと WebView の矩形（物理ピクセル）をウィンドウの大きさから決める。メニューバーはウィンドウの枠の側にあり、
-/// `inner_size` も子の位置もその下のクライアント領域で測るので、メニューバーの高さは引かない。
+/// サーフェスと WebView の矩形（物理ピクセル）をウィンドウの大きさから決める。メニューバーは非クライアント領域にあり、
+/// `inner_size` も子ウィンドウの位置もその下のクライアント領域で測るので、メニューバーの高さは引かない。
 pub fn split_rects(width: u32, height: u32) -> (PixelRect, PixelRect) {
     let left = (f64::from(width) * SPLIT).round() as i32;
     let (w, h) = (width as i32, height as i32);
