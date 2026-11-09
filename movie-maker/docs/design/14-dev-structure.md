@@ -145,8 +145,8 @@ movie-maker/
     mm-pack/            パック（packs/）の読み込み、検査、マクロとテンプレートの操作の列への展開
     mm-story/           Story の読み出し（文字起こしの単語、話題、選別、範囲の時刻、全文検索）。アプリとモバイル向けの HTTP が使う
     mm-serve/           HTTP（axum）と MCP。操作と描画を外に出す
-    mm-ui-layout/       wgpu サーフェス上の UI の計算（端のつまみ、スナップ、範囲）。純関数
-    mm-ui-wgpu/         Program、Timeline、メーターの描画と入力
+    mm-ui-layout/       wgpu サーフェス上の UI の計算（端のつまみ、スナップ、範囲、文字の置き方と切り詰め）。純関数
+    mm-ui-wgpu/         Program、Timeline、メーターの描画と入力。Timeline の文字は cosmic-text でシェーピングし、glyphon で描く
     mm-improve/         自動の改善の回（worktree、claude -p、検査、取り込み）
     mm-testkit/         フィクスチャのプロジェクト、フィクスチャの素材の生成、契約テストの本体、期待画像の比較、gpu_contract!、soak の実行ファイル
     mm-bench/           性能。divan のベンチ（基礎の層）と、mm perf run のシナリオ（playback、scrub、export、startup）。結果の比較と履歴は mm-trace の形で

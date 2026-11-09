@@ -2,17 +2,20 @@
 //!
 //! 外とやりとりする座標と大きさは物理ピクセル、割り付けと Timeline の寸法は論理ピクセルで持つ。
 //! 換算は描く所（[`Ui::render`]）と入力を受ける所（[`Ui::pointer`]、[`Ui::region_at`]）で [`Scale`] を 1 回だけ通す。
+//! Timeline は矩形（背景、帯、目盛り）、文字（目盛りの時刻、帯の名前）、矩形（ガイド線、再生位置の線）の順に重ねる。
 
 use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
-    fit_rect, split_viewers, timeline_quads, Action, DrawingShape, PaintState, PointerEvent, Quad,
-    Rect, Scale, SurfaceLayout, TimeView, TimelineController, TimelineModel, VIEW_MARGIN,
+    fit_rect, split_viewers, timeline_labels, timeline_overlay, timeline_quads, Action,
+    DrawingShape, PaintState, PointerEvent, Quad, Rect, Scale, SurfaceLayout, TimeView,
+    TimelineController, TimelineModel, UiFont, VIEW_MARGIN,
 };
 
 use crate::drawing::{DrawingFit, DrawingLayer};
 use crate::program::ProgramViewer;
 use crate::quads::QuadRenderer;
+use crate::text::{TextLayer, TextStats};
 
 /// サーフェスの上のどの領域か。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -26,6 +29,11 @@ pub enum Region {
 /// サーフェスの UI。描画の資源と、Timeline の表示・操作の状態を持つ。
 pub struct Ui {
     quads: QuadRenderer,
+    /// 文字の描画。OS のフォントの読み込みを最初に描くときまで遅らせる。
+    text: Option<TextLayer>,
+    /// サーフェスのフォーマット（文字の描画を作るときに使う）。
+    format: wgpu::TextureFormat,
+    font: UiFont,
     program: ProgramViewer,
     /// Program の上に重ねる描き込み。
     drawing: DrawingLayer,
@@ -48,6 +56,9 @@ impl Ui {
     pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
         Self {
             quads: QuadRenderer::new(device, format),
+            text: None,
+            format,
+            font: UiFont::default(),
             program: ProgramViewer::new(device, format),
             drawing: DrawingLayer::new(device, format),
             scale: Scale::ONE,
@@ -72,6 +83,21 @@ impl Ui {
     /// Timeline の色（`ui/theme` の theme.json から作ったもの）。
     pub fn set_palette(&mut self, palette: Palette) {
         self.palette = palette;
+    }
+
+    /// Timeline の字（`ui/theme` の theme.json の `font` から作ったもの）。
+    pub fn set_font(&mut self, font: UiFont) {
+        if let Some(text) = &mut self.text {
+            text.set_family(&font.family);
+        }
+        self.font = font;
+    }
+
+    /// 文字の描画の数（シェーピングした回数、頂点を作った回数）。まだ描いていなければ 0。
+    pub fn text_stats(&self) -> TextStats {
+        self.text
+            .as_ref()
+            .map_or_else(TextStats::default, TextLayer::stats)
     }
 
     /// サーフェスの大きさ（物理ピクセル）。割り付けを論理ピクセルで計算し直す。
@@ -237,10 +263,29 @@ impl Ui {
         queue: &wgpu::Queue,
         target: &wgpu::TextureView,
     ) {
+        let counts = self.prepare(device, queue);
+        let _submit = tracing::info_span!("ui.submit").entered();
+        let mut enc = device.create_command_encoder(&Default::default());
+        {
+            let mut pass = begin_pass(&mut enc, target);
+            self.program.draw(&mut pass);
+            self.drawing.draw(&mut pass, counts.drawing);
+            self.source.draw(&mut pass);
+            self.quads.draw(&mut pass, 0..counts.under);
+            if let Some(text) = &self.text {
+                text.draw(&mut pass);
+            }
+            self.quads.draw(&mut pass, counts.under..counts.quads);
+        }
+        queue.submit([enc.finish()]);
+    }
+
+    /// 描くもの（矩形、文字、Program と Source の映像、描き込み）を GPU に渡し、パスで描く数を返す。
+    fn prepare(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> Counts {
         let (w, h) = self.size;
-        let count = self
-            .quads
-            .prepare(device, queue, &self.timeline_quads(), (w, h));
+        let (quads, under) = self.timeline_quads();
+        let count = self.quads.prepare(device, queue, &quads, (w, h));
+        self.prepare_text(device, queue);
         let layout = self.layout();
         let mut drawing = 0;
         if let Some((iw, ih)) = self.program.image_size() {
@@ -260,34 +305,66 @@ impl Ui {
             let rect = fit_rect(iw as f32, ih as f32, area);
             self.source.prepare(queue, rect, (w, h));
         }
-        let mut enc = device.create_command_encoder(&Default::default());
-        {
-            let mut pass = begin_pass(&mut enc, target);
-            self.program.draw(&mut pass);
-            self.drawing.draw(&mut pass, drawing);
-            self.source.draw(&mut pass);
-            self.quads.draw(&mut pass, count);
+        Counts {
+            under,
+            quads: count,
+            drawing,
         }
-        queue.submit([enc.finish()]);
     }
 
-    /// Timeline の矩形を、サーフェスの座標（物理ピクセル）に置いた並びにする。
-    fn timeline_quads(&self) -> Vec<Quad> {
+    /// 描く時点の Timeline の状態。
+    fn paint_state(&self) -> PaintState {
+        PaintState {
+            palette: self.palette,
+            ..self.controller.paint_state(self.playhead)
+        }
+    }
+
+    /// Timeline の矩形を、サーフェスの座標（物理ピクセル）に置いた並びにする。文字の下に描く矩形が先で、
+    /// その数も返す（残りは文字の上に重ねるガイド線と再生位置の線）。
+    fn timeline_quads(&self) -> (Vec<Quad>, u32) {
         let t = self.layout.timeline;
-        let mut quads = timeline_quads(
-            &self.model,
-            &self.controller.view,
-            (t.w, t.h),
-            &PaintState {
-                palette: self.palette,
-                ..self.controller.paint_state(self.playhead)
-            },
-        );
+        let state = self.paint_state();
+        let view = &self.controller.view;
+        let mut quads = timeline_quads(&self.model, view, (t.w, t.h), &state);
+        let under = quads.len() as u32;
+        quads.extend(timeline_overlay(view, t.h, &state));
         for q in &mut quads {
             q.rect = self.scale.rect_to_physical(q.rect.translated(t.x, t.y));
         }
-        quads
+        (quads, under)
     }
+
+    /// Timeline の文字を置き、文字の描画に渡す。文字の描画は最初に描くときに作る（OS のフォントを読み込む）。
+    fn prepare_text(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+        let _span = tracing::info_span!("ui.text").entered();
+        let t = self.layout.timeline;
+        let state = self.paint_state();
+        let (format, family) = (self.format, &self.font.family);
+        let text = self
+            .text
+            .get_or_insert_with(|| TextLayer::new(device, queue, format, family));
+        let size = (t.w, t.h);
+        let view = &self.controller.view;
+        let mut labels =
+            timeline_labels(&self.model, view, size, &state, &self.font, text.measure());
+        for l in &mut labels {
+            l.x += t.x;
+            l.y += t.y;
+            l.clip = l.clip.translated(t.x, t.y);
+        }
+        let viewport = (self.size.0 as u32, self.size.1 as u32);
+        text.prepare(device, queue, &labels, self.scale, viewport);
+    }
+}
+
+/// 1 フレームのパスで描く数。
+struct Counts {
+    /// 文字の下に描く矩形の数。残りの矩形（`under..quads`）は文字の上に重ねる。
+    under: u32,
+    quads: u32,
+    /// 描き込みの線分の数。
+    drawing: u32,
 }
 
 /// サーフェス全体を Program の背景色で塗るパスを始める。

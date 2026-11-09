@@ -1,17 +1,17 @@
-//! Timeline を矩形の並びに落とす。座標は Timeline の矩形の左上を (0, 0) とする。
+//! Timeline を矩形の並びにする。座標は Timeline の矩形の左上を (0, 0) とする。
+//! 文字（[`crate::timeline_labels`]）は [`timeline_quads`] の上、[`timeline_overlay`] の下に描く。
 
-use crate::digits::{text_quads, text_width};
-use crate::geom::{Quad, Rect};
+use crate::geom::{Color, Quad, Rect};
 use crate::gesture::{EditKind, Side};
 use crate::palette::{self, Palette};
-use crate::ruler::{label, major_step, ticks};
+use crate::ruler::ticks;
 use crate::time_view::TimeView;
 use crate::timeline::{
     cut_span, row_top, span, Hit, Item, Part, TimelineModel, HANDLE_PX, ROW_H, RULER_H,
 };
 
-/// 目盛りのラベルの文字の高さ。
-const LABEL_H: f32 = 10.0;
+/// 無効なレイヤーの帯の不透明度。
+const DISABLED_BAR_ALPHA: f32 = 0.35;
 /// 再生位置の線の幅。
 const PLAYHEAD_W: f32 = 2.0;
 /// 再生位置の線の上端に付ける四角の一辺。
@@ -36,7 +36,7 @@ pub struct PaintState {
     pub palette: Palette,
 }
 
-/// Timeline の矩形の大きさ `(w, h)` の中に描く矩形の並び。
+/// Timeline の矩形の大きさ `(w, h)` の中に、文字の下に描く矩形の並び（背景、帯、目盛り）。
 pub fn timeline_quads(
     model: &TimelineModel,
     view: &TimeView,
@@ -48,6 +48,13 @@ pub fn timeline_quads(
     let mut q = vec![Quad::new(Rect::new(0.0, 0.0, w, h), p.panel)];
     rows(model, view, w, state, &mut q);
     ruler(view, w, p, &mut q);
+    q
+}
+
+/// 文字の上に重ねる矩形（スナップのガイド線と再生位置の線）。高さ `h` の Timeline を縦に貫く。
+pub fn timeline_overlay(view: &TimeView, h: f32, state: &PaintState) -> Vec<Quad> {
+    let p = &state.palette;
+    let mut q = Vec::new();
     if let Some(g) = state.guide {
         q.push(vline(view.x_of(g), h, 1.0, p.guide));
     }
@@ -55,22 +62,15 @@ pub fn timeline_quads(
     q
 }
 
-fn vline(x: f32, h: f32, width: f32, color: crate::geom::Color) -> Quad {
+fn vline(x: f32, h: f32, width: f32, color: Color) -> Quad {
     Quad::new(Rect::new(x - width / 2.0, 0.0, width, h), color)
 }
 
 fn ruler(view: &TimeView, w: f32, p: &Palette, q: &mut Vec<Quad>) {
     q.push(Quad::new(Rect::new(0.0, 0.0, w, RULER_H), p.ruler));
-    let step = major_step(view.px_per_sec);
     for t in ticks(view, w) {
         let len = if t.major { 9.0 } else { 4.0 };
         q.push(Quad::new(Rect::new(t.x, RULER_H - len, 1.0, len), p.tick));
-        if t.major {
-            let text = label(t.time, step);
-            let tw = text_width(&text, LABEL_H);
-            let x = (t.x + 4.0).min(w - tw);
-            q.extend(text_quads(&text, x, 4.0, LABEL_H, p.label));
-        }
     }
 }
 
@@ -78,14 +78,13 @@ fn rows(model: &TimelineModel, view: &TimeView, w: f32, state: &PaintState, q: &
     let p = &state.palette;
     for (i, item) in model.items.iter().enumerate() {
         let top = row_top(i);
-        let stripe = if i % 2 == 0 { p.row_even } else { p.row_odd };
-        q.push(Quad::new(Rect::new(0.0, top - 1.0, w, ROW_H + 2.0), stripe));
+        q.push(Quad::new(
+            Rect::new(0.0, top - 1.0, w, ROW_H + 2.0),
+            stripe(p, i),
+        ));
         let (start, end) = trimmed(item, i, state.preview);
         let (x, bw) = span(view, start, end);
-        let mut color = palette::item_color(item.kind);
-        if !item.enabled {
-            color = color.with_alpha(0.35);
-        }
+        let mut color = bar_color(item);
         let hovered = matches!(state.hover, Hit::Layer { index, .. } if index == i);
         if hovered {
             color = palette::lighten(color, 0.18);
@@ -105,9 +104,28 @@ fn rows(model: &TimelineModel, view: &TimeView, w: f32, state: &PaintState, q: &
     outside(model, view, w, p, q);
 }
 
+/// 行 `index` の背景の色（縞）。
+pub(crate) fn stripe(p: &Palette, index: usize) -> Color {
+    if index.is_multiple_of(2) {
+        p.row_even
+    } else {
+        p.row_odd
+    }
+}
+
+/// レイヤーの帯の色。無効なレイヤーは行の背景に薄く重ねる。
+pub(crate) fn bar_color(item: &Item) -> Color {
+    let color = palette::item_color(item.kind);
+    if item.enabled {
+        color
+    } else {
+        color.with_alpha(DISABLED_BAR_ALPHA)
+    }
+}
+
 /// 帯の始まりと終わり。ドラッグ中の `trimLayer` は動かした後の位置にする。
 /// 確定は離したときの 1 回の操作に任せ、ここでは描く位置だけを変える。
-fn trimmed(item: &Item, index: usize, preview: Option<(EditKind, f64)>) -> (f64, f64) {
+pub(crate) fn trimmed(item: &Item, index: usize, preview: Option<(EditKind, f64)>) -> (f64, f64) {
     match preview {
         Some((EditKind::TrimLayer { item: i, side }, by)) if i == index => match side {
             Side::In => (item.start + by, item.end),
@@ -265,17 +283,19 @@ mod tests {
     }
 
     #[test]
-    fn 再生位置の線は時刻の_x_に立つ() {
+    fn 再生位置の線は時刻の_x_に立ち_文字の上に重ねる側に入る() {
         let v = TimeView {
             origin: 0.0,
             px_per_sec: 100.0,
         };
-        let quads = timeline_quads(&model(), &v, (800.0, 120.0), &state(2.0));
+        let quads = timeline_overlay(&v, 120.0, &state(2.0));
         let line = quads
             .iter()
             .find(|q| q.color == palette::PLAYHEAD && q.rect.h == 120.0)
             .expect("再生位置の線");
         assert!((line.rect.x + line.rect.w / 2.0 - 200.0).abs() < 1e-3);
+        let under = timeline_quads(&model(), &v, (800.0, 120.0), &state(2.0));
+        assert!(!under.iter().any(|q| q.color == palette::PLAYHEAD));
     }
 
     #[test]

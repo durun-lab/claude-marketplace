@@ -10,10 +10,15 @@ publish.workspace = true
 mm-types = { workspace = true }
 mm-doc = { workspace = true }
 mm-eval = { workspace = true }
+mm-text-api = { workspace = true }
 mm-ui-layout = { workspace = true }
 wgpu = { workspace = true }
 half = { workspace = true }
 bytemuck = { workspace = true }
+cosmic-text = { workspace = true }
+glyphon = { workspace = true }
+unicode-script = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]
 mm-gpu = { workspace = true }

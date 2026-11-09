@@ -59,7 +59,7 @@ pub fn edge_edit(
     let Some(cut) = cut else {
         return trim_edit(model, item, side, t);
     };
-    let bar = *it.cuts.get(cut)?;
+    let bar = it.cuts.get(cut)?;
     let len = bar.end - bar.start;
     if !mods.alt {
         let edge = if side == Side::In { bar.start } else { bar.end };
@@ -75,7 +75,7 @@ pub fn edge_edit(
         Side::Out => (len, it.cuts.get(cut + 1)?, cut),
         Side::In => {
             let prev = it.cuts.get(cut.checked_sub(1)?)?;
-            (prev.end - prev.start, &bar, cut - 1)
+            (prev.end - prev.start, bar, cut - 1)
         }
     };
     let boundary = if side == Side::Out {

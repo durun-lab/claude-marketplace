@@ -4000,13 +4000,18 @@ name = "mm-ui-wgpu"
 version = "0.1.0"
 dependencies = [
  "bytemuck",
+ "cosmic-text",
+ "glyphon",
  "half",
  "mm-doc",
  "mm-eval",
  "mm-gpu",
+ "mm-text-api",
  "mm-trace",
  "mm-types",
  "mm-ui-layout",
+ "tracing",
+ "unicode-script",
  "wgpu",
 ]
 
