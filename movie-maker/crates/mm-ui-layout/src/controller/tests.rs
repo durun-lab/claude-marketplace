@@ -3,6 +3,7 @@ use crate::gesture::Side;
 use crate::rows::{RowHeights, Rows};
 use crate::time_view::MIN_PX_PER_SEC;
 use crate::timeline::{CutBar, Item, ItemKind};
+use crate::timeline_layout::HEADER_W;
 
 fn model() -> TimelineModel {
     TimelineModel {
@@ -50,7 +51,7 @@ pub(super) fn in_bar(c: &TimelineController, i: usize) -> f32 {
 
 pub(super) fn down(x: f32, y: f32) -> PointerEvent {
     PointerEvent::Down {
-        x,
+        x: x + HEADER_W,
         y,
         mods: Mods::default(),
     }
@@ -62,7 +63,14 @@ fn 目盛りの上のドラッグは再生位置をフレームの境目で追�
     let mut c = ctl(&m);
     let a = c.handle(down(251.0, 5.0), &m, 0.0);
     assert_eq!(a, vec![Action::Seek(quantize(2.51, 30.0))]);
-    let b = c.handle(PointerEvent::Move { x: 5000.0, y: 80.0 }, &m, 0.0);
+    let b = c.handle(
+        PointerEvent::Move {
+            x: 5000.0 + HEADER_W,
+            y: 80.0,
+        },
+        &m,
+        0.0,
+    );
     let Action::Seek(t) = b[0] else {
         panic!("{b:?}")
     };
@@ -77,7 +85,14 @@ fn レイヤーのつまみのドラッグは別のレイヤーの端と再生�
     // 先頭の帯の終わり(10 秒)ではなく、2 番目の帯の出つまみを掴む。
     let a = c.handle(down(399.0, y), &m, 0.0);
     assert_eq!(a, vec![Action::Select(Some(1))]);
-    let b = c.handle(PointerEvent::Move { x: 697.0, y }, &m, 7.0);
+    let b = c.handle(
+        PointerEvent::Move {
+            x: 697.0 + HEADER_W,
+            y,
+        },
+        &m,
+        7.0,
+    );
     let Action::Edit { kind, by, done } = b[0] else {
         panic!("{b:?}")
     };
@@ -101,7 +116,14 @@ fn スナップしないドラッグも離したときに確定する() {
     let y = in_bar(&c, 1);
     c.handle(down(399.0, y), &m, 0.0);
     // どの目標からも遠い所（5.55 秒）で離す。
-    let moved = c.handle(PointerEvent::Move { x: 555.0, y }, &m, 0.0);
+    let moved = c.handle(
+        PointerEvent::Move {
+            x: 555.0 + HEADER_W,
+            y,
+        },
+        &m,
+        0.0,
+    );
     let Action::Edit { by, .. } = moved[0] else {
         panic!("{moved:?}")
     };
@@ -129,7 +151,14 @@ fn ドラッグ中だけ描く状態にドラッグ中の見た目を載せる()
     let mut c = ctl(&m);
     let y = in_bar(&c, 1);
     c.handle(down(399.0, y), &m, 0.0);
-    let moved = c.handle(PointerEvent::Move { x: 555.0, y }, &m, 0.0);
+    let moved = c.handle(
+        PointerEvent::Move {
+            x: 555.0 + HEADER_W,
+            y,
+        },
+        &m,
+        0.0,
+    );
     let Action::Edit { kind, by, .. } = moved[0] else {
         panic!("{moved:?}")
     };
@@ -144,7 +173,14 @@ fn 取り消したドラッグは確定せず_見た目も戻す() {
     let mut c = ctl(&m);
     let y = in_bar(&c, 1);
     c.handle(down(399.0, y), &m, 0.0);
-    c.handle(PointerEvent::Move { x: 555.0, y }, &m, 0.0);
+    c.handle(
+        PointerEvent::Move {
+            x: 555.0 + HEADER_W,
+            y,
+        },
+        &m,
+        0.0,
+    );
     assert!(c.handle(PointerEvent::Cancel, &m, 0.0).is_empty());
     let st = c.paint_state(0.0);
     assert_eq!((st.preview, st.guide), (None, None));
@@ -161,7 +197,14 @@ fn 撮影素材のレイヤーのつまみは素材の終わりより先へ引�
     m.items[1].trim.max_end = 5.0;
     let y = in_bar(&c, 1);
     c.handle(down(399.0, y), &m, 0.0);
-    let moved = c.handle(PointerEvent::Move { x: 777.0, y }, &m, 0.0);
+    let moved = c.handle(
+        PointerEvent::Move {
+            x: 777.0 + HEADER_W,
+            y,
+        },
+        &m,
+        0.0,
+    );
     let Action::Edit { by, .. } = moved[0] else {
         panic!("{moved:?}")
     };
@@ -177,7 +220,14 @@ fn 動かさずに離したクリックは編集にしない() {
     let mut c = ctl(&m);
     let y = in_bar(&c, 1);
     c.handle(down(399.0, y), &m, 0.0);
-    c.handle(PointerEvent::Move { x: 399.0, y }, &m, 0.0);
+    c.handle(
+        PointerEvent::Move {
+            x: 399.0 + HEADER_W,
+            y,
+        },
+        &m,
+        0.0,
+    );
     assert!(c.handle(PointerEvent::Up, &m, 0.0).is_empty());
 }
 
@@ -222,7 +272,7 @@ fn ホイールは_ctrl_で拡大_なしで移動() {
     let t = c.view.t_of(300.0);
     c.handle(
         PointerEvent::Wheel {
-            x: 300.0,
+            x: 300.0 + HEADER_W,
             y: 0.0,
             dy: 2.0,
             ctrl: true,
@@ -236,7 +286,7 @@ fn ホイールは_ctrl_で拡大_なしで移動() {
     let origin = c.view.origin;
     c.handle(
         PointerEvent::Wheel {
-            x: 300.0,
+            x: 300.0 + HEADER_W,
             y: 0.0,
             dy: 1.0,
             ctrl: false,
@@ -251,7 +301,7 @@ fn ホイールは_ctrl_で拡大_なしで移動() {
 #[test]
 fn ctrl_ホイールの縮小は長いコンポジションでも全体が収まるところまで() {
     let zoom_out = PointerEvent::Wheel {
-        x: 300.0,
+        x: 300.0 + HEADER_W,
         y: 0.0,
         dy: -100.0,
         ctrl: true,
@@ -281,7 +331,14 @@ fn ポインターが乗った所を覚え_出たら消す() {
     let m = model();
     let mut c = ctl(&m);
     let y = in_bar(&c, 1);
-    c.handle(PointerEvent::Move { x: 300.0, y }, &m, 0.0);
+    c.handle(
+        PointerEvent::Move {
+            x: 300.0 + HEADER_W,
+            y,
+        },
+        &m,
+        0.0,
+    );
     assert_eq!(
         c.hover,
         Hit::Layer {
@@ -318,7 +375,14 @@ fn カットの出つまみのドラッグは_ripple_離したときに確定() 
     let mut c = ctl(&m);
     let y = in_bar(&c, 0);
     c.handle(down(298.0, y), &m, 0.0);
-    let moved = c.handle(PointerEvent::Move { x: 250.0, y }, &m, 0.0);
+    let moved = c.handle(
+        PointerEvent::Move {
+            x: 250.0 + HEADER_W,
+            y,
+        },
+        &m,
+        0.0,
+    );
     assert_eq!(
         moved,
         vec![Action::Edit {
@@ -342,7 +406,7 @@ fn alt_を押してつかんだカットの端は_roll() {
     let y = in_bar(&c, 0);
     c.handle(
         PointerEvent::Down {
-            x: 298.0,
+            x: 298.0 + HEADER_W,
             y,
             mods: Mods {
                 shift: false,
@@ -352,7 +416,14 @@ fn alt_を押してつかんだカットの端は_roll() {
         &m,
         0.0,
     );
-    let moved = c.handle(PointerEvent::Move { x: 270.0, y }, &m, 0.0);
+    let moved = c.handle(
+        PointerEvent::Move {
+            x: 270.0 + HEADER_W,
+            y,
+        },
+        &m,
+        0.0,
+    );
     let Action::Edit { kind, by, .. } = moved[0] else {
         panic!("{moved:?}")
     };
@@ -366,7 +437,14 @@ fn カットの中のドラッグは_slip_で_shift_なら_slide() {
     let mut c = ctl(&m);
     let y = in_bar(&c, 0);
     c.handle(down(100.0, y), &m, 0.0);
-    let moved = c.handle(PointerEvent::Move { x: 140.0, y }, &m, 0.0);
+    let moved = c.handle(
+        PointerEvent::Move {
+            x: 140.0 + HEADER_W,
+            y,
+        },
+        &m,
+        0.0,
+    );
     let Action::Edit { kind, by, .. } = moved[0] else {
         panic!("{moved:?}")
     };
@@ -376,7 +454,7 @@ fn カットの中のドラッグは_slip_で_shift_なら_slide() {
 
     c.handle(
         PointerEvent::Down {
-            x: 350.0,
+            x: 350.0 + HEADER_W,
             y,
             mods: Mods {
                 shift: true,
@@ -386,7 +464,14 @@ fn カットの中のドラッグは_slip_で_shift_なら_slide() {
         &m,
         0.0,
     );
-    let moved = c.handle(PointerEvent::Move { x: 380.0, y }, &m, 0.0);
+    let moved = c.handle(
+        PointerEvent::Move {
+            x: 380.0 + HEADER_W,
+            y,
+        },
+        &m,
+        0.0,
+    );
     let Action::Edit { kind, by, .. } = moved[0] else {
         panic!("{moved:?}")
     };
@@ -401,7 +486,14 @@ fn カットの端は他のカットの端に吸い付く() {
     let y = in_bar(&c, 0);
     // カット 0 の出つまみを 6.97 秒付近へ。カット 2 の出（7 秒）に吸い付く。
     c.handle(down(298.0, y), &m, 0.0);
-    let moved = c.handle(PointerEvent::Move { x: 697.0, y }, &m, 0.0);
+    let moved = c.handle(
+        PointerEvent::Move {
+            x: 697.0 + HEADER_W,
+            y,
+        },
+        &m,
+        0.0,
+    );
     let Action::Edit { by, .. } = moved[0] else {
         panic!("{moved:?}")
     };

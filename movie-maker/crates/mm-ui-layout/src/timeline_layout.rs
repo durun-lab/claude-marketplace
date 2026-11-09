@@ -2,7 +2,7 @@
 //! ズームバー、ステータスバーの矩形に分ける。座標は Timeline の矩形の左上を (0, 0) とする。
 //!
 //! 領域を足す PR は、ここに自分の大きさの定数を置き、描く関数を `paint/` の下の自分のファイルに置く。
-//! まだ無い領域（ツールバー、見出しの列、ズームバー、ステータスバー）は大きさ 0 で、場所だけを決めてある。
+//! まだ無い領域（ツールバー、ズームバー、ステータスバー）は大きさ 0 で、場所だけを決めてある。
 
 use std::ops::Range;
 
@@ -21,8 +21,8 @@ pub const SCROLLBAR_W: f32 = 12.0;
 /// ツールバーの高さ。
 const TOOLBAR_H: f32 = 0.0;
 
-/// 見出しの列の幅。
-const HEADER_W: f32 = 0.0;
+/// 見出しの列の幅（論理ピクセル）。
+pub const HEADER_W: f32 = 180.0;
 
 /// ズームバーの高さ。
 const ZOOMBAR_H: f32 = 0.0;
@@ -201,8 +201,9 @@ pub(crate) mod tests {
     #[test]
     fn 中身が入れば縦のスクロールバーは幅_0_で_行の領域が右端まで() {
         let l = TimelineLayout::new((800.0, 300.0), 200.0);
-        assert_eq!(l.ruler, Rect::new(0.0, 0.0, 800.0, RULER_H));
-        assert_eq!(l.row_area, Rect::new(0.0, RULER_H, 800.0, 300.0 - RULER_H));
+        let w = 800.0 - HEADER_W;
+        assert_eq!(l.ruler, Rect::new(HEADER_W, 0.0, w, RULER_H));
+        assert_eq!(l.row_area, Rect::new(HEADER_W, RULER_H, w, 300.0 - RULER_H));
         assert_eq!(l.scrollbar.w, 0.0);
         assert_eq!(l.bounds, Rect::new(0.0, 0.0, 800.0, 300.0));
     }
@@ -216,13 +217,16 @@ pub(crate) mod tests {
         );
         assert_eq!(l.row_area.right(), l.scrollbar.x);
         assert_eq!((l.ruler.x, l.ruler.w), (l.row_area.x, l.row_area.w));
-        assert_eq!(l.time_column(), Rect::new(0.0, 0.0, l.row_area.w, 300.0));
+        assert_eq!(
+            l.time_column(),
+            Rect::new(HEADER_W, 0.0, l.row_area.w, 300.0)
+        );
     }
 
     #[test]
     fn まだ無い領域は大きさ_0_で_矩形は負にならない() {
         let l = TimelineLayout::new((800.0, 300.0), 1000.0);
-        for r in [l.toolbar, l.corner, l.headers, l.zoombar, l.status] {
+        for r in [l.toolbar, l.zoombar, l.status] {
             assert!(r.w == 0.0 || r.h == 0.0, "{r:?}");
         }
         let tiny = TimelineLayout::new((5.0, 10.0), 1000.0);
@@ -248,14 +252,14 @@ pub(crate) mod tests {
         assert_eq!(vp.row(2).y, RULER_H + 56.0 - 40.0);
         assert_eq!(
             vp.bar(2, 1.0, 2.0),
-            Rect::new(100.0, RULER_H + 58.0 - 40.0, 100.0, 25.0)
+            Rect::new(HEADER_W + 100.0, RULER_H + 58.0 - 40.0, 100.0, 25.0)
         );
         assert_eq!(
             vp.visible_rows(),
             1..5,
             "行の領域の 74 px に 40 から 114 まで"
         );
-        assert_eq!(vp.x_of(1.5), 150.0);
-        assert!((vp.t_of(150.0) - 1.5).abs() < 1e-9);
+        assert_eq!(vp.x_of(1.5), HEADER_W + 150.0);
+        assert!((vp.t_of(HEADER_W + 150.0) - 1.5).abs() < 1e-9);
     }
 }

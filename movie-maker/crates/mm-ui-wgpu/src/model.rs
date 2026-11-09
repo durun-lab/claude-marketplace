@@ -3,7 +3,7 @@
 use mm_doc::{Composition, Layer, Project, Sequence, SequenceId, SEQUENCE_KIND, SEQUENCE_PARAM};
 use mm_eval::{place_cuts, PlacedCut};
 use mm_types::Id;
-use mm_ui_layout::{CutBar, Item, ItemKind, TimelineModel, TrimBounds};
+use mm_ui_layout::{AudioState, CutBar, Item, ItemKind, TimelineModel, TrimBounds};
 
 use crate::names::Namer;
 
@@ -73,6 +73,11 @@ pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
             end: range.end.to_f64(),
             kind: kind_of(layer),
             enabled: layer.enabled,
+            locked: layer.lock,
+            audio: layer.audio.as_ref().map(|a| AudioState {
+                mute: a.mute,
+                solo: a.solo,
+            }),
             label: names.label(&layer.source),
             cuts: cut_bars(project, layer, &names),
             trim: trim_bounds(project, layer, range),

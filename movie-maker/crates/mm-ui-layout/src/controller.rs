@@ -277,6 +277,14 @@ impl TimelineController {
                 deselect_cut(Action::Select(Some(index)), had_cut)
             }
             Hit::Cut { item, cut, part } => self.press_cut((item, cut, part), x, mods),
+            Hit::Header { index } => {
+                self.selected = Some(index);
+                deselect_cut(Action::Select(Some(index)), had_cut)
+            }
+            Hit::Corner => {
+                self.selected_cut = had_cut;
+                Vec::new()
+            }
             _ => {
                 self.selected = None;
                 deselect_cut(Action::Select(None), had_cut)
@@ -409,14 +417,17 @@ impl TimelineController {
     }
 
     /// ホイール。Ctrl でポインターの下を中心に拡大（縮小は長さ `duration` の全体が収まるまで）、
-    /// Shift かスクロールバーの上なら縦にスクロール、それ以外は横に動かす。
+    /// Shift かスクロールバーと見出しの列の上なら縦にスクロール、それ以外は横に動かす。
     fn wheel(&mut self, (x, y): (f32, f32), dy: f32, (ctrl, shift): (bool, bool), duration: f64) {
         if ctrl {
             let anchor = x - self.layout.row_area.x;
             let floor = TimeView::zoom_floor(duration, self.layout.row_area.w, VIEW_MARGIN);
             let factor = ZOOM_STEP.powf(f64::from(dy));
             self.view = self.view.zoom_at(anchor, factor, floor);
-        } else if shift || self.layout.scrollbar.contains(x, y) {
+        } else if shift
+            || self.layout.scrollbar.contains(x, y)
+            || self.layout.headers.contains(x, y)
+        {
             self.scroll_to(self.scroll_y - dy * SCROLL_STEP_PX);
         } else {
             self.view = self.view.pan_px(-dy * PAN_STEP_PX);

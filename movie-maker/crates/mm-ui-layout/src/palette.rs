@@ -11,6 +11,9 @@ pub const ROW_EVEN: Color = Color::hex(0x20232a);
 pub const ROW_ODD: Color = Color::hex(0x252932);
 pub const TICK: Color = Color::hex(0x6b7280);
 pub const LABEL: Color = Color::hex(0xb4bac6);
+/// 見出しの Mute と Solo が点いているときの地の色。
+pub const MUTE_ON: Color = Color::hex(0xe08a3a);
+pub const SOLO_ON: Color = Color::hex(0xd9c43a);
 pub const OUTSIDE: Color = Color::hex(0x15161a).with_alpha(0.6);
 pub const PLAYHEAD: Color = Color::hex(0xff5a4d);
 pub const GUIDE: Color = Color::hex(0xffd24a);
