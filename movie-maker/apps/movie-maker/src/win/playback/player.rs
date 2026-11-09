@@ -320,7 +320,7 @@ impl Player {
     ) -> std::result::Result<(), String> {
         let comp = project
             .composition(&self.comp)
-            .map_err(|_| "Deleting the open composition is not applied".to_owned())?;
+            .map_err(|_| "Can't delete the open composition".to_owned())?;
         let (fps, duration) = (comp.fps, comp.duration.to_f64());
         let size = Size::new(comp.width, comp.height);
         self.engine.invalidate_touched(touched);

@@ -147,9 +147,9 @@ describe("FeedbackPanel の設定", () => {
   });
 
   it("アプリが使えないときは理由を出す", async () => {
-    const { api } = fakeApi([], { status: vi.fn().mockRejectedValue(new Error("自動の改善を使えない")) });
+    const { api } = fakeApi([], { status: vi.fn().mockRejectedValue(new Error("Auto-improve is unavailable")) });
     act(() => render(<FeedbackPanel api={api} nowMs={NOW} />, host));
     await flush();
-    expect(host.querySelector('[role="alert"]')?.textContent).toBe("自動の改善を使えない");
+    expect(host.querySelector('[role="alert"]')?.textContent).toBe("Auto-improve is unavailable");
   });
 });

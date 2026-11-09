@@ -236,7 +236,10 @@ mod tests {
         .into();
         let err = crate::win::edit::submit(&shared, vec![drop_open])
             .expect_err("開いているコンポジションは消せない");
-        assert!(!err.is_empty(), "拒否の理由が返る");
+        assert!(
+            err.contains(doc.comp.as_str()),
+            "消すコンポジションを理由に挙げる: {err}"
+        );
         assert_eq!(
             shared.doc_serial.load(Ordering::SeqCst),
             serial,

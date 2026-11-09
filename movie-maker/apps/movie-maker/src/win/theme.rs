@@ -21,7 +21,7 @@ fn palette_from(json: &str, mode: &str) -> Result<Palette, String> {
     let theme: Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
     let colors = theme
         .pointer(&format!("/modes/{mode}/color"))
-        .ok_or_else(|| format!("No colors for mode {mode}"))?;
+        .ok_or_else(|| format!("モード {mode} の色が無い"))?;
     Ok(Palette::themed(|name| {
         colors.get(name).and_then(Value::as_str).and_then(parse_hex)
     }))

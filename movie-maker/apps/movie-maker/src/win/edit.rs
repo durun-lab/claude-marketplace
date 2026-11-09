@@ -20,8 +20,8 @@ use crate::win::state::Shared;
 
 /// 再生スレッドが操作を適用するまで待つ上限。描画 1 フレームと適用より十分長い。
 const APPLY_TIMEOUT: Duration = Duration::from_secs(5);
-/// WebView から届いた操作のトランザクションの名前。
-const WEBVIEW_TXN: &str = "WebView の操作";
+/// アプリの画面（WebView、キー、ドラッグ）から届いた操作のトランザクションの名前。取り消しの文言（`Undo: Edit`）に出る。
+pub const WEBVIEW_TXN: &str = "Edit";
 
 /// 適用した結果。WebView に返す。
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -118,7 +118,7 @@ pub fn submit_within(
                 state.compare_exchange(WAITING, WITHDRAWN, Ordering::SeqCst, Ordering::SeqCst);
             if withdrawn.is_ok() {
                 return Err(
-                    "Playback thread did not apply the operation in time; withdrawn (not applied)"
+                    "Timed out waiting for the playback thread; the operation was not applied"
                         .into(),
                 );
             }

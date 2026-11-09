@@ -154,7 +154,7 @@ impl MediaState {
         let offered = self.offered.lock().expect("offered");
         match paths.iter().find(|p| !offered.contains(Path::new(p))) {
             Some(p) => Err(format!(
-                "選択かドロップで渡されていないパスは取り込まない: {p}"
+                "Can't import a file that wasn't picked or dropped: {p}"
             )),
             None => Ok(()),
         }

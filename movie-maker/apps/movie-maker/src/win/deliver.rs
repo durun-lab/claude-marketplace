@@ -367,7 +367,7 @@ struct Finish<'a>(&'a Job);
 
 impl Drop for Finish<'_> {
     fn drop(&mut self) {
-        let stopped = stop_all(&self.0.status, "Export stopped midway");
+        let stopped = stop_all(&self.0.status, "Export stopped before finishing");
         (self.0.emit)(&stopped);
     }
 }

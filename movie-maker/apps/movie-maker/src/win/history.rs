@@ -1,7 +1,8 @@
 //! `project.mmdb` の取り消しとやり直しの文言。取り消しは発行元を問わずトランザクションごとに戻すので
 //! （`08-ui.md` の「取り消し」）、Claude や CLI の操作を戻したときは、誰の何を戻したかを画面に出す。
 //!
-//! Store は戻すトランザクションの発行元を返さないので、変更の通知から取り消しのスタックをコピーして持ち、戻す前に先頭を見る。
+//! 戻す前に先頭を見るため、変更の通知から取り消しのスタックをコピーして持つ。開く前の履歴はコピーに無いので、
+//! Store が返す元のトランザクション（`Change::of`）で補う。
 
 use std::sync::Mutex;
 
@@ -54,26 +55,25 @@ impl HistoryMirror {
     }
 
     /// 取り消し（`undo` が偽ならやり直し）の結果の文言。`done` は Store が返した結果。
-    /// `before` は戻す前に [`Self::next`] で見た発行元と名前。
+    /// `before` は戻す前に [`Self::next`] で見た発行元と名前。開く前の履歴で `None` のときは、Store が返す元のトランザクション
+    /// （`Change::of`）を使う。取り消しの記録の名前（`Change::name`）は操作の層が付けた接頭辞を含むので、文言に出さない。
     pub fn message(
         undo: bool,
         done: Result<Option<Change>, String>,
         before: Option<(String, String)>,
     ) -> String {
-        let (verb, noun) = if undo {
+        let (label, verb) = if undo {
             ("Undo", "undo")
         } else {
             ("Redo", "redo")
         };
         match done {
-            Err(e) => format!("Couldn't {noun}: {e}"),
-            Ok(None) => format!("Nothing to {noun}"),
-            Ok(Some(change)) => match before {
-                Some((actor, name)) if actor != GUI_ACTOR => {
-                    format!("{verb}: {name} ({actor})")
-                }
-                Some((_, name)) => format!("{verb}: {name}"),
-                None => format!("{verb}: {}", change.name),
+            Err(e) => format!("Couldn't {verb}: {e}"),
+            Ok(None) => format!("Nothing to {verb}"),
+            Ok(Some(change)) => match before.or_else(|| change.of.map(|of| (of.actor, of.name))) {
+                Some((actor, name)) if actor != GUI_ACTOR => format!("{label}: {name} ({actor})"),
+                Some((_, name)) => format!("{label}: {name}"),
+                None => label.to_owned(),
             },
         }
     }
@@ -139,10 +139,25 @@ mod tests {
             HistoryMirror::message(false, Err("broken".into()), None),
             "Couldn't redo: broken"
         );
-        let done = Ok(Some(change("undo", "gui", "取り消し: 前の起動の操作")));
+    }
+
+    #[test]
+    fn 開く前の履歴は_store_が返す元のトランザクションを出し_接頭辞の付いた記録の名前は出さない() {
+        let mut done = change("undo", "gui", "取り消し: 前の起動の操作");
+        done.of = Some(mm_serve::ChangeOf {
+            txn_id: 1,
+            name: "前の起動の操作".into(),
+            actor: "mcp".into(),
+            actor_name: "claude".into(),
+        });
         assert_eq!(
-            HistoryMirror::message(true, done, None),
-            "Undo: 取り消し: 前の起動の操作"
+            HistoryMirror::message(true, Ok(Some(done)), None),
+            "Undo: 前の起動の操作 (mcp)"
+        );
+        let redone = change("redo", "gui", "やり直し: a");
+        assert_eq!(
+            HistoryMirror::message(false, Ok(Some(redone)), None),
+            "Redo"
         );
     }
 

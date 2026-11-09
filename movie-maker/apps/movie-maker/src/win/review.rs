@@ -150,7 +150,7 @@ pub fn undo_approved(
     let after = core.proposal(id).map_err(|e| e.to_string())?;
     if after.applied {
         return Err(format!(
-            "提案 {id} の承認を取り消せなかった（先に別の編集が積まれた）"
+            "Couldn't undo approval of proposal {id} (another edit was applied after it)"
         ));
     }
     Ok(after)
