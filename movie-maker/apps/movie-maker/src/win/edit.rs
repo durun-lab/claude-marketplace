@@ -104,7 +104,7 @@ pub fn submit_within(
     shared
         .edits
         .lock()
-        .map_err(|_| "操作の待ち行列が壊れた".to_owned())?
+        .map_err(|_| "Operation queue is broken".to_owned())?
         .push(PendingEdit {
             ops,
             reply,
@@ -118,12 +118,12 @@ pub fn submit_within(
                 state.compare_exchange(WAITING, WITHDRAWN, Ordering::SeqCst, Ordering::SeqCst);
             if withdrawn.is_ok() {
                 return Err(
-                    "再生スレッドが時間内に操作を適用しなかったので取り下げた（適用されていない）"
+                    "Playback thread did not apply the operation in time; withdrawn (not applied)"
                         .into(),
                 );
             }
             rx.recv()
-                .map_err(|_| "再生スレッドが結果を返す前に終わった".to_owned())?
+                .map_err(|_| "Playback thread ended before returning a result".to_owned())?
         }
     }
 }
@@ -134,7 +134,7 @@ pub async fn apply_op(
     state: tauri::State<'_, Arc<crate::win::ipc::SyncState>>,
     op: serde_json::Value,
 ) -> Result<EditOutcome, String> {
-    let op: Op = serde_json::from_value(op).map_err(|e| format!("操作の形が違う: {e}"))?;
+    let op: Op = serde_json::from_value(op).map_err(|e| format!("Invalid operation: {e}"))?;
     let shared = state.shared.clone();
     tauri::async_runtime::spawn_blocking(move || submit(&shared, vec![op]))
         .await
@@ -150,7 +150,7 @@ pub async fn apply_ops(
 ) -> Result<EditOutcome, String> {
     let ops = ops
         .into_iter()
-        .map(|op| serde_json::from_value::<Op>(op).map_err(|e| format!("操作の形が違う: {e}")))
+        .map(|op| serde_json::from_value::<Op>(op).map_err(|e| format!("Invalid operation: {e}")))
         .collect::<Result<Vec<_>, _>>()?;
     let shared = state.shared.clone();
     tauri::async_runtime::spawn_blocking(move || submit(&shared, ops))

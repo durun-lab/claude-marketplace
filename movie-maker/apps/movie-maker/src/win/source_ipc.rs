@@ -61,7 +61,7 @@ pub async fn source_open(
 ) -> Result<SourceState, String> {
     let shared = state.shared.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let doc = shared.doc().ok_or("プロジェクトを開いていない")?;
+        let doc = shared.doc().ok_or("No project open")?;
         let comp = doc
             .project
             .composition(&doc.comp)
@@ -104,7 +104,7 @@ pub async fn source_transport(
         ("step", Some(n)) => Command::Step(n as i64),
         ("home", _) => Command::Seek(0.0),
         ("end", _) => Command::Seek(f64::MAX),
-        _ => return Err(format!("知らない再生の操作: {action}")),
+        _ => return Err(format!("Unknown playback action: {action}")),
     };
     state.shared.source.set_active(true);
     state.shared.source.send(command);
@@ -115,7 +115,7 @@ pub async fn source_transport(
 #[tauri::command]
 pub async fn edit_action(state: State<'_, Arc<SyncState>>, action: String) -> Result<(), String> {
     let action =
-        EditAction::parse(&action).ok_or_else(|| format!("知らない編集の名前: {action}"))?;
+        EditAction::parse(&action).ok_or_else(|| format!("Unknown edit action: {action}"))?;
     edit_actions::run(&state.shared, action);
     Ok(())
 }

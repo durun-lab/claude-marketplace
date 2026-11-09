@@ -74,7 +74,7 @@ impl PreviewSlot {
 fn apply_pending(core: &Core, preview: &Preview) -> Result<(Project, Vec<String>), String> {
     let proposal = core.proposal(preview.id).map_err(|e| e.to_string())?;
     if proposal.state != ProposalState::Pending {
-        return Err(format!("提案 {} は保留中でない", preview.id));
+        return Err(format!("Proposal {} is not pending", preview.id));
     }
     core.preview_project(preview.id, preview.ops.as_deref())
         .map_err(|e| e.to_string())
@@ -142,7 +142,9 @@ pub fn undo_approved(
 ) -> Result<mm_serve::ProposalView, String> {
     let before = core.proposal(id).map_err(|e| e.to_string())?;
     if !before.undoable {
-        return Err(format!("提案 {id} の承認は、いま取り消せる位置に無い"));
+        return Err(format!(
+            "Approval of proposal {id} can't be undone right now"
+        ));
     }
     crate::win::edit::step_saved(shared, core, true);
     let after = core.proposal(id).map_err(|e| e.to_string())?;
@@ -156,7 +158,7 @@ pub fn undo_approved(
 
 /// 提案は `project.mmdb` の表にあるので、JSON のプロジェクトでは使えない。
 pub fn no_store() -> String {
-    "提案は project.mmdb のプロジェクトでだけ使える".to_owned()
+    "Proposals only work in a project.mmdb project".to_owned()
 }
 
 #[cfg(test)]

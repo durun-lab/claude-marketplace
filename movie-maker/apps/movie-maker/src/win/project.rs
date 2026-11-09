@@ -75,7 +75,7 @@ pub fn pick_composition(project: &Project, wanted: Option<&str>) -> Result<Compo
         .compositions
         .first()
         .map(|c| c.id.clone())
-        .ok_or_else(|| MmError::NotFound("コンポジションが 1 つも無い".into()))
+        .ok_or_else(|| MmError::NotFound("No composition in project".into()))
 }
 
 #[cfg(test)]

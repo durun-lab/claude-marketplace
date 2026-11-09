@@ -76,7 +76,8 @@
     ui.tc.textContent = fmt(t);
     ui.fr.textContent = String(Math.floor(t * info.fps + 1e-6));
     ui.fill.style.width = `${Math.min(100, (t / info.duration) * 100)}%`;
-    ui.play.textContent = last && last.playing ? "停止" : "再生";
+    ui.play.textContent = last && last.playing ? "Stop" : "Play";
+    ui.play.title = "Play / Stop (Space)";
     ui.lag.textContent = last ? `${last.lagMs.toFixed(1)} ms` : "-";
   };
 
@@ -95,15 +96,15 @@
     ui.frTotal = el("span", { textContent: "0" });
     ui.fill = el("div", { className: "fill" });
     ui.bar = el("div", { className: "bar" }, [ui.fill]);
-    ui.play = el("button", { className: "primary", textContent: "再生" });
+    ui.play = el("button", { className: "primary", textContent: "Play" });
     ui.play.onclick = () => act("toggle");
-    const btn = (label, fn) => el("button", { textContent: label, onclick: fn });
+    const btn = (label, fn, title) => el("button", { textContent: label, onclick: fn, ...(title ? { title } : {}) });
     const buttons = el("div", { className: "buttons" }, [
-      btn("先頭", () => act("home")),
-      btn("-1", () => act("step", -1)),
+      btn("Go to Start", () => act("home")),
+      btn("-1", () => act("step", -1), "Step One Frame Back"),
       ui.play,
-      btn("+1", () => act("step", 1)),
-      btn("末尾", () => act("end")),
+      btn("+1", () => act("step", 1), "Step One Frame Forward"),
+      btn("Go to End", () => act("end")),
     ]);
     ui.bar.onclick = (e) => {
       const r = ui.bar.getBoundingClientRect();
@@ -114,14 +115,14 @@
     ui.info = el("dl");
     ui.layers = el("ul");
     const root = el("section", { id: "mm-transport" }, [
-      el("h2", { textContent: "プレビュー" }),
+      el("h2", { textContent: "Program" }),
       el("div", { className: "tc" }, [ui.tc, el("span", { className: "dim" }, [" / ", ui.dur])]),
-      el("div", { className: "dim" }, ["フレーム ", ui.fr, " / ", ui.frTotal]),
+      el("div", { className: "dim" }, ["Frame ", ui.fr, " / ", ui.frTotal]),
       ui.bar,
       buttons,
       ui.info,
       sourceSection,
-      el("h2", { textContent: "レイヤー" }),
+      el("h2", { textContent: "Layers" }),
       ui.layers,
     ]);
     document.head.append(style);
@@ -144,8 +145,8 @@
         btn("J", () => srcAct("reverse")),
         btn("K", () => srcAct("pause")),
         btn("L", () => srcAct("play")),
-        btn("-1", () => srcAct("step", -1)),
-        btn("+1", () => srcAct("step", 1)),
+        btn("-1", () => srcAct("step", -1), "Step One Frame Back"),
+        btn("+1", () => srcAct("step", 1), "Step One Frame Forward"),
       ]),
       el("div", { className: "buttons" }, [
         btn("In (I)", () => edit("mark_in")),
@@ -167,7 +168,7 @@
   const showSource = (s) => {
     source = s;
     const options = s.assets.map((a) => el("option", { value: a.id, textContent: `${a.id} (${fmt(a.duration)})` }));
-    ui.srcSelect.replaceChildren(el("option", { value: "", textContent: "素材を選ぶ" }), ...options);
+    ui.srcSelect.replaceChildren(el("option", { value: "", textContent: "Choose a clip…" }), ...options);
     ui.srcSelect.value = s.asset ?? "";
     ui.srcTc.textContent = fmt(s.t);
     const mark = (v) => (v == null ? "-" : fmt(v));
@@ -182,13 +183,13 @@
     ui.frTotal.textContent = String(Math.round(info.duration * info.fps));
     const backends = info.backends.map(([k, v]) => `${k}=${v}`).join(" ");
     ui.info.replaceChildren(
-      ...row("プロジェクト", info.name),
-      ...row("コンポジション", `${info.composition} ${info.width}x${info.height} ${info.fps} fps`),
-      ...row("主の時計", info.clock === "audio" ? "音の出力" : "壁時計（音の出力なし）"),
-      ...row("音の出力", info.audio_device ?? "なし"),
+      ...row("Project", info.name),
+      ...row("Composition", `${info.composition} ${info.width}x${info.height} ${info.fps} fps`),
+      ...row("Clock", info.clock === "audio" ? "Audio Output" : "System clock (no audio output)"),
+      ...row("Audio Output", info.audio_device ?? "None"),
       ...row("GPU", info.adapter || "-"),
-      ...row("実装", backends),
-      el("dt", { textContent: "通知の遅れ" }),
+      ...row("Backends", backends),
+      el("dt", { textContent: "Sync Lag" }),
       ui.lag,
     );
     ui.layers.replaceChildren(

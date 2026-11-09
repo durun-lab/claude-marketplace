@@ -222,7 +222,7 @@ impl DeliverState {
         self.shared
             .doc()
             .map(|d| d.project)
-            .ok_or_else(|| "プロジェクトを開いていない".to_owned())
+            .ok_or_else(|| "No project open".to_owned())
     }
 
     /// レンダーターゲット、コンポジション、sequence の一覧。
@@ -297,7 +297,7 @@ impl DeliverState {
         let transcript = self.transcript(&project, &targets);
         let mut status = self.status.lock().expect("export status");
         if status.running {
-            return Err("書き出し中".into());
+            return Err("Export in progress".into());
         }
         let cancel = Arc::new(AtomicBool::new(false));
         *self.cancel.lock().expect("export cancel") = cancel.clone();
@@ -344,7 +344,7 @@ impl DeliverState {
         if self.outputs.lock().expect("export outputs").contains(&path) {
             Ok(path)
         } else {
-            Err(format!("書き出したファイルではない: {}", path.display()))
+            Err(format!("Not an exported file: {}", path.display()))
         }
     }
 }
@@ -367,7 +367,7 @@ struct Finish<'a>(&'a Job);
 
 impl Drop for Finish<'_> {
     fn drop(&mut self) {
-        let stopped = stop_all(&self.0.status, "書き出しが途中で止まった");
+        let stopped = stop_all(&self.0.status, "Export stopped midway");
         (self.0.emit)(&stopped);
     }
 }

@@ -60,16 +60,20 @@ impl HistoryMirror {
         done: Result<Option<Change>, String>,
         before: Option<(String, String)>,
     ) -> String {
-        let verb = if undo { "取り消" } else { "やり直" };
+        let (verb, noun) = if undo {
+            ("Undo", "undo")
+        } else {
+            ("Redo", "redo")
+        };
         match done {
-            Err(e) => format!("{verb}せない: {e}"),
-            Ok(None) => format!("{verb}すものが無い"),
+            Err(e) => format!("Couldn't {noun}: {e}"),
+            Ok(None) => format!("Nothing to {noun}"),
             Ok(Some(change)) => match before {
                 Some((actor, name)) if actor != GUI_ACTOR => {
-                    format!("{actor} の操作を{verb}した: {name}")
+                    format!("{verb}: {name} ({actor})")
                 }
-                Some((_, name)) => format!("{verb}した: {name}"),
-                None => format!("{verb}した: {}", change.name),
+                Some((_, name)) => format!("{verb}: {name}"),
+                None => format!("{verb}: {}", change.name),
             },
         }
     }
@@ -118,7 +122,7 @@ mod tests {
         let done = Ok(Some(change("undo", "gui", "取り消し: extract k2")));
         assert_eq!(
             HistoryMirror::message(true, done, before),
-            "mcp の操作を取り消した: extract k2"
+            "Undo: extract k2 (mcp)"
         );
         h.record(&change("undo", "gui", "取り消し: extract k2"));
         assert_eq!(h.next(true), Some(("gui".into(), "WebView の操作".into())));
@@ -129,16 +133,16 @@ mod tests {
     fn 戻すものが無いときと失敗したときも文言を返す() {
         assert_eq!(
             HistoryMirror::message(true, Ok(None), None),
-            "取り消すものが無い"
+            "Nothing to undo"
         );
         assert_eq!(
-            HistoryMirror::message(false, Err("壊れた".into()), None),
-            "やり直せない: 壊れた"
+            HistoryMirror::message(false, Err("broken".into()), None),
+            "Couldn't redo: broken"
         );
         let done = Ok(Some(change("undo", "gui", "取り消し: 前の起動の操作")));
         assert_eq!(
             HistoryMirror::message(true, done, None),
-            "取り消した: 取り消し: 前の起動の操作"
+            "Undo: 取り消し: 前の起動の操作"
         );
     }
 
