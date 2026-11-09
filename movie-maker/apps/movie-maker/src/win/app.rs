@@ -1,5 +1,4 @@
-//! ウィンドウの組み立て。Tauri のウィンドウの下に、左に wgpu のサーフェス（子 HWND。Program と Timeline）、
-//! 右に子 WebView（`ui/dist/` の shell と再生の操作列）を並べ、再生スレッドと描画スレッドをつなぐ。
+//! アプリの起動。プロジェクトを開き、ウィンドウ（割り付けは `layout.rs`）を作って、再生スレッドと描画スレッドをつなぐ。
 
 use std::sync::{Arc, Mutex};
 
@@ -8,12 +7,8 @@ use mm_serve::{Core, EngineFrames, FrameSource, Server};
 use mm_trace::{ChromeTraceLayer, MetricsLayer};
 use mm_types::{CompositionId, MmError};
 use mm_ui_wgpu::timeline_model;
-use tauri::webview::WebviewBuilder;
-use tauri::window::WindowBuilder;
 use tauri::{DragDropEvent, Emitter, Manager, WebviewEvent};
-use tauri::{
-    PhysicalPosition, PhysicalSize, Position, Rect, Size, Webview, WebviewUrl, Window, WindowEvent,
-};
+use tauri::{Webview, Window, WindowEvent};
 use tracing_subscriber::prelude::*;
 use windows::Win32::Media::timeBeginPeriod;
 
@@ -28,6 +23,7 @@ use crate::win::feedback_ipc;
 use crate::win::hotpatch;
 use crate::win::inspector_ipc;
 use crate::win::ipc::{self, ProjectInfo, SyncState};
+use crate::win::layout;
 use crate::win::media::{self, MediaState};
 use crate::win::media_ipc;
 use crate::win::mixer_ipc;
@@ -40,20 +36,11 @@ use crate::win::source_ipc;
 use crate::win::state::Shared;
 use crate::win::story::StoryState;
 use crate::win::story_ipc;
-use crate::win::surface::{self, PixelRect};
 use crate::win::transition_ipc;
 use crate::win::verify::{self, Telemetry};
 
-/// サーフェスの幅の割合。残りが WebView。
-const SPLIT: f64 = 0.5;
-/// ウィンドウの初期の大きさ（論理ピクセル）。
-const INITIAL_SIZE: (f64, f64) = (1600.0, 900.0);
 /// OS のタイマーの分解能（ms）。待ちの粒度が既定の 15.6 ms だと、フレームの間隔を守れない。
 const TIMER_RESOLUTION_MS: u32 = 1;
-/// WebView が最初に読むページ。`ui/dist/` の shell。
-const UI_ENTRY: &str = "index.html";
-/// WebView に重ねる再生の操作列。
-const TRANSPORT_JS: &str = include_str!("../../web/transport.js");
 /// 保存した変更を WebView に知らせる Tauri のイベント名。中身は `mm_serve::Change`。
 const DOC_CHANGED_EVENT: &str = "mm:doc-changed";
 /// 提案の追加と決定を Review パネルへ知らせる Tauri のイベント。
@@ -83,33 +70,6 @@ impl Workers {
             }
         }
     }
-}
-
-/// 配置を直すのに要るもの。
-struct Layout {
-    shared: Arc<Shared>,
-    surface_hwnd: isize,
-}
-
-/// サーフェスと WebView の矩形（物理ピクセル）をウィンドウの大きさから決める。
-pub fn split_rects(width: u32, height: u32) -> (PixelRect, PixelRect) {
-    let left = (f64::from(width) * SPLIT).round() as i32;
-    let (w, h) = (width as i32, height as i32);
-    ((0, 0, left, h), (left, 0, w - left, h))
-}
-
-fn layout(window: &Window, webview: &Webview, l: &Layout) {
-    let Ok(size) = window.inner_size() else {
-        return;
-    };
-    let (s, v) = split_rects(size.width, size.height);
-    surface::set_rect(l.surface_hwnd, s);
-    let _ = webview.set_bounds(Rect {
-        position: Position::Physical(PhysicalPosition::new(v.0, v.1)),
-        size: Size::Physical(PhysicalSize::new(v.2.max(1) as u32, v.3.max(1) as u32)),
-    });
-    l.shared
-        .set_surface_size(s.2.max(1) as u32, s.3.max(1) as u32);
 }
 
 fn init_tracing() -> Telemetry {
@@ -354,7 +314,7 @@ type SetupResult = Result<(), Box<dyn std::error::Error>>;
 impl Boot {
     /// ウィンドウと描画スレッドを作り、同期と自動試験を始める。
     fn setup(self, app: &mut tauri::App) -> SetupResult {
-        let (window, webview, surface_hwnd) = self.create_window(app)?;
+        let (window, webview, surface_hwnd) = layout::create_window(app, &self.shared)?;
         let model = timeline_model(&self.project, self.project.composition(&self.comp_id)?);
         *self.workers.renderer.lock().expect("renderer") = Some(Renderer::spawn(
             self.shared.clone(),
@@ -392,28 +352,6 @@ impl Boot {
         }
         Ok(())
     }
-
-    /// ウィンドウの下に、サーフェスの子 HWND と子 WebView を並べる。サーフェスの HWND を返す。
-    fn create_window(
-        &self,
-        app: &mut tauri::App,
-    ) -> Result<(Window, Webview, isize), Box<dyn std::error::Error>> {
-        let window = WindowBuilder::new(app, "main")
-            .title("movie-maker")
-            .inner_size(INITIAL_SIZE.0, INITIAL_SIZE.1)
-            .build()?;
-        let size = window.inner_size()?;
-        let (s, v) = split_rects(size.width, size.height);
-        let surface_hwnd = surface::create(window.hwnd()?.0 as isize, self.shared.clone(), s)?;
-        let webview = window.add_child(
-            WebviewBuilder::new("ui", WebviewUrl::App(UI_ENTRY.into()))
-                .initialization_script(TRANSPORT_JS),
-            PhysicalPosition::new(v.0, v.1),
-            PhysicalSize::new(v.2 as u32, v.3 as u32),
-        )?;
-        self.shared.set_surface_size(s.2 as u32, s.3 as u32);
-        Ok((window, webview, surface_hwnd))
-    }
 }
 
 /// WebView にドロップされたファイルのパスを、Media の取り込んでよいパスとして覚える。
@@ -433,14 +371,14 @@ fn watch_window(
     surface_hwnd: isize,
     workers: Arc<Workers>,
 ) {
-    let l = Layout {
+    let l = layout::Layout {
         shared: shared.clone(),
         surface_hwnd,
     };
     let w = window.clone();
     window.on_window_event(move |e| match e {
         WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {
-            layout(&w, &webview, &l)
+            layout::apply(&w, &webview, &l)
         }
         WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed => {
             shared.quit.store(true, std::sync::atomic::Ordering::SeqCst);
@@ -477,20 +415,6 @@ mod tests {
         ];
         for (name, panel) in cases {
             assert_eq!(route(name), panel, "{name}");
-        }
-    }
-
-    #[test]
-    fn サーフェスと_webview_は隙間も重なりもなくウィンドウを埋める() {
-        for (w, h) in [(1600, 1000), (1125, 750), (2400, 1350), (1, 1)] {
-            let (s, v) = split_rects(w, h);
-            assert_eq!(
-                s.0 + s.2,
-                v.0,
-                "サーフェスの右端と WebView の左端が一致する"
-            );
-            assert_eq!(v.0 + v.2, w as i32);
-            assert_eq!((s.3, v.3), (h as i32, h as i32));
         }
     }
 }

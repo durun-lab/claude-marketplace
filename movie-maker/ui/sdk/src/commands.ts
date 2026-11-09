@@ -29,6 +29,8 @@ export const IPC_COMMAND_TABLE = "command_table";
 export const IPC_RUN_COMMAND = "run_command";
 /** 押せるかが変わったときに新しい表を届ける Tauri のイベント名。 */
 export const COMMANDS_CHANGED_EVENT = "mm:commands-changed";
+/** パネルが持ち主のコマンドを、アプリ（メニュー、キー）が Shell に実行させる Tauri のイベント名。中身はコマンドの ID。 */
+export const PANEL_COMMAND_EVENT = "mm:panel-command";
 /** 表に無いコマンド（実装の無い Tasks の項目）のツールチップ。 */
 export const NOT_AVAILABLE = "Not available yet";
 
@@ -38,6 +40,8 @@ export interface CommandsApi {
   /** 失敗したら理由の文字を返す。 */
   run: (id: string) => Promise<string | null>;
   onChanged: (handler: (table: UiCommand[]) => void) => Promise<() => void>;
+  /** アプリがメニューやキーから実行した、パネルが持ち主のコマンドの ID を受ける。 */
+  onPanelCommand: (handler: (id: string) => void) => Promise<() => void>;
 }
 
 const errorText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
@@ -54,6 +58,7 @@ export const createIpcCommandsApi = (call: MediaInvoke = tauriInvoke, listen: Me
     }
   },
   onChanged: (handler) => listen(COMMANDS_CHANGED_EVENT, (e) => handler(e.payload as UiCommand[])),
+  onPanelCommand: (handler) => listen(PANEL_COMMAND_EVENT, (e) => handler(e.payload as string)),
 });
 
 /** ボタンの `title` に出す文。1 行目は「名前 (キー)」、説明があれば 2 行目。表に無いコマンドは NOT_AVAILABLE。 */

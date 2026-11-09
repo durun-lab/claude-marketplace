@@ -10,7 +10,7 @@ ep03 を開いた画面（2026-11-10）とコードで確かめた。
 
 | 場所 | 今 | 困ること |
 |---|---|---|
-| 割り付け | ウィンドウの左半分がサーフェス（Program と Timeline）、右半分が WebView の 3 列。比は `app.rs` の `SPLIT = 0.5` で固定 | Timeline がウィンドウの半分の幅しかない。境界を動かせない |
+| 割り付け | ウィンドウの左半分がサーフェス（Program と Timeline）、右半分が WebView の 3 列。比は `layout.rs` の `SPLIT = 0.5` で固定 | Timeline がウィンドウの半分の幅しかない。境界を動かせない |
 | 中央の列（`apps/movie-maker/web/transport.js`） | 実装の名前、GPU、通知の遅れ、時計の種類、レイヤーの生の一覧が主役。再生のボタン、Source の J/K/L と In/Out と Insert/Overwrite、Split/Lift/Extract、Undo/Redo も詰め込まれ、横にはみ出す | 開発の情報が場所を取る。再生のボタンが Program から離れている |
 | Timeline のレイヤーの行 | レイヤー 1 本が 1 行（`ROW_H` 24 で固定）。見出しも縦のスクロールも無い。高さは中身に合わせ、上限はサーフェスの半分（`screen.rs`） | ep03 では 0.1 秒の文字のレイヤー 32 本が上の行を埋め、本編の sequence の行が画面の外に出る |
 | 帯 | 種類の色（`palette.rs` の `item_color`）だけ。名前、サムネイル、波形が無い | 箱が何か分からない。短いレイヤーは 3 px の点に見える |
@@ -84,7 +84,7 @@ block-beta
 青はサーフェス（wgpu）、緑は WebView の 2 列のタブ（1 列に 1 つのパネルを出す）。
 
 - WebView は 2 列。左の列は Tasks、Media、Story、Transitions、Mixer、Deliver。右の列は Inspector（パラメータ、キーフレームの欄、Graph）、Review、Devices、Feedback、Diagnostics。右の列はキーフレームの欄のために 300 から 400 論理ピクセルに広げる（`ui/theme/theme.json` の `right-column`。左は `left-column` の 260 のまま）。
-- WebView の幅は 2 列の幅の和（660 論理ピクセル）で決め、サーフェスはウィンドウの残りを取る。既定のウィンドウ（`app.rs` の `INITIAL_SIZE`、幅 1600 論理ピクセル）でサーフェスは 940（約 59%）、幅 1920 で 1260（約 66%）。ウィンドウの幅の割合で WebView を決めると、1600 のウィンドウの 35%（560）に 2 列が入らない。ウィンドウを広げた分を Program と Timeline に回すのは、Resolve と Premiere で横のパネルの幅がウィンドウの大きさで変わらないのと同じ〔推〕。
+- WebView の幅は 2 列の幅の和（660 論理ピクセル）で決め、サーフェスはウィンドウの残りを取る。既定のウィンドウ（`layout.rs` の `INITIAL_SIZE`、幅 1600 論理ピクセル）でサーフェスは 940（約 59%）、幅 1920 で 1260（約 66%）。ウィンドウの幅の割合で WebView を決めると、1600 のウィンドウの 35%（560）に 2 列が入らない。ウィンドウを広げた分を Program と Timeline に回すのは、Resolve と Premiere で横のパネルの幅がウィンドウの大きさで変わらないのと同じ〔推〕。
 - サーフェスは上から Program、再生の操作のバー、仕切り、Timeline（ツールバー、目盛りとレイヤーの行、ズームバー）、ステータスバー。Timeline の高さは既定でサーフェスの 45% にし、仕切りで変える。中身の高さには合わせない。
 - 開発の情報（GPU、実装、通知の遅れ、時計、レイヤーの生の一覧）は Diagnostics パネルに移す。計装の値は今どおり `--report` にも出る。
 - 仕切りはサーフェスと WebView の境界、Program と Timeline の境界の 2 つ。どちらもドラッグで動かす。WebView の列は View メニューで開け閉めし、閉じた分だけサーフェスが広がる。割り付けはプロジェクトではなくユーザーの設定に置き（置き場所は L3 で決める）、View > Reset UI Layout で既定に戻す。
@@ -232,11 +232,11 @@ Timeline の上端に置く（Resolve と CapCut と同じ）。左から並べ�
 | 名前 | 英語の文言（[文言](#文言)） |
 | キー | キーの表の名前（`Shift+KeyZ`）。画面にはキーの見た目（Shift+Z）で出す |
 | 説明 | ツールチップの 2 行目。要るときだけ |
-| メニュー | メニューと右クリックのメニューでの場所 |
+| メニュー | メニューと右クリックのメニューでの場所。表には置かず、メニューの並び（`menu.rs`。[メニューバー](#メニューバー)）が持つ。WebView に送る表の `menu` はそこから引く |
 | 持ち主 | Rust で実行するか、WebView のパネル（パネルを開く。`media.import` は Media） |
 | 押せるか | 今押せるか、チェックの状態（Snapping） |
 
-- WebView は IPC で表を読み、`run_command` で実行する。表が変わったら（押せるかの変化）イベントで知らせる。
+- WebView は IPC で表を読み、`run_command` で実行する。表が変わったら（押せるかの変化）イベントで知らせる。パネルが持ち主のコマンドをアプリの呼び出し箇所（メニュー、キー）から呼ぶときは、Tauri のイベント `mm:panel-command` で Shell に渡す（[メニューバー](#メニューバー)）。
 - Tasks の項目はこの表の ID を指す。実装の無い項目は薄い色にし、ツールチップに「Not available yet」と出す（`TaskItem::disabled` は今もある）。
 - 表は人の操作の入口だけを持つ。データの変更は今どおり操作（`Op`）で行う。
 - 表から実行したコマンドは、ID と入口（キー、メニュー、ツールバー、右クリック、Keyboard Shortcuts のウィンドウ）を使い方の記録に残す（[計装](17-instrumentation.md#使い方の記録)の「ショートカットとメニューのどちらで呼んだか」）。
@@ -246,15 +246,21 @@ Timeline の上端に置く（Resolve と CapCut と同じ）。左から並べ�
 | メニュー | 項目 |
 |---|---|
 | File | Import Media…、Export…（Deliver を開く）、Exit |
-| Edit | Undo、Redo、Split Clip、Lift、Extract、Mark In、Mark Out、Clear In and Out、Insert、Overwrite |
+| Edit | Undo、Redo、Lift、Extract、Mark In、Mark Out、Clear In and Out、Insert、Overwrite |
 | View | Zoom In、Zoom Out、Full Extent Zoom、Snapping、Track Height、Show Keyframe Editor、Hide Shy Layers、パネル（Tasks、Media、Story、Inspector など）、Diagnostics、Reset UI Layout |
 | Playback | Play / Stop、Play Reverse、Play Forward、Step One Frame Back / Forward、Go to Start、Go to End、Previous Edit、Next Edit、Go to Previous / Next Keyframe |
-| Timeline | Selection Tool、Trim Tool、Blade Tool |
+| Timeline | Selection Tool、Trim Tool、Blade Tool、Split Clip、Add Transition… |
 | Help | Keyboard Shortcuts…、About |
 
-- 項目の右にキーを出す。キーはメニューのアクセラレーターに登録せず、項目の文字の `\t` の後ろに見た目だけを書く。muda はアクセラレーターが無ければ項目の文字をそのまま使う [125]。Windows のメニューは `\t` の後ろをキーの列に出す〔推。D1 で確かめる〕。キーの処理は今どおり `keys::dispatch` が持つ。
+- Split Clip と Add Transition… は Timeline に置く。Resolve の Timeline のメニューは、再生位置でクリップを割る Split Clip と、選んだ編集点に既定のトランジションを足す Add Transition を持つ [103]。Lift と Extract は選んだカットを抜くので、Resolve の Delete Selected と Ripple Delete と同じく Edit に置く [103]。
+- 項目は UI のコマンドの表から作り、メニューの中の並びと区切り線は `menu.rs` がメニューごとのコマンドの ID の並びとして持つ。VS Code の `contributes.menus` が項目からコマンドを指してグループで区切るのと同じ形で [120]、KDE の KXmlGui も操作の集まりとメニューの並び（ui.rc）を分けて持つ [121]。区切り線は空でないグループの間にだけ入れる。右クリックのメニュー（D3）も、当たった所ごとに同じ形の並びを置いて同じ関数（`menu::items`）で作る。
+- 表に無い ID はスキップする。後の PR が足すコマンドの ID（`timeline.zoom_in`、`timeline.toggle_snapping`、`timeline.selection_tool`、`playback.previous_edit`、`source.clear_in_out`、`app.show_keyboard_shortcuts` など）は先に並びに置いてあり、表に足すとメニューに出る。項目がまだ無いメニューは、開いても何もできないので出さない（今は View。Z1 が Zoom を表に足すと出る）。View のパネル（Tasks、Media など）、Diagnostics、Track Height の項目は、パネルを選ぶコマンドの形と行の高さを決める PR（L2、L3、T1 の後）が並びに足す。
+- 項目の右にキーを出す。キーはメニューのアクセラレーターに登録せず、項目の文字の `\t` の後ろに見た目だけを書く。Windows のメニューは `\t` の後ろをキーの列に出し [126]、muda はアクセラレーターが無ければ項目の文字をそのまま使う [125]。キーの処理は今どおり `keys::dispatch` が持つ。
 - アクセラレーターを登録しない理由: Tauri は登録したアクセラレーターをアプリのメッセージループで `TranslateAcceleratorW((*msg).hwnd, …)` に通し、`WM_COMMAND` をキーを受けたウィンドウに送る [125]。サーフェスの子 HWND にフォーカスがあると `WM_COMMAND` はサーフェスに届き、メニューのイベントにならないままキーが消える（英字 1 つのキーに限らない）。WebView のキーは WebView2 のプロセスに届くので、この経路を通らない。
-- サーフェスは Alt を離したときのメニューモードを止めている（`surface.rs` が `WM_SYSKEYUP` を既定の処理に渡さない。Alt+ドラッグの roll の後に次のキーを奪われないため）。F10 も表に渡すので、キーでメニューを開けない。キーでメニューを開く手段（F10 を既定の処理に渡すなど）は D1 で決める。
+- 押せるかとチェックの状態は、WebView に送る表（`mm:commands-changed`）と同じ元から反映する。同期のスレッドが表の変化を見つけたら、メインスレッドで項目に反映する。メニューから実行するコマンドは押せるかを見る（`commands::run`。押せない項目は Windows が選ばせない）。
+- パネルが持ち主のコマンドをメニューとキーから呼ぶと、Rust はウィンドウのフック（`commands::WindowHook`）で Tauri のイベント `mm:panel-command`（中身はコマンドの ID）を送り、Shell が Tasks の項目と同じくパネルのタブを開き、パネルの `requests` を進める。File > Import Media… と Ctrl+I は Media を開いて取り込みを始め、Export… は Deliver を開き、Timeline > Add Transition… は Transitions を開く。Exit（閉じるボタンと同じく、描画と再生を止めてから閉じる）と About（名前とバージョンのダイアログ）も、同じフックで Tauri のウィンドウが実行する。
+- キーでメニューを開くのは F10 とアクセスキー。F10 はメニューモードに入る Windows の標準のキーで [127]、サーフェスは F10 を既定のウィンドウプロシージャ（`DefWindowProcW`）に渡す。メニューの名前は `&File` のように先頭の字をアクセスキーにし [126]、Alt+F、Alt+E、Alt+P、Alt+T、Alt+H で開く（サーフェスでは、Alt+英字の `WM_SYSCHAR` を既定のウィンドウプロシージャが受けて開く）。Alt を離したときのメニューモードは今どおり止める（`surface.rs` が `WM_SYSKEYUP` を既定のウィンドウプロシージャに渡さない。Alt+ドラッグの roll の後に次のキーを奪われないため）。キーの表にある Alt+英字（L1 の Alt+X など）は、サーフェスが `WM_SYSCHAR` を既定のウィンドウプロシージャに渡さない（渡すとアクセスキーとして探され、合う字が無いと警告音が鳴る）。キーの表に Alt+英字を足すときは、アクセスキーの字（F、E、V、P、T、H）と重ねない。
+- WebView にフォーカスがあると、WebView2 は F10 をウィンドウに渡すが、Alt+英字は渡さない（Alt だけを押して離しても渡さないので、メニューモードに入らない）。そこで `transport.js` が `key_event` で送った、キーの表に無い Alt+英字は、ウィンドウのフックがウィンドウに `WM_SYSCOMMAND`（`SC_KEYMENU` とその字）を送ってメニューを開く [127]。どちらも、動いているアプリにキーを送って確かめた（2026-11-10）。
 
 ### Keyboard Shortcuts のウィンドウ
 
@@ -429,7 +435,7 @@ flowchart TB
 | PR | 中身 | 依存 | 触る範囲 | 終わりの条件 |
 |---|---|---|---|---|
 | L1 `feature/movie-maker-program-transport` | Program の下の再生の操作のバー（時刻、ボタン、ジョグバー）。Source を開いたら Source の下にも（Mark In/Out、Clear In and Out と Alt+X、Play Reverse、Stop、Play Forward、Insert、Overwrite） | 文字の PR、T1、B2、B3 | `crates/mm-ui-layout/src/transport.rs`（新）、`screen.rs`、`crates/mm-ui-wgpu/src/ui.rs`、`apps/movie-maker/src/win/surface.rs` | Program の下に時刻とボタン。Source を開くと Source の下にもバー |
-| L2 `feature/movie-maker-layout-columns` | 中央の列をしまう（`transport.js` から画面を消し、キーと再生位置の橋だけ残す）、Diagnostics パネル、WebView の幅を 2 列の幅の和に、右の列を 400 に | L1、E1 | `apps/movie-maker/web/transport.js`、`apps/movie-maker/src/win/app.rs`（496 行なので、割り付けの関数を `win/layout.rs` に移してから）、`ui/shell/src/`（`Shell.tsx`、`shell.css`、`panels.ts`）、`ui/panels/diagnostics/`（新）、`ui/theme/theme.json` | 中央の列が無く、サーフェスがウィンドウの幅から 2 列の幅を引いた残り。Diagnostics のタブに GPU が出る |
+| L2 `feature/movie-maker-layout-columns` | 中央の列をしまう（`transport.js` から画面を消し、キーと再生位置の橋だけ残す）、Diagnostics パネル、WebView の幅を 2 列の幅の和に、右の列を 400 に | L1、E1 | `apps/movie-maker/web/transport.js`、`apps/movie-maker/src/win/layout.rs`（割り付けの関数）、`ui/shell/src/`（`Shell.tsx`、`shell.css`、`panels.ts`）、`ui/panels/diagnostics/`（新）、`ui/theme/theme.json` | 中央の列が無く、サーフェスがウィンドウの幅から 2 列の幅を引いた残り。Diagnostics のタブに GPU が出る |
 | L3 `feature/movie-maker-splitters` | 仕切りのドラッグ、WebView の列の開け閉め、割り付けの保存、View > Reset UI Layout | L2、D1 | `apps/movie-maker/src/win/layout.rs`、`surface.rs`、`menu.rs`、`crates/mm-ui-layout/src/screen.rs` | 仕切りを動かしたスクリーンショットと、開き直した後の同じ割り付けのスクリーンショット |
 | L4 `spike/movie-maker-two-surfaces` | 全幅の Timeline の試作（2 つのサーフェス、60 fps、キー、大きさの変更）。結果で案を決める | L3 | `spikes/`、`docs/design/spikes/` | 全幅の Timeline のスクリーンショットと、fps と present の待ちの記録 |
 
@@ -437,8 +443,8 @@ flowchart TB
 
 | PR | 中身 | 依存 | 触る範囲 | 終わりの条件 |
 |---|---|---|---|---|
-| D1 `feature/movie-maker-menu-bar` | メニューバー（コマンドの表から）。キーの見た目は項目の文字の `\t` の後ろ（アクセラレーターは登録しない）。チェックと押せるかの状態。Ctrl+I の Import Media。キーでメニューを開く手段 | B3 | `apps/movie-maker/src/win/menu.rs`（新）、`app.rs`（ウィンドウを作る所）、`keys.rs`、`surface.rs`（F10） | ウィンドウの上端に File、Edit、View、Playback、Timeline、Help |
-| D2 `feature/movie-maker-shortcuts-window` | Keyboard Shortcuts のウィンドウ（`?`、絞り込み、Enter で実行） | B3、D1、Z1（記号のキーの名前） | `ui/shortcuts/`（新）、`ui/tools/build.ts`（ページの入口を足す）、`apps/movie-maker/src/win/app.rs` か `menu.rs`（ウィンドウを開く。ウィンドウはコードで作り、`capabilities/default.json` は全部のウィンドウに当たる） | 「zoom」で絞ったウィンドウに Zoom In (=)、Zoom Out (-)、Full Extent Zoom (Shift+Z) |
+| D1 `feature/movie-maker-menu-bar` | メニューバー（コマンドの表から）。キーの見た目は項目の文字の `\t` の後ろ（アクセラレーターは登録しない）。チェックと押せるかの状態。Ctrl+I の Import Media。キーでメニューを開く手段 | B3 | `apps/movie-maker/src/win/menu.rs`（新）、`layout.rs`（新。`app.rs` からウィンドウを作る所と割り付けの関数を移す）、`commands.rs`、`keys.rs`、`surface.rs`（F10）、`ui/sdk/src/commands.ts`、`ui/shell/src/Shell.tsx` | ウィンドウの上端に File、Edit、Playback、Timeline、Help（View は Z1 が Zoom を表に足すと出る） |
+| D2 `feature/movie-maker-shortcuts-window` | Keyboard Shortcuts のウィンドウ（`?`、絞り込み、Enter で実行） | B3、D1、Z1（記号のキーの名前） | `ui/shortcuts/`（新）、`ui/tools/build.ts`（ページの入口を足す）、`apps/movie-maker/src/win/layout.rs` か `menu.rs`（ウィンドウを開く。ウィンドウはコードで作り、`capabilities/default.json` は全部のウィンドウに当たる） | 「zoom」で絞ったウィンドウに Zoom In (=)、Zoom Out (-)、Full Extent Zoom (Shift+Z) |
 | D3 `feature/movie-maker-context-menus` | 右クリックのメニュー（`Window::popup_menu_at`） | B3、T3、Z4 | `apps/movie-maker/src/win/surface.rs`、`context_menu.rs`（新） | 項目の並びはテスト（ポップアップは PrintWindow に写らない） |
 | D4 `feature/movie-maker-empty-states` | 空の状態の案内（Program、Timeline、Inspector、Story） | 文字の PR、B3、T1（`paint.rs` を分けた後に足す） | `crates/mm-ui-layout/src/paint.rs`（空の Timeline）、`crates/mm-ui-wgpu/src/program.rs`、`ui/panels/inspector/src/InspectorPanel.tsx`、`ui/panels/story/src/StoryPanel.tsx` | 空のプロジェクトで Program と Timeline に案内、Inspector にコンポジションの要約 |
 
@@ -451,7 +457,7 @@ flowchart TB
 | `crates/mm-ui-wgpu/tests/` | 文字の PR、B2 | 文字の PR が `tests/it/` にまとめた後に足す |
 | `apps/movie-maker/src/win/keys.rs`、`commands.rs` | B3、T3、Z1、Z2、Z4、K2、L1、D1、D2 | B3 が先。キーの名前の決まりは Z1。コマンドとキーは ID の名前の順に足す |
 | `apps/movie-maker/src/win/surface.rs` | Z1、Z3、Z5、L1、L3、D1、D3 | 当たった所ごとの処理は別のファイルに置き、`surface.rs` には振り分けの 1 行だけ足す |
-| `apps/movie-maker/src/win/app.rs`（496 行） | D1、D2、L2 | 最初に触る PR がウィンドウを作る所と割り付けの関数を別のファイルに移す |
+| `apps/movie-maker/src/win/app.rs`、`layout.rs` | D1、D2、L2 | ウィンドウを作る所と割り付けの関数は `layout.rs` が持ち、`app.rs` には起動の流れだけを置く |
 | `apps/movie-maker/src/win/verify_edit.rs` | T1、Z4 | 行の位置は `mm-ui-layout` の関数から引く（定数の `ROW_H` を使わない） |
 | `apps/movie-maker/web/transport.js` | E1、Z1、L2 | E1 が先。Z1 は `keyName` だけ |
 | `crates/mm-ops/` と生成物（`ops.json`、`ops.ts`） | B1、E2 | 生成物が衝突したら `scripts/regen.sh` で作り直す |
