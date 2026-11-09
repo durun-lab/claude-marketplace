@@ -6,6 +6,7 @@ import {
   IPC_COMMAND_TABLE,
   IPC_RUN_COMMAND,
   NOT_AVAILABLE,
+  PANEL_COMMAND_EVENT,
   type UiCommand,
 } from "./commands.ts";
 
@@ -58,6 +59,18 @@ describe("createIpcCommandsApi", () => {
     expect(listen.mock.calls[0]?.[0]).toBe(COMMANDS_CHANGED_EVENT);
     listen.mock.calls[0]?.[1]({ payload: [lift] });
     expect(handler).toHaveBeenCalledWith([lift]);
+    expect(stop).toBe(off);
+  });
+
+  it("アプリがメニューやキーから実行したパネルのコマンドの ID を渡す", async () => {
+    const off = vi.fn();
+    const listen = vi.fn().mockResolvedValue(off);
+    const handler = vi.fn();
+    const stop = await createIpcCommandsApi(vi.fn(), listen).onPanelCommand(handler);
+    expect(listen.mock.calls[0]?.[0]).toBe(PANEL_COMMAND_EVENT);
+    expect(PANEL_COMMAND_EVENT).toBe("mm:panel-command");
+    listen.mock.calls[0]?.[1]({ payload: "media.import" });
+    expect(handler).toHaveBeenCalledWith("media.import");
     expect(stop).toBe(off);
   });
 });

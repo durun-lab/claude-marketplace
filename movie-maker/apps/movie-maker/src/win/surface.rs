@@ -11,7 +11,7 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetCapture, GetKeyState, ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE,
-    TRACKMOUSEEVENT, VK_CONTROL, VK_ESCAPE, VK_F4, VK_MENU, VK_SHIFT,
+    TRACKMOUSEEVENT, VK_CONTROL, VK_ESCAPE, VK_F10, VK_F4, VK_MENU, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, IsWindow, LoadCursorW, PostMessageW, RegisterClassW,
@@ -247,9 +247,10 @@ fn wheel_event(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> PointerEvent {
     }
 }
 
-/// Alt と一緒に押しても既定の処理に渡すキー。F4（ウィンドウを閉じる）だけ。
+/// `WM_SYSKEYDOWN` と `WM_SYSKEYUP` のうち、既定の処理に渡すキー。Alt+F4（ウィンドウを閉じる）と、
+/// F10（離したときにメニューバーをキーで開く。Windows の決まりのキー）。
 fn passes_to_system(vk: u32) -> bool {
-    vk == u32::from(VK_F4.0)
+    vk == u32::from(VK_F4.0) || vk == u32::from(VK_F10.0)
 }
 
 fn is_escape(wparam: WPARAM) -> bool {
@@ -324,7 +325,7 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             key_pressed(wparam, lparam);
             LRESULT(0)
         }
-        // Alt を押している間のキーは WM_SYSKEYDOWN で届く。Alt+F4 だけは既定の処理（ウィンドウを閉じる）に渡す。
+        // Alt を押している間のキーと F10 は WM_SYSKEYDOWN で届く。Alt+F4 と F10 は既定の処理に渡す。
         WM_SYSKEYDOWN if !passes_to_system(wparam.0 as u32) => {
             key_pressed(wparam, lparam);
             LRESULT(0)
@@ -347,8 +348,12 @@ mod tests {
     }
 
     #[test]
-    fn alt_のキーは_f4_だけを既定の処理に渡す() {
+    fn システムのキーは_f4_と_f10_だけを既定の処理に渡す() {
         assert!(passes_to_system(u32::from(VK_F4.0)));
+        assert!(
+            passes_to_system(u32::from(VK_F10.0)),
+            "F10 でメニューバーを開く"
+        );
         assert!(
             !passes_to_system(u32::from(VK_MENU.0)),
             "Alt を離してもメニューモードに入らない"

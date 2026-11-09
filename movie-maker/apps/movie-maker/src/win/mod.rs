@@ -21,6 +21,7 @@ mod keys;
 mod layout;
 mod media;
 mod media_ipc;
+mod menu;
 mod mixer;
 mod mixer_ipc;
 mod pack_ipc;

@@ -142,6 +142,8 @@ pub struct Shared {
     pub core: OnceLock<Arc<mm_serve::Core>>,
     /// JSON のプロジェクトで操作を適用したとき、WebView へ `mm:doc-changed` を送る関数。`core` があるときは使わない。
     json_notify: OnceLock<ChangeNotify>,
+    /// UI のコマンドのうち、パネルとウィンドウが実行するものを Tauri の側へ渡すフック。
+    pub window_hook: crate::win::commands::WindowHook,
     /// `core` の変更で触った ID のうち、再生スレッドがまだキャッシュを捨てていないもの。
     pub reload_touched: Mutex<Vec<String>>,
     /// Review パネルが Program に当てて見せている提案。
@@ -190,6 +192,7 @@ impl Shared {
             edit_lane: Mutex::new(None),
             core: OnceLock::new(),
             json_notify: OnceLock::new(),
+            window_hook: crate::win::commands::WindowHook::default(),
             reload_touched: Mutex::new(Vec::new()),
             review_preview: crate::win::review::PreviewSlot::default(),
             review_drawing: crate::win::review::drawing::DrawingSlot::default(),

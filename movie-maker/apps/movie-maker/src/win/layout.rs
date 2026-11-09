@@ -1,4 +1,4 @@
-//! ウィンドウの割り付け。Tauri のウィンドウを作り、その下の左に wgpu のサーフェス（子 HWND。
+//! ウィンドウの割り付け。メニューバーつきの Tauri のウィンドウを作り、その下の左に wgpu のサーフェス（子 HWND。
 //! Program と Timeline）、右に子 WebView（`ui/dist/` の shell と再生の操作列）を並べる。
 
 use std::sync::Arc;
@@ -7,6 +7,8 @@ use tauri::webview::WebviewBuilder;
 use tauri::window::WindowBuilder;
 use tauri::{PhysicalPosition, PhysicalSize, Position, Rect, Size, Webview, WebviewUrl, Window};
 
+use crate::win::commands;
+use crate::win::menu;
 use crate::win::state::Shared;
 use crate::win::surface::{self, PixelRect};
 
@@ -26,6 +28,8 @@ pub struct Layout {
 }
 
 /// サーフェスと WebView の矩形（物理ピクセル）をウィンドウの大きさから決める。
+/// メニューバーはウィンドウの枠の側にあり、`inner_size` も子の位置もメニューバーの下のクライアント領域で測るので、
+/// メニューバーの高さは引かない。
 pub fn split_rects(width: u32, height: u32) -> (PixelRect, PixelRect) {
     let left = (f64::from(width) * SPLIT).round() as i32;
     let (w, h) = (width as i32, height as i32);
@@ -47,15 +51,19 @@ pub fn apply(window: &Window, webview: &Webview, l: &Layout) {
         .set_surface_size(s.2.max(1) as u32, s.3.max(1) as u32);
 }
 
-/// ウィンドウの下に、サーフェスの子 HWND と子 WebView を並べる。サーフェスの HWND を返す。
+/// メニューバーつきのウィンドウの下に、サーフェスの子 HWND と子 WebView を並べる。サーフェスの HWND を返す。
+/// メニューバーはウィンドウを作るときに付ける。後から付けると、最初の矩形をメニューバーの分だけ高く測るため。
 pub fn create_window(
     app: &mut tauri::App,
     shared: &Arc<Shared>,
 ) -> Result<(Window, Webview, isize), Box<dyn std::error::Error>> {
+    let (bar, items) = menu::build(app.handle(), &commands::table(shared))?;
     let window = WindowBuilder::new(app, "main")
         .title("movie-maker")
         .inner_size(INITIAL_SIZE.0, INITIAL_SIZE.1)
+        .menu(bar)
         .build()?;
+    menu::connect(app, &window, shared, items);
     let size = window.inner_size()?;
     let (s, v) = split_rects(size.width, size.height);
     let surface_hwnd = surface::create(window.hwnd()?.0 as isize, shared.clone(), s)?;
@@ -83,6 +91,7 @@ mod tests {
                 "サーフェスの右端と WebView の左端が一致する"
             );
             assert_eq!(v.0 + v.2, w as i32);
+            assert_eq!((s.1, v.1), (0, 0), "どちらもメニューバーのすぐ下から");
             assert_eq!((s.3, v.3), (h as i32, h as i32));
         }
     }

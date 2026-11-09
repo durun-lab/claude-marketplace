@@ -16,6 +16,7 @@ export {
   IPC_COMMAND_TABLE,
   IPC_RUN_COMMAND,
   NOT_AVAILABLE,
+  PANEL_COMMAND_EVENT,
   type CommandsApi,
   type UiCommand,
 } from "./commands.ts";

@@ -208,6 +208,7 @@ pub fn spawn(app: AppHandle, state: Arc<SyncState>) {
                 emit_selection_if_changed(&app, &state.shared, &mut sent_selection);
                 crate::win::source_ipc::emit_if_changed(&app, &state.shared, &mut sent_source);
                 if let Some(table) = commands::changed(&state.shared, &mut sent_commands) {
+                    crate::win::menu::reflect(&app, &table);
                     let _ = app.emit(COMMANDS_CHANGED_EVENT, table);
                 }
                 let t = state.shared.playhead();

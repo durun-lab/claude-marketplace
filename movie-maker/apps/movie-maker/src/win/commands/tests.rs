@@ -57,9 +57,12 @@ fn 表のキーの列はキーの表から引き_見た目を付ける() {
     assert_eq!(redo.keys, ["Ctrl+KeyY", "Ctrl+Shift+KeyZ"]);
     assert_eq!(redo.key_label.as_deref(), Some("Ctrl+Y"));
     let import = row(&table, "media.import");
-    assert!(import.keys.is_empty());
-    assert_eq!(import.key_label, None);
+    assert_eq!(import.keys, ["Ctrl+KeyI"]);
+    assert_eq!(import.key_label.as_deref(), Some("Ctrl+I"));
     assert_eq!(import.panel, Some("media"));
+    let export = row(&table, "export.start");
+    assert!(export.keys.is_empty());
+    assert_eq!(export.key_label, None);
 }
 
 #[test]
@@ -123,7 +126,7 @@ fn 押せるかが変わると表を送り直す() {
 }
 
 #[test]
-fn 再生のコマンドを_program_に送り_表に無い_id_とパネルのコマンドは拒否する() {
+fn 再生のコマンドを_program_に送り_表に無い_id_は拒否する() {
     let shared = Arc::new(Shared::new());
     let (tx, rx) = channel();
     *shared.commands.lock().unwrap() = Some(tx);
@@ -133,12 +136,34 @@ fn 再生のコマンドを_program_に送り_表に無い_id_とパネルのコ
     assert_eq!(rx.try_recv(), Ok(Command::Toggle));
     assert_eq!(rx.try_recv(), Ok(Command::Seek(0.0)));
     assert_eq!(rx.try_recv(), Ok(Command::Undo));
-    assert!(
-        run(&shared, "media.import").is_err(),
-        "パネルは WebView が開く"
+    assert_eq!(
+        run(&shared, "media.import"),
+        Err("The window isn't ready yet".to_owned()),
+        "ウィンドウを作る前は、パネルのコマンドを渡す先が無い"
     );
     assert!(run(&shared, "clip.nope").is_err());
     assert!(rx.try_recv().is_err(), "拒否したコマンドは何も送らない");
+}
+
+#[test]
+fn パネルとウィンドウのコマンドはウィンドウのフックで_tauri_の側へ渡す() {
+    let shared = Arc::new(Shared::new());
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sink = seen.clone();
+    shared
+        .window_hook
+        .set(move |f| sink.lock().unwrap().push(f));
+    run(&shared, "export.start").expect("Deliver を開く");
+    run_from_key(&shared, "media.import").expect("Media を開いて取り込みを始める");
+    run(&shared, "app.exit").expect("閉じる");
+    assert_eq!(
+        *seen.lock().unwrap(),
+        [
+            Forward::Panel("export.start"),
+            Forward::Panel("media.import"),
+            Forward::Window(WindowAction::Exit),
+        ]
+    );
 }
 
 #[test]

@@ -16,6 +16,7 @@ const BINDINGS: &[(&str, &str)] = &[
     ("edit.redo", "Ctrl+KeyY"),
     ("edit.redo", "Ctrl+Shift+KeyZ"),
     ("edit.undo", "Ctrl+KeyZ"),
+    ("media.import", "Ctrl+KeyI"),
     ("playback.go_to_end", "End"),
     ("playback.go_to_start", "Home"),
     ("playback.play_forward", "KeyL"),
@@ -155,37 +156,59 @@ mod tests {
     fn キーからコマンドの_id_を引き_持ち主の編集か再生のコマンドを実行する() {
         use crate::win::commands::{Action, Owner};
         use crate::win::edit_actions::EditAction as E;
-        use Action::{Edit, Playback};
         use Command::{Pause, Play, Reverse, Seek, Step, Toggle};
+        let edit = |a| Owner::App(Action::Edit(a));
+        let play = |c| Owner::App(Action::Playback(c));
         let cases = [
-            ("KeyI", "source.mark_in", Edit(E::MarkIn)),
-            ("KeyO", "source.mark_out", Edit(E::MarkOut)),
-            ("Comma", "clip.insert", Edit(E::Insert)),
-            ("Period", "clip.overwrite", Edit(E::Overwrite)),
-            ("KeyB", "clip.split", Edit(E::Split)),
-            ("Delete", "clip.lift", Edit(E::Lift)),
-            ("Backspace", "clip.extract", Edit(E::Extract)),
-            ("Ctrl+KeyZ", "edit.undo", Edit(E::Undo)),
-            ("Ctrl+KeyY", "edit.redo", Edit(E::Redo)),
-            ("Ctrl+Shift+KeyZ", "edit.redo", Edit(E::Redo)),
-            ("Space", "playback.toggle", Playback(Toggle)),
-            ("KeyJ", "playback.play_reverse", Playback(Reverse)),
-            ("KeyK", "playback.stop", Playback(Pause)),
-            ("KeyL", "playback.play_forward", Playback(Play)),
-            ("ArrowLeft", "playback.step_back", Playback(Step(-1))),
-            ("ArrowRight", "playback.step_forward", Playback(Step(1))),
-            ("Home", "playback.go_to_start", Playback(Seek(0.0))),
-            ("End", "playback.go_to_end", Playback(Seek(f64::MAX))),
+            ("KeyI", "source.mark_in", edit(E::MarkIn)),
+            ("KeyO", "source.mark_out", edit(E::MarkOut)),
+            ("Comma", "clip.insert", edit(E::Insert)),
+            ("Period", "clip.overwrite", edit(E::Overwrite)),
+            ("KeyB", "clip.split", edit(E::Split)),
+            ("Delete", "clip.lift", edit(E::Lift)),
+            ("Backspace", "clip.extract", edit(E::Extract)),
+            ("Ctrl+KeyZ", "edit.undo", edit(E::Undo)),
+            ("Ctrl+KeyY", "edit.redo", edit(E::Redo)),
+            ("Ctrl+Shift+KeyZ", "edit.redo", edit(E::Redo)),
+            ("Ctrl+KeyI", "media.import", Owner::Panel("media")),
+            ("Space", "playback.toggle", play(Toggle)),
+            ("KeyJ", "playback.play_reverse", play(Reverse)),
+            ("KeyK", "playback.stop", play(Pause)),
+            ("KeyL", "playback.play_forward", play(Play)),
+            ("ArrowLeft", "playback.step_back", play(Step(-1))),
+            ("ArrowRight", "playback.step_forward", play(Step(1))),
+            ("Home", "playback.go_to_start", play(Seek(0.0))),
+            ("End", "playback.go_to_end", play(Seek(f64::MAX))),
         ];
         assert_eq!(cases.len(), BINDINGS.len(), "全部のキーを確かめる");
-        for (key, id, action) in cases {
+        for (key, id, owner) in cases {
             assert_eq!(command_for(key), Some(id), "{key}");
             let spec = commands::find(id).expect(id);
-            assert_eq!(spec.owner, Owner::App(action), "{key}");
+            assert_eq!(spec.owner, owner, "{key}");
         }
         assert_eq!(command_for("KeyZ"), None);
         assert_eq!(keys_of("edit.redo"), ["Ctrl+KeyY", "Ctrl+Shift+KeyZ"]);
-        assert!(keys_of("media.import").is_empty());
+        assert!(keys_of("export.start").is_empty());
+    }
+
+    #[test]
+    fn ctrl_i_は_import_media_をウィンドウのフックで_shell_に渡す() {
+        use crate::win::commands::Forward;
+        let shared = Arc::new(Shared::new());
+        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let sink = seen.clone();
+        shared
+            .window_hook
+            .set(move |f| sink.lock().unwrap().push(f));
+        dispatch(&shared, "surface", "Ctrl+KeyI");
+        dispatch(&shared, "webview", "Ctrl+KeyI");
+        assert_eq!(
+            *seen.lock().unwrap(),
+            [
+                Forward::Panel("media.import"),
+                Forward::Panel("media.import")
+            ]
+        );
     }
 
     #[test]
