@@ -18,10 +18,12 @@
   flex: none;
 }
 
+/* キーフレームの欄の置き方は Inspector の幅で切り替える（下の @container）。 */
 .mm-insp {
   display: flex;
   flex-direction: column;
   gap: var(--mm-space-md);
+  container-type: inline-size;
   font-family: var(--mm-font-family);
   font-size: var(--mm-font-size-base);
   color: var(--mm-color-text);
@@ -37,10 +39,10 @@
   overflow-wrap: anywhere;
 }
 
+/* 区画の名前と、区画のキーフレームの欄。狭い Inspector では縦に重ね、広い Inspector では行と同じ 3 列にする。 */
 .mm-insp-title {
-  display: flex;
+  display: grid;
   align-items: center;
-  justify-content: space-between;
   gap: var(--mm-space-sm);
   margin: 0;
   padding: var(--mm-space-xs) var(--mm-space-md);
@@ -218,25 +220,25 @@
   color: var(--mm-color-text-muted);
 }
 
-/* 時間の欄。狭い列では行の下の段に全幅で出し、広い列（コンテナーが 380px 以上）では行の右に出す。 */
-.mm-insp {
-  container-type: inline-size;
-}
-
-.mm-insp-title {
-  display: grid;
-  grid-template-columns: auto minmax(5em, 1fr);
-}
-
+/* 区画の名前と、マスクの区画の削除のボタン（右端）。 */
 .mm-insp-titletext {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--mm-space-sm);
   min-width: 0;
 }
 
-.mm-insp-row:has(> .mm-insp-strip) > .mm-insp-strip {
+/*
+ * キーフレームの欄。狭い Inspector では行の下に全幅で出し、キーフレームの無い行と区画には出さない（全部の行の高さが倍になるのを避ける）。
+ * 区画のキーフレームの欄も区画の名前の下に全幅で置き、行のキーフレームの欄と時刻の位置をそろえる。
+ */
+.mm-insp-row > .mm-insp-strip {
   grid-column: 1 / -1;
+}
+
+.mm-insp-strip[data-keyed="false"] {
+  display: none;
 }
 
 .mm-insp-strip {
@@ -247,17 +249,14 @@
   border: var(--mm-border-width) solid var(--mm-color-border);
   border-radius: var(--mm-radius-sm);
   background: var(--mm-color-bg);
-  cursor: ew-resize;
+  cursor: pointer;
   touch-action: none;
 }
 
-/* 端のひし形が欄からはみ出さないよう、時刻の目盛りは内側の track に取る。 */
-.mm-insp-strip-track {
+/* 時刻と x の対応を取る範囲。端のひし形がキーフレームの欄からはみ出さないよう、ひし形の幅だけ内側に取る。 */
+.mm-insp-strip-axis {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: var(--mm-size-bullet);
-  right: var(--mm-size-bullet);
+  inset: 0 var(--mm-size-bullet);
 }
 
 .mm-insp-strip:focus-visible {
@@ -265,14 +264,14 @@
   outline-offset: var(--mm-size-focus-offset);
 }
 
-/* 組の見出しの欄は見るだけ。 */
+/* 区画のキーフレームの欄は、まとめのひし形を見せるだけで操作は受けない。 */
 .mm-insp-strip-summary {
   height: 1.4em;
   cursor: default;
   pointer-events: none;
 }
 
-.mm-insp-strip-head {
+.mm-insp-strip-playhead {
   position: absolute;
   top: 0;
   bottom: 0;
@@ -282,7 +281,7 @@
   pointer-events: none;
 }
 
-/* キーフレームのひし形。選んだものは accent で塗る。 */
+/* キーフレームのひし形。選んだものと動かしているものは accent で塗る。 */
 .mm-insp-strip-key {
   position: absolute;
   top: 50%;
@@ -296,30 +295,33 @@
 }
 
 .mm-insp-strip-key[data-selected="true"],
-.mm-insp-strip-key[data-dragging="true"] {
+.mm-insp-strip-key[data-moving="true"] {
   border-color: var(--mm-color-accent);
   background: var(--mm-color-accent);
 }
 
-.mm-insp-strip-summary .mm-insp-strip-key {
-  cursor: default;
-}
-
-@container (min-width: 380px) {
-  .mm-insp-row:has(> .mm-insp-strip) {
+/*
+ * 右の列を 400 論理ピクセルに広げると、Inspector の幅は 362〜379（縦のスクロールバーの有無で変わる）になる。
+ * その幅からは Premiere の Effect Controls と同じく、キーフレームの欄を行の右（3 列目）に置き、キーフレームの無い行にも出す。
+ * @container の条件は var() を読めないので、幅は数で書く。
+ */
+@container (min-width: 340px) {
+  .mm-insp-body:has(.mm-insp-strip) > .mm-insp-row,
+  .mm-insp-title:has(> .mm-insp-strip) {
     grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) minmax(0, 2fr);
   }
 
-  .mm-insp-row:has(> .mm-insp-strip) > .mm-insp-strip {
-    grid-column: auto;
+  .mm-insp-row > .mm-insp-strip,
+  .mm-insp-title > .mm-insp-strip {
+    grid-column: 3;
   }
 
-  .mm-insp-title {
-    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) minmax(0, 2fr);
-  }
-
-  .mm-insp-titletext {
+  .mm-insp-title:has(> .mm-insp-strip) > .mm-insp-titletext {
     grid-column: 1 / 3;
+  }
+
+  .mm-insp-strip[data-keyed="false"] {
+    display: block;
   }
 }
 

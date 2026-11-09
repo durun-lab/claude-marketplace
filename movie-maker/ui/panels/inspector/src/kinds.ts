@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import type { Layer, Param, ParamValue } from "@mm/sdk";
 import type { ParamHint } from "./model.ts";
 
@@ -108,19 +108,22 @@ export const useLayerKinds = (layer: Layer | null, lookup: KindLookup | undefine
     );
     return () => clearTimeout(timer);
   }, [signature, lookup]);
-  if (!layer) return NO_KINDS;
-  const live = (t: Target): readonly KindParamSpec[] | undefined => {
-    const r = resolved[t.key];
-    return r && r.kind === t.kind ? r.specs : undefined;
-  };
-  const [source, ...effects] = targets;
-  return {
-    source: source && live(source),
-    effects: Object.fromEntries(
-      effects.flatMap((t) => {
-        const specs = live(t);
-        return specs ? [[t.key.slice("effect:".length), specs]] : [];
-      }),
-    ),
-  };
+  // 再生位置が届くたびに呼ばれる。レイヤーと定義が変わるまで同じオブジェクトを返し、Inspector の区画を作り直させない。
+  return useMemo(() => {
+    if (!layer) return NO_KINDS;
+    const live = (t: Target): readonly KindParamSpec[] | undefined => {
+      const r = resolved[t.key];
+      return r && r.kind === t.kind ? r.specs : undefined;
+    };
+    const [source, ...effects] = lookup ? targetsOf(layer) : [];
+    return {
+      source: source && live(source),
+      effects: Object.fromEntries(
+        effects.flatMap((t) => {
+          const specs = live(t);
+          return specs ? [[t.key.slice("effect:".length), specs]] : [];
+        }),
+      ),
+    };
+  }, [layer, lookup, resolved]);
 };

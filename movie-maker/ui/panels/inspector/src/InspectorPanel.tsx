@@ -1,4 +1,4 @@
-import { useState } from "preact/hooks";
+import { useMemo, useState } from "preact/hooks";
 import { type Asset, type Layer, type Op, type ParamRef, type ParamValue, evalParam } from "@mm/sdk";
 import { Editor } from "./editors.tsx";
 import { AddMaskButton, FadeRows, RemoveMaskButton } from "./Extras.tsx";
@@ -100,16 +100,18 @@ const RowView = ({ row, target, assets, at, span, selected, onOp, onSeek, onSele
         />
         {at && <KeyframeNav target={target} param={row.param} at={at} label={row.label} onOp={onOp} onSeek={onSeek} />}
       </div>
-      <KeyframeStrip
-        target={target}
-        param={row.param}
-        label={row.label}
-        span={span}
-        fps={at?.fps ?? DEFAULT_FPS}
-        playheadSec={at?.sec}
-        onOp={onOp}
-        onSeek={onSeek}
-      />
+      {at && (
+        <KeyframeStrip
+          target={target}
+          param={row.param}
+          label={row.label}
+          span={span}
+          fps={at.fps}
+          playheadSec={at.sec}
+          onOp={onOp}
+          onSeek={onSeek}
+        />
+      )}
     </div>
   );
 };
@@ -120,7 +122,7 @@ interface SectionViewProps {
   assets: readonly Asset[];
   at: Playhead | null;
   span: LayerSpan;
-  /** 音量の区画にフェードの行を出すか（Show Only Keyframed Properties の間は出さない）。 */
+  /** 音の区画にフェードの行を出すか（Show Only Keyframed Properties の間は出さない）。 */
   showFades: boolean;
   selectedPath?: string | null;
   onOp: (op: Op) => void;
@@ -128,62 +130,83 @@ interface SectionViewProps {
   onSelectParam?: (path: string) => void;
 }
 
-/** 区画の見出し（右にキーフレームのまとめの欄）と、パラメータの行。 */
-const SectionView = ({ layer, section, assets, at, span, showFades, selectedPath, onOp, onSeek, onSelectParam }: SectionViewProps) => (
+/** 区画の見出し（区画のキーフレームの欄つき）と、パラメータの行。 */
+const SectionView = ({ layer, section, assets, at, span, showFades, selectedPath, onOp, onSeek, onSelectParam }: SectionViewProps) => {
+  // 区画は InspectorPanel がレイヤーと定義が変わったときだけ作る。再生位置が動いても同じ配列を渡し、まとめのひし形を描き直さない。
+  const times = useMemo(() => section.rows.flatMap((r) => (r.param.keyframes ?? []).map((k) => k.time)), [section]);
+  return (
+    <section class="mm-insp-section">
+      <h3 class="mm-insp-title">
+        <span class="mm-insp-titletext">
+          {section.title}
+          {section.maskId !== undefined && <RemoveMaskButton maskId={section.maskId} onOp={onOp} />}
+        </span>
+        {at && <KeyframeSummary span={span} times={times} playheadSec={at.sec} />}
+      </h3>
+      <div class="mm-insp-body">
+        {section.rows.map((row) => (
+          <RowView
+            key={`${layer.id}:${row.path}`}
+            row={row}
+            target={{ layer: layer.id, path: row.path }}
+            assets={assets}
+            at={at}
+            span={span}
+            selected={selectedPath === row.path}
+            onOp={onOp}
+            onSeek={onSeek}
+            onSelect={onSelectParam && (() => onSelectParam(row.path))}
+          />
+        ))}
+        {section.id === "audio" && showFades && <FadeRows layer={layer} onOp={onOp} />}
+      </div>
+    </section>
+  );
+};
+
+/** Show Only Keyframed Properties の間は、キーフレームのある行と、その行のある区画だけを残す。 */
+const keyframedOnly = (sections: Section[]): Section[] =>
+  sections.map((s) => ({ ...s, rows: s.rows.filter((r) => hasKeyframes(r.param)) })).filter((s) => s.rows.length > 0);
+
+const KeyedOnlyToggle = ({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) => (
+  <label class="mm-insp-keyedonly">
+    <input type="checkbox" checked={checked} onChange={(e) => onChange(e.currentTarget.checked)} />
+    <span>Show Only Keyframed Properties</span>
+  </label>
+);
+
+const AddMaskSection = ({ layer, onOp }: { layer: Layer; onOp: (op: Op) => void }) => (
   <section class="mm-insp-section">
     <h3 class="mm-insp-title">
-      <span class="mm-insp-titletext">
-        {section.title}
-        {section.maskId !== undefined && <RemoveMaskButton maskId={section.maskId} onOp={onOp} />}
-      </span>
-      <KeyframeSummary
-        span={span}
-        times={section.rows.flatMap((r) => (r.param.keyframes ?? []).map((k) => k.time))}
-        playheadSec={at?.sec}
-      />
+      <span class="mm-insp-titletext">Masks</span>
     </h3>
     <div class="mm-insp-body">
-      {section.rows.map((row) => (
-        <RowView
-          key={`${layer.id}:${row.path}`}
-          row={row}
-          target={{ layer: layer.id, path: row.path }}
-          assets={assets}
-          at={at}
-          span={span}
-          selected={selectedPath === row.path}
-          onOp={onOp}
-          onSeek={onSeek}
-          onSelect={onSelectParam && (() => onSelectParam(row.path))}
-        />
-      ))}
-      {section.id === "audio" && showFades && <FadeRows layer={layer} onOp={onOp} />}
+      <AddMaskButton layer={layer} onOp={onOp} />
     </div>
   </section>
 );
 
 /**
  * 選んだレイヤーのパラメータを、値の型の JSON Schema から作った入力欄で編集する。
- * 再生位置を渡すと、各パラメータにキーフレームナビゲーター（前へ・足す外す・次へ・補間）を出す。
+ * 再生位置を渡すと、各パラメータにキーフレームナビゲーター（前へ・足す外す・次へ・補間）とキーフレームの欄を出す。
  */
 export const InspectorPanel = (props: InspectorPanelProps) => {
   const { layer, assets = [], hints = DEFAULT_HINTS, kinds, onOp, time, onSeek, selectedPath, onSelectParam } = props;
   const [keyedOnly, setKeyedOnly] = useState(false);
-  if (!layer) {
+  // 再生中は再生位置が届くたびに描き直す。レイヤーから決まる範囲と区画はレイヤーが変わるまで同じものを渡し、ひし形を描き直さない。
+  const span = useMemo(() => layer && layerSpan(layer), [layer]);
+  const sections = useMemo(() => {
+    const all = layer ? describeLayer(layer, hints, kinds) : [];
+    return keyedOnly ? keyframedOnly(all) : all;
+  }, [layer, hints, kinds, keyedOnly]);
+  if (!layer || !span) {
     return <div class="mm-insp mm-insp-empty">No layer selected</div>;
   }
   const at: Playhead | null = time === undefined ? null : { sec: time, fps: props.fps ?? DEFAULT_FPS };
-  const span = layerSpan(layer);
-  const sections = describeLayer(layer, hints, kinds)
-    .map((s) => (keyedOnly ? { ...s, rows: s.rows.filter((r) => hasKeyframes(r.param)) } : s))
-    .filter((s) => !keyedOnly || s.rows.length > 0);
   return (
     <div class="mm-insp">
       <h2 class="mm-insp-header">{layer.id}</h2>
-      <label class="mm-insp-keyedonly">
-        <input type="checkbox" checked={keyedOnly} onChange={(e) => setKeyedOnly(e.currentTarget.checked)} />
-        <span>Show Only Keyframed Properties</span>
-      </label>
+      <KeyedOnlyToggle checked={keyedOnly} onChange={setKeyedOnly} />
       {sections.map((section) => (
         <SectionView
           key={section.id}
@@ -199,16 +222,7 @@ export const InspectorPanel = (props: InspectorPanelProps) => {
           onSelectParam={onSelectParam}
         />
       ))}
-      {!keyedOnly && (
-        <section class="mm-insp-section">
-          <h3 class="mm-insp-title">
-            <span class="mm-insp-titletext">Masks</span>
-          </h3>
-          <div class="mm-insp-body">
-            <AddMaskButton layer={layer} onOp={onOp} />
-          </div>
-        </section>
-      )}
+      {!keyedOnly && <AddMaskSection layer={layer} onOp={onOp} />}
     </div>
   );
 };
