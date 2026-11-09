@@ -59,7 +59,7 @@ const valueText = (v: ParamValue): string => {
 
 const paramOwner = (target: ParamRef): string => {
   if (target.layer) return `layer ${target.layer}`;
-  if (target.cut) return `cut ${target.cut}`;
+  if (target.cut) return `clip ${target.cut}`;
   return "project";
 };
 
@@ -68,19 +68,19 @@ const keyframeText = (k: Keyframe): string => `${plainSeconds(k.time)} to ${valu
 type Describers = { [N in OpName]?: (op: OpOf<N>) => string };
 
 const DESCRIBERS: Describers = {
-  ripple: (o) => `Ripple cut ${o.cut} ${o.edge} edge by ${signedSeconds(rationalSeconds(o.by))}`,
-  roll: (o) => `Roll cut ${o.cut} by ${signedSeconds(rationalSeconds(o.by))}`,
-  slip: (o) => `Slip cut ${o.cut} by ${signedSeconds(rationalSeconds(o.by))}`,
-  slide: (o) => `Slide cut ${o.cut} by ${signedSeconds(rationalSeconds(o.by))}`,
-  split: (o) => `Split cut ${o.cut} at ${plainSeconds(o.at)} (new cut ${o.new_cut})`,
-  join: (o) => `Join cut ${o.cut} with ${o.next}`,
-  insert: (o) => `Insert cut ${o.cut.id} into sequence ${o.sequence} at ${o.index}`,
-  overwrite: (o) => `Replace cut ${o.cut} with ${o.replacement.id}`,
-  extract: (o) => `Extract cut ${o.cut}`,
-  lift: (o) => `Lift cut ${o.cut}`,
-  disable: (o) => `${o.disabled === false ? "Enable" : "Disable"} cut ${o.cut}`,
-  insertCuts: (o) => `Insert ${plural(o.cuts.length, "cut")} into sequence ${o.sequence} at ${o.index}`,
-  extractCuts: (o) => `Extract ${plural(o.count, "cut")} from sequence ${o.sequence} at ${o.index}`,
+  ripple: (o) => `Ripple clip ${o.cut} ${o.edge} edge by ${signedSeconds(rationalSeconds(o.by))}`,
+  roll: (o) => `Roll clip ${o.cut} by ${signedSeconds(rationalSeconds(o.by))}`,
+  slip: (o) => `Slip clip ${o.cut} by ${signedSeconds(rationalSeconds(o.by))}`,
+  slide: (o) => `Slide clip ${o.cut} by ${signedSeconds(rationalSeconds(o.by))}`,
+  split: (o) => `Split clip ${o.cut} at ${plainSeconds(o.at)} (new clip ${o.new_cut})`,
+  join: (o) => `Join clip ${o.cut} with ${o.next}`,
+  insert: (o) => `Insert clip ${o.cut.id} into sequence ${o.sequence} at ${o.index}`,
+  overwrite: (o) => `Replace clip ${o.cut} with ${o.replacement.id}`,
+  extract: (o) => `Extract clip ${o.cut}`,
+  lift: (o) => `Lift clip ${o.cut}`,
+  disable: (o) => `${o.disabled === false ? "Enable" : "Disable"} clip ${o.cut}`,
+  insertCuts: (o) => `Insert ${plural(o.cuts.length, "clip")} into sequence ${o.sequence} at ${o.index}`,
+  extractCuts: (o) => `Extract ${plural(o.count, "clip")} from sequence ${o.sequence} at ${o.index}`,
   trimLayer: (o) => `Trim layer ${o.layer} ${o.edge} edge by ${signedSeconds(rationalSeconds(o.by))}`,
   addLayer: (o) => `Add layer ${o.layer.id} to ${o.composition}`,
   removeLayer: (o) => `Remove layer ${o.layer}`,
@@ -100,10 +100,10 @@ export const describeOp = ({ op, touches }: ProposalOp): string => {
   return touches.length > 0 ? `${op.op} (${touches.join(", ")})` : op.op;
 };
 
-/** 範囲を `Sequence s1 · 0:01.50–0:04.00 · 2 cuts` などの行にする。 */
+/** 範囲を `Sequence s1 · 0:01.50–0:04.00 · 2 clips` などの行にする。 */
 export const describeScope = (scope: ProposalScope): string[] => [
   ...scope.sequences.map(
-    (s) => `Sequence ${s.id} · ${clock(s.start)}–${clock(s.end)} · ${plural(s.cuts.length, "cut")}`,
+    (s) => `Sequence ${s.id} · ${clock(s.start)}–${clock(s.end)} · ${plural(s.cuts.length, "clip")}`,
   ),
   ...scope.layers.map((l) => `Layer ${l.id} (${l.comp})`),
   ...(scope.other.length > 0 ? [`Other: ${scope.other.join(", ")}`] : []),

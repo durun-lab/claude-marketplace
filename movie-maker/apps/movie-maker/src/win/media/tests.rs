@@ -257,7 +257,7 @@ fn 取り込み中は掃除を断る() {
     let state = state_with(dir.path(), vec![]);
     let busy = state.importing.lock().unwrap();
     let refused = state.clear_cache(&["preview".into()]);
-    assert_eq!(refused, Err("取り込み中は掃除できない".into()));
+    assert_eq!(refused, Err("Can't clean while importing".into()));
     drop(busy);
     assert!(state.clear_cache(&["preview".into()]).is_ok());
 }

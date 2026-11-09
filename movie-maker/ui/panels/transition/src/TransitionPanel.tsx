@@ -59,7 +59,7 @@ const useTransitions = (api: TransitionApi, refreshKey: number) => {
 
 /** カットを幅（長さに比例）で並べた帯。境のトランジションは、カットの頭に印と名前を出す。 */
 const Strip = ({ cuts, selected, onSelect }: { cuts: TransitionCut[]; selected: string | null; onSelect: (id: string) => void }) => (
-  <ol class="mm-tr-strip" aria-label="Cuts">
+  <ol class="mm-tr-strip" aria-label="Clips">
     {cuts.map((cut) => (
       <li key={cut.id} class="mm-tr-cell" style={{ flexGrow: cut.duration }}>
         <button
@@ -104,7 +104,7 @@ const Editor = ({ cut, first, kinds, onSet, onRemove }: EditorProps) => {
     <div class="mm-tr-editor">
       <h3 class="mm-tr-title">Transition into {cut.id}</h3>
       {first ? (
-        <p class="mm-tr-meta">The first cut has no previous cut.</p>
+        <p class="mm-tr-meta">The first clip has no previous clip.</p>
       ) : (
         <>
           <label class="mm-tr-row">

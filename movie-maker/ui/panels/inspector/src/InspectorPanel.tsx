@@ -1,8 +1,10 @@
+import { useMemo, useState } from "preact/hooks";
 import { type Asset, type Layer, type Op, type ParamRef, type ParamValue, evalParam } from "@mm/sdk";
 import { Editor } from "./editors.tsx";
 import { AddMaskButton, FadeRows, RemoveMaskButton } from "./Extras.tsx";
 import { fieldSpecFor } from "./fields.ts";
 import { KeyframeNav } from "./KeyframeNav.tsx";
+import { KeyframeStrip, KeyframeSummary, layerSpan, type LayerSpan } from "./KeyframeStrip.tsx";
 import type { LayerKinds } from "./kinds.ts";
 import { valueAtOp, type Playhead } from "./keyframes.ts";
 import {
@@ -13,6 +15,7 @@ import {
   shownValue,
   type FieldRow,
   type ParamHints,
+  type Section,
 } from "./model.ts";
 
 /** fps が渡されないときのフレームの数え方。 */
@@ -45,6 +48,7 @@ interface RowViewProps {
   target: ParamRef;
   assets: readonly Asset[];
   at: Playhead | null;
+  span: LayerSpan;
   selected: boolean;
   onOp: (op: Op) => void;
   onSeek?: (sec: number) => void;
@@ -76,7 +80,7 @@ const RowLabel = ({ row, onSelect }: { row: FieldRow; onSelect?: () => void }) =
   );
 };
 
-const RowView = ({ row, target, assets, at, selected, onOp, onSeek, onSelect }: RowViewProps) => {
+const RowView = ({ row, target, assets, at, span, selected, onOp, onSeek, onSelect }: RowViewProps) => {
   const animated = hasKeyframes(row.param);
   const value: ParamValue = at && animated ? evalParam(row.param, at.sec) : shownValue(row.param);
   const commit = (next: ParamValue) =>
@@ -96,53 +100,129 @@ const RowView = ({ row, target, assets, at, selected, onOp, onSeek, onSelect }: 
         />
         {at && <KeyframeNav target={target} param={row.param} at={at} label={row.label} onOp={onOp} onSeek={onSeek} />}
       </div>
+      {at && (
+        <KeyframeStrip
+          target={target}
+          param={row.param}
+          label={row.label}
+          span={span}
+          fps={at.fps}
+          playheadSec={at.sec}
+          onOp={onOp}
+          onSeek={onSeek}
+        />
+      )}
     </div>
   );
 };
 
+interface SectionViewProps {
+  layer: Layer;
+  section: Section;
+  assets: readonly Asset[];
+  at: Playhead | null;
+  span: LayerSpan;
+  /** 音の区画にフェードの行を出すか（Show Only Keyframed Properties の間は出さない）。 */
+  showFades: boolean;
+  selectedPath?: string | null;
+  onOp: (op: Op) => void;
+  onSeek?: (sec: number) => void;
+  onSelectParam?: (path: string) => void;
+}
+
+/** 区画の見出し（区画のキーフレームの欄つき）と、パラメータの行。 */
+const SectionView = ({ layer, section, assets, at, span, showFades, selectedPath, onOp, onSeek, onSelectParam }: SectionViewProps) => {
+  // 区画は InspectorPanel がレイヤーと定義が変わったときだけ作る。再生位置が動いても同じ配列を渡し、まとめのひし形を描き直さない。
+  const times = useMemo(() => section.rows.flatMap((r) => (r.param.keyframes ?? []).map((k) => k.time)), [section]);
+  return (
+    <section class="mm-insp-section">
+      <h3 class="mm-insp-title">
+        <span class="mm-insp-titletext">
+          {section.title}
+          {section.maskId !== undefined && <RemoveMaskButton maskId={section.maskId} onOp={onOp} />}
+        </span>
+        {at && <KeyframeSummary span={span} times={times} playheadSec={at.sec} />}
+      </h3>
+      <div class="mm-insp-body">
+        {section.rows.map((row) => (
+          <RowView
+            key={`${layer.id}:${row.path}`}
+            row={row}
+            target={{ layer: layer.id, path: row.path }}
+            assets={assets}
+            at={at}
+            span={span}
+            selected={selectedPath === row.path}
+            onOp={onOp}
+            onSeek={onSeek}
+            onSelect={onSelectParam && (() => onSelectParam(row.path))}
+          />
+        ))}
+        {section.id === "audio" && showFades && <FadeRows layer={layer} onOp={onOp} />}
+      </div>
+    </section>
+  );
+};
+
+/** Show Only Keyframed Properties の間は、キーフレームのある行と、その行のある区画だけを残す。 */
+const keyframedOnly = (sections: Section[]): Section[] =>
+  sections.map((s) => ({ ...s, rows: s.rows.filter((r) => hasKeyframes(r.param)) })).filter((s) => s.rows.length > 0);
+
+const KeyedOnlyToggle = ({ checked, onChange }: { checked: boolean; onChange: (checked: boolean) => void }) => (
+  <label class="mm-insp-keyedonly">
+    <input type="checkbox" checked={checked} onChange={(e) => onChange(e.currentTarget.checked)} />
+    <span>Show Only Keyframed Properties</span>
+  </label>
+);
+
+const AddMaskSection = ({ layer, onOp }: { layer: Layer; onOp: (op: Op) => void }) => (
+  <section class="mm-insp-section">
+    <h3 class="mm-insp-title">
+      <span class="mm-insp-titletext">Masks</span>
+    </h3>
+    <div class="mm-insp-body">
+      <AddMaskButton layer={layer} onOp={onOp} />
+    </div>
+  </section>
+);
+
 /**
  * 選んだレイヤーのパラメータを、値の型の JSON Schema から作った入力欄で編集する。
- * 再生位置を渡すと、各パラメータにキーフレームナビゲーター（前へ・足す外す・次へ・補間）を出す。
+ * 再生位置を渡すと、各パラメータにキーフレームナビゲーター（前へ・足す外す・次へ・補間）とキーフレームの欄を出す。
  */
 export const InspectorPanel = (props: InspectorPanelProps) => {
   const { layer, assets = [], hints = DEFAULT_HINTS, kinds, onOp, time, onSeek, selectedPath, onSelectParam } = props;
-  if (!layer) {
+  const [keyedOnly, setKeyedOnly] = useState(false);
+  // 再生中は再生位置が届くたびに描き直す。レイヤーから決まる範囲と区画はレイヤーが変わるまで同じものを渡し、ひし形を描き直さない。
+  const span = useMemo(() => layer && layerSpan(layer), [layer]);
+  const sections = useMemo(() => {
+    const all = layer ? describeLayer(layer, hints, kinds) : [];
+    return keyedOnly ? keyframedOnly(all) : all;
+  }, [layer, hints, kinds, keyedOnly]);
+  if (!layer || !span) {
     return <div class="mm-insp mm-insp-empty">No layer selected</div>;
   }
   const at: Playhead | null = time === undefined ? null : { sec: time, fps: props.fps ?? DEFAULT_FPS };
   return (
     <div class="mm-insp">
       <h2 class="mm-insp-header">{layer.id}</h2>
-      {describeLayer(layer, hints, kinds).map((section) => (
-        <section key={section.id} class="mm-insp-section">
-          <h3 class="mm-insp-title">
-            {section.title}
-            {section.maskId !== undefined && <RemoveMaskButton maskId={section.maskId} onOp={onOp} />}
-          </h3>
-          <div class="mm-insp-body">
-            {section.rows.map((row) => (
-              <RowView
-                key={row.path}
-                row={row}
-                target={{ layer: layer.id, path: row.path }}
-                assets={assets}
-                at={at}
-                selected={selectedPath === row.path}
-                onOp={onOp}
-                onSeek={onSeek}
-                onSelect={onSelectParam && (() => onSelectParam(row.path))}
-              />
-            ))}
-            {section.id === "audio" && <FadeRows layer={layer} onOp={onOp} />}
-          </div>
-        </section>
+      <KeyedOnlyToggle checked={keyedOnly} onChange={setKeyedOnly} />
+      {sections.map((section) => (
+        <SectionView
+          key={section.id}
+          layer={layer}
+          section={section}
+          assets={assets}
+          at={at}
+          span={span}
+          showFades={!keyedOnly}
+          selectedPath={selectedPath}
+          onOp={onOp}
+          onSeek={onSeek}
+          onSelectParam={onSelectParam}
+        />
       ))}
-      <section class="mm-insp-section">
-        <h3 class="mm-insp-title">Masks</h3>
-        <div class="mm-insp-body">
-          <AddMaskButton layer={layer} onOp={onOp} />
-        </div>
-      </section>
+      {!keyedOnly && <AddMaskSection layer={layer} onOp={onOp} />}
     </div>
   );
 };

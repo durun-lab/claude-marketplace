@@ -25,7 +25,7 @@ pub fn handler(invoke: tauri::ipc::Invoke) -> bool {
 
 fn service() -> Result<Arc<Feedback>, String> {
     feedback::service().ok_or_else(|| {
-        "自動の改善を使えない（movie-maker の git の作業ツリーが見つからない。MM_IMPROVE_REPO で指せる）"
+        "Auto-improve is unavailable (movie-maker's git working tree wasn't found; set MM_IMPROVE_REPO to point to it)"
             .into()
     })
 }

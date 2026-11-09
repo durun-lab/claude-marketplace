@@ -244,7 +244,7 @@ fn panic_input(info: &PanicHookInfo<'_>) -> ErrorInput {
 }
 
 /// panic の payload の文。`panic!` は `&str` か `String` を載せる。
-fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
+pub fn panic_message(payload: &(dyn std::any::Any + Send)) -> String {
     payload
         .downcast_ref::<&str>()
         .map(|s| (*s).to_owned())

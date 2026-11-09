@@ -106,7 +106,7 @@ describe("マスク", () => {
 
   it("マスクの区画は最後に並び、追加のボタンの区画が続く", () => {
     mount(vi.fn());
-    const titles = [...host.querySelectorAll(".mm-insp-title")].map((e) => e.firstChild?.textContent);
+    const titles = [...host.querySelectorAll(".mm-insp-title")].map((e) => e.querySelector(".mm-insp-titletext")?.firstChild?.textContent);
     expect(titles.slice(-2)).toEqual(["Mask: mask-1", "Masks"]);
   });
 

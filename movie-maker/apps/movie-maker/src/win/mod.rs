@@ -40,5 +40,7 @@ mod transition;
 mod transition_ipc;
 mod verify;
 mod verify_edit;
+mod verify_restore;
+mod verify_stage;
 
 pub use app::run;
