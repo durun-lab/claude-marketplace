@@ -1,5 +1,6 @@
 //! レイヤーとその付属（変形、時間、重ね方、マスク、効果、音）。
 
+mod comp_time;
 mod shape;
 mod trim;
 

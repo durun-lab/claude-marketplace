@@ -1,7 +1,9 @@
 //! Timeline の文字（目盛りの時刻、帯の名前）を描いて、字の画素の位置と大きさを確かめる。
 //! 字の画素は、背景の色から離れて字の色に寄った画素で見分ける。
 
-use mm_ui_layout::{Item, ItemKind, PointerEvent, TimelineModel, LABEL_PAD, RULER_H, VIEW_MARGIN};
+use mm_ui_layout::{
+    Item, ItemKind, PointerEvent, TimelineModel, LABEL_PAD, MARK_PX, RULER_H, VIEW_MARGIN,
+};
 use mm_ui_wgpu::Ui;
 
 use crate::support::{bar_rect, gpu, px_in, render_sized, FORMAT, H, W};
@@ -90,11 +92,18 @@ fn 帯の名前は表示の倍率_125_から_200_でも論理ピクセルの寸�
             "表示の倍率 {scale}: 字の左端 {} （名前の左端 {left}）",
             b.0
         );
+        // 字は帯の上の部分（下端の帯のマーカーの所を除く）の縦の中央に置き、マーカーの所に掛けない。
+        let marks_top = bar.3 as f32 - MARK_PX * scale;
         let centre = (b.1 + b.3) as f32 / 2.0;
-        let bar_centre = (bar.1 + bar.3) as f32 / 2.0;
+        let name_centre = (bar.1 as f32 + marks_top) / 2.0;
         assert!(
-            (centre - bar_centre).abs() <= 3.0 * scale,
-            "表示の倍率 {scale}: 字の縦の中央 {centre} と帯の中央 {bar_centre}"
+            (centre - name_centre).abs() <= 3.0 * scale,
+            "表示の倍率 {scale}: 字の縦の中央 {centre} と名前を置く所の中央 {name_centre}"
+        );
+        assert!(
+            (b.3 as f32) < marks_top + 1.0,
+            "表示の倍率 {scale}: 字の下端 {} とマーカーの上端 {marks_top}",
+            b.3
         );
         let Some(one) = base else {
             base = Some(b);

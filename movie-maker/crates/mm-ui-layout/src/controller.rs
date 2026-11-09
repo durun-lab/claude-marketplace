@@ -255,12 +255,17 @@ impl TimelineController {
     }
 
     fn seek_at(&self, x: f32, model: &TimelineModel) -> f64 {
+        Self::seek_time(self.viewport().t_of(x), model)
+    }
+
+    /// 時刻 `t` に再生位置を動かすときの時刻。いちばん近いフレームの先頭にそろえ、コンポジションの中に収める。
+    fn seek_time(t: f64, model: &TimelineModel) -> f64 {
         let frame = if model.fps > 0.0 {
             1.0 / model.fps
         } else {
             0.0
         };
-        let t = quantize(self.viewport().t_of(x), model.fps);
+        let t = quantize(t, model.fps);
         t.clamp(0.0, (model.duration - frame).max(0.0))
     }
 
@@ -294,6 +299,9 @@ impl TimelineController {
                 deselect_cut(Action::Select(Some(index)), had_cut)
             }
             Hit::Cut { item, cut, part } => self.press_cut((item, cut, part), x, mods),
+            Hit::BarMark { item, keyframe } => {
+                self.press_bar_mark((item, keyframe), had_cut, model)
+            }
             Hit::Header { index } => {
                 self.selected = Some(index);
                 deselect_cut(Action::Select(Some(index)), had_cut)
@@ -303,6 +311,23 @@ impl TimelineController {
                 deselect_cut(Action::Select(None), had_cut)
             }
         }
+    }
+
+    /// 帯のマーカーを押した。レイヤーを選び、再生位置をそのキーフレームの時刻へ動かす（ドラッグは始めない）。
+    fn press_bar_mark(
+        &mut self,
+        (item, keyframe): (usize, usize),
+        had_cut: Option<(usize, usize)>,
+        model: &TimelineModel,
+    ) -> Vec<Action> {
+        self.selected = Some(item);
+        let t = model
+            .items
+            .get(item)
+            .and_then(|it| it.keyframes.get(keyframe));
+        let mut out = deselect_cut(Action::Select(Some(item)), had_cut);
+        out.extend(t.map(|t| Action::Seek(Self::seek_time(*t, model))));
+        out
     }
 
     /// カットを押した。レイヤーとカットを選び、端ならつまみの、中ならカットのドラッグを始める。
