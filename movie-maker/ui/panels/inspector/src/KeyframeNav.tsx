@@ -29,16 +29,17 @@ interface SeekProps {
   to: number | null;
   glyph: string;
   label: string;
-  tip: string;
+  /** ツールチップ。Premiere のコマンドの名前。 */
+  title: string;
   onSeek: (sec: number) => void;
 }
 
-const SeekButton = ({ to, glyph, label, tip, onSeek }: SeekProps) => (
+const SeekButton = ({ to, glyph, label, title, onSeek }: SeekProps) => (
   <button
     type="button"
     class="mm-insp-kfbtn"
     aria-label={label}
-    title={tip}
+    title={title}
     disabled={to === null}
     onClick={() => to !== null && onSeek(to)}
   >
@@ -82,7 +83,7 @@ export const KeyframeNav = ({ target, param, at, label, onOp, onSeek }: Keyframe
   return (
     <div class="mm-insp-kfnav">
       {onSeek && (
-        <SeekButton to={prevKeySec(param, at.sec, at.fps)} glyph={PREV} label={`${label} previous keyframe`} tip="Go to Previous Keyframe" onSeek={onSeek} />
+        <SeekButton to={prevKeySec(param, at.sec, at.fps)} glyph={PREV} label={`${label} previous keyframe`} title="Go to Previous Keyframe" onSeek={onSeek} />
       )}
       <button
         type="button"
@@ -95,7 +96,7 @@ export const KeyframeNav = ({ target, param, at, label, onOp, onSeek }: Keyframe
         {hasKey ? KEY_ON : KEY_OFF}
       </button>
       {onSeek && (
-        <SeekButton to={nextKeySec(param, at.sec, at.fps)} glyph={NEXT} label={`${label} next keyframe`} tip="Go to Next Keyframe" onSeek={onSeek} />
+        <SeekButton to={nextKeySec(param, at.sec, at.fps)} glyph={NEXT} label={`${label} next keyframe`} title="Go to Next Keyframe" onSeek={onSeek} />
       )}
       <InterpSelect active={activeKey(param, at)} label={label} onPick={(k, i) => onOp(interpolationOp(target, k, i))} />
     </div>

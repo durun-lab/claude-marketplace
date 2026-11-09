@@ -84,7 +84,7 @@ export interface KeyframeStripProps {
   onSeek?: (sec: number) => void;
 }
 
-/** 動かしているキーフレームの今の時刻と、置き先の時刻。キーフレームは時刻で見分ける（掴んだ後にレイヤーが届き直してもずれない）。 */
+/** 動かしているキーフレームの今の時刻と、置き先の時刻。キーフレームは時刻で見分ける（掴んだ後に新しいレイヤーのデータが届いてもずれない）。 */
 interface Move {
   from: RationalTime;
   to: RationalTime;
