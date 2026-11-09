@@ -193,7 +193,7 @@ fn 再生のコマンドを_program_に送り_表に無い_id_は拒否する() 
 
 #[test]
 fn timeline_のコマンドはポインターの入力のキューに積み_秒の移動は再生へ送る() {
-    use PointerEvent::Command as C;
+    use TimelineCommand::{FullExtentZoom, NextEdit, ZoomIn};
     let shared = Arc::new(Shared::new());
     let (tx, rx) = channel();
     *shared.commands.lock().unwrap() = Some(tx);
@@ -203,9 +203,9 @@ fn timeline_のコマンドはポインターの入力のキューに積み_秒�
     assert_eq!(
         *shared.input.lock().unwrap(),
         [
-            C(TimelineCommand::ZoomIn),
-            C(TimelineCommand::FullExtentZoom),
-            C(TimelineCommand::NextEdit)
+            PointerEvent::Command(ZoomIn),
+            PointerEvent::Command(FullExtentZoom),
+            PointerEvent::Command(NextEdit)
         ]
     );
     assert!(
