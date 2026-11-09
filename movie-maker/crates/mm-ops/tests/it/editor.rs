@@ -81,6 +81,10 @@ fn 古いバージョンの操作は触る所が重ならなければ適用さ�
             &human,
         )
         .unwrap_err();
+    assert_eq!(
+        err.to_string(),
+        "Conflicts with operations applied after version 0: k1"
+    );
     match err {
         OpError::Conflict { base, touches } => {
             assert_eq!(base, 0);
@@ -117,6 +121,7 @@ fn ロックの付いたレイヤーは_claude_の操作経路から触れない
     }
     .apply_op(&mut p, &human);
     let err = set_opacity("l1", 0.5).apply(&mut p, &claude).unwrap_err();
+    assert_eq!(err.to_string(), "Can't edit locked items: l1");
     assert!(matches!(err, OpError::Locked(_)));
     // 外すのも拒否する。
     let unlock: Op = LockLayer {

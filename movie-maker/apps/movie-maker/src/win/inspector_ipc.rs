@@ -27,7 +27,7 @@ pub async fn inspector_kind(
         let core = shared
             .core
             .get()
-            .ok_or_else(|| "プロジェクトを書き手として開いていない".to_string())?;
+            .ok_or_else(|| "Project is not open for writing".to_string())?;
         let query = KindQuery {
             kind: Some(kind),
             params,
@@ -35,7 +35,7 @@ pub async fn inspector_kind(
         let mut found = core.kinds(&query).map_err(|e| e.to_string())?;
         found
             .pop()
-            .ok_or_else(|| "種類の一覧が空で返った".to_string())
+            .ok_or_else(|| "Kind list came back empty".to_string())
     })
     .await
     .map_err(|e| e.to_string())?

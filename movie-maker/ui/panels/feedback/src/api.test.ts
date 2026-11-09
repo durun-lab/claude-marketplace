@@ -28,8 +28,8 @@ describe("createIpcFeedbackApi", () => {
   });
 
   it("アプリの失敗（文字列）を理由つきの Error にする", async () => {
-    const api = createIpcFeedbackApi(vi.fn().mockRejectedValue("自動の改善を使えない"), vi.fn());
-    await expect(api.status()).rejects.toThrow("自動の改善を使えない");
+    const api = createIpcFeedbackApi(vi.fn().mockRejectedValue("Auto-improve is unavailable"), vi.fn());
+    await expect(api.status()).rejects.toThrow("Auto-improve is unavailable");
   });
 
   it("mm:feedback-changed を受ける", async () => {

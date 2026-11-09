@@ -24,7 +24,7 @@ pub async fn transition_cuts(
     let doc = state
         .shared
         .doc()
-        .ok_or_else(|| "プロジェクトを開いていない".to_owned())?;
+        .ok_or_else(|| "No project open".to_owned())?;
     let pack = Pack::load(&PathBuf::from(dir)).ok();
     cuts_of(&doc.project, &doc.comp, pack.as_ref())
 }

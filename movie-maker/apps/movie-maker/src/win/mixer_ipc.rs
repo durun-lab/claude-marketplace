@@ -25,7 +25,7 @@ pub async fn mixer_state(state: State<'_, Arc<SyncState>>) -> Result<MixerState,
     let doc = state
         .shared
         .doc()
-        .ok_or_else(|| "プロジェクトを開いていない".to_owned())?;
+        .ok_or_else(|| "No project open".to_owned())?;
     state_of(&doc)
 }
 

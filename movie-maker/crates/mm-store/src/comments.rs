@@ -235,7 +235,7 @@ pub(crate) fn link_response(tx: &rusqlite::Transaction, stored: &StoredTxn) -> R
 impl Store {
     /// コメント 1 件。無ければ `NotFound`。
     pub fn comment(&self, id: &str) -> Result<Comment> {
-        read(&self.conn, id)?.ok_or_else(|| MmError::NotFound(format!("コメント {id} が無い")))
+        read(&self.conn, id)?.ok_or_else(|| MmError::NotFound(format!("comment {id}")))
     }
 
     /// 条件に合うコメントを、書いた順（新しいものが後）に返す。
@@ -269,10 +269,7 @@ impl Store {
             .iter()
             .any(|c| c.id.as_str() == new.comp)
         {
-            return Err(MmError::NotFound(format!(
-                "コンポジション {} が無い",
-                new.comp
-            )));
+            return Err(MmError::NotFound(format!("composition {}", new.comp)));
         }
         let ids = self.comments()?;
         if let Some(key) = &new.client_id {

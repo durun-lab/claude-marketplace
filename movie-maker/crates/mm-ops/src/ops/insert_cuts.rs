@@ -50,18 +50,18 @@ pub(crate) fn splice(
     cuts: &[Cut],
 ) -> Result<()> {
     if cuts.is_empty() {
-        return Err(invalid("差し込むカットが無い"));
+        return Err(invalid("No clips to insert"));
     }
     let mut seen = HashSet::new();
     for cut in cuts {
         if !seen.insert(cut.id.as_str()) || project.cut(&cut.id).is_ok() {
-            return Err(invalid(format!("カット {} は既に在る", cut.id)));
+            return Err(invalid(format!("Clip {} already exists", cut.id)));
         }
     }
     let seq = project.sequence_mut(sequence)?;
     if index > seq.cuts.len() {
         return Err(invalid(format!(
-            "カットの位置 {index} が {} を超える",
+            "Clip index {index} exceeds the clip count ({})",
             seq.cuts.len()
         )));
     }

@@ -72,7 +72,7 @@ pub fn run(shared: &Arc<Shared>, action: EditAction) {
 /// 編集を計画して適用し、成功したら新しいカットを選ぶ。失敗は文言で返す。
 /// 計画に使ったデータのバージョンを付けて適用するので、間に CLI などが同じ所を触っていたら衝突で断られる。
 pub fn plan_and_apply(shared: &Shared, action: EditAction) -> Result<(), String> {
-    let doc = shared.doc().ok_or("プロジェクトを開いていない")?;
+    let doc = shared.doc().ok_or("No project open")?;
     let comp = doc
         .project
         .composition(&doc.comp)
@@ -106,7 +106,7 @@ fn plan_action(shared: &Shared, ctx: &Ctx<'_>, action: EditAction) -> Result<Pla
         EditAction::Split => plan::plan_split(ctx, new_id()),
         EditAction::Lift => plan::plan_lift(ctx),
         EditAction::Extract => plan::plan_extract(ctx),
-        EditAction::Undo | EditAction::Redo => Err("履歴の操作は計画しない".into()),
+        EditAction::Undo | EditAction::Redo => Err("History actions are not planned".into()),
     }
 }
 
@@ -114,7 +114,7 @@ fn open_source(shared: &Shared) -> Result<Arc<SourceHandle>, String> {
     shared
         .source
         .handle()
-        .ok_or_else(|| "Source に素材を開いていない".to_owned())
+        .ok_or_else(|| "No clip open in Source".to_owned())
 }
 
 fn source_range(shared: &Shared, ctx: &Ctx<'_>) -> Result<plan::SourceRange, String> {

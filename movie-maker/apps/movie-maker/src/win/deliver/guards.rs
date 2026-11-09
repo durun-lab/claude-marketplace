@@ -6,7 +6,7 @@ use super::*;
 /// 同じ出力先に順に書くと、先に書いた成果物を黙って上書きするため。
 pub(super) fn pick(project: &Project, request: &StartRequest) -> Result<Vec<RenderTarget>, String> {
     if request.targets.is_empty() {
-        return Err("書き出すレンダーターゲットを選んでいない".into());
+        return Err("No render target selected for export".into());
     }
     if let Some(sequence) = &request.sequence {
         project

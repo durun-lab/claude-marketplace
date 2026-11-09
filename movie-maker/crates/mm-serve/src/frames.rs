@@ -125,7 +125,7 @@ fn pick_composition(project: &Project, wanted: Option<&str>) -> Result<Compositi
         .compositions
         .first()
         .map(|c| c.id.clone())
-        .ok_or_else(|| MmError::NotFound("コンポジションが 1 つも無い".into()))
+        .ok_or_else(|| MmError::NotFound("composition".into()))
 }
 
 /// 幅を決めて縦横比を保つ。0 と元の大きさより大きい指定は元の大きさにする。

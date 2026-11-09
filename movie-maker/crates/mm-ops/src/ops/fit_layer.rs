@@ -95,7 +95,7 @@ impl FitLayer {
     fn fitted_out(&self, project: &Project, layer: &Layer) -> Result<RationalTime> {
         if layer.source.kind != SEQUENCE_KIND {
             return Err(invalid(format!(
-                "レイヤー {} は sequence を置いていない",
+                "Layer {} is not a sequence layer",
                 self.layer
             )));
         }

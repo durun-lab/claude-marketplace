@@ -155,7 +155,7 @@ fn 書き出し中にもう一度始めようとすると拒否する() {
     let e = state
         .start(request(&["second"]), RuntimeConfig::sample(), emit)
         .unwrap_err();
-    assert_eq!(e, "書き出し中");
+    assert_eq!(e, "Export in progress");
     gate_tx.send(()).unwrap();
     finished(&seen_rx);
     let _ = std::fs::remove_dir_all(&dir);

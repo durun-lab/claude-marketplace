@@ -280,7 +280,7 @@ impl Store {
             }
             if !known[&edit.asset].contains(edit.word.as_str()) {
                 return Err(MmError::InvalidArgument(format!(
-                    "単語 {} は素材 {} の文字起こしに無い",
+                    "Word {} is not in the transcript of asset {}",
                     edit.word, edit.asset
                 )));
             }

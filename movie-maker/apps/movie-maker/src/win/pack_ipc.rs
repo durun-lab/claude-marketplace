@@ -61,7 +61,7 @@ pub async fn pack_apply(
         let project = shared
             .doc()
             .map(|d| d.project)
-            .ok_or_else(|| "プロジェクトを開いていない".to_owned())?;
+            .ok_or_else(|| "No project open".to_owned())?;
         let txn = expand_for(&pack, &name, &args, shaper, &project).map_err(|e| e.to_string())?;
         submit(&shared, txn.ops)
     })

@@ -27,15 +27,6 @@ pub enum TxnKind {
 }
 
 impl TxnKind {
-    /// 記録に残す名前。取り消しとやり直しは、元のトランザクションの名前に接頭辞を付ける。
-    pub fn record_name(self, original: &str) -> String {
-        match self {
-            TxnKind::Normal => original.to_string(),
-            TxnKind::Undo { .. } => format!("取り消し: {original}"),
-            TxnKind::Redo { .. } => format!("やり直し: {original}"),
-        }
-    }
-
     /// 取り消しかやり直しの元のトランザクションの ID。
     pub fn of(self) -> Option<u64> {
         match self {
@@ -163,7 +154,7 @@ impl Editor {
             .collect::<Result<_, _>>()
             .map_err(json_error)?;
         let kind = TxnKind::Undo { of: target.id };
-        let name = kind.record_name(&target.name);
+        let name = target.name.clone();
         let outcome = apply_transaction(&mut self.project, &ops, ctx)?;
         self.record(kind, name, outcome.records);
         self.undo_pos -= 1;
@@ -183,7 +174,7 @@ impl Editor {
             .collect::<Result<_, _>>()
             .map_err(json_error)?;
         let kind = TxnKind::Redo { of: target.id };
-        let name = kind.record_name(&target.name);
+        let name = target.name.clone();
         let outcome = apply_transaction(&mut self.project, &ops, ctx)?;
         self.record(kind, name, outcome.records);
         self.undo_pos += 1;

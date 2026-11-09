@@ -83,12 +83,12 @@ impl CompMixer {
         let ok = |db: f64| db.is_finite() && db <= MAX_MIXER_GAIN_DB;
         if !ok(self.master_db) {
             return Err(format!(
-                "マスターの音量は有限で {MAX_MIXER_GAIN_DB} dB 以下"
+                "master gain must be finite and at most {MAX_MIXER_GAIN_DB} dB"
             ));
         }
         if let Some((role, _)) = self.buses.iter().find(|(_, b)| !ok(b.gain_db)) {
             return Err(format!(
-                "バス {role} の音量は有限で {MAX_MIXER_GAIN_DB} dB 以下"
+                "bus {role} gain must be finite and at most {MAX_MIXER_GAIN_DB} dB"
             ));
         }
         self.ducking.as_ref().map_or(Ok(()), Ducking::check)
@@ -106,17 +106,17 @@ impl Ducking {
         .iter()
         .all(|v| v.is_finite());
         if !finite {
-            return Err("ダッキングの数が有限でない".into());
+            return Err("ducking values must be finite".into());
         }
         if self.reduction_db > 0.0 {
-            return Err("ダッキングの下げる量は 0 dB 以下".into());
+            return Err("ducking reduction must be 0 dB or less".into());
         }
         if self.attack_ms < 0.0 || self.release_ms < 0.0 {
-            return Err("ダッキングの時間は 0 以上".into());
+            return Err("ducking attack and release must not be negative".into());
         }
         if self.targets.contains(&self.trigger) {
             return Err(format!(
-                "ダッキングの対象にきっかけのバス {} がある",
+                "ducking targets include the trigger bus {}",
                 self.trigger
             ));
         }

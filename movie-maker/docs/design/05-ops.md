@@ -28,6 +28,7 @@
   - `touches` は、参照のショートのカットと元のカットの片方に触れば両方（ショートのショートもたどる）と、参照のショートのそれより後ろのカットに接続したレイヤー。
 - パラメータは `ParamRef`（`layer` か `cut` の ID と、`.` 区切りのパラメータのパス）で指す。パスは `opacity`、`transform.position|scale|rotation|anchor`、`crop.left|top|right|bottom`（無い辺は `setParam` で作り、`removeParam` で外す）、`source.<名前>`、`effects.<ID>.<名前>`、`masks.<ID>.path|feather|opacity|rect.position|rect.size|rect.radius`、`audio.gain_db|pan`、`reframe.<カットの ID>.position|scale|rotation|anchor`、`caption.position|width`。
 - 適用した後は必ず `Project::validate` を通す。通らなければ操作は失敗で、プロジェクトのデータは変わらない。
+- 操作を拒否した理由は英語の 1 文（拒否の文）で返す。アプリの Shell のエラーの表示（`.mm-shell-error`）、CLI、MCP に同じ文が出る。大文字で始め、末尾のピリオドを付けず、何が悪いかと、指していた ID や値を含める（`Layer l-title already exists`、`Layer l-title: in point must be before out point`）。ID で引いて見つからないときは `MmError::NotFound` の `Display` の文 `Not found: <種類> <ID>`（`Not found: layer l-title`）、検証で参照先が無いときは `<参照する側>: <種類> <ID> not found`（`Render target mp4: composition main not found`）。衝突とロックの文には、重なった ID を名前の順にカンマで並べる（`Conflicts with operations applied after version 3: c2`、`Can't edit locked items: l-title`）。否定は画面の文言と同じ短縮形（`Can't`）で書き、語は用語集の拒否の文の語（素材は asset、カットは clip）にそろえる。
 - 逆操作が元のプロジェクトのデータをバイトで戻せるよう、操作は形を絞る。`precompose` は重なりの上で続いた範囲だけ、`unprecompose` は `precompose` が作った形だけ、`join` は `split` が作った続きだけ、`addMarker` は同じ時刻が無いときだけ受ける。
 - 操作経路は 5 つで、どれも同じ操作を呼ぶ。wgpu のサーフェス（Rust から直接）、WebView の画面（Tauri の IPC）、Claude の CLI（`mm op <project> ripple --cut k1 --edge out --by -0.4`。動いていなければ `project.mmdb` を直接開く。別のプロセス（アプリ）が書き手で HTTP サーバーがあれば、[HTTP サーバー](#http-サーバー)で転送する。HTTP サーバーが無ければ「別のプロセスが書いている」と拒否して読み取りだけにする）、Claude の MCP（操作ごとのツール。引数の型はスキーマから作る）、モバイル版（`mm-serve` の人の待ち受け `/m`。即時に適用できる操作は [モバイル版の権限](12-mobile.md#権限) の表だけ）。
 - 全部の操作の JSON Schema は `mm_ops::ops_schema()` が出し、`crates/mm-ops/schema/ops.json` に凍結する（テストが最新かを確かめる。`MM_UPDATE_SCHEMA=1 cargo test -p mm-ops --test it` で書き直す）。`mm op --schema`、MCP、`ui/sdk` の型の生成の元。
@@ -44,8 +45,8 @@
 
 - 複数の操作を 1 つのトランザクション（`Transaction { name, base_version, ops }`）として適用する。ドラッグの連続、マクロ、Claude の対応 1 回。途中で失敗したら全部戻す（`apply_transaction`）。
 - プロジェクトのデータとバージョン番号を持つのは、メモリの上では `Editor`、保存では `mm_store::Store`。どちらも同じ数え方で、操作 1 つでバージョンが 1 進み、トランザクションの記録 `TxnRecord { id, kind, name, base_version, version, ops }` を残す（`id` は 1 からの通し番号）。`ops` の各要素は `OpRecord { op, inverse, touches }`（操作と逆操作は JSON の値、`touches` は ID の列）。
-- 取り消しもトランザクションの単位。逆操作を逆の順に適用し、その記録（`op` は逆操作、`touches` は適用したときのもの）を `kind = undo { of }` のトランザクションとして残す。やり直しは元の操作を再適用し `kind = redo { of }`。バージョンはどちらも操作の数だけ進み、元のトランザクションの行は書き換えない。取り消した後に新しい操作を適用すると、やり直しの先は破棄する。
-- アプリの Ctrl+Z（取り消し）と Ctrl+Y（やり直し）は、発行元を問わず直前のトランザクションを戻す（人の操作だけを選んで戻さない。戻す順を変えると、後の操作が前提にした状態が崩れるため）。Claude や CLI の操作を戻したときは、編集の文言に書き手とトランザクションの名前（`mcp の操作を取り消した: <名前>`）を出す。戻すものが無いとき、戻せなかったときも文言を出す。
+- 取り消しもトランザクションの単位。逆操作を逆の順に適用し、その記録（`op` は逆操作、`touches` は適用したときのもの）を `kind = undo { of }` のトランザクションとして残す。やり直しは元の操作を再適用し `kind = redo { of }`。バージョンはどちらも操作の数だけ進み、元のトランザクションの行は書き換えない。取り消した後に新しい操作を適用すると、やり直しの先は破棄する。取り消しとやり直しの記録の `name` は元のトランザクションの名前のまま（取り消しかやり直しかは `kind` で分かる。`Undo: <名前>` の形は編集の文言を作る側が付ける）。
+- アプリの Ctrl+Z（取り消し）と Ctrl+Y（やり直し）は、発行元を問わず直前のトランザクションを戻す（人の操作だけを選んで戻さない。戻す順を変えると、後の操作が前提にした状態が崩れるため）。Claude や CLI の操作を戻したときは、編集の文言に発行元とトランザクションの名前（`Undo: <名前> (mcp)`、やり直しは `Redo: <名前>`）を出す。戻すものが無いとき（`Nothing to undo`）、戻せなかったとき（`Couldn't undo: <理由>`）も文言を出す。
 - アプリのキーとドラッグの編集は、計画から適用までを 1 本のキューで順に行い、計画に使ったプロジェクトのデータのバージョンを `base_version` に付ける。間に CLI などが同じ所を触っていれば `Conflict` で断り、古い編集点に適用しない。
 - プロジェクトのデータの変更と記録は SQLite の 1 つのトランザクションで書く（[保存の形](09-ingest-storage.md#書き方)）。保存の層は `TxnRecord` に誰が・いつ・どのコメントへの対応かを足して `txns` の 1 行と `ops` の複数行に書き込み、`version` を `meta.doc_version` に置く。
 
@@ -91,7 +92,7 @@ Claude の対応 1 回を、適用せずに保留して人が決める単位（[
 | `POST /proposals/{id}/approve`、`/reject`、`/reopen` | 承認（任意で `{"ops":[0,2]}`。応答は `{"proposal","change"}`）、却下、却下を保留に戻す。`entry: "mcp"` は 403（`forbidden`） |
 | `POST /mcp` | MCP（Streamable HTTP、ステートレス、JSON 応答）。JSON-RPC の `initialize`、`ping`、`tools/list`、`tools/call`。通知は 202、バッチは拒否 |
 
-失敗は `{"error": {"code","message", ...}}`。`conflict`（409、`touches` を添える）、`future_base`（409）、`locked`（403）、`invalid`（422、検証の失敗）、`bad_request`（400）、`unavailable`（503、閉じた後や描画が無いとき）。
+失敗は `{"error": {"code","message", ...}}`。`message` は拒否の文（[操作](#操作)）と同じ書き方の英語の 1 文。`conflict`（409、`touches` を添える）、`future_base`（409）、`locked`（403）、`invalid`（422、検証の失敗）、`bad_request`（400）、`unavailable`（503、閉じた後や描画が無いとき）。
 
 MCP のツールは、操作ごとに 1 つ（名前は操作名。`inputSchema` は `ops_schema()` の各要素から `op` を除き、任意の `label`、`base_version`、`responds_to` を足して作る）と、`transaction`（操作の列を 1 つの取り消しの単位にする。コメントへの対応 1 回分）、`propose`（引数は `transaction` と同じで、適用せずに提案として保留する）、`undo`、`redo`、`project`、`proposals`（提案の一覧）、`frame`（PNG を画像で返す。`proposal` と `ops` で提案を適用したフレーム）、`kinds`（登録されているノードの種類と、`NodeKind::params_for` のパラメータの定義。`params` を渡すと、選んだもので一覧が変わる種類はその組に合わせる）。提案の承認・却下のツールは置かない。呼び出し元は常に `Entry::Mcp`、`actor` は `mcp`/`claude`。`responds_to` は記録の `txns` に残る。失敗は `isError` で、HTTP の失敗と同じ `{"error": ...}` を text に入れる。
 

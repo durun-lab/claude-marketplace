@@ -74,6 +74,7 @@
 | [15-roadmap.md](15-roadmap.md) | 進め方、段階 0 の難所と結果、終わりの条件の判定、後の段階の注意 |
 | [16-open-questions.md](16-open-questions.md) | 決めてほしいことと、決まったこと |
 | [17-instrumentation.md](17-instrumentation.md) | 計装。何を測るか、予算、仕組み、使い方の記録、継続的改善とのつなぎ |
+| [18-ui-clarity.md](18-ui-clarity.md) | UI の分かりやすさ。先行事例、割り付け、Timeline の情報、時間の操作、キーフレームの見せ方、見つけやすさ、文言、PR の分け方 |
 | [glossary.md](glossary.md) | 用語集。設計書、コメント、CLI の文言で使う正式な用語 |
 | [references.md](references.md) | 出典 |
 | [reviews/](reviews/) | レビューと規格の調査の記録 |

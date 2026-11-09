@@ -78,7 +78,7 @@ const Demo = () => {
   const param = path ? SLOTS[path]?.get(layer) : undefined;
   return (
     <div class="demo">
-      <div class="demo-inspector">
+      <div class="demo-inspector" style={query.has("w") ? { width: `${Number(query.get("w"))}px` } : undefined}>
         <InspectorPanel
           layer={layer}
           onOp={onOp}
