@@ -66,7 +66,7 @@ fn スクロールした後は見えている行に当たる() {
 }
 
 #[test]
-fn スクロールバーのつまみを引くとスクロールし_溝を押すと_1_画面ぶん送る() {
+fn スクロールボックスを引くとスクロールし_溝を押すと_1_画面ぶん送る() {
     let m = many(100);
     let mut c = ctl(&m);
     let track = c.layout().scrollbar;
@@ -94,7 +94,7 @@ fn スクロールバーのつまみを引くとスクロールし_溝を押す�
     c.handle(down(x, below), &m, 0.0);
     assert_eq!(
         c.scroll_y,
-        before + c.layout().rows.h,
+        before + c.layout().row_area.h,
         "下の溝で 1 画面ぶん下へ"
     );
 }
@@ -113,7 +113,7 @@ fn 行を見せると全部見える所までだけスクロールし_大きさ�
     let m = many(100);
     let mut c = ctl(&m);
     c.reveal(50);
-    let rows_h = c.layout().rows.h;
+    let rows_h = c.layout().row_area.h;
     assert_eq!(c.scroll_y, 51.0 * 28.0 - rows_h, "下端に合わせる");
     c.reveal(50);
     assert_eq!(c.scroll_y, 51.0 * 28.0 - rows_h, "見えていれば動かない");

@@ -7,7 +7,7 @@ use super::Ui;
 impl Ui {
     /// 全体が収まる表示にする。
     pub fn fit(&mut self) {
-        let w = self.controller.layout().rows.w;
+        let w = self.controller.layout().row_area.w;
         if w > 0.0 && self.model.duration > 0.0 {
             self.controller.view = TimeView::fit(self.model.duration, w, VIEW_MARGIN);
         }
@@ -47,8 +47,8 @@ impl Ui {
     /// 最初の表示。戻す表示の状態があればそれを当て、無ければ全体表示にして、sequence の行
     /// （無ければいちばん下の行）が見える所までスクロールする。Timeline の大きさが決まるまでは待つ。
     pub(super) fn open_view(&mut self) {
-        let rows = self.controller.layout().rows;
-        if rows.w <= 0.0 || rows.h <= 0.0 {
+        let area = self.controller.layout().row_area;
+        if area.w <= 0.0 || area.h <= 0.0 {
             return;
         }
         if let Some(saved) = self.restore.take() {

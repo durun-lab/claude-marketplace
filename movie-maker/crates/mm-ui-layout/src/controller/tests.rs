@@ -261,7 +261,7 @@ fn ctrl_ホイールの縮小は長いコンポジションでも全体が収ま
     long.duration = 3600.0;
     let mut c = ctl(&long);
     c.handle(zoom_out, &long, 0.0);
-    let fit = TimeView::fit(3600.0, c.layout().rows.w, VIEW_MARGIN).px_per_sec;
+    let fit = TimeView::fit(3600.0, c.layout().row_area.w, VIEW_MARGIN).px_per_sec;
     assert!(
         (c.view.px_per_sec - fit).abs() < 1e-9,
         "{}",

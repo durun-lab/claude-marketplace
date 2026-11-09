@@ -89,9 +89,9 @@ enum Drag {
         mods: Mods,
         from: f64,
     },
-    /// スクロールバーのつまみ。`grab` は押した点のつまみの上端からの距離。
+    /// スクロールボックスのドラッグ。`grab_offset` は押した点の、スクロールボックスの上端からの距離。
     Thumb {
-        grab: f32,
+        grab_offset: f32,
     },
 }
 
@@ -152,13 +152,13 @@ impl TimelineController {
 
     /// 縦のスクロールを `y` にする（範囲に収める）。
     pub fn scroll_to(&mut self, y: f32) {
-        self.scroll_y = clamp_scroll(y, self.rows.content_height(), self.layout.rows.h);
+        self.scroll_y = clamp_scroll(y, self.rows.content_height(), self.layout.row_area.h);
     }
 
     /// 行 `i` が全部見えるまでスクロールする。
     pub fn reveal(&mut self, i: usize) {
         if i < self.rows.len() {
-            self.scroll_y = reveal(&self.rows, i, self.scroll_y, self.layout.rows.h);
+            self.scroll_y = reveal(&self.rows, i, self.scroll_y, self.layout.row_area.h);
         }
     }
 
@@ -313,15 +313,17 @@ impl TimelineController {
         ]
     }
 
-    /// スクロールバーを押した。つまみなら掴み、溝なら押した側へ 1 画面ぶんスクロールする（Windows のスクロールバーと同じ）。
-    fn press_scrollbar(&mut self, thumb: bool, y: f32) {
-        let knob = self.viewport().thumb();
-        if thumb {
-            self.drag = Drag::Thumb { grab: y - knob.y };
+    /// スクロールバーを押した。スクロールボックスなら掴み、溝なら押した側へ 1 画面ぶんスクロールする（Windows のスクロールバーと同じ）。
+    fn press_scrollbar(&mut self, on_thumb: bool, y: f32) {
+        let thumb = self.viewport().thumb();
+        if on_thumb {
+            self.drag = Drag::Thumb {
+                grab_offset: y - thumb.y,
+            };
             return;
         }
-        let page = self.layout.rows.h;
-        let by = if y < knob.y { -page } else { page };
+        let page = self.layout.row_area.h;
+        let by = if y < thumb.y { -page } else { page };
         self.scroll_to(self.scroll_y + by);
     }
 
@@ -332,9 +334,9 @@ impl TimelineController {
                 Vec::new()
             }
             Drag::Scrub => vec![Action::Seek(self.seek_at(x, model))],
-            Drag::Thumb { grab } => {
+            Drag::Thumb { grab_offset } => {
                 let content = self.rows.content_height();
-                self.scroll_y = scroll_for_thumb(self.layout.scrollbar, content, y - grab);
+                self.scroll_y = scroll_for_thumb(self.layout.scrollbar, content, y - grab_offset);
                 self.hover = Hit::Scrollbar { thumb: true };
                 Vec::new()
             }
@@ -410,8 +412,8 @@ impl TimelineController {
     /// Shift かスクロールバーの上なら縦にスクロール、それ以外は横に動かす。
     fn wheel(&mut self, (x, y): (f32, f32), dy: f32, (ctrl, shift): (bool, bool), duration: f64) {
         if ctrl {
-            let anchor = x - self.layout.rows.x;
-            let floor = TimeView::zoom_floor(duration, self.layout.rows.w, VIEW_MARGIN);
+            let anchor = x - self.layout.row_area.x;
+            let floor = TimeView::zoom_floor(duration, self.layout.row_area.w, VIEW_MARGIN);
             let factor = ZOOM_STEP.powf(f64::from(dy));
             self.view = self.view.zoom_at(anchor, factor, floor);
         } else if shift || self.layout.scrollbar.contains(x, y) {

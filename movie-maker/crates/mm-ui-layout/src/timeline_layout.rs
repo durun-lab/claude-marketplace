@@ -48,7 +48,7 @@ pub struct TimelineLayout {
     /// 見出しの列。行の領域と一緒に縦にスクロールする。
     pub headers: Rect,
     /// 行の領域。レイヤーの行を並べて縦にスクロールする。時刻の x はこの左端から測る。
-    pub rows: Rect,
+    pub row_area: Rect,
     /// 縦のスクロールバー。中身が行の領域に入るときは幅 0。
     pub scrollbar: Rect,
     /// ズームバー。横は行の領域と同じ範囲。
@@ -65,25 +65,25 @@ impl TimelineLayout {
         let status_h = STATUS_H.min(h - toolbar_h);
         let zoombar_h = ZOOMBAR_H.min(h - toolbar_h - status_h);
         let ruler_h = RULER_H.min(h - toolbar_h - status_h - zoombar_h);
-        let rows_y = toolbar_h + ruler_h;
-        let rows_h = (h - rows_y - zoombar_h - status_h).max(0.0);
-        let scrollbar_w = if content_h > rows_h {
+        let area_y = toolbar_h + ruler_h;
+        let area_h = (h - area_y - zoombar_h - status_h).max(0.0);
+        let scrollbar_w = if content_h > area_h {
             SCROLLBAR_W.min(w)
         } else {
             0.0
         };
         let header_w = HEADER_W.min(w - scrollbar_w);
-        let rows_w = (w - header_w - scrollbar_w).max(0.0);
-        let rows = Rect::new(header_w, rows_y, rows_w, rows_h);
+        let area_w = (w - header_w - scrollbar_w).max(0.0);
+        let row_area = Rect::new(header_w, area_y, area_w, area_h);
         Self {
             bounds: Rect::new(0.0, 0.0, w, h),
             toolbar: Rect::new(0.0, 0.0, w, toolbar_h),
             corner: Rect::new(0.0, toolbar_h, header_w, ruler_h),
-            ruler: Rect::new(header_w, toolbar_h, rows_w, ruler_h),
-            headers: Rect::new(0.0, rows_y, header_w, rows_h),
-            rows,
-            scrollbar: Rect::new(rows.right(), rows_y, scrollbar_w, rows_h),
-            zoombar: Rect::new(header_w, rows.bottom(), rows_w, zoombar_h),
+            ruler: Rect::new(header_w, toolbar_h, area_w, ruler_h),
+            headers: Rect::new(0.0, area_y, header_w, area_h),
+            row_area,
+            scrollbar: Rect::new(row_area.right(), area_y, scrollbar_w, area_h),
+            zoombar: Rect::new(header_w, row_area.bottom(), area_w, zoombar_h),
             status: Rect::new(0.0, h - status_h, w, status_h),
         }
     }
@@ -91,7 +91,12 @@ impl TimelineLayout {
     /// 時刻の縦の線（再生位置、スナップのガイド線）を引く範囲。目盛りの帯と行の領域を合わせた列。
     pub fn time_column(&self) -> Rect {
         let top = self.ruler.y;
-        Rect::new(self.rows.x, top, self.rows.w, self.rows.bottom() - top)
+        Rect::new(
+            self.row_area.x,
+            top,
+            self.row_area.w,
+            self.row_area.bottom() - top,
+        )
     }
 }
 
@@ -110,17 +115,17 @@ pub struct Viewport<'a> {
 impl Viewport<'_> {
     /// 時刻 `t` の x（Timeline の座標）。
     pub fn x_of(&self, t: f64) -> f32 {
-        self.layout.rows.x + self.time.x_of(t)
+        self.layout.row_area.x + self.time.x_of(t)
     }
 
     /// x（Timeline の座標）の時刻。
     pub fn t_of(&self, x: f32) -> f64 {
-        self.time.t_of(x - self.layout.rows.x)
+        self.time.t_of(x - self.layout.row_area.x)
     }
 
     /// 行 `i` の矩形。横は行の領域の幅。
     pub fn row(&self, i: usize) -> Rect {
-        let r = self.layout.rows;
+        let r = self.layout.row_area;
         let top = r.y + self.rows.top(i) - self.scroll_y;
         Rect::new(r.x, top, r.w, self.rows.bottom(i) - self.rows.top(i))
     }
@@ -129,17 +134,17 @@ impl Viewport<'_> {
     pub fn bar(&self, i: usize, start: f64, end: f64) -> Rect {
         let (x, w) = span(&self.time, start, end);
         let (y, h) = self.rows.bar(i);
-        let r = self.layout.rows;
+        let r = self.layout.row_area;
         Rect::new(r.x + x, r.y + y - self.scroll_y, w, h)
     }
 
     /// 行の領域に一部でも見えている行。
     pub fn visible_rows(&self) -> Range<usize> {
         self.rows
-            .overlapping(self.scroll_y, self.scroll_y + self.layout.rows.h)
+            .overlapping(self.scroll_y, self.scroll_y + self.layout.row_area.h)
     }
 
-    /// 縦のスクロールバーのつまみ。
+    /// 縦のスクロールバーのスクロールボックス。
     pub fn thumb(&self) -> Rect {
         scroll::thumb(
             self.layout.scrollbar,
@@ -156,14 +161,14 @@ pub(crate) mod tests {
     use crate::timeline::TimelineModel;
 
     /// 試験の見えている所の一式。行の高さは既定、1 秒 100 px、左端が 0 秒。
-    pub(crate) struct Frame {
+    pub(crate) struct TestViewport {
         pub layout: TimelineLayout,
         pub rows: Rows,
         pub time: TimeView,
         pub scroll_y: f32,
     }
 
-    impl Frame {
+    impl TestViewport {
         /// 大きさ `size` の Timeline に `model` の行を並べる。
         pub(crate) fn new(model: &TimelineModel, size: (f32, f32)) -> Self {
             let rows = Rows::of(&model.items, &RowHeights::default());
@@ -197,7 +202,7 @@ pub(crate) mod tests {
     fn 中身が入れば縦のスクロールバーは幅_0_で_行の領域が右端まで() {
         let l = TimelineLayout::new((800.0, 300.0), 200.0);
         assert_eq!(l.ruler, Rect::new(0.0, 0.0, 800.0, RULER_H));
-        assert_eq!(l.rows, Rect::new(0.0, RULER_H, 800.0, 300.0 - RULER_H));
+        assert_eq!(l.row_area, Rect::new(0.0, RULER_H, 800.0, 300.0 - RULER_H));
         assert_eq!(l.scrollbar.w, 0.0);
         assert_eq!(l.bounds, Rect::new(0.0, 0.0, 800.0, 300.0));
     }
@@ -207,11 +212,11 @@ pub(crate) mod tests {
         let l = TimelineLayout::new((800.0, 300.0), 1000.0);
         assert_eq!(
             l.scrollbar,
-            Rect::new(800.0 - SCROLLBAR_W, RULER_H, SCROLLBAR_W, l.rows.h)
+            Rect::new(800.0 - SCROLLBAR_W, RULER_H, SCROLLBAR_W, l.row_area.h)
         );
-        assert_eq!(l.rows.right(), l.scrollbar.x);
-        assert_eq!((l.ruler.x, l.ruler.w), (l.rows.x, l.rows.w));
-        assert_eq!(l.time_column(), Rect::new(0.0, 0.0, l.rows.w, 300.0));
+        assert_eq!(l.row_area.right(), l.scrollbar.x);
+        assert_eq!((l.ruler.x, l.ruler.w), (l.row_area.x, l.row_area.w));
+        assert_eq!(l.time_column(), Rect::new(0.0, 0.0, l.row_area.w, 300.0));
     }
 
     #[test]
@@ -221,7 +226,7 @@ pub(crate) mod tests {
             assert!(r.w == 0.0 || r.h == 0.0, "{r:?}");
         }
         let tiny = TimelineLayout::new((5.0, 10.0), 1000.0);
-        for r in [tiny.ruler, tiny.rows, tiny.scrollbar, tiny.headers] {
+        for r in [tiny.ruler, tiny.row_area, tiny.scrollbar, tiny.headers] {
             assert!(r.w >= 0.0 && r.h >= 0.0, "{r:?}");
         }
         assert_eq!(tiny.ruler.h, 10.0, "目盛りの帯も Timeline の高さを超えない");

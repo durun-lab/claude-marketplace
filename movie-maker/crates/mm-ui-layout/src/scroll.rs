@@ -1,10 +1,10 @@
-//! 縦のスクロール。スクロールの範囲、行を見せる位置、スクロールバーのつまみの位置と長さ。
+//! 縦のスクロール。スクロールの範囲、行を見せる位置、スクロールボックスの位置と長さ。
 //! 長さはどれも論理ピクセルで、スクロールは行の並びの上端から、行の領域の上端に見えている所までの距離。
 
 use crate::geom::Rect;
 use crate::rows::Rows;
 
-/// つまみの長さの下限。行が数千あっても掴めるようにする。
+/// スクロールボックスの長さの下限。行が数千あっても掴めるようにする。
 pub const MIN_THUMB_PX: f32 = 24.0;
 
 /// 縦のスクロールの上限。中身が高さ `view_h` に入れば 0。
@@ -34,7 +34,7 @@ pub fn reveal(rows: &Rows, i: usize, scroll: f32, view_h: f32) -> f32 {
     clamp_scroll(y, rows.content_height(), view_h)
 }
 
-/// スクロールバー `track` のつまみ。長さは見えている割合で、下限は [`MIN_THUMB_PX`]。
+/// スクロールバー `track` のスクロールボックス。長さは見えている割合で、下限は [`MIN_THUMB_PX`]。
 pub fn thumb(track: Rect, content_h: f32, scroll: f32) -> Rect {
     let len = thumb_len(track, content_h);
     let travel = track.h - len;
@@ -47,7 +47,7 @@ pub fn thumb(track: Rect, content_h: f32, scroll: f32) -> Rect {
     Rect::new(track.x, track.y + at, track.w, len)
 }
 
-/// つまみの上端を `top` に置いたときのスクロール。
+/// スクロールボックスの上端を `top` に置いたときのスクロール。
 pub fn scroll_for_thumb(track: Rect, content_h: f32, top: f32) -> f32 {
     let travel = track.h - thumb_len(track, content_h);
     if travel <= 0.0 {
@@ -96,7 +96,7 @@ mod tests {
     }
 
     #[test]
-    fn つまみは見えている割合の長さで_スクロールの割合の位置に置く() {
+    fn スクロールボックスは見えている割合の長さで_スクロールの割合の位置に置く() {
         let top = thumb(TRACK, 800.0, 0.0);
         assert_eq!((top.y, top.h), (26.0, 50.0), "200 / 800 の長さ");
         let end = thumb(TRACK, 800.0, 600.0);
@@ -106,7 +106,7 @@ mod tests {
     }
 
     #[test]
-    fn 数千の行でもつまみは下限の長さを保ち_ドラッグの位置がスクロールに戻る() {
+    fn 数千の行でもスクロールボックスは下限の長さを保ち_ドラッグの位置がスクロールに戻る() {
         let content = 7500.0 * 28.0;
         let t = thumb(TRACK, content, 0.0);
         assert_eq!(t.h, MIN_THUMB_PX);

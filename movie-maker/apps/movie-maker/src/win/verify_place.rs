@@ -72,7 +72,7 @@ impl Placement {
         min_w: f32,
     ) -> Option<(i32, i32)> {
         let bar = self.viewport().bar(row, start, end);
-        let area = self.timeline.rows;
+        let area = self.timeline.row_area;
         let (left, right) = (bar.x.max(area.x), bar.right().min(area.right()));
         (right - left >= min_w).then(|| self.client(((left + right) / 2.0, bar.y + bar.h / 2.0)))
     }
@@ -86,7 +86,7 @@ impl Placement {
     /// 行の領域に全部が見えている行のうち、`want` に合う最初の行。
     pub(crate) fn first_visible(&self, want: impl Fn(usize) -> bool) -> Option<usize> {
         let vp = self.viewport();
-        let area = self.timeline.rows;
+        let area = self.timeline.row_area;
         vp.visible_rows().find(|i| {
             let row = vp.row(*i);
             row.y >= area.y && row.bottom() <= area.bottom() && want(*i)

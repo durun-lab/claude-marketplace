@@ -172,7 +172,7 @@ pub enum Hit {
         cut: usize,
         part: Part,
     },
-    /// 縦のスクロールバー。`thumb` はつまみの上か。
+    /// 縦のスクロールバー。`thumb` はスクロールボックスの上か。
     Scrollbar {
         thumb: bool,
     },
@@ -219,12 +219,12 @@ pub fn hit_test(model: &TimelineModel, vp: &Viewport, x: f32, y: f32) -> Hit {
             thumb: vp.thumb().contains(x, y),
         };
     }
-    if !l.rows.contains(x, y) {
+    if !l.row_area.contains(x, y) {
         return Hit::Empty;
     }
     let Some((index, item)) = vp
         .rows
-        .at(y - l.rows.y + vp.scroll_y)
+        .at(y - l.row_area.y + vp.scroll_y)
         .and_then(|i| Some((i, model.items.get(i)?)))
     else {
         return Hit::Empty;
@@ -245,7 +245,7 @@ pub fn hit_test(model: &TimelineModel, vp: &Viewport, x: f32, y: f32) -> Hit {
 
 /// シーケンスのレイヤーの上の `x` に当たるカット。
 fn cut_hit(item: &Item, vp: &Viewport, index: usize, x: f32) -> Option<Hit> {
-    let x = x - vp.layout.rows.x;
+    let x = x - vp.layout.row_area.x;
     item.cuts.iter().enumerate().find_map(|(cut, bar)| {
         let (cx, cw) = cut_span(&vp.time, bar);
         (x >= cx && x < cx + cw).then(|| Hit::Cut {
@@ -259,7 +259,7 @@ fn cut_hit(item: &Item, vp: &Viewport, index: usize, x: f32) -> Option<Hit> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::timeline_layout::tests::Frame;
+    use crate::timeline_layout::tests::TestViewport;
     use crate::timeline_layout::RULER_H;
 
     fn model() -> TimelineModel {
@@ -274,21 +274,21 @@ mod tests {
     }
 
     /// 幅 1000、高さ 300 の Timeline。
-    fn frame(m: &TimelineModel) -> Frame {
-        Frame::new(m, (1000.0, 300.0))
+    fn viewport(m: &TimelineModel) -> TestViewport {
+        TestViewport::new(m, (1000.0, 300.0))
     }
 
     #[test]
     fn 目盛りの帯は_ruler() {
         let m = model();
-        let f = frame(&m);
+        let f = viewport(&m);
         assert_eq!(hit_test(&m, &f.vp(), 300.0, 10.0), Hit::Ruler);
     }
 
     #[test]
     fn 帯の左右の端はつまみ_中は本体() {
         let m = model();
-        let f = frame(&m);
+        let f = viewport(&m);
         let y = f.in_bar(1);
         let at = |x| hit_test(&m, &f.vp(), x, y);
         assert_eq!(
@@ -319,7 +319,7 @@ mod tests {
     fn 狭い帯ではつまみが幅の三分の一に収まる() {
         let mut m = model();
         m.items[1].end = 2.06; // 6 px
-        let f = frame(&m);
+        let f = viewport(&m);
         let mid = hit_test(&m, &f.vp(), 203.0, f.in_bar(1));
         assert!(matches!(
             mid,
@@ -333,7 +333,7 @@ mod tests {
     #[test]
     fn 帯と帯の隙間は何も無い() {
         let m = model();
-        let f = frame(&m);
+        let f = viewport(&m);
         let (top, h) = f.rows.bar(0);
         let y = RULER_H + top + h + 1.0;
         assert_eq!(hit_test(&m, &f.vp(), 300.0, y), Hit::Empty);
@@ -349,7 +349,7 @@ mod tests {
             fps: 30.0,
             items,
         };
-        let mut f = frame(&m);
+        let mut f = viewport(&m);
         f.scroll_y = 28.0 * 5.0;
         let y = f.in_bar(7);
         assert_eq!(
@@ -363,14 +363,14 @@ mod tests {
     }
 
     #[test]
-    fn 縦のスクロールバーはつまみとそれ以外を分ける() {
+    fn 縦のスクロールバーはスクロールボックスとそれ以外を分ける() {
         let items = vec![Item::layer(0.0, 10.0, ItemKind::Image, true); 50];
         let m = TimelineModel {
             duration: 10.0,
             fps: 30.0,
             items,
         };
-        let f = frame(&m);
+        let f = viewport(&m);
         let thumb = f.vp().thumb();
         let x = f.layout.scrollbar.x + 4.0;
         let hit = |y| hit_test(&m, &f.vp(), x, y);
@@ -397,7 +397,7 @@ mod tests {
     #[test]
     fn シーケンスの上ではカットとその端に当たり_カットの外はレイヤーの本体() {
         let m = seq_model();
-        let f = frame(&m);
+        let f = viewport(&m);
         let y = f.in_bar(0);
         let at = |x| hit_test(&m, &f.vp(), x, y);
         let cut = |cut, part| Hit::Cut { item: 0, cut, part };
@@ -417,7 +417,7 @@ mod tests {
     #[test]
     fn カットの外にあるシーケンスのレイヤーの端はレイヤーのつまみ() {
         let m = seq_model();
-        let f = frame(&m);
+        let f = viewport(&m);
         let y = f.in_bar(0);
         let at = |x| hit_test(&m, &f.vp(), x, y);
         let layer = |part| Hit::Layer { index: 0, part };

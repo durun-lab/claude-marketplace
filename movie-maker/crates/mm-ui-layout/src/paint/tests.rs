@@ -2,7 +2,7 @@ use super::*;
 use crate::gesture::Side;
 use crate::palette;
 use crate::timeline::{CutBar, Item, ItemKind};
-use crate::timeline_layout::tests::Frame;
+use crate::timeline_layout::tests::TestViewport;
 use crate::timeline_layout::RULER_H;
 
 /// 幅 800、高さ 120 の Timeline。
@@ -29,7 +29,7 @@ pub(crate) fn state(playhead: f64) -> PaintState {
 }
 
 fn quads(m: &TimelineModel, st: &PaintState) -> Vec<Quad> {
-    let f = Frame::new(m, SIZE);
+    let f = TestViewport::new(m, SIZE);
     timeline_quads(m, &f.vp(), st)
 }
 
@@ -63,7 +63,7 @@ fn テーマの色で_surface_と帯の段を塗る() {
 #[test]
 fn 再生位置の線は時刻の_x_に立ち_文字の上に重ねる側に入る() {
     let m = model();
-    let f = Frame::new(&m, SIZE);
+    let f = TestViewport::new(&m, SIZE);
     let over = timeline_overlay(&m, &f.vp(), &state(2.0));
     let line = over
         .iter()
@@ -77,7 +77,7 @@ fn 再生位置の線は時刻の_x_に立ち_文字の上に重ねる側に入�
 #[test]
 fn 時刻の列の外にある再生位置は描かない() {
     let m = model();
-    let f = Frame::new(&m, SIZE);
+    let f = TestViewport::new(&m, SIZE);
     let over = timeline_overlay(&m, &f.vp(), &state(-1.0));
     assert!(over.iter().all(|q| q.rect.x >= 0.0), "{over:?}");
     let far = timeline_overlay(&m, &f.vp(), &state(100.0));
@@ -228,15 +228,15 @@ fn 見えない行は描かない() {
 #[test]
 fn スクロールで目盛りの帯の下に隠れた行は行の領域の上端で切る() {
     let m = many(50);
-    let mut f = Frame::new(&m, SIZE);
+    let mut f = TestViewport::new(&m, SIZE);
     f.scroll_y = 14.0;
     let all = timeline_quads(&m, &f.vp(), &state(0.0));
-    let rows = f.layout.rows;
+    let area = f.layout.row_area;
     let outside_rows = [palette::RULER, palette::TICK, palette::LABEL];
     let in_rows = |q: &&Quad| !outside_rows.contains(&q.color);
     for q in all.iter().skip(1).filter(in_rows) {
         assert!(
-            q.rect.y >= rows.y - 1e-3 && q.rect.right() <= rows.right() + 1e-3,
+            q.rect.y >= area.y - 1e-3 && q.rect.right() <= area.right() + 1e-3,
             "{q:?}"
         );
     }
@@ -244,23 +244,23 @@ fn スクロールで目盛りの帯の下に隠れた行は行の領域の上�
         .iter()
         .find(|q| q.color == palette::item_color(ItemKind::Image))
         .expect("行 0 の帯");
-    assert_eq!(top.rect.y, rows.y, "上の 14 px を切った行 0 の帯");
+    assert_eq!(top.rect.y, area.y, "上の 14 px を切った行 0 の帯");
 }
 
 #[test]
-fn 中身が入らなければ縦のスクロールバーを描き_入ればつまみも無い() {
+fn 中身が入らなければ縦のスクロールバーを描き_入ればスクロールボックスも無い() {
     let thumb = |m: &TimelineModel| {
         quads(m, &state(0.0))
             .into_iter()
             .filter(|q| q.color == palette::LABEL)
             .count()
     };
-    assert_eq!(thumb(&many(50)), 1, "つまみ");
+    assert_eq!(thumb(&many(50)), 1, "スクロールボックス");
     assert_eq!(thumb(&many(2)), 0);
 }
 
 #[test]
-fn つまみは溝と見分けられ_乗ると選んだ外枠の色になる() {
+fn スクロールボックスは溝と見分けられ_乗ると選んだ外枠の色になる() {
     let p = Palette::DEFAULT;
     assert!(palette::contrast(p.label, p.ruler) >= 3.0);
     let m = many(50);

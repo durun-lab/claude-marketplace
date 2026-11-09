@@ -1,8 +1,8 @@
 //! Timeline のレイヤーの行（行の高さ）と縦のスクロールを、表示の倍率 1、1.5、2 で描いて確かめる。
-//! 行と帯とつまみの位置は `Ui::view_state` と `mm-ui-layout` の関数から求める（`Ui` と同じ計算）。
+//! 行と帯とスクロールボックスの位置は `Ui::view_state` と `mm-ui-layout` の関数から求める（`Ui` と同じ計算）。
 
 use mm_ui_layout::{
-    palette, thumb, CutBar, Item, ItemKind, PointerEvent, Rect, RowHeight, RowHeights, Rows,
+    palette, scroll, CutBar, Item, ItemKind, PointerEvent, Rect, RowHeight, RowHeights, Rows,
     TimeView, TimelineLayout, TimelineModel, ViewState,
 };
 use mm_ui_wgpu::Ui;
@@ -85,15 +85,15 @@ fn 開くと縦のスクロールバーを出し_下の高い_sequence_の行の
         assert!(layout.scrollbar.w > 0.0, "表示の倍率 {scale}: 行が入らない");
         assert_eq!(
             state.scroll_y,
-            rows.content_height() - layout.rows.h,
+            rows.content_height() - layout.row_area.h,
             "表示の倍率 {scale}: いちばん下の sequence の行が見える所まで"
         );
-        let knob = thumb(layout.scrollbar, rows.content_height(), state.scroll_y);
-        let (kx, ky) = centre(&ui, scale, knob);
+        let thumb = scroll::thumb(layout.scrollbar, rows.content_height(), state.scroll_y);
+        let (kx, ky) = centre(&ui, scale, thumb);
         let at = |x, y| px_in(&out, size.0, x, y);
         assert!(
             close(at(kx, ky), hex(palette::LABEL), 3),
-            "表示の倍率 {scale}: つまみ"
+            "表示の倍率 {scale}: スクロールボックス"
         );
         let seq = bar_rect(&ui, &m, scale, 30, (1.0, 5.0));
         let seq_x = (seq.x + seq.w / 2.0) as u32;
@@ -150,7 +150,7 @@ fn shift_ホイールで上の行に戻しても目盛りの帯は動かない()
     let (layout, _) = geometry(&ui, &m, scale);
     assert_eq!(
         top.y,
-        t.y + (layout.rows.y + 2.0) * scale,
+        t.y + (layout.row_area.y + 2.0) * scale,
         "行 0 が行の領域の上端"
     );
     let p = px_in(
@@ -213,7 +213,7 @@ fn 行の高さを置き直すと帯の高さが変わり_スクロールは範�
     let out = render_sized(&device, &queue, &mut ui, size);
     let (layout, rows) = geometry(&ui, &m, 1.0);
     let state = ui.view_state().expect("表示");
-    assert!(state.scroll_y <= rows.content_height() - layout.rows.h);
+    assert!(state.scroll_y <= rows.content_height() - layout.row_area.h);
     let first = rows.at(state.scroll_y).expect("見えている行");
     let row = first + 1;
     let start = (row % 9) as f64;

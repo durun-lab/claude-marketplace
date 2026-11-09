@@ -24,7 +24,7 @@ mod rows;
 mod ruler;
 mod scale;
 mod screen;
-mod scroll;
+pub mod scroll;
 mod snap;
 mod text;
 mod time_view;
@@ -45,7 +45,6 @@ pub use rows::{RowHeight, RowHeights, Rows};
 pub use ruler::{label, major_step, ticks, Tick};
 pub use scale::{Scale, TextPlacement};
 pub use screen::{split_viewers, SurfaceLayout, TIMELINE_RATIO, VIEW_MARGIN};
-pub use scroll::{clamp_scroll, max_scroll, reveal, scroll_for_thumb, thumb, MIN_THUMB_PX};
 pub use snap::{quantize, snap, Snapped, SNAP_PX};
 pub use text::{
     fit, line_height, place, Align, Fit, Label, TextMeasure, TextStyle, UiFont, ELLIPSIS,

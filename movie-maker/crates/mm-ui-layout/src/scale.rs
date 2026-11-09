@@ -133,7 +133,7 @@ mod tests {
     use crate::controller::Mods;
     use crate::screen::split_viewers;
     use crate::timeline::{hit_test, Hit, Item, ItemKind, Part, TimelineModel, HANDLE_PX};
-    use crate::timeline_layout::tests::Frame;
+    use crate::timeline_layout::tests::TestViewport;
 
     #[test]
     fn 等倍では矩形も割り付けもポインターも変えない() {
@@ -153,7 +153,7 @@ mod tests {
             fps: 30.0,
             items: vec![Item::layer(0.0, 5.0, ItemKind::Footage, true)],
         };
-        let f = Frame::new(&model, (800.0, 200.0));
+        let f = TestViewport::new(&model, (800.0, 200.0));
         let bar = f.vp().bar(0, 1.0, 5.0);
         for factor in [1.5, 2.0] {
             let s = Scale::new(factor);
@@ -182,7 +182,7 @@ mod tests {
             fps: 30.0,
             items: vec![Item::layer(0.0, 5.0, ItemKind::Footage, true)],
         };
-        let f = Frame::new(&model, (800.0, 200.0));
+        let f = TestViewport::new(&model, (800.0, 200.0));
         // 論理ピクセルの 498（帯の右端 500 の内側 2）は物理ピクセルの 747。
         let bar = f.vp().bar(0, 0.0, 5.0);
         let y = (bar.y + bar.h / 2.0) * 1.5;
@@ -242,7 +242,7 @@ mod tests {
             fps: 30.0,
             items: vec![Item::layer(0.0, 5.0, ItemKind::Footage, true)],
         };
-        let mut f = Frame::new(&model, (800.0, 200.0));
+        let mut f = TestViewport::new(&model, (800.0, 200.0));
         f.time.px_per_sec = 37.3;
         let state = crate::paint::tests::state(0.0);
         let s = Scale::new(1.25);

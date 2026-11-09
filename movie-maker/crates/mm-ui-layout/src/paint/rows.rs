@@ -1,7 +1,7 @@
 //! 行の領域。見えている行の縞、帯、カット、つまみ、選んだ外枠と、コンポジションの終わりより右の暗がり。
 //! 行の領域の外（目盛りの帯の下に隠れた所）にはみ出す分は切って描く。
 
-use super::{Canvas, Depth, Scene};
+use super::{Canvas, Depth, PaintInput};
 use crate::geom::{Color, Rect};
 use crate::gesture::{EditKind, Side};
 use crate::palette::{self, Palette};
@@ -10,8 +10,8 @@ use crate::timeline::{cut_span, Hit, Item, Part, HANDLE_PX};
 /// 無効なレイヤーの帯の不透明度。
 const DISABLED_BAR_ALPHA: f32 = 0.35;
 
-pub(super) fn paint(s: &Scene, c: &mut Canvas) {
-    let clip = s.vp.layout.rows;
+pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
+    let clip = s.vp.layout.row_area;
     for i in s.vp.visible_rows() {
         let Some(item) = s.model.items.get(i) else {
             break;
@@ -36,7 +36,7 @@ pub(super) fn paint(s: &Scene, c: &mut Canvas) {
 }
 
 /// カットを持たないレイヤーの帯とつまみ。
-fn layer_bar(s: &Scene, c: &mut Canvas, (index, item): (usize, &Item), bar: Rect) {
+fn layer_bar(s: &PaintInput, c: &mut Canvas, (index, item): (usize, &Item), bar: Rect) {
     let hovered = matches!(s.state.hover, Hit::Layer { index: i, .. } if i == index);
     let color = bar_color(item);
     let color = if hovered {
@@ -44,7 +44,7 @@ fn layer_bar(s: &Scene, c: &mut Canvas, (index, item): (usize, &Item), bar: Rect
     } else {
         color
     };
-    c.push_in(Depth::Bar, bar, color, s.vp.layout.rows);
+    c.push_in(Depth::Bar, bar, color, s.vp.layout.row_area);
     handles(s, c, bar, |hit| match hit {
         Hit::Layer { index: i, part } if i == index => Some(part),
         _ => None,
@@ -84,9 +84,9 @@ pub(crate) fn trimmed(item: &Item, index: usize, preview: Option<(EditKind, f64)
 
 /// シーケンスのカットを並べて描く。隙間は枠だけの空き、選んだカットは外枠、ホバーしたカットの端はつまみを出す。
 /// カットはレイヤーの帯 `layer` の内側だけを描く（帯の外はレイヤーのイン点とアウト点で切られて映らない）。
-fn cuts(s: &Scene, c: &mut Canvas, (index, item): (usize, &Item), layer: Rect) {
+fn cuts(s: &PaintInput, c: &mut Canvas, (index, item): (usize, &Item), layer: Rect) {
     let p = &s.state.palette;
-    let clip = s.vp.layout.rows;
+    let clip = s.vp.layout.row_area;
     let base = palette::item_color(item.kind);
     for (k, cut) in item.cuts.iter().enumerate() {
         let (cx, cw) = cut_span(&s.vp.time, cut);
@@ -126,7 +126,7 @@ fn cuts(s: &Scene, c: &mut Canvas, (index, item): (usize, &Item), layer: Rect) {
 }
 
 /// 帯 `bar` の左右のつまみ。`lit` はポインターが乗っているつまみを返す。
-fn handles(s: &Scene, c: &mut Canvas, bar: Rect, lit: impl Fn(Hit) -> Option<Part>) {
+fn handles(s: &PaintInput, c: &mut Canvas, bar: Rect, lit: impl Fn(Hit) -> Option<Part>) {
     let hw = HANDLE_PX.min(bar.w / 3.0);
     let on = lit(s.state.hover);
     let selection = s.state.palette.selection;
@@ -134,10 +134,10 @@ fn handles(s: &Scene, c: &mut Canvas, bar: Rect, lit: impl Fn(Hit) -> Option<Par
         let alpha = if on == Some(part) { 0.85 } else { 0.14 };
         let r = Rect::new(x, bar.y, hw, bar.h);
         c.push_in(
-            Depth::Over,
+            Depth::OnBar,
             r,
             selection.with_alpha(alpha),
-            s.vp.layout.rows,
+            s.vp.layout.row_area,
         );
     }
 }
@@ -149,15 +149,15 @@ fn outline(c: &mut Canvas, r: Rect, color: Color, clip: Rect) {
         Rect::new(r.x, r.y, 1.0, r.h),
         Rect::new(r.right() - 1.0, r.y, 1.0, r.h),
     ] {
-        c.push_in(Depth::Over, edge, color, clip);
+        c.push_in(Depth::OnBar, edge, color, clip);
     }
 }
 
 /// コンポジションの終わりより右を、行のある高さだけ暗くする。
-fn outside(s: &Scene, c: &mut Canvas) {
-    let rows = s.vp.layout.rows;
-    let end = s.vp.x_of(s.model.duration).max(rows.x);
+fn outside(s: &PaintInput, c: &mut Canvas) {
+    let area = s.vp.layout.row_area;
+    let end = s.vp.x_of(s.model.duration).max(area.x);
     let content = s.vp.rows.content_height() - s.vp.scroll_y;
-    let shade = Rect::new(end, rows.y, rows.right() - end, content.min(rows.h));
-    c.push_in(Depth::Shade, shade, s.state.palette.outside, rows);
+    let shade = Rect::new(end, area.y, area.right() - end, content.min(area.h));
+    c.push_in(Depth::Shade, shade, s.state.palette.outside, area);
 }

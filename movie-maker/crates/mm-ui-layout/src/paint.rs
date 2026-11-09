@@ -38,29 +38,29 @@ pub struct PaintState {
 }
 
 /// 領域の描く関数が見るもの。
-pub(crate) struct Scene<'a> {
+pub(crate) struct PaintInput<'a> {
     pub model: &'a TimelineModel,
     pub vp: &'a Viewport<'a>,
     pub state: &'a PaintState,
 }
 
-/// 重ね順。下から順に描く。帯の中に描くもの（波形、サムネイル）は `Bar` と `Over` の間に足す。
+/// 重ね順。下から順に描く。帯の中に描く矩形（波形）は `Bar` と `OnBar` の間に足す。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Depth {
     /// 背景と行の縞。
     Back,
     /// 帯とカット。
     Bar,
-    /// 帯に重ねるもの（つまみ、選んだ外枠）。
-    Over,
+    /// 帯に重ねるもの（端のつまみ、選んだ外枠）。
+    OnBar,
     /// 行に重ねる暗がり（コンポジションの終わりより右）。
     Shade,
-    /// 行の領域の外の部品（目盛りの帯、スクロールバー）。いちばん上。
-    Chrome,
+    /// 行の領域を囲む部品（目盛りの帯、スクロールバー）と、それを貫く時刻の線。いちばん上。
+    Surround,
 }
 
 /// 重ね順の数。
-const DEPTHS: usize = Depth::Chrome as usize + 1;
+const DEPTHS: usize = Depth::Surround as usize + 1;
 
 /// 重ね順ごとに矩形を貯め、最後に下から並べる。
 #[derive(Debug, Default)]
@@ -93,21 +93,21 @@ impl Canvas {
 
 /// 文字の下に描く矩形（背景、行の縞、帯、目盛りの帯、スクロールバー）。
 pub fn timeline_quads(model: &TimelineModel, vp: &Viewport, state: &PaintState) -> Vec<Quad> {
-    let scene = Scene { model, vp, state };
+    let input = PaintInput { model, vp, state };
     let mut canvas = Canvas::default();
     canvas.push(Depth::Back, vp.layout.bounds, state.palette.panel);
-    rows::paint(&scene, &mut canvas);
-    ruler::paint(&scene, &mut canvas);
-    scrollbar::paint(&scene, &mut canvas);
+    rows::paint(&input, &mut canvas);
+    ruler::paint(&input, &mut canvas);
+    scrollbar::paint(&input, &mut canvas);
     canvas.into_quads()
 }
 
 /// 文字の上に重ねる矩形（スナップのガイド線と再生位置の線）。目盛りの帯と行の領域を縦に貫く。
 pub fn timeline_overlay(model: &TimelineModel, vp: &Viewport, state: &PaintState) -> Vec<Quad> {
-    let scene = Scene { model, vp, state };
+    let input = PaintInput { model, vp, state };
     let mut canvas = Canvas::default();
-    guide::paint(&scene, &mut canvas);
-    playhead::paint(&scene, &mut canvas);
+    guide::paint(&input, &mut canvas);
+    playhead::paint(&input, &mut canvas);
     canvas.into_quads()
 }
 
@@ -116,7 +116,7 @@ fn vline(canvas: &mut Canvas, vp: &Viewport, t: f64, width: f32, color: Color) {
     let column = vp.layout.time_column();
     let x = vp.x_of(t) - width / 2.0;
     let line = Rect::new(x, column.y, width, column.h);
-    canvas.push_in(Depth::Over, line, color, column);
+    canvas.push_in(Depth::Surround, line, color, column);
 }
 
 #[cfg(test)]
