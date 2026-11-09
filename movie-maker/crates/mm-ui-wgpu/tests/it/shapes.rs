@@ -1,71 +1,65 @@
-//! `Quad` の形（ひし形と上下左右の三角）をオフスクリーンに描いて、形の内外と縁のなめらかさを確かめる。
-//! `MM_SHAPES_DUMP=<dir>` を付けると描いた画像を PNG で書き出す（期待画像を目で見る用）。
+//! `Quad` の形（ひし形と上下左右の三角形）をオフスクリーンに描いて、形の内外とアンチエイリアスの縁を確かめる。
+//! `MM_SHAPES_DUMP=<dir>` を付けると描いた画像を PNG で書き出す（目で確かめる用）。
 
-use mm_ui_layout::{Color, Quad, Rect, Scale, Shape};
+use mm_ui_layout::{Color, Quad, Scale, Shape};
 use mm_ui_wgpu::QuadRenderer;
 
-use crate::support::{gpu, px_in, read_back, FORMAT};
+use crate::support::{gpu, px_in, read_back, target, FORMAT};
 
-/// 論理ピクセルのシートの大きさ。
-const SHEET: (f32, f32) = (300.0, 60.0);
+/// テストパターンの大きさ（論理ピクセル）。
+const PATTERN: (f32, f32) = (400.0, 60.0);
 const BG: Color = Color::hex(0x202020);
 const FG: Color = Color::hex(0xF0F0F0);
-/// 形の外接する矩形の一辺（論理ピクセル）。縁から 2 画素以上離れた画素を取れる大きさ。
+/// 形の外接する矩形の一辺（論理ピクセル）。
 const SIZE: f32 = 24.0;
-/// 内外の判定で縁から離す距離（物理ピクセル）。縁の画素は半端な値になるので見ない。
-const MARGIN: f32 = 2.0;
+/// 鋭い角の外側のアンチエイリアスは描く範囲（外接する矩形の 1 物理ピクセル外まで）で切れるので、
+/// 角からこの距離（物理ピクセル）の内は縁の値を比べない。
+const CORNER: f32 = 2.0;
+/// 画素の値（8 ビット）の許容差。
+const TOL: f32 = 2.0;
 
-/// 形ごとの外接する矩形（論理ピクセル）。ひし形は縦長と横長も。
-fn sheet() -> Vec<Quad> {
-    let cell = |i: f32| (20.0 + i * 36.0, SHEET.1 / 2.0);
+/// 形ごとの外接する矩形（論理ピクセル）。縦長と横長のひし形と三角形、キーフレームのマーカーの大きさ（9）のひし形も。
+/// 中心を画素の境からずらし、縁が画素の途中を通るようにする。
+fn pattern() -> Vec<Quad> {
+    let cell = |i: f32| (20.3 + i * 36.0, PATTERN.1 / 2.0 + 0.4);
     let sq = (SIZE, SIZE);
     vec![
         Quad::diamond(cell(0.0), sq, FG),
-        Quad::triangle(cell(1.0), sq, Shape::TriUp, FG),
-        Quad::triangle(cell(2.0), sq, Shape::TriDown, FG),
-        Quad::triangle(cell(3.0), sq, Shape::TriLeft, FG),
-        Quad::triangle(cell(4.0), sq, Shape::TriRight, FG),
+        Quad::shaped(cell(1.0), sq, Shape::TriUp, FG),
+        Quad::shaped(cell(2.0), sq, Shape::TriDown, FG),
+        Quad::shaped(cell(3.0), sq, Shape::TriLeft, FG),
+        Quad::shaped(cell(4.0), sq, Shape::TriRight, FG),
         Quad::diamond(cell(5.0), (14.0, 28.0), FG),
         Quad::diamond(cell(6.0), (28.0, 14.0), FG),
-        Quad::new(Rect::new(cell(7.0).0 - 12.0, 18.0, 24.0, 24.0), FG),
+        Quad::shaped(cell(7.0), (28.0, 12.0), Shape::TriDown, FG),
+        Quad::shaped(cell(8.0), (12.0, 28.0), Shape::TriRight, FG),
+        Quad::diamond(cell(9.0), (9.0, 9.0), FG),
+        Quad::shaped(cell(10.0), sq, Shape::Rect, FG),
     ]
 }
 
-/// シートを倍率 `scale` で描いて RGBA8 と大きさ、物理ピクセルの図形の並びを返す。
+/// テストパターンを表示の倍率 `scale` で描いて、RGBA8 と大きさ、物理ピクセルに換えた並びを返す。
 fn render(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     scale: f32,
 ) -> (Vec<u8>, (u32, u32), Vec<Quad>) {
     let s = Scale::new(scale);
-    let size = ((SHEET.0 * scale) as u32, (SHEET.1 * scale) as u32);
-    let quads: Vec<Quad> = sheet()
+    let size = ((PATTERN.0 * scale) as u32, (PATTERN.1 * scale) as u32);
+    let quads: Vec<Quad> = pattern()
         .into_iter()
         .map(|q| Quad {
             rect: s.rect_to_physical(q.rect),
             ..q
         })
         .collect();
-    let mut r = QuadRenderer::new(device, FORMAT);
-    let n = r.prepare(device, queue, &quads, (size.0 as f32, size.1 as f32));
-    let texture = device.create_texture(&wgpu::TextureDescriptor {
-        label: None,
-        size: wgpu::Extent3d {
-            width: size.0,
-            height: size.1,
-            depth_or_array_layers: 1,
-        },
-        mip_level_count: 1,
-        sample_count: 1,
-        dimension: wgpu::TextureDimension::D2,
-        format: FORMAT,
-        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
-        view_formats: &[],
-    });
+    let mut renderer = QuadRenderer::new(device, FORMAT);
+    let n = renderer.prepare(device, queue, &quads, (size.0 as f32, size.1 as f32));
+    let texture = target(device, size);
     let view = texture.create_view(&Default::default());
     let mut enc = device.create_command_encoder(&Default::default());
     {
-        let [r8, g8, b8, _] = BG.0;
+        let [r, g, b, _] = BG.0.map(f64::from);
         let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: None,
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -73,18 +67,13 @@ fn render(
                 depth_slice: None,
                 resolve_target: None,
                 ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Clear(wgpu::Color {
-                        r: f64::from(r8),
-                        g: f64::from(g8),
-                        b: f64::from(b8),
-                        a: 1.0,
-                    }),
+                    load: wgpu::LoadOp::Clear(wgpu::Color { r, g, b, a: 1.0 }),
                     store: wgpu::StoreOp::Store,
                 },
             })],
             ..Default::default()
         });
-        r.draw(&mut pass, 0..n);
+        renderer.draw(&mut pass, 0..n);
     }
     queue.submit([enc.finish()]);
     (read_back(device, queue, &texture, 4), size, quads)
@@ -109,49 +98,110 @@ fn red(img: &[u8], w: u32, x: u32, y: u32) -> u8 {
     px_in(img, w, x, y)[0]
 }
 
-/// 縁から `MARGIN` 画素以上内側の画素は前景、外側の画素は背景。縁の画素は両方の間に入る。
+/// 前景の割合 `share` の画素の赤の値。
+fn value(share: f32) -> f32 {
+    let [bg, fg] = [BG, FG].map(|c| c.0[0] * 255.0);
+    bg + (fg - bg) * share
+}
+
+/// 形の角（外接する矩形の中心が原点、y は下向き、画面で時計回り）。
+fn corners(q: &Quad) -> Vec<(f32, f32)> {
+    let (w, h) = (q.rect.w / 2.0, q.rect.h / 2.0);
+    match q.shape {
+        Shape::Rect => vec![(-w, -h), (w, -h), (w, h), (-w, h)],
+        Shape::Diamond => vec![(0.0, -h), (w, 0.0), (0.0, h), (-w, 0.0)],
+        Shape::TriUp => vec![(0.0, -h), (w, h), (-w, h)],
+        Shape::TriDown => vec![(0.0, h), (-w, -h), (w, -h)],
+        Shape::TriLeft => vec![(-w, 0.0), (w, -h), (w, h)],
+        Shape::TriRight => vec![(w, 0.0), (-w, h), (-w, -h)],
+    }
+}
+
+/// 縁までの符号つき距離（外が正、物理ピクセル）。辺を延ばした直線までの距離の最大で、角の近くの外側では実際より短い。
+fn distance(corners: &[(f32, f32)], (x, y): (f32, f32)) -> f32 {
+    let next = corners.iter().cycle().skip(1);
+    corners
+        .iter()
+        .zip(next)
+        .map(|(&(ax, ay), &(bx, by))| {
+            let (ex, ey) = (bx - ax, by - ay);
+            ((x - ax) * ey - (y - ay) * ex) / ex.hypot(ey)
+        })
+        .fold(f32::MIN, f32::max)
+}
+
+/// 外接する矩形の中心から見た画素の中心 `p` の、前景の割合。縁は 1 物理ピクセルの幅で、縁までの距離に比例して背景へ移る。
+/// 矩形（縁を画素の中心の判定で切る）と形の角の近くは、縁から 1 物理ピクセルより離れた画素だけを見る（None は見ない）。
+fn expected(shape: Shape, corners: &[(f32, f32)], p: (f32, f32)) -> Option<f32> {
+    let d = distance(corners, p);
+    let near_corner = corners
+        .iter()
+        .any(|&(x, y)| (p.0 - x).hypot(p.1 - y) < CORNER);
+    if shape != Shape::Rect && !near_corner {
+        Some((0.5 - d).clamp(0.0, 1.0))
+    } else if d.abs() > 1.0 {
+        Some(if d < 0.0 { 1.0 } else { 0.0 })
+    } else {
+        None
+    }
+}
+
+/// 形 1 つの外接する矩形の周りの画素を `expected` と比べ、縁の途中（背景と前景の間）の画素の数を返す。
+fn check_quad(img: &[u8], width: u32, q: &Quad, scale: f32) -> usize {
+    let corners = corners(q);
+    let (cx, cy) = (q.rect.x + q.rect.w / 2.0, q.rect.y + q.rect.h / 2.0);
+    let mut edge = 0;
+    for y in (q.rect.y as u32 - 3)..=(q.rect.bottom() as u32 + 3) {
+        for x in (q.rect.x as u32 - 3)..=(q.rect.right() as u32 + 3) {
+            let p = (x as f32 + 0.5 - cx, y as f32 + 0.5 - cy);
+            let Some(share) = expected(q.shape, &corners, p) else {
+                continue;
+            };
+            let (v, want) = (f32::from(red(img, width, x, y)), value(share));
+            assert!(
+                (v - want).abs() <= TOL,
+                "{:?} 表示の倍率 {scale} ({x}, {y}): {v}（期待 {want}）",
+                q.shape
+            );
+            edge += usize::from(share > 0.0 && share < 1.0);
+        }
+    }
+    edge
+}
+
+/// テストパターンの全部の形で、画素が縁までの距離から決まる値になっているか確かめる。
 fn check_shapes(scale: f32) {
     let Some((device, queue)) = gpu() else { return };
     let (img, size, quads) = render(&device, &queue, scale);
     dump(&img, size, scale);
-    let bg = 0x20u8;
-    assert_eq!(red(&img, size.0, 0, 0), bg, "背景の画素が背景の色でない");
-    let mut partial = 0;
     for q in &quads {
-        let (hw, hh) = (q.rect.w / 2.0, q.rect.h / 2.0);
-        let (cx, cy) = (q.rect.x + hw, q.rect.y + hh);
-        let pad = MARGIN.ceil() as i32 + 1;
-        for y in (q.rect.y as i32 - pad)..=(q.rect.bottom() as i32 + pad) {
-            for x in (q.rect.x as i32 - pad)..=(q.rect.right() as i32 + pad) {
-                let (lx, ly) = (x as f32 + 0.5 - cx, y as f32 + 0.5 - cy);
-                let v = red(&img, size.0, x as u32, y as u32);
-                let inner = q.shape.contains(lx, ly, hw - MARGIN, hh - MARGIN);
-                let outer = q.shape.contains(lx, ly, hw + MARGIN, hh + MARGIN);
-                if inner {
-                    assert!(v >= 0xF0, "{:?} ({x},{y}) は内側なのに {v}", q.shape);
-                } else if !outer {
-                    assert_eq!(v, bg, "{:?} ({x},{y}) は外側なのに {v}", q.shape);
-                } else if v > bg && v < 0xF0 {
-                    partial += 1;
-                }
-            }
-        }
+        let edge = check_quad(&img, size.0, q, scale);
+        let soft = q.shape != Shape::Rect;
+        assert!(
+            !soft || edge > 4,
+            "{:?} 表示の倍率 {scale}: 縁の途中の画素が {edge} しかない",
+            q.shape
+        );
     }
-    assert!(partial > 20, "縁になめらかな中間の画素が無い: {partial}");
 }
 
 #[test]
-fn 形の内側は塗り外側は背景で縁は中間の値_倍率_1() {
+fn 形の内側は前景_外側は背景_縁は縁までの距離に応じた値_表示の倍率_100() {
     check_shapes(1.0);
 }
 
 #[test]
-fn 形の内側は塗り外側は背景で縁は中間の値_倍率_1_5() {
+fn 形の内側は前景_外側は背景_縁は縁までの距離に応じた値_表示の倍率_125() {
+    check_shapes(1.25);
+}
+
+#[test]
+fn 形の内側は前景_外側は背景_縁は縁までの距離に応じた値_表示の倍率_150() {
     check_shapes(1.5);
 }
 
 #[test]
-fn 形の内側は塗り外側は背景で縁は中間の値_倍率_2() {
+fn 形の内側は前景_外側は背景_縁は縁までの距離に応じた値_表示の倍率_200() {
     check_shapes(2.0);
 }
 

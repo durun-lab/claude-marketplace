@@ -1,7 +1,7 @@
 //! 塗りつぶしの図形（矩形、ひし形、三角形）のバッチ描画。UI の部品は `mm-ui-layout` が `Quad` の並びに落とすので、描くのはこれだけ。
 
 use bytemuck::{Pod, Zeroable};
-use mm_ui_layout::Quad;
+use mm_ui_layout::{Quad, Shape};
 
 const SHADER: &str = r#"
 struct U { res: vec2<f32>, pad: vec2<f32> };
@@ -82,6 +82,18 @@ struct Instance {
     shape: u32,
 }
 
+/// `SHADER` の `edge_distance` の分岐と同じ番号。
+const fn shape_id(shape: Shape) -> u32 {
+    match shape {
+        Shape::Rect => 0,
+        Shape::Diamond => 1,
+        Shape::TriUp => 2,
+        Shape::TriDown => 3,
+        Shape::TriLeft => 4,
+        Shape::TriRight => 5,
+    }
+}
+
 const INSTANCE_SIZE: u64 = std::mem::size_of::<Instance>() as u64;
 /// 最初に確保するインスタンスの数。
 const INITIAL_CAPACITY: u64 = 1024;
@@ -138,7 +150,7 @@ impl QuadRenderer {
             .map(|q| Instance {
                 rect: [q.rect.x, q.rect.y, q.rect.w, q.rect.h],
                 color: q.color.0,
-                shape: q.shape.id(),
+                shape: shape_id(q.shape),
             })
             .collect();
         queue.write_buffer(&self.instances, 0, bytemuck::cast_slice(&data));
