@@ -153,6 +153,7 @@ mod tests {
             duration: 10.0,
             fps: 30.0,
             items: vec![Item::layer(0.0, 5.0, ItemKind::Footage, true)],
+            ..TimelineModel::default()
         };
         let f = TestViewport::new(&model, (800.0, 200.0));
         let bar = f.vp().bar(0, 1.0, 5.0);
@@ -182,6 +183,7 @@ mod tests {
             duration: 10.0,
             fps: 30.0,
             items: vec![Item::layer(0.0, 5.0, ItemKind::Footage, true)],
+            ..TimelineModel::default()
         };
         let f = TestViewport::new(&model, (800.0, 200.0));
         // 論理ピクセルの 678（帯の右端 680 の内側 2）は物理ピクセルの 1017。
@@ -242,6 +244,7 @@ mod tests {
             duration: 10.0,
             fps: 30.0,
             items: vec![Item::layer(0.0, 5.0, ItemKind::Footage, true)],
+            ..TimelineModel::default()
         };
         let mut f = TestViewport::new(&model, (800.0, 200.0));
         f.time.px_per_sec = 37.3;

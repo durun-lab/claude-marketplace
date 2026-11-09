@@ -8,6 +8,7 @@ fn empty() -> TimelineModel {
         duration: 5.0,
         fps: 30.0,
         items: Vec::new(),
+        markers: Vec::new(),
     }
 }
 
