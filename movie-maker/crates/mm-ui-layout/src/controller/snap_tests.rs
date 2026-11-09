@@ -1,11 +1,12 @@
 //! スナップ（入/切、ドラッグ中の反転、吸い付いた目標、キーフレームとマーカー）とドラッグ中のツールチップの試験。
 
-use super::tests::{ctl, down, in_bar};
+use super::tests::{ctl, down, in_bar, move_to};
 use super::*;
 use crate::drag_tip::DragTip;
 use crate::gesture::Side;
 use crate::snap::SnapKind;
 use crate::timeline::{CutBar, Item, ItemKind};
+use crate::timeline_layout::HEADER_W;
 
 /// 文字のレイヤー（0-10 秒、キーフレームは 6 秒）と撮影素材のレイヤー（2-4 秒）。マーカーは 8 秒。
 fn model() -> TimelineModel {
@@ -23,7 +24,7 @@ fn model() -> TimelineModel {
 fn drag_out(c: &mut TimelineController, m: &TimelineModel, x: f32) -> Vec<Action> {
     let y = in_bar(c, 1);
     c.handle(down(399.0, y), m, PLAYHEAD);
-    c.handle(PointerEvent::Move { x, y }, m, PLAYHEAD)
+    c.handle(move_to(x, y), m, PLAYHEAD)
 }
 
 const PLAYHEAD: f64 = 7.0;
@@ -49,7 +50,7 @@ fn 吸い付いたときだけ描く状態に目標を載せる() {
     assert!((by - 3.0).abs() < 1e-9, "再生位置の 7 秒へ: {by}");
     assert_eq!(snapped_kind(&c), Some(SnapKind::Playhead));
     let y = in_bar(&c, 1);
-    c.handle(PointerEvent::Move { x: 555.0, y }, &m, PLAYHEAD);
+    c.handle(move_to(555.0, y), &m, PLAYHEAD);
     assert_eq!(
         snapped_kind(&c),
         None,
@@ -136,7 +137,7 @@ fn キーフレームとマーカーに吸い付く() {
     assert!((by - 2.0).abs() < 1e-9, "キーフレームの 6 秒へ: {by}");
     assert_eq!(snapped_kind(&c), Some(SnapKind::Keyframe { item: 0 }));
     let y = in_bar(&c, 1);
-    let at_marker = c.handle(PointerEvent::Move { x: 795.0, y }, &m, PLAYHEAD);
+    let at_marker = c.handle(move_to(795.0, y), &m, PLAYHEAD);
     assert!((by_of(&at_marker) - 4.0).abs() < 1e-9, "マーカーの 8 秒へ");
     assert_eq!(snapped_kind(&c), Some(SnapKind::Marker));
 }
@@ -169,7 +170,7 @@ fn カットの端はほかのカットの端を目標にする() {
     let mut c = ctl(&m);
     let y = in_bar(&c, 0);
     c.handle(down(298.0, y), &m, 0.0);
-    c.handle(PointerEvent::Move { x: 697.0, y }, &m, 0.0);
+    c.handle(move_to(697.0, y), &m, 0.0);
     let clip = SnapKind::ClipEdge {
         item: 0,
         cut: 2,
@@ -185,7 +186,10 @@ fn ドラッグ中のツールチップはポインターの位置とポイン�
     assert_eq!(c.paint_state(PLAYHEAD).drag, None);
     let by = by_of(&drag_out(&mut c, &m, 697.0));
     let y = in_bar(&c, 1);
-    let tip = DragTip { at: (697.0, y), by };
+    let tip = DragTip {
+        at: (697.0 + HEADER_W, y),
+        by,
+    };
     assert_eq!(c.paint_state(PLAYHEAD).drag, Some(tip));
     c.handle(PointerEvent::Up, &m, PLAYHEAD);
     assert_eq!(c.paint_state(PLAYHEAD).drag, None, "離したら消す");
@@ -205,7 +209,7 @@ fn ドラッグ中のツールチップはポインターの位置とポイン�
     let mut c = ctl(&s);
     let y = in_bar(&c, 0);
     c.handle(down(100.0, y), &s, 0.0);
-    let slip = by_of(&c.handle(PointerEvent::Move { x: 140.0, y }, &s, 0.0));
+    let slip = by_of(&c.handle(move_to(140.0, y), &s, 0.0));
     assert!(slip < 0.0, "{slip}");
     let shown = c.paint_state(0.0).drag.map(|d| d.by);
     assert_eq!(shown, Some(-slip));

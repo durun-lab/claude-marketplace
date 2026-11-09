@@ -134,6 +134,7 @@ mod tests {
     use crate::screen::split_viewers;
     use crate::timeline::{hit_test, Hit, Item, ItemKind, Part, TimelineModel, HANDLE_PX};
     use crate::timeline_layout::tests::TestViewport;
+    use crate::timeline_layout::HEADER_W;
 
     #[test]
     fn 等倍では矩形も割り付けもポインターも変えない() {
@@ -161,7 +162,7 @@ mod tests {
             let handle = s.rect_to_physical(Rect::new(bar.x, bar.y, HANDLE_PX, bar.h));
             assert_eq!(handle.w, HANDLE_PX * factor, "つまみの幅");
             assert_eq!(handle.h, bar.h * factor, "帯の高さ");
-            assert_eq!(handle.x, 100.0 * factor);
+            assert_eq!(handle.x, (HEADER_W + 100.0) * factor);
         }
     }
 
@@ -185,10 +186,10 @@ mod tests {
             ..TimelineModel::default()
         };
         let f = TestViewport::new(&model, (800.0, 200.0));
-        // 論理ピクセルの 498（帯の右端 500 の内側 2）は物理ピクセルの 747。
+        // 論理ピクセルの 678（帯の右端 680 の内側 2）は物理ピクセルの 1017。
         let bar = f.vp().bar(0, 0.0, 5.0);
         let y = (bar.y + bar.h / 2.0) * 1.5;
-        let PointerEvent::Move { x, y } = s.pointer_to_logical(PointerEvent::Move { x: 747.0, y })
+        let PointerEvent::Move { x, y } = s.pointer_to_logical(PointerEvent::Move { x: 1017.0, y })
         else {
             panic!("Move のまま");
         };

@@ -4,6 +4,7 @@
 //! 領域ごとの描く関数は `paint/` の下のファイルに置き、ここから名前の順に呼ぶ。描く関数は自分の領域の矩形の外に描かず、
 //! 重ね順は呼ぶ順でなく [`Depth`] で決めるので、領域を足す PR はファイルを 1 つと、呼び出しを 1 行足せばよい。
 
+mod header;
 mod playhead;
 mod rows;
 mod ruler;
@@ -113,6 +114,7 @@ pub fn timeline_quads(model: &TimelineModel, vp: &Viewport, state: &PaintState) 
     let input = PaintInput { model, vp, state };
     let mut canvas = Canvas::default();
     canvas.push(Depth::Back, vp.layout.bounds, state.palette.panel);
+    header::paint(&input, &mut canvas);
     rows::paint(&input, &mut canvas);
     ruler::paint(&input, &mut canvas);
     scrollbar::paint(&input, &mut canvas);

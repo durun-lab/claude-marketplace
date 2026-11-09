@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use crate::geom::{Color, Rect};
+use crate::header;
 use crate::paint::{bar_color, stripe, trimmed, PaintState};
 use crate::palette;
 use crate::rows::RowHeight;
@@ -38,12 +39,14 @@ pub fn timeline_labels(
 ) -> Vec<Label> {
     let mut placer = Placer {
         vp,
-        measure,
+        measure: &mut *measure,
         out: Vec::new(),
     };
     placer.ruler(state.palette.label, font.small);
     placer.bars(model, state, font.base);
-    placer.out
+    let mut out = placer.out;
+    out.extend(header::labels(model, vp, state, font, measure));
+    out
 }
 
 /// 文字を置いていく途中の状態。
@@ -170,7 +173,7 @@ mod tests {
     use crate::time_view::TimeView;
     use crate::timeline::{CutBar, ItemKind};
     use crate::timeline_layout::tests::TestViewport;
-    use crate::timeline_layout::RULER_H;
+    use crate::timeline_layout::{HEADER_W, RULER_H};
 
     /// 幅 800、高さ 200 の Timeline。
     const SIZE: (f32, f32) = (800.0, 200.0);
@@ -192,7 +195,9 @@ mod tests {
 
     /// 帯の名前（字を描く矩形が行の領域にあるもの）。
     fn bar_labels(out: &[Label]) -> Vec<&Label> {
-        out.iter().filter(|l| l.clip.y >= RULER_H).collect()
+        out.iter()
+            .filter(|l| l.clip.y >= RULER_H && l.clip.x >= HEADER_W)
+            .collect()
     }
 
     fn model(items: Vec<Item>) -> TimelineModel {
@@ -213,7 +218,7 @@ mod tests {
         let bars = bar_labels(&out);
         assert_eq!(bars.len(), 1);
         let l = bars[0];
-        assert_eq!((l.x, l.cut), (100.0 + LABEL_PAD, None));
+        assert_eq!((l.x, l.cut), (HEADER_W + 100.0 + LABEL_PAD, None));
         assert_eq!(&*l.text, "a.mp4");
         let bar = TestViewport::new(&m, SIZE).vp().bar(0, 1.0, 4.0);
         assert_eq!(l.clip, bar);
@@ -304,7 +309,7 @@ mod tests {
             px_per_sec: 100.0,
         };
         let (out, _) = labels_in(&m, &f, &state(0.0));
-        assert_eq!(bar_labels(&out)[0].x, LABEL_PAD);
+        assert_eq!(bar_labels(&out)[0].x, HEADER_W + LABEL_PAD);
     }
 
     #[test]
@@ -324,7 +329,13 @@ mod tests {
         ];
         let (out, _) = labels_of(&model(vec![seq]), &state(0.0));
         let names: Vec<(&str, f32)> = bar_labels(&out).iter().map(|l| (&*l.text, l.x)).collect();
-        assert_eq!(names, [("a.mp4", LABEL_PAD), ("b.mp4", 300.0 + LABEL_PAD)]);
+        assert_eq!(
+            names,
+            [
+                ("a.mp4", HEADER_W + LABEL_PAD),
+                ("b.mp4", HEADER_W + 300.0 + LABEL_PAD)
+            ]
+        );
     }
 
     #[test]
@@ -343,7 +354,7 @@ mod tests {
             ..state(0.0)
         };
         let (out, _) = labels_of(&m, &st);
-        assert_eq!(bar_labels(&out)[0].x, 200.0 + LABEL_PAD);
+        assert_eq!(bar_labels(&out)[0].x, HEADER_W + 200.0 + LABEL_PAD);
     }
 
     #[test]
@@ -387,30 +398,39 @@ mod tests {
         let (out, measure) = labels_of(&model(items), &state(0.0));
         let rows = bar_labels(&out).len();
         assert!(rows > 0 && rows < 10, "高さ 200 に入る行だけ: {rows}");
-        assert!(measure.asked.len() < 30, "{}", measure.asked.len());
+        assert!(measure.asked.len() < 60, "{}", measure.asked.len());
     }
 
     #[test]
     fn 目盛りの時刻は主な目盛りの右に置き_右端に収める() {
         let (out, _) = labels_of(&model(Vec::new()), &state(0.0));
-        let ruler: Vec<&Label> = out.iter().filter(|l| l.y < RULER_H).collect();
+        let ruler: Vec<&Label> = out
+            .iter()
+            .filter(|l| l.y < RULER_H && l.x >= HEADER_W)
+            .collect();
         assert_eq!(&*ruler[0].text, "0:00");
-        assert_eq!(ruler[0].x, TICK_GAP);
+        assert_eq!(ruler[0].x, HEADER_W + TICK_GAP);
         assert_eq!(ruler[0].color, Palette::DEFAULT.label);
-        // 幅 800 で最後の主な目盛りは 8 秒（800 px）。時刻は右端から間隔を空けて収める。
+        // 幅 800 で目盛りの帯は 620 px、最後の主な目盛りは 6 秒（600 px）。時刻は右端から間隔を空けて収める。
         let last = ruler.last().expect("時刻");
-        assert_eq!(&*last.text, "0:08");
+        assert_eq!(&*last.text, "0:06");
         assert_eq!(last.x, 800.0 - TICK_GAP - 4.0 * 5.5, "4 字 × 5.5 px");
-        assert_eq!(last.clip, Rect::new(0.0, 0.0, 800.0, RULER_H));
+        assert_eq!(
+            last.clip,
+            Rect::new(HEADER_W, 0.0, 800.0 - HEADER_W, RULER_H)
+        );
     }
 
     #[test]
     fn 目盛りが右端より外にある時刻は置かない() {
-        // 幅 799 では 8 秒の目盛り（800 px）が外にある。
+        // 幅 779 では目盛りの帯が 599 px で、6 秒の目盛り（600 px）が外にある。
         let m = model(Vec::new());
-        let f = TestViewport::new(&m, (799.0, 200.0));
+        let f = TestViewport::new(&m, (779.0, 200.0));
         let (out, _) = labels_in(&m, &f, &state(0.0));
-        let last = out.iter().rfind(|l| l.y < RULER_H).expect("時刻");
-        assert_eq!(&*last.text, "0:07");
+        let last = out
+            .iter()
+            .rfind(|l| l.y < RULER_H && l.x >= HEADER_W)
+            .expect("時刻");
+        assert_eq!(&*last.text, "0:05");
     }
 }

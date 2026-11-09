@@ -82,7 +82,7 @@ mod tests {
     use crate::snap::{SnapKind, SnapTarget};
     use crate::timeline::{CutBar, Item, ItemKind, TimelineModel};
     use crate::timeline_layout::tests::TestViewport;
-    use crate::timeline_layout::RULER_H;
+    use crate::timeline_layout::{HEADER_W, RULER_H};
 
     /// 幅 800、高さ 120 の Timeline。
     const SIZE: (f32, f32) = (800.0, 120.0);
@@ -128,14 +128,14 @@ mod tests {
             .iter()
             .find(|q| q.shape == QuadShape::Rect)
             .expect("ガイド線");
-        assert_eq!((line.rect.x, line.rect.w), (149.0, 2.0));
+        assert_eq!((line.rect.x, line.rect.w), (HEADER_W + 149.0, 2.0));
         assert_eq!((line.rect.y, line.rect.h), (0.0, SIZE.1), "時刻の列の全高");
         let down = marks
             .iter()
             .find(|q| q.shape == QuadShape::TriDown)
             .expect("目盛りの帯の三角");
         assert_eq!(down.rect.bottom(), RULER_H, "目盛りの帯の下端から下を指す");
-        assert_eq!(down.rect.x + down.rect.w / 2.0, 150.0);
+        assert_eq!(down.rect.x + down.rect.w / 2.0, HEADER_W + 150.0);
         let up = marks
             .iter()
             .find(|q| q.shape == QuadShape::TriUp)
@@ -187,7 +187,10 @@ mod tests {
             cut: 1,
             side: Side::In,
         };
-        assert_eq!(edge_strip(clip, 2.0).expect("カットの入り").rect.x, 200.0);
+        assert_eq!(
+            edge_strip(clip, 2.0).expect("カットの入り").rect.x,
+            HEADER_W + 200.0
+        );
         assert!(
             edge_strip(SnapKind::Marker, 2.0).is_none(),
             "端でなければ塗らない"

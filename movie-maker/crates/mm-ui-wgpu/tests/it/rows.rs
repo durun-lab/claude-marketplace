@@ -178,7 +178,7 @@ fn 戻した表示の状態はズームとスクロールと行の高さを当�
     let saved = ViewState {
         time: TimeView {
             origin: 1.0,
-            px_per_sec: 200.0,
+            px_per_sec: 100.0,
         },
         scroll_y: 54.0,
         heights: RowHeights {

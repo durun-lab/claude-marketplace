@@ -175,7 +175,7 @@
 `movie-maker <プロジェクト> --play-test <秒数> --report <結果.json> [--screenshot <画像.png>]` は、実際のウィンドウで次の工程を順に通し、結果の JSON を書いて終わる（`apps/movie-maker/src/win/verify.rs`）。UI を変えた担当が画面を確かめるのに使う。
 
 1. 再生: 先頭から要求の秒数（作品がそれより短ければ最後まで）再生し、ドロップしたフレームと時計の誤差を数え、半分の位置でスクリーンショットを撮る。`frames_total` は再生した区間のフレームの数。
-2. 入力: Timeline のルーラーのクリックでのシークと、Space での再生と停止。
+2. 入力: Timeline のルーラーのクリックでのシークと、Space での再生と停止。シークの許容誤差（`scrub_tolerance_secs`）は、クリックを物理ピクセルに丸めた半画素とシークをフレームに丸めた半フレームの和で、下限は 2 フレーム（長いコンポジションの全体表示は 1 物理ピクセルが 2 フレームより長い）。
 3. Inspector: レイヤーを選んで不透明度を変える。
 4. Timeline の編集: Source のイン点とアウト点、insert、ripple、slip、split、lift、取り消し、レイヤーの端のドラッグ（`verify_edit.rs`）。
 
