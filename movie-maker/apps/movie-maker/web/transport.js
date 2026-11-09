@@ -213,10 +213,17 @@
     });
   };
 
+  // 選択のイベントは WebView が開く前にも出るので、開いたときと shell が組み上がった後に、いまの選択を引いて Inspector に渡す。
+  const pullSelection = async () => {
+    const detail = await invoke("layer_selection");
+    if (detail) window.dispatchEvent(new CustomEvent(LAYER_SELECTED_EVENT, { detail }));
+  };
+
   const start = async () => {
     build();
     info = await invoke("project_info");
     showInfo();
+    pullSelection();
     const channel = new Channel();
     channel.onmessage = onTick;
     await invoke("subscribe", { onTick: channel });
@@ -244,6 +251,7 @@
     setTimeout(async () => {
       info = await invoke("project_info");
       showInfo();
+      pullSelection();
     }, ADAPTER_WAIT_MS);
   };
 

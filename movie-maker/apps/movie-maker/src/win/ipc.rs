@@ -28,6 +28,7 @@ pub fn handler(invoke: tauri::ipc::Invoke) -> bool {
         transport,
         project_info,
         key_event,
+        layer_selection,
         command_table,
         run_command,
         crate::win::edit::apply_op,
@@ -72,6 +73,33 @@ pub struct LayerInfo {
 pub struct LayerSelection {
     pub layer: Option<Layer>,
     pub assets: Vec<Asset>,
+    /// 開いているコンポジションの要約。何も選んでいない Inspector が出す。
+    pub composition: Option<CompositionSummary>,
+}
+
+/// コンポジションの要約（`ui/sdk` の `CompositionSummary`）。
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct CompositionSummary {
+    pub name: String,
+    pub width: u32,
+    pub height: u32,
+    pub fps: f64,
+    /// 秒。
+    pub duration: f64,
+    pub layers: usize,
+}
+
+impl CompositionSummary {
+    fn of(comp: &Composition) -> Self {
+        Self {
+            name: comp.id.to_string(),
+            width: comp.width,
+            height: comp.height,
+            fps: comp.fps.to_f64(),
+            duration: comp.duration.to_f64(),
+            layers: comp.layers.len(),
+        }
+    }
 }
 
 /// WebView へ選択を送る Tauri のイベント名。`web/transport.js` が同じ名前の DOM のイベントにつなぐ。
@@ -96,13 +124,12 @@ pub fn layer_infos(comp: &Composition) -> Vec<LayerInfo> {
 
 /// 選んだレイヤーの ID から、Inspector に送る中身を作る。レイヤーが無くなっていれば空の選択。
 pub fn selection_of(doc: &OpenDoc, selected: Option<&str>) -> LayerSelection {
-    let layer = selected.and_then(|id| {
-        let comp = doc.project.composition(&doc.comp).ok()?;
-        comp.layers.iter().find(|l| l.id.as_str() == id).cloned()
-    });
+    let comp = doc.project.composition(&doc.comp).ok();
+    let layer = selected.and_then(|id| comp?.layers.iter().find(|l| l.id.as_str() == id).cloned());
     LayerSelection {
         layer,
         assets: doc.project.assets.clone(),
+        composition: comp.map(CompositionSummary::of),
     }
 }
 
@@ -355,6 +382,19 @@ pub async fn project_info(state: State<'_, Arc<SyncState>>) -> Result<ProjectInf
     })
 }
 
+/// いまの選択（Inspector の中身）。WebView が開いたときに、起動前に出たイベントの代わりに引く。
+#[tauri::command]
+pub async fn layer_selection(
+    state: State<'_, Arc<SyncState>>,
+) -> Result<Option<LayerSelection>, String> {
+    hotpatch::call(|| {
+        let shared = &state.shared;
+        Ok(shared
+            .doc()
+            .map(|doc| selection_of(&doc, shared.selected_layer().as_deref())))
+    })
+}
+
 #[tauri::command]
 pub async fn key_event(
     state: State<'_, Arc<SyncState>>,
@@ -376,3 +416,6 @@ pub async fn command_table(state: State<'_, Arc<SyncState>>) -> Result<Vec<Comma
 pub async fn run_command(state: State<'_, Arc<SyncState>>, id: String) -> Result<(), String> {
     hotpatch::call(|| commands::run(&state.shared, &id))
 }
+
+#[cfg(test)]
+mod tests;

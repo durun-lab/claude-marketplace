@@ -96,7 +96,14 @@ describe("StoryPanel の表示", () => {
       overview: vi.fn().mockResolvedValue({ assets: [], sequences: [] }),
     });
     await mount(api);
-    expect(host.querySelector(".mm-story-empty")).not.toBeNull();
+    expect(host.querySelector(".mm-story-empty")?.textContent).toBe(
+      "No transcript yet. Transcription runs outside the app for now: run tools/transcribe on a clip, then reopen this tab.",
+    );
+  });
+
+  it("文字起こしがあれば案内を出さない", async () => {
+    await mount(fake());
+    expect(host.querySelector(".mm-story-empty")).toBeNull();
   });
 });
 

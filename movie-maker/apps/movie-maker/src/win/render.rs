@@ -14,9 +14,10 @@ mod acquire;
 mod sync;
 
 use mm_runtime::{select_adapter, GpuContext, GpuSelector};
-use mm_ui_layout::TimelineModel;
+use mm_ui_layout::{EmptyHints, TimelineModel};
 use mm_ui_wgpu::Ui;
 
+use crate::win::keys;
 use crate::win::playback::Command;
 use crate::win::review::drawing::DrawingSync;
 use crate::win::state::{FrameImage, PreviewFrame, Shared};
@@ -226,6 +227,17 @@ fn surface_config(
     })
 }
 
+/// 空の状態の案内に出すキー。キーの表から引き、割り当てを変えても案内がずれないようにする。
+fn empty_hints() -> EmptyHints {
+    let key = |id: &str| keys::key_label_of(id).into();
+    EmptyHints {
+        import_media: key("media.import"),
+        mark_in: key("source.mark_in"),
+        mark_out: key("source.mark_out"),
+        insert: key("clip.insert"),
+    }
+}
+
 /// サーフェスと、その上の UI。デバイスを持ち替えるときは丸ごと作り直す。
 struct View {
     gpu: Gpu,
@@ -249,6 +261,7 @@ impl View {
         }
         ui.set_palette(theme::surface_palette());
         ui.set_font(theme::surface_font());
+        ui.set_hints(empty_hints());
         Ok(Self {
             gpu,
             ui,

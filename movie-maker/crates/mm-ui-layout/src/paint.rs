@@ -4,6 +4,7 @@
 //! 領域ごとの描く関数は `paint/` の下のファイルに置き、ここから名前の順に呼ぶ。描く関数は自分の領域の矩形の外に描かず、
 //! 重ね順は呼ぶ順でなく [`Depth`] で決めるので、領域を足す PR はファイルを 1 つと、呼び出しを 1 行足せばよい。
 
+mod empty;
 mod guide;
 mod header;
 mod keymarks;
@@ -18,6 +19,9 @@ use crate::palette::Palette;
 use crate::timeline::{Hit, TimelineModel};
 use crate::timeline_layout::Viewport;
 
+pub use empty::{
+    program_labels as empty_program_labels, timeline_labels as empty_timeline_labels, EmptyHints,
+};
 pub(crate) use rows::{bar_color, stripe, trimmed};
 
 /// 描く時点の状態。

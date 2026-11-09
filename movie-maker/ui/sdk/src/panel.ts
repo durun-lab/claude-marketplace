@@ -5,10 +5,23 @@ import type { Asset, Layer, Op } from "./generated/ops.ts";
 /** パネルを出す列。列の中のタブは `order` の小さい順に並ぶ。 */
 export type PanelColumn = "left" | "right";
 
+/** 開いているコンポジションの要約。アプリ（`ipc.rs` の `CompositionSummary`）が選択のイベントに載せる。 */
+export interface CompositionSummary {
+  name: string;
+  width: number;
+  height: number;
+  fps: number;
+  /** 秒。 */
+  duration: number;
+  /** レイヤーの数。 */
+  layers: number;
+}
+
 /** Timeline で選ばれているレイヤーと、それが指す素材。 */
 export interface LayerSelection {
   layer: Layer | null;
   assets?: Asset[];
+  composition?: CompositionSummary;
 }
 
 /** Shell がパネルの `render` に渡すもの。 */

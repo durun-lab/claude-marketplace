@@ -112,9 +112,29 @@ describe("color", () => {
 });
 
 describe("InspectorPanel", () => {
-  it("選んだレイヤーが無いと空の表示", () => {
+  it("選んだレイヤーが無いと次にすることを出す", () => {
     render(<InspectorPanel layer={null} onOp={vi.fn()} />, host);
-    expect(host.textContent).toContain("No layer selected");
+    expect(host.textContent).toContain("Select a layer in the Timeline to see its properties.");
+  });
+
+  it("選んだレイヤーが無いときはコンポジションの要約を出す", () => {
+    const composition = { name: "main", width: 1920, height: 1080, fps: 29.97, duration: 83.5, layers: 3 };
+    render(<InspectorPanel layer={null} composition={composition} onOp={vi.fn()} />, host);
+    const summary = [...host.querySelectorAll(".mm-insp-summary-row")].map((r) => r.textContent);
+    expect(summary).toEqual([
+      "Namemain",
+      "Size1920 × 1080",
+      "Frame rate29.97 fps",
+      "Duration00:01:23:15",
+      "Layers3",
+    ]);
+  });
+
+  it("レイヤーを選ぶと案内と要約は消える", () => {
+    const composition = { name: "main", width: 1920, height: 1080, fps: 30, duration: 5, layers: 1 };
+    render(<InspectorPanel layer={layer} composition={composition} onOp={vi.fn()} />, host);
+    expect(host.querySelector(".mm-insp-summary")).toBeNull();
+    expect(host.textContent).not.toContain("Select a layer");
   });
 
   it("キーフレームのあるパラメータはマーカーを出し、編集できない", () => {

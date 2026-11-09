@@ -8,9 +8,10 @@
 use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
-    fit_rect, split_viewers, timeline_labels, timeline_overlay, timeline_quads, Action,
-    DrawingShape, PaintState, PointerEvent, Quad, Rect, RowHeights, Scale, SurfaceLayout, TimeView,
-    TimelineController, TimelineModel, UiFont, ViewState,
+    empty_program_labels, empty_timeline_labels, fit_rect, split_viewers, timeline_labels,
+    timeline_overlay, timeline_quads, Action, DrawingShape, EmptyHints, PaintState, PointerEvent,
+    Quad, Rect, RowHeights, Scale, SurfaceLayout, TimeView, TimelineController, TimelineModel,
+    UiFont, ViewState,
 };
 
 use crate::drawing::{DrawingFit, DrawingLayer};
@@ -57,6 +58,8 @@ pub struct Ui {
     /// 最初の表示（戻した表示の状態か、全体表示と sequence の行）を当てたか。
     opened: bool,
     palette: Palette,
+    /// レイヤーが無いときの案内に出すキー。
+    hints: EmptyHints,
 }
 
 impl Ui {
@@ -87,7 +90,13 @@ impl Ui {
             playhead: 0.0,
             opened: false,
             palette: Palette::DEFAULT,
+            hints: EmptyHints::default(),
         }
+    }
+
+    /// レイヤーが無いときの案内に出すキー（アプリのキーの表から作ったもの）。
+    pub fn set_hints(&mut self, hints: EmptyHints) {
+        self.hints = hints;
     }
 
     /// Timeline の色（`ui/theme` の theme.json から作ったもの）。
@@ -360,6 +369,28 @@ impl Ui {
             l.y += t.y;
             l.clip = l.clip.translated(t.x, t.y);
         }
+        let empty = empty_timeline_labels(
+            &self.model,
+            &vp,
+            &self.hints,
+            &state.palette,
+            &self.font,
+            text.measure(),
+        );
+        for mut l in empty {
+            l.x += t.x;
+            l.y += t.y;
+            l.clip = l.clip.translated(t.x, t.y);
+            labels.push(l);
+        }
+        labels.extend(empty_program_labels(
+            &self.model,
+            self.layout.program,
+            &self.hints,
+            &state.palette,
+            &self.font,
+            text.measure(),
+        ));
         let viewport = (self.size.0 as u32, self.size.1 as u32);
         text.prepare(device, queue, &labels, self.scale, viewport);
     }

@@ -43,7 +43,10 @@ pub use geom::{fit_rect, Color, Quad, QuadShape, Rect};
 pub use gesture::{body_edit, edge_edit, EditKind, Side};
 pub use keymarks::MARK_PX;
 pub use labels::{timeline_labels, LABEL_PAD};
-pub use paint::{timeline_overlay, timeline_quads, PaintState};
+pub use paint::{
+    empty_program_labels, empty_timeline_labels, timeline_overlay, timeline_quads, EmptyHints,
+    PaintState,
+};
 pub use rows::{RowHeight, RowHeights, Rows};
 pub use ruler::{label, major_step, ticks, Tick};
 pub use scale::{Scale, TextPlacement};

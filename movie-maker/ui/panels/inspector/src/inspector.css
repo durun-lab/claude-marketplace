@@ -33,6 +33,33 @@
   color: var(--mm-color-text-muted);
 }
 
+.mm-insp-hint {
+  margin: 0;
+}
+
+.mm-insp-summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-xs);
+  margin: 0;
+}
+
+.mm-insp-summary-row {
+  display: grid;
+  grid-template-columns: 6em 1fr;
+  gap: var(--mm-space-sm);
+}
+
+.mm-insp-summary dt {
+  color: var(--mm-color-text-muted);
+}
+
+.mm-insp-summary dd {
+  margin: 0;
+  color: var(--mm-color-text);
+  overflow-wrap: anywhere;
+}
+
 .mm-insp-header {
   margin: 0;
   font-size: var(--mm-font-size-lg);

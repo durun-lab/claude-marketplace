@@ -387,7 +387,7 @@ describe("Shell", () => {
   it("右の列の Inspector は選択のイベントでレイヤーを出し、値の変更を sendOp に渡す", () => {
     const sendOp = vi.fn();
     act(() => render(<Shell sendOp={sendOp} />, host));
-    expect(host.querySelector(".mm-shell-right")?.textContent).toContain("No layer selected");
+    expect(host.querySelector(".mm-shell-right")?.textContent).toContain("Select a layer in the Timeline");
     act(() => {
       window.dispatchEvent(new CustomEvent(LAYER_SELECTED_EVENT, { detail: { layer } }));
     });
