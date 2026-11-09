@@ -66,31 +66,31 @@ impl Color {
     }
 }
 
-/// `Quad` の形。矩形の中に収まる（外接する矩形が `Quad::rect`）。
+/// `Quad` の形。どれも外接する矩形（`Quad::rect`）に収まる。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Shape {
-    /// 矩形全体（既定）。
+pub enum QuadShape {
+    /// 外接する矩形そのもの（既定）。
     #[default]
     Rect,
-    /// 矩形に内接するひし形。
+    /// 外接する矩形の各辺の中点を結ぶひし形。
     Diamond,
-    /// 頂点が上の二等辺三角形（底辺は矩形の下端）。
+    /// 上向きの二等辺三角形。底辺は外接する矩形の下端。
     TriUp,
-    /// 頂点が下の二等辺三角形（底辺は矩形の上端）。
+    /// 下向きの二等辺三角形。底辺は外接する矩形の上端。
     TriDown,
-    /// 頂点が左の二等辺三角形（底辺は矩形の右端）。
+    /// 左向きの二等辺三角形。底辺は外接する矩形の右端。
     TriLeft,
-    /// 頂点が右の二等辺三角形（底辺は矩形の左端）。
+    /// 右向きの二等辺三角形。底辺は外接する矩形の左端。
     TriRight,
 }
 
-/// 塗りつぶしの図形 1 つ（既定は矩形）。UI の部品はこれの並びに落とす。
+/// 塗りつぶしの図形 1 つ（既定は矩形）。UI の部品はこれの並びにする。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Quad {
     /// 図形に外接する矩形。
     pub rect: Rect,
     pub color: Color,
-    pub shape: Shape,
+    pub shape: QuadShape,
 }
 
 impl Quad {
@@ -98,12 +98,17 @@ impl Quad {
         Self {
             rect,
             color,
-            shape: Shape::Rect,
+            shape: QuadShape::Rect,
         }
     }
 
     /// 中心 `center`、外接する矩形の大きさ `size`（幅、高さ）の `shape`。
-    pub const fn shaped(center: (f32, f32), size: (f32, f32), shape: Shape, color: Color) -> Self {
+    pub const fn shaped(
+        center: (f32, f32),
+        size: (f32, f32),
+        shape: QuadShape,
+        color: Color,
+    ) -> Self {
         Self {
             rect: Rect::new(
                 center.0 - size.0 / 2.0,
@@ -116,9 +121,9 @@ impl Quad {
         }
     }
 
-    /// 中心 `center`、大きさ `size`（幅、高さ）のひし形。
+    /// 中心 `center`、外接する矩形の大きさ `size`（幅、高さ）のひし形。
     pub const fn diamond(center: (f32, f32), size: (f32, f32), color: Color) -> Self {
-        Self::shaped(center, size, Shape::Diamond, color)
+        Self::shaped(center, size, QuadShape::Diamond, color)
     }
 }
 
@@ -159,10 +164,10 @@ mod tests {
     fn 中心と大きさから外接する矩形を作る() {
         let q = Quad::diamond((10.0, 20.0), (8.0, 12.0), Color::hex(0xFFFFFF));
         assert_eq!(q.rect, Rect::new(6.0, 14.0, 8.0, 12.0));
-        assert_eq!(q.shape, Shape::Diamond);
-        let t = Quad::shaped((10.0, 20.0), (9.0, 5.0), Shape::TriDown, q.color);
+        assert_eq!(q.shape, QuadShape::Diamond);
+        let t = Quad::shaped((10.0, 20.0), (9.0, 5.0), QuadShape::TriDown, q.color);
         assert_eq!(t.rect, Rect::new(5.5, 17.5, 9.0, 5.0));
-        assert_eq!(Quad::new(q.rect, q.color).shape, Shape::Rect);
+        assert_eq!(Quad::new(q.rect, q.color).shape, QuadShape::Rect);
     }
 
     #[test]

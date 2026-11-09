@@ -31,7 +31,7 @@ pub use drawing::{
     drawing_segments, frame_point, DrawingSegment, DrawingShape, DrawingShapeKind, DRAWING_LINE_PX,
     DRAWING_POINT_PX,
 };
-pub use geom::{fit_rect, Color, Quad, Rect, Shape};
+pub use geom::{fit_rect, Color, Quad, QuadShape, Rect};
 pub use gesture::{body_edit, edge_edit, EditKind, Side};
 pub use labels::{timeline_labels, LABEL_PAD};
 pub use paint::{timeline_overlay, timeline_quads, PaintState};
