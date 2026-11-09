@@ -308,7 +308,7 @@ mod tests {
                 PointerEvent::SnapKeyUp,
                 PointerEvent::ToggleSnapping
             ],
-            "ドラッグとの前後を保つため、ポインターの入力と同じ列に入れる。K を離しても何もしない"
+            "ドラッグとの前後を保つため、ポインターの入力のキューに入れる。K を離しても何もしない"
         );
     }
 

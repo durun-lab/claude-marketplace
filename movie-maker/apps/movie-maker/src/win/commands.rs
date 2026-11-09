@@ -40,7 +40,7 @@ pub enum Action {
     Window(WindowAction),
 }
 
-/// Timeline の表示のコマンドの中身。ポインターの入力と同じ列で描画スレッドへ渡し、ドラッグとの前後を保つ。
+/// Timeline の表示のコマンドの中身。ポインターの入力のキューで描画スレッドへ渡し、ドラッグとの前後を保つ。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimelineAction {
     /// スナップの入/切。ドラッグ中のキーは、押している間だけ反転する。
@@ -361,7 +361,7 @@ pub fn release_from_key(shared: &Shared, id: &str) {
     }
 }
 
-/// Timeline の表示のコマンドを、ポインターの入力と同じ列で描画スレッドへ渡す。
+/// Timeline の表示のコマンドを、ポインターの入力のキュー（`Shared::input`）で描画スレッドへ渡す。
 fn timeline_input(shared: &Shared, input: PointerEvent) {
     shared.input.lock().expect("input").push(input);
 }

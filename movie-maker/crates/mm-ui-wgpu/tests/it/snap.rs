@@ -1,4 +1,4 @@
-//! スナップの表示（太いガイド線と上下の三角）とドラッグ中のツールチップを、つまみのドラッグの途中で描いて確かめる。
+//! スナップの表示（太いガイド線と上下の三角形）とドラッグ中のツールチップを、つまみのドラッグの途中で描いて確かめる。
 
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
@@ -8,15 +8,15 @@ use mm_ui_wgpu::Ui;
 
 use crate::support::{bar_rect, close, gpu, hex, px_in, render_sized, FORMAT, H, W};
 
-/// 再生位置（秒）。撮影素材のレイヤー（0-4 秒）の出つまみをここへ引くと吸い付く。
+/// 再生位置（秒）。撮影素材のレイヤー（0-4 秒）のアウト点のつまみをここへドラッグすると吸い付く。
 const PLAYHEAD: f64 = 6.0;
 
-/// 引いたまま描いた結果。
+/// ドラッグしたまま描いた結果。
 struct Dragged {
     image: Vec<u8>,
-    /// 引いた先の点（物理ピクセル）。
+    /// ドラッグした先の点（物理ピクセル）。
     at: (f32, f32),
-    /// 引いた先の時刻の x。
+    /// ドラッグした先の時刻の x。
     x: f32,
     /// Timeline の矩形。
     timeline: Rect,
@@ -25,19 +25,19 @@ struct Dragged {
     rows_bottom: f32,
 }
 
-/// 引いている途中の `Ui`。
+/// ドラッグしている途中の `Ui`。
 struct Held {
     device: wgpu::Device,
     queue: wgpu::Queue,
     ui: Ui,
     model: TimelineModel,
-    /// 引いた先の点（物理ピクセル）。
+    /// ドラッグした先の点（物理ピクセル）。
     at: (f32, f32),
-    /// 引いた先の時刻の x。
+    /// ドラッグした先の時刻の x。
     x: f32,
 }
 
-/// 撮影素材のレイヤーの出つまみを掴んで、時刻 `to`（秒）の右 `dx` まで引く（離さない）。
+/// 撮影素材のレイヤーのアウト点のつまみを掴んで、時刻 `to`（秒）の右 `dx` までドラッグする（離さない）。
 fn hold(to: f64, dx: f32) -> Option<Held> {
     let (device, queue) = gpu()?;
     let model = TimelineModel {
@@ -70,7 +70,7 @@ fn hold(to: f64, dx: f32) -> Option<Held> {
     })
 }
 
-/// 撮影素材のレイヤーの出つまみを掴んで、時刻 `to`（秒）の右 `dx` まで引いたまま描く。
+/// 撮影素材のレイヤーのアウト点のつまみを掴んで、時刻 `to`（秒）の右 `dx` までドラッグしたまま描く。
 fn drag_to(to: f64, dx: f32) -> Option<Dragged> {
     let mut h = hold(to, dx)?;
     let image = render_sized(&h.device, &h.queue, &mut h.ui, (W, H));
@@ -105,31 +105,38 @@ fn guide(p: [u8; 3]) -> bool {
 }
 
 /// ツールチップの矩形の左上の部分（ポインターの右 16 から始まる矩形の、縁の内側）。
-fn tip_area(at: (f32, f32)) -> Rect {
+fn tooltip_area(at: (f32, f32)) -> Rect {
     Rect::new(at.0 + 18.0, at.1 - 7.0, 24.0, 14.0)
 }
 
-fn tip_fill(p: [u8; 3]) -> bool {
+fn tooltip_fill(p: [u8; 3]) -> bool {
     close(p, hex(Palette::DEFAULT.ruler), 4)
 }
 
 #[test]
-fn 吸い付いたドラッグは太いガイド線と上下の三角とツールチップを描く() {
+fn 吸い付いたドラッグは太いガイド線と上下の三角形とツールチップを描く() {
     let Some(d) = drag_to(PLAYHEAD, 3.0) else {
         return;
     };
     // 帯の行より下の空いた所で、ガイド線（太さ 2）が再生位置の線の上に重なる。
     let below = Rect::new(d.x - 4.0, d.at.1 + 30.0, 8.0, 1.0);
     assert_eq!(count(&d.image, below, guide), 2, "太さ 2 のガイド線");
-    // 下向きの三角は底辺が上。目盛りの帯の下端から 6 上の行では、中心から 2〜3 右も三角の中。
-    let top_mark = Rect::new(d.x + 2.0, d.ruler_bottom - 6.0, 2.0, 1.0);
-    assert_eq!(count(&d.image, top_mark, guide), 2, "目盛りの帯の三角");
-    let bottom_mark = Rect::new(d.x + 2.0, d.rows_bottom - 2.0, 2.0, 1.0);
-    assert_eq!(count(&d.image, bottom_mark, guide), 2, "下端の三角");
-    let tip = tip_area(d.at);
-    assert!(count(&d.image, tip, tip_fill) > 20, "ツールチップの矩形");
+    // 下向きの三角形は底辺が上。目盛りの帯の下端から 6 上の行では、中心から 2〜3 右も三角形の中。
+    let top_triangle = Rect::new(d.x + 2.0, d.ruler_bottom - 6.0, 2.0, 1.0);
+    assert_eq!(
+        count(&d.image, top_triangle, guide),
+        2,
+        "目盛りの帯の三角形"
+    );
+    let bottom_triangle = Rect::new(d.x + 2.0, d.rows_bottom - 2.0, 2.0, 1.0);
+    assert_eq!(count(&d.image, bottom_triangle, guide), 2, "下端の三角形");
+    let area = tooltip_area(d.at);
+    assert!(
+        count(&d.image, area, tooltip_fill) > 20,
+        "ツールチップの矩形"
+    );
     let ink = |p: [u8; 3]| p.iter().all(|c| *c > 180);
-    assert!(count(&d.image, tip, ink) > 5, "量の文字");
+    assert!(count(&d.image, area, ink) > 5, "量の文字");
 }
 
 #[test]
@@ -143,7 +150,7 @@ fn 吸い付かないドラッグにはガイド線を出さない() {
         "スナップの表示が無い"
     );
     assert!(
-        count(&d.image, tip_area(d.at), tip_fill) > 20,
+        count(&d.image, tooltip_area(d.at), tooltip_fill) > 20,
         "ツールチップは出す"
     );
 }
@@ -158,9 +165,9 @@ fn 再生位置の線はツールチップの矩形の上に描かない() {
     h.ui.set_playhead(7.8 + f64::from(30.0 / per_sec));
     let image = render_sized(&h.device, &h.queue, &mut h.ui, (W, H));
     let playhead = |p: [u8; 3]| close(p, hex(palette::PLAYHEAD), 8);
-    let tip = tip_area(h.at);
-    assert!(count(&image, tip, tip_fill) > 20, "ツールチップの矩形");
-    assert_eq!(count(&image, tip, playhead), 0, "ツールチップの中");
-    let below = Rect::new(tip.x, h.at.1 + 30.0, tip.w, 1.0);
+    let area = tooltip_area(h.at);
+    assert!(count(&image, area, tooltip_fill) > 20, "ツールチップの矩形");
+    assert_eq!(count(&image, area, playhead), 0, "ツールチップの中");
+    let below = Rect::new(area.x, h.at.1 + 30.0, area.w, 1.0);
     assert_eq!(count(&image, below, playhead), 2, "ツールチップの外は描く");
 }

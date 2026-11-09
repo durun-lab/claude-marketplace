@@ -12,7 +12,7 @@ mod ruler;
 mod scrollbar;
 mod snap;
 
-use crate::drag_tip::DragTip;
+use crate::drag_tooltip::DragTooltip;
 use crate::geom::{Color, Quad, Rect};
 use crate::gesture::EditKind;
 use crate::palette::Palette;
@@ -33,12 +33,12 @@ pub struct PaintState {
     pub selected: Option<usize>,
     /// 選ばれたカット（レイヤーの添字、カットの添字）。
     pub selected_cut: Option<(usize, usize)>,
-    /// ドラッグで吸い付いた目標。吸い付いたときだけスナップの表示（ガイド線と上下の三角、帯の端なら端の強調）を出す。
+    /// ドラッグで吸い付いた目標。吸い付いたときだけスナップの表示（ガイド線と上下の三角形、帯の端なら端の強調）を出す。
     pub snap: Option<SnapTarget>,
     /// ドラッグ中の見た目（離す前の編集と動かす量）。`trimLayer` は帯の端を動かして描く。
     pub preview: Option<(EditKind, f64)>,
     /// ドラッグ中のツールチップ。編集のドラッグの間だけ。
-    pub drag: Option<DragTip>,
+    pub drag_tooltip: Option<DragTooltip>,
     /// 色。
     pub palette: Palette,
 }
@@ -104,7 +104,7 @@ impl Canvas {
     }
 }
 
-/// 文字の下に描く矩形（背景、行の縞、帯、吸い付いた帯の端、目盛りの帯、スクロールバー）。
+/// 文字の下に描く矩形（背景、行の縞、帯、吸い付いた帯の端の強調、目盛りの帯、スクロールバー）。
 pub fn timeline_quads(model: &TimelineModel, vp: &Viewport, state: &PaintState) -> Vec<Quad> {
     let input = PaintInput { model, vp, state };
     let mut canvas = Canvas::default();
@@ -114,7 +114,7 @@ pub fn timeline_quads(model: &TimelineModel, vp: &Viewport, state: &PaintState) 
     rows::paint(&input, &mut canvas);
     ruler::paint(&input, &mut canvas);
     scrollbar::paint(&input, &mut canvas);
-    snap::edge(&input, &mut canvas);
+    snap::edge_highlight(&input, &mut canvas);
     canvas.into_quads()
 }
 

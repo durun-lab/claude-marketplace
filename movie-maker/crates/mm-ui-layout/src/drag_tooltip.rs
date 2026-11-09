@@ -19,7 +19,7 @@ const MINUS: &str = "\u{2212}";
 
 /// ドラッグ中のツールチップに出すもの。
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct DragTip {
+pub struct DragTooltip {
     /// ポインターの位置（Timeline の座標）。
     pub at: (f32, f32),
     /// ポインターの向きに動かした量（秒。右が正）。
@@ -59,15 +59,15 @@ pub fn drag_tooltip(
     measure: &mut dyn TextMeasure,
     labels: &mut Vec<Label>,
 ) -> Vec<Quad> {
-    let Some(tip) = state.drag else {
+    let Some(tooltip) = state.drag_tooltip else {
         return Vec::new();
     };
-    let text: Arc<str> = drag_amount(tip.by, model.fps).into();
+    let text: Arc<str> = drag_amount(tooltip.by, model.fps).into();
     let size = font.base;
     // 切り上げて、余白を除いた幅が測った幅を下回らないようにする（下回ると切り詰めの「…」になる）。
     let w = (measure.width(&text, size) + 2.0 * PAD_X).ceil();
     let h = line_height(size) + 2.0 * PAD_Y;
-    let rect = tip_rect(vp.layout.bounds, tip.at, (w, h));
+    let rect = tooltip_rect(vp.layout.bounds, tooltip.at, (w, h));
     let p = &state.palette;
     let style = TextStyle {
         size,
@@ -76,13 +76,13 @@ pub fn drag_tooltip(
     let Some(label) = place(&text, rect, PAD_X, Align::Center, style, measure) else {
         return Vec::new();
     };
-    clear(labels, rect, measure);
+    clip_labels(labels, rect, measure);
     labels.push(label);
     vec![Quad::new(rect, p.tick), Quad::new(rect.inset(1.0), p.ruler)]
 }
 
 /// 矩形の置き場所。ポインターの右（入らなければ左）に、縦はポインターの高さを中央にして、Timeline の中に収める。
-fn tip_rect(bounds: Rect, (x, y): (f32, f32), (w, h): (f32, f32)) -> Rect {
+fn tooltip_rect(bounds: Rect, (x, y): (f32, f32), (w, h): (f32, f32)) -> Rect {
     let right = x + OFFSET;
     let left = if right + w <= bounds.right() {
         right
@@ -93,22 +93,22 @@ fn tip_rect(bounds: Rect, (x, y): (f32, f32), (w, h): (f32, f32)) -> Rect {
     Rect::new(left.max(bounds.x).round(), top.round(), w, h)
 }
 
-/// 矩形 `tip` に重なる文字を、矩形の手前で切る。字の頭が矩形の中か右にあれば外す。
-fn clear(labels: &mut Vec<Label>, tip: Rect, measure: &mut dyn TextMeasure) {
+/// ツールチップの矩形 `rect` に重なる文字を、矩形の手前で切る。文字の左端（`Label::x`）が矩形の中か右にあれば外す。
+fn clip_labels(labels: &mut Vec<Label>, rect: Rect, measure: &mut dyn TextMeasure) {
     labels.retain_mut(|l| {
         // 字を描いてよい矩形が重ならなければ、測らずに残す（帯の名前の多くはここで済む）。
-        if !overlaps(l.clip, tip) {
+        if !overlaps(l.clip, rect) {
             return true;
         }
         let w = match l.cut {
             Some(cut) => cut + measure.width(ELLIPSIS, l.size),
             None => measure.width(&l.text, l.size),
         };
-        if !overlaps(Rect::new(l.x, l.y, w, line_height(l.size)), tip) {
+        if !overlaps(Rect::new(l.x, l.y, w, line_height(l.size)), rect) {
             return true;
         }
-        l.clip.w = l.clip.w.min(tip.x - l.clip.x);
-        l.x < tip.x && l.clip.w > 0.0
+        l.clip.w = l.clip.w.min(rect.x - l.clip.x);
+        l.x < rect.x && l.clip.w > 0.0
     });
 }
 
@@ -189,7 +189,7 @@ mod tests {
         let m = model();
         let f = TestViewport::new(&m, (800.0, 200.0));
         let st = PaintState {
-            drag: Some(DragTip { at, by }),
+            drag_tooltip: Some(DragTooltip { at, by }),
             ..state(0.0)
         };
         let mut measure = FakeMeasure::default();
@@ -227,7 +227,7 @@ mod tests {
     }
 
     #[test]
-    fn 矩形に重なる文字は矩形の手前で切り_頭が矩形の中なら外す() {
+    fn 矩形に重なる文字は矩形の手前で切り_左端が矩形の中なら外す() {
         let label = |text: &str, x: f32| Label {
             text: text.into(),
             x,
@@ -243,10 +243,10 @@ mod tests {
             label("far", 600.0),
         ];
         let (quads, measure) = tooltip((300.0, 100.0), 0.4, &mut labels);
-        let tip = quads[0].rect;
+        let rect = quads[0].rect;
         let texts: Vec<&str> = labels.iter().map(|l| &*l.text).collect();
         assert_eq!(texts, ["long bar name", "far", "+12f"]);
-        assert_eq!(labels[0].clip.right(), tip.x, "矩形の手前で切る");
+        assert_eq!(labels[0].clip.right(), rect.x, "矩形の手前で切る");
         assert_eq!(labels[1].clip.w, 400.0, "重ならない文字はそのまま");
         assert!(
             !measure.asked.iter().any(|t| t == "far"),
@@ -256,15 +256,15 @@ mod tests {
 
     #[test]
     fn 文字の上に重ねる線はツールチップの矩形の上下で切り_重なる三角形は描かない() {
-        let tip = [Quad::new(
+        let tooltip = [Quad::new(
             Rect::new(100.0, 40.0, 60.0, 20.0),
             crate::palette::TICK,
         )];
         let color = crate::palette::PLAYHEAD;
         let line = Quad::new(Rect::new(120.0, 0.0, 2.0, 200.0), color);
         let away = Quad::new(Rect::new(300.0, 0.0, 2.0, 200.0), color);
-        let mark = Quad::shaped((130.0, 50.0), (11.0, 7.0), QuadShape::TriDown, color);
-        let out = clear_tooltip_area(vec![line, away, mark], &tip);
+        let triangle = Quad::shaped((130.0, 50.0), (11.0, 7.0), QuadShape::TriDown, color);
+        let out = clear_tooltip_area(vec![line, away, triangle], &tooltip);
         let rects: Vec<Rect> = out.iter().map(|q| q.rect).collect();
         assert_eq!(
             rects,

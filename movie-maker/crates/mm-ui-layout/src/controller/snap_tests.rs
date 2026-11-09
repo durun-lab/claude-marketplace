@@ -2,7 +2,7 @@
 
 use super::tests::{ctl, down, in_bar, move_to};
 use super::*;
-use crate::drag_tip::DragTip;
+use crate::drag_tooltip::DragTooltip;
 use crate::gesture::Side;
 use crate::snap::SnapKind;
 use crate::timeline::{CutBar, Item, ItemKind};
@@ -20,7 +20,7 @@ fn model() -> TimelineModel {
     }
 }
 
-/// 撮影素材のレイヤーの出つまみ（4 秒）を掴み、`x` まで引く。再生位置は 7 秒。
+/// 撮影素材のレイヤーのアウト点のつまみ（4 秒）を掴み、`x` までドラッグする。再生位置は 7 秒。
 fn drag_out(c: &mut TimelineController, m: &TimelineModel, x: f32) -> Vec<Action> {
     let y = in_bar(c, 1);
     c.handle(down(399.0, y), m, PLAYHEAD);
@@ -59,7 +59,7 @@ fn 吸い付いたときだけ描く状態に目標を載せる() {
 }
 
 #[test]
-fn スナップを切るとつまみはフレームの境目に丸まり_吸い付かない() {
+fn スナップを切るとつまみはいちばん近いフレームの先頭にそろい_吸い付かない() {
     let m = model();
     let mut c = ctl(&m);
     c.snapping = false;
@@ -171,28 +171,28 @@ fn カットの端はほかのカットの端を目標にする() {
     let y = in_bar(&c, 0);
     c.handle(down(298.0, y), &m, 0.0);
     c.handle(move_to(697.0, y), &m, 0.0);
-    let clip = SnapKind::ClipEdge {
+    let cut_edge = SnapKind::CutEdge {
         item: 0,
         cut: 2,
         side: Side::Out,
     };
-    assert_eq!(c.paint_state(0.0).snap.map(|s| s.kind), Some(clip));
+    assert_eq!(c.paint_state(0.0).snap.map(|s| s.kind), Some(cut_edge));
 }
 
 #[test]
 fn ドラッグ中のツールチップはポインターの位置とポインターの向きの量を持つ() {
     let m = model();
     let mut c = ctl(&m);
-    assert_eq!(c.paint_state(PLAYHEAD).drag, None);
+    assert_eq!(c.paint_state(PLAYHEAD).drag_tooltip, None);
     let by = by_of(&drag_out(&mut c, &m, 697.0));
     let y = in_bar(&c, 1);
-    let tip = DragTip {
+    let tooltip = DragTooltip {
         at: (697.0 + HEADER_W, y),
         by,
     };
-    assert_eq!(c.paint_state(PLAYHEAD).drag, Some(tip));
+    assert_eq!(c.paint_state(PLAYHEAD).drag_tooltip, Some(tooltip));
     c.handle(PointerEvent::Up, &m, PLAYHEAD);
-    assert_eq!(c.paint_state(PLAYHEAD).drag, None, "離したら消す");
+    assert_eq!(c.paint_state(PLAYHEAD).drag_tooltip, None, "離したら消す");
 
     // slip は操作の量（素材のイン点）がポインターと逆向きなので、ツールチップは中身が動いた向きにする。
     let cut = CutBar {
@@ -211,6 +211,6 @@ fn ドラッグ中のツールチップはポインターの位置とポイン�
     c.handle(down(100.0, y), &s, 0.0);
     let slip = by_of(&c.handle(move_to(140.0, y), &s, 0.0));
     assert!(slip < 0.0, "{slip}");
-    let shown = c.paint_state(0.0).drag.map(|d| d.by);
+    let shown = c.paint_state(0.0).drag_tooltip.map(|d| d.by);
     assert_eq!(shown, Some(-slip));
 }

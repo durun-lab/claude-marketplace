@@ -282,7 +282,7 @@ fn key_pressed(wparam: WPARAM, lparam: LPARAM) -> bool {
     keys::command_for(&name).is_some()
 }
 
-/// キーを離したことをキーの表に渡し（ドラッグ中のスナップの反転を戻す）、既定の処理はそのまま通す。
+/// キーを離したことをキーの表に渡し（ドラッグ中のスナップの反転を戻す）、既定のウィンドウプロシージャにもそのまま渡す。
 fn key_released(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if let Some(shared) = SHARED.get() {
         keys::release(shared, &keys::vk_name(wparam.0 as u32));

@@ -146,7 +146,7 @@ fn 取り消したドラッグは確定せず_見た目も戻す() {
     c.handle(move_to(555.0, y), &m, 0.0);
     assert!(c.handle(PointerEvent::Cancel, &m, 0.0).is_empty());
     let st = c.paint_state(0.0);
-    assert_eq!((st.preview, st.snap, st.drag), (None, None, None));
+    assert_eq!((st.preview, st.snap, st.drag_tooltip), (None, None, None));
     assert!(
         c.handle(PointerEvent::Up, &m, 0.0).is_empty(),
         "取り消した後に離しても操作にしない"

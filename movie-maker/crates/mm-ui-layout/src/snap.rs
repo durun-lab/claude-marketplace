@@ -20,7 +20,7 @@ pub enum SnapKind {
     /// レイヤーの帯の端。
     LayerEdge { item: usize, side: Side },
     /// シーケンスのカットの端。
-    ClipEdge { item: usize, cut: usize, side: Side },
+    CutEdge { item: usize, cut: usize, side: Side },
     /// レイヤーのキーフレーム。
     Keyframe { item: usize },
     /// コンポジションのマーカー。
@@ -44,12 +44,13 @@ impl SnapTarget {
         Self { time, kind }
     }
 
-    /// 何に吸い付いたかの文。ステータスバーに出す。語は画面の文言（Playhead、Layer、Clip、Keyframe、Marker）にそろえる。
+    /// 何に吸い付いたかの文。ステータスバーに出す。語は画面の文言（Playhead、Layer、Clip、Keyframe、Marker）にそろえ、
+    /// カットは画面の文言の Clip と呼ぶ。
     pub fn message(&self) -> &'static str {
         match self.kind {
             SnapKind::Playhead => "Snapped to Playhead",
             SnapKind::LayerEdge { .. } => "Snapped to Layer Edge",
-            SnapKind::ClipEdge { .. } => "Snapped to Clip Edge",
+            SnapKind::CutEdge { .. } => "Snapped to Clip Edge",
             SnapKind::Keyframe { .. } => "Snapped to Keyframe",
             SnapKind::Marker => "Snapped to Marker",
             SnapKind::Start => "Snapped to Start",
@@ -99,8 +100,8 @@ pub(crate) enum Moving {
 }
 
 /// `moving` の端を動かすときのスナップの目標。同じ近さのときに採る順（再生位置、レイヤーとカットの端、キーフレーム、
-/// マーカー、始まりと終わり）に並べる。人が置いた印ほど先にし、始まりと終わりは端と重なりやすいので最後にする。
-/// ドラッグでポインターが動くたびに引くので、並びを作らずに順に返す（数千のレイヤーでも確保しない）。
+/// マーカー、始まりと終わり）に並べる。人が置いた時刻ほど先にし、始まりと終わりは端と重なりやすいので最後にする。
+/// ドラッグでポインターが動くたびに求めるので、並びを作らずに順に返す（数千のレイヤーでも確保しない）。
 pub(crate) fn targets(
     model: &TimelineModel,
     moving: Moving,
@@ -135,14 +136,14 @@ fn edges(item: usize, it: &Item, moving: Moving) -> impl Iterator<Item = SnapTar
     let cuts = it.cuts.iter().enumerate();
     let cuts = cuts.filter(move |&(cut, _)| moving != (Moving::Cut { item, cut }));
     let cut_edges = cuts.flat_map(move |(cut, bar)| {
-        sides(bar.start, bar.end, move |side| SnapKind::ClipEdge {
+        sides(bar.start, bar.end, move |side| SnapKind::CutEdge {
             item,
             cut,
             side,
         })
     });
-    let shown = moving != Moving::Layer(item);
-    shown
+    let other_layer = moving != Moving::Layer(item);
+    other_layer
         .then(|| layer.into_iter().chain(cut_edges))
         .into_iter()
         .flatten()
@@ -256,9 +257,13 @@ mod tests {
     #[test]
     fn カットの端を動かすときはそのカットの端だけを除く() {
         let t: Vec<_> = targets(&model(), Moving::Cut { item: 0, cut: 0 }, 0.0).collect();
-        let clip = |cut, side| SnapKind::ClipEdge { item: 0, cut, side };
-        assert_eq!(kinds_at(&t, 3.0), [clip(1, Side::In)], "自分の出は除く");
-        assert_eq!(kinds_at(&t, 4.0)[0], clip(1, Side::Out));
+        let cut_edge = |cut, side| SnapKind::CutEdge { item: 0, cut, side };
+        assert_eq!(
+            kinds_at(&t, 3.0),
+            [cut_edge(1, Side::In)],
+            "自分のアウト点は除く"
+        );
+        assert_eq!(kinds_at(&t, 4.0)[0], cut_edge(1, Side::Out));
         assert!(
             kinds_at(&t, 2.0).contains(&SnapKind::LayerEdge {
                 item: 1,
@@ -315,14 +320,14 @@ mod tests {
             item: 0,
             side: Side::In,
         };
-        let clip = SnapKind::ClipEdge {
+        let cut_edge = SnapKind::CutEdge {
             item: 0,
             cut: 1,
             side: Side::Out,
         };
         let cases = [
             (edge, "Snapped to Layer Edge"),
-            (clip, "Snapped to Clip Edge"),
+            (cut_edge, "Snapped to Clip Edge"),
             (SnapKind::Start, "Snapped to Start"),
             (SnapKind::End, "Snapped to End"),
         ];

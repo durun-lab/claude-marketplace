@@ -4,7 +4,7 @@
 //! 吸い付いたことにするのは、端が目標に届いたときだけ（素材の端や 1 フレームの長さで止まれば、ガイド線を出さない）。
 
 use super::{Action, Drag, TimelineController};
-use crate::drag_tip::DragTip;
+use crate::drag_tooltip::DragTooltip;
 use crate::gesture::{edge_edit, EditKind};
 use crate::snap::{quantize, snap, targets, Moving, SNAP_PX};
 use crate::timeline::{Part, TimelineModel};
@@ -26,7 +26,8 @@ impl TimelineController {
         self.last_edit = None;
     }
 
-    /// 端のつまみを x へ引いたときの編集。スナップが効いていれば近い目標に寄せ、吸い付かなければフレームの境目に丸める。
+    /// 端のつまみを x へドラッグしたときの編集。スナップが効いていれば近い目標に寄せ、吸い付かなければいちばん近い
+    /// フレームの先頭にそろえる。
     pub(super) fn edge_drag(
         &mut self,
         x: f32,
@@ -90,14 +91,14 @@ impl TimelineController {
 
     /// ドラッグ中のツールチップ。編集のドラッグの間だけ。量はポインターの向き（右が正）にし、
     /// `slip` は中身が動いた向きにする（操作の量は素材のイン点の向きで、ポインターと逆）。
-    pub(super) fn drag_tip(&self) -> Option<DragTip> {
+    pub(super) fn drag_tooltip(&self) -> Option<DragTooltip> {
         let (kind, by) = self.last_edit?;
         let by = if matches!(kind, EditKind::Slip { .. }) {
             -by
         } else {
             by
         };
-        Some(DragTip {
+        Some(DragTooltip {
             at: self.pointer,
             by,
         })

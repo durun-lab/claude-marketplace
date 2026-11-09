@@ -15,7 +15,7 @@
 //! [`drawing_segments`] はコメントの描き込みを、Program の映像の矩形の上の線分に分ける。
 
 mod controller;
-mod drag_tip;
+mod drag_tooltip;
 mod drawing;
 mod geom;
 mod gesture;
@@ -37,7 +37,7 @@ mod timeline_layout;
 mod view_state;
 
 pub use controller::{Action, Mods, PointerEvent, TimelineController};
-pub use drag_tip::{clear_tooltip_area, drag_amount, drag_tooltip, DragTip};
+pub use drag_tooltip::{clear_tooltip_area, drag_amount, drag_tooltip, DragTooltip};
 pub use drawing::{
     drawing_segments, frame_point, DrawingSegment, DrawingShape, DrawingShapeKind, DRAWING_LINE_PX,
     DRAWING_POINT_PX,

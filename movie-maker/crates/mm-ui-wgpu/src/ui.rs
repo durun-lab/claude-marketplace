@@ -293,8 +293,8 @@ impl Ui {
     /// 描くもの（矩形、文字、Program と Source の映像、描き込み）を GPU に渡し、パスで描く数を返す。
     fn prepare(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> Counts {
         let (w, h) = self.size;
-        let tip = self.prepare_text(device, queue);
-        let (quads, under) = self.timeline_quads(tip);
+        let tooltip = self.prepare_text(device, queue);
+        let (quads, under) = self.timeline_quads(tooltip);
         let count = self.quads.prepare(device, queue, &quads, (w, h));
         let layout = self.layout();
         let mut drawing = 0;
@@ -331,15 +331,15 @@ impl Ui {
     }
 
     /// Timeline の矩形を、サーフェスの座標（物理ピクセル）に置いた並びにする。文字の下に描く矩形が先で、
-    /// その数も返す（残りは文字の上に重ねる再生位置の線とスナップの表示）。`tip` はドラッグ中のツールチップの矩形で、
+    /// その数も返す（残りは文字の上に重ねる再生位置の線とスナップの表示）。`tooltip` はドラッグ中のツールチップの矩形で、
     /// 文字の下に描く矩形のいちばん上に重ね、文字の上に重ねる矩形はその外だけに描く。
-    fn timeline_quads(&self, tip: Vec<Quad>) -> (Vec<Quad>, u32) {
+    fn timeline_quads(&self, tooltip: Vec<Quad>) -> (Vec<Quad>, u32) {
         let t = self.layout.timeline;
         let state = self.paint_state();
         let vp = self.controller.viewport();
         let mut quads = timeline_quads(&self.model, &vp, &state);
-        let overlay = clear_tooltip_area(timeline_overlay(&self.model, &vp, &state), &tip);
-        quads.extend(tip);
+        let overlay = clear_tooltip_area(timeline_overlay(&self.model, &vp, &state), &tooltip);
+        quads.extend(tooltip);
         let under = quads.len() as u32;
         quads.extend(overlay);
         for q in &mut quads {
@@ -361,7 +361,7 @@ impl Ui {
         let vp = self.controller.viewport();
         let (model, font) = (&self.model, &self.font);
         let mut labels = timeline_labels(model, &vp, &state, font, text.measure());
-        let tip = drag_tooltip(model, &vp, &state, font, text.measure(), &mut labels);
+        let tooltip = drag_tooltip(model, &vp, &state, font, text.measure(), &mut labels);
         for l in &mut labels {
             l.x += t.x;
             l.y += t.y;
@@ -369,7 +369,7 @@ impl Ui {
         }
         let viewport = (self.size.0 as u32, self.size.1 as u32);
         text.prepare(device, queue, &labels, self.scale, viewport);
-        tip
+        tooltip
     }
 }
 

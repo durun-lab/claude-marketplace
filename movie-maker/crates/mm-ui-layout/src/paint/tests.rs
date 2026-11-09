@@ -25,7 +25,7 @@ pub(crate) fn state(playhead: f64) -> PaintState {
         selected_cut: None,
         snap: None,
         preview: None,
-        drag: None,
+        drag_tooltip: None,
         palette: Palette::DEFAULT,
     }
 }

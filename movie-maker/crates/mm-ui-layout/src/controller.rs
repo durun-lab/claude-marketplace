@@ -57,7 +57,7 @@ pub enum PointerEvent {
     /// 離す前にドラッグが終わった（Esc、ほかのウィンドウがキャプチャーを取った）。編集を確定せずに捨てる。
     Cancel,
     /// スナップの入/切（N、View > Snapping）。ドラッグ中は入/切を変えず、[`PointerEvent::SnapKeyUp`] まで反転する。
-    /// ドラッグとの前後を保つため、ポインターの入力と同じ列で届く。
+    /// ドラッグとの前後を保つため、ポインターの入力のキューで届く。
     ToggleSnapping,
     /// ドラッグ中に押したスナップの入/切のキーを離した。
     SnapKeyUp,
@@ -212,7 +212,7 @@ impl TimelineController {
             selected_cut: self.selected_cut,
             snap: self.snap,
             preview: self.last_edit,
-            drag: self.drag_tip(),
+            drag_tooltip: self.drag_tooltip(),
             palette: Palette::DEFAULT,
         }
     }
