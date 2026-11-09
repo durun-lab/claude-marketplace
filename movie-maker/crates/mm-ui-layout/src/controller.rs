@@ -1,9 +1,15 @@
 //! Timeline のポインター操作。目盛りのスクラブ、レイヤーとカットの選択、端のつまみと中のドラッグ（スナップ）、
-//! 拡大縮小と横の移動、縦のスクロール（Shift+ホイール、スクロールバー）。
+//! 拡大縮小と横の移動（ホイール、ズームバー）、縦のスクロール（Shift+ホイール、スクロールバー）。
+//! キーとメニューのコマンド（[`TimelineCommand`]）と再生中のページ送りも受ける。
 //!
 //! 入力は Timeline の矩形の左上を (0, 0) とする座標で受け、操作の結果は [`Action`] で返す。
 //! ドラッグから編集の操作と量を決める所は [`crate::gesture`]。操作の適用（`mm-ops`）はここの外で行う。
 //! 当たり判定と描画が同じ値を見るよう、割り付けと行の並びもここが持つ（[`TimelineController::viewport`]）。
+
+mod command;
+mod zoom;
+
+pub use command::{edit_target, TimelineCommand};
 
 use crate::gesture::{body_edit, edge_edit, EditKind};
 use crate::paint::PaintState;
@@ -15,6 +21,8 @@ use crate::snap::{quantize, snap, SNAP_PX};
 use crate::time_view::TimeView;
 use crate::timeline::{hit_test, Hit, Part, TimelineModel};
 use crate::timeline_layout::{TimelineLayout, Viewport};
+use crate::zoombar::ZoomBarDrag;
+use zoom::FullExtent;
 
 /// ホイール 1 目盛りあたりの拡大率。
 const ZOOM_STEP: f64 = 1.15;
@@ -93,6 +101,8 @@ enum Drag {
     Thumb {
         grab_offset: f32,
     },
+    /// ズームバーのスクロールボックスか、その端のドラッグ。
+    ZoomBar(ZoomBarDrag),
 }
 
 /// Timeline の表示と操作の状態。
@@ -114,6 +124,8 @@ pub struct TimelineController {
     /// ドラッグで最後に返した編集。離したときの確定にそのまま使う。
     last_edit: Option<(EditKind, f64)>,
     drag: Drag,
+    /// 全体表示のコマンドで全体表示にしたときの、全体表示とその前の表示。
+    full_extent: Option<FullExtent>,
 }
 
 impl TimelineController {
@@ -130,6 +142,7 @@ impl TimelineController {
             guide: None,
             last_edit: None,
             drag: Drag::None,
+            full_extent: None,
         }
     }
 
@@ -260,6 +273,10 @@ impl TimelineController {
                 self.press_scrollbar(thumb, y);
                 return Vec::new();
             }
+            Hit::ZoomBar { part } => {
+                self.press_zoombar(part, x, model.duration);
+                return Vec::new();
+            }
             _ => {}
         }
         let had_cut = self.selected_cut.take();
@@ -338,6 +355,10 @@ impl TimelineController {
                 let content = self.rows.content_height();
                 self.scroll_y = scroll_for_thumb(self.layout.scrollbar, content, y - grab_offset);
                 self.hover = Hit::Scrollbar { thumb: true };
+                Vec::new()
+            }
+            Drag::ZoomBar(drag) => {
+                self.drag_zoombar(&drag, x, model.duration);
                 Vec::new()
             }
             Drag::Edge {

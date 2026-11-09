@@ -2,7 +2,7 @@
 //! ズームバー、ステータスバーの矩形に分ける。座標は Timeline の矩形の左上を (0, 0) とする。
 //!
 //! 領域を足す PR は、ここに自分の大きさの定数を置き、描く関数を `paint/` の下の自分のファイルに置く。
-//! まだ無い領域（ツールバー、見出しの列、ズームバー、ステータスバー）は大きさ 0 で、場所だけを決めてある。
+//! まだ無い領域（ツールバー、見出しの列、ステータスバー）は大きさ 0 で、場所だけを決めてある。
 
 use std::ops::Range;
 
@@ -24,8 +24,8 @@ const TOOLBAR_H: f32 = 0.0;
 /// 見出しの列の幅。
 const HEADER_W: f32 = 0.0;
 
-/// ズームバーの高さ。
-const ZOOMBAR_H: f32 = 0.0;
+/// ズームバーの高さ。スクロールボックスの両端を狙って掴めるよう、縦のスクロールバーの幅より少し太くする。
+const ZOOMBAR_H: f32 = 14.0;
 
 /// ステータスバーの高さ。
 const STATUS_H: f32 = 0.0;
@@ -63,8 +63,9 @@ impl TimelineLayout {
         let (w, h) = (w.max(0.0), h.max(0.0));
         let toolbar_h = TOOLBAR_H.min(h);
         let status_h = STATUS_H.min(h - toolbar_h);
-        let zoombar_h = ZOOMBAR_H.min(h - toolbar_h - status_h);
-        let ruler_h = RULER_H.min(h - toolbar_h - status_h - zoombar_h);
+        // 高さが足りないときは、再生位置を動かす目盛りの帯をズームバーより先に取る。
+        let ruler_h = RULER_H.min(h - toolbar_h - status_h);
+        let zoombar_h = ZOOMBAR_H.min(h - toolbar_h - status_h - ruler_h);
         let area_y = toolbar_h + ruler_h;
         let area_h = (h - area_y - zoombar_h - status_h).max(0.0);
         let scrollbar_w = if content_h > area_h {
@@ -202,9 +203,21 @@ pub(crate) mod tests {
     fn 中身が入れば縦のスクロールバーは幅_0_で_行の領域が右端まで() {
         let l = TimelineLayout::new((800.0, 300.0), 200.0);
         assert_eq!(l.ruler, Rect::new(0.0, 0.0, 800.0, RULER_H));
-        assert_eq!(l.row_area, Rect::new(0.0, RULER_H, 800.0, 300.0 - RULER_H));
+        let rows_h = 300.0 - RULER_H - ZOOMBAR_H;
+        assert_eq!(l.row_area, Rect::new(0.0, RULER_H, 800.0, rows_h));
         assert_eq!(l.scrollbar.w, 0.0);
         assert_eq!(l.bounds, Rect::new(0.0, 0.0, 800.0, 300.0));
+    }
+
+    #[test]
+    fn ズームバーは行の領域の下端に_行の領域と同じ横の範囲で置く() {
+        for content in [200.0, 1000.0] {
+            let l = TimelineLayout::new((800.0, 300.0), content);
+            let z = l.zoombar;
+            assert_eq!((z.x, z.w), (l.row_area.x, l.row_area.w), "{content}");
+            assert_eq!((z.y, z.h), (l.row_area.bottom(), ZOOMBAR_H));
+            assert_eq!(z.bottom(), 300.0, "Timeline の下端");
+        }
     }
 
     #[test]
@@ -216,20 +229,28 @@ pub(crate) mod tests {
         );
         assert_eq!(l.row_area.right(), l.scrollbar.x);
         assert_eq!((l.ruler.x, l.ruler.w), (l.row_area.x, l.row_area.w));
-        assert_eq!(l.time_column(), Rect::new(0.0, 0.0, l.row_area.w, 300.0));
+        let column_h = 300.0 - ZOOMBAR_H;
+        assert_eq!(l.time_column(), Rect::new(0.0, 0.0, l.row_area.w, column_h));
     }
 
     #[test]
     fn まだ無い領域は大きさ_0_で_矩形は負にならない() {
         let l = TimelineLayout::new((800.0, 300.0), 1000.0);
-        for r in [l.toolbar, l.corner, l.headers, l.zoombar, l.status] {
+        for r in [l.toolbar, l.corner, l.headers, l.status] {
             assert!(r.w == 0.0 || r.h == 0.0, "{r:?}");
         }
         let tiny = TimelineLayout::new((5.0, 10.0), 1000.0);
-        for r in [tiny.ruler, tiny.row_area, tiny.scrollbar, tiny.headers] {
+        for r in [
+            tiny.ruler,
+            tiny.row_area,
+            tiny.scrollbar,
+            tiny.headers,
+            tiny.zoombar,
+        ] {
             assert!(r.w >= 0.0 && r.h >= 0.0, "{r:?}");
         }
         assert_eq!(tiny.ruler.h, 10.0, "目盛りの帯も Timeline の高さを超えない");
+        assert_eq!(tiny.zoombar.h, 0.0, "足りない高さは目盛りの帯が先に取る");
     }
 
     #[test]
@@ -252,8 +273,8 @@ pub(crate) mod tests {
         );
         assert_eq!(
             vp.visible_rows(),
-            1..5,
-            "行の領域の 74 px に 40 から 114 まで"
+            1..4,
+            "行の領域の 60 px に 40 から 100 まで"
         );
         assert_eq!(vp.x_of(1.5), 150.0);
         assert!((vp.t_of(150.0) - 1.5).abs() < 1e-9);

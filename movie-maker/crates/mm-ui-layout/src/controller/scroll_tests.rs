@@ -4,7 +4,6 @@ use super::tests::{ctl, down, in_bar};
 use super::*;
 use crate::rows::{RowHeights, Rows};
 use crate::timeline::{Item, ItemKind};
-use crate::timeline_layout::RULER_H;
 
 /// 画像のレイヤーを `n` 本（Medium の行が `n` 本）。
 fn many(n: usize) -> TimelineModel {
@@ -42,7 +41,7 @@ fn shift_ホイールは縦にスクロールし_範囲に収め_横は動かさ
     c.handle(wheel(300.0, 100.0, 5.0, true), &m, 0.0);
     assert_eq!(c.scroll_y, 0.0, "上端で止まる");
     c.handle(wheel(300.0, 100.0, -1000.0, true), &m, 0.0);
-    let rows_h = 300.0 - RULER_H;
+    let rows_h = c.layout().row_area.h;
     assert_eq!(c.scroll_y, 100.0 * 28.0 - rows_h, "下端で止まる");
 }
 

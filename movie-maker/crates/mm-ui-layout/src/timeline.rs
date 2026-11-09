@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use crate::time_view::TimeView;
 use crate::timeline_layout::Viewport;
+use crate::zoombar::{self, ZoomBarPart};
 
 /// 端のつまみの幅の上限。
 pub const HANDLE_PX: f32 = 7.0;
@@ -176,6 +177,10 @@ pub enum Hit {
     Scrollbar {
         thumb: bool,
     },
+    /// ズームバー。
+    ZoomBar {
+        part: ZoomBarPart,
+    },
     Empty,
 }
 
@@ -218,6 +223,10 @@ pub fn hit_test(model: &TimelineModel, vp: &Viewport, x: f32, y: f32) -> Hit {
         return Hit::Scrollbar {
             thumb: vp.thumb().contains(x, y),
         };
+    }
+    if l.zoombar.contains(x, y) {
+        let part = zoombar::part_at(zoombar::thumb_of(vp, model.duration), x);
+        return Hit::ZoomBar { part };
     }
     if !l.row_area.contains(x, y) {
         return Hit::Empty;
@@ -376,6 +385,27 @@ mod tests {
         let hit = |y| hit_test(&m, &f.vp(), x, y);
         assert_eq!(hit(thumb.y + 2.0), Hit::Scrollbar { thumb: true });
         assert_eq!(hit(thumb.bottom() + 10.0), Hit::Scrollbar { thumb: false });
+    }
+
+    #[test]
+    fn ズームバーはスクロールボックスの両端と中と溝を分ける() {
+        let m = model();
+        let mut f = viewport(&m);
+        // 10 秒のうち 2 秒から 7 秒が見えている。スクロールボックスは x 200 から 700。
+        f.time = TimeView {
+            origin: 2.0,
+            px_per_sec: 200.0,
+        };
+        let bar = f.layout.zoombar;
+        let at = |x| hit_test(&m, &f.vp(), x, bar.y + bar.h / 2.0);
+        let part = |part| Hit::ZoomBar { part };
+        assert_eq!(at(100.0), part(ZoomBarPart::TrackBefore));
+        assert_eq!(at(203.0), part(ZoomBarPart::StartEdge));
+        assert_eq!(at(450.0), part(ZoomBarPart::Thumb));
+        assert_eq!(at(697.0), part(ZoomBarPart::EndEdge));
+        assert_eq!(at(800.0), part(ZoomBarPart::TrackAfter));
+        let above = hit_test(&m, &f.vp(), 450.0, bar.y - 1.0);
+        assert!(!matches!(above, Hit::ZoomBar { .. }), "行の領域の下端まで");
     }
 
     fn seq_model() -> TimelineModel {

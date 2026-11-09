@@ -1,10 +1,23 @@
-//! Timeline の表示の状態（ズーム、スクロール、行の高さ）。開いたときの最初の表示と、`.mm/view.json` との出し入れ。
+//! Timeline の表示の状態（ズーム、スクロール、行の高さ）。開いたときの最初の表示、`.mm/view.json` との出し入れ、
+//! キーとメニューのコマンドと再生中のページ送り。
 
-use mm_ui_layout::{ItemKind, RowHeights, Rows, TimeView, ViewState, VIEW_MARGIN};
+use mm_ui_layout::{
+    Action, ItemKind, RowHeights, Rows, TimeView, TimelineCommand, ViewState, VIEW_MARGIN,
+};
 
 use super::Ui;
 
 impl Ui {
+    /// キーとメニューの Timeline のコマンドを受けて、起きた操作を返す（前後の帯の端へは再生位置のシーク）。
+    pub fn command(&mut self, command: TimelineCommand) -> Vec<Action> {
+        self.controller.command(command, &self.model, self.playhead)
+    }
+
+    /// 再生中か。再生中は、再生位置が行の領域の右端を越えたら 1 画面ぶん送る（Premiere の Page Scroll）。
+    pub fn set_playing(&mut self, playing: bool) {
+        self.playing = playing;
+    }
+
     /// 全体が収まる表示にする。
     pub fn fit(&mut self) {
         let w = self.controller.layout().row_area.w;

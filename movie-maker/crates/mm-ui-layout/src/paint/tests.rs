@@ -1,9 +1,11 @@
 use super::*;
 use crate::gesture::Side;
 use crate::palette;
+use crate::time_view::TimeView;
 use crate::timeline::{CutBar, Item, ItemKind};
 use crate::timeline_layout::tests::TestViewport;
 use crate::timeline_layout::RULER_H;
+use crate::zoombar::ZoomBarPart;
 
 /// 幅 800、高さ 120 の Timeline。
 const SIZE: (f32, f32) = (800.0, 120.0);
@@ -65,13 +67,56 @@ fn 再生位置の線は時刻の_x_に立ち_文字の上に重ねる側に入�
     let m = model();
     let f = TestViewport::new(&m, SIZE);
     let over = timeline_overlay(&m, &f.vp(), &state(2.0));
+    let column = f.layout.time_column();
     let line = over
         .iter()
-        .find(|q| q.color == palette::PLAYHEAD && q.rect.h == SIZE.1)
+        .find(|q| q.color == palette::PLAYHEAD && q.rect.h == column.h)
         .expect("再生位置の線");
     assert!((line.rect.x + line.rect.w / 2.0 - 200.0).abs() < 1e-3);
     let under = timeline_quads(&m, &f.vp(), &state(2.0));
-    assert!(!under.iter().any(|q| q.color == palette::PLAYHEAD));
+    let in_column = |q: &&Quad| q.rect.y < column.bottom();
+    assert!(!under
+        .iter()
+        .filter(in_column)
+        .any(|q| q.color == palette::PLAYHEAD));
+}
+
+#[test]
+fn ズームバーは見えている範囲のスクロールボックスと再生位置の線を描き_乗ると明るくする() {
+    let m = model();
+    let mut f = TestViewport::new(&m, SIZE);
+    // 5 秒のうち 1 秒から 3 秒が見えている。スクロールボックスは x 160 から 480。
+    f.time = TimeView {
+        origin: 1.0,
+        px_per_sec: 400.0,
+    };
+    let bar = f.layout.zoombar;
+    let in_bar = |q: &&Quad| q.rect.y >= bar.y;
+    let all = timeline_quads(&m, &f.vp(), &state(4.0));
+    let thumb = all
+        .iter()
+        .filter(in_bar)
+        .find(|q| q.color == palette::LABEL)
+        .expect("スクロールボックス");
+    assert!((thumb.rect.x - 162.0).abs() < 1e-3 && (thumb.rect.right() - 478.0).abs() < 1e-3);
+    let line = all
+        .iter()
+        .filter(in_bar)
+        .find(|q| q.color == palette::PLAYHEAD)
+        .expect("見えている範囲の外の再生位置");
+    assert!((line.rect.x + line.rect.w / 2.0 - 640.0).abs() < 1e-3);
+    let lit = PaintState {
+        hover: Hit::ZoomBar {
+            part: ZoomBarPart::EndEdge,
+        },
+        ..state(4.0)
+    };
+    let quads = timeline_quads(&m, &f.vp(), &lit);
+    let bright = quads.iter().filter(in_bar);
+    assert_eq!(
+        bright.filter(|q| q.color == lit.palette.selection).count(),
+        1
+    );
 }
 
 #[test]
@@ -216,8 +261,8 @@ fn 見えない行は描かない() {
             .count()
     };
     let all = quads(&m, &state(0.0));
-    // 行の領域は 120 - 26 = 94 px。Medium の行（28 px）は 4 本まで掛かる。
-    assert_eq!(stripes(&all), 4);
+    // 行の領域は目盛りの帯とズームバーを除いた 120 - 26 - 14 = 80 px。Medium の行（28 px）は 3 本まで掛かる。
+    assert_eq!(stripes(&all), 3);
     assert_eq!(
         all.len(),
         quads(&many(50), &state(0.0)).len(),
@@ -250,9 +295,10 @@ fn スクロールで目盛りの帯の下に隠れた行は行の領域の上�
 #[test]
 fn 中身が入らなければ縦のスクロールバーを描き_入ればスクロールボックスも無い() {
     let thumb = |m: &TimelineModel| {
+        let bar = TestViewport::new(m, SIZE).layout.zoombar;
         quads(m, &state(0.0))
             .into_iter()
-            .filter(|q| q.color == palette::LABEL)
+            .filter(|q| q.color == palette::LABEL && q.rect.bottom() <= bar.y)
             .count()
     };
     assert_eq!(thumb(&many(50)), 1, "スクロールボックス");

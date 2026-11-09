@@ -5,7 +5,8 @@
 //!
 //! 表示の範囲は [`TimeView`]（時刻と x の変換、拡大縮小、移動）、目盛りは [`ticks`]、
 //! スナップとフレームへの丸めは [`snap`] と [`quantize`]、帯と端のつまみの当たり判定は [`hit_test`]、
-//! ポインター操作（スクラブ、選択、つまみのドラッグ、縦のスクロール）は [`TimelineController`] が受け持つ。
+//! ポインター操作（スクラブ、選択、つまみのドラッグ、縦のスクロール、ズームバー）とキーとメニューのコマンド
+//! （[`TimelineCommand`]）は [`TimelineController`] が受け持つ。
 //! Timeline の中の矩形（ツールバー、目盛りの帯、見出しの列、行の領域、縦のスクロールバー、ズームバー、ステータスバー）は
 //! [`TimelineLayout`]、レイヤーの行の高さと上端は [`Rows`]、それにズームとスクロールを合わせた見えている所は [`Viewport`]。
 //! [`timeline_quads`] と [`timeline_overlay`] は Timeline を [`Quad`] の並びに、[`timeline_labels`] は目盛りの時刻と帯の名前を
@@ -31,8 +32,11 @@ mod time_view;
 mod timeline;
 mod timeline_layout;
 mod view_state;
+pub mod zoombar;
 
-pub use controller::{Action, Mods, PointerEvent, TimelineController};
+pub use controller::{
+    edit_target, Action, Mods, PointerEvent, TimelineCommand, TimelineController,
+};
 pub use drawing::{
     drawing_segments, frame_point, DrawingSegment, DrawingShape, DrawingShapeKind, DRAWING_LINE_PX,
     DRAWING_POINT_PX,

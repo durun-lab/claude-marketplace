@@ -4,6 +4,7 @@
 //! 換算は描く所（[`Ui::render`]）と入力を受ける所（[`Ui::pointer`]、[`Ui::region_at`]）で [`Scale`] を 1 回だけ通す。
 //! Timeline は矩形（背景、帯、目盛り）、文字（目盛りの時刻、帯の名前）、矩形（ガイド線、再生位置の線）の順に重ねる。
 //! Timeline の表示の状態（ズーム、スクロール、行の高さ）は [`Ui::view_state`] で出し、[`Ui::restore_view`] で戻す。
+//! キーとメニューの Timeline のコマンドは [`Ui::command`] で受ける。
 
 use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
@@ -54,6 +55,8 @@ pub struct Ui {
     /// サーフェスの大きさ（物理ピクセル）。
     size: (f32, f32),
     playhead: f64,
+    /// 再生中か。再生中は再生位置が行の領域の右端を越えたら 1 画面ぶん送る。
+    playing: bool,
     /// 最初の表示（戻した表示の状態か、全体表示と sequence の行）を当てたか。
     opened: bool,
     palette: Palette,
@@ -85,6 +88,7 @@ impl Ui {
             },
             size: (0.0, 0.0),
             playhead: 0.0,
+            playing: false,
             opened: false,
             palette: Palette::DEFAULT,
         }
@@ -154,8 +158,11 @@ impl Ui {
         });
     }
 
-    /// 再生位置（秒）。
+    /// 再生位置（秒）。再生中に行の領域の右端を越えたら 1 画面ぶん送る（[`Ui::set_playing`]）。
     pub fn set_playhead(&mut self, secs: f64) {
+        if self.playing {
+            self.controller.page_scroll(self.playhead, secs);
+        }
         self.playhead = secs;
     }
 

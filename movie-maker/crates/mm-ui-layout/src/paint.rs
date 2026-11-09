@@ -9,6 +9,7 @@ mod playhead;
 mod rows;
 mod ruler;
 mod scrollbar;
+mod zoombar;
 
 use crate::geom::{Color, Quad, Rect};
 use crate::gesture::EditKind;
@@ -91,7 +92,7 @@ impl Canvas {
     }
 }
 
-/// 文字の下に描く矩形（背景、行の縞、帯、目盛りの帯、スクロールバー）。
+/// 文字の下に描く矩形（背景、行の縞、帯、目盛りの帯、スクロールバー、ズームバー）。
 pub fn timeline_quads(model: &TimelineModel, vp: &Viewport, state: &PaintState) -> Vec<Quad> {
     let input = PaintInput { model, vp, state };
     let mut canvas = Canvas::default();
@@ -99,6 +100,7 @@ pub fn timeline_quads(model: &TimelineModel, vp: &Viewport, state: &PaintState) 
     rows::paint(&input, &mut canvas);
     ruler::paint(&input, &mut canvas);
     scrollbar::paint(&input, &mut canvas);
+    zoombar::paint(&input, &mut canvas);
     canvas.into_quads()
 }
 
