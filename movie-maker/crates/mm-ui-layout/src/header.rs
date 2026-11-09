@@ -1,4 +1,5 @@
-//! レイヤーの見出し。行ごとに、左から種類の色の帯、種類の略号、名前、有効、ロック、Mute、Solo のボタンを並べる。
+//! レイヤーの見出し。行ごとに、左から種類の色の帯、種類の略号、名前、有効、ロック、Mute、Solo のボタン、
+//! キーフレームの開閉（▸）を並べる。
 //! 名前はレイヤーの ID（レイヤーに名前の欄は無く、素材の名前は帯に出す）。見出しの列の上の角には再生位置のタイムコードを出す。
 //! 座標は Timeline の矩形の左上を (0, 0) とする。
 //!
@@ -20,6 +21,8 @@ const KIND_STRIP_W: f32 = 4.0;
 const ABBR_W: f32 = 30.0;
 /// 有効、ロック、Mute、Solo のボタンの 1 つの幅。
 pub(crate) const BUTTON_W: f32 = 18.0;
+/// 右端のキーフレームの開閉（▸）の幅。キーフレームの無いレイヤーも空けて、ボタンの列を行ごとにずらさない。
+const DISCLOSURE_W: f32 = 12.0;
 /// 見出しの右端の余白。
 const RIGHT_PAD: f32 = 4.0;
 /// 文字と矩形の端の余白。
@@ -44,6 +47,8 @@ pub(crate) struct Cells {
     /// 音を持てるレイヤーだけ。
     pub mute: Option<Rect>,
     pub solo: Option<Rect>,
+    /// キーフレームの開閉（▸）。▸ を描くのはキーフレームのあるレイヤーだけ。
+    pub disclosure: Rect,
 }
 
 /// 行 `i` の見出しの矩形。縦は行と同じ、横は見出しの列の幅。
@@ -53,10 +58,12 @@ pub(crate) fn row_rect(vp: &Viewport, i: usize) -> Rect {
 }
 
 /// 見出しの行 `row` の部品。行の上端の 1 px は行の境界の線に残す。
-/// ボタンは右端に寄せて、左から有効、ロック、Mute、Solo の順に並べる。音を持てないレイヤーは Mute と Solo の分を名前に譲る。
+/// ボタンはキーフレームの開閉の左に寄せて、左から有効、ロック、Mute、Solo の順に並べる。
+/// 音を持てないレイヤーは Mute と Solo の分を名前に譲る。
 pub(crate) fn cells(row: Rect, item: &Item) -> Cells {
     let (y, h) = (row.y + 1.0, (row.h - 1.0).max(0.0));
-    let button = |slot: f32| Rect::new(row.right() - RIGHT_PAD - BUTTON_W * slot, y, BUTTON_W, h);
+    let right = row.right() - RIGHT_PAD - DISCLOSURE_W;
+    let button = |slot: f32| Rect::new(right - BUTTON_W * slot, y, BUTTON_W, h);
     let audio = item.audio.is_some();
     let enabled = button(if audio { 4.0 } else { 2.0 });
     let name_x = row.x + KIND_STRIP_W + ABBR_W;
@@ -68,6 +75,7 @@ pub(crate) fn cells(row: Rect, item: &Item) -> Cells {
         lock: button(if audio { 3.0 } else { 1.0 }),
         mute: audio.then(|| button(2.0)),
         solo: audio.then(|| button(1.0)),
+        disclosure: Rect::new(right, y, DISCLOSURE_W, h),
     }
 }
 
