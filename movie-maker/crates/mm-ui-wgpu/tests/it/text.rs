@@ -199,7 +199,10 @@ fn 表示が変わらない間はシェーピングし直さず_頂点も作り�
     ui.set_playhead(3.0);
     render_sized(&device, &queue, &mut ui, size);
     let moved = ui.text_stats();
-    assert_eq!(moved.uploads, 2, "角の時刻の字だけが変わる");
+    assert_eq!(
+        moved.uploads, 2,
+        "見出しの列の上の角のタイムコードだけが変わる"
+    );
     assert!(moved.shaped <= first.shaped + 1, "{moved:?} {first:?}");
     render_sized(&device, &queue, &mut ui, size);
     assert_eq!(ui.text_stats(), moved, "再生位置が止まっている間");
