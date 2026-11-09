@@ -67,16 +67,27 @@ impl Default for TrimBounds {
     }
 }
 
+/// 音を持てるレイヤー（撮影素材、入れ子、sequence）の Mute と Solo。レイヤーの見出しに出す。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AudioState {
+    pub mute: bool,
+    pub solo: bool,
+}
+
 /// Timeline に並ぶレイヤー 1 本。
 #[derive(Debug, Clone, PartialEq)]
 pub struct Item {
-    /// レイヤーの ID。表示の状態（行の高さ）をレイヤーごとに引く。
+    /// レイヤーの ID。レイヤーの見出しに名前として出し、表示の状態（行の高さ）をレイヤーごとに引く。
     pub id: Arc<str>,
     /// コンポジションの時間軸での始まりと終わり（秒）。
     pub start: f64,
     pub end: f64,
     pub kind: ItemKind,
     pub enabled: bool,
+    /// ロック（`lockLayer`）。Claude の操作経路から守る。
+    pub locked: bool,
+    /// 音を持てるレイヤーの Mute と Solo。音を持てないレイヤーは `None`。
+    pub audio: Option<AudioState>,
     /// 帯に出す名前。空なら出さない。シーケンスのレイヤーはカットの名前を出す。
     pub label: Arc<str>,
     /// レイヤーのパラメータのキーフレームの時刻（コンポジションの秒、前から順、重複なし）。再フレーミングは含めない。
@@ -96,6 +107,8 @@ impl Item {
             end,
             kind,
             enabled,
+            locked: false,
+            audio: None,
             label: Arc::default(),
             keyframes: Arc::default(),
             cuts: Vec::new(),
@@ -118,6 +131,18 @@ impl Item {
     /// キーフレームを持つか（見出しの ▸ が引く）。
     pub fn has_keyframes(&self) -> bool {
         !self.keyframes.is_empty()
+    }
+
+    /// ロックの状態を付ける。
+    pub fn with_locked(mut self, locked: bool) -> Self {
+        self.locked = locked;
+        self
+    }
+
+    /// 音を持てるレイヤーにし、Mute と Solo を付ける。
+    pub fn with_audio(mut self, mute: bool, solo: bool) -> Self {
+        self.audio = Some(AudioState { mute, solo });
+        self
     }
 
     /// レイヤーの ID を付ける。
@@ -176,6 +201,12 @@ pub enum Part {
 /// 当たった所。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hit {
+    /// 見出しの列の上の角。
+    Corner,
+    /// レイヤーの見出し。`index` は行の添字。
+    Header {
+        index: usize,
+    },
     Ruler,
     Layer {
         index: usize,
@@ -234,6 +265,16 @@ pub fn hit_test(model: &TimelineModel, vp: &Viewport, x: f32, y: f32) -> Hit {
     if l.ruler.contains(x, y) {
         return Hit::Ruler;
     }
+    if l.corner.contains(x, y) {
+        return Hit::Corner;
+    }
+    if l.headers.contains(x, y) {
+        return vp
+            .rows
+            .at(y - l.headers.y + vp.scroll_y)
+            .filter(|i| *i < model.items.len())
+            .map_or(Hit::Empty, |index| Hit::Header { index });
+    }
     if l.scrollbar.contains(x, y) {
         return Hit::Scrollbar {
             thumb: vp.thumb().contains(x, y),
@@ -287,7 +328,7 @@ fn cut_hit(item: &Item, vp: &Viewport, index: usize, x: f32) -> Option<Hit> {
 mod tests {
     use super::*;
     use crate::timeline_layout::tests::TestViewport;
-    use crate::timeline_layout::RULER_H;
+    use crate::timeline_layout::{HEADER_W, RULER_H};
 
     fn model() -> TimelineModel {
         TimelineModel {
@@ -300,9 +341,9 @@ mod tests {
         }
     }
 
-    /// 幅 1000、高さ 300 の Timeline。
+    /// 幅 1200、高さ 300 の Timeline。
     fn viewport(m: &TimelineModel) -> TestViewport {
-        TestViewport::new(m, (1000.0, 300.0))
+        TestViewport::new(m, (1200.0, 300.0))
     }
 
     #[test]
@@ -317,7 +358,7 @@ mod tests {
         let m = model();
         let f = viewport(&m);
         let y = f.in_bar(1);
-        let at = |x| hit_test(&m, &f.vp(), x, y);
+        let at = |x| hit_test(&m, &f.vp(), x + HEADER_W, y);
         assert_eq!(
             at(201.0),
             Hit::Layer {
@@ -347,7 +388,7 @@ mod tests {
         let mut m = model();
         m.items[1].end = 2.06; // 6 px
         let f = viewport(&m);
-        let mid = hit_test(&m, &f.vp(), 203.0, f.in_bar(1));
+        let mid = hit_test(&m, &f.vp(), HEADER_W + 203.0, f.in_bar(1));
         assert!(matches!(
             mid,
             Hit::Layer {
@@ -426,7 +467,7 @@ mod tests {
         let m = seq_model();
         let f = viewport(&m);
         let y = f.in_bar(0);
-        let at = |x| hit_test(&m, &f.vp(), x, y);
+        let at = |x| hit_test(&m, &f.vp(), x + HEADER_W, y);
         let cut = |cut, part| Hit::Cut { item: 0, cut, part };
         assert_eq!(at(2.0), cut(0, Part::InHandle));
         assert_eq!(at(150.0), cut(0, Part::Body));
@@ -446,7 +487,7 @@ mod tests {
         let m = seq_model();
         let f = viewport(&m);
         let y = f.in_bar(0);
-        let at = |x| hit_test(&m, &f.vp(), x, y);
+        let at = |x| hit_test(&m, &f.vp(), x + HEADER_W, y);
         let layer = |part| Hit::Layer { index: 0, part };
         assert_eq!(at(998.0), layer(Part::OutHandle), "カットは 4 秒まで");
         assert_eq!(at(700.0), layer(Part::Body));

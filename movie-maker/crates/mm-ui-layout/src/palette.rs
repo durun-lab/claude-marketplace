@@ -11,6 +11,9 @@ pub const ROW_EVEN: Color = Color::hex(0x20232a);
 pub const ROW_ODD: Color = Color::hex(0x252932);
 pub const TICK: Color = Color::hex(0x6b7280);
 pub const LABEL: Color = Color::hex(0xb4bac6);
+/// レイヤーの見出しの、入の Mute と Solo のボタンの背景の色。Mixer のボタンと同じく、テーマの `danger` と `accent`。
+pub const MUTE_ON: Color = Color::hex(0xff8a80);
+pub const SOLO_ON: Color = Color::hex(0x5b8def);
 pub const OUTSIDE: Color = Color::hex(0x15161a).with_alpha(0.6);
 pub const PLAYHEAD: Color = Color::hex(0xff5a4d);
 pub const GUIDE: Color = Color::hex(0xffd24a);
@@ -38,6 +41,9 @@ pub struct Palette {
     pub row_odd: Color,
     pub tick: Color,
     pub label: Color,
+    /// 入の Mute と Solo のボタンの背景。
+    pub mute: Color,
+    pub solo: Color,
     pub outside: Color,
     pub playhead: Color,
     pub guide: Color,
@@ -57,6 +63,8 @@ impl Palette {
         row_odd: ROW_ODD,
         tick: TICK,
         label: LABEL,
+        mute: MUTE_ON,
+        solo: SOLO_ON,
         outside: OUTSIDE,
         playhead: PLAYHEAD,
         guide: GUIDE,
@@ -77,6 +85,8 @@ impl Palette {
             row_odd: pick("bg", d.row_odd),
             tick: pick("border-strong", d.tick),
             label: pick("text-muted", d.label),
+            mute: pick("danger", d.mute),
+            solo: pick("accent", d.solo),
             outside: pick("bg", d.outside).with_alpha(d.outside.0[3]),
             selection: pick("text", d.selection),
             drawing: pick("accent", d.drawing),

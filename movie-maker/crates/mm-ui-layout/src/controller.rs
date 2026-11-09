@@ -265,6 +265,8 @@ impl TimelineController {
                 self.press_scrollbar(thumb, y);
                 return Vec::new();
             }
+            // 見出しの列の上の角はタイムコードを出すだけで、選択もカットの選択も変えない。
+            Hit::Corner => return Vec::new(),
             _ => {}
         }
         let had_cut = self.selected_cut.take();
@@ -283,21 +285,34 @@ impl TimelineController {
             }
             Hit::Cut { item, cut, part } => self.press_cut((item, cut, part), x, mods),
             Hit::BarMark { item, keyframe } => {
-                self.selected = Some(item);
-                let t = model
-                    .items
-                    .get(item)
-                    .and_then(|it| it.keyframes.get(keyframe));
-                let seek = t.map(|t| Action::Seek(Self::seek_time(*t, model)));
-                let mut out = deselect_cut(Action::Select(Some(item)), had_cut);
-                out.extend(seek);
-                out
+                self.press_bar_mark((item, keyframe), had_cut, model)
+            }
+            Hit::Header { index } => {
+                self.selected = Some(index);
+                deselect_cut(Action::Select(Some(index)), had_cut)
             }
             _ => {
                 self.selected = None;
                 deselect_cut(Action::Select(None), had_cut)
             }
         }
+    }
+
+    /// 帯のマーカーを押した。レイヤーを選び、再生位置をそのキーフレームの時刻へ動かす（ドラッグは始めない）。
+    fn press_bar_mark(
+        &mut self,
+        (item, keyframe): (usize, usize),
+        had_cut: Option<(usize, usize)>,
+        model: &TimelineModel,
+    ) -> Vec<Action> {
+        self.selected = Some(item);
+        let t = model
+            .items
+            .get(item)
+            .and_then(|it| it.keyframes.get(keyframe));
+        let mut out = deselect_cut(Action::Select(Some(item)), had_cut);
+        out.extend(t.map(|t| Action::Seek(Self::seek_time(*t, model))));
+        out
     }
 
     /// カットを押した。レイヤーとカットを選び、端ならつまみの、中ならカットのドラッグを始める。
@@ -424,15 +439,18 @@ impl TimelineController {
         }
     }
 
-    /// ホイール。Ctrl でポインターの下を中心に拡大（縮小は長さ `duration` の全体が収まるまで）、
-    /// Shift かスクロールバーの上なら縦にスクロール、それ以外は横に動かす。
+    /// ホイール。Ctrl でポインターの下（見出しの列の上なら行の領域の左端）を中心に拡大（縮小は長さ `duration` の全体が収まるまで）、
+    /// Shift か、スクロールバーか見出しの列の上なら縦にスクロール、それ以外は横に動かす。
     fn wheel(&mut self, (x, y): (f32, f32), dy: f32, (ctrl, shift): (bool, bool), duration: f64) {
         if ctrl {
-            let anchor = x - self.layout.row_area.x;
+            let anchor = (x - self.layout.row_area.x).max(0.0);
             let floor = TimeView::zoom_floor(duration, self.layout.row_area.w, VIEW_MARGIN);
             let factor = ZOOM_STEP.powf(f64::from(dy));
             self.view = self.view.zoom_at(anchor, factor, floor);
-        } else if shift || self.layout.scrollbar.contains(x, y) {
+        } else if shift
+            || self.layout.scrollbar.contains(x, y)
+            || self.layout.headers.contains(x, y)
+        {
             self.scroll_to(self.scroll_y - dy * SCROLL_STEP_PX);
         } else {
             self.view = self.view.pan_px(-dy * PAN_STEP_PX);
@@ -449,6 +467,8 @@ fn deselect_cut(select: Action, had_cut: Option<(usize, usize)>) -> Vec<Action> 
     out
 }
 
+#[cfg(test)]
+mod cut_tests;
 #[cfg(test)]
 mod scroll_tests;
 #[cfg(test)]

@@ -5,6 +5,7 @@
 //! 重ね順は呼ぶ順でなく [`Depth`] で決めるので、領域を足す PR はファイルを 1 つと、呼び出しを 1 行足せばよい。
 
 mod guide;
+mod header;
 mod keymarks;
 mod playhead;
 mod rows;
@@ -104,6 +105,7 @@ pub fn timeline_quads(model: &TimelineModel, vp: &Viewport, state: &PaintState) 
     let input = PaintInput { model, vp, state };
     let mut canvas = Canvas::default();
     canvas.push(Depth::Back, vp.layout.bounds, state.palette.panel);
+    header::paint(&input, &mut canvas);
     keymarks::paint(&input, &mut canvas);
     rows::paint(&input, &mut canvas);
     ruler::paint(&input, &mut canvas);

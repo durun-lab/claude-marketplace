@@ -2,12 +2,29 @@
 
 use std::sync::Arc;
 
-use mm_doc::{Composition, Layer, Project, Sequence, SequenceId, SEQUENCE_KIND, SEQUENCE_PARAM};
+use mm_doc::{
+    Composition, Layer, Project, Sequence, SequenceId, FOOTAGE_KIND, NESTED_KIND, SEQUENCE_KIND,
+    SEQUENCE_PARAM,
+};
 use mm_eval::{place_cuts, PlacedCut};
 use mm_types::Id;
-use mm_ui_layout::{CutBar, Item, ItemKind, TimelineModel, TrimBounds};
+use mm_ui_layout::{AudioState, CutBar, Item, ItemKind, TimelineModel, TrimBounds};
 
 use crate::names::Namer;
+
+/// 音を持てるレイヤーの種類。Mixer のトラック（`apps/movie-maker` の `mixer.rs`）と同じで、見出しに Mute と Solo を出す。
+const AUDIO_KINDS: [&str; 3] = [FOOTAGE_KIND, NESTED_KIND, SEQUENCE_KIND];
+
+/// 音を持てるレイヤーの Mute と Solo。音の設定が無いレイヤーは既定（どちらも切）。音を持てないレイヤーは `None`。
+fn audio_state(layer: &Layer) -> Option<AudioState> {
+    AUDIO_KINDS.contains(&layer.source.kind.as_str()).then(|| {
+        let audio = layer.audio.as_ref();
+        AudioState {
+            mute: audio.is_some_and(|a| a.mute),
+            solo: audio.is_some_and(|a| a.solo),
+        }
+    })
+}
 
 fn kind_of(layer: &Layer) -> ItemKind {
     match layer.source.kind.as_str() {
@@ -75,6 +92,8 @@ pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
             end: range.end.to_f64(),
             kind: kind_of(layer),
             enabled: layer.enabled,
+            locked: layer.lock,
+            audio: audio_state(layer),
             label: names.label(&layer.source),
             keyframes: keyframe_secs(layer),
             cuts: cut_bars(project, layer, &names),
@@ -327,6 +346,32 @@ mod tests {
         let m = timeline_model(&Project::new(), &c);
         assert_eq!(&*m.items[0].keyframes, [2.0, 3.0, 4.0]);
         assert!(m.items[0].has_keyframes() && !m.items[1].has_keyframes());
+    }
+
+    #[test]
+    fn 音を持てるレイヤーは音の設定が無くても_mute_と_solo_を持ち_ロックを写す() {
+        let mut talk = layer("talk", "footage", 0, 0, 4);
+        talk.audio = Some(mm_doc::LayerAudio {
+            solo: true,
+            ..mm_doc::LayerAudio::new("voice")
+        });
+        talk.lock = true;
+        let c = comp().with_layers(vec![
+            talk,
+            layer("seq", SEQUENCE_KIND, 0, 0, 4),
+            layer("bg", "solid", 0, 0, 4),
+        ]);
+        let m = timeline_model(&Project::new(), &c);
+        let audio: Vec<_> = m.items.iter().map(|i| i.audio).collect();
+        let off = AudioState::default();
+        let solo = AudioState { solo: true, ..off };
+        assert_eq!(
+            audio,
+            [None, Some(off), Some(solo)],
+            "上から単色、sequence、撮影素材"
+        );
+        let locked: Vec<bool> = m.items.iter().map(|i| i.locked).collect();
+        assert_eq!(locked, [false, false, true]);
     }
 
     #[test]
