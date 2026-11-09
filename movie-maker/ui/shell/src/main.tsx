@@ -1,5 +1,5 @@
 import { render } from "preact";
-import { createClient, createIpcTransport } from "@mm/sdk";
+import { createClient, createIpcCommandsApi, createIpcTransport } from "@mm/sdk";
 import { followTheme } from "./followTheme.ts";
 import { createPanelApis } from "./registry.ts";
 import { Shell } from "./Shell.tsx";
@@ -14,4 +14,4 @@ const sendOp = async (op: Parameters<typeof client.sendOp>[0]): Promise<string |
 
 followTheme(document.documentElement, location.search, matchMedia.bind(window));
 const root = document.getElementById("root");
-if (root) render(<Shell sendOp={sendOp} apis={createPanelApis()} />, root);
+if (root) render(<Shell sendOp={sendOp} apis={createPanelApis()} commands={createIpcCommandsApi()} />, root);

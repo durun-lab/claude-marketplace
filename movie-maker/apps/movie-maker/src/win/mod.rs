@@ -4,6 +4,7 @@ mod app;
 mod capture;
 mod cli;
 mod clock;
+mod commands;
 mod deliver;
 mod deliver_ipc;
 mod devices;
