@@ -240,12 +240,7 @@ pub(crate) fn locked_ids(project: &Project) -> Touches {
         .filter(|l| l.lock)
     {
         t.add(&layer.id);
-        for e in &layer.effects {
-            t.add(&e.id);
-        }
-        for m in &layer.masks {
-            t.add(&m.id);
-        }
+        layer_owned_ids(layer, &mut t);
     }
     t
 }
