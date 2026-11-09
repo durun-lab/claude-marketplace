@@ -35,12 +35,12 @@ Rust の側は `#[tauri::command] fn apply_op(op: mm_ops::Op, ...) -> Result<_, 
 
 ## UI のコマンドの表
 
-呼び出し箇所（Tasks の項目、キー）が ID で指すコマンドの表。表はアプリの `apps/movie-maker/src/win/commands.rs`、キーの割り当ては `keys.rs` が持つ。型と関数は `src/commands.ts`（`createIpcCommandsApi`、`commandTitle`）。表は人が呼ぶコマンドだけを持ち、データの変更は実行した先の編集が操作（`Op`）で出す。
+呼び出し箇所（Tasks の項目、キー、メニュー）が ID で指すコマンドの表。表はアプリの `apps/movie-maker/src/win/commands.rs`、キーの割り当ては `keys.rs`、メニューの中の並びは `menu.rs` が持つ。型と関数は `src/commands.ts`（`createIpcCommandsApi`、`commandTitle`）。表は人が呼ぶコマンドだけを持ち、データの変更は実行した先の編集が操作（`Op`）で出す。
 
 | コマンド | 引数 | 成功 |
 |---|---|---|
 | `command_table` | なし | `UiCommand[]`（ID の名前の順） |
-| `run_command` | `{ id }` | すぐ `()`（編集は編集のキューに積む）。編集の失敗は Source の状態の `message`（`mm:source`）に出る。アプリが持ち主の、今押せるコマンドだけを受け、表に無い ID、パネルが持ち主のコマンド、今押せないコマンドは `Err`。キー（`key_event`）は押せるかを見ずに実行し、拒否した理由は編集の `message` に出る |
+| `run_command` | `{ id }` | すぐ `()`（編集は編集のキューに積む）。編集の失敗は Source の状態の `message`（`mm:source`）に出る。今押せるコマンドだけを受け、表に無い ID と今押せないコマンドは `Err`。パネルが持ち主のコマンドは `mm:panel-command` で Shell に渡す。キー（`key_event`）は押せるかを見ずに実行し、拒否した理由は編集の `message` に出る |
 
 | `UiCommand` の項目 | 中身 |
 |---|---|
@@ -49,12 +49,14 @@ Rust の側は `#[tauri::command] fn apply_op(op: mm_ops::Op, ...) -> Result<_, 
 | `keys` | キーの表の名前（`Ctrl+KeyZ`）。先頭が画面に出すキー |
 | `key_label` | 先頭のキーの見た目（`Ctrl+Z`）。キーが無ければ `null` |
 | `description` | ツールチップの 2 行目。無ければ `null` |
-| `menu` | メニューバーでの場所（`file`、`edit`、`playback`）。無ければ `null` |
+| `menu` | メニューバーでの場所（`file`、`edit`、`view`、`playback`、`timeline`、`help`）。無ければ `null` |
 | `panel` | 持ち主の WebView のパネルの id。アプリが実行するコマンドは `null` |
 | `enabled` | 今押せるか |
 | `checked` | 入/切のあるコマンドのチェックの状態。それ以外は `null` |
 
 押せるかが変わると、Tauri のイベント `mm:commands-changed`（`COMMANDS_CHANGED_EVENT`）が同じ形の表を丸ごと届ける。Shell は表を `PanelContext.commands` でパネルに渡し、`runCommand` は持ち主がパネルならそのタブを開き、アプリなら `run_command` を呼ぶ。ボタンの `title` は `commandTitle` で作る（1 行目が「名前 (キー)」、2 行目が説明。表に無いコマンドは `Not available yet`）。
+
+パネルが持ち主のコマンドをアプリのメニューやキー（Ctrl+I の Import Media…）から呼ぶと、Tauri のイベント `mm:panel-command`（`PANEL_COMMAND_EVENT`）がコマンドの ID を届ける。Shell は `CommandsApi.onPanelCommand` で受け、`runCommand` と同じくタブを開いてパネルに知らせる（`PanelContext.requests` が進む）。
 
 ## Media のコマンド
 
