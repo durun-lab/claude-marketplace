@@ -172,10 +172,10 @@ impl Project {
     pub(crate) fn validate_bins(&self) -> Result<()> {
         let mut assets = HashSet::new();
         for m in &self.bins.marks {
-            self.require_asset("イン点・アウト点", &m.asset)?;
+            self.require_asset("In/out marks", &m.asset)?;
             if !assets.insert(m.asset.as_str()) {
                 return Err(invalid(format!(
-                    "素材 {} のイン点・アウト点が重複",
+                    "Asset {} has duplicate in/out marks",
                     m.asset
                 )));
             }
@@ -206,12 +206,12 @@ impl Project {
         }
         let mut words = HashSet::new();
         for e in &self.transcript_edits {
-            self.require_asset("単語の修正", &e.asset)?;
+            self.require_asset("Word edits", &e.asset)?;
             if !words.insert((e.asset.as_str(), e.word.as_str())) {
-                return Err(invalid(format!("単語 {} の修正が重複", e.word)));
+                return Err(invalid(format!("Duplicate edit for word {}", e.word)));
             }
             if e.is_noop() {
-                return Err(invalid(format!("単語 {} の修正が何も変えない", e.word)));
+                return Err(invalid(format!("Edit for word {} changes nothing", e.word)));
             }
         }
         Ok(())
@@ -220,7 +220,7 @@ impl Project {
     fn require_asset(&self, what: &str, asset: &AssetId) -> Result<()> {
         self.asset(asset)
             .map(|_| ())
-            .map_err(|_| invalid(format!("{what}の素材 {asset} が無い")))
+            .map_err(|_| invalid(format!("{what}: asset {asset} not found")))
     }
 }
 
@@ -230,13 +230,13 @@ fn invalid(msg: String) -> MmError {
 
 fn validate_marks(project: &Project, m: &SourceMarks) -> Result<()> {
     if m.in_point.is_none() && m.out_point.is_none() {
-        return Err(invalid(format!("素材 {} のイン点・アウト点が空", m.asset)));
+        return Err(invalid(format!("Asset {} has empty in/out marks", m.asset)));
     }
     let duration = project.asset(&m.asset)?.duration;
     for t in [m.in_point, m.out_point].into_iter().flatten() {
         if t.is_negative() || t > duration {
             return Err(invalid(format!(
-                "素材 {} のイン点・アウト点 {t} が素材の外",
+                "Asset {}: in/out mark {t} is outside the asset",
                 m.asset
             )));
         }
@@ -244,7 +244,7 @@ fn validate_marks(project: &Project, m: &SourceMarks) -> Result<()> {
     if let (Some(i), Some(o)) = (m.in_point, m.out_point) {
         if i >= o {
             return Err(invalid(format!(
-                "素材 {} のイン点・アウト点が in < out でない",
+                "Asset {}: in/out mark in point must be before out point",
                 m.asset
             )));
         }
@@ -262,15 +262,15 @@ fn check_item<'a>(
     out_point: RationalTime,
 ) -> Result<()> {
     if !ids.insert(id) {
-        return Err(invalid(format!("選別と話題の ID {id} が重複")));
+        return Err(invalid(format!("Duplicate selection or topic ID: {id}")));
     }
     let duration = project
         .asset(asset)
-        .map_err(|_| invalid(format!("{id} の素材 {asset} が無い")))?
+        .map_err(|_| invalid(format!("{id}: asset {asset} not found")))?
         .duration;
     if in_point.is_negative() || out_point > duration || in_point >= out_point {
         return Err(invalid(format!(
-            "{id} の範囲 [{in_point}, {out_point}) が素材の中で in < out でない"
+            "{id}: range [{in_point}, {out_point}) must be inside the asset with in before out"
         )));
     }
     Ok(())
@@ -278,12 +278,10 @@ fn check_item<'a>(
 
 fn check_tags(id: &str, tags: &[String]) -> Result<()> {
     if tags.iter().any(String::is_empty) {
-        return Err(invalid(format!("{id} に空のタグ")));
+        return Err(invalid(format!("{id}: empty tag")));
     }
     if tags.windows(2).any(|w| w[0] >= w[1]) {
-        return Err(invalid(format!(
-            "{id} のタグが辞書順で重複しない並びでない"
-        )));
+        return Err(invalid(format!("{id}: tags must be unique and sorted")));
     }
     Ok(())
 }

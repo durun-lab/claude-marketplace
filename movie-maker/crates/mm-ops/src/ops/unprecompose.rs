@@ -26,7 +26,7 @@ impl Unprecompose {
             .source
             .text_param(NESTED_PARAM)
             .filter(|_| layer.source.kind == NESTED_KIND)
-            .ok_or_else(|| invalid(format!("レイヤー {} は入れ子でない", self.layer)))?;
+            .ok_or_else(|| invalid(format!("Layer {} is not a nested composition", self.layer)))?;
         Ok(Id::new(id))
     }
 }
@@ -89,7 +89,7 @@ fn check_shape(
         && !nested.layers.is_empty();
     if !same_shape {
         return Err(invalid(format!(
-            "コンポジション {nested_id} は precompose の形でない"
+            "Composition {nested_id} does not have the shape produced by precompose"
         )));
     }
     check_unreferenced(project, &comp.layers[index].id, nested_id)
@@ -110,7 +110,7 @@ fn check_layer_shape(comp: &Composition, nested_id: &CompositionId, index: usize
     );
     if *layer != expected {
         return Err(invalid(format!(
-            "レイヤー {} は precompose の既定の形でない",
+            "Layer {} does not have the default precompose shape",
             layer.id
         )));
     }
@@ -143,7 +143,7 @@ fn check_unreferenced(project: &Project, layer: &LayerId, nested_id: &Compositio
         .any(|t| t.composition == *nested_id);
     if by_layer || by_cut || targeted {
         return Err(invalid(format!(
-            "コンポジション {nested_id} はほかから参照されている"
+            "Composition {nested_id} is referenced elsewhere"
         )));
     }
     Ok(())

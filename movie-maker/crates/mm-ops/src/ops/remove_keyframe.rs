@@ -30,7 +30,7 @@ impl Apply for RemoveKeyframe {
             .keyframes
             .iter()
             .position(|k| k.time == self.time)
-            .ok_or_else(|| MmError::NotFound(format!("時刻 {} のキーフレーム", self.time)))?;
+            .ok_or_else(|| MmError::NotFound(format!("keyframe at {}", self.time)))?;
         let keyframe = param.keyframes.remove(pos);
         Ok(SetKeyframe {
             target: self.target.clone(),

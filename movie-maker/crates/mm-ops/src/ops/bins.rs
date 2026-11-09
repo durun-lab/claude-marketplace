@@ -18,7 +18,7 @@ pub(crate) fn item_mut<'a>(
         .iter_mut()
         .find(|t| t.id.as_str() == id)
         .map(|t| (&mut t.rating, &mut t.tags))
-        .ok_or_else(|| MmError::NotFound(format!("選別か話題 {id}")))
+        .ok_or_else(|| MmError::NotFound(format!("selection or topic {id}")))
 }
 
 /// 素材のイン点・アウト点の `edge` を `at` にし、前の値を返す。両方とも無くなったら外す。

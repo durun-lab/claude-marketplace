@@ -48,12 +48,12 @@ impl ForkSequence {
         let at = |id: &CutId| {
             cuts.iter()
                 .position(|c| &c.id == id)
-                .ok_or_else(|| invalid(format!("カット {id} は sequence {} に無い", self.sequence)))
+                .ok_or_else(|| invalid(format!("Clip {id} is not in sequence {}", self.sequence)))
         };
         let (first, last) = (at(&range.first)?, at(&range.last)?);
         if first > last {
             return Err(invalid(format!(
-                "範囲の {} が {} より後ろ",
+                "Range start {} is after range end {}",
                 range.first, range.last
             )));
         }
@@ -87,14 +87,14 @@ impl Apply for ForkSequence {
     fn apply(&self, project: &mut Project) -> Result<Op> {
         if project.sequence(&self.new_sequence).is_ok() {
             return Err(invalid(format!(
-                "sequence {} は既に在る",
+                "Sequence {} already exists",
                 self.new_sequence
             )));
         }
         let source = self.source_cuts(project)?;
         if source.len() != self.cuts.len() {
             return Err(invalid(format!(
-                "カットの ID の数 {} が元の {} と合わない",
+                "Clip ID count ({}) does not match the source clip count ({})",
                 self.cuts.len(),
                 source.len()
             )));

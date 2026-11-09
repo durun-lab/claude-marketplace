@@ -29,12 +29,12 @@ impl Apply for Insert {
 
     fn apply(&self, project: &mut Project) -> Result<Op> {
         if project.cut(&self.cut.id).is_ok() {
-            return Err(invalid(format!("カット {} は既に在る", self.cut.id)));
+            return Err(invalid(format!("Clip {} already exists", self.cut.id)));
         }
         let seq = project.sequence_mut(&self.sequence)?;
         if self.index > seq.cuts.len() {
             return Err(invalid(format!(
-                "カットの位置 {} が {} を超える",
+                "Clip index {} exceeds the clip count ({})",
                 self.index,
                 seq.cuts.len()
             )));

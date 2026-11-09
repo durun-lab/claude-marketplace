@@ -36,8 +36,8 @@ impl Apply for Tag {
             (Ok(pos), true) => {
                 tags.remove(pos);
             }
-            (Ok(_), false) => return Err(invalid(format!("タグ {} は付いている", self.tag))),
-            (Err(_), true) => return Err(invalid(format!("タグ {} は付いていない", self.tag))),
+            (Ok(_), false) => return Err(invalid(format!("Tag {} is already set", self.tag))),
+            (Err(_), true) => return Err(invalid(format!("Tag {} is not set", self.tag))),
         }
         Ok(Tag {
             target: self.target.clone(),

@@ -94,10 +94,7 @@ impl FitLayer {
     /// sequence の長さに合うアウト点。
     fn fitted_out(&self, project: &Project, layer: &Layer) -> Result<RationalTime> {
         if layer.source.kind != SEQUENCE_KIND {
-            return Err(invalid(format!(
-                "レイヤー {} は sequence を置いていない",
-                self.layer
-            )));
+            return Err(invalid(format!("Layer {} has no sequence", self.layer)));
         }
         let id = Id::new(layer.source.text_param(SEQUENCE_PARAM).unwrap_or(""));
         let length = sequence_length(project.sequence(&id)?)?;

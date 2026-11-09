@@ -30,13 +30,13 @@ impl Apply for AddLayer {
 
     fn apply(&self, project: &mut Project) -> Result<Op> {
         if project.layer(&self.layer.id).is_ok() {
-            return Err(invalid(format!("レイヤー {} は既に在る", self.layer.id)));
+            return Err(invalid(format!("Layer {} already exists", self.layer.id)));
         }
         let comp = project.composition_mut(&self.composition)?;
         let index = self.index.unwrap_or(comp.layers.len());
         if index > comp.layers.len() {
             return Err(invalid(format!(
-                "レイヤーの位置 {index} が {} を超える",
+                "Layer index {index} exceeds the layer count ({})",
                 comp.layers.len()
             )));
         }

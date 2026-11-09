@@ -51,18 +51,18 @@ impl Apply for Precompose {
 
     fn apply(&self, project: &mut Project) -> Result<Op> {
         if self.layers.is_empty() {
-            return Err(invalid("precompose するレイヤーが無い"));
+            return Err(invalid("No layers to precompose"));
         }
         if project.composition(&self.new_composition).is_ok() {
             return Err(invalid(format!(
-                "コンポジション {} は既に在る",
+                "Composition {} already exists",
                 self.new_composition
             )));
         }
         let comp = project.composition_mut(&self.composition)?;
         let index = contiguous_range(comp, &self.layers).ok_or_else(|| {
             invalid(format!(
-                "レイヤーの一部がコンポジション {} に無いか、重なりの上で続いていない",
+                "Some layers are not in composition {} or are not contiguous in the stacking order",
                 self.composition
             ))
         })?;

@@ -35,11 +35,11 @@ impl Apply for MoveKeyframe {
             .keyframes
             .iter()
             .position(|k| k.time == self.from)
-            .ok_or_else(|| MmError::NotFound(format!("時刻 {} のキーフレーム", self.from)))?;
+            .ok_or_else(|| MmError::NotFound(format!("keyframe at {}", self.from)))?;
         let to = self.keyframe.time;
         if to != self.from && param.keyframes.iter().any(|k| k.time == to) {
             return Err(MmError::InvalidArgument(format!(
-                "時刻 {to} には別のキーフレームがある"
+                "A keyframe already exists at {to}"
             )));
         }
         let old = param.keyframes.remove(pos);

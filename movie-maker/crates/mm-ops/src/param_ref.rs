@@ -64,7 +64,7 @@ impl ParamRef {
             (Some(l), None) => Ok(Touches::of(l)),
             (None, Some(c)) => Ok(Touches::of(c)),
             _ => Err(MmError::InvalidArgument(
-                "ParamRef は layer か cut のどちらか 1 つ".into(),
+                "ParamRef needs exactly one of layer or cut".into(),
             )),
         }
     }
@@ -112,7 +112,7 @@ impl ParamRef {
 }
 
 fn unknown_path(path: &str) -> MmError {
-    MmError::NotFound(format!("パラメータのパス {path}"))
+    MmError::NotFound(format!("parameter path {path}"))
 }
 
 fn resolve_layer<'a>(layer: &'a mut Layer, path: &str) -> Result<ParamSlot<'a>> {
@@ -139,10 +139,9 @@ fn resolve_layer<'a>(layer: &'a mut Layer, path: &str) -> Result<ParamSlot<'a>> 
         EFFECTS => resolve_effect(layer, rest).ok_or_else(|| unknown_path(path)),
         MASKS => resolve_mask(layer, rest).ok_or_else(|| unknown_path(path)),
         AUDIO => {
-            let audio = layer
-                .audio
-                .as_mut()
-                .ok_or_else(|| MmError::NotFound(format!("レイヤー {} の音の設定", layer.id)))?;
+            let audio = layer.audio.as_mut().ok_or_else(|| {
+                MmError::NotFound(format!("audio settings of layer {}", layer.id))
+            })?;
             match rest {
                 "gain_db" => Ok(ParamSlot::Fixed(&mut audio.gain_db)),
                 "pan" => Ok(ParamSlot::Fixed(&mut audio.pan)),
@@ -168,7 +167,7 @@ fn resolve_caption<'a>(layer: &'a mut Layer, rest: &str, path: &str) -> Result<P
         .framing
         .caption
         .as_mut()
-        .ok_or_else(|| MmError::NotFound(format!("レイヤー {id} の字幕の置き場所")))?;
+        .ok_or_else(|| MmError::NotFound(format!("caption slot of layer {id}")))?;
     match rest {
         "position" => Ok(ParamSlot::Fixed(&mut caption.position)),
         "width" => Ok(ParamSlot::Fixed(&mut caption.width)),
@@ -226,7 +225,7 @@ impl ParamSlot<'_> {
 
     /// 今の値（書き換え用）。無ければ `NotFound`。
     pub fn get_mut(&mut self) -> Result<&mut Param> {
-        let missing = || MmError::NotFound("パラメータが無い".into());
+        let missing = || MmError::NotFound("parameter".into());
         match self {
             Self::Fixed(p) => Ok(p),
             Self::Optional(p) => p.as_mut().ok_or_else(missing),
@@ -250,12 +249,12 @@ impl ParamSlot<'_> {
         let removed = match self {
             Self::Fixed(_) => {
                 return Err(MmError::InvalidArgument(
-                    "必ず在るパラメータは外せない".into(),
+                    "A required parameter cannot be removed".into(),
                 ))
             }
             Self::Optional(p) => p.take(),
             Self::Map(m, name) => m.remove(name.as_str()),
         };
-        removed.ok_or_else(|| MmError::NotFound("パラメータが無い".into()))
+        removed.ok_or_else(|| MmError::NotFound("parameter".into()))
     }
 }

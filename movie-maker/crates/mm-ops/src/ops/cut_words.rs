@@ -60,12 +60,14 @@ impl CutWords {
         let seq = project.sequence(&self.sequence)?;
         if !self.splices.is_empty() {
             if !self.ranges.is_empty() {
-                return Err(invalid("ranges と splices は一緒に渡さない"));
+                return Err(invalid("ranges and splices cannot be given together"));
             }
             return Ok(self.splices.clone());
         }
         if self.restore && !self.ranges.is_empty() {
-            return Err(invalid("戻すときは ranges を渡さない（取り消しで戻す）"));
+            return Err(invalid(
+                "ranges must be empty when restoring (use undo to restore clips)",
+            ));
         }
         let ranges = normalize(&self.ranges)?;
         let mut taken: HashSet<String> = all_cut_ids(project);
@@ -93,7 +95,7 @@ impl CutWords {
         let mut changed = Vec::new();
         for word in &self.words {
             if !seen.insert(word) {
-                return Err(invalid(format!("単語 {word} を 2 回挙げている")));
+                return Err(invalid(format!("Word {word} is listed twice")));
             }
             let old = update_edit(project, &self.asset, word, |e| e.deleted = want)?;
             if old.deleted != want {
@@ -132,7 +134,7 @@ impl Apply for CutWords {
         inverse.reverse();
         let words = self.set_words(project)?;
         if words.is_empty() && inverse.is_empty() {
-            return Err(invalid("変わる単語もカットも無い"));
+            return Err(invalid("Nothing to change: no words or clips are affected"));
         }
         Ok(CutWords {
             asset: self.asset.clone(),
@@ -151,7 +153,7 @@ fn normalize(ranges: &[SourceRange]) -> Result<Vec<SourceRange>> {
     let mut sorted = ranges.to_vec();
     if let Some(bad) = sorted.iter().find(|r| r.in_point >= r.out_point) {
         return Err(invalid(format!(
-            "範囲 [{}, {}) が in < out でない",
+            "Range [{}, {}) must have its in point before its out point",
             bad.in_point, bad.out_point
         )));
     }
@@ -245,7 +247,7 @@ fn apply_splice(project: &mut Project, sequence: &SequenceId, s: &CutSplice) -> 
     let end = s.index.checked_add(s.count).filter(|e| *e <= len);
     let Some(end) = end else {
         return Err(invalid(format!(
-            "カットの範囲 {}+{} がシーケンス {sequence} の {len} 個の中に無い",
+            "Clip range {}+{} is outside the {len} clips of sequence {sequence}",
             s.index, s.count
         )));
     };

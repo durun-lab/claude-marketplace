@@ -30,7 +30,7 @@ impl Apply for Lift {
     fn apply(&self, project: &mut Project) -> Result<Op> {
         let cut = project.cut_mut(&self.cut)?;
         if cut.source.is_gap() {
-            return Err(invalid(format!("カット {} は既に隙間", self.cut)));
+            return Err(invalid(format!("Clip {} is already a gap", self.cut)));
         }
         let old = cut.clone();
         cut.source = Node::gap();

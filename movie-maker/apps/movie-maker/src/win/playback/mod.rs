@@ -236,7 +236,10 @@ mod tests {
         .into();
         let err = crate::win::edit::submit(&shared, vec![drop_open])
             .expect_err("開いているコンポジションは消せない");
-        assert!(err.contains("コンポジション"), "{err}");
+        assert!(
+            err.contains(&format!("composition {} not found", doc.comp)),
+            "{err}"
+        );
         assert_eq!(
             shared.doc_serial.load(Ordering::SeqCst),
             serial,

@@ -8,13 +8,13 @@ use crate::touches::Touches;
 #[derive(Debug, thiserror::Error)]
 pub enum OpError {
     /// 元にしたバージョンの後に、同じ所を触る操作が適用されている。呼ぶ側が今のプロジェクトのデータで作り直す。
-    #[error("バージョン {base} の後の操作と触る所が重なる: {touches:?}")]
+    #[error("Edit overlaps operations applied after version {base}: {touches:?}")]
     Conflict { base: u64, touches: Touches },
     /// 元にしたバージョンが今のバージョンより先（別のプロジェクトのデータのバージョンを渡している）。
-    #[error("元にしたバージョン {base} が今のバージョン {current} より先")]
+    #[error("Base version {base} is ahead of the current version {current}")]
     FutureBase { base: u64, current: u64 },
     /// ロックの付いた所に Claude の操作経路から触ろうとした。
-    #[error("ロックの付いた所に触れない: {0:?}")]
+    #[error("Cannot touch locked items: {0:?}")]
     Locked(Touches),
     /// 操作の検証・適用で見つかったプロジェクトのデータの誤り。
     #[error(transparent)]

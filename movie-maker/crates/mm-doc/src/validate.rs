@@ -29,7 +29,7 @@ impl<'a> IdSet<'a> {
 
     fn add<T>(&mut self, id: &'a Id<T>) -> Result<()> {
         if !self.seen.insert(id.as_str()) {
-            return Err(invalid(format!("{} の ID {id} が重複", self.kind)));
+            return Err(invalid(format!("Duplicate {} ID: {id}", self.kind)));
         }
         Ok(())
     }
@@ -56,11 +56,14 @@ impl Project {
         self.validate_ids()?;
         for asset in &self.assets {
             if asset.duration.is_negative() {
-                return Err(invalid(format!("素材 {} の長さが負", asset.id)));
+                return Err(invalid(format!(
+                    "Asset {} has a negative duration",
+                    asset.id
+                )));
             }
             if !is_hash_name(&asset.content_hash) {
                 return Err(invalid(format!(
-                    "素材 {} のコンテンツハッシュに使えない文字: {:?}",
+                    "Asset {} has an invalid content hash: {:?}",
                     asset.id, asset.content_hash
                 )));
             }
@@ -74,7 +77,7 @@ impl Project {
         for target in &self.render_targets {
             self.composition(&target.composition).map_err(|_| {
                 invalid(format!(
-                    "レンダーターゲット {} のコンポジション {} が無い",
+                    "Render target {}: composition {} not found",
                     target.id, target.composition
                 ))
             })?;
@@ -84,15 +87,15 @@ impl Project {
     }
 
     fn validate_ids(&self) -> Result<()> {
-        let mut assets = IdSet::new("素材");
-        let mut comps = IdSet::new("コンポジション");
-        let mut layers = IdSet::new("レイヤー");
-        let mut markers = IdSet::new("マーカー");
-        let mut effects = IdSet::new("効果");
-        let mut masks = IdSet::new("マスク");
+        let mut assets = IdSet::new("asset");
+        let mut comps = IdSet::new("composition");
+        let mut layers = IdSet::new("layer");
+        let mut markers = IdSet::new("marker");
+        let mut effects = IdSet::new("effect");
+        let mut masks = IdSet::new("mask");
         let mut seqs = IdSet::new("sequence");
-        let mut cuts = IdSet::new("カット");
-        let mut targets = IdSet::new("レンダーターゲット");
+        let mut cuts = IdSet::new("clip");
+        let mut targets = IdSet::new("render target");
         for a in &self.assets {
             assets.add(&a.id)?;
         }
@@ -125,16 +128,20 @@ impl Project {
 }
 
 fn validate_composition(project: &Project, comp: &Composition) -> Result<()> {
-    comp.range()
-        .map_err(|e| invalid(format!("コンポジション {} の長さ: {e}", comp.id)))?;
+    comp.range().map_err(|e| {
+        invalid(format!(
+            "Composition {} has an invalid duration: {e}",
+            comp.id
+        ))
+    })?;
     let mut last_marker = None;
     for m in &comp.markers {
         if m.duration.is_negative() {
-            return Err(invalid(format!("マーカー {} の長さが負", m.id)));
+            return Err(invalid(format!("Marker {} has a negative duration", m.id)));
         }
         if last_marker.is_some_and(|t| m.time <= t) {
             return Err(invalid(format!(
-                "マーカー {} の時刻が厳密な昇順でない",
+                "Marker {} time must be later than the previous marker",
                 m.id
             )));
         }
@@ -143,7 +150,7 @@ fn validate_composition(project: &Project, comp: &Composition) -> Result<()> {
     if let Some(mixer) = &comp.mixer {
         mixer
             .check()
-            .map_err(|e| invalid(format!("コンポジション {} のミキサー: {e}", comp.id)))?;
+            .map_err(|e| invalid(format!("Composition {} has an invalid mixer: {e}", comp.id)))?;
     }
     // 親とトラックマットの先を ID の集合で引く（レイヤー数の 2 乗にしない）。
     let ids: HashSet<&str> = comp.layers.iter().map(|l| l.id.as_str()).collect();
@@ -156,20 +163,22 @@ fn validate_composition(project: &Project, comp: &Composition) -> Result<()> {
 fn validate_layer(project: &Project, ids: &HashSet<&str>, layer: &Layer) -> Result<()> {
     let id = &layer.id;
     if layer.in_point >= layer.out_point {
-        return Err(invalid(format!("レイヤー {id} は in < out でない")));
+        return Err(invalid(format!(
+            "Layer {id}: in point must be before out point"
+        )));
     }
     layer
         .range()
-        .map_err(|e| invalid(format!("レイヤー {id} の範囲: {e}")))?;
+        .map_err(|e| invalid(format!("Layer {id} has an invalid range: {e}")))?;
     if let Some(parent) = &layer.parent {
         if parent == id || !ids.contains(parent.as_str()) {
-            return Err(invalid(format!("レイヤー {id} の親 {parent} が無い")));
+            return Err(invalid(format!("Layer {id}: parent {parent} not found")));
         }
     }
     if let Some(matte) = &layer.track_matte {
         if matte.layer == *id || !ids.contains(matte.layer.as_str()) {
             return Err(invalid(format!(
-                "レイヤー {id} のトラックマット {} が無い",
+                "Layer {id}: track matte {} not found",
                 matte.layer
             )));
         }
@@ -177,19 +186,19 @@ fn validate_layer(project: &Project, ids: &HashSet<&str>, layer: &Layer) -> Resu
     if let Some(cut) = &layer.attach_to {
         project
             .cut(cut)
-            .map_err(|_| invalid(format!("レイヤー {id} の接続先のカット {cut} が無い")))?;
+            .map_err(|_| invalid(format!("Layer {id}: attached clip {cut} not found")))?;
     }
     if let Some(remap) = &layer.time_remap {
         validate_time_remap(id, remap)?;
     }
     for param in layer_params(layer) {
-        validate_keyframes(&format!("レイヤー {id}"), param)?;
+        validate_keyframes(&format!("Layer {id}"), param)?;
     }
     validate_framing(layer)?;
     validate_fades(layer)?;
     validate_mask_rects(layer)?;
     for node in layer.nodes() {
-        validate_node(project, &format!("レイヤー {id}"), node)?;
+        validate_node(project, &format!("Layer {id}"), node)?;
     }
     Ok(())
 }
@@ -199,7 +208,7 @@ fn validate_framing(layer: &Layer) -> Result<()> {
     let mut seen = HashSet::new();
     match layer.framing.cuts.iter().find(|r| !seen.insert(&r.cut)) {
         Some(dup) => Err(invalid(format!(
-            "レイヤー {} の再フレーミングのカット {} が重なる",
+            "Layer {}: clip {} appears twice in reframing",
             layer.id, dup.cut
         ))),
         None => Ok(()),
@@ -225,7 +234,7 @@ fn validate_mask_rects(layer: &Layer) -> Result<()> {
                 std::iter::once(&param.value).chain(param.keyframes.iter().map(|k| &k.value));
             if !values.into_iter().all(ok) {
                 return Err(invalid(format!(
-                    "レイヤー {} のマスク {} の {name} は {ty} でなければならない",
+                    "Layer {}: mask {} {name} must be {ty}",
                     layer.id, mask.id
                 )));
             }
@@ -245,7 +254,7 @@ fn validate_fades(layer: &Layer) -> Result<()> {
         .any(|f| f.duration <= mm_types::RationalTime::ZERO);
     if bad {
         return Err(invalid(format!(
-            "レイヤー {} の音のフェードの長さが正でない",
+            "Layer {}: audio fade duration must be positive",
             layer.id
         )));
     }
@@ -254,8 +263,8 @@ fn validate_fades(layer: &Layer) -> Result<()> {
 
 /// 親とトラックマットの鎖をたどって循環を見つける。
 fn validate_chains(comp: &Composition) -> Result<()> {
-    validate_chain(comp, "親", |l| l.parent.as_ref())?;
-    validate_chain(comp, "トラックマット", |l| {
+    validate_chain(comp, "parent", |l| l.parent.as_ref())?;
+    validate_chain(comp, "track matte", |l| {
         l.track_matte.as_ref().map(|m| &m.layer)
     })
 }
@@ -276,7 +285,10 @@ fn validate_chain<'a>(
         let mut cur = layer.id.as_str();
         while let Some(target) = links.get(cur) {
             if !seen.insert(cur) {
-                return Err(invalid(format!("レイヤー {} の{what}が循環", layer.id)));
+                return Err(invalid(format!(
+                    "Layer {}: {what} chain is circular",
+                    layer.id
+                )));
             }
             cur = target.as_str();
         }
@@ -286,18 +298,18 @@ fn validate_chain<'a>(
 
 fn validate_time_remap(id: &LayerId, remap: &crate::TimeRemap) -> Result<()> {
     if remap.keyframes.is_empty() {
-        return Err(invalid(format!("レイヤー {id} のタイムリマップが空")));
+        return Err(invalid(format!("Layer {id}: time remap has no keyframes")));
     }
     let mut last = None;
     for k in &remap.keyframes {
         if k.interpolation == Interpolation::Bezier {
             return Err(invalid(format!(
-                "レイヤー {id} のタイムリマップはベジェを使えない"
+                "Layer {id}: time remap cannot use Bezier interpolation"
             )));
         }
         if last.is_some_and(|t| k.time <= t) {
             return Err(invalid(format!(
-                "レイヤー {id} のタイムリマップの時刻が昇順でない"
+                "Layer {id}: time remap times must be strictly increasing"
             )));
         }
         last = Some(k.time);
@@ -320,11 +332,11 @@ fn layer_params(layer: &Layer) -> impl Iterator<Item = &Param> {
 fn validate_node(project: &Project, owner: &str, root: &Node) -> Result<()> {
     for node in root.descendants() {
         for (name, param) in &node.params {
-            validate_keyframes(&format!("{owner} の {}.{name}", node.kind), param)?;
+            validate_keyframes(&format!("{owner} {}.{name}", node.kind), param)?;
             if let ParamValue::AssetRef(asset) = &param.value {
                 project.asset(asset).map_err(|_| {
                     invalid(format!(
-                        "{owner} の {}.{name} の素材 {asset} が無い",
+                        "{owner} {}.{name}: asset {asset} not found",
                         node.kind
                     ))
                 })?;
@@ -334,13 +346,13 @@ fn validate_node(project: &Project, owner: &str, root: &Node) -> Result<()> {
             let id = node.text_param(NESTED_PARAM).unwrap_or("");
             project
                 .composition(&Id::new(id))
-                .map_err(|_| invalid(format!("{owner} の入れ子のコンポジション {id} が無い")))?;
+                .map_err(|_| invalid(format!("{owner}: nested composition {id} not found")))?;
         }
         if node.kind == SEQUENCE_KIND {
             let id = node.text_param(SEQUENCE_PARAM).unwrap_or("");
             project
                 .sequence(&Id::new(id))
-                .map_err(|_| invalid(format!("{owner} の sequence {id} が無い")))?;
+                .map_err(|_| invalid(format!("{owner}: sequence {id} not found")))?;
         }
     }
     Ok(())
@@ -350,11 +362,13 @@ fn validate_keyframes(owner: &str, param: &Param) -> Result<()> {
     let mut last = None;
     for k in &param.keyframes {
         if last.is_some_and(|t| k.time <= t) {
-            return Err(invalid(format!("{owner} のキーフレームの時刻が昇順でない")));
+            return Err(invalid(format!(
+                "{owner}: keyframe times must be strictly increasing"
+            )));
         }
         if k.bezier.is_some_and(|b| !b.is_valid()) {
             return Err(invalid(format!(
-                "{owner} のベジェの制御点の x が [0,1] に無い"
+                "{owner}: Bezier control point x must be within [0, 1]"
             )));
         }
         last = Some(k.time);
@@ -366,27 +380,30 @@ fn validate_sequence(project: &Project, seq: &Sequence) -> Result<()> {
     if let Some(origin) = &seq.origin {
         project.sequence(&origin.sequence).map_err(|_| {
             invalid(format!(
-                "sequence {} の元の sequence {} が無い",
+                "Sequence {}: origin sequence {} not found",
                 seq.id, origin.sequence
             ))
         })?;
     }
     for cut in &seq.cuts {
         if cut.in_point >= cut.out_point {
-            return Err(invalid(format!("カット {} は in < out でない", cut.id)));
+            return Err(invalid(format!(
+                "Clip {}: in point must be before out point",
+                cut.id
+            )));
         }
         cut.duration()
-            .map_err(|e| invalid(format!("カット {} の長さ: {e}", cut.id)))?;
+            .map_err(|e| invalid(format!("Clip {} has an invalid duration: {e}", cut.id)))?;
         if let Some(t) = &cut.transition_in {
             if t.duration.is_negative() {
                 return Err(invalid(format!(
-                    "カット {} のトランジションの長さが負",
+                    "Clip {}: transition duration is negative",
                     cut.id
                 )));
             }
         }
         for node in cut.nodes() {
-            validate_node(project, &format!("カット {}", cut.id), node)?;
+            validate_node(project, &format!("Clip {}", cut.id), node)?;
         }
     }
     Ok(())
@@ -402,8 +419,8 @@ enum Visit<'a> {
 impl Visit<'_> {
     fn describe(self) -> String {
         match self {
-            Visit::Comp(id) => format!("コンポジション {id}"),
-            Visit::Seq(id) => format!("sequence {id}"),
+            Visit::Comp(id) => format!("Composition {id}"),
+            Visit::Seq(id) => format!("Sequence {id}"),
         }
     }
 }
@@ -434,7 +451,10 @@ struct Nesting<'a> {
 impl<'a> Nesting<'a> {
     fn visit(&mut self, target: Visit<'a>) -> Result<()> {
         if self.path.contains(&target) {
-            return Err(invalid(format!("{} の入れ子が循環", target.describe())));
+            return Err(invalid(format!(
+                "Nesting is circular at {}",
+                target.describe()
+            )));
         }
         if self.done.contains(&target) {
             return Ok(());

@@ -57,7 +57,7 @@ fn 操作から取り消しとやり直しと_export_import_の往復() {
     // バージョン 3。取り消してバージョン 4（c2 の ripple の逆操作）。
     let undo = stdout(&mm_ok(&["undo", ps]));
     assert!(
-        undo.contains("バージョン 4") && undo.contains("取り消し: ripple"),
+        undo.contains("バージョン 4") && undo.contains("ripple"),
         "{undo}"
     );
 
@@ -66,11 +66,11 @@ fn 操作から取り消しとやり直しと_export_import_の往復() {
         "op", ps, "ripple", "--cut", "c2", "--edge", "out", "--by", "1", "--base", "3",
     ]);
     assert!(!out.status.success());
-    assert!(stderr(&out).contains("重なる"), "{}", stderr(&out));
+    assert!(stderr(&out).contains("overlaps"), "{}", stderr(&out));
 
     let redo = stdout(&mm_ok(&["redo", ps]));
     assert!(
-        redo.contains("バージョン 5") && redo.contains("やり直し: ripple"),
+        redo.contains("バージョン 5") && redo.contains("ripple"),
         "{redo}"
     );
     let log = stdout(&mm_ok(&["log", ps]));
@@ -206,7 +206,7 @@ fn ロックした所に触る操作は拒否され_プロジェクトのデー�
         r#"{"value":{"type":"number","value":0.5}}"#,
     ]);
     assert!(!out.status.success());
-    assert!(stderr(&out).contains("ロック"), "{}", stderr(&out));
+    assert!(stderr(&out).contains("locked"), "{}", stderr(&out));
     assert_eq!(stdout(&mm_ok(&["log", ps])), before);
 
     // ロックの付いていないレイヤーは動かせる。
@@ -235,7 +235,7 @@ fn 古いバージョンを元にした操作は触る所が重なれば拒否�
         "op", ps, "ripple", "--cut", "c1", "--edge", "out", "--by", "1", "--base", "1",
     ]);
     assert!(!out.status.success());
-    assert!(stderr(&out).contains("重なる"), "{}", stderr(&out));
+    assert!(stderr(&out).contains("overlaps"), "{}", stderr(&out));
     // c2 はバージョン 1 の後に誰も触っていない。
     mm_ok(&[
         "op", ps, "ripple", "--cut", "c2", "--edge", "out", "--by", "1", "--base", "1",
@@ -245,7 +245,7 @@ fn 古いバージョンを元にした操作は触る所が重なれば拒否�
         "op", ps, "ripple", "--cut", "c2", "--edge", "out", "--by", "1", "--base", "99",
     ]);
     assert!(!out.status.success());
-    assert!(stderr(&out).contains("先"), "{}", stderr(&out));
+    assert!(stderr(&out).contains("ahead"), "{}", stderr(&out));
 }
 
 #[test]

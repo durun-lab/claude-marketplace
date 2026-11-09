@@ -32,7 +32,7 @@ impl Apply for Overwrite {
     fn apply(&self, project: &mut Project) -> Result<Op> {
         if self.replacement.id != self.cut && project.cut(&self.replacement.id).is_ok() {
             return Err(invalid(format!(
-                "カット {} は既に在る",
+                "Clip {} already exists",
                 self.replacement.id
             )));
         }
