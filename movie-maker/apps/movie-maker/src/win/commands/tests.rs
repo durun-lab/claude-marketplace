@@ -1,4 +1,5 @@
 use std::sync::mpsc::channel;
+use std::time::{Duration, Instant};
 
 use mm_types::Id;
 
@@ -138,4 +139,28 @@ fn 再生のコマンドを_program_に送り_知らない_id_とパネルのコ
     );
     assert!(run(&shared, "clip.nope").is_err());
     assert!(rx.try_recv().is_err(), "断ったコマンドは何も送らない");
+}
+
+#[test]
+fn 押せないコマンドは_run_が拒否し_キーからは編集が拒否した理由を出す() {
+    let shared = Arc::new(Shared::new());
+    assert_eq!(
+        run(&shared, "clip.split"),
+        Err("Split Clip isn't available now".to_owned()),
+        "シーケンスのレイヤーが無ければ split は押せない"
+    );
+    assert_eq!(
+        shared.edit.message(),
+        "",
+        "拒否したコマンドは編集を積まない"
+    );
+    run_from_key(&shared, "clip.split").expect("キーは押せるかを見ない");
+    let start = Instant::now();
+    while shared.edit.message().is_empty() && start.elapsed() < Duration::from_secs(5) {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(
+        !shared.edit.message().is_empty(),
+        "編集のキューが拒否した理由を文言に置く"
+    );
 }

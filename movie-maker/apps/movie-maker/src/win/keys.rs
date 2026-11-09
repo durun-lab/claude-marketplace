@@ -16,10 +16,10 @@ const BINDINGS: &[(&str, &str)] = &[
     ("edit.redo", "Ctrl+KeyY"),
     ("edit.redo", "Ctrl+Shift+KeyZ"),
     ("edit.undo", "Ctrl+KeyZ"),
-    ("playback.forward", "KeyL"),
     ("playback.go_to_end", "End"),
     ("playback.go_to_start", "Home"),
-    ("playback.reverse", "KeyJ"),
+    ("playback.play_forward", "KeyL"),
+    ("playback.play_reverse", "KeyJ"),
     ("playback.step_back", "ArrowLeft"),
     ("playback.step_forward", "ArrowRight"),
     ("playback.stop", "KeyK"),
@@ -77,31 +77,40 @@ pub fn keys_of(id: &str) -> Vec<&'static str> {
         .collect()
 }
 
+/// キーの名前の先頭に付く修飾キー。`with_modifiers` が付ける順。
+const MODIFIERS: [&str; 3] = ["Ctrl+", "Shift+", "Alt+"];
+
 /// キーの名前を画面に出す見た目にする（`Ctrl+KeyZ` は `Ctrl+Z`、`ArrowLeft` は `←`）。
+/// 修飾キーは先頭から順に外す。記号のキーは押された文字が名前になり（`+` もキーになる）、最後の `+` で切ると記号を落とすため。
 pub fn label(key: &str) -> String {
-    let (modifiers, name) = key.rsplit_once('+').unwrap_or(("", key));
-    let shown = match name {
+    let mut out = String::new();
+    let mut name = key;
+    for modifier in MODIFIERS {
+        if let Some(rest) = name.strip_prefix(modifier).filter(|r| !r.is_empty()) {
+            out.push_str(modifier);
+            name = rest;
+        }
+    }
+    out.push_str(match name {
         "ArrowLeft" => "←",
         "ArrowRight" => "→",
+        "ArrowUp" => "↑",
+        "ArrowDown" => "↓",
         "Comma" => ",",
         "Period" => ".",
         _ => name
             .strip_prefix("Key")
             .or_else(|| name.strip_prefix("Digit"))
             .unwrap_or(name),
-    };
-    if modifiers.is_empty() {
-        shown.to_owned()
-    } else {
-        format!("{modifiers}+{shown}")
-    }
+    });
+    out
 }
 
 /// キーを 1 つ受けるエントリーポイント。`source` は "surface" か "webview"。
 pub fn dispatch(shared: &Arc<Shared>, source: &str, key: &str) {
     let _span = tracing::info_span!("window.key").entered();
     if let Some(id) = command_for(key) {
-        if let Err(e) = commands::run(shared, id) {
+        if let Err(e) = commands::run_from_key(shared, id) {
             tracing::warn!(key, error = %e, "キーのコマンドを実行できない");
         }
     }
@@ -143,29 +152,36 @@ mod tests {
     }
 
     #[test]
-    fn キーからコマンドの_id_を引く() {
+    fn キーからコマンドの_id_を引き_持ち主の編集か再生のコマンドを実行する() {
+        use crate::win::commands::{Action, Owner};
+        use crate::win::edit_actions::EditAction as E;
+        use Action::{Edit, Playback};
+        use Command::{Pause, Play, Reverse, Seek, Step, Toggle};
         let cases = [
-            ("KeyI", "source.mark_in"),
-            ("KeyO", "source.mark_out"),
-            ("Comma", "clip.insert"),
-            ("Period", "clip.overwrite"),
-            ("KeyB", "clip.split"),
-            ("Delete", "clip.lift"),
-            ("Backspace", "clip.extract"),
-            ("Ctrl+KeyZ", "edit.undo"),
-            ("Ctrl+KeyY", "edit.redo"),
-            ("Ctrl+Shift+KeyZ", "edit.redo"),
-            ("Space", "playback.toggle"),
-            ("KeyJ", "playback.reverse"),
-            ("KeyK", "playback.stop"),
-            ("KeyL", "playback.forward"),
-            ("ArrowLeft", "playback.step_back"),
-            ("ArrowRight", "playback.step_forward"),
-            ("Home", "playback.go_to_start"),
-            ("End", "playback.go_to_end"),
+            ("KeyI", "source.mark_in", Edit(E::MarkIn)),
+            ("KeyO", "source.mark_out", Edit(E::MarkOut)),
+            ("Comma", "clip.insert", Edit(E::Insert)),
+            ("Period", "clip.overwrite", Edit(E::Overwrite)),
+            ("KeyB", "clip.split", Edit(E::Split)),
+            ("Delete", "clip.lift", Edit(E::Lift)),
+            ("Backspace", "clip.extract", Edit(E::Extract)),
+            ("Ctrl+KeyZ", "edit.undo", Edit(E::Undo)),
+            ("Ctrl+KeyY", "edit.redo", Edit(E::Redo)),
+            ("Ctrl+Shift+KeyZ", "edit.redo", Edit(E::Redo)),
+            ("Space", "playback.toggle", Playback(Toggle)),
+            ("KeyJ", "playback.play_reverse", Playback(Reverse)),
+            ("KeyK", "playback.stop", Playback(Pause)),
+            ("KeyL", "playback.play_forward", Playback(Play)),
+            ("ArrowLeft", "playback.step_back", Playback(Step(-1))),
+            ("ArrowRight", "playback.step_forward", Playback(Step(1))),
+            ("Home", "playback.go_to_start", Playback(Seek(0.0))),
+            ("End", "playback.go_to_end", Playback(Seek(f64::MAX))),
         ];
-        for (key, id) in cases {
+        assert_eq!(cases.len(), BINDINGS.len(), "全部のキーを確かめる");
+        for (key, id, action) in cases {
             assert_eq!(command_for(key), Some(id), "{key}");
+            let spec = commands::find(id).expect(id);
+            assert_eq!(spec.owner, Owner::App(action), "{key}");
         }
         assert_eq!(command_for("KeyZ"), None);
         assert_eq!(keys_of("edit.redo"), ["Ctrl+KeyY", "Ctrl+Shift+KeyZ"]);
@@ -195,6 +211,13 @@ mod tests {
         assert_eq!(label("Digit1"), "1");
         assert_eq!(label("Space"), "Space");
         assert_eq!(label("Delete"), "Delete");
+        assert_eq!(label("Shift+KeyZ"), "Shift+Z");
+        assert_eq!(label("Alt+KeyX"), "Alt+X");
+        assert_eq!(label("ArrowUp"), "↑");
+        assert_eq!(label("+"), "+", "記号のキーは押された文字");
+        assert_eq!(label("Ctrl+="), "Ctrl+=");
+        assert_eq!(label("Ctrl++"), "Ctrl++");
+        assert_eq!(label("-"), "-");
     }
 
     #[test]

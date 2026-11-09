@@ -137,13 +137,6 @@ pub static TABLE: &[Spec] = &[
         owner: Owner::Panel("media"),
     },
     Spec {
-        id: "playback.forward",
-        name: "Play Forward",
-        description: None,
-        menu: Some(Menu::Playback),
-        owner: Owner::App(Action::Playback(Command::Play)),
-    },
-    Spec {
         id: "playback.go_to_end",
         name: "Go to End",
         description: None,
@@ -158,7 +151,14 @@ pub static TABLE: &[Spec] = &[
         owner: Owner::App(Action::Playback(Command::Seek(0.0))),
     },
     Spec {
-        id: "playback.reverse",
+        id: "playback.play_forward",
+        name: "Play Forward",
+        description: None,
+        menu: Some(Menu::Playback),
+        owner: Owner::App(Action::Playback(Command::Play)),
+    },
+    Spec {
+        id: "playback.play_reverse",
         name: "Play Reverse",
         description: Some("Play the video backward without sound"),
         menu: Some(Menu::Playback),
@@ -317,13 +317,30 @@ pub fn changed(shared: &Shared, sent: &mut Option<Vec<State>>) -> Option<Vec<Com
     Some(table)
 }
 
-/// コマンドを実行する。パネルが持ち主のコマンドは WebView の Shell がパネルを開くので、ここでは断る。
+fn spec_of(id: &str) -> Result<&'static Spec, String> {
+    find(id).ok_or_else(|| format!("Unknown command: {id}"))
+}
+
+/// 押せるかを画面に出す呼び出し箇所（Tasks の項目）からコマンドを実行する。押せないコマンドは拒否する。
 pub fn run(shared: &Arc<Shared>, id: &str) -> Result<(), String> {
-    let spec = find(id).ok_or_else(|| format!("Unknown command: {id}"))?;
+    let spec = spec_of(id)?;
+    if !Ready::of(shared).state(spec).enabled {
+        return Err(format!("{} isn't available now", spec.name));
+    }
+    execute(shared, spec)
+}
+
+/// キーからコマンドを実行する。押せるかは見ない。押せないときは編集が拒否した理由が画面に出て、何が足りないかが分かるため。
+pub fn run_from_key(shared: &Arc<Shared>, id: &str) -> Result<(), String> {
+    execute(shared, spec_of(id)?)
+}
+
+/// パネルが持ち主のコマンドは WebView の Shell がパネルを開くので、ここでは拒否する。
+fn execute(shared: &Arc<Shared>, spec: &Spec) -> Result<(), String> {
     match spec.owner {
         Owner::App(Action::Edit(action)) => edit_actions::run(shared, action),
         Owner::App(Action::Playback(command)) => play(shared, command),
-        Owner::Panel(panel) => return Err(format!("{id} runs in the {panel} panel")),
+        Owner::Panel(panel) => return Err(format!("{} runs in the {panel} panel", spec.id)),
     }
     Ok(())
 }

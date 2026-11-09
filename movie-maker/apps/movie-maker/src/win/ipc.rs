@@ -367,10 +367,10 @@ pub async fn key_event(
 /// UI のコマンドの表と、今押せるか。押せるかが変わると同じ形の表を `mm:commands-changed` で送る。
 #[tauri::command]
 pub async fn command_table(state: State<'_, Arc<SyncState>>) -> Result<Vec<CommandView>, String> {
-    Ok(commands::table(&state.shared))
+    hotpatch::call(|| Ok(commands::table(&state.shared)))
 }
 
-/// 表のコマンドを ID で実行する。Tasks の項目のうち、アプリが持ち主のものが呼ぶ。
+/// 表のコマンドを ID で実行する。Tasks の項目のうち、アプリが持ち主のものが呼ぶ。今押せないコマンドは拒否する。
 #[tauri::command]
 pub async fn run_command(state: State<'_, Arc<SyncState>>, id: String) -> Result<(), String> {
     hotpatch::call(|| commands::run(&state.shared, &id))
