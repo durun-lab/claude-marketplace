@@ -149,13 +149,11 @@ all = "warn"
 debug = "line-tables-only"
 
 # 依存は書き換えないので最適化し、画像や proptest のテストの実行を速くする。作り直しの費用はキャッシュが払う。
-# proc-macro と build script の道具は、作った直後に 1 回走るだけなので最適化しない。
-# `"*"` は `build-override` より優先されるため `build-override` では効かない。名前を挙げて 0 に戻す。
-# 挙げるのは proc-macro、その依存、build script の依存のうち、実行時のコードに入らないものだけ。
-# 実行時にも使う依存（画像、wgpu、proptest など）は挙げない。
+# proc-macro と build script の道具は作った直後に 1 回走るだけなので、名前を挙げて 0 に戻す（`build-override` は `"*"` に負ける）。
+# 一覧は scripts/host-only-crates.sh が出す、実行時の木に入らないクレート。漏れても遅くなるだけで壊れない。
 [profile.dev.package]
 "*" = { opt-level = 2, debug = false }
-# proc-macro と、その土台
+# proc-macro と、その土台（quote などは tauri-utils の実行時の木にもあるが、実行時には重くない）
 syn = { opt-level = 0 }
 quote = { opt-level = 0 }
 proc-macro2 = { opt-level = 0 }
@@ -212,6 +210,17 @@ rustc_version = { opt-level = 0 }
 cc = { opt-level = 0 }
 pkg-config = { opt-level = 0 }
 vcpkg = { opt-level = 0 }
+find-msvc-tools = { opt-level = 0 }
+jobserver = { opt-level = 0 }
+shlex = { opt-level = 0 }
+tauri-winres = { opt-level = 0 }
+embed-resource = { opt-level = 0 }
+winreg = { opt-level = 0 }
+vswhom = { opt-level = 0 }
+vswhom-sys = { opt-level = 0 }
+cargo_toml = { opt-level = 0 }
+ico = { opt-level = 0 }
+static_vcruntime = { opt-level = 0 }
 # ffmpeg-sys-next の bindgen
 bindgen = { opt-level = 0 }
 clang-sys = { opt-level = 0 }
