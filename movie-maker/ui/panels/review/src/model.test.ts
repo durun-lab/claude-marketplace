@@ -8,8 +8,8 @@ const t = (num: number, den = 100) => ({ num, den });
 
 describe("describeOp", () => {
   it("リップルは端と秒数を符号つきで書く", () => {
-    expect(line({ op: "ripple", cut: "k1", edge: "out", by: t(-40) })).toBe("Ripple cut k1 out edge by −0.40s");
-    expect(line({ op: "ripple", cut: "k1", edge: "in", by: t(1, 4) })).toBe("Ripple cut k1 in edge by +0.25s");
+    expect(line({ op: "ripple", cut: "k1", edge: "out", by: t(-40) })).toBe("Ripple clip k1 out edge by −0.40s");
+    expect(line({ op: "ripple", cut: "k1", edge: "in", by: t(1, 4) })).toBe("Ripple clip k1 in edge by +0.25s");
   });
 
   it("setParam は持ち主と値を書く", () => {
@@ -18,10 +18,10 @@ describe("describeOp", () => {
   });
 
   it("カットの操作を 1 行にする", () => {
-    expect(line({ op: "split", cut: "k1", at: t(250), new_cut: "k2" })).toBe("Split cut k1 at 2.50s (new cut k2)");
-    expect(line({ op: "extract", cut: "k1" })).toBe("Extract cut k1");
-    expect(line({ op: "lift", cut: "k1" })).toBe("Lift cut k1");
-    expect(line({ op: "disable", cut: "k1", disabled: false })).toBe("Enable cut k1");
+    expect(line({ op: "split", cut: "k1", at: t(250), new_cut: "k2" })).toBe("Split clip k1 at 2.50s (new clip k2)");
+    expect(line({ op: "extract", cut: "k1" })).toBe("Extract clip k1");
+    expect(line({ op: "lift", cut: "k1" })).toBe("Lift clip k1");
+    expect(line({ op: "disable", cut: "k1", disabled: false })).toBe("Enable clip k1");
   });
 
   it("レイヤーとマーカーの操作を 1 行にする", () => {
@@ -46,7 +46,7 @@ describe("describeScope", () => {
         layers: [{ comp: "main", id: "l1" }],
         other: ["m1"],
       }),
-    ).toEqual(["Sequence s1 · 0:01.50–0:04.00 · 2 cuts", "Layer l1 (main)", "Other: m1"]);
+    ).toEqual(["Sequence s1 · 0:01.50–0:04.00 · 2 clips", "Layer l1 (main)", "Other: m1"]);
   });
 });
 

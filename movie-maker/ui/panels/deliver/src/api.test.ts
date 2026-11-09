@@ -28,9 +28,9 @@ describe("createIpcDeliverApi", () => {
   });
 
   it("アプリの失敗（文字列）を理由つきの Error にする", async () => {
-    const call = vi.fn().mockRejectedValue("書き出し中");
+    const call = vi.fn().mockRejectedValue("Export in progress");
     const api = createIpcDeliverApi(call, vi.fn());
-    await expect(api.start({ targets: ["a"], verify: false })).rejects.toThrow("書き出し中");
+    await expect(api.start({ targets: ["a"], verify: false })).rejects.toThrow("Export in progress");
   });
 
   it("進み具合のイベントの中身（キューの状態）をそのまま渡し、購読を外せる", async () => {

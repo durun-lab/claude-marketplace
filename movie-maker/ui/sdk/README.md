@@ -43,7 +43,7 @@ Media パネル（`ui/panels/media`）が使う Tauri のコマンド。ハン�
 | `media_thumbnail` | `{ id }` | JPEG の生のバイト列（`ArrayBuffer`） |
 | `media_waveform` | `{ id, buckets }` | `{ duration, peaks }`。`peaks` は `buckets` 個以下で 0 から 1（チャンネルの最大） |
 | `media_pick_files` | なし | 選んだパスの配列。キャンセルは空 |
-| `media_import` | `{ paths }` | 全部終わってから `()`。取り込み中にもう一度呼ぶと `Err("取り込み中")` |
+| `media_import` | `{ paths }` | 全部終わってから `()`。取り込み中にもう一度呼ぶと `Err("Import in progress")` |
 | `media_cache_info` | なし | `{ total_bytes, folders: [{ name, bytes, files, clearable }] }` |
 | `media_cache_clear` | `{ kinds }` | 空けたバイト数。`preview`、`audio`、`thumbs` だけ受け、ほかの名前は何も消さず `Err` |
 
@@ -89,7 +89,7 @@ Deliver パネル（`ui/panels/deliver`）が使う Tauri のコマンド。ハ�
 |---|---|---|
 | `export_overview` | なし | `{ targets, compositions: [{ id, duration }], sequences: [{ id, duration }], open_composition, can_verify }`。`targets` はプロジェクトのデータの `render_targets`（`ops.ts` の `RenderTarget`）で、相対の出力先は開くときに直す前の相対のまま返す（画面が編集で書き戻しても絶対パスにならない）。`can_verify` は FFmpeg なしのビルドと、ffprobe を起動できないとき（`MM_FFPROBE`、PATH）に偽 |
 | `export_status` | なし | キューのいまの状態 `ExportStatus`。パネルを開き直したときに読む |
-| `export_start` | `{ request: { targets, sequence?, verify } }` | すぐ `()`。`targets` はレンダーターゲットの ID でこの順に書き出す。`sequence` を指すと各レンダーターゲットのコンポジションの代わりにその sequence を全長で書き出す。書き出し中は `Err("書き出し中")`。同じ出力先（大文字小文字と区切りの違い、一時ファイルの名前との重なりを含む）を指す組、無い ID、空のスライスは始める前に `Err`。字幕を出すレンダーターゲットには `project.mmdb` の文字起こしを渡す |
+| `export_start` | `{ request: { targets, sequence?, verify } }` | すぐ `()`。`targets` はレンダーターゲットの ID でこの順に書き出す。`sequence` を指すと各レンダーターゲットのコンポジションの代わりにその sequence を全長で書き出す。書き出し中は `Err("Export in progress")`。同じ出力先（大文字小文字とパスの区切り文字の違い、一時ファイルの名前との重なりを含む）を指すレンダーターゲットの組、無い ID、空のスライスは始める前に `Err`。字幕を出すレンダーターゲットには `project.mmdb` の文字起こしを渡す |
 | `export_cancel` | なし | `()`。書き出し中の 1 本は次のフレームで止まり（一時ファイルを消す）、残りは書き出さない |
 | `export_reveal` | `{ path }` | エクスプローラーで選んで開く。この書き出しで作ったファイル以外は `Err` |
 | `export_pick_output` | `{ current?, codec? }` | 出力先の保存ダイアログで選んだパス。`codec` に合う拡張子で絞る（ProRes と DNxHR は `.mov`）。キャンセルは `null` |

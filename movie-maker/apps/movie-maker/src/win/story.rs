@@ -32,7 +32,7 @@ impl StoryState {
     }
 
     fn project(&self) -> Result<(Arc<Project>, mm_types::CompositionId), String> {
-        let doc = self.shared.doc().ok_or("プロジェクトを開いていない")?;
+        let doc = self.shared.doc().ok_or("No project open")?;
         Ok((doc.project, doc.comp))
     }
 
