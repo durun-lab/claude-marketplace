@@ -165,7 +165,7 @@ fn cli_が_extract_した後に古いデータで計画した_insert_は衝突�
     let error = refused.expect_err("古い編集点への insert は適用しない");
     assert!(
         error.starts_with("Conflicts with operations applied after version"),
-        "衝突として断る: {error}"
+        "衝突として拒否する: {error}"
     );
     let seq = &core.project().unwrap().project.sequences[0];
     assert!(seq.cuts.iter().all(|c| c.id.as_str() != "k-new"));
