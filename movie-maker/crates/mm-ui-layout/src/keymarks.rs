@@ -1,4 +1,4 @@
-//! 帯の下端のキーフレームのマーカー。レイヤーの全部のパラメータのキーフレームの時刻を、帯の下端に並べる。
+//! 帯のマーカー。レイヤーの全部のパラメータのキーフレームの時刻を、帯の下端に並べる。
 //! 置き場所と当たり判定はここが決め、描くのは `paint/keymarks.rs`（同じ値を見る）。
 
 use crate::geom::Rect;
@@ -6,15 +6,17 @@ use crate::rows::RowHeight;
 use crate::timeline::Item;
 use crate::timeline_layout::Viewport;
 
-/// ひし形の一辺（外接する正方形）。
-pub(crate) const MARK_PX: f32 = 9.0;
+/// 帯のマーカーのひし形の一辺（外接する正方形、論理ピクセル）。Medium と Large の帯は、下端のこの高さに
+/// マーカーを並べ、名前をその上に置く。
+pub const MARK_PX: f32 = 9.0;
+/// Small の行のマーカーの矩形の高さ。名前の字の下の方にだけ掛かるよう、ひし形より低い縦線にする。
+const SMALL_MARK_H: f32 = 6.0;
 /// これより近い（x の差がこれ未満の）キーフレームは 1 つのマーカーにまとめる。
 pub(crate) const MERGE_PX: f32 = 6.0;
-/// Small の行の縦線の幅と高さ。
+/// 縦線の幅。高さはマーカーの矩形より 2 低くし、上に縁の 1 を空ける。
 const TICK_W: f32 = 2.0;
-const TICK_H: f32 = 7.0;
 
-/// マーカー 1 つ。近いキーフレームをまとめたときは、先頭のキーフレームの位置に置く。
+/// 帯のマーカー 1 つ。近いキーフレームをまとめたときは、先頭のキーフレームの位置に置く。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Mark {
     /// `Item::keyframes` の添字（まとめた先頭）。
@@ -24,12 +26,12 @@ pub(crate) struct Mark {
 }
 
 /// `item` の、行の領域の横の範囲に見えるマーカー（左から順）。
-/// まとめ方は先頭から数えるので、横に動かしてもマーカーの位置は変わらない。
+/// まとめ方は先頭のキーフレームから数えるので、横に動かしてもマーカーの位置は変わらない。
 pub(crate) fn marks(vp: &Viewport, item: &Item) -> Vec<Mark> {
     let area = vp.layout.row_area;
     let reach = MARK_PX / 2.0;
     let (left, right) = (area.x - reach, area.right() + reach);
-    let mut out: Vec<Mark> = Vec::new();
+    let mut out = Vec::new();
     let mut anchor = f32::NEG_INFINITY;
     for (key, t) in item.keyframes.iter().enumerate() {
         let x = vp.x_of(*t);
@@ -47,10 +49,15 @@ pub(crate) fn marks(vp: &Viewport, item: &Item) -> Vec<Mark> {
     out
 }
 
-/// 行 `i` のマーカー `x` の外接する正方形。帯の下端に揃える。当たり判定もこの矩形。
+/// 行 `i` のマーカー `x` の矩形。帯の下端に揃える。当たり判定もこの矩形。
 pub(crate) fn mark_rect(vp: &Viewport, i: usize, x: f32) -> Rect {
     let bar = vp.bar(i, 0.0, 0.0);
-    Rect::new(x - MARK_PX / 2.0, bar.bottom() - MARK_PX, MARK_PX, MARK_PX)
+    let h = if vp.rows.height(i) == RowHeight::Small {
+        SMALL_MARK_H
+    } else {
+        MARK_PX
+    };
+    Rect::new(x - MARK_PX / 2.0, bar.bottom() - h, MARK_PX, h)
 }
 
 /// 行 `i` のマーカーを縦線で描くか。Small の行は常に縦線、ほかの行は `rect` が行の領域に収まらないとき
@@ -64,21 +71,23 @@ pub(crate) fn is_tick(vp: &Viewport, i: usize, rect: Rect) -> bool {
         || rect.bottom() > area.bottom()
 }
 
-/// 縦線の矩形（`rect` の中央に置く）。
+/// 縦線の矩形。マーカーの矩形 `rect` の横の中央で、下端に揃える。
 pub(crate) fn tick_rect(rect: Rect) -> Rect {
+    let h = rect.h - 2.0;
     Rect::new(
         rect.x + (rect.w - TICK_W) / 2.0,
-        rect.bottom() - TICK_H,
+        rect.bottom() - h,
         TICK_W,
-        TICK_H,
+        h,
     )
 }
 
-/// 点 (x, y) の下にある、行 `i` のマーカー。
+/// 点 (x, y) の下にある、行 `i` のマーカー。矩形が重なる所では、中心が近い方。
 pub(crate) fn mark_at(vp: &Viewport, i: usize, item: &Item, (x, y): (f32, f32)) -> Option<Mark> {
     marks(vp, item)
         .into_iter()
-        .find(|m| mark_rect(vp, i, m.x).contains(x, y))
+        .filter(|m| mark_rect(vp, i, m.x).contains(x, y))
+        .min_by(|a, b| (a.x - x).abs().total_cmp(&(b.x - x).abs()))
 }
 
 #[cfg(test)]

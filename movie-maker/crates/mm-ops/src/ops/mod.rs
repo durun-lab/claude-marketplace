@@ -135,7 +135,7 @@ pub use set_mixer::SetMixer;
 pub use set_param::SetParam;
 pub use set_reframe::SetReframe;
 pub use set_transition::SetTransition;
-pub use shift_layer::{keyframe_times, ShiftLayer};
+pub use shift_layer::ShiftLayer;
 pub use slide::Slide;
 pub use slip::Slip;
 pub use split::Split;

@@ -4006,7 +4006,6 @@ dependencies = [
  "mm-doc",
  "mm-eval",
  "mm-gpu",
- "mm-ops",
  "mm-text-api",
  "mm-trace",
  "mm-types",

@@ -79,7 +79,7 @@ pub struct Item {
     pub enabled: bool,
     /// 帯に出す名前。空なら出さない。シーケンスのレイヤーはカットの名前を出す。
     pub label: Arc<str>,
-    /// レイヤーのパラメータのキーフレームの時刻（コンポジションの秒、前から順、重複なし）。
+    /// レイヤーのパラメータのキーフレームの時刻（コンポジションの秒、前から順、重複なし）。再フレーミングは含めない。
     pub keyframes: Arc<[f64]>,
     /// シーケンスのレイヤーのカット。先頭から順。シーケンス以外は空。
     pub cuts: Vec<CutBar>,
@@ -96,8 +96,8 @@ impl Item {
             end,
             kind,
             enabled,
-            keyframes: Arc::default(),
             label: Arc::default(),
+            keyframes: Arc::default(),
             cuts: Vec::new(),
             trim: TrimBounds::FREE,
         }
@@ -181,7 +181,7 @@ pub enum Hit {
         index: usize,
         part: Part,
     },
-    /// 帯の下端のキーフレームのマーカー。`item` はレイヤーの添字、`key` は `Item::keyframes` の添字。
+    /// 帯のマーカー。`item` はレイヤーの添字、`key` は `Item::keyframes` の添字（まとめたマーカーは先頭）。
     Key {
         item: usize,
         key: usize,
@@ -249,6 +249,7 @@ pub fn hit_test(model: &TimelineModel, vp: &Viewport, x: f32, y: f32) -> Hit {
     else {
         return Hit::Empty;
     };
+    // 帯のマーカーは端のつまみより上に描くので、重なる所ではマーカーが勝つ（つまみはマーカーの上で掴める）。
     if let Some(mark) = keymarks::mark_at(vp, index, item, (x, y)) {
         return Hit::Key {
             item: index,

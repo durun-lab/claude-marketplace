@@ -75,8 +75,8 @@ pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
             end: range.end.to_f64(),
             kind: kind_of(layer),
             enabled: layer.enabled,
-            keyframes: keyframe_secs(layer),
             label: names.label(&layer.source),
+            keyframes: keyframe_secs(layer),
             cuts: cut_bars(project, layer, &names),
             trim: trim_bounds(project, layer, range),
         })
@@ -90,7 +90,8 @@ pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
 
 /// レイヤーのキーフレームの時刻（コンポジションの秒、前から順）。`shiftLayer` が動かすパラメータと同じ一覧から引く。
 fn keyframe_secs(layer: &Layer) -> Arc<[f64]> {
-    mm_ops::keyframe_times(layer)
+    layer
+        .keyframe_times()
         .into_iter()
         .map(|t| t.to_f64())
         .collect()

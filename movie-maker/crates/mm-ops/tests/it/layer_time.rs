@@ -8,7 +8,7 @@ use mm_doc::{
     MaskRect, Node, Param, Project, TimeKeyframe, TimeRemap, Transform,
 };
 use mm_ops::{Edge, LockLayer, Op, OpContext, OpError, SetLayerEnabled, ShiftLayer, TrimLayer};
-use mm_types::{Id, ParamValue, Rgba};
+use mm_types::{Id, ParamValue, RationalTime, Rgba};
 use serde_json::{json, Value};
 
 fn shift(layer: &str, by: i64) -> Op {
@@ -150,18 +150,19 @@ fn コンポジションの時刻のキーフレームを全部動かし_ほか�
     assert!(moved.iter().all(|t| *t == json!(secs(3))), "{moved:?}");
 }
 
-/// `keyframe_times`（Timeline のマーカー）が `shiftLayer` の動かすパラメータを全部読む。
-/// 全部のパラメータに別々の時刻を置き、個数が合うことで読み漏らしを見つける。
+/// `Layer::keyframe_times`（Timeline の帯のマーカー）が、`shiftLayer` の動かすパラメータだけを全部読む。
+/// 再フレーミングも含めて全部のパラメータに別々の時刻を置き、JSON でたどった時刻の並びと突き合わせる。
 #[test]
 fn キーフレームの時刻の一覧は_shift_layer_が動かすパラメータと同じ() {
+    /// パラメータのキーフレームに 101 秒から別々の時刻を置く（タイムリマップの 0 秒と 10 秒に重ねない）。
     fn distinct(v: &mut Value, n: &mut i64) {
         match v {
             Value::Object(o) => {
-                let animated = o.contains_key("value");
-                if let (true, Some(Value::Array(keys))) = (animated, o.get_mut("keyframes")) {
+                let param = o.contains_key("value");
+                if let (true, Some(Value::Array(keys))) = (param, o.get_mut("keyframes")) {
                     for k in keys {
                         *n += 1;
-                        k["time"] = json!(secs(*n));
+                        k["time"] = json!(secs(100 + *n));
                     }
                 }
                 o.values_mut().for_each(|c| distinct(c, n));
@@ -175,12 +176,15 @@ fn キーフレームの時刻の一覧は_shift_layer_が動かすパラメー�
     fill_optional(layer);
     let mut keyed = serde_json::to_value(&*layer).unwrap();
     key_all(&mut keyed);
-    keyed["framing"]["cuts"] = json!([]);
     distinct(&mut keyed, &mut 0);
-    let expected = comp_key_times(&keyed).len();
+    let mut expected: Vec<RationalTime> = comp_key_times(&keyed)
+        .into_iter()
+        .map(|t| serde_json::from_value(t).unwrap())
+        .collect();
+    expected.sort();
     let layer: Layer = serde_json::from_value(keyed).unwrap();
-    assert!(expected >= 20, "keyed params: {expected}");
-    assert_eq!(mm_ops::keyframe_times(&layer).len(), expected);
+    assert!(expected.len() >= 20, "keyed params: {}", expected.len());
+    assert_eq!(layer.keyframe_times(), expected);
 }
 
 #[test]

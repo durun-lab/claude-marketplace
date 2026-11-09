@@ -25,7 +25,7 @@ const RULER_LABEL_Y: f32 = 3.0;
 const TICK_GAP: f32 = 4.0;
 /// 無効なレイヤーの名前の不透明度。帯と同じく薄くする。
 const DISABLED_ALPHA: f32 = 0.6;
-/// Large の行で名前を置く、帯の上の部分の高さ。下は波形とフィルムストリップに空ける。
+/// Medium と Large の行で名前を置く、帯の上の部分の高さの上限。下は帯のマーカー、波形、フィルムストリップに空ける。
 const NAME_AREA_H: f32 = 20.0;
 
 /// Timeline の見えている所 `vp` に描く文字。目盛りの時刻と、見えている帯の名前。
@@ -129,11 +129,15 @@ impl Placer<'_> {
     }
 }
 
-/// 名前を置く帯の部分。Large の行は上の部分だけ（下は波形とフィルムストリップに空ける）。
+/// 名前を置く帯の部分。Small の行は帯の全体。Medium と Large の行は上の部分で、下端の帯のマーカーに重ねない
+/// （Medium は帯の高さ 25 から 9 を除いた 16 に、高さ 15 の 1 行が入る）。
 fn name_area(bar: Rect, height: RowHeight) -> Rect {
     match height {
-        RowHeight::Large => Rect::new(bar.x, bar.y, bar.w, NAME_AREA_H.min(bar.h)),
-        RowHeight::Small | RowHeight::Medium => bar,
+        RowHeight::Small => bar,
+        RowHeight::Medium | RowHeight::Large => {
+            let h = NAME_AREA_H.min(bar.h - crate::keymarks::MARK_PX).max(0.0);
+            Rect::new(bar.x, bar.y, bar.w, h)
+        }
     }
 }
 
@@ -215,9 +219,11 @@ mod tests {
         assert_eq!((l.x, l.cut), (100.0 + LABEL_PAD, None));
         assert_eq!(&*l.text, "a.mp4");
         let bar = TestViewport::new(&m, SIZE).vp().bar(0, 1.0, 4.0);
-        assert_eq!(l.clip, bar);
-        // 行の矩形は帯の高さの中央。
-        assert_eq!(l.y + line_height(l.size) / 2.0, bar.y + bar.h / 2.0);
+        let area = Rect::new(bar.x, bar.y, bar.w, bar.h - crate::keymarks::MARK_PX);
+        assert_eq!(l.clip, area);
+        // Medium の行は帯の上の部分の中央に置き、下端の帯のマーカーに重ねない。
+        assert_eq!(l.y + line_height(l.size) / 2.0, area.y + area.h / 2.0);
+        assert!(l.y + line_height(l.size) <= area.bottom(), "{l:?}");
         assert_eq!(l.color, palette::BAR_TEXT_LIGHT);
     }
 
@@ -254,7 +260,8 @@ mod tests {
             .find(|l| &*l.text == "row 1")
             .expect("一部が見えている行");
         let bar = f.vp().bar(1, 0.0, 5.0);
-        assert_eq!(row1.y + line_height(row1.size) / 2.0, bar.y + bar.h / 2.0);
+        let area_h = bar.h - crate::keymarks::MARK_PX;
+        assert_eq!(row1.y + line_height(row1.size) / 2.0, bar.y + area_h / 2.0);
         assert_eq!(row1.clip.y, f.layout.row_area.y, "上は行の領域で切る");
     }
 

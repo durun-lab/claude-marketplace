@@ -3,10 +3,10 @@ use crate::controller::{Action, Mods, PointerEvent, TimelineController};
 use crate::geom::QuadShape;
 use crate::paint::tests::state;
 use crate::paint::timeline_quads;
-use crate::palette;
+use crate::palette::{self, Palette};
 use crate::rows::{RowHeight, RowHeights, Rows};
 use crate::time_view::TimeView;
-use crate::timeline::{Hit, ItemKind, TimelineModel};
+use crate::timeline::{hit_test, Hit, ItemKind, Part, TimelineModel};
 use crate::timeline_layout::tests::TestViewport;
 
 fn model(keys: &[f64]) -> TimelineModel {
@@ -18,6 +18,15 @@ fn model(keys: &[f64]) -> TimelineModel {
 }
 
 const SIZE: (f32, f32) = (1200.0, 300.0);
+
+/// 全部の行を Small にした行の並び。
+fn small_rows(m: &TimelineModel) -> Rows {
+    let heights = RowHeights {
+        all: Some(RowHeight::Small),
+        ..RowHeights::default()
+    };
+    Rows::of(&m.items, &heights)
+}
 
 #[test]
 fn キーフレームの時刻は_timeline_の時刻の位置に写る() {
@@ -65,15 +74,24 @@ fn small_の行と領域の端では縦線_収まる_medium_はひし形() {
     let tick = |x| is_tick(&vp, 0, mark_rect(&vp, 0, x));
     assert!(tick(vp.x_of(0.0)), "左端は領域からはみ出すので縦線");
     assert!(!tick(vp.x_of(1.0)), "収まる Medium はひし形");
-    let rows = Rows::of(
-        &m.items,
-        &RowHeights {
-            all: Some(RowHeight::Small),
-            ..RowHeights::default()
-        },
-    );
+    let rows = small_rows(&m);
     let small = Viewport { rows: &rows, ..vp };
     assert!(is_tick(&small, 0, mark_rect(&small, 0, vp.x_of(1.0))));
+}
+
+#[test]
+fn small_の縦線は帯の下端から_4_px_で_名前の字の下の方にだけ掛かる() {
+    let m = model(&[1.0]);
+    let f = TestViewport::new(&m, SIZE);
+    let rows = small_rows(&m);
+    let vp = Viewport {
+        rows: &rows,
+        ..f.vp()
+    };
+    let bar = vp.bar(0, 0.0, 10.0);
+    let tick = tick_rect(mark_rect(&vp, 0, vp.x_of(1.0)));
+    assert_eq!((tick.w, tick.h), (2.0, 4.0));
+    assert_eq!(tick.bottom(), bar.bottom());
 }
 
 #[test]
@@ -86,14 +104,36 @@ fn 描くひし形は切らずに行の領域に収まり_縦線は領域で切�
         .iter()
         .filter(|q| q.shape == QuadShape::Diamond)
         .collect();
-    assert_eq!(diamonds.len(), 2, "1 つの外縁と塗り");
+    assert_eq!(diamonds.len(), 2, "1 つの縁と中");
     assert!(diamonds
         .iter()
         .all(|q| q.rect.x >= area.x && q.rect.right() <= area.right()));
-    let ticks = quads
+    let lines = quads
         .iter()
         .filter(|q| q.color == palette::CUT_SEAM && q.rect.w <= 4.0);
-    assert!(ticks.count() >= 1, "t=0 の縦線");
+    assert!(lines.count() >= 1, "t=0 の縦線");
+}
+
+#[test]
+fn ホバーしたマーカーは中を_accent_にし_縁を明るくする() {
+    let m = model(&[1.0, 2.0]);
+    let f = TestViewport::new(&m, SIZE);
+    let hover = Hit::Key { item: 0, key: 1 };
+    let st = crate::paint::PaintState {
+        hover,
+        ..state(0.0)
+    };
+    let quads = timeline_quads(&m, &f.vp(), &st);
+    let colors = |w: f32| -> Vec<_> {
+        quads
+            .iter()
+            .filter(|q| q.shape == QuadShape::Diamond && q.rect.w == w)
+            .map(|q| q.color)
+            .collect()
+    };
+    let p = Palette::DEFAULT;
+    assert_eq!(colors(MARK_PX), [palette::CUT_SEAM, p.selection], "縁");
+    assert_eq!(colors(MARK_PX - 3.0), [p.selection, p.accent], "中");
 }
 
 #[test]
@@ -116,11 +156,39 @@ fn 見えない行のマーカーは描かない() {
         .count();
     let diamonds = quads.iter().filter(|q| q.shape == QuadShape::Diamond);
     assert!(whole < 20, "見えない行は数えない");
-    assert_eq!(
-        diamonds.count(),
-        whole * 2,
-        "全部見える行の分（外縁と塗り）"
-    );
+    assert_eq!(diamonds.count(), whole * 2, "全部見える行の分（縁と中）");
+}
+
+#[test]
+fn 重なるマーカーの矩形では中心が近い方に当たる() {
+    // 1 秒 100 px。1.0 と 1.07 は 7 px 離れ、別のマーカーで矩形が 2 px 重なる。
+    let m = model(&[1.0, 1.07]);
+    let f = TestViewport::new(&m, SIZE);
+    let vp = f.vp();
+    let y = mark_rect(&vp, 0, vp.x_of(1.0)).y + 4.5;
+    let at = |x| mark_at(&vp, 0, &m.items[0], (x, y)).map(|k| k.key);
+    assert_eq!(at(vp.x_of(1.0) + 3.0), Some(0));
+    assert_eq!(at(vp.x_of(1.0) + 4.0), Some(1));
+}
+
+#[test]
+fn レイヤーの始まりのマーカーは端のつまみより勝ち_つまみはマーカーの上で掴める() {
+    let m = TimelineModel {
+        duration: 10.0,
+        fps: 30.0,
+        items: vec![Item::layer(2.0, 6.0, ItemKind::Text, true).with_keyframes(&[2.0])],
+    };
+    let f = TestViewport::new(&m, SIZE);
+    let vp = f.vp();
+    let x = vp.x_of(2.0) + 2.0;
+    let mark = mark_rect(&vp, 0, vp.x_of(2.0));
+    let marker = Hit::Key { item: 0, key: 0 };
+    assert_eq!(hit_test(&m, &vp, x, mark.y + 4.5), marker);
+    let handle = Hit::Layer {
+        index: 0,
+        part: Part::InHandle,
+    };
+    assert_eq!(hit_test(&m, &vp, x, mark.y - 1.0), handle);
 }
 
 fn controller(m: &TimelineModel) -> TimelineController {
@@ -141,7 +209,8 @@ fn マーカーのクリックは再生位置をその時刻へ動かす() {
     let x = vp.x_of(2.5);
     let y = mark_rect(&vp, 0, x).y + 4.5;
     assert_eq!(c.handle(PointerEvent::Move { x, y }, &m, 0.0), []);
-    assert_eq!(c.hover, Hit::Key { item: 0, key: 1 });
+    let hover = Hit::Key { item: 0, key: 1 };
+    assert_eq!(c.hover, hover);
     let ev = PointerEvent::Down {
         x,
         y,
@@ -151,7 +220,7 @@ fn マーカーのクリックは再生位置をその時刻へ動かす() {
     assert_eq!(
         actions,
         [Action::Select(Some(0)), Action::Seek(2.5)],
-        "レイヤーも選び、フレームの境目へ"
+        "レイヤーも選び、いちばん近いフレームの先頭へ"
     );
     assert!(
         c.handle(PointerEvent::Up, &m, 0.0).is_empty(),

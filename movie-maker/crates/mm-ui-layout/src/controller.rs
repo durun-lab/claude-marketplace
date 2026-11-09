@@ -243,7 +243,7 @@ impl TimelineController {
         Self::seek_to(self.viewport().t_of(x), model)
     }
 
-    /// 時刻 `t` を、再生位置にできるフレームの境目に丸める（コンポジションの中）。
+    /// 時刻 `t` に再生位置を動かすときの時刻。いちばん近いフレームの先頭にそろえ、コンポジションの中に収める。
     fn seek_to(t: f64, model: &TimelineModel) -> f64 {
         let frame = if model.fps > 0.0 {
             1.0 / model.fps
