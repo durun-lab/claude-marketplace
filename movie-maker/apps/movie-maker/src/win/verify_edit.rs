@@ -17,7 +17,8 @@ use crate::win::keys;
 use crate::win::playback::Command;
 use crate::win::state::Shared;
 use crate::win::surface;
-use crate::win::verify::{client_point, viewer_layout, wait_until};
+use crate::win::verify::{client_point, viewer_layout};
+use crate::win::verify_stage::{checkpoint, wait_until};
 
 /// 仮想キーコード。
 const VK_I: u32 = 0x49;
@@ -92,6 +93,7 @@ fn cut_named(shared: &Shared, id: &str) -> Option<Cut> {
     cuts(shared).into_iter().find(|c| c.id.as_str() == id)
 }
 
+/// スクリーンショットを撮る。返るまで長くかかったら、時間切れの工程はここで止まり、後の入力を送らない。
 fn shot(env: &Env<'_>, log: &mut Log, name: &str) {
     let Some(base) = &env.test.screenshot else {
         return;
@@ -102,6 +104,7 @@ fn shot(env: &Env<'_>, log: &mut Log, name: &str) {
         Ok(()) => log.shots.push(path.display().to_string()),
         Err(e) => log.shots.push(format!("失敗: {e}")),
     }
+    checkpoint();
 }
 
 /// 画面の位置の計算に要るもの。Timeline の矩形と時間軸（論理ピクセル）、表示の倍率、シーケンスの行の添字。
@@ -297,6 +300,15 @@ fn cut_steps(env: &Env<'_>, log: &mut Log, id: &str) {
     log.step("lift", lifted, json!({ "gaps_before": before_gaps }));
     shot(env, log, "6-lift");
 
+    // 適用されなかった編集の取り消しは、1 つ前のトランザクション（テストの前のユーザーの操作のこともある）を戻してしまう。
+    if !lifted {
+        log.step(
+            "undo_lift",
+            false,
+            json!("lift が適用されなかったので取り消さない"),
+        );
+        return;
+    }
     keys::dispatch(shared, "play-test", "Ctrl+KeyZ");
     let undone = wait_until(WAIT, || {
         cuts(shared).iter().filter(|c| c.source.is_gap()).count() == before_gaps
@@ -372,6 +384,14 @@ fn trim_step(env: &Env<'_>, log: &mut Log) {
         json!({ "layer": id, "out_before": before, "out_after": after, "unchanged_while_dragging": held }),
     );
     shot(env, log, "9-trim");
+    if !trimmed {
+        log.step(
+            "undo_trim",
+            false,
+            json!("trimLayer が適用されなかったので取り消さない"),
+        );
+        return;
+    }
     keys::dispatch(shared, "play-test", "Ctrl+KeyZ");
     let undone = wait_until(WAIT, || layer_out(shared, &id) == before);
     log.step("undo_trim", undone, json!({}));
