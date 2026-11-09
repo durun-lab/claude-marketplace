@@ -181,10 +181,10 @@ pub enum Hit {
         index: usize,
         part: Part,
     },
-    /// 帯のマーカー。`item` はレイヤーの添字、`key` は `Item::keyframes` の添字（まとめたマーカーは先頭）。
-    Key {
+    /// 帯のマーカー。`item` はレイヤーの添字、`keyframe` は `Item::keyframes` の添字（まとめたマーカーは先頭）。
+    BarMark {
         item: usize,
-        key: usize,
+        keyframe: usize,
     },
     /// シーケンスのカット。`item` はレイヤーの添字、`cut` はそのカットの添字。
     Cut {
@@ -251,9 +251,9 @@ pub fn hit_test(model: &TimelineModel, vp: &Viewport, x: f32, y: f32) -> Hit {
     };
     // 帯のマーカーは端のつまみより上に描くので、重なる所ではマーカーが勝つ（つまみはマーカーの上で掴める）。
     if let Some(mark) = keymarks::mark_at(vp, index, item, (x, y)) {
-        return Hit::Key {
+        return Hit::BarMark {
             item: index,
-            key: mark.key,
+            keyframe: mark.keyframe,
         };
     }
     let bar = vp.bar(index, item.start, item.end);

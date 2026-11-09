@@ -44,7 +44,7 @@ fn 六_px_より近いキーフレームは先頭の位置の_1_つにまとま�
     let m = model(&[1.0, 1.05, 1.059, 1.06, 2.0]);
     let f = TestViewport::new(&m, SIZE);
     let found = marks(&f.vp(), &m.items[0]);
-    let keys: Vec<usize> = found.iter().map(|k| k.key).collect();
+    let keys: Vec<usize> = found.iter().map(|k| k.keyframe).collect();
     assert_eq!(keys, [0, 3, 4]);
 }
 
@@ -53,9 +53,15 @@ fn 横に動かしてもまとめ方は変わらない() {
     let keys: Vec<f64> = (0..40).map(|i| 1.0 + f64::from(i) * 0.04).collect();
     let m = model(&keys);
     let mut f = TestViewport::new(&m, SIZE);
-    let all: Vec<usize> = marks(&f.vp(), &m.items[0]).iter().map(|k| k.key).collect();
+    let all: Vec<usize> = marks(&f.vp(), &m.items[0])
+        .iter()
+        .map(|k| k.keyframe)
+        .collect();
     f.time.origin = 1.5;
-    let seen: Vec<usize> = marks(&f.vp(), &m.items[0]).iter().map(|k| k.key).collect();
+    let seen: Vec<usize> = marks(&f.vp(), &m.items[0])
+        .iter()
+        .map(|k| k.keyframe)
+        .collect();
     assert!(seen.len() < all.len() && seen.iter().all(|k| all.contains(k)));
 }
 
@@ -71,12 +77,12 @@ fn small_の行と領域の端では縦線_収まる_medium_はひし形() {
     let m = model(&[0.0, 1.0]);
     let f = TestViewport::new(&m, SIZE);
     let vp = f.vp();
-    let tick = |x| is_tick(&vp, 0, mark_rect(&vp, 0, x));
-    assert!(tick(vp.x_of(0.0)), "左端は領域からはみ出すので縦線");
-    assert!(!tick(vp.x_of(1.0)), "収まる Medium はひし形");
+    let line = |x| is_line(&vp, 0, mark_rect(&vp, 0, x));
+    assert!(line(vp.x_of(0.0)), "左端は領域からはみ出すので縦線");
+    assert!(!line(vp.x_of(1.0)), "収まる Medium はひし形");
     let rows = small_rows(&m);
     let small = Viewport { rows: &rows, ..vp };
-    assert!(is_tick(&small, 0, mark_rect(&small, 0, vp.x_of(1.0))));
+    assert!(is_line(&small, 0, mark_rect(&small, 0, vp.x_of(1.0))));
 }
 
 #[test]
@@ -89,9 +95,9 @@ fn small_の縦線は帯の下端から_4_px_で_名前の字の下の方にだ�
         ..f.vp()
     };
     let bar = vp.bar(0, 0.0, 10.0);
-    let tick = tick_rect(mark_rect(&vp, 0, vp.x_of(1.0)));
-    assert_eq!((tick.w, tick.h), (2.0, 4.0));
-    assert_eq!(tick.bottom(), bar.bottom());
+    let line = line_rect(mark_rect(&vp, 0, vp.x_of(1.0)));
+    assert_eq!((line.w, line.h), (2.0, 4.0));
+    assert_eq!(line.bottom(), bar.bottom());
 }
 
 #[test]
@@ -118,7 +124,10 @@ fn 描くひし形は切らずに行の領域に収まり_縦線は領域で切�
 fn ホバーしたマーカーは中を_accent_にし_縁を明るくする() {
     let m = model(&[1.0, 2.0]);
     let f = TestViewport::new(&m, SIZE);
-    let hover = Hit::Key { item: 0, key: 1 };
+    let hover = Hit::BarMark {
+        item: 0,
+        keyframe: 1,
+    };
     let st = crate::paint::PaintState {
         hover,
         ..state(0.0)
@@ -152,7 +161,7 @@ fn 見えない行のマーカーは描かない() {
     let quads = timeline_quads(&m, &vp, &state(0.0));
     let whole = vp
         .visible_rows()
-        .filter(|&i| !is_tick(&vp, i, mark_rect(&vp, i, vp.x_of(1.0))))
+        .filter(|&i| !is_line(&vp, i, mark_rect(&vp, i, vp.x_of(1.0))))
         .count();
     let diamonds = quads.iter().filter(|q| q.shape == QuadShape::Diamond);
     assert!(whole < 20, "見えない行は数えない");
@@ -166,7 +175,7 @@ fn 重なるマーカーの矩形では中心が近い方に当たる() {
     let f = TestViewport::new(&m, SIZE);
     let vp = f.vp();
     let y = mark_rect(&vp, 0, vp.x_of(1.0)).y + 4.5;
-    let at = |x| mark_at(&vp, 0, &m.items[0], (x, y)).map(|k| k.key);
+    let at = |x| mark_at(&vp, 0, &m.items[0], (x, y)).map(|k| k.keyframe);
     assert_eq!(at(vp.x_of(1.0) + 3.0), Some(0));
     assert_eq!(at(vp.x_of(1.0) + 4.0), Some(1));
 }
@@ -182,7 +191,10 @@ fn レイヤーの始まりのマーカーは端のつまみより勝ち_つま�
     let vp = f.vp();
     let x = vp.x_of(2.0) + 2.0;
     let mark = mark_rect(&vp, 0, vp.x_of(2.0));
-    let marker = Hit::Key { item: 0, key: 0 };
+    let marker = Hit::BarMark {
+        item: 0,
+        keyframe: 0,
+    };
     assert_eq!(hit_test(&m, &vp, x, mark.y + 4.5), marker);
     let handle = Hit::Layer {
         index: 0,
@@ -209,7 +221,10 @@ fn マーカーのクリックは再生位置をその時刻へ動かす() {
     let x = vp.x_of(2.5);
     let y = mark_rect(&vp, 0, x).y + 4.5;
     assert_eq!(c.handle(PointerEvent::Move { x, y }, &m, 0.0), []);
-    let hover = Hit::Key { item: 0, key: 1 };
+    let hover = Hit::BarMark {
+        item: 0,
+        keyframe: 1,
+    };
     assert_eq!(c.hover, hover);
     let ev = PointerEvent::Down {
         x,

@@ -2,12 +2,12 @@
 
 use super::{Canvas, Depth, PaintInput};
 use crate::geom::{Color, Quad, Rect};
-use crate::keymarks::{is_tick, mark_rect, marks, tick_rect, Mark, MARK_PX};
+use crate::keymarks::{is_line, line_rect, mark_rect, marks, BarMark, MARK_PX};
 use crate::palette;
 use crate::timeline::Hit;
 
 /// ひし形の中の一辺。周りに縁を残し、帯の色にかかわらず形が見えるようにする。
-const FILL_PX: f32 = MARK_PX - 3.0;
+const INNER_PX: f32 = MARK_PX - 3.0;
 
 pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
     let clip = s.vp.layout.row_area;
@@ -18,16 +18,16 @@ pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
         for mark in marks(s.vp, item) {
             let rect = mark_rect(s.vp, i, mark.x);
             let (rim, fill) = colors(s, i, mark);
-            if is_tick(s.vp, i, rect) {
-                let tick = tick_rect(rect);
-                c.push_in(Depth::Mark, grow(tick, 1.0), rim, clip);
-                c.push_in(Depth::Mark, tick, fill, clip);
+            if is_line(s.vp, i, rect) {
+                let line = line_rect(rect);
+                c.push_in(Depth::BarMark, grow(line, 1.0), rim, clip);
+                c.push_in(Depth::BarMark, line, fill, clip);
             } else {
                 let center = (mark.x, rect.y + MARK_PX / 2.0);
                 let outer = Quad::diamond(center, (MARK_PX, MARK_PX), rim);
-                let inner = Quad::diamond(center, (FILL_PX, FILL_PX), fill);
-                c.push_quad(Depth::Mark, outer);
-                c.push_quad(Depth::Mark, inner);
+                let inner = Quad::diamond(center, (INNER_PX, INNER_PX), fill);
+                c.push_quad(Depth::BarMark, outer);
+                c.push_quad(Depth::BarMark, inner);
             }
         }
     }
@@ -35,13 +35,13 @@ pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
 
 /// 行 `i` のマーカー `mark` の縁と中の色。ホバーしたものは、中を Inspector のキーフレームの欄で選んだひし形と
 /// 同じ accent にし、縁を明るくする（暗い縁のままだと、accent に近い青の帯の上で中が帯に紛れる）。
-fn colors(s: &PaintInput, i: usize, mark: Mark) -> (Color, Color) {
+fn colors(s: &PaintInput, i: usize, mark: BarMark) -> (Color, Color) {
     let p = &s.state.palette;
-    let lit = Hit::Key {
+    let hovered = Hit::BarMark {
         item: i,
-        key: mark.key,
+        keyframe: mark.keyframe,
     };
-    if s.state.hover == lit {
+    if s.state.hover == hovered {
         (p.selection, p.accent)
     } else {
         (palette::CUT_SEAM, p.selection)

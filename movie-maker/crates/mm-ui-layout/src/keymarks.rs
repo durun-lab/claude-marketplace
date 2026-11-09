@@ -14,36 +14,36 @@ const SMALL_MARK_H: f32 = 6.0;
 /// これより近い（x の差がこれ未満の）キーフレームは 1 つのマーカーにまとめる。
 pub(crate) const MERGE_PX: f32 = 6.0;
 /// 縦線の幅。高さはマーカーの矩形より 2 低くし、上に縁の 1 を空ける。
-const TICK_W: f32 = 2.0;
+const LINE_W: f32 = 2.0;
 
 /// 帯のマーカー 1 つ。近いキーフレームをまとめたときは、先頭のキーフレームの位置に置く。
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) struct Mark {
+pub(crate) struct BarMark {
     /// `Item::keyframes` の添字（まとめた先頭）。
-    pub(crate) key: usize,
+    pub(crate) keyframe: usize,
     /// 中心の x（Timeline の座標）。
     pub(crate) x: f32,
 }
 
 /// `item` の、行の領域の横の範囲に見えるマーカー（左から順）。
 /// まとめ方は先頭のキーフレームから数えるので、横に動かしてもマーカーの位置は変わらない。
-pub(crate) fn marks(vp: &Viewport, item: &Item) -> Vec<Mark> {
+pub(crate) fn marks(vp: &Viewport, item: &Item) -> Vec<BarMark> {
     let area = vp.layout.row_area;
-    let reach = MARK_PX / 2.0;
-    let (left, right) = (area.x - reach, area.right() + reach);
+    let half = MARK_PX / 2.0;
+    let (left, right) = (area.x - half, area.right() + half);
     let mut out = Vec::new();
-    let mut anchor = f32::NEG_INFINITY;
-    for (key, t) in item.keyframes.iter().enumerate() {
+    let mut last_x = f32::NEG_INFINITY;
+    for (keyframe, t) in item.keyframes.iter().enumerate() {
         let x = vp.x_of(*t);
         if x > right {
             break;
         }
-        if x - anchor < MERGE_PX {
+        if x - last_x < MERGE_PX {
             continue;
         }
-        anchor = x;
+        last_x = x;
         if x >= left {
-            out.push(Mark { key, x });
+            out.push(BarMark { keyframe, x });
         }
     }
     out
@@ -62,7 +62,7 @@ pub(crate) fn mark_rect(vp: &Viewport, i: usize, x: f32) -> Rect {
 
 /// 行 `i` のマーカーを縦線で描くか。Small の行は常に縦線、ほかの行は `rect` が行の領域に収まらないとき
 /// （端で切るとひし形の形が変わるので、切っても形が変わらない縦線にする）。
-pub(crate) fn is_tick(vp: &Viewport, i: usize, rect: Rect) -> bool {
+pub(crate) fn is_line(vp: &Viewport, i: usize, rect: Rect) -> bool {
     let area = vp.layout.row_area;
     vp.rows.height(i) == RowHeight::Small
         || rect.x < area.x
@@ -72,18 +72,18 @@ pub(crate) fn is_tick(vp: &Viewport, i: usize, rect: Rect) -> bool {
 }
 
 /// 縦線の矩形。マーカーの矩形 `rect` の横の中央で、下端に揃える。
-pub(crate) fn tick_rect(rect: Rect) -> Rect {
+pub(crate) fn line_rect(rect: Rect) -> Rect {
     let h = rect.h - 2.0;
     Rect::new(
-        rect.x + (rect.w - TICK_W) / 2.0,
+        rect.x + (rect.w - LINE_W) / 2.0,
         rect.bottom() - h,
-        TICK_W,
+        LINE_W,
         h,
     )
 }
 
 /// 点 (x, y) の下にある、行 `i` のマーカー。矩形が重なる所では、中心が近い方。
-pub(crate) fn mark_at(vp: &Viewport, i: usize, item: &Item, (x, y): (f32, f32)) -> Option<Mark> {
+pub(crate) fn mark_at(vp: &Viewport, i: usize, item: &Item, (x, y): (f32, f32)) -> Option<BarMark> {
     marks(vp, item)
         .into_iter()
         .filter(|m| mark_rect(vp, i, m.x).contains(x, y))

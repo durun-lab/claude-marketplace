@@ -240,11 +240,11 @@ impl TimelineController {
     }
 
     fn seek_at(&self, x: f32, model: &TimelineModel) -> f64 {
-        Self::seek_to(self.viewport().t_of(x), model)
+        Self::seek_time(self.viewport().t_of(x), model)
     }
 
     /// 時刻 `t` に再生位置を動かすときの時刻。いちばん近いフレームの先頭にそろえ、コンポジションの中に収める。
-    fn seek_to(t: f64, model: &TimelineModel) -> f64 {
+    fn seek_time(t: f64, model: &TimelineModel) -> f64 {
         let frame = if model.fps > 0.0 {
             1.0 / model.fps
         } else {
@@ -282,10 +282,13 @@ impl TimelineController {
                 deselect_cut(Action::Select(Some(index)), had_cut)
             }
             Hit::Cut { item, cut, part } => self.press_cut((item, cut, part), x, mods),
-            Hit::Key { item, key } => {
+            Hit::BarMark { item, keyframe } => {
                 self.selected = Some(item);
-                let t = model.items.get(item).and_then(|it| it.keyframes.get(key));
-                let seek = t.map(|t| Action::Seek(Self::seek_to(*t, model)));
+                let t = model
+                    .items
+                    .get(item)
+                    .and_then(|it| it.keyframes.get(keyframe));
+                let seek = t.map(|t| Action::Seek(Self::seek_time(*t, model)));
                 let mut out = deselect_cut(Action::Select(Some(item)), had_cut);
                 out.extend(seek);
                 out
