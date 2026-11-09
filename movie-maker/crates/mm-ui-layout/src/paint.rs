@@ -102,10 +102,29 @@ impl Canvas {
     fn into_quads(self) -> Vec<Quad> {
         self.depths.into_iter().flatten().collect()
     }
+
+    /// 下から並べ、`Depth::Bar` までの矩形の数も返す（サムネイルはその後ろに差し込む）。
+    fn into_quads_split(self) -> (Vec<Quad>, usize) {
+        let split = self.depths[..=Depth::Bar as usize]
+            .iter()
+            .map(Vec::len)
+            .sum();
+        (self.into_quads(), split)
+    }
 }
 
 /// 文字の下に描く矩形（背景、行の縞、帯、吸い付いた帯の端の強調、目盛りの帯、スクロールバー）。
 pub fn timeline_quads(model: &TimelineModel, vp: &Viewport, state: &PaintState) -> Vec<Quad> {
+    timeline_quads_split(model, vp, state).0
+}
+
+/// [`timeline_quads`] と、帯までの矩形の数。サムネイル（[`crate::timeline_thumbs`]）は先頭からその数の矩形の後、
+/// 残りの矩形（帯に重ねるもの）の前に描く。
+pub fn timeline_quads_split(
+    model: &TimelineModel,
+    vp: &Viewport,
+    state: &PaintState,
+) -> (Vec<Quad>, usize) {
     let input = PaintInput { model, vp, state };
     let mut canvas = Canvas::default();
     canvas.push(Depth::Back, vp.layout.bounds, state.palette.panel);
@@ -115,7 +134,7 @@ pub fn timeline_quads(model: &TimelineModel, vp: &Viewport, state: &PaintState) 
     ruler::paint(&input, &mut canvas);
     scrollbar::paint(&input, &mut canvas);
     snap::edge_highlight(&input, &mut canvas);
-    canvas.into_quads()
+    canvas.into_quads_split()
 }
 
 /// 文字の上に重ねる矩形（再生位置の線とスナップの表示）。目盛りの帯と行の領域を縦に貫く。

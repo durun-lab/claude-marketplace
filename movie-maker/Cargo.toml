@@ -100,6 +100,8 @@ ebur128 = "0.1"
 half = "2.7"
 bytemuck = { version = "1.20", features = ["derive"] }
 png = "0.18"
+# Timeline の帯のサムネイルの JPEG（キャッシュの `thumbs/`）を読む。
+zune-jpeg = { version = "0.4", default-features = false, features = ["std"] }
 # mm-stream の静止画のコマ（libwebp の C のビルド）。
 webp = "0.3.1"
 # mm-serve。127.0.0.1 だけで待つ HTTP（axum）と、その非同期の実行環境。

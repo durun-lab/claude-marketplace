@@ -5,6 +5,7 @@
 //! サーフェスは再生スレッドのレンダラーと同じ `GpuContext` のデバイスで作り、描いたテクスチャをリードバックせずに描く。
 //! レンダラーがデバイスを作り直したら、新しいデバイスでサーフェスと UI を作り直す。
 
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -12,7 +13,9 @@ use std::time::{Duration, Instant};
 
 mod acquire;
 mod sync;
+mod thumbs;
 
+use mm_ingest::CacheLayout;
 use mm_runtime::{select_adapter, GpuContext, GpuSelector};
 use mm_ui_layout::TimelineModel;
 use mm_ui_wgpu::Ui;
@@ -24,6 +27,7 @@ use crate::win::surface;
 use crate::win::theme;
 use acquire::Recovery;
 use sync::{handle_input, DocSync, SourceSync};
+use thumbs::ThumbSync;
 
 /// サーフェスを取れなかったときの待ち。再試行で CPU を回さないための間隔。
 const RETRY_WAIT: Duration = Duration::from_millis(8);
@@ -40,13 +44,14 @@ pub struct Renderer {
 
 impl Renderer {
     /// 子 HWND にサーフェスを張って描画スレッドを始める。
-    pub fn spawn(shared: Arc<Shared>, hwnd: isize, model: TimelineModel) -> Self {
+    /// `cache` は `<project>/cache`（帯のサムネイルを読む）。
+    pub fn spawn(shared: Arc<Shared>, hwnd: isize, model: TimelineModel, cache: PathBuf) -> Self {
         let quit = Arc::new(AtomicBool::new(false));
         let q = quit.clone();
         let join = std::thread::Builder::new()
             .name("render".into())
             .spawn(move || {
-                supervise(&q, RESTART_WAIT, || run(&shared, hwnd, &q, &model));
+                supervise(&q, RESTART_WAIT, || run(&shared, hwnd, &q, &model, &cache));
             })
             .expect("render thread");
         Self {
@@ -277,6 +282,7 @@ fn run(
     hwnd: isize,
     quit: &AtomicBool,
     model: &TimelineModel,
+    cache: &Path,
 ) -> Result<(), String> {
     let start = shared.gpu.lock().expect("gpu").clone();
     let mut view = View::new(shared, hwnd, start, model)?;
@@ -284,6 +290,7 @@ fn run(
     let mut doc = DocSync::default();
     let mut source = SourceSync::default();
     let mut drawing = DrawingSync::default();
+    let mut thumbs = ThumbSync::new(CacheLayout::new(cache));
     let mut failed_frames = 0u32;
     // HWND が破棄された後に present し続けないよう、毎周で生死を確かめる。
     while !quit.load(Ordering::SeqCst) && surface::is_alive(hwnd) {
@@ -298,11 +305,13 @@ fn run(
             doc = DocSync::default();
             source = SourceSync::default();
             drawing = DrawingSync::default();
+            thumbs = ThumbSync::new(CacheLayout::new(cache));
         }
         view.configure(hwnd, size);
         doc.refresh(shared, &mut view.ui);
         source.refresh(shared, &mut view);
         drawing.refresh(shared, &mut view.ui);
+        thumbs.refresh(&view.gpu, &mut view.ui);
         handle_input(shared, &mut view.ui, &doc);
         if let Some(state) = view.ui.view_state() {
             shared.view.publish(state);
@@ -310,6 +319,9 @@ fn run(
         match frame(shared, &view.gpu, &mut view.ui, &mut seen) {
             Ok(()) => failed_frames = 0,
             Err(recovery) => {
+                if recovery == Recovery::Recreate {
+                    view.ui.reset_thumbs();
+                }
                 view.gpu.recover(hwnd, recovery)?;
                 std::thread::sleep(RETRY_WAIT);
                 failed_frames += 1;

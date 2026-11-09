@@ -31,6 +31,7 @@ mod screen;
 pub mod scroll;
 mod snap;
 mod text;
+mod thumbs;
 mod time_view;
 mod timeline;
 mod timeline_layout;
@@ -46,7 +47,7 @@ pub use geom::{fit_rect, Color, Quad, QuadShape, Rect};
 pub use gesture::{body_edit, edge_edit, EditKind, Side};
 pub use keymarks::MARK_PX;
 pub use labels::{timeline_labels, LABEL_PAD};
-pub use paint::{timeline_overlay, timeline_quads, PaintState};
+pub use paint::{timeline_overlay, timeline_quads, timeline_quads_split, PaintState};
 pub use rows::{RowHeight, RowHeights, Rows};
 pub use ruler::{label, major_step, ticks, Tick};
 pub use scale::{Scale, TextPlacement};
@@ -55,6 +56,7 @@ pub use snap::{quantize, snap, SnapKind, SnapTarget, Snapped, SNAP_PX};
 pub use text::{
     fit, line_height, place, Align, Fit, Label, TextMeasure, TextStyle, UiFont, ELLIPSIS,
 };
+pub use thumbs::{timeline_thumbs, ThumbQuad, THUMB_ASPECT};
 pub use time_view::{TimeView, MAX_PX_PER_SEC, MIN_FIT_PX_PER_SEC, MIN_PX_PER_SEC};
 pub use timeline::{
     bar_span, cut_span, hit_test, AudioState, CutBar, Hit, Item, ItemKind, Part, TimelineModel,

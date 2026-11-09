@@ -1,0 +1,118 @@
+//! 帯の先頭のサムネイルを、オフスクリーンに描いて確かめる。サムネイルは 1 色のスロットなので、画素の色で置き場所と重なりが分かる。
+
+use mm_ui_layout::{Item, ItemKind, RowHeight, RowHeights, TimelineModel, ViewState};
+use mm_ui_wgpu::{cell_len, ThumbStats, Ui};
+
+use crate::support::{bar_rect, close, gpu, px_in, render_sized, FORMAT, H, W};
+
+const RED: [u8; 3] = [255, 0, 0];
+
+/// 長さ 10 秒の撮影素材のレイヤーが 1 本。素材の鍵は `k`。
+fn model(thumb: bool) -> TimelineModel {
+    let item = Item::layer(0.0, 10.0, ItemKind::Footage, true).with_label("clip.mp4");
+    TimelineModel {
+        duration: 10.0,
+        fps: 30.0,
+        items: vec![if thumb { item.with_thumb("k") } else { item }],
+        ..TimelineModel::default()
+    }
+}
+
+fn ui(device: &wgpu::Device, m: &TimelineModel, height: Option<RowHeight>) -> Ui {
+    let mut ui = Ui::new(device, FORMAT);
+    ui.set_model(m.clone());
+    ui.resize(W, H);
+    if let Some(height) = height {
+        let mut state: ViewState = ui.view_state().expect("最初の表示");
+        state.heights = RowHeights {
+            all: Some(height),
+            ..RowHeights::default()
+        };
+        ui.restore_view(state);
+    }
+    ui
+}
+
+fn red_cell() -> Vec<u8> {
+    [255, 0, 0, 255].repeat(cell_len() / 4)
+}
+
+#[test]
+fn サムネイルは読み込みを頼み_届いたら帯の左に描き_帯の残りは帯の色のまま() {
+    let Some((device, queue)) = gpu() else { return };
+    let m = model(true);
+    let mut ui = ui(&device, &m, None);
+    let before = render_sized(&device, &queue, &mut ui, (W, H));
+    assert_eq!(
+        ui.take_thumb_requests().len(),
+        1,
+        "スロットに無いサムネイルを頼む"
+    );
+    assert!(
+        ui.take_thumb_requests().is_empty(),
+        "頼み済みは頼み直さない"
+    );
+    assert_eq!(ui.thumb_stats().drawn, 0, "届くまではサムネイルなしで描く");
+    ui.set_thumb(&device, &queue, "k", Some(&red_cell()));
+    let after = render_sized(&device, &queue, &mut ui, (W, H));
+    assert_eq!(ui.thumb_stats().drawn, 1);
+    let bar = bar_rect(&ui, &m, 1.0, 0, (0.0, 10.0));
+    let (y, left) = ((bar.y + bar.h / 2.0) as u32, (bar.x + 10.0) as u32);
+    assert!(close(px_in(&after, W, left, y), RED, 2), "サムネイルの中");
+    let body = (bar.x + 200.0) as u32;
+    assert_eq!(
+        px_in(&after, W, body, y),
+        px_in(&before, W, body, y),
+        "サムネイルの右は帯の色のまま"
+    );
+}
+
+#[test]
+fn small_の行と鍵の無い帯には出さない() {
+    let Some((device, queue)) = gpu() else { return };
+    let mut small = ui(&device, &model(true), Some(RowHeight::Small));
+    render_sized(&device, &queue, &mut small, (W, H));
+    assert!(small.take_thumb_requests().is_empty());
+    let mut none = ui(&device, &model(false), None);
+    render_sized(&device, &queue, &mut none, (W, H));
+    assert!(none.take_thumb_requests().is_empty());
+}
+
+#[test]
+fn 読めなかったサムネイルはサムネイルなしで描き続け_サーフェスを作り直した_ui_はもう一度頼む() {
+    let Some((device, queue)) = gpu() else { return };
+    let m = model(true);
+    let mut ui = ui(&device, &m, None);
+    render_sized(&device, &queue, &mut ui, (W, H));
+    ui.take_thumb_requests();
+    ui.set_thumb(&device, &queue, "k", None);
+    render_sized(&device, &queue, &mut ui, (W, H));
+    assert!(
+        ui.take_thumb_requests().is_empty(),
+        "読めなかったサムネイルは頼み直さない"
+    );
+    assert_eq!(ui.thumb_stats().drawn, 0);
+    // サーフェスを作り直す（Lost）と、アトラスは空から作り直し、同じサムネイルをもう一度頼む。
+    ui.reset_thumbs();
+    render_sized(&device, &queue, &mut ui, (W, H));
+    assert_eq!(ui.take_thumb_requests().len(), 1);
+}
+
+#[test]
+fn アトラスを作り直すと届いていたサムネイルも頼み直し_届いたら描く() {
+    let Some((device, queue)) = gpu() else { return };
+    let m = model(true);
+    let mut ui = ui(&device, &m, None);
+    render_sized(&device, &queue, &mut ui, (W, H));
+    ui.take_thumb_requests();
+    ui.set_thumb(&device, &queue, "k", Some(&red_cell()));
+    render_sized(&device, &queue, &mut ui, (W, H));
+    assert_eq!(ui.thumb_stats().drawn, 1);
+    ui.reset_thumbs();
+    render_sized(&device, &queue, &mut ui, (W, H));
+    assert_eq!(ui.thumb_stats(), ThumbStats::default());
+    assert_eq!(ui.take_thumb_requests().len(), 1);
+    ui.set_thumb(&device, &queue, "k", Some(&red_cell()));
+    render_sized(&device, &queue, &mut ui, (W, H));
+    assert_eq!(ui.thumb_stats().drawn, 1);
+}

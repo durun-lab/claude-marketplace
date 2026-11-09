@@ -36,6 +36,7 @@ mm-ui-layout = { workspace = true }
 mm-ui-wgpu = { workspace = true }
 mm-audio-cpal = { workspace = true }
 png = { workspace = true }
+zune-jpeg = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }

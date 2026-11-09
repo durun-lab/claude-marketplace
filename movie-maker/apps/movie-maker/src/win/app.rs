@@ -323,6 +323,7 @@ impl Boot {
             self.shared.clone(),
             surface_hwnd,
             model.clone(),
+            media::project_cache_dir(&self.args.project),
         ));
         ipc::spawn(app.handle().clone(), self.state.clone());
         hotpatch::start(app.handle());

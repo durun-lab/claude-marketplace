@@ -10,16 +10,20 @@ use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
     clear_tooltip_area, drag_tooltip, fit_rect, split_viewers, timeline_labels, timeline_overlay,
-    timeline_quads, Action, DrawingShape, PaintState, PointerEvent, Quad, Rect, RowHeights, Scale,
-    SurfaceLayout, TimeView, TimelineController, TimelineModel, UiFont, ViewState,
+    timeline_quads_split, Action, DrawingShape, PaintState, PointerEvent, Quad, Rect, RowHeights,
+    Scale, SurfaceLayout, TimeView, TimelineController, TimelineModel, UiFont, ViewState,
 };
 
 use crate::drawing::{DrawingFit, DrawingLayer};
 use crate::program::ProgramViewer;
 use crate::quads::QuadRenderer;
 use crate::text::{TextLayer, TextStats};
+use crate::thumbs::ThumbRenderer;
 
+mod thumbs;
 mod view;
+
+pub use thumbs::ThumbStats;
 
 /// サーフェスの上のどの領域か。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -39,6 +43,10 @@ pub struct Ui {
     format: wgpu::TextureFormat,
     font: UiFont,
     program: ProgramViewer,
+    /// 帯の先頭のサムネイル。
+    thumbs: ThumbRenderer,
+    /// 直近のフレームで描いたサムネイルの数。
+    thumbs_drawn: u32,
     /// Program の上に重ねる描き込み。
     drawing: DrawingLayer,
     /// 表示の倍率（DPI / 96）。
@@ -69,6 +77,8 @@ impl Ui {
             format,
             font: UiFont::default(),
             program: ProgramViewer::new(device, format),
+            thumbs: ThumbRenderer::new(format),
+            thumbs_drawn: 0,
             drawing: DrawingLayer::new(device, format),
             scale: Scale::ONE,
             source: ProgramViewer::new(device, format),
@@ -128,6 +138,7 @@ impl Ui {
 
     /// Timeline に出すもの。最初に渡されたときに全体表示にし、sequence の行が見える所までスクロールする。
     pub fn set_model(&mut self, model: TimelineModel) {
+        self.thumbs.retry_missing();
         self.model = model;
         self.opened = false;
         self.relayout_rows();
@@ -135,6 +146,7 @@ impl Ui {
 
     /// 編集で並びや長さが変わったモデルに置き換える。拡大とスクロールは保ち、範囲の外の選択だけ外す。
     pub fn update_model(&mut self, model: TimelineModel) {
+        self.thumbs.retry_missing();
         self.controller.model_changed(&model);
         self.model = model;
         self.relayout_rows();
@@ -281,7 +293,9 @@ impl Ui {
             self.program.draw(&mut pass);
             self.drawing.draw(&mut pass, counts.drawing);
             self.source.draw(&mut pass);
-            self.quads.draw(&mut pass, 0..counts.under);
+            self.quads.draw(&mut pass, 0..counts.below);
+            self.thumbs.draw(&mut pass, counts.thumbs);
+            self.quads.draw(&mut pass, counts.below..counts.under);
             if let Some(text) = &self.text {
                 text.draw(&mut pass);
             }
@@ -294,7 +308,7 @@ impl Ui {
     fn prepare(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> Counts {
         let (w, h) = self.size;
         let tooltip = self.prepare_text(device, queue);
-        let (quads, under) = self.timeline_quads(tooltip);
+        let (quads, under, below) = self.timeline_quads(tooltip);
         let count = self.quads.prepare(device, queue, &quads, (w, h));
         let layout = self.layout();
         let mut drawing = 0;
@@ -315,8 +329,11 @@ impl Ui {
             let rect = fit_rect(iw as f32, ih as f32, area);
             self.source.prepare(queue, rect, (w, h));
         }
+        let thumbs = self.prepare_thumbs(device, queue);
         Counts {
             under,
+            below,
+            thumbs,
             quads: count,
             drawing,
         }
@@ -333,11 +350,11 @@ impl Ui {
     /// Timeline の矩形を、サーフェスの座標（物理ピクセル）に置いた並びにする。文字の下に描く矩形が先で、
     /// その数も返す（残りは文字の上に重ねる再生位置の線とスナップの表示）。`tooltip` はドラッグ中のツールチップの矩形で、
     /// 文字の下に描く矩形のいちばん上に重ね、文字の上に重ねる矩形はその外だけに描く。
-    fn timeline_quads(&self, tooltip: Vec<Quad>) -> (Vec<Quad>, u32) {
+    fn timeline_quads(&self, tooltip: Vec<Quad>) -> (Vec<Quad>, u32, u32) {
         let t = self.layout.timeline;
         let state = self.paint_state();
         let vp = self.controller.viewport();
-        let mut quads = timeline_quads(&self.model, &vp, &state);
+        let (mut quads, below) = timeline_quads_split(&self.model, &vp, &state);
         let overlay = clear_tooltip_area(timeline_overlay(&self.model, &vp, &state), &tooltip);
         quads.extend(tooltip);
         let under = quads.len() as u32;
@@ -345,7 +362,7 @@ impl Ui {
         for q in &mut quads {
             q.rect = self.scale.rect_to_physical(q.rect.translated(t.x, t.y));
         }
-        (quads, under)
+        (quads, under, below as u32)
     }
 
     /// Timeline の文字を置き、文字の描画に渡す。文字の描画は最初に描くときに作る（OS のフォントを読み込む）。
@@ -377,6 +394,9 @@ impl Ui {
 struct Counts {
     /// 文字の下に描く矩形の数。残りの矩形（`under..quads`）は文字の上に重ねる。
     under: u32,
+    /// 帯までの矩形の数。サムネイルはその後ろに描く。
+    below: u32,
+    thumbs: u32,
     quads: u32,
     /// 描き込みの線分の数。
     drawing: u32,
