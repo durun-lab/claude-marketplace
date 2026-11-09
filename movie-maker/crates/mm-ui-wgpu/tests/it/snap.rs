@@ -25,22 +25,34 @@ struct Dragged {
     rows_bottom: f32,
 }
 
-/// 撮影素材のレイヤーの出つまみを掴んで、時刻 `to`（秒）の右 `dx` まで引いたまま描く。
-fn drag_to(to: f64, dx: f32) -> Option<Dragged> {
+/// 引いている途中の `Ui`。
+struct Held {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    ui: Ui,
+    model: TimelineModel,
+    /// 引いた先の点（物理ピクセル）。
+    at: (f32, f32),
+    /// 引いた先の時刻の x。
+    x: f32,
+}
+
+/// 撮影素材のレイヤーの出つまみを掴んで、時刻 `to`（秒）の右 `dx` まで引く（離さない）。
+fn hold(to: f64, dx: f32) -> Option<Held> {
     let (device, queue) = gpu()?;
-    let m = TimelineModel {
+    let model = TimelineModel {
         duration: 10.0,
         fps: 30.0,
         items: vec![Item::layer(0.0, 4.0, ItemKind::Footage, true)],
         ..TimelineModel::default()
     };
     let mut ui = Ui::new(&device, FORMAT);
-    ui.set_model(m.clone());
+    ui.set_model(model.clone());
     ui.resize(W, H);
     ui.set_playhead(PLAYHEAD);
-    let bar = bar_rect(&ui, &m, 1.0, 0, (0.0, 4.0));
+    let bar = bar_rect(&ui, &model, 1.0, 0, (0.0, 4.0));
     let y = bar.y + bar.h / 2.0;
-    let x = bar_rect(&ui, &m, 1.0, 0, (to, to)).x;
+    let x = bar_rect(&ui, &model, 1.0, 0, (to, to)).x;
     let mods = Mods::default();
     ui.pointer(PointerEvent::Down {
         x: bar.right() - 2.0,
@@ -48,14 +60,27 @@ fn drag_to(to: f64, dx: f32) -> Option<Dragged> {
         mods,
     });
     ui.pointer(PointerEvent::Move { x: x + dx, y });
-    let image = render_sized(&device, &queue, &mut ui, (W, H));
-    let timeline = ui.layout().timeline;
-    let content = Rows::of(&m.items, &RowHeights::default()).content_height();
+    Some(Held {
+        device,
+        queue,
+        ui,
+        model,
+        at: (x + dx, y),
+        x,
+    })
+}
+
+/// 撮影素材のレイヤーの出つまみを掴んで、時刻 `to`（秒）の右 `dx` まで引いたまま描く。
+fn drag_to(to: f64, dx: f32) -> Option<Dragged> {
+    let mut h = hold(to, dx)?;
+    let image = render_sized(&h.device, &h.queue, &mut h.ui, (W, H));
+    let timeline = h.ui.layout().timeline;
+    let content = Rows::of(&h.model.items, &RowHeights::default()).content_height();
     let layout = TimelineLayout::new((timeline.w, timeline.h), content);
     Some(Dragged {
         image,
-        at: (x + dx, y),
-        x,
+        at: h.at,
+        x: h.x,
         timeline,
         ruler_bottom: timeline.y + layout.ruler.bottom(),
         rows_bottom: timeline.y + layout.row_area.bottom(),
@@ -121,4 +146,21 @@ fn 吸い付かないドラッグにはガイド線を出さない() {
         count(&d.image, tip_area(d.at), tip_fill) > 20,
         "ツールチップは出す"
     );
+}
+
+#[test]
+fn 再生位置の線はツールチップの矩形の上に描かない() {
+    let Some(mut h) = hold(7.8, 0.0) else {
+        return;
+    };
+    // ツールチップの中（ポインターの右 30）を通る時刻に再生位置を置く。
+    let per_sec = bar_rect(&h.ui, &h.model, 1.0, 0, (0.0, 1.0)).w;
+    h.ui.set_playhead(7.8 + f64::from(30.0 / per_sec));
+    let image = render_sized(&h.device, &h.queue, &mut h.ui, (W, H));
+    let playhead = |p: [u8; 3]| close(p, hex(palette::PLAYHEAD), 8);
+    let tip = tip_area(h.at);
+    assert!(count(&image, tip, tip_fill) > 20, "ツールチップの矩形");
+    assert_eq!(count(&image, tip, playhead), 0, "ツールチップの中");
+    let below = Rect::new(tip.x, h.at.1 + 30.0, tip.w, 1.0);
+    assert_eq!(count(&image, below, playhead), 2, "ツールチップの外は描く");
 }

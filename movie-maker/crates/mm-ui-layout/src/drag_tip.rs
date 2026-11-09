@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use crate::geom::{Quad, Rect};
+use crate::geom::{Quad, QuadShape, Rect};
 use crate::paint::PaintState;
 use crate::text::{line_height, place, Align, Label, TextMeasure, TextStyle, UiFont, ELLIPSIS};
 use crate::timeline::TimelineModel;
@@ -110,6 +110,37 @@ fn clear(labels: &mut Vec<Label>, tip: Rect, measure: &mut dyn TextMeasure) {
         l.clip.w = l.clip.w.min(tip.x - l.clip.x);
         l.x < tip.x && l.clip.w > 0.0
     });
+}
+
+/// 文字の上に重ねる矩形（再生位置の線、スナップの表示）から、ドラッグ中のツールチップ `tooltip` に重なる所を除く。
+/// 文字は 1 回でまとめて描くのでツールチップを線より上には描けず、線の側を矩形の外だけにしてツールチップを手前に見せる。
+pub fn clear_tooltip_area(overlay: Vec<Quad>, tooltip: &[Quad]) -> Vec<Quad> {
+    let Some(hole) = tooltip.first().map(|q| q.rect) else {
+        return overlay;
+    };
+    overlay.into_iter().flat_map(|q| outside(q, hole)).collect()
+}
+
+/// `q` の、`hole` の外の部分（上、下、左、右の矩形）。三角形などの形は切ると形が変わるので、重なれば描かない。
+fn outside(q: Quad, hole: Rect) -> Vec<Quad> {
+    if !overlaps(q.rect, hole) {
+        return vec![q];
+    }
+    if q.shape != QuadShape::Rect {
+        return Vec::new();
+    }
+    let r = q.rect;
+    let (top, bottom) = (r.y.max(hole.y), r.bottom().min(hole.bottom()));
+    [
+        Rect::new(r.x, r.y, r.w, hole.y - r.y),
+        Rect::new(r.x, hole.bottom(), r.w, r.bottom() - hole.bottom()),
+        Rect::new(r.x, top, hole.x - r.x, bottom - top),
+        Rect::new(hole.right(), top, r.right() - hole.right(), bottom - top),
+    ]
+    .into_iter()
+    .filter(|p| p.w > 0.0 && p.h > 0.0)
+    .map(|rect| Quad { rect, ..q })
+    .collect()
 }
 
 /// 2 つの矩形が重なるか（辺が接するだけなら重ならない）。
@@ -220,6 +251,34 @@ mod tests {
         assert!(
             !measure.asked.iter().any(|t| t == "far"),
             "字を描いてよい矩形が重ならない文字は測らない"
+        );
+    }
+
+    #[test]
+    fn 文字の上に重ねる線はツールチップの矩形の上下で切り_重なる三角形は描かない() {
+        let tip = [Quad::new(
+            Rect::new(100.0, 40.0, 60.0, 20.0),
+            crate::palette::TICK,
+        )];
+        let color = crate::palette::PLAYHEAD;
+        let line = Quad::new(Rect::new(120.0, 0.0, 2.0, 200.0), color);
+        let away = Quad::new(Rect::new(300.0, 0.0, 2.0, 200.0), color);
+        let mark = Quad::shaped((130.0, 50.0), (11.0, 7.0), QuadShape::TriDown, color);
+        let out = clear_tooltip_area(vec![line, away, mark], &tip);
+        let rects: Vec<Rect> = out.iter().map(|q| q.rect).collect();
+        assert_eq!(
+            rects,
+            [
+                Rect::new(120.0, 0.0, 2.0, 40.0),
+                Rect::new(120.0, 60.0, 2.0, 140.0),
+                away.rect
+            ]
+        );
+        assert!(out.iter().all(|q| q.color == color));
+        assert_eq!(
+            clear_tooltip_area(vec![line], &[]),
+            [line],
+            "ツールチップが無ければそのまま"
         );
     }
 

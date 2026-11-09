@@ -11,7 +11,7 @@
 //! [`timeline_quads`] と [`timeline_overlay`] は Timeline を [`Quad`] の並びに、[`timeline_labels`] は目盛りの時刻と帯の名前を
 //! [`Label`] の並びにし、描画は `mm-ui-wgpu` が行う。文字の幅は [`TextMeasure`] で `mm-ui-wgpu` に測らせ、
 //! 矩形の中に文字を置くのは [`place`]（揃え方、余白、切り詰め）。ドラッグ中のツールチップは矩形の幅を文字から決めるので、
-//! 矩形と文字を [`drag_tooltip`] が一緒に置く。
+//! 矩形と文字を [`drag_tooltip`] が一緒に置き、文字の上に重ねる線は [`clear_tooltip_area`] でツールチップを避ける。
 //! [`drawing_segments`] はコメントの描き込みを、Program の映像の矩形の上の線分に分ける。
 
 mod controller;
@@ -36,7 +36,7 @@ mod timeline_layout;
 mod view_state;
 
 pub use controller::{Action, Mods, PointerEvent, TimelineController};
-pub use drag_tip::{drag_amount, drag_tooltip, DragTip};
+pub use drag_tip::{clear_tooltip_area, drag_amount, drag_tooltip, DragTip};
 pub use drawing::{
     drawing_segments, frame_point, DrawingSegment, DrawingShape, DrawingShapeKind, DRAWING_LINE_PX,
     DRAWING_POINT_PX,

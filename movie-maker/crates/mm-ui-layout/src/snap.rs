@@ -3,10 +3,14 @@
 //! ステータスバーに出す文（[`SnapTarget::message`]）に使う。
 
 use crate::gesture::Side;
-use crate::timeline::TimelineModel;
+use crate::timeline::{Item, TimelineModel};
 
-/// 吸い付く距離（px）。
+/// 吸い付く距離（論理ピクセル）。時間でなく画面の距離で決めるので、ズームの倍率に依らず同じ手応えになる。
 pub const SNAP_PX: f64 = 8.0;
+
+/// 同じ近さとみなす差（秒）。同じフレームの時刻を別の計算（有理数の時刻とフレームへの丸め）で求めた誤差を吸収して、
+/// 並びの先の目標を採る。1 フレームよりずっと短い。
+const TIE_SECS: f64 = 1e-6;
 
 /// スナップの目標の種類。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,17 +67,25 @@ pub struct Snapped {
     pub target: Option<SnapTarget>,
 }
 
-/// `time` を `targets` のうち `threshold_px` 以内で一番近いものへ寄せる。同じ近さなら並びの先のもの。
-pub fn snap(time: f64, targets: &[SnapTarget], px_per_sec: f64, threshold_px: f64) -> Snapped {
+/// `time` を `targets` のうち `threshold_px` 以内で一番近いものへ寄せる。近さの差が [`TIE_SECS`] 以内なら並びの先のもの。
+pub fn snap(
+    time: f64,
+    targets: impl IntoIterator<Item = SnapTarget>,
+    px_per_sec: f64,
+    threshold_px: f64,
+) -> Snapped {
     let limit = threshold_px / px_per_sec;
-    let best = targets
-        .iter()
-        .filter(|t| (t.time - time).abs() <= limit)
-        .min_by(|a, b| (a.time - time).abs().total_cmp(&(b.time - time).abs()))
-        .copied();
+    let mut best: Option<(f64, SnapTarget)> = None;
+    for t in targets {
+        let d = (t.time - time).abs();
+        if d <= limit && best.is_none_or(|(near, _)| d < near - TIE_SECS) {
+            best = Some((d, t));
+        }
+    }
+    let target = best.map(|(_, t)| t);
     Snapped {
-        time: best.map_or(time, |t| t.time),
-        target: best,
+        time: target.map_or(time, |t| t.time),
+        target,
     }
 }
 
@@ -88,37 +100,52 @@ pub(crate) enum Moving {
 
 /// `moving` の端を動かすときのスナップの目標。同じ近さのときに採る順（再生位置、レイヤーとカットの端、キーフレーム、
 /// マーカー、始まりと終わり）に並べる。人が置いた印ほど先にし、始まりと終わりは端と重なりやすいので最後にする。
-pub(crate) fn targets(model: &TimelineModel, moving: Moving, playhead: f64) -> Vec<SnapTarget> {
-    let mut out = vec![SnapTarget::new(playhead, SnapKind::Playhead)];
-    edges(model, moving, &mut out);
-    for (item, it) in model.items.iter().enumerate() {
+/// ドラッグでポインターが動くたびに引くので、並びを作らずに順に返す（数千のレイヤーでも確保しない）。
+pub(crate) fn targets(
+    model: &TimelineModel,
+    moving: Moving,
+    playhead: f64,
+) -> impl Iterator<Item = SnapTarget> + '_ {
+    let items = model.items.iter().enumerate();
+    let edges = items
+        .clone()
+        .flat_map(move |(item, it)| edges(item, it, moving));
+    let keyframes = items.flat_map(|(item, it)| {
         let kind = SnapKind::Keyframe { item };
-        out.extend(it.keyframes.iter().map(|&t| SnapTarget::new(t, kind)));
-    }
+        it.keyframes.iter().map(move |&t| SnapTarget::new(t, kind))
+    });
     let markers = model.markers.iter();
-    out.extend(markers.map(|&t| SnapTarget::new(t, SnapKind::Marker)));
-    out.push(SnapTarget::new(0.0, SnapKind::Start));
-    out.push(SnapTarget::new(model.duration, SnapKind::End));
-    out
+    let ends = [
+        SnapTarget::new(0.0, SnapKind::Start),
+        SnapTarget::new(model.duration, SnapKind::End),
+    ];
+    std::iter::once(SnapTarget::new(playhead, SnapKind::Playhead))
+        .chain(edges)
+        .chain(keyframes)
+        .chain(markers.map(|&t| SnapTarget::new(t, SnapKind::Marker)))
+        .chain(ends)
 }
 
-/// レイヤーとカットの端を `out` に足す。`moving` の端は除く。
-fn edges(model: &TimelineModel, moving: Moving, out: &mut Vec<SnapTarget>) {
-    for (item, it) in model.items.iter().enumerate() {
-        if moving == Moving::Layer(item) {
-            continue;
-        }
-        out.extend(sides(it.start, it.end, |side| SnapKind::LayerEdge {
+/// レイヤー `item` の端と、そのカットの端。`moving` の端は除く。
+fn edges(item: usize, it: &Item, moving: Moving) -> impl Iterator<Item = SnapTarget> + '_ {
+    let layer = sides(it.start, it.end, move |side| SnapKind::LayerEdge {
+        item,
+        side,
+    });
+    let cuts = it.cuts.iter().enumerate();
+    let cuts = cuts.filter(move |&(cut, _)| moving != (Moving::Cut { item, cut }));
+    let cut_edges = cuts.flat_map(move |(cut, bar)| {
+        sides(bar.start, bar.end, move |side| SnapKind::ClipEdge {
             item,
+            cut,
             side,
-        }));
-        for (cut, bar) in it.cuts.iter().enumerate() {
-            if moving != (Moving::Cut { item, cut }) {
-                let kind = |side| SnapKind::ClipEdge { item, cut, side };
-                out.extend(sides(bar.start, bar.end, kind));
-            }
-        }
-    }
+        })
+    });
+    let shown = moving != Moving::Layer(item);
+    shown
+        .then(|| layer.into_iter().chain(cut_edges))
+        .into_iter()
+        .flatten()
 }
 
 fn sides(start: f64, end: f64, kind: impl Fn(Side) -> SnapKind) -> [SnapTarget; 2] {
@@ -151,20 +178,20 @@ mod tests {
     #[test]
     fn 近い目標へ吸い付く() {
         // 100 px/s で 8 px は 0.08 秒。
-        let s = snap(2.05, &at(&[0.0, 2.0, 5.0]), 100.0, SNAP_PX);
+        let s = snap(2.05, at(&[0.0, 2.0, 5.0]), 100.0, SNAP_PX);
         assert_eq!(s.time, 2.0);
         assert_eq!(s.target.map(|t| t.time), Some(2.0));
     }
 
     #[test]
     fn 遠ければそのまま() {
-        let s = snap(3.5, &at(&[0.0, 2.0, 5.0]), 100.0, SNAP_PX);
+        let s = snap(3.5, at(&[0.0, 2.0, 5.0]), 100.0, SNAP_PX);
         assert_eq!((s.time, s.target), (3.5, None));
     }
 
     #[test]
     fn 二つの目標の間では近い方を選ぶ() {
-        let s = snap(1.04, &at(&[1.0, 1.06]), 100.0, SNAP_PX);
+        let s = snap(1.04, at(&[1.0, 1.06]), 100.0, SNAP_PX);
         assert_eq!(s.time, 1.06);
     }
 
@@ -203,7 +230,7 @@ mod tests {
 
     #[test]
     fn レイヤーの端を動かすときは自分の端を除き_キーフレームとマーカーと再生位置を含む() {
-        let t = targets(&model(), Moving::Layer(1), 7.0);
+        let t: Vec<_> = targets(&model(), Moving::Layer(1), 7.0).collect();
         assert_eq!(
             t[0],
             SnapTarget::new(7.0, SnapKind::Playhead),
@@ -228,7 +255,7 @@ mod tests {
 
     #[test]
     fn カットの端を動かすときはそのカットの端だけを除く() {
-        let t = targets(&model(), Moving::Cut { item: 0, cut: 0 }, 0.0);
+        let t: Vec<_> = targets(&model(), Moving::Cut { item: 0, cut: 0 }, 0.0).collect();
         let clip = |cut, side| SnapKind::ClipEdge { item: 0, cut, side };
         assert_eq!(kinds_at(&t, 3.0), [clip(1, Side::In)], "自分の出は除く");
         assert_eq!(kinds_at(&t, 4.0)[0], clip(1, Side::Out));
@@ -243,19 +270,43 @@ mod tests {
 
     #[test]
     fn キーフレームとマーカーに吸い付き_何に吸い付いたかの文を出す() {
-        let t = targets(&model(), Moving::Layer(0), 9.0);
-        let key = snap(3.47, &t, 100.0, SNAP_PX).target.expect("キーフレーム");
+        let t: Vec<_> = targets(&model(), Moving::Layer(0), 9.0).collect();
+        let key = snap(3.47, t.iter().copied(), 100.0, SNAP_PX)
+            .target
+            .expect("キーフレーム");
         assert_eq!(key.kind, SnapKind::Keyframe { item: 1 });
         assert_eq!(key.message(), "Snapped to Keyframe");
-        let marker = snap(6.55, &t, 100.0, SNAP_PX).target.expect("マーカー");
+        let marker = snap(6.55, t.iter().copied(), 100.0, SNAP_PX)
+            .target
+            .expect("マーカー");
         assert_eq!(marker.message(), "Snapped to Marker");
     }
 
     #[test]
     fn 同じ近さなら再生位置を採る() {
-        let t = targets(&model(), Moving::Layer(0), 4.0);
-        let s = snap(4.02, &t, 100.0, SNAP_PX).target.expect("4 秒");
+        let t: Vec<_> = targets(&model(), Moving::Layer(0), 4.0).collect();
+        let s = snap(4.02, t.iter().copied(), 100.0, SNAP_PX)
+            .target
+            .expect("4 秒");
         assert_eq!(s.message(), "Snapped to Playhead");
+    }
+
+    #[test]
+    fn 浮動小数の誤差だけ違う同じ時刻の目標も並びの先を採る() {
+        // 0.1 + 0.2 は 0.3 より 1 ulp 大きい。0.28 からは端の 0.3 がわずかに近いが、同じ時刻として再生位置を採る。
+        let edge = SnapKind::LayerEdge {
+            item: 0,
+            side: Side::Out,
+        };
+        let targets = [
+            SnapTarget::new(0.1 + 0.2, SnapKind::Playhead),
+            SnapTarget::new(0.3, edge),
+        ];
+        let s = snap(0.28, targets, 100.0, SNAP_PX).target.expect("0.3 秒");
+        assert_eq!(s.kind, SnapKind::Playhead);
+        let farther = [SnapTarget::new(0.31, SnapKind::Playhead), targets[1]];
+        let s = snap(0.28, farther, 100.0, SNAP_PX).target.expect("0.3 秒");
+        assert_eq!(s.kind, edge, "近さがはっきり違えば近い方");
     }
 
     #[test]

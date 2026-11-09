@@ -3,15 +3,15 @@
 //! 外とやりとりする座標と大きさは物理ピクセル、割り付けと Timeline の寸法は論理ピクセルで持つ。
 //! 換算は描く所（[`Ui::render`]）と入力を受ける所（[`Ui::pointer`]、[`Ui::region_at`]）で [`Scale`] を 1 回だけ通す。
 //! Timeline は矩形（背景、帯、目盛り、ドラッグ中のツールチップの矩形）、文字（目盛りの時刻、帯の名前、ツールチップの量）、
-//! 矩形（再生位置の線、スナップの表示）の順に重ねる。
+//! 矩形（再生位置の線、スナップの表示。ツールチップの矩形の上は除く）の順に重ねる。
 //! Timeline の表示の状態（ズーム、スクロール、行の高さ、スナップの入/切）は [`Ui::view_state`] で出し、[`Ui::restore_view`] で戻す。
 
 use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
-    drag_tooltip, fit_rect, split_viewers, timeline_labels, timeline_overlay, timeline_quads,
-    Action, DrawingShape, PaintState, PointerEvent, Quad, Rect, RowHeights, Scale, SurfaceLayout,
-    TimeView, TimelineController, TimelineModel, UiFont, ViewState,
+    clear_tooltip_area, drag_tooltip, fit_rect, split_viewers, timeline_labels, timeline_overlay,
+    timeline_quads, Action, DrawingShape, PaintState, PointerEvent, Quad, Rect, RowHeights, Scale,
+    SurfaceLayout, TimeView, TimelineController, TimelineModel, UiFont, ViewState,
 };
 
 use crate::drawing::{DrawingFit, DrawingLayer};
@@ -332,15 +332,16 @@ impl Ui {
 
     /// Timeline の矩形を、サーフェスの座標（物理ピクセル）に置いた並びにする。文字の下に描く矩形が先で、
     /// その数も返す（残りは文字の上に重ねる再生位置の線とスナップの表示）。`tip` はドラッグ中のツールチップの矩形で、
-    /// 文字の下に描く矩形のいちばん上に重ねる。
+    /// 文字の下に描く矩形のいちばん上に重ね、文字の上に重ねる矩形はその外だけに描く。
     fn timeline_quads(&self, tip: Vec<Quad>) -> (Vec<Quad>, u32) {
         let t = self.layout.timeline;
         let state = self.paint_state();
         let vp = self.controller.viewport();
         let mut quads = timeline_quads(&self.model, &vp, &state);
+        let overlay = clear_tooltip_area(timeline_overlay(&self.model, &vp, &state), &tip);
         quads.extend(tip);
         let under = quads.len() as u32;
-        quads.extend(timeline_overlay(&self.model, &vp, &state));
+        quads.extend(overlay);
         for q in &mut quads {
             q.rect = self.scale.rect_to_physical(q.rect.translated(t.x, t.y));
         }

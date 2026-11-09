@@ -46,7 +46,7 @@ impl TimelineController {
         let moving = cut.map_or(Moving::Layer(item), |cut| Moving::Cut { item, cut });
         let target = if self.snaps() {
             let near = targets(model, moving, playhead);
-            snap(t, &near, self.view.px_per_sec, SNAP_PX).target
+            snap(t, near, self.view.px_per_sec, SNAP_PX).target
         } else {
             None
         };
