@@ -353,4 +353,36 @@ mod tests {
         apply(EditKind::Roll { item: 0, cut: 0 }, 0.5);
         assert_eq!(source_frame_of(&frame_at(&shared, 2.3)), 84);
     }
+
+    #[test]
+    fn clear_in_and_out_は付いている点を外し_取り消し_1_回で両方戻る() {
+        let (shared, _playback) = start();
+        let doc = shared.doc().unwrap();
+        let comp = doc.project.composition(&doc.comp).unwrap();
+        shared
+            .source
+            .open(&doc.project, comp, "a")
+            .expect("Source を開く");
+        let source = shared.source.handle().expect("開いた");
+        let marks = || crate::win::source::marks_of(&shared, &source.asset);
+        assert_eq!(
+            plan_and_apply(&shared, EditAction::ClearMarks),
+            Err("No In or Out point to clear".to_owned()),
+            "点が無ければ断る"
+        );
+        for (t, action) in [(5.0, EditAction::MarkIn), (6.0, EditAction::MarkOut)] {
+            source.shared.send(Command::Seek(t));
+            assert!(wait_playhead(&source.shared, t));
+            plan_and_apply(&shared, action).expect("点を付ける");
+        }
+        assert_eq!(marks(), (Some(5.0), Some(6.0)));
+        plan_and_apply(&shared, EditAction::ClearMarks).expect("外す");
+        assert_eq!(marks(), (None, None));
+        run(&shared, EditAction::Undo);
+        assert!(
+            wait_until(Duration::from_secs(5), || marks() == (Some(5.0), Some(6.0))),
+            "取り消し 1 回で両方戻る: {:?}",
+            marks()
+        );
+    }
 }

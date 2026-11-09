@@ -10,6 +10,9 @@ const GAP: f32 = 4.0;
 pub const VIEW_MARGIN: f32 = 16.0;
 /// Timeline の高さ（サーフェスに対する比）。中身の高さには合わせず、入らない行は縦にスクロールする。
 pub const TIMELINE_RATIO: f32 = 0.45;
+/// 再生の操作のバーを出すのに要る映像の高さ。上の段がこれとバーの和より低ければ、バーを出さずに映像に回す
+/// （映像の見えないビューアーは使えず、再生の操作はキーとメニューにもあるため）。
+const MIN_VIDEO_H: f32 = TRANSPORT_H;
 
 /// サーフェスの割り付け。
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -26,12 +29,17 @@ pub struct SurfaceLayout {
 }
 
 /// 幅 `w`、高さ `h` のサーフェスを割る。Timeline の高さはサーフェスの [`TIMELINE_RATIO`]（下限は目盛りとレイヤー 2 本）。
-/// 上の段は映像の下に再生の操作のバー（[`TRANSPORT_H`]）を取り、`with_source` なら左の Source と右の Program に半分ずつ割る。
+/// 上の段は映像の下に再生の操作のバー（[`TRANSPORT_H`]。上の段が低ければ高さ 0）を取り、`with_source` なら
+/// 左の Source と右の Program に半分ずつ割る。
 pub fn split_viewers(w: f32, h: f32, with_source: bool) -> SurfaceLayout {
     let h = h.max(0.0);
     let th = (h * TIMELINE_RATIO).max(MIN_TIMELINE_H).min(h);
     let ph = (h - th - GAP).max(0.0);
-    let bar_h = TRANSPORT_H.min(ph);
+    let bar_h = if ph >= MIN_VIDEO_H + TRANSPORT_H {
+        TRANSPORT_H
+    } else {
+        0.0
+    };
     let vh = ph - bar_h;
     let timeline = Rect::new(0.0, h - th, w, th);
     // 映像の矩形と、その真下のバー。

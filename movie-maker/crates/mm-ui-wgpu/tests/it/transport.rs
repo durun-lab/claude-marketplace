@@ -2,7 +2,8 @@
 
 use mm_types::{Rgba, RgbaImage, Size};
 use mm_ui_layout::{
-    Item, ItemKind, Mods, PointerEvent, Rect, TimelineModel, TransportAction, Viewer, ViewerState,
+    jog_track, transport_button, Item, ItemKind, Mods, PointerEvent, Rect, TimelineModel,
+    TransportAction, Viewer, ViewerState,
 };
 use mm_ui_wgpu::{Region, Ui};
 
@@ -79,14 +80,16 @@ fn バーの上は_program_と_source_の領域で_クリックはボタンの�
         ..ViewerState::default()
     };
     ui.set_transport(ViewerState::default(), Some(source));
+    // 表示の倍率 1 なので、論理ピクセルの位置がそのままサーフェスの座標になる。
     let l = ui.layout();
     let (pb, sb) = (l.program_bar, l.source_bar.expect("バー"));
     assert_eq!(ui.region_at(pb.x + 2.0, pb.y + 20.0), Region::Program);
     assert_eq!(ui.region_at(sb.x + 2.0, sb.y + 20.0), Region::Source);
 
-    // ジョグバーの中ほどを押すと Program の長さの半分へシークする。
-    let track_mid = pb.x + pb.w / 2.0;
-    let seek = ui.transport_pointer(down(track_mid, pb.y + 4.0));
+    // ジョグバーの線の中ほどを押すと Program の長さの半分へシークする。
+    let track = jog_track(&l, Viewer::Program).expect("線");
+    let mid = (track.x + track.w / 2.0, track.y + track.h / 2.0);
+    let seek = ui.transport_pointer(down(mid.0, mid.1));
     match seek[..] {
         [TransportAction::Seek {
             viewer: Viewer::Program,
@@ -95,7 +98,10 @@ fn バーの上は_program_と_source_の領域で_クリックはボタンの�
         _ => panic!("{seek:?}"),
     }
     ui.transport_pointer(PointerEvent::Up);
-    // ボタンの行の中央は Play / Stop。
-    let actions = ui.transport_pointer(down(track_mid, pb.y + 30.0));
-    assert_eq!(actions, [TransportAction::Command("playback.toggle")]);
+    // ボタンは押して離したときに実行する。
+    let stop = transport_button(&l, Viewer::Program, "playback.stop").expect("Stop");
+    let (x, y) = (stop.x + stop.w / 2.0, stop.y + stop.h / 2.0);
+    assert!(ui.transport_pointer(down(x, y)).is_empty());
+    let actions = ui.transport_pointer(PointerEvent::Up);
+    assert_eq!(actions, [TransportAction::Command("playback.stop")]);
 }

@@ -1,10 +1,10 @@
 //! 描画スレッドの、再生の操作のバーと共有状態の行き来。バーの状態（再生中か、押せないコマンド、Source の位置とイン点・アウト点）を
-//! `Ui` に渡し、バーのボタンとジョグバーの操作を、キーと同じコマンドの表と再生のコマンドに送る。
+//! `Ui` に渡し、バーのボタンをキーと同じコマンドの表で実行し、ジョグバーと Timeline のシークを再生のコマンドにする。
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use mm_ui_layout::{TransportAction, Viewer, ViewerState};
+use mm_ui_layout::{Viewer, ViewerState};
 use mm_ui_wgpu::Ui;
 
 use crate::win::commands;
@@ -54,29 +54,86 @@ impl TransportSync {
     }
 }
 
-/// バーの操作を実行する。ボタンはコマンドの表で（押せないものはバーが送らない）、ジョグバーは該当のビューアーのシークで。
-/// Program のシークは Timeline のスクラブと同じ経路（1 周で最後の 1 つ）で送るので、呼ぶ側が扱う。
-pub(super) fn run(shared: &Arc<Shared>, action: TransportAction) {
-    match action {
-        TransportAction::Command(id) => {
-            if let Err(e) = commands::run(shared, id) {
-                shared.edit.set_message(e);
-            }
+/// バーのボタンのコマンドを、キーやメニューと同じコマンドの表で実行する。押せないボタンはバーが送らない。
+pub(super) fn run_command(shared: &Arc<Shared>, id: &str) {
+    if let Err(e) = commands::run(shared, id) {
+        shared.edit.set_message(e);
+    }
+}
+
+/// 描画の 1 周に溜まったシーク。ビューアーごとに最後の 1 つだけを送る。途中の位置は次の位置に上書きされるので、
+/// マウスの移動のたびに再生スレッドにフレームを描かせない。
+#[derive(Debug, Default, PartialEq)]
+pub(super) struct Seeks {
+    program: Option<f64>,
+    source: Option<f64>,
+}
+
+impl Seeks {
+    pub(super) fn set(&mut self, viewer: Viewer, t: f64) {
+        match viewer {
+            Viewer::Program => self.program = Some(t),
+            Viewer::Source => self.source = Some(t),
         }
-        TransportAction::Seek {
-            viewer: Viewer::Source,
-            t,
-        } => {
-            if let Some(h) = shared.source.handle() {
-                if h.shared.playing.load(Ordering::SeqCst) {
-                    shared.source.send(Command::Pause);
-                }
-                shared.source.send(Command::Seek(t));
+    }
+
+    /// 溜めたシークを送る。スクラブは再生を止めて位置を追う（Timeline の目盛りのクリックと同じ）。
+    pub(super) fn send(self, shared: &Shared) {
+        if let Some(t) = self.program {
+            if shared.playing.load(Ordering::SeqCst) {
+                shared.send(Command::Pause);
             }
+            shared.send(Command::Seek(t));
         }
-        TransportAction::Seek {
-            viewer: Viewer::Program,
-            ..
-        } => {}
+        if let (Some(t), Some(h)) = (self.source, shared.source.handle()) {
+            if h.shared.playing.load(Ordering::SeqCst) {
+                shared.source.send(Command::Pause);
+            }
+            shared.source.send(Command::Seek(t));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::mpsc::channel;
+
+    use super::*;
+
+    #[test]
+    fn シークはビューアーごとに最後の_1_つだけを送る() {
+        let mut seeks = Seeks::default();
+        for t in [1.0, 2.0, 3.0] {
+            seeks.set(Viewer::Program, t);
+        }
+        seeks.set(Viewer::Source, 0.5);
+        seeks.set(Viewer::Source, 0.75);
+        assert_eq!(
+            seeks,
+            Seeks {
+                program: Some(3.0),
+                source: Some(0.75)
+            }
+        );
+        let shared = Shared::new();
+        let (tx, rx) = channel();
+        *shared.commands.lock().unwrap() = Some(tx);
+        seeks.send(&shared);
+        assert_eq!(rx.try_iter().collect::<Vec<_>>(), [Command::Seek(3.0)]);
+    }
+
+    #[test]
+    fn 再生中のスクラブは止めてから動かす() {
+        let shared = Shared::new();
+        let (tx, rx) = channel();
+        *shared.commands.lock().unwrap() = Some(tx);
+        shared.playing.store(true, Ordering::SeqCst);
+        let mut seeks = Seeks::default();
+        seeks.set(Viewer::Program, 2.0);
+        seeks.send(&shared);
+        assert_eq!(
+            rx.try_iter().collect::<Vec<_>>(),
+            [Command::Pause, Command::Seek(2.0)]
+        );
     }
 }

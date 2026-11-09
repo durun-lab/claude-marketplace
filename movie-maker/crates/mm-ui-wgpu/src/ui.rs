@@ -377,6 +377,7 @@ impl Ui {
         labels.extend(transport_labels(
             &self.layout,
             &self.transport,
+            &self.transport_controller,
             &self.palette,
             &self.font,
             text.measure(),
