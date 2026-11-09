@@ -18,6 +18,7 @@ mod hotpatch;
 mod inspector_ipc;
 mod ipc;
 mod keys;
+mod layout;
 mod media;
 mod media_ipc;
 mod mixer;
