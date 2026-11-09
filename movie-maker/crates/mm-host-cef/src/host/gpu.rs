@@ -6,20 +6,14 @@ use std::sync::Arc;
 use mm_gpu::{GpuContext, GpuRequest};
 use mm_types::GpuAdapterId;
 
-/// 名前の一部からアダプターを選ぶ。空なら `None`（高性能のアダプター）。
+/// 指定（`MM_GPU` と同じ書き方）からアダプターを選ぶ。空なら `None`（既定の選び方）。
 pub fn find_adapter(hint: &str) -> Result<Option<GpuAdapterId>, String> {
-    if hint.is_empty() {
+    if hint.trim().is_empty() {
         return Ok(None);
     }
-    let all = mm_gpu::enumerate_adapters();
-    all.iter()
-        .find(|a| a.name.contains(hint))
-        .cloned()
+    mm_gpu::find_adapter_id(hint)
         .map(Some)
-        .ok_or_else(|| {
-            let names: Vec<_> = all.iter().map(|a| a.name.as_str()).collect();
-            format!("{hint} を含む名前のアダプターが無い: {names:?}")
-        })
+        .map_err(|e| e.to_string())
 }
 
 /// CEF の共有ハンドルは D3D12 の `OpenSharedHandle` で開くので、バックエンドは dx12 に固定する。

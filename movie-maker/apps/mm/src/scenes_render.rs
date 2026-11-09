@@ -7,7 +7,7 @@ use mm_doc::{Composition, Project};
 use mm_node_api::Quality;
 use mm_runtime::{assemble, Backend, Engine, RuntimeConfig};
 use mm_trace::MetricsHandle;
-use mm_types::{CompositionId, GpuAdapterId, MmError, RationalTime, Result, Size};
+use mm_types::{CompositionId, MmError, RationalTime, Result, Size};
 
 use crate::perf::{percentile, Budget, Environment, Item, Limit, PerfArgs};
 use crate::project::load_project;
@@ -72,7 +72,7 @@ fn rig(args: &PerfArgs, env: &mut Environment, frame_cache: FrameCache) -> Resul
         config.encode = Backend::Sample;
     }
     if let Some(pattern) = &args.adapter {
-        config.gpu = Some(pick_adapter(pattern)?);
+        config.gpu = Some(mm_gpu::find_adapter_id(pattern)?);
     }
     if frame_cache == FrameCache::Off {
         config.frame_memory_bytes = Some(0);
@@ -84,19 +84,6 @@ fn rig(args: &PerfArgs, env: &mut Environment, frame_cache: FrameCache) -> Resul
         project,
         comp,
     })
-}
-
-/// 名前に `pattern`（大小文字を区別しない）を含む最初の GPU。
-fn pick_adapter(pattern: &str) -> Result<GpuAdapterId> {
-    let want = pattern.to_lowercase();
-    let all = mm_gpu::enumerate_adapters();
-    all.iter()
-        .find(|a| a.name.to_lowercase().contains(&want))
-        .cloned()
-        .ok_or_else(|| {
-            let names: Vec<&str> = all.iter().map(|a| a.name.as_str()).collect();
-            MmError::NotFound(format!("GPU {pattern} が無い（ある GPU: {names:?}）"))
-        })
 }
 
 impl Rig {

@@ -11,7 +11,7 @@ use common::{
     comp, dissolve, effect, gpu, layer, project, render_at, renderer, seconds, shader, solid,
 };
 use mm_doc::{Asset, Cut, Node, Project, Sequence};
-use mm_gpu::enumerate_adapters;
+use mm_gpu::find_adapter_id;
 use mm_render::{GpuContext, GpuRequest};
 use mm_testkit::decode::SampleMedia;
 use mm_testkit::fixtures::{invert_lut_asset, INVERT_LUT_ID, SAMPLE_ASSET_PATH};
@@ -111,10 +111,7 @@ fn golden_gpu() -> Option<Arc<GpuContext>> {
     if std::env::var(BACKEND_ENV).as_deref() != Ok("warp") {
         return gpu();
     }
-    let adapter = enumerate_adapters()
-        .into_iter()
-        .find(|a| a.name == WARP_ADAPTER)
-        .expect("WARP のアダプターが無い");
+    let adapter = find_adapter_id(WARP_ADAPTER).expect("WARP のアダプター");
     let request = GpuRequest {
         adapter: Some(adapter),
         backends: wgpu::Backends::DX12,

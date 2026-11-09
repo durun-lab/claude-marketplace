@@ -65,7 +65,7 @@ pub enum PerfCommand {
         /// 結果を `<シナリオ>.json` の固定の名前で書く（ベースラインの更新用）。
         #[arg(long)]
         baseline: bool,
-        /// 描画のシナリオ（playback、scrub）で使う GPU を、名前の一部（大小文字を区別しない）で選ぶ。
+        /// 描画のシナリオ（playback、scrub）で使う GPU。書き方は環境変数 `MM_GPU` と同じ（名前の一部、`luid:`、`index:`）。
         /// CI は `Microsoft Basic Render Driver`（WARP、D3D12 のソフトウェアの GPU）を指す。
         #[arg(long)]
         adapter: Option<String>,
@@ -293,7 +293,7 @@ pub struct PerfArgs {
     pub seeks: usize,
     /// 結果を `<シナリオ>.json` の固定の名前で書く（ベースラインの更新用）。
     pub baseline: bool,
-    /// 描画のシナリオで使う GPU の名前の一部。`None` は高性能のアダプター。
+    /// 描画のシナリオで使う GPU の指定（`MM_GPU` と同じ書き方）。`None` は既定の選び方。
     pub adapter: Option<String>,
     /// `export` のコーデックの上書き。`None` はプロジェクトのレンダーターゲットのまま。
     pub codec: Option<String>,

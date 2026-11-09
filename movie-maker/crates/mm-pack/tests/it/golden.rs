@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use mm_color_lut::LutColor;
 use mm_doc::{Layer, Node, Project};
-use mm_gpu::enumerate_adapters;
+use mm_gpu::find_adapter_id;
 use mm_node_api::{Quality, Services};
 use mm_nodes_basic::all_kinds;
 use mm_nodes_cef::WebCefKind;
@@ -43,10 +43,7 @@ pub(crate) fn services() -> Services {
 
 pub(crate) fn gpu() -> Option<Arc<GpuContext>> {
     let request = if std::env::var(BACKEND_ENV).as_deref() == Ok("warp") {
-        let adapter = enumerate_adapters()
-            .into_iter()
-            .find(|a| a.name == WARP_ADAPTER)
-            .expect("WARP のアダプターが無い");
+        let adapter = find_adapter_id(WARP_ADAPTER).expect("WARP のアダプター");
         GpuRequest {
             adapter: Some(adapter),
             backends: wgpu::Backends::DX12,

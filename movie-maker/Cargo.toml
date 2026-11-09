@@ -226,3 +226,14 @@ bindgen = { opt-level = 0 }
 clang-sys = { opt-level = 0 }
 cexpr = { opt-level = 0 }
 prettyplease = { opt-level = 0 }
+
+# wgpu-hal の D3D12 に、DXGI のアダプターを 1 つだけ開く `dx12::Instance::expose_adapter` を足した
+# v30.0.1（Vulkan の `expose_adapter` と同じ形）。`MM_GPU` で選んだ GPU だけにデバイスを作るのに使う。
+# wgpu-hal はワークスペースの path で naga と wgpu-types を引くので、同じリビジョンにそろえる。
+# wgpu を上げるときの当て直しの手順は docs/design/06-engine.md の GPU の選択にある。
+[patch.crates-io]
+naga = { git = "https://github.com/Durun/wgpu", rev = "53ad98f5ff79a7cf0027ae520e7453d06018efb6" }
+naga-types = { git = "https://github.com/Durun/wgpu", rev = "53ad98f5ff79a7cf0027ae520e7453d06018efb6" }
+wgpu-hal = { git = "https://github.com/Durun/wgpu", rev = "53ad98f5ff79a7cf0027ae520e7453d06018efb6" }
+wgpu-naga-bridge = { git = "https://github.com/Durun/wgpu", rev = "53ad98f5ff79a7cf0027ae520e7453d06018efb6" }
+wgpu-types = { git = "https://github.com/Durun/wgpu", rev = "53ad98f5ff79a7cf0027ae520e7453d06018efb6" }
