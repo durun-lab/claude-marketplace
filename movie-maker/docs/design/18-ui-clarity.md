@@ -246,19 +246,22 @@ Timeline の上端に置く（Resolve と CapCut と同じ）。左から並べ�
 | メニュー | 項目 |
 |---|---|
 | File | Import Media…、Export…（Deliver を開く）、Exit |
-| Edit | Undo、Redo、Split Clip、Lift、Extract、Mark In、Mark Out、Clear In and Out、Insert、Overwrite |
+| Edit | Undo、Redo、Lift、Extract、Mark In、Mark Out、Clear In and Out、Insert、Overwrite |
 | View | Zoom In、Zoom Out、Full Extent Zoom、Snapping、Track Height、Show Keyframe Editor、Hide Shy Layers、パネル（Tasks、Media、Story、Inspector など）、Diagnostics、Reset UI Layout |
 | Playback | Play / Stop、Play Reverse、Play Forward、Step One Frame Back / Forward、Go to Start、Go to End、Previous Edit、Next Edit、Go to Previous / Next Keyframe |
-| Timeline | Selection Tool、Trim Tool、Blade Tool |
+| Timeline | Selection Tool、Trim Tool、Blade Tool、Split Clip、Add Transition… |
 | Help | Keyboard Shortcuts…、About |
 
+- Split Clip と Add Transition… は Timeline に置く。Resolve の Timeline のメニューは、再生位置でクリップを割る Split Clip と、選んだ編集点に既定のトランジションを足す Add Transition を持つ [103]。Lift と Extract は選んだカットを抜くので、Resolve の Delete Selected と Ripple Delete と同じく Edit に置く [103]。
+
 - 項目は UI のコマンドの表から作り、メニューの中の並びと区切りは `menu.rs` がメニューごとのコマンドの ID の並びとして持つ。VS Code の `contributes.menus` が項目からコマンドを指してグループで区切るのと同じ形で [120]、KDE の KXmlGui も操作の集まりとメニューの並び（ui.rc）を分けて持つ [121]。区切りは空でないグループの間にだけ入れる。右クリックのメニュー（D3）も、当たった所ごとに同じ形の並びを置いて同じ関数（`menu::items`）で作る。
-- 表に無い ID は飛ばす。後の PR が足すコマンドの ID（`timeline.zoom_in`、`timeline.toggle_snapping`、`timeline.selection_tool`、`playback.previous_edit`、`source.clear_in_out`、`app.show_keyboard_shortcuts` など）は先に並びに置いてあり、表に足すとメニューに出る。項目がまだ無いメニュー（View、Timeline）は押せない見た目で出す。View のパネル（Tasks、Media など）、Diagnostics、Track Height の項目は、パネルを選ぶコマンドの形と行の高さを決める PR（L2、L3、T1 の後）が並びに足す。
+- 表に無い ID はスキップする。後の PR が足すコマンドの ID（`timeline.zoom_in`、`timeline.toggle_snapping`、`timeline.selection_tool`、`playback.previous_edit`、`source.clear_in_out`、`app.show_keyboard_shortcuts` など）は先に並びに置いてあり、表に足すとメニューに出る。項目がまだ無いメニューは、開いても何もできないので出さない（今は View。Z1 が Zoom を表に足すと出る）。View のパネル（Tasks、Media など）、Diagnostics、Track Height の項目は、パネルを選ぶコマンドの形と行の高さを決める PR（L2、L3、T1 の後）が並びに足す。
 - 項目の右にキーを出す。キーはメニューのアクセラレーターに登録せず、項目の文字の `\t` の後ろに見た目だけを書く。Windows のメニューは `\t` の後ろをキーの列に出し [126]、muda はアクセラレーターが無ければ項目の文字をそのまま使う [125]。キーの処理は今どおり `keys::dispatch` が持つ。
 - アクセラレーターを登録しない理由: Tauri は登録したアクセラレーターをアプリのメッセージループで `TranslateAcceleratorW((*msg).hwnd, …)` に通し、`WM_COMMAND` をキーを受けたウィンドウに送る [125]。サーフェスの子 HWND にフォーカスがあると `WM_COMMAND` はサーフェスに届き、メニューのイベントにならないままキーが消える（英字 1 つのキーに限らない）。WebView のキーは WebView2 のプロセスに届くので、この経路を通らない。
 - 押せるかとチェックの状態は、WebView に送る表（`mm:commands-changed`）と同じ元から置く。同期のスレッドが表の変化を見つけたら、メインスレッドで項目に置き直す。メニューから実行するコマンドは押せるかを見る（`commands::run`。押せない項目は Windows が選ばせない）。
 - パネルが持ち主のコマンドをメニューとキーから呼ぶと、Rust はウィンドウのフック（`commands::WindowHook`）で Tauri のイベント `mm:panel-command`（中身はコマンドの ID）を送り、Shell が Tasks の項目と同じくパネルのタブを開いて知らせる。File > Import Media… と Ctrl+I は Media を開いて取り込みを始め、Export… は Deliver を開く。Exit（閉じるボタンと同じく、描画と再生を止めてから閉じる）と About（名前とバージョンのダイアログ）も、ウィンドウ（Tauri の側）が同じフックで受ける。
-- キーでメニューを開くのは F10 とアクセスキー。F10 はメニューバーに入る Windows の決まりのキーで [127]、サーフェスは F10 を既定の処理に渡す。メニューの名前は `&File` のように頭の字をアクセスキーにし [126]、Alt+F、Alt+E、Alt+V、Alt+P、Alt+T、Alt+H で開く（サーフェスでは、Alt+英字の `WM_SYSCHAR` を既定の処理が受けて開く）。Alt を離したときのメニューモードは今どおり止める（`surface.rs` が `WM_SYSKEYUP` を既定の処理に渡さない。Alt+ドラッグの roll の後に次のキーを奪われないため）。キーの表に Alt+英字を足すときは、アクセスキーの字と重ねず、表が受けたキーの `WM_SYSCHAR` は既定の処理に渡さない（渡すとアクセスキーとして扱われる）。
+- キーでメニューを開くのは F10 とアクセスキー。F10 はメニューモードに入る Windows の標準のキーで [127]、サーフェスは F10 を既定のウィンドウプロシージャ（`DefWindowProcW`）に渡す。メニューの名前は `&File` のように先頭の字をアクセスキーにし [126]、Alt+F、Alt+E、Alt+P、Alt+T、Alt+H で開く（サーフェスでは、Alt+英字の `WM_SYSCHAR` を既定のウィンドウプロシージャが受けて開く）。Alt を離したときのメニューモードは今どおり止める（`surface.rs` が `WM_SYSKEYUP` を既定のウィンドウプロシージャに渡さない。Alt+ドラッグの roll の後に次のキーを奪われないため）。キーの表にある Alt+英字（L1 の Alt+X など）は、サーフェスが `WM_SYSCHAR` を既定のウィンドウプロシージャに渡さない（渡すとアクセスキーとして探され、合う字が無いと警告音が鳴る）。キーの表に Alt+英字を足すときは、アクセスキーの字（F、E、V、P、T、H）と重ねない。
+- WebView にフォーカスがあると、WebView2 は F10 をウィンドウに渡すが、Alt+英字は渡さない（Alt だけを押して離しても渡さないので、メニューモードに入らない）。そこで `transport.js` が `key_event` で送った、キーの表に無い Alt+英字は、ウィンドウのフックがウィンドウに `WM_SYSCOMMAND`（`SC_KEYMENU` とその字）を送ってメニューを開く [127]。どちらも、動いているアプリにキーを送って確かめた（2026-11-10）。
 
 ### Keyboard Shortcuts のウィンドウ
 
@@ -441,7 +444,7 @@ flowchart TB
 
 | PR | 中身 | 依存 | 触る範囲 | 終わりの条件 |
 |---|---|---|---|---|
-| D1 `feature/movie-maker-menu-bar` | メニューバー（コマンドの表から）。キーの見た目は項目の文字の `\t` の後ろ（アクセラレーターは登録しない）。チェックと押せるかの状態。Ctrl+I の Import Media。キーでメニューを開く手段 | B3 | `apps/movie-maker/src/win/menu.rs`（新）、`layout.rs`（新。`app.rs` からウィンドウを作る所と割り付けの関数を移す）、`commands.rs`、`keys.rs`、`surface.rs`（F10）、`ui/sdk/src/commands.ts`、`ui/shell/src/Shell.tsx` | ウィンドウの上端に File、Edit、View、Playback、Timeline、Help |
+| D1 `feature/movie-maker-menu-bar` | メニューバー（コマンドの表から）。キーの見た目は項目の文字の `\t` の後ろ（アクセラレーターは登録しない）。チェックと押せるかの状態。Ctrl+I の Import Media。キーでメニューを開く手段 | B3 | `apps/movie-maker/src/win/menu.rs`（新）、`layout.rs`（新。`app.rs` からウィンドウを作る所と割り付けの関数を移す）、`commands.rs`、`keys.rs`、`surface.rs`（F10）、`ui/sdk/src/commands.ts`、`ui/shell/src/Shell.tsx` | ウィンドウの上端に File、Edit、Playback、Timeline、Help（View は Z1 が Zoom を表に足すと出る） |
 | D2 `feature/movie-maker-shortcuts-window` | Keyboard Shortcuts のウィンドウ（`?`、絞り込み、Enter で実行） | B3、D1、Z1（記号のキーの名前） | `ui/shortcuts/`（新）、`ui/tools/build.ts`（ページの入口を足す）、`apps/movie-maker/src/win/layout.rs` か `menu.rs`（ウィンドウを開く。ウィンドウはコードで作り、`capabilities/default.json` は全部のウィンドウに当たる） | 「zoom」で絞ったウィンドウに Zoom In (=)、Zoom Out (-)、Full Extent Zoom (Shift+Z) |
 | D3 `feature/movie-maker-context-menus` | 右クリックのメニュー（`Window::popup_menu_at`） | B3、T3、Z4 | `apps/movie-maker/src/win/surface.rs`、`context_menu.rs`（新） | 項目の並びはテスト（ポップアップは PrintWindow に写らない） |
 | D4 `feature/movie-maker-empty-states` | 空の状態の案内（Program、Timeline、Inspector、Story） | 文字の PR、B3、T1（`paint.rs` を分けた後に足す） | `crates/mm-ui-layout/src/paint.rs`（空の Timeline）、`crates/mm-ui-wgpu/src/program.rs`、`ui/panels/inspector/src/InspectorPanel.tsx`、`ui/panels/story/src/StoryPanel.tsx` | 空のプロジェクトで Program と Timeline に案内、Inspector にコンポジションの要約 |

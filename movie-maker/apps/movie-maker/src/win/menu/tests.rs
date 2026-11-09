@@ -9,12 +9,9 @@ use crate::win::commands::{table, TABLE};
 use crate::win::playback::Command;
 use crate::win::sequence_edit::tests::sample_project;
 
-/// メニューバーに出さないコマンド。Stop は Play / Stop と J/K/L のキーで足り、ほかは Tasks の項目から呼ぶ。
-const NOT_IN_MENUS: &[&str] = &[
-    "clip.add_transition",
-    "export.choose_target",
-    "playback.stop",
-];
+/// メニューバーに出さないコマンド。Stop は Play / Stop と J/K/L のキーで足り、Choose Render Target… は
+/// Deliver のパネルの中の操作なので Tasks の項目から呼ぶ。
+const NOT_IN_MENUS: &[&str] = &["export.choose_target", "playback.stop"];
 
 /// 行を、項目の文字と区切り（`-`）にする。
 fn texts(lines: &[Line]) -> Vec<String> {
@@ -54,7 +51,6 @@ fn 項目は並びの順にコマンドの表の名前とキーの見た目で�
             "Undo\tCtrl+Z",
             "Redo\tCtrl+Y",
             "-",
-            "Split Clip\tB",
             "Lift\tDelete",
             "Extract\tBackspace",
             "-",
@@ -79,12 +75,34 @@ fn 項目は並びの順にコマンドの表の名前とキーの見た目で�
             "Go to End\tEnd",
         ]
     );
+    assert_eq!(
+        menu_texts(Menu::Timeline, &table),
+        ["Split Clip\tB", "Add Transition…"],
+        "ツールは後の PR が表に足す"
+    );
     assert_eq!(menu_texts(Menu::Help, &table), ["About"]);
     assert!(
         menu_texts(Menu::View, &table).is_empty(),
         "ズームとスナップは後の PR が表に足す"
     );
-    assert!(menu_texts(Menu::Timeline, &table).is_empty());
+}
+
+#[test]
+fn 項目の無いメニューはメニューバーに出さない() {
+    let table = table(&Shared::new());
+    let menus: Vec<Menu> = shown(&table).into_iter().map(|(m, _)| m).collect();
+    assert_eq!(
+        menus,
+        [
+            Menu::File,
+            Menu::Edit,
+            Menu::Playback,
+            Menu::Timeline,
+            Menu::Help
+        ],
+        "View は表に最初の View のコマンドが入ると出る"
+    );
+    assert!(shown(&table).iter().all(|(_, lines)| !lines.is_empty()));
 }
 
 #[test]
@@ -148,6 +166,7 @@ fn キーの見た目はタブの後ろに置き_名前のアンパサンドは�
 #[test]
 fn webview_に送る表のメニューはメニューの並びから引く() {
     assert_eq!(menu_of("clip.lift"), Some(Menu::Edit));
+    assert_eq!(menu_of("clip.split"), Some(Menu::Timeline));
     assert_eq!(menu_of("app.exit"), Some(Menu::File));
     assert_eq!(menu_of("app.show_about"), Some(Menu::Help));
     assert_eq!(menu_of("playback.stop"), None);

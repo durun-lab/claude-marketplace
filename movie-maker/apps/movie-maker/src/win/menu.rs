@@ -8,6 +8,8 @@ use tauri::menu::{
     CheckMenuItem, IsMenuItem, Menu as NativeMenu, MenuItem, PredefinedMenuItem, Submenu,
 };
 use tauri::{App, AppHandle, Emitter, Manager, Window, Wry};
+use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
+use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, SC_KEYMENU, WM_SYSCOMMAND};
 
 use crate::win::commands::{self, CommandView, Forward, State, WindowAction, PANEL_COMMAND_EVENT};
 use crate::win::state::Shared;
@@ -51,7 +53,7 @@ pub static BAR: &[(Menu, Groups)] = &[
         Menu::Edit,
         &[
             &["edit.undo", "edit.redo"],
-            &["clip.split", "clip.lift", "clip.extract"],
+            &["clip.lift", "clip.extract"],
             &["source.mark_in", "source.mark_out", "source.clear_in_out"],
             &["clip.insert", "clip.overwrite"],
         ],
@@ -92,11 +94,14 @@ pub static BAR: &[(Menu, Groups)] = &[
     ),
     (
         Menu::Timeline,
-        &[&[
-            "timeline.selection_tool",
-            "timeline.trim_tool",
-            "timeline.blade_tool",
-        ]],
+        &[
+            &[
+                "timeline.selection_tool",
+                "timeline.trim_tool",
+                "timeline.blade_tool",
+            ],
+            &["clip.split", "clip.add_transition"],
+        ],
     ),
     (
         Menu::Help,
@@ -222,11 +227,17 @@ fn apply<T: Reflect>(items: &[T], states: &[(&'static str, State)]) {
     }
 }
 
-/// グループの並びから Tauri のメニューの項目を作る。右クリックのメニューも同じ形の並びから作る。
-pub fn items(app: &AppHandle, groups: Groups, table: &[CommandView]) -> tauri::Result<Vec<Item>> {
-    lines(groups, table)
-        .iter()
-        .map(|line| Item::new(app, line))
+/// 項目と区切り線の並びから Tauri のメニューの項目を作る。右クリックのメニューも同じ形の並びから作る。
+pub fn items(app: &AppHandle, lines: &[Line]) -> tauri::Result<Vec<Item>> {
+    lines.iter().map(|line| Item::new(app, line)).collect()
+}
+
+/// メニューバーに出すメニューと、その項目と区切り線。項目の無いメニューは開いても何もできないので出さず、
+/// 後の PR が表にコマンドを足すと出る。
+pub fn shown(table: &[CommandView]) -> Vec<(Menu, Vec<Line<'_>>)> {
+    BAR.iter()
+        .map(|(menu, groups)| (*menu, lines(groups, table)))
+        .filter(|(_, lines)| !lines.is_empty())
         .collect()
 }
 
@@ -237,16 +248,10 @@ pub struct MenuBar(Vec<Item>);
 pub fn build(app: &AppHandle, table: &[CommandView]) -> tauri::Result<(NativeMenu<Wry>, MenuBar)> {
     let bar = NativeMenu::new(app)?;
     let mut all = Vec::new();
-    for (menu, groups) in BAR {
-        let items = items(app, groups, table)?;
+    for (menu, lines) in shown(table) {
+        let items = items(app, &lines)?;
         let natives: Vec<&dyn IsMenuItem<Wry>> = items.iter().map(Item::native).collect();
-        // 項目のまだ無いメニューも、メニューバーの形を見せるため押せない見た目で出す。
-        bar.append(&Submenu::with_items(
-            app,
-            menu.title(),
-            !items.is_empty(),
-            &natives,
-        )?)?;
+        bar.append(&Submenu::with_items(app, menu.title(), true, &natives)?)?;
         all.extend(items);
     }
     Ok((bar, MenuBar(all)))
@@ -267,7 +272,22 @@ pub fn connect(app: &App, window: &Window, shared: &Arc<Shared>, bar: MenuBar) {
             let _ = target.close();
         }
         Forward::Window(WindowAction::About) => about(&target),
+        Forward::MenuKey(c) => open_by_access_key(&target, c),
     });
+}
+
+/// Alt+英字と同じく、既定のウィンドウプロシージャにその字をアクセスキーとしてメニューを開かせる（合う字が無ければ警告音）。
+fn open_by_access_key(window: &Window, c: char) {
+    let Ok(hwnd) = window.hwnd() else { return };
+    let hwnd = HWND(hwnd.0 as isize as *mut _);
+    let _ = unsafe {
+        PostMessageW(
+            Some(hwnd),
+            WM_SYSCOMMAND,
+            WPARAM(SC_KEYMENU as usize),
+            LPARAM(c as isize),
+        )
+    };
 }
 
 /// 押せるかとチェックの状態をメニューバーに置く。同期のスレッドが表の変化を WebView へ送るときに呼ぶ。

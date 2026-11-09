@@ -350,6 +350,8 @@ pub enum Forward {
     /// パネルが持ち主のコマンドの ID。WebView の Shell が持ち主のパネルのタブを開き、パネルに知らせる。
     Panel(&'static str),
     Window(WindowAction),
+    /// WebView で押した、キーの表に無い Alt+英字の字（小文字）。ウィンドウがその字をアクセスキーとしてメニューを開く。
+    MenuKey(char),
 }
 
 /// ウィンドウのフックの中身。
@@ -365,7 +367,8 @@ impl WindowHook {
         let _ = self.0.set(Box::new(forward));
     }
 
-    fn send(&self, forward: Forward) -> Result<(), String> {
+    /// 置いた先へ渡す。ウィンドウを作る前は渡す先が無いので拒否する。
+    pub fn send(&self, forward: Forward) -> Result<(), String> {
         let f = self
             .0
             .get()

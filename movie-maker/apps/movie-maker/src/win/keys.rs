@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use crate::win::commands;
+use crate::win::commands::{self, Forward};
 use crate::win::state::Shared;
 
 /// コマンドの ID とキーの名前の組。ID の名前の順に並べ、同じ ID の中は画面に出すキーを先に置く。
@@ -107,13 +107,26 @@ pub fn label(key: &str) -> String {
     out
 }
 
-/// キーを 1 つ受けるエントリーポイント。`source` は "surface" か "webview"。
+/// Alt+英字のキーの名前（`Alt+KeyF`）の英字を小文字にしたもの。Ctrl や Shift と一緒のキーは含めない。
+fn access_char(key: &str) -> Option<char> {
+    let mut letters = key.strip_prefix("Alt+Key")?.chars();
+    match (letters.next(), letters.next()) {
+        (Some(c), None) if c.is_ascii_uppercase() => Some(c.to_ascii_lowercase()),
+        _ => None,
+    }
+}
+
+/// キーを 1 つ受けるエントリーポイント。`source` は "surface" か "webview"。WebView2 は Alt+英字をウィンドウに渡さず
+/// アクセスキーが効かないので、表に無い WebView の Alt+英字はウィンドウのフックでメニューを開かせる。
 pub fn dispatch(shared: &Arc<Shared>, source: &str, key: &str) {
     let _span = tracing::info_span!("window.key").entered();
-    if let Some(id) = command_for(key) {
-        if let Err(e) = commands::run_from_key(shared, id) {
-            tracing::warn!(key, error = %e, "キーのコマンドを実行できない");
-        }
+    let result = match (command_for(key), source, access_char(key)) {
+        (Some(id), _, _) => commands::run_from_key(shared, id),
+        (None, "webview", Some(c)) => shared.window_hook.send(Forward::MenuKey(c)),
+        _ => Ok(()),
+    };
+    if let Err(e) = result {
+        tracing::warn!(key, error = %e, "キーのコマンドを実行できない");
     }
     tracing::debug!(source, key, "key");
 }
@@ -191,15 +204,20 @@ mod tests {
         assert!(keys_of("export.start").is_empty());
     }
 
-    #[test]
-    fn ctrl_i_は_import_media_をウィンドウのフックで_shell_に渡す() {
-        use crate::win::commands::Forward;
-        let shared = Arc::new(Shared::new());
+    /// ウィンドウのフックに渡ったものを記録する。
+    fn record_forwards(shared: &Shared) -> Arc<std::sync::Mutex<Vec<Forward>>> {
         let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
         let sink = seen.clone();
         shared
             .window_hook
             .set(move |f| sink.lock().unwrap().push(f));
+        seen
+    }
+
+    #[test]
+    fn ctrl_i_は_import_media_をウィンドウのフックで_shell_に渡す() {
+        let shared = Arc::new(Shared::new());
+        let seen = record_forwards(&shared);
         dispatch(&shared, "surface", "Ctrl+KeyI");
         dispatch(&shared, "webview", "Ctrl+KeyI");
         assert_eq!(
@@ -209,6 +227,24 @@ mod tests {
                 Forward::Panel("media.import")
             ]
         );
+    }
+
+    #[test]
+    fn webview_の表に無い_alt_英字はウィンドウにメニューを開かせる() {
+        let shared = Arc::new(Shared::new());
+        let seen = record_forwards(&shared);
+        dispatch(&shared, "webview", "Alt+KeyF");
+        dispatch(&shared, "surface", "Alt+KeyE");
+        dispatch(&shared, "webview", "Ctrl+Alt+KeyE");
+        dispatch(&shared, "webview", "Alt+Digit1");
+        assert_eq!(
+            *seen.lock().unwrap(),
+            [Forward::MenuKey('f')],
+            "サーフェスの Alt+英字は WM_SYSCHAR で開く"
+        );
+        assert_eq!(access_char("Alt+KeyT"), Some('t'));
+        assert_eq!(access_char("Alt+KeyF10"), None);
+        assert_eq!(access_char("KeyF"), None);
     }
 
     #[test]
