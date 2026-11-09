@@ -60,7 +60,7 @@ pub use timeline::{
 };
 pub use timeline_layout::{TimelineLayout, Viewport, HEADER_W, RULER_H, SCROLLBAR_W};
 pub use transport::{
-    jog_track, transport_button, transport_labels, transport_quads, Target, TransportAction,
-    TransportController, TransportState, Viewer, ViewerState, TRANSPORT_H,
+    jog_track, transport_button, transport_labels, transport_quads, TransportAction,
+    TransportController, TransportPart, TransportState, Viewer, ViewerState, TRANSPORT_H,
 };
 pub use view_state::ViewState;

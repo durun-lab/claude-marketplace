@@ -42,7 +42,7 @@ pub(super) fn quads(icon: Icon, (cx, cy): (f32, f32), color: Color) -> Vec<Quad>
         Icon::Stop => lines.push(Rect::new(cx - 5.0, cy - 5.0, 10.0, 10.0)),
         Icon::MarkIn => bracket(&mut lines, cx - 3.0, cy, true),
         Icon::MarkOut => bracket(&mut lines, cx + 3.0, cy, false),
-        Icon::ClearMarks => {
+        Icon::ClearInOut => {
             bracket(&mut lines, cx - 5.0, cy, true);
             bracket(&mut lines, cx + 5.0, cy, false);
         }

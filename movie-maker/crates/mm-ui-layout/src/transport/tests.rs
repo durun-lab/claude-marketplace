@@ -43,30 +43,37 @@ pub(super) fn center(bar: Rect, viewer: Viewer, command: &str) -> (f32, f32) {
 }
 
 #[test]
-fn バーは映像の真下に同じ幅で付き_映像の高さはバーの分だけ減る() {
+fn バーは映像の領域の真下に同じ幅で付き_映像の領域の高さはバーの分だけ減る() {
     let l = layout(false);
-    assert_eq!(l.program_bar.y, l.program.bottom());
+    assert_eq!(l.program_transport.y, l.program.bottom());
     assert_eq!(
-        (l.program_bar.x, l.program_bar.w),
+        (l.program_transport.x, l.program_transport.w),
         (l.program.x, l.program.w)
     );
-    assert_eq!(l.program_bar.h, TRANSPORT_H);
-    assert_eq!(l.source_bar, None);
+    assert_eq!(l.program_transport.h, TRANSPORT_H);
+    assert_eq!(l.source_transport, None);
     let l = layout(true);
-    let (source, bar) = (l.source.expect("Source"), l.source_bar.expect("バー"));
+    let (source, bar) = (
+        l.source.expect("Source"),
+        l.source_transport.expect("Source の再生の操作のバー"),
+    );
     assert_eq!((bar.x, bar.y, bar.w), (source.x, source.bottom(), source.w));
-    assert_eq!(l.program_bar.bottom() + 4.0, l.timeline.y);
+    assert_eq!(l.program_transport.bottom() + 4.0, l.timeline.y);
 }
 
 #[test]
-fn 上から時刻の行_ジョグバー_ボタンの行の順に重ならずに並ぶ() {
+fn 上からタイムコードの行_ジョグバー_ボタンの行の順に重ならずに並ぶ() {
     let bar = Rect::new(0.0, 100.0, 470.0, TRANSPORT_H);
     let c = cells(bar, Viewer::Program);
-    assert_eq!((c.now.y, c.extra.y), (bar.y, bar.y));
-    assert_eq!(c.jog.y, c.now.bottom());
+    assert_eq!((c.position.y, c.range.y), (bar.y, bar.y));
+    assert_eq!(c.jog.y, c.position.bottom());
     assert!(c.buttons.iter().all(|b| b.rect.y == c.jog.bottom()));
     assert!(c.buttons.iter().all(|b| b.rect.bottom() <= bar.bottom()));
-    assert_eq!(c.now.right(), c.extra.x, "時刻の行の左と右は接する");
+    assert_eq!(
+        c.position.right(),
+        c.range.x,
+        "タイムコードの行の左の欄と右の欄は接する"
+    );
     assert_eq!(
         (c.jog.x, c.jog.w),
         (bar.x, bar.w),
@@ -135,57 +142,57 @@ fn 狭いバーではボタンの幅を縮めて行に収める() {
 }
 
 #[test]
-fn ボタンの当たり判定はボタンの矩形で_間と時刻の行は何も無い() {
+fn ボタンの当たり判定はボタンの矩形で_間とタイムコードの行は何も無い() {
     let l = layout(false);
-    let bar = l.program_bar;
+    let bar = l.program_transport;
     let (x, y) = center(bar, Viewer::Program, "playback.step_back");
     assert_eq!(
-        hit(bar, Viewer::Program, x, y),
-        Some(Target::Button("playback.step_back"))
+        part_in(bar, Viewer::Program, x, y),
+        Some(TransportPart::Button("playback.step_back"))
     );
     let c = cells(bar, Viewer::Program);
     let between = c.buttons[0].rect.right() + 0.5;
-    assert_eq!(hit(bar, Viewer::Program, between, y), None);
+    assert_eq!(part_in(bar, Viewer::Program, between, y), None);
     assert_eq!(
-        hit(bar, Viewer::Program, c.now.x + 4.0, c.now.y + 4.0),
+        part_in(bar, Viewer::Program, c.position.x + 4.0, c.position.y + 4.0),
         None
     );
     assert_eq!(
-        hit(bar, Viewer::Program, bar.x + 1.0, c.jog.y + 2.0),
-        Some(Target::Jog)
+        part_in(bar, Viewer::Program, bar.x + 1.0, c.jog.y + 2.0),
+        Some(TransportPart::Jog)
     );
 }
 
 #[test]
-fn play_test_が押す位置はバーのボタンとジョグバーの線() {
+fn play_test_が押す位置はバーのボタンとジョグバーの溝() {
     let l = layout(true);
     let rect = transport_button(&l, Viewer::Source, "source.clear_in_out").expect("ボタン");
     let (x, y) = (rect.x + rect.w / 2.0, rect.y + rect.h / 2.0);
     assert_eq!(
-        under(&l, x, y),
-        Some((Viewer::Source, Target::Button("source.clear_in_out")))
+        part_at(&l, x, y),
+        Some((Viewer::Source, TransportPart::Button("source.clear_in_out")))
     );
     assert_eq!(
         transport_button(&l, Viewer::Program, "source.mark_in"),
         None
     );
-    let track = jog_track(&l, Viewer::Program).expect("線");
+    let track = jog_track(&l, Viewer::Program).expect("ジョグバーの溝");
     assert_eq!(
-        under(&l, track.x, track.y + 1.0),
-        Some((Viewer::Program, Target::Jog))
+        part_at(&l, track.x, track.y + 1.0),
+        Some((Viewer::Program, TransportPart::Jog))
     );
 }
 
 #[test]
 fn 低いサーフェスではバーを出さずに映像に回す() {
     let l = split_viewers(600.0, 200.0, true);
-    assert_eq!(l.program_bar.h, 0.0);
+    assert_eq!(l.program_transport.h, 0.0);
     assert_eq!(
         l.program.bottom() + 4.0,
         l.timeline.y,
-        "映像が上の段を全部使う"
+        "映像の領域がビューアーの領域を全部使う"
     );
-    assert!(bar_of(&l, Viewer::Program).is_none());
+    assert!(transport_rect(&l, Viewer::Program).is_none());
     assert!(transport_quads(
         &l,
         &with_source(state(10.0)),
@@ -195,8 +202,8 @@ fn 低いサーフェスではバーを出さずに映像に回す() {
     .is_empty());
     let l = split_viewers(600.0, 300.0, true);
     assert_eq!(
-        l.program_bar.h, TRANSPORT_H,
-        "映像がバーの高さ以上あれば出す"
+        l.program_transport.h, TRANSPORT_H,
+        "映像の領域がバーの高さ以上残るなら出す"
     );
     assert!(l.program.h >= TRANSPORT_H);
 }
@@ -265,7 +272,7 @@ fn 押せないボタンは薄く_ポインターが乗ったボタンは背景�
     let dim = p.label.with_alpha(0.3);
     let back = quads_in(&plain, &l, Viewer::Program, "playback.step_back");
     assert!(back.iter().all(|q| q.color == dim), "薄いアイコン");
-    let (x, y) = center(l.program_bar, Viewer::Program, "playback.stop");
+    let (x, y) = center(l.program_transport, Viewer::Program, "playback.stop");
     ctl.handle(crate::controller::PointerEvent::Move { x, y }, &l, &s);
     let hovered = quads_in(
         &transport_quads(&l, &s, &ctl, &p),
@@ -336,11 +343,11 @@ fn ジョグバーは再生位置までを塗り_source_はイン点とアウト
             .find(|q| q.color == p.accent.with_alpha(alpha) && bar.contains(q.rect.x, q.rect.y))
             .map(|q| q.rect)
     };
-    let pt = jog_track(&l, Viewer::Program).expect("線");
-    let fp = fill(l.program_bar, 0.7).expect("再生位置まで");
+    let pt = jog_track(&l, Viewer::Program).expect("ジョグバーの溝");
+    let fp = fill(l.program_transport, 0.7).expect("再生位置まで");
     assert!((fp.w - pt.w / 2.0).abs() < 1e-3);
-    let st = jog_track(&l, Viewer::Source).expect("線");
-    let fs = fill(l.source_bar.expect("バー"), 0.5).expect("範囲");
+    let st = jog_track(&l, Viewer::Source).expect("ジョグバーの溝");
+    let fs = fill(l.source_transport.expect("Source の再生の操作のバー"), 0.5).expect("範囲");
     assert!((fs.x - (st.x + st.w / 4.0)).abs() < 1e-3);
     assert!((fs.w - st.w / 2.0).abs() < 1e-3);
 }

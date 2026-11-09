@@ -286,7 +286,7 @@ fn run(
     let mut doc = DocSync::default();
     let mut source = SourceSync::default();
     let mut drawing = DrawingSync::default();
-    let mut bar = TransportSync::default();
+    let mut transport = TransportSync::default();
     let mut failed_frames = 0u32;
     // HWND が破棄された後に present し続けないよう、毎周で生死を確かめる。
     while !quit.load(Ordering::SeqCst) && surface::is_alive(hwnd) {
@@ -301,13 +301,13 @@ fn run(
             doc = DocSync::default();
             source = SourceSync::default();
             drawing = DrawingSync::default();
-            bar = TransportSync::default();
+            transport = TransportSync::default();
         }
         view.configure(hwnd, size);
         doc.refresh(shared, &mut view.ui);
         source.refresh(shared, &mut view);
         drawing.refresh(shared, &mut view.ui);
-        bar.refresh(shared, &mut view.ui);
+        transport.refresh(shared, &mut view.ui);
         handle_input(shared, &mut view.ui, &doc);
         if let Some(state) = view.ui.view_state() {
             shared.view.publish(state);

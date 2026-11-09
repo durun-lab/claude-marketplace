@@ -49,7 +49,7 @@ pub struct Env<'a> {
     pub test: &'a PlayTest,
 }
 
-/// 結果の記録。段ごとの合否と、撮ったスクリーンショット。
+/// 結果の記録。手順ごとの合否と、撮ったスクリーンショット。
 #[derive(Default)]
 struct Log {
     steps: Map<String, Value>,
@@ -63,7 +63,7 @@ impl Log {
         ok
     }
 
-    /// 確かめられなかった段。合否には数えない。
+    /// 確かめられなかった手順。合否には数えない。
     fn skip(&mut self, name: &str, reason: &str) {
         self.steps
             .insert(name.to_owned(), json!({ "skipped": reason }));
@@ -91,7 +91,7 @@ fn press(env: &Env<'_>, place: &Placement, viewer: Viewer, id: &str) -> bool {
     true
 }
 
-/// ジョグバーの全体の線の、比 `frac` の点（クライアントの物理ピクセル）。
+/// ジョグバーの溝の、比 `frac` の位置（クライアントの物理ピクセル）。
 fn jog_at(place: &Placement, viewer: Viewer, frac: f32) -> Option<(i32, i32)> {
     let t = place.jog_track(viewer)?;
     Some(place.surface_point((t.x + t.w * frac, t.y + t.h / 2.0)))
@@ -148,7 +148,7 @@ fn program_steps(env: &Env<'_>, log: &mut Log, place: &Placement) {
     );
 }
 
-/// Go to End を押したまま映像の上へずらして離すと、何も起きない。
+/// Go to End を押したまま映像の領域の上へずらして離すと、何も起きない。
 fn release_off_step(env: &Env<'_>, log: &mut Log, place: &Placement) {
     let Some(from) = place.transport_button(Viewer::Program, "playback.go_to_end") else {
         log.step("release_off_button", false, json!("ボタンが無い"));
@@ -214,7 +214,7 @@ fn open_source(env: &Env<'_>, log: &mut Log) -> Option<Arc<SourceHandle>> {
     handle.filter(|_| opened && shown)
 }
 
-/// Source のジョグバーで位置を決めて In と Out のボタンを押し、両方の点が付くのを待つ。
+/// Source のジョグバーで位置を決めて In と Out のボタンを押し、イン点とアウト点が付くのを待つ。
 fn mark_steps(env: &Env<'_>, place: &Placement, h: &SourceHandle) -> bool {
     let fps = h.fps.to_f64();
     let tolerance = jog_tolerance(place, Viewer::Source, h.duration, fps) + 1.0 / fps;
@@ -269,10 +269,10 @@ fn source_steps(env: &Env<'_>, log: &mut Log) {
     alt_x_step(env, log, &place, &h);
 }
 
-/// 点を付け直し、Source の映像をクリックしてサーフェスにフォーカスを置き、Alt+X を `SendInput` で押す。
+/// イン点とアウト点を付け直し、Source の映像の領域をクリックしてサーフェスにフォーカスを置き、Alt+X を `SendInput` で押す。
 fn alt_x_step(env: &Env<'_>, log: &mut Log, place: &Placement, h: &SourceHandle) {
     if !mark_steps(env, place, h) {
-        log.step("alt_x", false, json!("点を付けられない"));
+        log.step("alt_x", false, json!("イン点とアウト点を付けられない"));
         return;
     }
     if let Some(video) = place.surface.source {

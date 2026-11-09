@@ -1,7 +1,10 @@
 //! 再生の操作のバーのポインター操作。ボタンは押して、同じボタンの上で離したときに実行する（Windows のボタンと同じく、
 //! 押したままボタンの外へずらして離せば取りやめられる）。ジョグバーは押したときとドラッグ中にシークする。
 
-use super::{bar_of, cells, jog_time, under, Target, TransportAction, TransportState, Viewer};
+use super::{
+    cells, jog_time, part_at, transport_rect, TransportAction, TransportPart, TransportState,
+    Viewer,
+};
 use crate::controller::PointerEvent;
 use crate::screen::SurfaceLayout;
 
@@ -12,20 +15,20 @@ pub struct TransportController {
     drag: Option<Viewer>,
     /// 押したまま離していないボタン。
     pressed: Option<(Viewer, &'static str)>,
-    /// ポインターの下の部品。離したときの位置にも使う（離したことの入力は位置を持たない）。
-    hover: Option<(Viewer, Target)>,
+    /// ポインターの下のバーの部品。離したときの位置にも使う（離したことの入力は位置を持たない）。
+    hover: Option<(Viewer, TransportPart)>,
 }
 
 impl TransportController {
-    /// ポインターが乗っている部品。
-    pub fn hover(&self) -> Option<(Viewer, Target)> {
+    /// ポインターが乗っているバーの部品。
+    pub fn hover(&self) -> Option<(Viewer, TransportPart)> {
         self.hover
     }
 
     /// 押したまま、ポインターがその上にあるボタン（押した見た目にし、離せば実行する）。
     pub(crate) fn pressed(&self) -> Option<(Viewer, &'static str)> {
         self.pressed
-            .filter(|(v, id)| self.hover == Some((*v, Target::Button(id))))
+            .filter(|(v, id)| self.hover == Some((*v, TransportPart::Button(id))))
     }
 
     /// 論理ピクセルのポインターの入力を受ける。
@@ -37,11 +40,11 @@ impl TransportController {
     ) -> Vec<TransportAction> {
         match ev {
             PointerEvent::Down { x, y, .. } => {
-                self.hover = under(layout, x, y);
+                self.hover = part_at(layout, x, y);
                 self.down(x, layout, state)
             }
             PointerEvent::Move { x, y } => {
-                self.hover = under(layout, x, y);
+                self.hover = part_at(layout, x, y);
                 self.seek(x, layout, state).into_iter().collect()
             }
             PointerEvent::Up => {
@@ -68,11 +71,11 @@ impl TransportController {
         state: &TransportState,
     ) -> Vec<TransportAction> {
         match self.hover {
-            Some((viewer, Target::Jog)) => {
+            Some((viewer, TransportPart::Jog)) => {
                 self.drag = Some(viewer);
                 self.seek(x, layout, state).into_iter().collect()
             }
-            Some((viewer, Target::Button(id))) if enabled(state, viewer, id) => {
+            Some((viewer, TransportPart::Button(id))) if enabled(state, viewer, id) => {
                 self.pressed = Some((viewer, id));
                 Vec::new()
             }
@@ -96,7 +99,7 @@ impl TransportController {
         state: &TransportState,
     ) -> Option<TransportAction> {
         let viewer = self.drag?;
-        let bar = bar_of(layout, viewer)?;
+        let bar = transport_rect(layout, viewer)?;
         let duration = state.of(viewer)?.duration;
         if duration <= 0.0 {
             return None;

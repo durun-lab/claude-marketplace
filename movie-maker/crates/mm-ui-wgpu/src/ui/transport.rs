@@ -28,7 +28,7 @@ impl Ui {
         p.fps = self.model.fps;
     }
 
-    /// バーの矩形。サーフェスの座標（物理ピクセル）。
+    /// 再生の操作のバーの矩形。サーフェスの座標（物理ピクセル）。
     pub(super) fn transport_quads(&mut self) -> Vec<Quad> {
         self.sync_program();
         let mut quads = transport_quads(

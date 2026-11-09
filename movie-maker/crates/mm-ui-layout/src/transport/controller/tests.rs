@@ -33,8 +33,8 @@ fn click(
     out
 }
 
-fn program_bar(l: &SurfaceLayout) -> Rect {
-    l.program_bar
+fn program_transport(l: &SurfaceLayout) -> Rect {
+    l.program_transport
 }
 
 #[test]
@@ -42,7 +42,11 @@ fn ボタンは押した時には何もせず_離した時にそのコマンド�
     let l = layout(true);
     let s = with_source(state(10.0));
     let mut ctl = TransportController::default();
-    let at = center(program_bar(&l), Viewer::Program, "playback.play_forward");
+    let at = center(
+        program_transport(&l),
+        Viewer::Program,
+        "playback.play_forward",
+    );
     assert!(
         ctl.handle(down(at.0, at.1), &l, &s).is_empty(),
         "押しただけ"
@@ -56,9 +60,9 @@ fn ボタンは押した時には何もせず_離した時にそのコマンド�
         [TransportAction::Command("playback.play_forward")]
     );
     assert_eq!(ctl.pressed(), None);
-    let source_bar = l.source_bar.expect("バー");
+    let source_transport = l.source_transport.expect("Source の再生の操作のバー");
     for id in ["source.mark_in", "source.clear_in_out", "clip.overwrite"] {
-        let at = center(source_bar, Viewer::Source, id);
+        let at = center(source_transport, Viewer::Source, id);
         assert_eq!(click(&mut ctl, &l, &s, at), [TransportAction::Command(id)]);
     }
 }
@@ -68,7 +72,7 @@ fn 押したままボタンの外で離すと取りやめ_戻って離せば実�
     let l = layout(false);
     let s = state(10.0);
     let mut ctl = TransportController::default();
-    let at = center(program_bar(&l), Viewer::Program, "playback.go_to_end");
+    let at = center(program_transport(&l), Viewer::Program, "playback.go_to_end");
     let off = (at.0, l.program.y + 10.0);
     ctl.handle(down(at.0, at.1), &l, &s);
     ctl.handle(moved(off), &l, &s);
@@ -92,7 +96,7 @@ fn 別のボタンの上で離しても_取り消しでも実行しない() {
     let l = layout(false);
     let s = state(10.0);
     let mut ctl = TransportController::default();
-    let bar = program_bar(&l);
+    let bar = program_transport(&l);
     let start = center(bar, Viewer::Program, "playback.go_to_start");
     let end = center(bar, Viewer::Program, "playback.go_to_end");
     ctl.handle(down(start.0, start.1), &l, &s);
@@ -121,7 +125,7 @@ fn 押せないボタンは押しても離しても何も返さない() {
     let mut s = with_source(state(10.0));
     s.source.as_mut().expect("Source").disabled = vec!["clip.insert"];
     let mut ctl = TransportController::default();
-    let bar = l.source_bar.expect("バー");
+    let bar = l.source_transport.expect("Source の再生の操作のバー");
     let at = center(bar, Viewer::Source, "clip.insert");
     assert!(click(&mut ctl, &l, &s, at).is_empty());
     let at = center(bar, Viewer::Source, "clip.overwrite");
@@ -138,7 +142,7 @@ fn ジョグバーは押した位置とドラッグ中の位置へシークし_�
     let l = layout(false);
     let s = state(10.0);
     let mut ctl = TransportController::default();
-    let track = jog_track(&l, Viewer::Program).expect("線");
+    let track = jog_track(&l, Viewer::Program).expect("ジョグバーの溝");
     let y = track.y + track.h / 2.0;
     let at = |frac: f32| track.x + track.w * frac;
     let seek = |t: f64| TransportAction::Seek {
@@ -146,7 +150,7 @@ fn ジョグバーは押した位置とドラッグ中の位置へシークし_�
         t,
     };
     assert_eq!(ctl.handle(down(at(0.5), y), &l, &s), [seek(5.0)]);
-    // ドラッグは映像の上まで出ても追い、線の外は端に寄せる。
+    // ドラッグは映像の領域の上まで出ても追い、溝の外は端に寄せる。
     assert_eq!(ctl.handle(moved((at(1.5), 10.0)), &l, &s), [seek(10.0)]);
     assert_eq!(ctl.handle(moved((at(-0.5), 10.0)), &l, &s), [seek(0.0)]);
     assert!(ctl.handle(PointerEvent::Up, &l, &s).is_empty());
@@ -157,7 +161,7 @@ fn ジョグバーは押した位置とドラッグ中の位置へシークし_�
 fn 長さの無いバーのジョグバーはシークしない() {
     let l = layout(false);
     let mut ctl = TransportController::default();
-    let track = jog_track(&l, Viewer::Program).expect("線");
+    let track = jog_track(&l, Viewer::Program).expect("ジョグバーの溝");
     let out = ctl.handle(down(track.x + 10.0, track.y + 4.0), &l, &state(0.0));
     assert!(out.is_empty());
 }
@@ -166,7 +170,7 @@ fn 長さの無いバーのジョグバーはシークしない() {
 fn source_のジョグバーは_source_へシークする() {
     let l = layout(true);
     let s = with_source(state(10.0));
-    let track = jog_track(&l, Viewer::Source).expect("線");
+    let track = jog_track(&l, Viewer::Source).expect("ジョグバーの溝");
     let mut ctl = TransportController::default();
     let out = ctl.handle(down(track.x + track.w / 4.0, track.y + 4.0), &l, &s);
     assert_eq!(
@@ -183,11 +187,11 @@ fn ポインターの下のボタンを覚え_出ると忘れる() {
     let l = layout(false);
     let s = state(10.0);
     let mut ctl = TransportController::default();
-    let at = center(program_bar(&l), Viewer::Program, "playback.go_to_end");
+    let at = center(program_transport(&l), Viewer::Program, "playback.go_to_end");
     ctl.handle(moved(at), &l, &s);
     assert_eq!(
         ctl.hover(),
-        Some((Viewer::Program, Target::Button("playback.go_to_end")))
+        Some((Viewer::Program, TransportPart::Button("playback.go_to_end")))
     );
     ctl.handle(PointerEvent::Leave, &l, &s);
     assert_eq!(ctl.hover(), None);

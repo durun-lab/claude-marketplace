@@ -193,7 +193,7 @@ pub static TABLE: &[Spec] = &[
         id: "source.clear_in_out",
         name: "Clear In and Out",
         description: Some("Remove the In and Out points of the clip open in Source"),
-        owner: Owner::App(Action::Edit(EditAction::ClearMarks)),
+        owner: Owner::App(Action::Edit(EditAction::ClearInOut)),
     },
     Spec {
         id: "source.mark_in",
@@ -247,9 +247,9 @@ impl Ready {
     }
 
     fn state(&self, spec: &Spec) -> State {
-        use EditAction::{ClearMarks, Extract, Insert, Lift, MarkIn, MarkOut, Overwrite, Split};
+        use EditAction::{ClearInOut, Extract, Insert, Lift, MarkIn, MarkOut, Overwrite, Split};
         let enabled = match spec.owner {
-            Owner::App(Action::Edit(ClearMarks | MarkIn | MarkOut)) => self.source_open,
+            Owner::App(Action::Edit(ClearInOut | MarkIn | MarkOut)) => self.source_open,
             Owner::App(Action::Edit(Insert | Overwrite)) => self.source_open && self.sequence,
             Owner::App(Action::Edit(Split)) => self.sequence,
             Owner::App(Action::Edit(Lift | Extract)) => self.cut_selected,

@@ -11,14 +11,14 @@ use crate::win::commands;
 use crate::win::playback::Command;
 use crate::win::state::Shared;
 
-/// 押せるかの計算を、変わったときだけやり直すための覚え。
+/// 押せるかとイン点・アウト点を、通し番号が変わったときだけ計算し直すために持つ、直前の計算の結果。
 #[derive(Default)]
 pub(super) struct TransportSync {
     /// 押せるかを決める状態の通し番号（編集、カットの選択、Source を開く・閉じる）。
     key: Option<(u64, u64, u64)>,
     disabled: Vec<&'static str>,
     /// 開いている素材のイン点とアウト点（素材の秒）。
-    marks: (Option<f64>, Option<f64>),
+    in_out: (Option<f64>, Option<f64>),
 }
 
 impl TransportSync {
@@ -32,7 +32,7 @@ impl TransportSync {
         if self.key != Some(key) {
             self.key = Some(key);
             self.disabled = commands::disabled_ids(shared);
-            self.marks = source.as_ref().map_or((None, None), |h| {
+            self.in_out = source.as_ref().map_or((None, None), |h| {
                 crate::win::source::marks_of(shared, &h.asset)
             });
         }
@@ -46,8 +46,8 @@ impl TransportSync {
             duration: h.duration,
             fps: h.fps.to_f64(),
             playing: h.shared.playing.load(Ordering::SeqCst),
-            mark_in: self.marks.0,
-            mark_out: self.marks.1,
+            mark_in: self.in_out.0,
+            mark_out: self.in_out.1,
             disabled: self.disabled.clone(),
         });
         ui.set_transport(program, source);

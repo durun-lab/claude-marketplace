@@ -1,4 +1,4 @@
-//! 再生の操作のバー。Program と Source のそれぞれの映像の真下に、時刻の行、ジョグバー（全体の上の再生位置）、
+//! 再生の操作のバー。Program と Source のそれぞれの映像の領域の真下に、タイムコードの行、ジョグバー（全体の上の再生位置）、
 //! ボタンの行を上から重ねる（Premiere の Program モニターの下端と同じ並び）。座標はサーフェスの論理ピクセル。
 //!
 //! バーの中の矩形は [`cells`] 1 か所で決め、描く関数（`transport/paint.rs`）、当たり判定（[`TransportController`]）、
@@ -16,18 +16,18 @@ use crate::screen::SurfaceLayout;
 pub use controller::TransportController;
 pub use paint::{transport_labels, transport_quads};
 
-/// バーの高さ（時刻の行、ジョグバー、ボタンの行）。
-pub const TRANSPORT_H: f32 = TIME_H + JOG_H + ROW_H;
-/// 時刻の行の高さ。字の大きさ 12 の 1 行（15）が収まる。
-const TIME_H: f32 = 16.0;
+/// バーの高さ（タイムコードの行、ジョグバー、ボタンの行）。
+pub const TRANSPORT_H: f32 = TIMECODE_ROW_H + JOG_H + BUTTON_ROW_H;
+/// タイムコードの行の高さ。字の大きさ 12 の 1 行（15）が収まる。
+const TIMECODE_ROW_H: f32 = 16.0;
 /// ジョグバーの、クリックを受ける高さ。
 const JOG_H: f32 = 14.0;
 /// ボタンの行の高さ。
-const ROW_H: f32 = 26.0;
-/// 時刻の行、ジョグバーの線、ボタンの行の左右の余白。
+const BUTTON_ROW_H: f32 = 26.0;
+/// タイムコードの行、ジョグバーの溝、ボタンの行の左右の余白。
 const PAD: f32 = 8.0;
-/// 再生位置の時刻を出す、時刻の行の左の欄の幅の上限。
-const NOW_W: f32 = 100.0;
+/// 再生位置のタイムコードを出す、タイムコードの行の左の欄の幅の上限。
+const POSITION_W: f32 = 100.0;
 /// アイコンのボタンの幅、ボタンの間隔、グループの間隔。
 const BUTTON_W: f32 = 28.0;
 const BUTTON_GAP: f32 = 2.0;
@@ -55,7 +55,7 @@ pub(crate) enum Icon {
     GoEnd,
     MarkIn,
     MarkOut,
-    ClearMarks,
+    ClearInOut,
     Insert,
     Overwrite,
 }
@@ -94,8 +94,9 @@ const fn named_button(
     }
 }
 
-/// Program のバーのボタン。Resolve の Viewer の並び（先頭、逆再生、停止、再生、末尾）に、Premiere の 1 フレームの送りを足す。
-/// 再生と停止を別のボタンにし、同じ形のボタンを 2 つ置かない（Space は今どおり再生と停止を切り替える）。
+/// Program のバーのボタン。Resolve の Viewer の並び（Go to Start、Play Reverse、Stop、Play Forward、Go to End）に、
+/// Premiere の Step One Frame Back / Forward を足す。再生と停止を別のボタンにし、同じ形のボタンを 2 つ置かない
+/// （Space は今どおり再生と停止を切り替える）。
 const PROGRAM_BUTTONS: &[ButtonSpec] = &[
     icon_button("playback.go_to_start", Icon::GoStart, false),
     icon_button("playback.step_back", Icon::StepBack, false),
@@ -106,11 +107,11 @@ const PROGRAM_BUTTONS: &[ButtonSpec] = &[
     icon_button("playback.go_to_end", Icon::GoEnd, false),
 ];
 
-/// Source のバーのボタン。イン点とアウト点のボタン、J/K/L、Timeline に入れるボタン。
+/// Source のバーのボタン。イン点とアウト点のボタン、Play Reverse、Stop、Play Forward（J、K、L）、Insert と Overwrite のボタン。
 const SOURCE_BUTTONS: &[ButtonSpec] = &[
     named_button("source.mark_in", Icon::MarkIn, "In", false),
     named_button("source.mark_out", Icon::MarkOut, "Out", false),
-    named_button("source.clear_in_out", Icon::ClearMarks, "Clear", false),
+    named_button("source.clear_in_out", Icon::ClearInOut, "Clear", false),
     icon_button("playback.play_reverse", Icon::PlayReverse, true),
     icon_button("playback.stop", Icon::Stop, false),
     icon_button("playback.play_forward", Icon::PlayForward, false),
@@ -125,7 +126,7 @@ fn buttons_of(viewer: Viewer) -> &'static [ButtonSpec] {
     }
 }
 
-/// 1 つのバーが出す状態。時刻と長さは秒。
+/// 1 つのバーが出す状態。再生位置と長さは秒。
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct ViewerState {
     pub t: f64,
@@ -162,37 +163,37 @@ impl TransportState {
     }
 }
 
-/// 割り付けのバーの矩形。上の段が低くてバーを出していなければ `None`。
-pub(crate) fn bar_of(layout: &SurfaceLayout, viewer: Viewer) -> Option<Rect> {
+/// 割り付けの、`viewer` の再生の操作のバーの矩形。ビューアーの領域が低くてバーを出していなければ `None`。
+pub(crate) fn transport_rect(layout: &SurfaceLayout, viewer: Viewer) -> Option<Rect> {
     let bar = match viewer {
-        Viewer::Program => Some(layout.program_bar),
-        Viewer::Source => layout.source_bar,
+        Viewer::Program => Some(layout.program_transport),
+        Viewer::Source => layout.source_transport,
     };
     bar.filter(|b| b.h > 0.0 && b.w > 0.0)
 }
 
-/// 1 つのボタンの矩形。
+/// 1 つのボタンの矩形と定義。
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Slot {
+pub(crate) struct ButtonCell {
     pub spec: &'static ButtonSpec,
     pub rect: Rect,
     /// アイコンの代わりに名前を出す。
     pub named: bool,
 }
 
-/// バーの中の矩形。
+/// バーの部品の矩形。
 #[derive(Debug, Clone)]
 pub(crate) struct Cells {
-    /// 時刻の行の左（再生位置）と右（Program は全体の長さ、Source はイン点とアウト点）。
-    pub now: Rect,
-    pub extra: Rect,
+    /// タイムコードの行の左の欄（再生位置）と右の欄（Program は全体の長さ、Source はイン点とアウト点）。
+    pub position: Rect,
+    pub range: Rect,
     /// ジョグバーのクリックを受ける矩形（バーの全幅）。
     pub jog: Rect,
-    pub buttons: Vec<Slot>,
+    pub buttons: Vec<ButtonCell>,
 }
 
 impl Cells {
-    /// ジョグバーの全体の線（クリックを受ける矩形の左右を余白の分だけ縮めた所）。
+    /// ジョグバーの溝（クリックを受ける矩形の左右を余白の分だけ縮めた所）。
     pub(crate) fn track(&self) -> Rect {
         Rect::new(
             self.jog.x + PAD,
@@ -203,18 +204,23 @@ impl Cells {
     }
 }
 
-/// `bar` の中の矩形。上から時刻の行、ジョグバー、ボタンの行。
+/// 再生の操作のバー `bar` の部品の矩形。上からタイムコードの行、ジョグバー、ボタンの行。
 pub(crate) fn cells(bar: Rect, viewer: Viewer) -> Cells {
     let (x, w) = (bar.x + PAD, (bar.w - 2.0 * PAD).max(0.0));
-    let time_h = TIME_H.min(bar.h);
-    let now_w = NOW_W.min(w / 2.0);
-    let now = Rect::new(x, bar.y, now_w, time_h);
-    let extra = Rect::new(x + now_w, bar.y, w - now_w, time_h);
-    let jog = Rect::new(bar.x, now.bottom(), bar.w, JOG_H.min(bar.h - time_h));
+    let timecode_h = TIMECODE_ROW_H.min(bar.h);
+    let position_w = POSITION_W.min(w / 2.0);
+    let position = Rect::new(x, bar.y, position_w, timecode_h);
+    let range = Rect::new(x + position_w, bar.y, w - position_w, timecode_h);
+    let jog = Rect::new(
+        bar.x,
+        position.bottom(),
+        bar.w,
+        JOG_H.min(bar.h - timecode_h),
+    );
     let row = Rect::new(x, jog.bottom(), w, (bar.bottom() - jog.bottom()).max(0.0));
     Cells {
-        now,
-        extra,
+        position,
+        range,
         jog,
         buttons: place_buttons(row, buttons_of(viewer)),
     }
@@ -222,7 +228,7 @@ pub(crate) fn cells(bar: Rect, viewer: Viewer) -> Cells {
 
 /// ボタンを行の中央に並べる。名前のボタンは、全部の名前が入るときだけ名前で出し、入らなければアイコンにする。
 /// アイコンでも入らなければ、幅を縮める。
-fn place_buttons(row: Rect, specs: &'static [ButtonSpec]) -> Vec<Slot> {
+fn place_buttons(row: Rect, specs: &'static [ButtonSpec]) -> Vec<ButtonCell> {
     let gaps: f32 = specs.iter().skip(1).map(gap_before).sum();
     let named_total = specs.iter().map(named_width).sum::<f32>() + gaps;
     let named = specs.iter().any(|s| s.name.is_some()) && named_total <= row.w;
@@ -239,7 +245,7 @@ fn place_buttons(row: Rect, specs: &'static [ButtonSpec]) -> Vec<Slot> {
             }
             let rect = Rect::new(x, row.y, width(spec), row.h);
             x += rect.w;
-            Slot {
+            ButtonCell {
                 spec,
                 rect,
                 named: named && spec.name.is_some(),
@@ -263,34 +269,34 @@ fn named_width(spec: &ButtonSpec) -> f32 {
     })
 }
 
-/// バーの上のポインターの下にあるもの。
+/// 再生の操作のバーの部品。ジョグバーか、コマンドの表の ID を持つボタン。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Target {
+pub enum TransportPart {
     Jog,
     Button(&'static str),
 }
 
-/// `(x, y)` の下にあるもの。
-pub(crate) fn hit(bar: Rect, viewer: Viewer, x: f32, y: f32) -> Option<Target> {
+/// バー `bar` の、`(x, y)` の下の部品。
+pub(crate) fn part_in(bar: Rect, viewer: Viewer, x: f32, y: f32) -> Option<TransportPart> {
     let c = cells(bar, viewer);
     if c.jog.contains(x, y) {
-        return Some(Target::Jog);
+        return Some(TransportPart::Jog);
     }
     c.buttons
         .iter()
         .find(|b| b.rect.contains(x, y))
-        .map(|b| Target::Button(b.spec.command))
+        .map(|b| TransportPart::Button(b.spec.command))
 }
 
-/// `(x, y)` の下のバーとその部品。
-pub(crate) fn under(layout: &SurfaceLayout, x: f32, y: f32) -> Option<(Viewer, Target)> {
+/// `(x, y)` の下の再生の操作のバーのビューアーと、そのバーの部品。
+pub(crate) fn part_at(layout: &SurfaceLayout, x: f32, y: f32) -> Option<(Viewer, TransportPart)> {
     [Viewer::Program, Viewer::Source].into_iter().find_map(|v| {
-        let bar = bar_of(layout, v).filter(|b| b.contains(x, y))?;
-        hit(bar, v, x, y).map(|t| (v, t))
+        let bar = transport_rect(layout, v).filter(|b| b.contains(x, y))?;
+        part_in(bar, v, x, y).map(|part| (v, part))
     })
 }
 
-/// ジョグバーの `x` の時刻。線の外は端に寄せる。
+/// ジョグバーの `x` の時刻。溝の外は端に寄せる。
 pub(crate) fn jog_time(track: Rect, duration: f64, x: f32) -> f64 {
     if track.w <= 0.0 {
         return 0.0;
@@ -300,7 +306,7 @@ pub(crate) fn jog_time(track: Rect, duration: f64, x: f32) -> f64 {
 
 /// ボタン `command` の矩形（論理ピクセル）。バーを出していないか、そのバーにボタンが無ければ `None`。
 pub fn transport_button(layout: &SurfaceLayout, viewer: Viewer, command: &str) -> Option<Rect> {
-    let bar = bar_of(layout, viewer)?;
+    let bar = transport_rect(layout, viewer)?;
     cells(bar, viewer)
         .buttons
         .into_iter()
@@ -308,9 +314,9 @@ pub fn transport_button(layout: &SurfaceLayout, viewer: Viewer, command: &str) -
         .map(|b| b.rect)
 }
 
-/// ジョグバーの全体の線（論理ピクセル）。左端が 0 秒、右端が全体の長さ。バーを出していなければ `None`。
+/// ジョグバーの溝（論理ピクセル）。左端が 0 秒、右端が全体の長さ。バーを出していなければ `None`。
 pub fn jog_track(layout: &SurfaceLayout, viewer: Viewer) -> Option<Rect> {
-    bar_of(layout, viewer).map(|bar| cells(bar, viewer).track())
+    transport_rect(layout, viewer).map(|bar| cells(bar, viewer).track())
 }
 
 /// バーの操作の結果。

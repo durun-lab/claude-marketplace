@@ -1,4 +1,4 @@
-//! 再生の操作のバー。映像の真下に時刻とボタンを描き、バーの上のクリックをコマンドとシークにする。
+//! 再生の操作のバー。映像の領域の真下にタイムコードとボタンを描き、バーの上のクリックをコマンドとシークにする。
 
 use mm_types::{Rgba, RgbaImage, Size};
 use mm_ui_layout::{
@@ -43,7 +43,7 @@ fn frame() -> RgbaImage {
 }
 
 #[test]
-fn 映像の下にバーが付き_時刻とボタンが描かれ_source_を開くと_source_の下にも付く() {
+fn 映像の領域の下にバーが付き_タイムコードとボタンが描かれ_source_を開くと_source_の下にも付く() {
     let Some((device, queue)) = gpu() else { return };
     let mut ui = Ui::new(&device, FORMAT);
     ui.set_model(model());
@@ -51,16 +51,16 @@ fn 映像の下にバーが付き_時刻とボタンが描かれ_source_を開�
     ui.set_frame(&device, &queue, &frame());
     ui.set_playhead(2.5);
     let l = ui.layout();
-    assert_eq!(l.source_bar, None);
-    assert_eq!(l.program_bar.y, l.program.bottom());
+    assert_eq!(l.source_transport, None);
+    assert_eq!(l.program_transport.y, l.program.bottom());
     let out = render_sized(&device, &queue, &mut ui, (W, H));
-    let bar = l.program_bar;
+    let bar = l.program_transport;
     let back = px_in(&out, W, bar.x as u32 + 2, bar.bottom() as u32 - 2);
-    assert!(lit(&out, bar, back) > 300, "時刻とボタンの画素");
+    assert!(lit(&out, bar, back) > 300, "タイムコードとボタンの画素");
 
     ui.set_source_frame(&device, &queue, &frame());
     ui.set_transport(ViewerState::default(), Some(ViewerState::default()));
-    let bar = ui.layout().source_bar.expect("Source のバー");
+    let bar = ui.layout().source_transport.expect("Source のバー");
     let out = render_sized(&device, &queue, &mut ui, (W, H));
     let back = px_in(&out, W, bar.x as u32 + 2, bar.bottom() as u32 - 2);
     assert!(lit(&out, bar, back) > 300, "Source のバーにも描かれる");
@@ -82,12 +82,15 @@ fn バーの上は_program_と_source_の領域で_クリックはボタンの�
     ui.set_transport(ViewerState::default(), Some(source));
     // 表示の倍率 1 なので、論理ピクセルの位置がそのままサーフェスの座標になる。
     let l = ui.layout();
-    let (pb, sb) = (l.program_bar, l.source_bar.expect("バー"));
+    let (pb, sb) = (
+        l.program_transport,
+        l.source_transport.expect("Source の再生の操作のバー"),
+    );
     assert_eq!(ui.region_at(pb.x + 2.0, pb.y + 20.0), Region::Program);
     assert_eq!(ui.region_at(sb.x + 2.0, sb.y + 20.0), Region::Source);
 
-    // ジョグバーの線の中ほどを押すと Program の長さの半分へシークする。
-    let track = jog_track(&l, Viewer::Program).expect("線");
+    // ジョグバーの溝の中ほどを押すと Program の長さの半分へシークする。
+    let track = jog_track(&l, Viewer::Program).expect("ジョグバーの溝");
     let mid = (track.x + track.w / 2.0, track.y + track.h / 2.0);
     let seek = ui.transport_pointer(down(mid.0, mid.1));
     match seek[..] {

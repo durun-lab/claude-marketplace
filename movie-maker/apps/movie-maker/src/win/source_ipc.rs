@@ -111,7 +111,7 @@ pub async fn source_transport(
     Ok(())
 }
 
-/// 名前のついた編集（clear_marks、mark_in、mark_out、insert、overwrite、split、lift、extract、undo、redo）。
+/// 名前のついた編集（clear_in_out、mark_in、mark_out、insert、overwrite、split、lift、extract、undo、redo）。
 #[tauri::command]
 pub async fn edit_action(state: State<'_, Arc<SyncState>>, action: String) -> Result<(), String> {
     let action =

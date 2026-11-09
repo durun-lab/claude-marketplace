@@ -85,10 +85,10 @@ impl Ui {
             restore: None,
             layout: SurfaceLayout {
                 program: Rect::default(),
-                program_bar: Rect::default(),
+                program_transport: Rect::default(),
                 timeline: Rect::default(),
                 source: None,
-                source_bar: None,
+                source_transport: None,
             },
             transport: TransportState::default(),
             transport_controller: TransportController::default(),
@@ -233,9 +233,9 @@ impl Ui {
         let in_source = |r: Option<Rect>| r.is_some_and(|r| r.contains(x, y));
         if l.timeline.contains(x, y) {
             Region::Timeline
-        } else if in_source(l.source) || in_source(l.source_bar) {
+        } else if in_source(l.source) || in_source(l.source_transport) {
             Region::Source
-        } else if l.program.contains(x, y) || l.program_bar.contains(x, y) {
+        } else if l.program.contains(x, y) || l.program_transport.contains(x, y) {
             Region::Program
         } else {
             Region::Outside
