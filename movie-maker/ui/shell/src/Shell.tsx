@@ -1,4 +1,4 @@
-import { useEffect, useState } from "preact/hooks";
+import { useEffect, useRef, useState } from "preact/hooks";
 import {
   onDocChanged,
   type AnyPanel,
@@ -126,6 +126,29 @@ const useCommandTable = (api: CommandsApi | undefined): UiCommand[] | null => {
   return table;
 };
 
+/** アプリがメニューやキーから実行した、パネルが持ち主のコマンドを `run` に渡す。購読は 1 度だけで、届いた時の `run` を呼ぶ。 */
+const usePanelCommands = (api: CommandsApi | undefined, run: (id: string) => void) => {
+  const latest = useRef(run);
+  latest.current = run;
+  useEffect(() => {
+    if (!api) return undefined;
+    let stopped = false;
+    let off: (() => void) | null = null;
+    // Tauri の外（ブラウザーで開いた画面）では購読できないので、届かないまま動かす。
+    api.onPanelCommand((id) => latest.current(id)).then(
+      (fn) => {
+        if (stopped) fn();
+        else off = fn;
+      },
+      () => undefined,
+    );
+    return () => {
+      stopped = true;
+      off?.();
+    };
+  }, [api]);
+};
+
 const bump = (counts: Record<string, number>, id: string): Record<string, number> => ({ ...counts, [id]: (counts[id] ?? 0) + 1 });
 
 /** 1 つの列のタブの選択。最初は `order` の先頭のタブを見せる。 */
@@ -196,6 +219,7 @@ export const Shell = ({ sendOp, apis = {}, listen, panels = PANELS, commands: co
       void commandsApi.run(id).then((error) => error && setOpError(error));
     }
   };
+  usePanelCommands(commandsApi, runCommand);
   const shared = { docChanges, selection, sendOp: send, commands, runCommand };
   return (
     <>

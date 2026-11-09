@@ -11,13 +11,13 @@ use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetCapture, GetKeyState, ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE,
-    TRACKMOUSEEVENT, VK_CONTROL, VK_ESCAPE, VK_F4, VK_MENU, VK_SHIFT,
+    TRACKMOUSEEVENT, VK_CONTROL, VK_ESCAPE, VK_F10, VK_F4, VK_MENU, VK_SHIFT,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, IsWindow, LoadCursorW, PostMessageW, RegisterClassW,
     SetWindowPos, CS_HREDRAW, CS_VREDRAW, IDC_ARROW, SWP_NOACTIVATE, SWP_NOZORDER,
     WM_CAPTURECHANGED, WM_ERASEBKGND, WM_KEYDOWN, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE,
-    WM_MOUSEWHEEL, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW, WS_CHILD, WS_CLIPSIBLINGS,
+    WM_MOUSEWHEEL, WM_SYSCHAR, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW, WS_CHILD, WS_CLIPSIBLINGS,
     WS_EX_NOPARENTNOTIFY, WS_VISIBLE,
 };
 
@@ -41,6 +41,9 @@ const BASE_DPI: f32 = 96.0;
 
 static SHARED: OnceLock<Arc<Shared>> = OnceLock::new();
 static TRACKING: AtomicBool = AtomicBool::new(false);
+/// 直前の `WM_SYSKEYDOWN` がキーの表にあるキーだったか。そのキーの `WM_SYSCHAR` を既定のウィンドウプロシージャに渡すと、
+/// メニューのアクセスキーとして探され、合う字が無いと警告音が鳴るため、渡さない。
+static SYSKEY_IN_TABLE: AtomicBool = AtomicBool::new(false);
 
 /// 矩形（x、y、幅、高さ。物理ピクセル）。
 pub type PixelRect = (i32, i32, i32, i32);
@@ -249,23 +252,25 @@ fn wheel_event(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> PointerEvent {
     }
 }
 
-/// Alt と一緒に押しても既定の処理に渡すキー。F4（ウィンドウを閉じる）だけ。
+/// `WM_SYSKEYDOWN` と `WM_SYSKEYUP` のうち、既定のウィンドウプロシージャに渡すキー。Alt+F4（ウィンドウを閉じる）と、
+/// F10（離したときにメニューモードに入る。Windows の標準のキー）。
 fn passes_to_system(vk: u32) -> bool {
-    vk == u32::from(VK_F4.0)
+    vk == u32::from(VK_F4.0) || vk == u32::from(VK_F10.0)
 }
 
 fn is_escape(wparam: WPARAM) -> bool {
     wparam.0 as u32 == u32::from(VK_ESCAPE.0)
 }
 
-/// キーの押下を、押し続けの繰り返しを除いてキーの表に渡す。
-fn key_pressed(wparam: WPARAM, lparam: LPARAM) {
-    if is_key_repeat(lparam) {
-        return;
+/// キーの押下を、押し続けの繰り返しを除いてキーの表に渡す。キーの表にあるキーなら（繰り返しでも）true を返す。
+fn key_pressed(wparam: WPARAM, lparam: LPARAM) -> bool {
+    let name = key_name(wparam.0 as u32);
+    if !is_key_repeat(lparam) {
+        if let Some(shared) = SHARED.get() {
+            keys::dispatch(shared, "surface", &name);
+        }
     }
-    if let Some(shared) = SHARED.get() {
-        keys::dispatch(shared, "surface", &key_name(wparam.0 as u32));
-    }
+    keys::command_for(&name).is_some()
 }
 
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
@@ -326,12 +331,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             key_pressed(wparam, lparam);
             LRESULT(0)
         }
-        // Alt を押している間のキーは WM_SYSKEYDOWN で届く。Alt+F4 だけは既定の処理（ウィンドウを閉じる）に渡す。
+        // Alt を押している間のキーと F10 は WM_SYSKEYDOWN で届く。Alt+F4 と F10 は既定のウィンドウプロシージャに渡す。
         WM_SYSKEYDOWN if !passes_to_system(wparam.0 as u32) => {
-            key_pressed(wparam, lparam);
+            SYSKEY_IN_TABLE.store(key_pressed(wparam, lparam), Ordering::SeqCst);
             LRESULT(0)
         }
-        // Alt を離したときの既定の処理はメニューモード（SC_KEYMENU）に入り、次のキーを奪うので渡さない。
+        // キーの表が受けた Alt+英字はアクセスキーとして扱わず、表に無い Alt+英字は既定のウィンドウプロシージャがメニューを開く。
+        WM_SYSCHAR if SYSKEY_IN_TABLE.swap(false, Ordering::SeqCst) => LRESULT(0),
+        // Alt を離したときの既定のウィンドウプロシージャはメニューモード（SC_KEYMENU）に入り、次のキーを奪うので渡さない。
         WM_SYSKEYUP if !passes_to_system(wparam.0 as u32) => LRESULT(0),
         WM_ERASEBKGND => LRESULT(1),
         _ => unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) },
@@ -349,12 +356,28 @@ mod tests {
     }
 
     #[test]
-    fn alt_のキーは_f4_だけを既定の処理に渡す() {
+    fn システムのキーは_f4_と_f10_だけを既定のウィンドウプロシージャに渡す() {
         assert!(passes_to_system(u32::from(VK_F4.0)));
+        assert!(
+            passes_to_system(u32::from(VK_F10.0)),
+            "F10 でメニューモードに入る"
+        );
         assert!(
             !passes_to_system(u32::from(VK_MENU.0)),
             "Alt を離してもメニューモードに入らない"
         );
         assert!(!passes_to_system(0x4B), "Alt+K はキーの表へ");
+    }
+
+    #[test]
+    fn 押したキーがキーの表にあるかを返し_押し続けでも同じ() {
+        let first = LPARAM(1);
+        let repeat = LPARAM((1 << 30) | 1);
+        assert!(key_pressed(WPARAM(0x4B), first), "K は Stop");
+        assert!(
+            key_pressed(WPARAM(0x4B), repeat),
+            "押し続けも WM_SYSCHAR を渡さない"
+        );
+        assert!(!key_pressed(WPARAM(0x51), first), "Q は表に無い");
     }
 }

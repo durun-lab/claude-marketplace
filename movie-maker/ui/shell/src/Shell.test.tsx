@@ -120,9 +120,10 @@ const command = (id: string, over: Partial<UiCommand> = {}): UiCommand => ({
   ...over,
 });
 
-/** アプリの UI のコマンドの表の代わり。`push` で押せるかが変わったイベントを届ける。 */
+/** アプリの UI のコマンドの表の代わり。`push` で押せるかが変わったイベントを、`fromApp` でメニューやキーから実行したパネルのコマンドを届ける。 */
 const fakeCommands = (table: UiCommand[]) => {
   let push: (next: UiCommand[]) => void = () => undefined;
+  let fromApp: (id: string) => void = () => undefined;
   const api: CommandsApi = {
     table: vi.fn().mockResolvedValue(table),
     run: vi.fn().mockResolvedValue(null),
@@ -130,8 +131,12 @@ const fakeCommands = (table: UiCommand[]) => {
       push = handler;
       return () => undefined;
     }),
+    onPanelCommand: vi.fn(async (handler: (id: string) => void) => {
+      fromApp = handler;
+      return () => undefined;
+    }),
   };
-  return { api, push: (next: UiCommand[]) => push(next) };
+  return { api, push: (next: UiCommand[]) => push(next), fromApp: (id: string) => fromApp(id) };
 };
 
 const TABLE = [
@@ -288,6 +293,33 @@ describe("Shell の外からの変更", () => {
     await settle();
     expect(host.querySelectorAll<HTMLElement>(".mm-shell-left-body")[1]?.hidden).toBe(false);
     expect(media.pickFiles).toHaveBeenCalled();
+  });
+});
+
+describe("アプリのメニューとキーから届いたパネルのコマンド", () => {
+  it("Import Media…（File のメニューと Ctrl+I）は Media を開いてファイルの選択を始める", async () => {
+    const media = fakeMedia();
+    const { api, fromApp } = fakeCommands(TABLE);
+    act(() => render(<Shell sendOp={vi.fn()} apis={{ media }} commands={api} />, host));
+    await settle();
+    expect(media.pickFiles).not.toHaveBeenCalled();
+    act(() => fromApp("media.import"));
+    await settle();
+    expect(host.querySelectorAll<HTMLElement>(".mm-shell-left-body")[1]?.hidden).toBe(false);
+    expect(media.pickFiles).toHaveBeenCalledTimes(1);
+    expect(api.run).not.toHaveBeenCalled();
+  });
+
+  it("Export… は Deliver のタブを開く", async () => {
+    const { api, fromApp } = fakeCommands(TABLE);
+    act(() => render(<Shell sendOp={vi.fn()} apis={{ deliver: fakeDeliver() }} commands={api} />, host));
+    await settle();
+    const panels = host.querySelectorAll<HTMLElement>(".mm-shell-left-body");
+    expect(panels[1]?.hidden).toBe(true);
+    act(() => fromApp("export.start"));
+    await settle();
+    expect(panels[1]?.hidden).toBe(false);
+    expect(api.run).not.toHaveBeenCalled();
   });
 });
 
