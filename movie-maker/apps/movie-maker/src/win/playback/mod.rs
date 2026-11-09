@@ -238,7 +238,7 @@ mod tests {
             .expect_err("開いているコンポジションは消せない");
         assert!(
             err.contains(&format!("composition {} not found", doc.comp)),
-            "{err}"
+            "消すコンポジションを理由に挙げる: {err}"
         );
         assert_eq!(
             shared.doc_serial.load(Ordering::SeqCst),

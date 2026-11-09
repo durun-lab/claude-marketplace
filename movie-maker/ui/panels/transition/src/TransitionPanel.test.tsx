@@ -57,7 +57,7 @@ describe("TransitionPanel の表示", () => {
 
   it("最初のカットはトランジションを選べない", async () => {
     await mount();
-    expect(host.textContent).toContain("The first cut has no previous cut.");
+    expect(host.textContent).toContain("The first clip has no previous clip.");
     expect(kind()).toBeNull();
   });
 
@@ -127,9 +127,9 @@ describe("TransitionPanel の失敗と例外", () => {
 
   it("読み込みの失敗は、次に読めたら消す", async () => {
     const api = await mount({
-      cuts: vi.fn().mockRejectedValueOnce(new Error("プロジェクトを開いていない")).mockResolvedValue(state()),
+      cuts: vi.fn().mockRejectedValueOnce(new Error("No project open")).mockResolvedValue(state()),
     });
-    expect(host.querySelector(".mm-tr-error")?.textContent).toBe("プロジェクトを開いていない");
+    expect(host.querySelector(".mm-tr-error")?.textContent).toBe("No project open");
     act(() => render(<TransitionPanel api={api} refreshKey={1} />, host));
     await settle();
     expect(host.querySelector(".mm-tr-error")).toBeNull();

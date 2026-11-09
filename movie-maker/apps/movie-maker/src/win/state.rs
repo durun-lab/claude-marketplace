@@ -254,7 +254,7 @@ impl Shared {
             version: serial,
             txn_id: serial,
             kind,
-            name: "WebView の操作".into(),
+            name: crate::win::edit::WEBVIEW_TXN.into(),
             actor: "gui".into(),
             touched,
             of: None,
