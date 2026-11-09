@@ -338,7 +338,7 @@ pub async fn transport(
             ("step", Some(n)) => Command::Step(n as i64),
             ("home", _) => Command::Seek(0.0),
             ("end", _) => Command::Seek(f64::MAX),
-            _ => return Err(format!("知らない再生の操作: {action}")),
+            _ => return Err(format!("Unknown playback action: {action}")),
         };
         state.shared.send(command);
         Ok(())
@@ -350,7 +350,7 @@ pub async fn project_info(state: State<'_, Arc<SyncState>>) -> Result<ProjectInf
     hotpatch::call(|| {
         state
             .current_info()
-            .ok_or_else(|| "プロジェクトを開いていない".to_owned())
+            .ok_or_else(|| "No project open".to_owned())
     })
 }
 

@@ -215,7 +215,7 @@ describe("Shell の Transition タブ", () => {
     };
     act(() => render(<Shell sendOp={vi.fn()} apis={{ transition }} />, host));
     const tabs = host.querySelectorAll(".mm-shell-tab");
-    expect([...tabs].map((t) => t.textContent)).toEqual(["Tasks", "Transition"]);
+    expect([...tabs].map((t) => t.textContent)).toEqual(["Tasks", "Transitions"]);
     click(tabs[1]);
     await act(() => new Promise<void>((ok) => setTimeout(ok, 0)));
     expect(host.querySelector(".mm-tr")).not.toBeNull();

@@ -81,8 +81,8 @@ describe("ReviewPanel の一覧", () => {
     expect(text).toContain("claude via mcp");
     expect(text).toContain("3 min ago");
     expect(text).toContain("c-9");
-    expect(text).toContain("Sequence s1 · 0:01.50–0:04.00 · 2 cuts");
-    expect(text).toContain("Extract cut k1");
+    expect(text).toContain("Sequence s1 · 0:01.50–0:04.00 · 2 clips");
+    expect(text).toContain("Extract clip k1");
   });
 
   it("読み込みの失敗をパネルの上に出す", async () => {

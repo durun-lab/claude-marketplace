@@ -69,8 +69,8 @@ pub async fn media_pick_files(state: Media<'_>) -> Result<Vec<String>, String> {
     let state = state.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
         let picked = rfd::FileDialog::new()
-            .add_filter("動画と音", &MEDIA_EXTENSIONS)
-            .add_filter("すべてのファイル", &["*"])
+            .add_filter("Video and Audio", &MEDIA_EXTENSIONS)
+            .add_filter("All Files", &["*"])
             .pick_files()
             .unwrap_or_default();
         let paths = picked

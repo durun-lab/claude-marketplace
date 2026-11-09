@@ -154,7 +154,7 @@ impl MediaState {
         let offered = self.offered.lock().expect("offered");
         match paths.iter().find(|p| !offered.contains(Path::new(p))) {
             Some(p) => Err(format!(
-                "選択かドロップで渡されていないパスは取り込まない: {p}"
+                "Can't import a file that wasn't picked or dropped: {p}"
             )),
             None => Ok(()),
         }
@@ -171,7 +171,7 @@ impl MediaState {
         self.assets()
             .into_iter()
             .find(|a| a.id.as_str() == id)
-            .ok_or_else(|| format!("素材が無い: {id}"))
+            .ok_or_else(|| format!("Clip not found: {id}"))
     }
 
     fn probe_of(&self, asset: &Asset) -> Option<MediaProbe> {
@@ -234,7 +234,7 @@ impl MediaState {
     pub fn thumbnail(&self, id: &str) -> Result<Vec<u8>, String> {
         let a = self.asset(id)?;
         std::fs::read(self.cache.thumbnail(&a.content_hash))
-            .map_err(|e| format!("サムネイルを読めない: {e}"))
+            .map_err(|e| format!("Couldn't read thumbnail: {e}"))
     }
 
     /// 波形を `buckets` 個のピークに間引く。
@@ -242,9 +242,9 @@ impl MediaState {
         let a = self.asset(id)?;
         let path = self.cache.waveform(&a.content_hash);
         let sidecar = mm_ingest::sidecar::read_sidecar(&path, &a.content_hash)
-            .map_err(|e| format!("波形を読めない: {e}"))?;
+            .map_err(|e| format!("Couldn't read waveform: {e}"))?;
         let SidecarBody::Waveform(w) = sidecar.body else {
-            return Err("波形の付属ファイルでない".into());
+            return Err("Not a waveform sidecar file".into());
         };
         Ok(WaveformView {
             duration: a.duration.to_f64(),
@@ -275,11 +275,11 @@ impl MediaState {
     /// 掃除してよいフォルダーを消し、空けた大きさを返す。許可の無い名前は何も消さずに拒否する。
     pub fn clear_cache(&self, kinds: &[String]) -> Result<u64, String> {
         if let Some(bad) = kinds.iter().find(|k| !CLEARABLE.contains(&k.as_str())) {
-            return Err(format!("掃除できないフォルダー: {bad}"));
+            return Err(format!("Can't clean folder: {bad}"));
         }
         let _guard = match self.importing.try_lock() {
             Ok(g) => g,
-            Err(TryLockError::WouldBlock) => return Err("取り込み中は掃除できない".into()),
+            Err(TryLockError::WouldBlock) => return Err("Can't clean while importing".into()),
             Err(TryLockError::Poisoned(p)) => p.into_inner(),
         };
         let mut freed = 0;
@@ -289,7 +289,7 @@ impl MediaState {
             match std::fs::remove_dir_all(&dir) {
                 Ok(()) => {}
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-                Err(e) => return Err(format!("{kind} を消せない: {e}")),
+                Err(e) => return Err(format!("Couldn't delete {kind}: {e}")),
             }
         }
         Ok(freed)
@@ -300,7 +300,7 @@ impl MediaState {
         self.check_offered(paths)?;
         let _guard = match self.importing.try_lock() {
             Ok(g) => g,
-            Err(TryLockError::WouldBlock) => return Err("取り込み中".into()),
+            Err(TryLockError::WouldBlock) => return Err("Import in progress".into()),
             Err(TryLockError::Poisoned(p)) => p.into_inner(),
         };
         let opts = IngestOptions {

@@ -109,7 +109,9 @@ pub fn source_range(project: &Project, asset: &AssetId) -> Result<SourceRange, S
     let in_point = marks.and_then(|m| m.in_point).unwrap_or(RationalTime::ZERO);
     let out_point = marks.and_then(|m| m.out_point).unwrap_or(a.duration);
     if in_point >= out_point {
-        return Err(format!("イン点がアウト点以降: {in_point} >= {out_point}"));
+        return Err(format!(
+            "In point is at or after Out point: {in_point} >= {out_point}"
+        ));
     }
     Ok(SourceRange {
         asset: asset.clone(),
@@ -139,7 +141,7 @@ struct Target<'a> {
 }
 
 fn target<'a>(ctx: &Ctx<'a>) -> Result<Target<'a>, String> {
-    let layer = target_layer(ctx).ok_or("シーケンスのレイヤーが無い")?;
+    let layer = target_layer(ctx).ok_or("No sequence layer")?;
     let id = Id::new(layer.source.text_param(SEQUENCE_PARAM).unwrap_or(""));
     let seq = ctx.project.sequence(&id).map_err(|e| e.to_string())?;
     let placed = place_cuts(seq).map_err(|e| e.to_string())?;
@@ -210,7 +212,7 @@ pub fn plan_overwrite(ctx: &Ctx<'_>, range: &SourceRange, id: CutId) -> Result<P
     let t = target(ctx)?;
     let old = t
         .working_cut(ctx.cut)
-        .ok_or("置き換えるカットが無い")?
+        .ok_or("No clip to replace")?
         .id
         .clone();
     Ok(Planned {
@@ -226,10 +228,10 @@ pub fn plan_overwrite(ctx: &Ctx<'_>, range: &SourceRange, id: CutId) -> Result<P
 /// 再生位置でカットを割る（`split`）。後ろの半分が `id`。カットの端では割れない。
 pub fn plan_split(ctx: &Ctx<'_>, id: CutId) -> Result<Planned, String> {
     let t = target(ctx)?;
-    let p = t.cut_at_playhead().ok_or("再生位置にカットが無い")?;
+    let p = t.cut_at_playhead().ok_or("No clip at playhead")?;
     let at = t.at.checked_sub(p.range.start).map_err(|e| e.to_string())?;
     if at <= RationalTime::ZERO {
-        return Err("カットの先頭では割れない".into());
+        return Err("Can't split at the start of a clip".into());
     }
     Ok(Planned {
         op: Split {
@@ -261,7 +263,7 @@ pub fn plan_extract(ctx: &Ctx<'_>) -> Result<Planned, String> {
 }
 
 fn selected_cut_id(ctx: &Ctx<'_>) -> Result<CutId, String> {
-    let id = ctx.cut.ok_or("カットを選んでいない")?;
+    let id = ctx.cut.ok_or("No clip selected")?;
     let cut: CutId = Id::new(id);
     ctx.project.cut(&cut).map_err(|e| e.to_string())?;
     Ok(cut)
