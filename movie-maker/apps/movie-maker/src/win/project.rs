@@ -72,7 +72,7 @@ fn with_first_composition(mut project: Project, store: Option<&mut Store>) -> Re
         return Ok(project);
     };
     let txn = Transaction::new(
-        "コンポジションを作る",
+        "Create Composition",
         vec![AddComposition { composition }.into()],
     );
     let actor = Actor::new("gui", "app");
