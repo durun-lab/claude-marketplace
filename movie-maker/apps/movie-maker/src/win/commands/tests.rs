@@ -47,6 +47,20 @@ fn パネルが持ち主のコマンドは登録されたパネルを指す() {
 }
 
 #[test]
+fn 登録されたパネルはどれもパネルを選ぶコマンドで_view_から開ける() {
+    let panels: Vec<&str> = PANELS_TS
+        .lines()
+        .filter_map(|l| l.strip_prefix("export { panel as ")?.split(' ').next())
+        .collect();
+    assert!(panels.contains(&"diagnostics"), "{panels:?}");
+    for panel in panels {
+        let id = format!("view.show_{panel}");
+        let spec = find(&id).unwrap_or_else(|| panic!("{id} が無い"));
+        assert_eq!(spec.owner, Owner::Panel(panel), "{id}");
+    }
+}
+
+#[test]
 fn 表のキーの列はキーの表から引き_見た目を付ける() {
     let table = table(&Shared::new());
     let split = row(&table, "clip.split");

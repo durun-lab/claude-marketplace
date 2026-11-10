@@ -7,7 +7,8 @@ use super::WindowAction;
 /// ウィンドウのフックへ渡すもの。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Forward {
-    /// パネルが持ち主のコマンドの ID。WebView の Shell が持ち主のパネルのタブを開き、パネルの `requests` を進める。
+    /// パネルが持ち主のコマンドの ID。WebView の Shell が持ち主のパネルのタブを開き、パネルを選ぶコマンドのほかは
+    /// パネルの `requests` も進める。
     Panel(&'static str),
     Window(WindowAction),
     /// WebView で押した、キーの表に無い Alt+英字の字（小文字）。ウィンドウがその字をアクセスキーとしてメニューを開く。
