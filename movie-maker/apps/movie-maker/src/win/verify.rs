@@ -18,6 +18,7 @@ use tauri::{AppHandle, Manager, Window};
 use crate::win::capture;
 use crate::win::cli::PlayTest;
 use crate::win::feedback::panic_message;
+use crate::win::play_test_lock;
 use crate::win::playback::{Command, PlaybackInfo};
 use crate::win::state::Shared;
 use crate::win::surface;
@@ -173,9 +174,12 @@ pub fn spawn(
                 info,
                 test: Arc::new(test),
             };
-            let report = catch_unwind(AssertUnwindSafe(|| run(&env, &telemetry))).unwrap_or_else(
-                |p| json!({ "failed": format!("パニックした: {}", panic_message(&*p)) }),
-            );
+            let mut report = catch_unwind(AssertUnwindSafe(|| run(&env, &telemetry)))
+                .unwrap_or_else(
+                    |p| json!({ "failed": format!("パニックした: {}", panic_message(&*p)) }),
+                );
+            report["lock"] = play_test_lock::report();
+            play_test_lock::release();
             let text = serde_json::to_string_pretty(&report).unwrap_or_default();
             if let Err(e) = std::fs::write(&env.test.report, text) {
                 eprintln!("結果を書けない: {e}");

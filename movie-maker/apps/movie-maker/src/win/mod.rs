@@ -27,6 +27,7 @@ mod menu;
 mod mixer;
 mod mixer_ipc;
 mod pack_ipc;
+mod play_test_lock;
 mod playback;
 mod project;
 mod render;
