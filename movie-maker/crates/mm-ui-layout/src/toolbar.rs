@@ -19,6 +19,7 @@ mod look;
 use crate::geom::Rect;
 use crate::text::{TextMeasure, UiFont};
 use crate::time_view::MAX_PX_PER_SEC;
+use crate::tool::Tool;
 
 pub(crate) use cells::{cells, ButtonCell, Slider, THUMB_W};
 pub use controller::{ToolbarAction, ToolbarController, ToolbarPart};
@@ -49,37 +50,28 @@ pub(crate) const NAME_DROP_ORDER: [Group; 5] = [
     Group::Edit,
 ];
 
-/// ボタンの定義。`command` はコマンドの表の ID。ツールのボタンは Z4 までコマンドを持たず、場所だけを空けておく。
+/// ボタンの定義。`command` はコマンドの表の ID。
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct ButtonSpec {
-    pub command: Option<&'static str>,
+    pub command: &'static str,
     pub icon: Icon,
     /// 幅が足りるときにアイコンの横に出す短い名前。空ならアイコンだけ。
     pub name: &'static str,
     pub group: Group,
-    /// 常に入の見た目にする（今のツール）。
-    pub lit: bool,
 }
 
 const fn button(command: &'static str, icon: Icon, name: &'static str, group: Group) -> ButtonSpec {
     ButtonSpec {
-        command: Some(command),
+        command,
         icon,
         name,
         group,
-        lit: false,
     }
 }
 
-/// ツールのボタン。Selection だけが今のツールで、Trim と Blade は Z4 まで押せない。
-const fn tool(icon: Icon, name: &'static str, lit: bool) -> ButtonSpec {
-    ButtonSpec {
-        command: None,
-        icon,
-        name,
-        group: Group::Tools,
-        lit,
-    }
+/// ツールのボタン。今のツールのボタンを入の見た目にする（[`ToolbarState::lit`]）。
+const fn tool(tool: Tool, icon: Icon, name: &'static str) -> ButtonSpec {
+    button(tool.command(), icon, name, Group::Tools)
 }
 
 /// 全部のボタンを左から並べる順に。ズームのグループは Zoom Out と Zoom In の間にスライダーを挟み、Zoom Out と Zoom In は
@@ -97,9 +89,9 @@ pub(crate) static BUTTONS: [ButtonSpec; 12] = [
         "Redo",
         Group::History,
     ),
-    tool(Icon::Selection, "Selection", true),
-    tool(Icon::Trim, "Trim", false),
-    tool(Icon::Blade, "Blade", false),
+    tool(Tool::Selection, Icon::Selection, "Selection"),
+    tool(Tool::Trim, Icon::Trim, "Trim"),
+    tool(Tool::Blade, Icon::Blade, "Blade"),
     button(
         "clip.split",
         Icon::glyph('\u{E8C6}', '\u{2704}'),
@@ -165,6 +157,8 @@ pub struct ToolbarState {
     pub disabled: Vec<&'static str>,
     /// スナップが入（Snapping を入の見た目にする）。
     pub snapping: bool,
+    /// 今のツール（そのボタンを入の見た目にする）。
+    pub tool: Tool,
     /// 今の秒あたりの論理ピクセルと、縮小の下限（`TimeView::zoom_floor`）。スライダーの位置と、ドラッグの換算に使う。
     pub px_per_sec: f64,
     pub floor: f64,
@@ -175,15 +169,14 @@ pub struct ToolbarState {
 }
 
 impl ToolbarState {
-    /// ボタンが押せるか。コマンドの無いボタンは、今のツールだけが入で、残りは押せない。
+    /// ボタンが押せるか。
     pub(crate) fn enabled(&self, spec: &ButtonSpec) -> bool {
-        spec.command
-            .map_or(spec.lit, |c| !self.disabled.contains(&c))
+        !self.disabled.contains(&spec.command)
     }
 
-    /// ボタンが入の見た目か。
+    /// ボタンが入の見た目か（Snapping が入、今のツール）。
     pub(crate) fn lit(&self, spec: &ButtonSpec) -> bool {
-        spec.lit || (spec.command == Some(SNAPPING) && self.snapping)
+        (spec.command == SNAPPING && self.snapping) || spec.command == self.tool.command()
     }
 }
 
@@ -214,8 +207,7 @@ pub(crate) fn part_in(bar: Rect, names: &ToolbarNames, x: f32, y: f32) -> Option
     c.buttons
         .iter()
         .find(|b| b.rect.contains(x, y))
-        .and_then(|b| b.spec.command)
-        .map(ToolbarPart::Button)
+        .map(|b| ToolbarPart::Button(b.spec.command))
 }
 
 /// ボタン `command` の矩形（`bar` と同じ座標）。`names` は描いたときの名前の幅。そのボタンが無いか、幅が足りずに
@@ -224,7 +216,7 @@ pub fn toolbar_button(bar: Rect, names: &ToolbarNames, command: &str) -> Option<
     cells(bar, names)
         .buttons
         .into_iter()
-        .find(|b| b.spec.command == Some(command))
+        .find(|b| b.spec.command == command)
         .map(|b| b.rect)
 }
 

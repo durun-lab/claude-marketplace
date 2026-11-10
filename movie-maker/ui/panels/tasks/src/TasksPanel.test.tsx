@@ -34,9 +34,9 @@ const command = (id: string, over: Partial<UiCommand> = {}): UiCommand => ({
 
 const split = command("clip.split", {
   name: "Split Clip",
-  keys: ["KeyB"],
-  key_label: "B",
-  description: "Split the clip at the playhead",
+  keys: ["Ctrl+KeyB"],
+  key_label: "Ctrl+B",
+  description: "Split the clip at the playhead (Blade Tool splits at the pointer)",
 });
 
 const GROUPS = [
@@ -91,7 +91,7 @@ describe("TasksPanel のツールチップ", () => {
   it("ツールチップは名前とキー、説明があれば 2 行目に出す", () => {
     const table = [split, command("media.import", { name: "Import Media…", panel: "media" })];
     render(<TasksPanel groups={GROUPS} onInvoke={vi.fn()} commands={table} />, host);
-    expect(links()[0]?.title).toBe("Split Clip (B)\nSplit the clip at the playhead");
+    expect(links()[0]?.title).toBe("Split Clip (Ctrl+B)\nSplit the clip at the playhead (Blade Tool splits at the pointer)");
     expect(links()[1]?.title).toBe("Import Media…");
   });
 });
@@ -114,7 +114,7 @@ describe("TasksPanel の薄い項目", () => {
     render(<TasksPanel groups={GROUPS} onInvoke={onInvoke} commands={[{ ...split, enabled: false }]} />, host);
     const link = links()[0];
     expect(link?.getAttribute("aria-disabled")).toBe("true");
-    expect(link?.title).toBe("Split Clip (B)\nSplit the clip at the playhead");
+    expect(link?.title).toBe("Split Clip (Ctrl+B)\nSplit the clip at the playhead (Blade Tool splits at the pointer)");
     click(link);
     expect(onInvoke).not.toHaveBeenCalled();
   });

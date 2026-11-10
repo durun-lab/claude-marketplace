@@ -40,6 +40,7 @@ mod thumbs;
 mod time_view;
 mod timeline;
 mod timeline_layout;
+mod tool;
 mod toolbar;
 mod transport;
 mod view_state;
@@ -76,6 +77,7 @@ pub use timeline::{
     TimelineModel, TrimBounds, HANDLE_PX,
 };
 pub use timeline_layout::{TimelineLayout, Viewport, HEADER_W, RULER_H, SCROLLBAR_W};
+pub use tool::{BladeLine, Tool};
 pub use toolbar::{
     toolbar_button, toolbar_labels, zoom_fraction, zoom_px, ToolbarAction, ToolbarController,
     ToolbarNames, ToolbarPart, ToolbarState, ToolbarView,

@@ -87,6 +87,7 @@ fn alt_を押してつかんだカットの端は_roll() {
 fn カットの中のドラッグは_slip_で_shift_なら_slide() {
     let m = seq_model();
     let mut c = ctl(&m);
+    c.tool = Tool::Trim;
     let y = in_bar(&c, 0);
     c.handle(down(100.0, y), &m, 0.0);
     let moved = c.handle(move_to(140.0, y), &m, 0.0);

@@ -8,7 +8,7 @@
 | 記号のフォント | Windows のアイコンの字のフォント。Segoe Fluent Icons（Windows 11）、無ければ Segoe MDL2 Assets（Windows 10）。2 つは同じ符号位置に同じ意味の字を割り当てている | `SYMBOL_FONTS`（`mm-ui-wgpu` の `fonts.rs`） |
 | 私用領域（Unicode の） | U+E000 から U+F8FF。符号位置の意味をフォントが決めるので、この範囲の字はフォールバックに任せず、記号のフォントを指してシェーピングする | `SYMBOL_RANGE`、`is_symbol` |
 | 字のアイコン / 標準の記号の字 | 記号のフォントの字 1 つで描くアイコン（Undo、Redo、Split Clip、Zoom Out、Zoom In、Full Extent Zoom）/ 記号のフォントが無いときに代わりに描く、標準のフォントにある同じ意味の字（↶、↷、✄、−、+、⤢） | `Icon::Glyph` の `symbol` と `plain`、`ToolbarState::symbols` |
-| 入の見た目（ツールバーの） | Snapping が入のときと、今のツール（Selection）のボタンの見た目。テーマの `accent` で塗る | `ButtonLook::lit` |
+| 入の見た目（ツールバーの） | Snapping が入のときと、今のツール（Selection、Trim、Blade のどれか）のボタンの見た目。テーマの `accent` で塗る | `ButtonLook::lit` |
 | 押した見た目（ボタンの） | ボタンを押している間の見た目。背景を濃くし、アイコンと名前を右下へずらす。押したまま外へずらすと外す | `ButtonLook::place`、`PRESS_SHIFT` |
 | スライダー（ツールバーの） / スライダーの溝 / スライダーのつまみ | 秒あたりの論理ピクセルを対数で動かす横長の部品 / つまみの中心が動く横線。左端が縮小の下限、右端が `MAX_PX_PER_SEC` / 今の倍率の位置の矩形。掴んで動かす | `toolbar::Slider`、`zoom_fraction`、`zoom_px`、`THUMB_W` |
 
