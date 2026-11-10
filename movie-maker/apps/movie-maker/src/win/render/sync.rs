@@ -139,6 +139,9 @@ impl DocSync {
             self.cut_ids = timeline_cut_ids(&doc.project, comp);
             self.apply_shy(&shared.view.shy(), &mut model);
             ui.update_model(model);
+            shared
+                .keyframes
+                .match_pick(ui.keyframe_pick().map(|p| p.keyframe.is_some()));
             self.shown = Some(doc.clone());
             let selected = shared.selected_layer();
             ui.select(selected.and_then(|id| self.layer_ids.iter().position(|i| *i == id)));
@@ -230,6 +233,7 @@ pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
                 Action::MoveLayer { from, boundary } => {
                     apply_move_layer(shared, doc, from, boundary)
                 }
+                Action::Keyframe(action) => keyframes::apply(shared, doc, action),
                 Action::Split { item, time } => tools::apply_split(shared, doc, item, time),
                 Action::ContextMenu { hit, time, at } => {
                     context_menu::on_action(shared, hit, time, at);
@@ -302,6 +306,8 @@ fn queue_op(shared: &Arc<Shared>, base: Option<i64>, op: Op) {
         s.edit.set_message(result.err().unwrap_or_default());
     });
 }
+
+mod keyframes;
 
 #[cfg(test)]
 mod tests;

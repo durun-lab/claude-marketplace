@@ -25,10 +25,15 @@ impl Place {
         Some(match hit {
             Hit::Cut { .. } => Place::Cut,
             Hit::Layer { .. } | Hit::BarMark { .. } => Place::Layer,
-            Hit::Header { .. } | Hit::HeaderButton { .. } => Place::Header,
+            Hit::Header { .. } | Hit::HeaderButton { .. } | Hit::Disclosure { .. } => Place::Header,
             Hit::Ruler => Place::Ruler,
             Hit::Empty => Place::Empty,
-            Hit::Corner | Hit::Scrollbar { .. } | Hit::ZoomBar { .. } => return None,
+            Hit::Corner
+            | Hit::Scrollbar { .. }
+            | Hit::ZoomBar { .. }
+            | Hit::KeyframeRowHeader { .. }
+            | Hit::KeyframeRow { .. }
+            | Hit::RowKeyframe(_) => return None,
         })
     }
 }

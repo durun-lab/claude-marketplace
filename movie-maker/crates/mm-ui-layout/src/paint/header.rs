@@ -55,7 +55,9 @@ pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
             (
                 matches!(
                     s.state.hover,
-                    Hit::Header { index } | Hit::HeaderButton { index, .. } if index == i
+                    Hit::Header { index }
+                        | Hit::HeaderButton { index, .. }
+                        | Hit::Disclosure { index } if index == i
                 ),
                 HOVER_ALPHA,
             ),
@@ -68,7 +70,7 @@ pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
             hatch(c, back, p.label.with_alpha(HATCH_ALPHA), area);
         }
         hovered_button(s, c, (i, item), row);
-        buttons(c, row, item, p, area);
+        buttons(c, (row, s.vp.rows.keyframe_rows(i) > 0), item, p, area);
     }
     drop_line(s, c);
     let edge = Rect::new(area.right() - LINE, area.y, LINE, area.h);
@@ -97,18 +99,22 @@ fn hatch(c: &mut Canvas, row: Rect, color: Color, area: Rect) {
     }
 }
 
-/// ポインターが乗っているボタンの背景を明るくする（押せることが分かるように）。
+/// ポインターが乗っているボタンとキーフレームの開閉の背景を明るくする（押せることが分かるように）。
 fn hovered_button(s: &PaintInput, c: &mut Canvas, (i, item): (usize, &Item), row: Rect) {
-    let Hit::HeaderButton { index, button } = s.state.hover else {
-        return;
+    let (cx, w) = match s.state.hover {
+        Hit::HeaderButton { index, button } if index == i => {
+            let Some((cx, _)) = button_center(s.vp, item, i, button) else {
+                return;
+            };
+            (cx, BUTTON_W)
+        }
+        Hit::Disclosure { index } if index == i => {
+            let d = cells(row, item).disclosure;
+            (d.x + d.w / 2.0, d.w)
+        }
+        _ => return,
     };
-    if index != i {
-        return;
-    }
-    let Some((cx, _)) = button_center(s.vp, item, i, button) else {
-        return;
-    };
-    let r = Rect::new(cx - BUTTON_W / 2.0, row.y + LINE, BUTTON_W, row.h - LINE);
+    let r = Rect::new(cx - w / 2.0, row.y + LINE, w, row.h - LINE);
     let color = s.state.palette.selection.with_alpha(BUTTON_HOVER_ALPHA);
     c.push_in(Depth::Back, r, color, s.vp.layout.headers);
 }
@@ -121,10 +127,11 @@ fn drop_line(s: &PaintInput, c: &mut Canvas) {
     let Some(last) = s.model.items.len().checked_sub(1) else {
         return;
     };
+    // 最後の行の下は、開いたキーフレームの行の下。
     let y = if boundary <= last {
         row_rect(s.vp, boundary).y
     } else {
-        row_rect(s.vp, last).bottom()
+        s.vp.layout.row_area.y + s.vp.rows.below(last) - s.vp.scroll_y
     };
     let l = s.vp.layout;
     for area in [l.headers, l.row_area] {
@@ -139,8 +146,8 @@ fn corner(s: &PaintInput, c: &mut Canvas) {
     c.push(Depth::Surround, r, s.state.palette.ruler);
 }
 
-/// 1 行の種類の色の帯と、有効、ロック、Mute、Solo のボタン。
-fn buttons(c: &mut Canvas, row: Rect, item: &Item, p: &Palette, area: Rect) {
+/// 1 行の種類の色の帯と、有効、ロック、Mute、Solo のボタンと、キーフレームの開閉（`open` は下に開いているか）。
+fn buttons(c: &mut Canvas, (row, open): (Rect, bool), item: &Item, p: &Palette, area: Rect) {
     let cells = cells(row, item);
     c.push_in(Depth::Bar, cells.kind_strip, super::bar_color(item), area);
     eye(
@@ -161,16 +168,21 @@ fn buttons(c: &mut Canvas, row: Rect, item: &Item, p: &Palette, area: Rect) {
         }
     }
     if item.has_keyframes() {
-        disclosure(c, centered(cells.disclosure, DISCLOSURE), p, area);
+        disclosure(c, (centered(cells.disclosure, DISCLOSURE), open), p, area);
     }
 }
 
-/// キーフレームの開閉の ▸。三角形は切ると形が変わるので、見出しの列に全部収まる行だけに描く。
-fn disclosure(c: &mut Canvas, r: Rect, p: &Palette, area: Rect) {
+/// キーフレームの開閉。閉じていれば ▸、開いていれば ▾。三角形は切ると形が変わるので、見出しの列に全部収まる行だけに描く。
+fn disclosure(c: &mut Canvas, (r, open): (Rect, bool), p: &Palette, area: Rect) {
     let horizontal = r.x >= area.x && r.right() <= area.right();
     if horizontal && r.y >= area.y && r.bottom() <= area.bottom() {
         let center = (r.x + r.w / 2.0, r.y + r.h / 2.0);
-        let tri = Quad::shaped(center, (r.w, r.h), QuadShape::TriRight, mark_color(p, true));
+        let (shape, size) = if open {
+            (QuadShape::TriDown, (r.h, r.w))
+        } else {
+            (QuadShape::TriRight, (r.w, r.h))
+        };
+        let tri = Quad::shaped(center, size, shape, mark_color(p, true));
         c.push_quad(Depth::OnBar, tri);
     }
 }

@@ -98,6 +98,8 @@ struct Ready {
     sequence: bool,
     /// Timeline でカットを選んでいる。lift と extract は選んだカットを抜く。
     cut_selected: bool,
+    /// Timeline のキーフレームの行でキーフレームを選んでいる。Remove Keyframe はそのキーフレームを外す。
+    keyframe_selected: bool,
     /// スナップの入/切（描画スレッドが置いた表示の状態）。
     snapping: bool,
     /// Timeline の今のツール（描画スレッドが置いたもの）。
@@ -123,6 +125,7 @@ impl Ready {
             source_open: shared.source.handle().is_some(),
             sequence,
             cut_selected: shared.edit.selected_cut().is_some(),
+            keyframe_selected: shared.keyframes.keyframe_selected(),
             snapping: shared.view.snapping(),
             tool: *shared.tool.lock().expect("tool"),
             shy: shy::ShyReady::of(shared),
@@ -145,6 +148,7 @@ impl Ready {
             Owner::App(Action::Edit(Lift | Extract)) => self.cut_selected,
             Owner::App(Action::Shy(command)) => self.shy.enabled(command),
             Owner::App(Action::Layer(command)) => self.layer.enabled(command),
+            Owner::App(Action::Timeline(TimelineCommand::RemoveKeyframe)) => self.keyframe_selected,
             Owner::App(_) | Owner::Panel(_) => true,
         };
         let checked = match spec.owner {
@@ -245,6 +249,11 @@ pub fn changed(shared: &Shared, sent: &mut Option<Vec<State>>) -> Option<Vec<Com
 
 fn spec_of(id: &str) -> Result<&'static Spec, String> {
     find(id).ok_or_else(|| format!("Unknown command: {id}"))
+}
+
+/// 今押せるか。同じキーのコマンドから、今押せるものを選ぶのに使う（`keys::dispatch`）。
+pub fn enabled(shared: &Shared, id: &str) -> bool {
+    find(id).is_some_and(|spec| Ready::of(shared).state(spec).enabled)
 }
 
 /// 押せるかを画面に出す呼び出し箇所（メニュー、Tasks の項目）からコマンドを実行する。押せないコマンドは拒否する。

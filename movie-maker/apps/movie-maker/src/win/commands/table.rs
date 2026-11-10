@@ -131,6 +131,22 @@ pub static TABLE: &[Spec] = &[
         owner: Owner::App(Action::Playback(Command::Seek(f64::MAX))),
     },
     Spec {
+        id: "playback.go_to_next_keyframe",
+        name: "Go to Next Keyframe",
+        description: Some(
+            "Move the playhead to the next keyframe of the selected layer, or of any layer",
+        ),
+        owner: Owner::App(Action::Timeline(TimelineCommand::NextKeyframe)),
+    },
+    Spec {
+        id: "playback.go_to_previous_keyframe",
+        name: "Go to Previous Keyframe",
+        description: Some(
+            "Move the playhead to the previous keyframe of the selected layer, or of any layer",
+        ),
+        owner: Owner::App(Action::Timeline(TimelineCommand::PreviousKeyframe)),
+    },
+    Spec {
         id: "playback.go_to_start",
         name: "Go to Start",
         description: None,
@@ -237,10 +253,24 @@ pub static TABLE: &[Spec] = &[
         owner: Owner::App(Action::Shy(ShyCommand::HideShyLayers)),
     },
     Spec {
+        id: "timeline.remove_keyframe",
+        name: "Remove Keyframe",
+        description: Some("Remove the keyframe selected in the Timeline's keyframe rows"),
+        owner: Owner::App(Action::Timeline(TimelineCommand::RemoveKeyframe)),
+    },
+    Spec {
         id: "timeline.selection_tool",
         name: "Selection Tool",
         description: Some("Drag a layer to move it in time; select clips and trim their edges"),
         owner: Owner::App(Action::Timeline(TimelineCommand::SelectionTool)),
+    },
+    Spec {
+        id: "timeline.show_keyframe_editor",
+        name: "Show Keyframe Editor",
+        description: Some(
+            "Open or close a row per keyframed property below the selected layer, or all layers",
+        ),
+        owner: Owner::App(Action::Timeline(TimelineCommand::ShowKeyframeEditor)),
     },
     Spec {
         id: "timeline.shy_selected_layers",

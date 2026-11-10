@@ -2,6 +2,7 @@
 
 use super::TimelineCommand;
 use crate::gesture::EditKind;
+use crate::keyframe_rows::KeyframeAction;
 use crate::timeline::{HeaderButton, Hit};
 
 /// 押したときの修飾キー。ドラッグの種類を選ぶ（カットの端は `alt` で roll、中は `shift` で slide）。
@@ -66,6 +67,8 @@ pub enum Action {
     HeaderButton { index: usize, button: HeaderButton },
     /// 見出しのドラッグを離した。行 `from` を行の境界 `boundary`（0 が先頭の行の上、行の数が最後の行の下）へ動かす。
     MoveLayer { from: usize, boundary: usize },
+    /// キーフレームの行の操作（`controller/keyframe_rows.rs`）。
+    Keyframe(KeyframeAction),
     /// Blade でカットを押した。レイヤー `item` の、時刻 `time`（秒。再生位置とフレームに合わせたもの）で割る。
     Split { item: usize, time: f64 },
     /// 右クリックのメニューを出す。`hit` は当たった所（添字を含む。`Place::of` で右クリックのメニューの種類にする）、`time` はその時刻（秒。Snapping が入なら再生位置とフレームに合わせたもの。

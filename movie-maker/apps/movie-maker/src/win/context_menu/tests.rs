@@ -13,8 +13,8 @@ use crate::win::commands::{self, table, TABLE};
 use crate::win::menu::{context_groups, lines};
 use crate::win::sequence_edit::tests::sample_project;
 
-/// 項目が表に無くても並びに置いてある、後の PR のコマンド（Show Keyframe Editor、Track Height）。
-const PENDING: &[&str] = &["timeline.show_keyframe_editor", "timeline.track_height"];
+/// 項目が表に無くても並びに置いてある、後の PR のコマンド（Track Height）。
+const PENDING: &[&str] = &["timeline.track_height"];
 
 const PLACES: [Place; 5] = [
     Place::Cut,
@@ -62,7 +62,14 @@ fn カットのメニューは_split_clip_here_lift_extract_を区切り線で�
     shared.context.set_time(1.5);
     assert_eq!(
         texts(&shared, Place::Cut),
-        ["Split Clip Here", "-", "Lift  Delete", "Extract  Backspace"]
+        [
+            "Split Clip Here",
+            "-",
+            "Lift  Delete",
+            "Extract  Backspace",
+            "-",
+            "Show Keyframe Editor  U"
+        ]
     );
 }
 
@@ -75,7 +82,9 @@ fn 右クリックの前は_split_clip_here_を押せず_カットを選ぶま�
             "Split Clip Here (disabled)",
             "-",
             "Lift  Delete (disabled)",
-            "Extract  Backspace (disabled)"
+            "Extract  Backspace (disabled)",
+            "-",
+            "Show Keyframe Editor  U"
         ]
     );
 }
@@ -91,6 +100,8 @@ fn レイヤーのメニューは有効とロックと_shy_を上に_重なり�
         "-",
         "Bring Forward (disabled)",
         "Send Backward",
+        "-",
+        "Show Keyframe Editor  U",
     ];
     assert_eq!(texts(&shared, Place::Layer), expected);
     assert_eq!(texts(&shared, Place::Header), expected);

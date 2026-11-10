@@ -70,7 +70,8 @@ impl TimelineController {
         (quantize(time, model.fps), snapped.is_some())
     }
 
-    /// 押下。Blade のときのカットとレイヤーの上は Blade が受け、ほかは通常の押下（`down`）に任せる。押すと Blade の線は消す。
+    /// 押下。Blade のときのカットとレイヤーの上は Blade が受け、ほかはキーフレームの行と通常の押下（`press`）に任せる。
+    /// 押すと Blade の線は消す。
     pub(super) fn press_with_tool(
         &mut self,
         (x, y): (f32, f32),
@@ -84,7 +85,7 @@ impl TimelineController {
                 return out;
             }
         }
-        self.down(x, y, mods, model)
+        self.press((x, y), mods, model, playhead)
     }
 
     /// Blade での押下。割れるカットの上なら割る操作を返し、ほかのカットとレイヤーの上では何もしない。

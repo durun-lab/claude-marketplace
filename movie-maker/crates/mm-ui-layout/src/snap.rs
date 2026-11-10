@@ -97,6 +97,8 @@ pub(crate) enum Moving {
     Layer(usize),
     /// カットの端（`ripple`、`roll`）。そのカットの端だけを外す。
     Cut { item: usize, cut: usize },
+    /// キーフレームの行のキーフレーム（`moveKeyframe`）。端は外さず、自分の行のキーフレームは呼ぶ側が外す。
+    Keyframe,
 }
 
 /// `moving` の端を動かすときのスナップの目標。同じ近さのときに採る順（再生位置、レイヤーとカットの端、キーフレーム、

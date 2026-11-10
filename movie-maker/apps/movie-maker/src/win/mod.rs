@@ -19,6 +19,7 @@ mod hotpatch;
 mod inspector_ipc;
 mod ipc;
 mod keyboard;
+mod keyframe_edit;
 mod keys;
 mod layout;
 mod media;

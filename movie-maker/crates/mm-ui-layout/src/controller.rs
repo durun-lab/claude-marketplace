@@ -6,6 +6,7 @@
 //! ドラッグから編集の操作と量を決める所は [`crate::gesture`]。操作の適用（`mm-ops`）はここの外で行う。
 //! 当たり判定と描画が同じ値を見るよう、割り付けと行の並びもここが持つ（[`TimelineController::viewport`]）。
 //! スナップの入/切とドラッグ中の反転、ドラッグ中のツールチップは `controller/snapping.rs`。
+//! 帯のマーカーとキーフレームの行の操作は `controller/keyframe_rows.rs`。
 
 mod command;
 mod context;
@@ -57,6 +58,8 @@ enum Drag {
     },
     /// 見出しの縦のドラッグ。
     Header(header_drag::HeaderDrag),
+    /// キーフレームの行のキーフレームのドラッグ。
+    Keyframe(keyframe_rows::KeyframeDrag),
     /// スクロールボックスのドラッグ。`grab_offset` は押した点の、スクロールボックスの上端からの距離。
     Thumb {
         grab_offset: f32,
@@ -97,6 +100,8 @@ pub struct TimelineController {
     drag: Drag,
     /// 全体表示のコマンドで全体表示にしたときの、全体表示とその前の表示。
     full_extent: Option<FullExtent>,
+    /// キーフレームの行で選んだもの。
+    pick: Option<keyframe_rows::Picked>,
 }
 
 impl TimelineController {
@@ -119,6 +124,7 @@ impl TimelineController {
             last_edit: None,
             drag: Drag::None,
             full_extent: None,
+            pick: None,
         }
     }
 
@@ -126,6 +132,7 @@ impl TimelineController {
     pub fn set_rows(&mut self, rows: Rows) {
         self.rows = rows;
         self.relayout();
+        self.keep_pick_in_rows();
     }
 
     /// Timeline の大きさ（論理ピクセル）を置き直す。
@@ -175,6 +182,7 @@ impl TimelineController {
         self.hover = Hit::Empty;
         self.blade_line = None;
         self.end_drag();
+        self.repick(model);
     }
 
     /// 描くときの状態。
@@ -186,8 +194,9 @@ impl TimelineController {
             selected_cut: self.selected_cut,
             snap: self.snap,
             preview: self.last_edit,
-            drag_tooltip: self.drag_tooltip(),
+            drag_tooltip: self.drag_tooltip().or(self.keyframe_tooltip()),
             header_drop: self.header_drop(),
+            keyframe_rows: self.keyframe_row_state(),
             palette: Palette::DEFAULT,
         }
     }
@@ -293,23 +302,6 @@ impl TimelineController {
         }
     }
 
-    /// 帯のマーカーを押した。レイヤーを選び、再生位置をそのキーフレームの時刻へ動かす（ドラッグは始めない）。
-    fn press_bar_mark(
-        &mut self,
-        (item, keyframe): (usize, usize),
-        had_cut: Option<(usize, usize)>,
-        model: &TimelineModel,
-    ) -> Vec<Action> {
-        self.selected = Some(item);
-        let t = model
-            .items
-            .get(item)
-            .and_then(|it| it.keyframes.get(keyframe));
-        let mut out = deselect_cut(Action::Select(Some(item)), had_cut);
-        out.extend(t.map(|t| Action::Seek(Self::seek_time(*t, model))));
-        out
-    }
-
     /// カットを押した。レイヤーとカットを選び、端ならつまみの、中ならカットのドラッグを始める。
     fn press_cut(
         &mut self,
@@ -354,6 +346,7 @@ impl TimelineController {
             }
             Drag::Scrub => vec![Action::Seek(self.seek_at(x, model))],
             Drag::Header(drag) => self.drag_header(drag, y, model.items.len()),
+            Drag::Keyframe(drag) => self.drag_keyframe(drag, x, model, playhead),
             Drag::Thumb { grab_offset } => {
                 let content = self.rows.content_height();
                 self.scroll_y = scroll_for_thumb(self.layout.scrollbar, content, y - grab_offset);
@@ -397,6 +390,7 @@ impl TimelineController {
         let frame = frame_secs(model);
         match (drag, last) {
             (Drag::Header(header), _) => header.release(),
+            (Drag::Keyframe(drag), _) => self.release_keyframe(drag, model),
             // 動かさずに離したクリックは編集にしない。
             (Drag::Edge { .. } | Drag::Body { .. } | Drag::ShiftLayer { .. }, Some((kind, by)))
                 if by.abs() >= frame / 2.0 =>
@@ -422,6 +416,7 @@ fn deselect_cut(select: Action, had_cut: Option<(usize, usize)>) -> Vec<Action> 
 }
 
 mod header_drag;
+mod keyframe_rows;
 mod snapping;
 
 #[cfg(test)]

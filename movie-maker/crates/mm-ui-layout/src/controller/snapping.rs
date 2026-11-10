@@ -80,8 +80,12 @@ impl TimelineController {
         self.resnap(model, playhead)
     }
 
-    /// 端のドラッグを今のポインターの位置で置き直す。押しただけでまだ動かしていなければ、その位置を編集にしない。
+    /// 端、レイヤーを動かすドラッグ、キーフレームのドラッグを今のポインターの位置で置き直す。押しただけでまだ動かして
+    /// いなければ、その位置を編集にしない。キーフレームのドラッグは編集（`last_edit`）を持たないので先に受ける。
     fn resnap(&mut self, model: &TimelineModel, playhead: f64) -> Vec<Action> {
+        if let Drag::Keyframe(drag) = self.drag {
+            return self.drag_keyframe(drag, self.pointer.0, model, playhead);
+        }
         if self.last_edit.is_none() {
             return Vec::new();
         }

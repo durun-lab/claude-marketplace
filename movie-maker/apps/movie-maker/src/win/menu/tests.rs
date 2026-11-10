@@ -11,7 +11,8 @@ use crate::win::sequence_edit::tests::sample_project;
 
 /// メニューバーに出さないコマンド。Stop は Play / Stop と J/K/L のキーで足り、Choose Render Target… は
 /// Deliver のパネルの中の操作なので Tasks の項目から呼ぶ。Split Clip Here と選んだレイヤーのコマンドは、右クリックで
-/// 選んだものに効くので、右クリックのメニューだけに置く。
+/// 選んだものに効くので、右クリックのメニューだけに置く。Remove Keyframe は Timeline のキーフレームの行で選んだ
+/// キーフレームを Delete で外すもので、メニューバーに出すと同じ Delete の Lift と並んで紛れる。
 const NOT_IN_MENUS: &[&str] = &[
     "clip.split_here",
     "export.choose_target",
@@ -20,6 +21,7 @@ const NOT_IN_MENUS: &[&str] = &[
     "layer.toggle_enabled",
     "layer.toggle_lock",
     "playback.stop",
+    "timeline.remove_keyframe",
 ];
 
 /// 項目と区切り線を、項目の文字と `-` にする。
@@ -92,6 +94,9 @@ fn 項目は並びの順にコマンドの表の名前とキーの見た目で�
             "Go to End\tEnd",
             "Previous Edit\t↑",
             "Next Edit\t↓",
+            "-",
+            "Go to Previous Keyframe\t[",
+            "Go to Next Keyframe\t]",
         ]
     );
     assert_eq!(
@@ -119,6 +124,7 @@ fn 項目は並びの順にコマンドの表の名前とキーの見た目で�
             "-",
             "Snapping\tN",
             "-",
+            "Show Keyframe Editor\tU",
             "Shy Selected Layers",
             "Hide Shy Layers",
             "-",
