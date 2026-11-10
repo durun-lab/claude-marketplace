@@ -12,7 +12,7 @@ import { tempDir } from './tmp.ts';
 const tmp = tempDir('durun-dashboard-deliver-');
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
-const { SessionStateError, answerCommand, archiveSession, compactSession, discardSession, flushArchives, flushQueue, forkSession, keptWorktree, postToInbox, redeliver, redeliverInterrupted, removeSession, retryRemovals, sendMessage, sendQueued, startSession, stopSession, switchSession, trashOf, waitFor } = await import('../server/deliver.ts');
+const { SessionStateError, answerCommand, archiveSession, compactSession, discardSession, flushArchives, flushQueue, forkSession, keptWorktree, postToInbox, redeliver, redeliverInterrupted, removeSession, retryRemovals, sendMessage, sendQueued, startChildSession, startSession, stopSession, switchSession, trashOf, waitFor } = await import('../server/deliver.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 const { cached, peekCached } = await import('../server/cache.ts');
 const { platform } = await import('../server/platform.ts');
@@ -467,6 +467,22 @@ if (args[0] === '--bg') console.log('backgrounded · ' + (args.at(-1) === 'lost'
   const before = Object.keys(state.sessions).length;
   await startSession(tmp, 'lost', undefined, undefined, '付かないテーマ');
   assert.equal(Object.keys(state.sessions).length, before);
+});
+
+test('子セッションは親の作業ディレクトリで名前を付けて起動し、親と作業名と親のテーマを記録する', async () => {
+  const bin = path.join(tmp, 'bin-child');
+  const argsFile = path.join(tmp, 'child-args');
+  const jobs = [{ id: 'j30', sessionId: 's30', kind: 'background', pid: 1 }];
+  useFakeClaude(
+    bin,
+    `if (args[0] === 'agents') console.log(${js(JSON.stringify(jobs))});
+if (args[0] === '--bg') { fs.writeFileSync(${js(argsFile)}, lines(args)); console.log('backgrounded · j30'); }`,
+  );
+  Object.assign(ensureSession('p30', tmp), { theme: '親のテーマ' });
+
+  const child = await startChildSession('p30', '依頼', 'mention-x', 'opus', 'medium');
+  assert.deepEqual(fs.readFileSync(argsFile, 'utf8').split('\n').slice(0, -1), ['--bg', '--name', 'mention-x', '--model', 'opus', '--effort', 'medium', '--', '依頼']);
+  assert.deepEqual([child.id, child.cwd, child.parent, child.title, child.theme], ['s30', tmp, 'p30', 'mention-x', '親のテーマ']);
 });
 
 test('アーカイブで消すときは、動いているバックグラウンドのセッションを止めてから claude rm し、端末のセッションは消さない。アーカイブは消し終わるのを待たずに返り、消せなければ理由を残す', async () => {

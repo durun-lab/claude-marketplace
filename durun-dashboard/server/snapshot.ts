@@ -41,6 +41,15 @@ export const renameTheme = (sessions: SessionMeta[], from: string, to: string): 
   for (const meta of sessions) if (themeOf(meta).trim() === from) meta.theme = to;
 };
 
+/** セッションを別のテーマへ移す。start_session で起動した子孫のセッションも、同じテーマへ移す。 */
+export const moveToTheme = (sessions: SessionMeta[], id: string, theme: string | undefined): void => {
+  for (const meta of sessions) {
+    if (meta.id !== id) continue;
+    meta.theme = theme;
+    for (const child of sessions) if (child.parent === id) moveToTheme(sessions, child.id, theme);
+  }
+};
+
 /** 人間が並べ替えた順に従う。並べ替えた後に現れたテーマは、並べ替えたものより前に、名前の順で置く。 */
 export const arrangeThemes = (themes: string[], order: string[]): string[] => {
   const rank = new Map(order.map((t, i) => [t, i]));
