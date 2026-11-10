@@ -259,10 +259,11 @@ fn cache(config: &RuntimeConfig) -> Result<Arc<dyn CacheStore>> {
     }
 }
 
-/// PTS の索引を同じキャッシュに置く。FFmpeg を使うデコーダーは全部が通る共通の道なので、組み立てで 1 回決める。
+/// PTS の索引を同じキャッシュに置く。FFmpeg を使うデコーダーは全部が通る共通の道なので、処理全体で最初に組んだ
+/// `Engine` のキャッシュに決め、後で組む `Engine`（Source、書き出し、配信）では置き直さない。
 fn install_index_cache(cache: &Arc<dyn CacheStore>) {
     #[cfg(feature = "ffmpeg")]
-    mm_decode_ffmpeg_core::index_cache::set_index_cache(Some(cache.clone()));
+    mm_decode_ffmpeg_core::index_cache::init_index_cache(cache.clone());
     #[cfg(not(feature = "ffmpeg"))]
     let _ = cache;
 }

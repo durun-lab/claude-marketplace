@@ -7,7 +7,9 @@
 //! - コンテナの索引（mov の `index_entries` など）を使わない理由: エントリーの時刻は DTS で、B フレームの
 //!   PTS には composition offset が要り、パケットを読まずには得られない。mkv の cues は粗くて全フレームに足りない。
 //! - 置き場所は処理全体で 1 つ（`set_index_cache`）。3 つのデコーダー（ffmpeg、d3d12va、cuvid）が同じ
-//!   `Timeline::build` を通るので、デコーダーのインターフェースを変えずに全部に効く。
+//!   `Timeline::build` を通るので、デコーダーのインターフェースを変えずに全部に効く。`Engine` の組み立ては
+//!   最初に決めた置き場所を使い続ける（`init_index_cache`）。アプリは Program の後に Source、書き出し、配信の
+//!   `Engine` も組むので、組むたびに置き直すと、先に作った索引が引けなくなる。
 //! - 大きな素材（長い録画）の全パケットを読む走査は、処理全体で一度に 1 つ。長い録画を並べて読むとどれも遅くなり
 //!   （4 本を並べると 4 GB の走査が 28 秒から 65 秒）、同じ素材を複数のデコーダーが同時に開くと同じファイルを読み直すため。
 //!   待つ間に同じ素材の索引が置かれたら、読まずに引く。小さな素材（画像、短い素材）は順番を待たない。
@@ -38,6 +40,16 @@ static SCANNING: Mutex<()> = Mutex::new(());
 /// 索引を置く場所を決める。`None` で置かない（毎回読む）。
 pub fn set_index_cache(store: Option<Arc<dyn CacheStore>>) {
     *STORE.write().expect("index cache lock") = store;
+}
+
+/// 索引を置く場所がまだ無ければ `store` に決めて真を返す。決まっていれば変えずに偽を返す。
+pub fn init_index_cache(store: Arc<dyn CacheStore>) -> bool {
+    let mut slot = STORE.write().expect("index cache lock");
+    let empty = slot.is_none();
+    if empty {
+        *slot = Some(store);
+    }
+    empty
 }
 
 fn store() -> Option<Arc<dyn CacheStore>> {
@@ -278,6 +290,17 @@ mod tests {
         assert_eq!(a.join().unwrap(), b.join().unwrap());
         let count = |n: &AtomicUsize| n.load(Ordering::SeqCst);
         assert_eq!((count(&scans), count(&store.puts)), (1, 1));
+    }
+
+    #[test]
+    fn 置き場所は最初に決めたものを使い続け_後から組む_engine_は置き直さない() {
+        let first: Arc<dyn CacheStore> = Arc::new(Counting::default());
+        set_index_cache(None);
+        assert!(init_index_cache(first.clone()));
+        assert!(!init_index_cache(Arc::new(Counting::default())));
+        let kept = store().expect("置き場所がある");
+        set_index_cache(None);
+        assert!(Arc::ptr_eq(&kept, &first));
     }
 
     #[test]
