@@ -244,6 +244,9 @@ impl Ui {
         let local = match self.scale.pointer_to_logical(ev) {
             PointerEvent::Down { x, y, .. } if !t.contains(x, y) => return Vec::new(),
             PointerEvent::Down { x, y, .. } if self.on_toolbar(x, y) => return Vec::new(),
+            PointerEvent::ContextMenu { x, y } if !t.contains(x, y) || self.on_toolbar(x, y) => {
+                return Vec::new()
+            }
             PointerEvent::Wheel { x, y, .. } if !t.contains(x, y) => return Vec::new(),
             PointerEvent::Down { x, y, mods } => PointerEvent::Down {
                 x: x - t.x,
@@ -267,11 +270,28 @@ impl Ui {
                 ctrl,
                 shift,
             },
+            PointerEvent::ContextMenu { x, y } => PointerEvent::ContextMenu {
+                x: x - t.x,
+                y: y - t.y,
+            },
             other => other,
         };
         let mut actions = self.controller.handle(local, &self.model, self.playhead);
         self.toggle_keyframe_rows(&mut actions);
-        actions
+        actions.into_iter().map(|a| self.to_surface(a)).collect()
+    }
+
+    /// 右クリックのメニューを出す点を、Timeline の論理ピクセルからサーフェスの物理ピクセルにする。ほかの操作はそのまま。
+    fn to_surface(&self, action: Action) -> Action {
+        let Action::ContextMenu { hit, time, at } = action else {
+            return action;
+        };
+        let (t, s) = (self.layout.timeline, self.scale.get());
+        Action::ContextMenu {
+            hit,
+            time,
+            at: ((at.0 + t.x) * s, (at.1 + t.y) * s),
+        }
     }
 
     /// 1 フレーム描く。`target` はサーフェスのテクスチャのビュー。

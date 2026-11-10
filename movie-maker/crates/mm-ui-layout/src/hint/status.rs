@@ -3,6 +3,7 @@
 
 use super::{Dragging, Pointee, Under};
 use crate::drag_tooltip::drag_amount;
+use crate::hit_kind::HitKind;
 use crate::timeline::{HeaderButton, Hit, Part};
 use crate::tool::Tool;
 use crate::toolbar::ToolbarPart;
@@ -55,7 +56,7 @@ pub fn status_right(snapping: bool, tool: Tool, text: &HintText) -> String {
 pub fn status_left(p: &Pointee, fps: f64, text: &HintText) -> String {
     match (p.dragging, p.under) {
         (Some(d), _) => dragging(d, fps, text),
-        (None, Under::Timeline(hit)) => timeline(hit, p),
+        (None, Under::Timeline(hit)) => with_layer_menu(timeline(hit, p), p.under.hit_kind()),
         (None, Under::Toolbar(ToolbarPart::Button(id))) => format!("Click: {}", text.name(id)),
         (None, Under::Toolbar(ToolbarPart::Slider)) => "Drag: Zoom".into(),
         (None, Under::Transport(_, TransportPart::Button(id))) => {
@@ -83,8 +84,16 @@ fn dragging(d: Dragging, fps: f64, text: &HintText) -> String {
     )
 }
 
-fn timeline(hit: Hit, p: &Pointee) -> String {
-    let s = match (hit, p.tool) {
+/// レイヤーの帯と見出しの上では、右クリックで出るレイヤーのメニューも足す。種類は右クリックのメニューと同じ `HitKind::of` で引く。
+fn with_layer_menu(text: &str, kind: Option<HitKind>) -> String {
+    match kind {
+        Some(HitKind::Layer | HitKind::Header) => format!("{text}{SEP}Right-click: Layer Menu"),
+        _ => text.to_owned(),
+    }
+}
+
+fn timeline(hit: Hit, p: &Pointee) -> &'static str {
+    match (hit, p.tool) {
         (Hit::Layer { .. }, Tool::Blade) => "Blade Tool: Layers Can't Be Split",
         (Hit::Cut { .. }, Tool::Blade) if p.gap => "Nothing to Split in a Gap",
         // 割る時刻がカットの端に丸まる所は割らない（カーソルも禁止の形）。
@@ -112,8 +121,7 @@ fn timeline(hit: Hit, p: &Pointee) -> String {
         (Hit::Scrollbar { .. }, _) => "Drag: Scroll Layers",
         (Hit::ZoomBar { part }, _) => zoom_bar(part),
         (Hit::Corner | Hit::Empty, _) => "",
-    };
-    s.to_owned()
+    }
 }
 
 fn header_button(button: HeaderButton) -> &'static str {
@@ -175,7 +183,7 @@ mod tests {
         };
         assert_eq!(
             left(&under(layer, sel)),
-            "Drag: Move in Time \u{B7} Click: Select"
+            "Drag: Move in Time \u{B7} Click: Select \u{B7} Right-click: Layer Menu"
         );
         assert_eq!(
             left(&under(Hit::Ruler, sel)),
@@ -183,7 +191,7 @@ mod tests {
         );
         assert_eq!(
             left(&under(Hit::Header { index: 0 }, sel)),
-            "Drag: Reorder Layers"
+            "Drag: Reorder Layers \u{B7} Right-click: Layer Menu"
         );
         let drag = Pointee {
             dragging: Some(Dragging {
@@ -272,6 +280,57 @@ mod tests {
             left(&drag),
             "Move Keyframe \u{2212}15f \u{B7} N: Toggle Snapping \u{B7} Esc: Cancel"
         );
+    }
+
+    #[test]
+    fn 右クリックのレイヤーのメニューは帯と見出しの上だけ() {
+        const MENU: &str = "Right-click: Layer Menu";
+        let blade_layer = Hit::Layer {
+            index: 0,
+            part: Part::InHandle,
+        };
+        let layer_menu = [
+            (blade_layer, Tool::Blade),
+            (
+                Hit::BarMark {
+                    item: 0,
+                    keyframe: 0,
+                },
+                Tool::Selection,
+            ),
+            (Hit::Disclosure { index: 0 }, Tool::Trim),
+            (
+                Hit::HeaderButton {
+                    index: 0,
+                    button: HeaderButton::Lock,
+                },
+                Tool::Selection,
+            ),
+        ];
+        for (hit, tool) in layer_menu {
+            assert!(left(&under(hit, tool)).ends_with(MENU), "{hit:?}");
+        }
+        let without = [
+            cut(Part::Body),
+            Hit::Ruler,
+            Hit::KeyframeRow { item: 0, row: 0 },
+            Hit::Scrollbar { thumb: true },
+        ];
+        for hit in without {
+            assert!(
+                !left(&under(hit, Tool::Selection)).contains(MENU),
+                "{hit:?}"
+            );
+        }
+        let dragging = Pointee {
+            dragging: Some(Dragging {
+                kind: EditDrag::TrimLayer,
+                by: None,
+                snap: None,
+            }),
+            ..under(blade_layer, Tool::Selection)
+        };
+        assert!(!left(&dragging).contains(MENU), "ドラッグ中は出さない");
     }
 
     #[test]

@@ -118,6 +118,7 @@ impl Scale {
                 ctrl,
                 shift,
             },
+            PointerEvent::ContextMenu { x, y } => PointerEvent::ContextMenu { x: l(x), y: l(y) },
             other => other,
         }
     }

@@ -1,6 +1,6 @@
 //! `Ui` の、ポインターの下にあるものと、そこから決まる手がかり（ステータスバー、ツールチップ、カーソル）。
-//! UI のスレッド（`WM_SETCURSOR`、ツールチップ、右クリックのメニュー）は、描画のスレッドが [`Ui::hint`] で作った [`Hint`] を
-//! 1 つの関数（アプリの `HintSlot::current`）で引く。
+//! UI のスレッド（`WM_SETCURSOR`、ツールチップ）は、描画のスレッドが [`Ui::hint`] で作った [`Hint`] を
+//! 1 つの関数（アプリの `HintSlot::current`）で引く。右クリックのメニューは押した点の `Hit` を使う。
 
 use mm_ui_layout::{
     status_left, status_right, tooltip_of, HintText, Pointee, PointerEvent, TooltipContent, Under,

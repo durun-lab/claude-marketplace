@@ -1,7 +1,8 @@
 //! ポインターの下にあるものと、そこから決まる手がかり（カーソルの形、ステータスバーの文、ツールチップ）。
 //!
-//! 描画のスレッドの `Ui` が [`Pointee`] を作り、UI のスレッド（`WM_SETCURSOR`、ツールチップ、右クリックのメニュー）が
-//! 同じ型で引く。当たった所は [`Under`] 1 つに持たせ、レイヤーとカットの添字も含める。
+//! 描画のスレッドの `Ui` が [`Pointee`] を作り、UI のスレッド（`WM_SETCURSOR`、ツールチップ）が同じ型で引く。
+//! 当たった所は [`Under`] 1 つに持たせ、レイヤーとカットの添字も含める。右クリックのメニューは押した点の [`Hit`] を使う。
+//! メニューの種類は、ステータスバーも右クリックのメニューも [`HitKind::of`] で引く（[`Under::hit_kind`]）。
 //! 修飾キー（Alt、Shift）は UI のスレッドが読む瞬間の値を [`cursor_for`] に渡す（押した・離しただけでカーソルを替えるため）。
 
 mod bar;
@@ -13,6 +14,7 @@ pub use status::{status_left, status_right, HintText};
 pub use tooltip::{bar_tooltip, tooltip_of, TooltipContent};
 
 use crate::controller::Mods;
+use crate::hit_kind::HitKind;
 use crate::screen::Splitter;
 use crate::timeline::{Hit, Part};
 use crate::tool::Tool;
@@ -29,6 +31,16 @@ pub enum Under {
     Timeline(Hit),
     Toolbar(ToolbarPart),
     Transport(Viewer, TransportPart),
+}
+
+impl Under {
+    /// 右クリックで出るメニューの種類。右クリックのメニューと同じ [`HitKind::of`] で引き、Timeline の外の部品は `None`。
+    pub fn hit_kind(&self) -> Option<HitKind> {
+        match self {
+            Under::Timeline(hit) => HitKind::of(hit),
+            _ => None,
+        }
+    }
 }
 
 /// 編集のドラッグの種類。ドラッグ中のカーソルと、ステータスバーの操作の名前を決める。
@@ -69,7 +81,7 @@ pub struct Dragging {
     pub snap: Option<&'static str>,
 }
 
-/// ポインターの下にあるもの。カーソル、ステータスバー、ツールチップ、右クリックのメニューが同じ値から決める。
+/// ポインターの下にあるもの。カーソル、ステータスバー、ツールチップが同じ値から決める。
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Pointee {
     pub under: Under,

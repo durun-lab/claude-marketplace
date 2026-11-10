@@ -1,8 +1,9 @@
 //! ポインターの下にあるものを、描画のスレッドから UI のスレッドへ渡す置き場所。描画のスレッドの `Ui` が作った
-//! [`Hint`]（`Pointee`、ツールチップの中身、ポインターの位置）を [`HintSlot`] に置き、UI のスレッドの `WM_SETCURSOR`、
-//! ツールチップ、右クリックのメニューは 1 つの関数 [`HintSlot::current`] で引く。置いたら `WM_MM_HINT` を投げ、UI のスレッドが
+//! [`Hint`]（`Pointee`、ツールチップの中身、ポインターの位置）を [`HintSlot`] に置き、UI のスレッドの `WM_SETCURSOR` と
+//! ツールチップは 1 つの関数 [`HintSlot::current`] で引く。置いたら `WM_MM_HINT` を投げ、UI のスレッドが
 //! ツールチップとカーソルを差し替える。サーフェスのカーソルはここの振り分け 1 つで決め、仕切りの上と仕切りをつかんでいる間は
-//! 仕切りの形にする（`cursor::apply`）。
+//! 仕切りの形にする（`cursor::apply`）。右クリックのメニューはここを読まず、押した点の当たり判定（`Action::ContextMenu` の
+//! `Hit`）を使う。メニューの種類は、ステータスバーも右クリックのメニューも `HitKind::of` で引く。
 
 use std::sync::Mutex;
 
@@ -43,7 +44,7 @@ struct ShownLog {
 }
 
 impl HintSlot {
-    /// ポインターの下の手がかり。UI のスレッドのカーソル、ツールチップ、右クリックのメニューは、この関数 1 つで引く。
+    /// ポインターの下の手がかり。UI のスレッドのカーソルとツールチップは、この関数 1 つで引く。
     pub fn current(&self) -> Hint {
         self.hint.lock().expect("hint").clone()
     }

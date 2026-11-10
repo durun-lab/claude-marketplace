@@ -1,7 +1,7 @@
 //! `--play-test` の手がかりの通し。カットの端にポインターを乗せたとき、ステータスバーに「Drag: Ripple Trim」が出る画面を撮る。
 //! カーソルとツールチップは PrintWindow のスクリーンショットに出ないので、カーソルは決める関数（`cursor_for`）の結果、
 //! ツールチップは出した文と位置の記録と、ツールチップのウィンドウが見えているかで確かめる。Blade と Trim のカーソルと
-//! ステータスバー、ドラッグ中の文、右の文の追従、
+//! ステータスバー、見出しの文（右クリックのメニュー）、ドラッグ中の文、右の文の追従、
 //! Alt を押して離してもメニューのモードに入らないことも確かめる。
 
 use mm_ui_layout::{cursor_for, CursorKind, Mods, Tool};
@@ -83,7 +83,7 @@ fn cut_steps(env: &Env<'_>, log: &mut Log, g: &Geometry, (start, end): (f64, f64
         status && cursors == (CursorKind::SizeWE, CursorKind::Roll),
         json!({ "status": status_left(shared), "cursors": format!("{cursors:?}") }),
     );
-    shot(env, log, "30-status-ripple");
+    shot(env, log, "32-status-ripple");
 
     let mid = g.at(g.row, (start + end) / 2.0, 0.0);
     select_tool(env, Tool::Trim);
@@ -113,8 +113,39 @@ fn cut_steps(env: &Env<'_>, log: &mut Log, g: &Geometry, (start, end): (f64, f64
             && right == format!("Snapping {snapping} \u{B7} Blade Tool"),
         json!({ "status": status_left(shared), "cursor": format!("{blade:?}"), "right": right }),
     );
-    shot(env, log, "31-status-blade");
+    shot(env, log, "33-status-blade");
     select_tool(env, Tool::Selection);
+}
+
+/// レイヤーの見出しの上では、並べ替えのドラッグと、右クリックで出るレイヤーのメニューを出す。
+fn header_status_step(env: &Env<'_>, log: &mut Log, g: &Geometry) {
+    let shared = env.shared;
+    let Some(item) = row_item(shared, g.row) else {
+        log.step(
+            "hint_status_header",
+            false,
+            json!("見出しの位置を求められない"),
+        );
+        return;
+    };
+    surface::push_hover(g.place.header_name(&item, g.row, 0.0));
+    let status = wait_status(
+        shared,
+        "Drag: Reorder Layers \u{B7} Right-click: Layer Menu",
+    );
+    log.step(
+        "hint_status_header",
+        status,
+        json!({ "status": status_left(shared) }),
+    );
+    shot(env, log, "34-status-header");
+}
+
+/// Timeline の行 `row` のレイヤー（見出しの位置を求めるのに使う）。
+fn row_item(shared: &Shared, row: usize) -> Option<mm_ui_layout::Item> {
+    let doc = shared.doc()?;
+    let comp = doc.project.composition(&doc.comp).ok()?;
+    timeline_model(&doc.project, comp).items.get(row).cloned()
 }
 
 /// ツールバーのボタンと帯の上で、止まるとツールチップが出る。文はコマンドの表と帯の情報から作ったもの。
@@ -281,6 +312,7 @@ pub(super) fn run(env: &Env<'_>, log: &mut Log) {
         return;
     };
     cut_steps(env, log, &g, span);
+    header_status_step(env, log, &g);
     drag_status_step(env, log, &g, span);
     right_status_step(env, log);
     tooltip_steps(env, log, &g, span);

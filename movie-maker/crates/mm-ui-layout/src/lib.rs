@@ -29,6 +29,7 @@ mod geom;
 mod gesture;
 mod header;
 mod hint;
+mod hit_kind;
 mod keyframe_rows;
 mod keymarks;
 mod labels;
@@ -70,6 +71,7 @@ pub use hint::{
     bar_tooltip, cursor_for, splitter_cursor, status_labels, status_left, status_right, tooltip_of,
     CursorKind, Dragging, EditDrag, HintText, Pointee, TooltipContent, Under,
 };
+pub use hit_kind::HitKind;
 pub use keyframe_rows::{
     keyframe_center, toggle_open, KeyframeAction, KeyframeIndex, KeyframeRow, KeyframeRowState,
     RowKeyframe, RowPick, ROW_DIAMOND_PX,

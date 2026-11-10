@@ -2,6 +2,8 @@
 
 use std::sync::OnceLock;
 
+use mm_ui_layout::Hit;
+
 use super::WindowAction;
 
 /// ウィンドウのフックへ渡すもの。
@@ -13,6 +15,8 @@ pub enum Forward {
     Window(WindowAction),
     /// WebView で押した、キーの表に無い Alt+英字の字（小文字）。ウィンドウがその字をアクセスキーとしてメニューを開く。
     MenuKey(char),
+    /// サーフェスの右クリックのメニューを、当たった所（`Hit`）と点（サーフェスのクライアントの物理ピクセル）で出す。
+    ContextMenu(Hit, (i32, i32)),
 }
 
 /// ウィンドウのフックの中身。

@@ -1,5 +1,5 @@
-//! ポインターの下にあるものの、Timeline が知っている分（[`Pointee`]）。カーソル、ステータスバー、ツールチップ、
-//! 右クリックのメニューが同じ値を引く。ツールバーと再生の操作のバーの部品は `Ui` が `under` に差し替える。
+//! ポインターの下にあるものの、Timeline が知っている分（[`Pointee`]）。カーソル、ステータスバー、ツールチップが
+//! 同じ値を引く。ツールバーと再生の操作のバーの部品は `Ui` が `under` に差し替える。
 
 use super::{Drag, TimelineController};
 use crate::hint::{Dragging, EditDrag, Pointee, Under};

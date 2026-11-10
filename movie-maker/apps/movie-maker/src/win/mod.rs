@@ -5,6 +5,7 @@ mod capture;
 mod cli;
 mod clock;
 mod commands;
+mod context_menu;
 mod cursor;
 mod deliver;
 mod deliver_ipc;

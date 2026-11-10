@@ -40,7 +40,12 @@ pub(super) fn splittable_span(shared: &Shared, row: usize) -> Option<(f64, f64)>
 }
 
 /// 行 `row` に、`from` より後ろで `at` の近く（`tol` 秒以内）に始まるカットがあるか。
-fn cut_starts_near(shared: &Shared, row: usize, (from, at): (f64, f64), tol: f64) -> bool {
+pub(super) fn cut_starts_near(
+    shared: &Shared,
+    row: usize,
+    (from, at): (f64, f64),
+    tol: f64,
+) -> bool {
     let Some(doc) = shared.doc() else {
         return false;
     };
@@ -55,7 +60,7 @@ fn cut_starts_near(shared: &Shared, row: usize, (from, at): (f64, f64), tol: f64
 }
 
 /// 取り消し 1 回で `cuts` の数が `before` に戻ることを確かめる。
-fn undo_to(env: &Env<'_>, log: &mut Log, name: &str, before: usize) {
+pub(super) fn undo_to(env: &Env<'_>, log: &mut Log, name: &str, before: usize) {
     keys::dispatch(env.shared, "play-test", "Ctrl+KeyZ");
     let undone = wait_until(WAIT, || cuts(env.shared).len() == before);
     log.step(name, undone, json!({ "cuts_before": before }));
@@ -119,7 +124,7 @@ fn selection_cut_step(env: &Env<'_>, log: &mut Log) {
     log.step("selection_cut", kept, json!({ "cuts": before.len() }));
 }
 
-fn layer_start(shared: &Shared, id: &str) -> Option<f64> {
+pub(super) fn layer_start(shared: &Shared, id: &str) -> Option<f64> {
     let doc = shared.doc()?;
     let (_, layer) = doc.project.layer(&Id::new(id)).ok()?;
     Some(layer.range().ok()?.start.to_f64())
