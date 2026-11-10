@@ -3,20 +3,20 @@
 //! （`menu::run`）に流して実行する。
 //! ポップアップは画面の撮影に写らず、モーダルで止まるので、出さずに並びの記録だけを読む。
 
-use mm_ui_layout::Place;
+use mm_ui_layout::HitKind;
 
 use super::tools::{cut_starts_near, layer_start, splittable_span, undo_to};
 use super::*;
 use crate::win::context_menu;
 use crate::win::menu;
 
-pub(super) fn wait_shown(shared: &Shared, place: Place) -> Option<context_menu::Shown> {
+pub(super) fn wait_shown(shared: &Shared, kind: HitKind) -> Option<context_menu::ShownMenu> {
     let mut found = None;
     wait_until(WAIT, || {
         found = shared.context.take_shown();
-        found.as_ref().is_some_and(|s| s.place == place)
+        found.as_ref().is_some_and(|s| s.kind == kind)
     });
-    found.filter(|s| s.place == place)
+    found.filter(|s| s.kind == kind)
 }
 
 fn layer_lock(shared: &Shared, id: &str) -> Option<bool> {
@@ -37,7 +37,7 @@ fn cut_menu_step(env: &Env<'_>, log: &mut Log) {
     let mid = (start + end) / 2.0;
     let before = cuts(shared).len();
     context_menu::post_at(hwnd, g.at(g.row, mid, 0.0));
-    let shown = wait_shown(shared, Place::Cut);
+    let shown = wait_shown(shared, HitKind::Cut);
     let selected = wait_until(WAIT, || shared.edit.selected_cut().is_some());
     let items = shown.as_ref().map(|s| s.items.clone());
     let split_listed = items
@@ -74,7 +74,7 @@ fn layer_menu_steps(env: &Env<'_>, log: &mut Log) {
         return;
     };
     context_menu::post_at(hwnd, g.at(row, (start + end) / 2.0, 0.0));
-    let shown = wait_shown(shared, Place::Layer);
+    let shown = wait_shown(shared, HitKind::Layer);
     let selected = wait_until(WAIT, || {
         shared.selected_layer().as_deref() == Some(id.as_str())
     });
@@ -98,7 +98,7 @@ fn layer_menu_steps(env: &Env<'_>, log: &mut Log) {
         log.step("undo_context_lock_layer", undone, json!({}));
     }
     context_menu::post_menu_key(hwnd);
-    let key_menu = wait_shown(shared, Place::Layer);
+    let key_menu = wait_shown(shared, HitKind::Layer);
     log.step(
         "context_menu_key",
         key_menu.is_some(),

@@ -28,12 +28,12 @@ mod empty;
 mod geom;
 mod gesture;
 mod header;
+mod hit_kind;
 mod keyframe_rows;
 mod keymarks;
 mod labels;
 mod paint;
 pub mod palette;
-mod pointed;
 mod rows;
 mod ruler;
 mod scale;
@@ -66,6 +66,7 @@ pub use empty::{EmptyHints, EmptyKeys, EmptyState};
 pub use geom::{fit_rect, Color, Quad, QuadShape, Rect};
 pub use gesture::{body_edit, edge_edit, EditKind, Side};
 pub use header::{button_center, disclosure_center, name_center};
+pub use hit_kind::HitKind;
 pub use keyframe_rows::{
     keyframe_center, toggle_open, KeyframeAction, KeyframeIndex, KeyframeRow, KeyframeRowState,
     RowKeyframe, RowPick, ROW_DIAMOND_PX,
@@ -73,7 +74,6 @@ pub use keyframe_rows::{
 pub use keymarks::MARK_PX;
 pub use labels::{timeline_labels, timeline_timecode, LABEL_PAD};
 pub use paint::{timeline_overlay, timeline_quads, PaintInput, PaintState, UnderText};
-pub use pointed::Place;
 pub use rows::{RowHeight, RowHeights, Rows, KEYFRAME_ROW_H};
 pub use ruler::{label, major_step, ticks, Tick};
 pub use scale::{Scale, TextPlacement};

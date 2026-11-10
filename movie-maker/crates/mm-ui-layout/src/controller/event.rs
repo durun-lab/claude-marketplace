@@ -71,7 +71,7 @@ pub enum Action {
     Keyframe(KeyframeAction),
     /// Blade でカットを押した。レイヤー `item` の、時刻 `time`（秒。再生位置とフレームに合わせたもの）で割る。
     Split { item: usize, time: f64 },
-    /// 右クリックのメニューを出す。`hit` は当たった所（添字を含む。`Place::of` で右クリックのメニューの種類にする）。
+    /// 右クリックのメニューを出す。`hit` は当たった所（添字を含む。`HitKind::of` で右クリックのメニューの種類にする）。
     /// `time` は Split Clip Here の割る時刻（秒。Blade と同じく Snapping が入なら再生位置に吸い付け、フレームにそろえる）で、
     /// 割れるカットの中を右クリックしたときだけ持つ。`at` はメニューを出す点（Timeline の座標）。ポインターの下のものは、
     /// この前の `Select`、`SelectCut`、`Keyframe(Select)` で選んである。

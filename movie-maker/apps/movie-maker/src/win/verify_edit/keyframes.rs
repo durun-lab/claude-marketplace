@@ -4,7 +4,7 @@
 //! 戻し、レイヤーの帯を引いて行のひし形が帯と一緒に動く所を撮って取りやめ、] と [ で前後のキーフレームへ動かし、U で閉じて
 //! 開く。手順ごとにスクリーンショットを残す。
 
-use mm_ui_layout::{Mods, Place, PointerEvent, TimelineModel};
+use mm_ui_layout::{HitKind, Mods, PointerEvent, TimelineModel};
 use mm_ui_wgpu::timeline_layer_ids;
 use serde_json::json;
 
@@ -275,7 +275,7 @@ fn context_step(env: &Env<'_>, log: &mut Log, layer: &OpenedLayer, time: f64) {
     };
     shared.context.set_headless(true);
     context_menu::post_at(hwnd, at);
-    let shown = super::context::wait_shown(shared, Place::Keyframe);
+    let shown = super::context::wait_shown(shared, HitKind::Keyframe);
     shared.context.set_headless(false);
     let selected = wait_until(WAIT, || shared.keyframes.keyframe_selected());
     let items = shown.map(|s| s.items);

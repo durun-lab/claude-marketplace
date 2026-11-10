@@ -17,14 +17,14 @@ use crate::win::sequence_edit::tests::sample_project;
 /// 項目が表に無くても並びに置いてある、後の PR のコマンド（Track Height）。
 const PENDING: &[&str] = &["timeline.track_height"];
 
-const PLACES: [Place; 7] = [
-    Place::Cut,
-    Place::Layer,
-    Place::Header,
-    Place::KeyframeRow,
-    Place::Keyframe,
-    Place::Ruler,
-    Place::Empty,
+const KINDS: [HitKind; 7] = [
+    HitKind::Cut,
+    HitKind::Layer,
+    HitKind::Header,
+    HitKind::KeyframeRow,
+    HitKind::Keyframe,
+    HitKind::Ruler,
+    HitKind::Empty,
 ];
 
 /// シーケンスのレイヤー `l-seq`（最背面）の上に文字のレイヤー `l-a` を積んだプロジェクトを開いた共有状態。
@@ -41,18 +41,18 @@ fn open_shared() -> Arc<Shared> {
 }
 
 /// 割る時刻 `time` で出したメニューの項目。
-fn texts(shared: &Shared, place: Place, time: Option<f64>) -> Vec<String> {
-    describe(&lines(context_groups(place), &context_table(shared, time)))
+fn texts(shared: &Shared, kind: HitKind, time: Option<f64>) -> Vec<String> {
+    describe(&lines(context_groups(kind), &context_table(shared, time)))
 }
 
 #[test]
 fn 並びの_id_は表にあるか_後の_pr_のコマンドで_グループは空でない() {
-    for place in PLACES {
-        for group in context_groups(place) {
-            assert!(!group.is_empty(), "{place:?}");
+    for kind in KINDS {
+        for group in context_groups(kind) {
+            assert!(!group.is_empty(), "{kind:?}");
             for id in *group {
                 let known = TABLE.iter().any(|s| s.id == *id) || PENDING.contains(id);
-                assert!(known, "{place:?}: {id}");
+                assert!(known, "{kind:?}: {id}");
             }
         }
     }
@@ -64,7 +64,7 @@ fn カットのメニューは_split_clip_here_lift_extract_show_keyframe_editor
     shared.select_layer(Some("l-seq".to_owned()));
     shared.edit.select_cut(Some("k1".to_owned()));
     assert_eq!(
-        texts(&shared, Place::Cut, Some(1.5)),
+        texts(&shared, HitKind::Cut, Some(1.5)),
         [
             "Split Clip Here",
             "-",
@@ -80,7 +80,7 @@ fn カットのメニューは_split_clip_here_lift_extract_show_keyframe_editor
 fn 割れない所のメニューでは_split_clip_here_を押せず_カットを選ぶまで_lift_と_extract_を押せない() {
     let shared = open_shared();
     assert_eq!(
-        texts(&shared, Place::Cut, None),
+        texts(&shared, HitKind::Cut, None),
         [
             "Split Clip Here (disabled)",
             "-",
@@ -106,8 +106,8 @@ fn レイヤーのメニューは有効とロックと_shy_を上に_重なり�
         "-",
         "Show Keyframe Editor  U",
     ];
-    assert_eq!(texts(&shared, Place::Layer, None), expected);
-    assert_eq!(texts(&shared, Place::Header, None), expected);
+    assert_eq!(texts(&shared, HitKind::Layer, None), expected);
+    assert_eq!(texts(&shared, HitKind::Header, None), expected);
 }
 
 #[test]
@@ -121,23 +121,23 @@ fn ひし形のメニューは_remove_keyframe_と前後のキーフレームへ
         path: None,
         keyframe: true,
     }));
-    let keyframe = texts(&shared, Place::Keyframe, None);
+    let keyframe = texts(&shared, HitKind::Keyframe, None);
     assert_eq!(keyframe[..2], ["Remove Keyframe  Delete", "-"]);
     assert_eq!(keyframe[2..], steps);
-    let row = texts(&shared, Place::KeyframeRow, None);
+    let row = texts(&shared, HitKind::KeyframeRow, None);
     assert_eq!(row[..2], steps);
     assert_eq!(row[2..], ["-", "Show Keyframe Editor  U"]);
 }
 
 #[test]
-fn 目盛りと空きのメニュー() {
+fn 目盛りと行の無い所のメニュー() {
     let shared = open_shared();
     assert_eq!(
-        texts(&shared, Place::Ruler, None),
+        texts(&shared, HitKind::Ruler, None),
         ["Full Extent Zoom  Shift+Z"]
     );
     assert_eq!(
-        texts(&shared, Place::Empty, None),
+        texts(&shared, HitKind::Empty, None),
         ["Full Extent Zoom  Shift+Z", "-", "Snapping  N (checked)"]
     );
 }

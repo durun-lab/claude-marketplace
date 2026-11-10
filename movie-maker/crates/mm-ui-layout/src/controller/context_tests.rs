@@ -1,9 +1,9 @@
-//! 右クリックのメニューの前処理のテスト。ポインターの下のものを先に選ぶこと、当たった所、割る時刻、メニューキーの位置。
+//! 右クリックのメニューの前処理のテスト。ポインターの下のものを先に選ぶこと、当たった所の種類、割る時刻、メニューキーの位置。
 //! テストの x は行の領域の左端を 0 とする（1 秒 100 px）。
 
 use super::tests::{ctl, down, in_bar};
 use super::*;
-use crate::pointed::Place;
+use crate::hit_kind::HitKind;
 use crate::timeline::{CutBar, Item, ItemKind};
 use crate::timeline_layout::HEADER_W;
 
@@ -40,10 +40,10 @@ fn right_click_with(
     c.handle(ev, m, playhead)
 }
 
-fn menu_of(actions: &[Action]) -> (Place, Option<f64>, (f32, f32)) {
+fn menu_of(actions: &[Action]) -> (HitKind, Option<f64>, (f32, f32)) {
     match actions.last() {
         Some(Action::ContextMenu { hit, time, at }) => {
-            (Place::of(hit).expect("メニューを出す所"), *time, *at)
+            (HitKind::of(hit).expect("メニューを出す所"), *time, *at)
         }
         other => panic!("{other:?}"),
     }
@@ -64,7 +64,7 @@ fn カットの右クリックはレイヤーとカットを選んでからカ�
         [Action::Select(Some(0)), Action::SelectCut(Some((0, 1)))]
     );
     let (place, time, at) = menu_of(&actions);
-    assert_eq!(place, Place::Cut);
+    assert_eq!(place, HitKind::Cut);
     assert!(near(time, 5.0), "{time:?}");
     assert_eq!(at, (500.0 + HEADER_W, y));
     assert_eq!((c.selected, c.selected_cut), (Some(0), Some((0, 1))));
@@ -93,7 +93,7 @@ fn レイヤーの帯の右クリックはカットの選択を外してレイ�
         actions[..2],
         [Action::Select(Some(1)), Action::SelectCut(None)]
     );
-    assert_eq!(menu_of(&actions).0, Place::Layer);
+    assert_eq!(menu_of(&actions).0, HitKind::Layer);
     assert_eq!(menu_of(&actions).1, None);
     assert_eq!((c.selected, c.selected_cut), (Some(1), None));
 }
@@ -106,12 +106,12 @@ fn 見出しの右クリックはレイヤーを選んで見出しのメニュ�
     let ev = PointerEvent::ContextMenu { x: 20.0, y };
     let actions = c.handle(ev, &m, PLAYHEAD);
     assert_eq!(actions[0], Action::Select(Some(1)));
-    assert_eq!(menu_of(&actions).0, Place::Header);
+    assert_eq!(menu_of(&actions).0, HitKind::Header);
     assert_eq!(c.selected, Some(1));
 }
 
 #[test]
-fn 目盛りと空きの右クリックは選択を変えない() {
+fn 目盛りと行の無い所の右クリックは選択を変えない() {
     let m = model();
     let mut c = ctl(&m);
     let y = in_bar(&c, 0);
@@ -119,11 +119,11 @@ fn 目盛りと空きの右クリックは選択を変えない() {
     let ruler = c.layout().ruler;
     let actions = right_click(&mut c, &m, 300.0, ruler.y + ruler.h / 2.0);
     assert_eq!(actions.len(), 1, "選択の操作は出さない");
-    assert_eq!(menu_of(&actions).0, Place::Ruler);
+    assert_eq!(menu_of(&actions).0, HitKind::Ruler);
     let empty = c.layout().row_area.bottom() - 2.0;
     let actions = right_click(&mut c, &m, 1500.0, empty);
     assert_eq!(actions.len(), 1);
-    assert_eq!(menu_of(&actions).0, Place::Empty);
+    assert_eq!(menu_of(&actions).0, HitKind::Empty);
     assert_eq!(c.selected_cut, Some((0, 1)), "選んでいたカットのまま");
 }
 
@@ -150,13 +150,13 @@ fn 吸い付いた再生位置がカットの端か外なら_右クリックし�
     let (place, time, _) = menu_of(&right_click(&mut c, &m, 698.0, y));
     assert_eq!(
         (place, time),
-        (Place::Cut, None),
+        (HitKind::Cut, None),
         "再生位置 7 秒はカット 4-7 秒の端"
     );
     let (place, time, _) = menu_of(&right_click_with(&mut c, &m, (299.0, y), 3.04));
     assert_eq!(
         (place, time),
-        (Place::Cut, None),
+        (HitKind::Cut, None),
         "3.04 秒はカット 0-3 秒の外"
     );
     assert_eq!(c.selected_cut, Some((0, 0)), "右クリックしたカットは選ぶ");
@@ -185,7 +185,7 @@ fn メニューキーは選んでいるカットの再生位置か中央で出�
     right_click(&mut c, &m, 500.0, y);
     let actions = c.handle(PointerEvent::ContextMenuKey, &m, 6.0);
     let (place, time, at) = menu_of(&actions);
-    assert_eq!((place, actions.len()), (Place::Cut, 1));
+    assert_eq!((place, actions.len()), (HitKind::Cut, 1));
     assert_eq!(time, Some(6.0), "再生位置はカット 4-7 秒の中");
     assert!(
         c.viewport().bar(0, 0.0, 20.0).contains(at.0, at.1),
@@ -214,24 +214,25 @@ fn メニューキーの点は_スクロールで隠れたカットを選んで�
     c.view.origin = 15.0;
     let (place, _, at) = menu_of(&c.handle(PointerEvent::ContextMenuKey, &m, 1.0));
     let area = c.layout().row_area;
-    assert_eq!(place, Place::Cut);
+    assert_eq!(place, HitKind::Cut);
     assert_eq!(at.0, area.x, "カット 0-3 秒は左に隠れている");
     assert!((area.y..=area.bottom()).contains(&at.1), "{at:?}");
 }
 
 #[test]
-fn メニューキーはレイヤーだけ選んでいればレイヤーのメニュー_何も選んでいなければ空きのメニュー() {
+fn メニューキーはレイヤーだけ選んでいればレイヤーのメニュー_何も選んでいなければ行の無い所のメニュー(
+) {
     let m = model();
     let mut c = ctl(&m);
     let (place, time, at) = menu_of(&c.handle(PointerEvent::ContextMenuKey, &m, PLAYHEAD));
-    assert_eq!((place, time), (Place::Empty, None));
+    assert_eq!((place, time), (HitKind::Empty, None));
     let ruler = c.layout().ruler;
     assert!(at.1 > ruler.bottom(), "目盛りの帯の下: {at:?}");
     let y = in_bar(&c, 1);
     c.handle(down(900.0, y), &m, PLAYHEAD);
     c.handle(PointerEvent::Up, &m, PLAYHEAD);
     let (place, time, at) = menu_of(&c.handle(PointerEvent::ContextMenuKey, &m, PLAYHEAD));
-    assert_eq!((place, time), (Place::Layer, None));
+    assert_eq!((place, time), (HitKind::Layer, None));
     let bar = c.viewport().bar(1, 8.0, 9.5);
     assert!(
         (bar.x..=bar.right()).contains(&at.0),
@@ -280,7 +281,7 @@ mod keyframes {
         let actions = click(&mut c, &m, p);
         assert_eq!(actions[0], Action::Select(Some(0)));
         assert!(actions.contains(&pick(0, Some(1))), "{actions:?}");
-        assert_eq!(menu_of(&actions), (Place::Keyframe, None, p));
+        assert_eq!(menu_of(&actions), (HitKind::Keyframe, None, p));
         let moved = PointerEvent::Move {
             x: p.0 + 50.0,
             y: p.1,
@@ -300,7 +301,7 @@ mod keyframes {
         let p = keyframe_center(&c.viewport(), (0, 1), 6.0);
         let actions = click(&mut c, &m, p);
         assert!(actions.contains(&pick(1, None)), "{actions:?}");
-        assert_eq!(menu_of(&actions).0, Place::KeyframeRow);
+        assert_eq!(menu_of(&actions).0, HitKind::KeyframeRow);
     }
 
     #[test]
@@ -317,7 +318,7 @@ mod keyframes {
         let actions = click(&mut c, &m, (bar.x + 300.0, bar.y + 4.0));
         let dropped = Action::Keyframe(KeyframeAction::Select(None));
         assert!(actions.contains(&dropped), "{actions:?}");
-        assert_eq!(menu_of(&actions).0, Place::Layer);
+        assert_eq!(menu_of(&actions).0, HitKind::Layer);
         assert_eq!(c.keyframe_pick(), None);
     }
 

@@ -1,12 +1,12 @@
-//! ポインターの下の所を表す粗い型。右クリックのメニューが「当たった所ごとの項目」を選ぶのに使う。
-//! 描画のスレッドの `TimelineController` が当たり判定（[`Hit`]）を持つので、UI のスレッドへはこの型で渡す。
-//! カーソル、ツールチップ、ステータスバーが同じ所を使うときは、この型に足すか [`Place::of`] を通す。
+//! 当たった所の種類。当たった所（[`Hit`]）を、右クリックのメニューの種類ごとにまとめる。
+//! 描画のスレッドの `TimelineController` が当たり判定を持つので、UI のスレッドへは `Hit` を渡し、種類はこの型で引く。
+//! カーソル、ツールチップ、ステータスバーが右クリックのメニューの種類を使うときも、[`HitKind::of`] を通す。
 
 use crate::timeline::Hit;
 
-/// ポインターの下の所。
+/// 当たった所の種類。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Place {
+pub enum HitKind {
     /// シーケンスのカット。
     Cut,
     /// レイヤーの帯（端のつまみと帯のマーカーを含む）。
@@ -19,21 +19,23 @@ pub enum Place {
     Keyframe,
     /// 目盛りの帯。
     Ruler,
-    /// 行のない所。
+    /// 行の無い所。
     Empty,
 }
 
-impl Place {
-    /// 当たり判定の結果が表す所。スクロールバー、ズームバー、角はメニューを出さないので `None`。
+impl HitKind {
+    /// 当たった所の種類。スクロールバー、ズームバー、角はメニューを出さないので `None`。
     pub fn of(hit: &Hit) -> Option<Self> {
         Some(match hit {
-            Hit::Cut { .. } => Place::Cut,
-            Hit::Layer { .. } | Hit::BarMark { .. } => Place::Layer,
-            Hit::Header { .. } | Hit::HeaderButton { .. } | Hit::Disclosure { .. } => Place::Header,
-            Hit::KeyframeRowHeader { .. } | Hit::KeyframeRow { .. } => Place::KeyframeRow,
-            Hit::RowKeyframe(_) => Place::Keyframe,
-            Hit::Ruler => Place::Ruler,
-            Hit::Empty => Place::Empty,
+            Hit::Cut { .. } => HitKind::Cut,
+            Hit::Layer { .. } | Hit::BarMark { .. } => HitKind::Layer,
+            Hit::Header { .. } | Hit::HeaderButton { .. } | Hit::Disclosure { .. } => {
+                HitKind::Header
+            }
+            Hit::KeyframeRowHeader { .. } | Hit::KeyframeRow { .. } => HitKind::KeyframeRow,
+            Hit::RowKeyframe(_) => HitKind::Keyframe,
+            Hit::Ruler => HitKind::Ruler,
+            Hit::Empty => HitKind::Empty,
             Hit::Corner | Hit::Scrollbar { .. } | Hit::ZoomBar { .. } => return None,
         })
     }
@@ -65,17 +67,20 @@ mod tests {
             cut: 2,
             part: Part::Body,
         };
-        assert_eq!(Place::of(&cut), Some(Place::Cut));
-        assert_eq!(Place::of(&layer), Some(Place::Layer));
-        assert_eq!(Place::of(&bar_mark), Some(Place::Layer));
-        assert_eq!(Place::of(&Hit::Header { index: 0 }), Some(Place::Header));
-        assert_eq!(Place::of(&button), Some(Place::Header));
+        assert_eq!(HitKind::of(&cut), Some(HitKind::Cut));
+        assert_eq!(HitKind::of(&layer), Some(HitKind::Layer));
+        assert_eq!(HitKind::of(&bar_mark), Some(HitKind::Layer));
         assert_eq!(
-            Place::of(&Hit::Disclosure { index: 0 }),
-            Some(Place::Header)
+            HitKind::of(&Hit::Header { index: 0 }),
+            Some(HitKind::Header)
         );
-        assert_eq!(Place::of(&Hit::Ruler), Some(Place::Ruler));
-        assert_eq!(Place::of(&Hit::Empty), Some(Place::Empty));
+        assert_eq!(HitKind::of(&button), Some(HitKind::Header));
+        assert_eq!(
+            HitKind::of(&Hit::Disclosure { index: 0 }),
+            Some(HitKind::Header)
+        );
+        assert_eq!(HitKind::of(&Hit::Ruler), Some(HitKind::Ruler));
+        assert_eq!(HitKind::of(&Hit::Empty), Some(HitKind::Empty));
     }
 
     #[test]
@@ -88,9 +93,9 @@ mod tests {
         });
         let header = Hit::KeyframeRowHeader { item, row };
         let lane = Hit::KeyframeRow { item, row };
-        assert_eq!(Place::of(&header), Some(Place::KeyframeRow));
-        assert_eq!(Place::of(&lane), Some(Place::KeyframeRow));
-        assert_eq!(Place::of(&diamond), Some(Place::Keyframe));
+        assert_eq!(HitKind::of(&header), Some(HitKind::KeyframeRow));
+        assert_eq!(HitKind::of(&lane), Some(HitKind::KeyframeRow));
+        assert_eq!(HitKind::of(&diamond), Some(HitKind::Keyframe));
     }
 
     #[test]
@@ -99,7 +104,7 @@ mod tests {
             part: ZoomBarPart::Thumb,
         };
         for hit in [Hit::Corner, Hit::Scrollbar { thumb: true }, zoom] {
-            assert_eq!(Place::of(&hit), None, "{hit:?}");
+            assert_eq!(HitKind::of(&hit), None, "{hit:?}");
         }
     }
 }

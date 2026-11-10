@@ -4,8 +4,8 @@
 
 use super::tools::splits;
 use super::{deselect_cut, Action, Drag, TimelineController};
+use crate::hit_kind::HitKind;
 use crate::keyframe_rows::keyframe_center;
-use crate::pointed::Place;
 use crate::snap::quantize;
 use crate::timeline::{hit_test, Hit, Part, TimelineModel};
 use crate::timeline_layout::Viewport;
@@ -28,7 +28,7 @@ impl TimelineController {
             return Vec::new();
         }
         let hit = hit_test(model, &self.viewport(), x, y);
-        if Place::of(&hit).is_none() {
+        if HitKind::of(&hit).is_none() {
             return Vec::new();
         }
         // Blade と同じ時刻で、割れる所でだけ持つ。吸い付いた再生位置が隣のカットにあれば、右クリックしたカットは割らない。
@@ -48,7 +48,7 @@ impl TimelineController {
     }
 
     /// メニューキー。選んでいるキーフレームの行、カット、レイヤーの順にその位置でメニューを出し、何も選んでいなければ
-    /// 再生位置の下の空きに出す。点は行の領域に収め、スクロールで隠れたものを選んでいても Timeline の中に出す。
+    /// 再生位置の下の行の無い所に出す。点は行の領域に収め、スクロールで隠れたものを選んでいても Timeline の中に出す。
     pub(super) fn context_menu_key(&mut self, model: &TimelineModel, playhead: f64) -> Vec<Action> {
         if self.drag != Drag::None {
             return Vec::new();
@@ -126,7 +126,7 @@ impl TimelineController {
     }
 
     /// ポインターの下のものを選ぶ。カット、レイヤーの帯と見出しはそれを選び、左クリックと同じくキーフレームの行の選択を
-    /// 外す。キーフレームの行はその行（とひし形）を選ぶ。目盛りと空きでは選択を変えない（今の選択に効くメニューを
+    /// 外す。キーフレームの行はその行（とひし形）を選ぶ。目盛りと行の無い所では選択を変えない（今の選択に効くメニューを
     /// 出す）。
     fn select_under(&mut self, hit: Hit, model: &TimelineModel) -> Vec<Action> {
         if let Some(out) = self.pick_for_menu(hit, model) {

@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use mm_ui_layout::Place;
+use mm_ui_layout::HitKind;
 use serde::{Serialize, Serializer};
 use tauri::menu::{
     CheckMenuItem, IsMenuItem, Menu as NativeMenu, MenuItem, PredefinedMenuItem, Submenu,
@@ -147,20 +147,20 @@ pub static BAR: &[(Menu, Groups)] = &[
     ),
 ];
 
-/// サーフェスの右クリックのメニューの並び。当たった所ごとに、メニューバーと同じ形（区切り線で分けたコマンドの ID の
+/// サーフェスの右クリックのメニューの並び。当たった所の種類ごとに、メニューバーと同じ形（区切り線で分けたコマンドの ID の
 /// グループ）で持つ。表に無い ID はスキップするので、後の PR が表にコマンドを足すと出る（Track Height）。
-pub fn context_groups(place: Place) -> Groups {
+pub fn context_groups(kind: HitKind) -> Groups {
     const KEYFRAME_STEPS: &[&str] = &[
         "playback.go_to_previous_keyframe",
         "playback.go_to_next_keyframe",
     ];
-    match place {
-        Place::Cut => &[
+    match kind {
+        HitKind::Cut => &[
             &["clip.split_here"],
             &["clip.lift", "clip.extract"],
             &["timeline.show_keyframe_editor"],
         ],
-        Place::Layer | Place::Header => &[
+        HitKind::Layer | HitKind::Header => &[
             &[
                 "layer.toggle_enabled",
                 "layer.toggle_lock",
@@ -169,10 +169,10 @@ pub fn context_groups(place: Place) -> Groups {
             &["layer.move_up", "layer.move_down"],
             &["timeline.track_height", "timeline.show_keyframe_editor"],
         ],
-        Place::KeyframeRow => &[KEYFRAME_STEPS, &["timeline.show_keyframe_editor"]],
-        Place::Keyframe => &[&["timeline.remove_keyframe"], KEYFRAME_STEPS],
-        Place::Ruler => &[&["timeline.full_extent_zoom"]],
-        Place::Empty => &[
+        HitKind::KeyframeRow => &[KEYFRAME_STEPS, &["timeline.show_keyframe_editor"]],
+        HitKind::Keyframe => &[&["timeline.remove_keyframe"], KEYFRAME_STEPS],
+        HitKind::Ruler => &[&["timeline.full_extent_zoom"]],
+        HitKind::Empty => &[
             &["timeline.full_extent_zoom"],
             &["timeline.toggle_snapping"],
         ],

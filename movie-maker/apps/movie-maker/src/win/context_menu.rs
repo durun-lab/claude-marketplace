@@ -7,7 +7,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use mm_ui_layout::{Hit, Place, PointerEvent};
+use mm_ui_layout::{Hit, HitKind, PointerEvent};
 use tauri::{AppHandle, PhysicalPosition, Window};
 use windows::core::w;
 use windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
@@ -21,8 +21,8 @@ use crate::win::state::Shared;
 
 /// 出したメニューの記録。ポップアップは画面の撮影に写らないので、自動試験は並びをここから読む。
 #[derive(Debug, Clone, PartialEq)]
-pub struct Shown {
-    pub place: Place,
+pub struct ShownMenu {
+    pub kind: HitKind,
     /// 項目の文字と、区切り線の `-`。押せない項目には ` (disabled)`、入の項目には ` (checked)` を付ける。
     pub items: Vec<String>,
 }
@@ -46,7 +46,7 @@ pub struct ContextSlot {
     /// 出したメニューの Split Clip Here の割る時刻（秒）。割れるカットを右クリックしたときだけ持ち、次のメニューで置き直す。
     /// メニューの項目のイベントだけが取り出すので、選ばずに閉じたメニューの時刻はほかの呼び出し箇所から使われない。
     time: Mutex<Option<f64>>,
-    shown: Mutex<Option<Shown>>,
+    shown: Mutex<Option<ShownMenu>>,
     /// ポップアップを出さず、並びの記録だけを残す（自動試験は、モーダルのメニューで止まらないため）。
     headless: AtomicBool,
 }
@@ -68,7 +68,7 @@ impl ContextSlot {
     }
 
     /// 直近に出したメニューを取り出す（取り出すと空に戻る）。
-    pub fn take_shown(&self) -> Option<Shown> {
+    pub fn take_shown(&self) -> Option<ShownMenu> {
         self.shown.lock().expect("context shown").take()
     }
 
@@ -159,16 +159,16 @@ pub fn show(app: &AppHandle, window: &Window, shared: &Arc<Shared>, hit: Hit, at
 }
 
 fn popup(app: &AppHandle, window: &Window, shared: &Arc<Shared>, hit: Hit, at: (i32, i32)) {
-    let Some(place) = Place::of(&hit) else {
+    let Some(kind) = HitKind::of(&hit) else {
         return;
     };
     let table = commands::context_table(shared, shared.context.time());
-    let lines = menu::lines(menu::context_groups(place), &table);
+    let lines = menu::lines(menu::context_groups(kind), &table);
     if lines.is_empty() {
         return;
     }
-    *shared.context.shown.lock().expect("context shown") = Some(Shown {
-        place,
+    *shared.context.shown.lock().expect("context shown") = Some(ShownMenu {
+        kind,
         items: describe(&lines),
     });
     if shared.context.headless.load(Ordering::SeqCst) {

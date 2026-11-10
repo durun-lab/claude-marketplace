@@ -1,7 +1,7 @@
 //! 右クリックのメニューの点が、倍率が違ってもサーフェスの物理ピクセルで返ること、Timeline の外とツールバーの上では出ないこと。
 
 use mm_ui_layout::{Action, Item, ItemKind, PointerEvent, Rect, TimelineModel};
-use mm_ui_layout::{Place, TimelineLayout};
+use mm_ui_layout::{HitKind, TimelineLayout};
 use mm_ui_wgpu::Ui;
 
 use crate::support::{bar_rect, gpu, FORMAT, H, W};
@@ -21,11 +21,11 @@ fn ui_at(scale: f32) -> Option<(Ui, TimelineModel)> {
     Some((ui, model))
 }
 
-fn menu_at(ui: &mut Ui, (x, y): (f32, f32)) -> Option<(Place, (f32, f32))> {
+fn menu_at(ui: &mut Ui, (x, y): (f32, f32)) -> Option<(HitKind, (f32, f32))> {
     ui.pointer(PointerEvent::ContextMenu { x, y })
         .into_iter()
         .find_map(|a| match a {
-            Action::ContextMenu { hit, at, .. } => Place::of(&hit).map(|p| (p, at)),
+            Action::ContextMenu { hit, at, .. } => HitKind::of(&hit).map(|k| (k, at)),
             _ => None,
         })
 }
@@ -38,8 +38,8 @@ fn 右クリックの点は倍率が違ってもクリックした物理ピク�
         };
         let bar: Rect = bar_rect(&ui, &model, scale, 0, (0.0, 4.0));
         let click = (bar.x + bar.w / 2.0, bar.y + bar.h / 2.0);
-        let (place, at) = menu_at(&mut ui, click).expect("帯の上で出る");
-        assert_eq!(place, Place::Layer, "倍率 {scale}");
+        let (kind, at) = menu_at(&mut ui, click).expect("帯の上で出る");
+        assert_eq!(kind, HitKind::Layer, "倍率 {scale}");
         assert!(
             (at.0 - click.0).abs() < 0.01 && (at.1 - click.1).abs() < 0.01,
             "倍率 {scale}: {at:?} と {click:?}"
