@@ -13,6 +13,8 @@ use crate::win::verify_edit::{
 };
 use crate::win::verify_stage::wait_until;
 
+const VK_BACKSPACE: u32 = 0x08;
+
 /// 秒の比較の許容差。
 const EPS: f64 = 1e-6;
 
@@ -66,6 +68,37 @@ fn insert_step(env: &Env<'_>, log: &mut Log, before: (usize, f64)) -> bool {
     made
 }
 
+/// 最初の insert で選ばれた唯一のカットを Backspace（extract）で抜くと、空の sequence と 1 フレームのレイヤーが残り、
+/// 取り消し 1 回でカットとレイヤーの長さが戻る。両方満たせば真。
+fn extract_step(env: &Env<'_>, log: &mut Log) -> bool {
+    let shared = env.shared;
+    let length = MARK_OUT - MARK_IN;
+    surface::post_key(env.surface_hwnd, VK_BACKSPACE);
+    let emptied = wait_until(WAIT, || cuts(shared).is_empty());
+    let layer = shared.doc().and_then(|d| layer_secs(&d.project));
+    let kept = shared
+        .doc()
+        .is_some_and(|d| sequence_of(&d.project).is_some());
+    let one_frame = layer.is_some_and(|s| s > 0.0 && s < length);
+    log.step(
+        "extract_last_cut",
+        emptied && kept && one_frame,
+        json!({ "layer_secs": layer }),
+    );
+    shot(env, log, "2b-extract-last");
+
+    keys::dispatch(shared, "play-test", "Ctrl+KeyZ");
+    let back = wait_until(WAIT, || cuts(shared).len() == 1);
+    let layer = shared.doc().and_then(|d| layer_secs(&d.project));
+    let fitted = layer.is_some_and(|s| (s - length).abs() < EPS);
+    log.step(
+        "undo_extract_last_cut",
+        back && fitted,
+        json!({ "layer_secs": layer }),
+    );
+    emptied && back
+}
+
 /// 取り消し 1 回で、sequence も sequence のレイヤーも消え、コンポジションの長さも戻る。
 fn undo_step(env: &Env<'_>, log: &mut Log, sequences: usize, before: (usize, f64)) {
     let shared = env.shared;
@@ -86,6 +119,9 @@ fn insert_and_undo(env: &Env<'_>, log: &mut Log, project: &Project) {
     let (sequences, before) = (project.sequences.len(), comp_shape(project));
     if let (Some(before), Some(_)) = (before, mark_source(env, log)) {
         if insert_step(env, log, before) {
+            if !extract_step(env, log) {
+                return;
+            }
             undo_step(env, log, sequences, before);
         } else {
             let why = json!("insert が適用されなかったので取り消さない");
