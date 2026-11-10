@@ -23,7 +23,10 @@ use crate::win::history::HistoryMirror;
 use crate::win::hotpatch;
 use crate::win::state::{FrameImage, Shared};
 
+mod sources;
 mod step;
+
+use sources::preview_config;
 
 /// 先読みする音の長さ（秒）。映像 1 フレームの描画が数十 ms かかっても音が途切れない長さ。
 const AUDIO_AHEAD_SECS: f64 = 0.4;
@@ -43,7 +46,7 @@ const END_EPSILON: f64 = 1e-3;
 pub struct PlayerOptions {
     /// 音の出力を開かず、壁時計で進める。
     pub no_audio: bool,
-    /// 実装の組み合わせ。`None` なら [`runtime_config`]。
+    /// 実装の組み合わせ。`None` なら [`preview_config`]。
     pub config: Option<RuntimeConfig>,
     /// `project.mmdb` のフォルダー。字幕の焼き込みの文字起こしの単語を読む。JSON のプロジェクトでは `None`。
     pub store_dir: Option<PathBuf>,
@@ -115,6 +118,8 @@ pub struct Player {
     store_dir: Option<PathBuf>,
     /// 字幕を焼き込んだプロジェクトのデータ。元の `project` と文字起こしが同じ間は作り直さない。
     burned: Option<Burned>,
+    /// 直前のフレームを描き始めたときの、裏のスレッドで素材を開き終わった数（`sources`）。
+    opened_seen: u64,
 }
 
 impl Player {
@@ -124,7 +129,7 @@ impl Player {
         comp_id: CompositionId,
         options: PlayerOptions,
     ) -> Result<(Self, PlaybackInfo)> {
-        let mut engine = assemble(&options.config.clone().unwrap_or_else(runtime_config))?;
+        let mut engine = assemble(&options.config.clone().unwrap_or_else(preview_config))?;
         *shared.gpu.lock().expect("gpu") = engine.gpu_context();
         let comp = project.composition(&comp_id)?;
         let (fps, duration) = (comp.fps, comp.duration.to_f64());
@@ -164,6 +169,7 @@ impl Player {
             redo: Vec::new(),
             store_dir: options.store_dir,
             burned: None,
+            opened_seen: 0,
         };
         Ok((player, info))
     }
@@ -177,7 +183,7 @@ impl Player {
             } else if self.playing {
                 Some(self.next_wait())
             } else {
-                None
+                self.opened_poll()
             };
             let received = match wait {
                 Some(d) => rx.recv_timeout(d),
@@ -199,6 +205,8 @@ impl Player {
                 self.reverse_tick();
             } else if self.playing {
                 self.tick();
+            } else {
+                self.redraw_opened();
             }
         }
         self.clock.halt();
@@ -326,6 +334,7 @@ impl Player {
         self.project = project;
         self.adopt_shape(fps, duration, size);
         self.resync();
+        self.shared.adopted.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 
@@ -482,6 +491,7 @@ impl Player {
             return;
         };
         let started = std::time::Instant::now();
+        self.opened_seen = self.engine.sources_opened();
         let result = {
             let _span = tracing::info_span!("preview.render_frame").entered();
             self.draw(time)

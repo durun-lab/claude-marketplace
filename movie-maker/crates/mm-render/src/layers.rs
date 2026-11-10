@@ -21,6 +21,8 @@ use crate::kind_cache::{render_cached, Placement};
 use crate::matte;
 
 use crate::renderer::WgpuRenderer;
+use crate::source::Footage;
+use crate::spans::layer_span;
 use crate::transform::{uv_to_ndc, LayerTransform};
 
 /// 入れ子のコンポジションの種類の名前。ノードのインターフェースからプロジェクトのデータが見えないので、展開はレンダラーが行う。
@@ -130,7 +132,7 @@ impl WgpuRenderer {
             {
                 continue;
             }
-            let _span = tracing::debug_span!("render.layer").entered();
+            let _span = layer_span(cx.project, layer).entered();
             match self.matted_item(encoder, cx, layer, &mut temps, 0) {
                 Ok(Some(p)) => prepared.push(p),
                 Ok(None) => {}
@@ -245,6 +247,7 @@ impl WgpuRenderer {
     ) -> Result<Option<LayerImage>> {
         // 覚える画像は入力の側のトーンマップの前なので、作業の明るさを切り替えてもデコードし直さない。
         let color = self.config_fingerprint();
+        let opener = self.opener();
         let Self {
             sources,
             decoders,
@@ -255,13 +258,12 @@ impl WgpuRenderer {
         } = self;
         let at = source_time(layer, cx.t)?;
         let opened = if kind.decodes_asset() {
-            sources.footage_with_backend(
-                decoders.as_ref(),
-                gpu.context().as_ref(),
-                cx.project,
-                params,
-                at,
-            )?
+            match sources.footage_with_backend(&opener, cx.project, params, at)? {
+                // 開き終わるまでこのレイヤーは描かない。抜いたまま描いた入れ子の画像は覚えない（`nested_image`）。
+                Footage::Pending => return Ok(None),
+                Footage::Ready(source, backend) => Some((source, backend)),
+                Footage::Absent => None,
+            }
         } else {
             None
         };
@@ -351,7 +353,7 @@ impl WgpuRenderer {
                 return Ok(Some(hit.into()));
             }
         }
-        let errors_before = self.errors.len();
+        let (errors_before, pending_before) = (self.errors.len(), self.sources.pending_layers());
         let texture = self.encode_comp(encoder, &child)?;
         let image = LayerImage {
             texture,
@@ -359,8 +361,11 @@ impl WgpuRenderer {
             place: Rect::new(0.0, 0.0, nested.width as f32, nested.height as f32),
             cached: false,
         };
-        // 描けなかったレイヤーがあった画像は、次も描き直して同じエラーを出すために覚えない。
-        let key = key.filter(|_| self.errors.len() == errors_before);
+        // 描けなかったレイヤーがあった画像は、次も描き直して同じエラーを出すために覚えない。素材を開いている途中の
+        // レイヤーを抜いた画像も、開いた後に描き直すために覚えない。
+        let complete =
+            self.errors.len() == errors_before && self.sources.pending_layers() == pending_before;
+        let key = key.filter(|_| complete);
         let kept = self
             .cache
             .remember(key, image.as_cached(), true, &mut self.gpu);

@@ -121,6 +121,8 @@ pub struct Shared {
     pub dropped_frames: AtomicU64,
     /// 再生スレッドが描いたフレームの数。
     pub rendered_frames: AtomicU64,
+    /// 再生スレッドが編集の結果のプロジェクトのデータを描画に取り込み、今のフレームを描き直した回数。
+    pub adopted: AtomicU64,
     pub frames: FrameSlot,
     /// サーフェスが受けたポインターの入力。描画スレッドが取り出す。
     pub input: Mutex<Vec<PointerEvent>>,
@@ -197,6 +199,7 @@ impl Shared {
             playing: AtomicBool::new(false),
             dropped_frames: AtomicU64::new(0),
             rendered_frames: AtomicU64::new(0),
+            adopted: AtomicU64::new(0),
             frames: FrameSlot::default(),
             input: Mutex::new(Vec::new()),
             commands: Mutex::new(None),

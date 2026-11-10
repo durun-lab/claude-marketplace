@@ -1,6 +1,7 @@
 //! `assemble(config) -> Engine`。実装のクレートを知っているのはこのファイルだけ。
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use mm_audio_api::MixerFactory;
 use mm_audio_dsp::DspMixerFactory;
@@ -11,7 +12,7 @@ use mm_color_lut::LutColor;
 use mm_decode_api::{DecoderFactory, EncoderFactory, GpuContextRef};
 use mm_gpu::{GpuContext, GpuRequest};
 use mm_node_api::Services;
-use mm_render::{FrameCacheConfig, WgpuRenderer, DEFAULT_MEMORY_BYTES};
+use mm_render::{FrameCacheConfig, PendingSources, WgpuRenderer, DEFAULT_MEMORY_BYTES};
 use mm_render_api::Renderer;
 use mm_testkit::audio::SampleMixerFactory;
 use mm_testkit::cache::MemoryCache;
@@ -48,11 +49,13 @@ pub fn assemble(config: &RuntimeConfig) -> Result<Engine> {
         text_rasterizer,
         color,
     };
-    let renderer = renderer(config, gpu.as_ref(), &decoders, &mixers, &services, &cache)?;
+    let (renderer, pending) =
+        renderer(config, gpu.as_ref(), &decoders, &mixers, &services, &cache)?;
     Ok(Engine::from_parts(EngineParts {
         config: config.clone(),
         registry: registry(config.render)?,
         renderer,
+        pending,
         decoders,
         encoders,
         mixers,
@@ -273,6 +276,7 @@ fn frame_cache(config: &RuntimeConfig, cache: &Arc<dyn CacheStore>) -> FrameCach
     }
 }
 
+/// レンダラーと、素材を開いている途中のレイヤーの数え（バックグラウンドのスレッドで開ける wgpu のレンダラーだけ）。
 fn renderer(
     config: &RuntimeConfig,
     gpu: Option<&Arc<GpuContext>>,
@@ -280,23 +284,29 @@ fn renderer(
     mixers: &Arc<dyn MixerFactory>,
     services: &Services,
     cache: &Arc<dyn CacheStore>,
-) -> Result<Box<dyn Renderer>> {
+) -> Result<(Box<dyn Renderer>, Option<PendingSources>)> {
     let backend = config.render;
     match backend {
-        Backend::Sample => Ok(Box::new(SampleRenderer::new(
-            decoders.clone(),
-            mixers.clone(),
-            services.clone(),
-        ))),
-        Backend::Wgpu => Ok(Box::new(
-            WgpuRenderer::new(
+        Backend::Sample => Ok((
+            Box::new(SampleRenderer::new(
+                decoders.clone(),
+                mixers.clone(),
+                services.clone(),
+            )),
+            None,
+        )),
+        Backend::Wgpu => {
+            let wgpu = WgpuRenderer::new(
                 gpu.ok_or_else(|| unsupported("render", backend))?.clone(),
                 decoders.clone(),
                 mixers.clone(),
                 services.clone(),
             )
-            .with_frame_cache(frame_cache(config, cache)),
-        )),
+            .with_frame_cache(frame_cache(config, cache))
+            .with_open_wait(config.open_wait_ms.map(Duration::from_millis));
+            let pending = wgpu.pending_sources();
+            Ok((Box::new(wgpu), Some(pending)))
+        }
         other => Err(unsupported("render", other)),
     }
 }

@@ -2,6 +2,7 @@
 
 use std::collections::VecDeque;
 use std::sync::Arc;
+use std::time::Duration;
 
 use mm_audio_api::{AudioBlock, MixerFactory};
 use mm_decode_api::{DecoderFactory, Encoder};
@@ -18,7 +19,7 @@ use crate::frame_cache::{FrameCacheConfig, MemoStats, RenderCache};
 use crate::input_tone::InputTonePass;
 use crate::layers::CompCx;
 use crate::matte::MattePass;
-use crate::source::SourcePool;
+use crate::source::{Opener, PendingSources, SourcePool};
 use mm_gpu::{GpuContext, PassTimer, WgpuGpu};
 
 /// レンダラーのバージョン。合成の式を変えたら上げる（フレームのキャッシュのキーに入る）。
@@ -90,6 +91,26 @@ impl WgpuRenderer {
         self.cache.flush(&mut self.gpu);
         self.cache = RenderCache::new(config);
         self
+    }
+
+    /// 1 フレームで素材を開くのを待つ上限を決める。超えた素材はバックグラウンドのスレッドで開き続け、そのフレームでは
+    /// そのレイヤーを描かない（アプリのプレビュー）。`None`（既定）は開き終わるまで待つ。書き出しと、描いたフレームを返す CLI は待つ。
+    pub fn with_open_wait(mut self, wait: Option<Duration>) -> Self {
+        self.sources.set_open_wait(wait);
+        self
+    }
+
+    /// 素材を開いている途中のために描かなかったレイヤーの数と、開き終わった数。再生スレッドが描き直す時を決めるのに読む。
+    pub fn pending_sources(&self) -> PendingSources {
+        self.sources.pending()
+    }
+
+    /// 素材を開く道具（バックグラウンドのスレッドへ渡せる形）。
+    pub(crate) fn opener(&self) -> Opener {
+        Opener {
+            decoders: self.decoders.clone(),
+            gpu: self.gpu.context().clone(),
+        }
     }
 
     /// フレームのキャッシュの数え上げ（引いた回数、当たった回数、大きさ）。

@@ -3,15 +3,22 @@
 //! 同じ素材を 1 つのフレームで別の位置から読む（入れ子で同じ素材を時刻をずらして重ねる）と、デコーダーが 1 つでは
 //! 毎回シークし直す。そこで素材ごとに [`MAX_DECODERS_PER_ASSET`] 個までデコーダーを持ち、次のフレームを
 //! 読むだけで済むものを選ぶ。デコーダーを開くのはシークより重いので、そのフレームでまだ使っていないものがあれば
-//! シークで済ませ、全部が使用中のときだけ新しく開く。
+//! シークで済ませ、全部が使用中のときだけ新しく開く。開くのを待つ上限があれば、開くのはバックグラウンドのスレッド
+//! （`opening`）。
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::time::Duration;
 
 use mm_audio_api::AudioBlock;
-use mm_decode_api::{DecodedFrame, Decoder, DecoderFactory, FrameSource, GpuContextRef, MediaInfo};
+use mm_decode_api::{DecodedFrame, Decoder, FrameSource, MediaInfo};
 use mm_doc::Project;
 use mm_types::{AssetId, MmError, ParamValue, Params, RationalTime, Result, TimeRange};
+
+use opening::Opening;
+pub use opening::{Opener, PendingSources};
+
+mod opening;
 
 /// 素材ごとに持つデコーダーの上限。重ねる数がこれを超えたら、最も前に使ったものをシークし直す。
 pub(crate) const MAX_DECODERS_PER_ASSET: usize = 4;
@@ -69,6 +76,7 @@ impl FrameSource for DecoderSource {
             }
         }
         mm_trace::counter!("render.source_seeks", 1);
+        let _span = tracing::debug_span!("render.seek_source").entered();
         self.decoder.seek(t)?;
         let frame = self
             .read_next()?
@@ -82,30 +90,59 @@ impl FrameSource for DecoderSource {
     }
 }
 
+/// 素材を引いた結果。
+pub enum Footage<'s> {
+    /// パラメータに素材が無い。
+    Absent,
+    /// バックグラウンドのスレッドで開いている途中。このフレームでは描かない。
+    Pending,
+    /// 開いた素材と、デコーダーの実装の名前（`Decoder::backend_id`。名乗らなければファクトリーの名前）。
+    Ready(&'s mut (dyn FrameSource + 's), &'static str),
+}
+
 /// 開いた素材のキャッシュ。素材ごとに開いたデコーダーを使い回す。
 #[derive(Default)]
 pub struct SourcePool {
     sources: HashMap<AssetId, Vec<DecoderSource>>,
+    opening: Opening,
     /// 描いているフレームの数え。同じフレームの中で使用中のデコーダーを見分ける。
     frame: u64,
 }
 
 impl SourcePool {
+    /// 1 フレームで素材を開くのを待つ上限を決める。`None`（既定）は開き終わるまで待つ。
+    pub fn set_open_wait(&mut self, wait: Option<Duration>) {
+        self.opening.set_wait(wait);
+    }
+
+    /// 素材を開いている途中のために描かなかったレイヤーの数と、開き終わった数。
+    pub fn pending(&self) -> PendingSources {
+        self.opening.pending()
+    }
+
+    /// このフレームで、素材を開いている途中のために描かなかったレイヤーの数。
+    pub fn pending_layers(&self) -> usize {
+        self.opening.pending_layers()
+    }
+
     /// 全部閉じる。素材の内容が変わったとき。
     pub fn clear(&mut self) {
         self.sources.clear();
+        self.opening.clear();
     }
 
     /// 次のフレームを描き始める。前のフレームで使ったデコーダーも、次のフレームでは空きになる。
-    /// [`IDLE_FRAMES`] ごとに、その間に使わなかったデコーダーを閉じる。
+    /// [`IDLE_FRAMES`] ごとに、その間に使わなかったデコーダーと、求められなかった開いている途中のものを閉じる。
     pub fn begin_frame(&mut self) {
         self.frame += 1;
+        self.opening.begin_frame();
         if self.frame.is_multiple_of(IDLE_FRAMES) {
             let frame = self.frame;
             for opened in self.sources.values_mut() {
                 opened.retain(|s| frame - s.used <= IDLE_FRAMES);
             }
             self.sources.retain(|_, opened| !opened.is_empty());
+            self.opening.drop_idle(frame, IDLE_FRAMES);
         }
     }
 
@@ -121,45 +158,48 @@ impl SourcePool {
     pub fn forget(&mut self, ids: &[String]) {
         self.sources
             .retain(|id, _| !ids.iter().any(|i| i == id.as_str()));
+        self.opening.forget(ids);
     }
 
     /// 評価済みのパラメータの `AssetRef` の素材を、素材の時刻 `t` を読むのに向いたデコーダーで返す（無ければ開く）。
-    /// `AssetRef` が無いか空なら `None`。
+    /// `AssetRef` が無いか空なら `None`。開いている途中（音はその区間を無音にする）も `None`。
     pub fn footage_for<'s>(
         &'s mut self,
-        decoders: &dyn DecoderFactory,
-        gpu: &dyn GpuContextRef,
+        opener: &Opener,
         project: &Project,
         params: &Params,
         t: RationalTime,
     ) -> Result<Option<&'s mut (dyn FrameSource + 's)>> {
-        let footage = self.footage_with_backend(decoders, gpu, project, params, t)?;
-        Ok(footage.map(|(source, _)| source))
+        match self.footage_with_backend(opener, project, params, t)? {
+            Footage::Ready(source, _) => Ok(Some(source)),
+            Footage::Absent | Footage::Pending => Ok(None),
+        }
     }
 
-    /// [`Self::footage_for`] と同じで、デコーダーの実装の名前（`Decoder::backend_id`。名乗らなければ
-    /// ファクトリーの名前）も返す。フレームのキャッシュのキーに入れる。
+    /// [`Self::footage_for`] と同じで、デコーダーの実装の名前も返し（フレームのキャッシュのキーに入れる）、
+    /// 開いている途中を素材が無いことと分けて返す。
     pub fn footage_with_backend<'s>(
         &'s mut self,
-        decoders: &dyn DecoderFactory,
-        gpu: &dyn GpuContextRef,
+        opener: &Opener,
         project: &Project,
         params: &Params,
         t: RationalTime,
-    ) -> Result<Option<(&'s mut (dyn FrameSource + 's), &'static str)>> {
+    ) -> Result<Footage<'s>> {
         let Some(asset_id) = params.0.values().find_map(ParamValue::as_asset) else {
-            return Ok(None);
+            return Ok(Footage::Absent);
         };
         if asset_id.as_str().is_empty() {
-            return Ok(None);
+            return Ok(Footage::Absent);
         }
         let frame = self.frame;
         let opened = self.sources.entry(asset_id.clone()).or_default();
         let slot = match pick(opened, t, frame) {
             Some(i) => i,
             None => {
-                let asset = project.asset(asset_id)?;
-                let decoder = decoders.open(Path::new(&asset.path), Some(gpu))?;
+                let path = Path::new(&project.asset(asset_id)?.path);
+                let Some(decoder) = self.opening.open(opener, (asset_id, path), frame)? else {
+                    return Ok(Footage::Pending);
+                };
                 mm_trace::counter!("render.source_opens", 1);
                 opened.push(DecoderSource::new(decoder));
                 opened.len() - 1
@@ -167,8 +207,11 @@ impl SourcePool {
         };
         let source = &mut opened[slot];
         source.used = frame;
-        let backend = source.decoder.backend_id().unwrap_or(decoders.id());
-        Ok(Some((source as &mut (dyn FrameSource + 's), backend)))
+        let backend = source.decoder.backend_id().unwrap_or(opener.decoders.id());
+        Ok(Footage::Ready(
+            source as &mut (dyn FrameSource + 's),
+            backend,
+        ))
     }
 }
 

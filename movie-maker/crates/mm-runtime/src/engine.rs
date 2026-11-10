@@ -10,6 +10,7 @@ use mm_decode_api::{DecoderFactory, EncoderFactory, GpuContextRef};
 use mm_doc::Project;
 use mm_gpu::{GpuContext, WgpuGpu};
 use mm_node_api::{FrameRef, Quality, Services};
+use mm_render::PendingSources;
 use mm_render_api::{AudioRequest, RenderRequest, Renderer, TrackLevel};
 use mm_types::{
     CompositionId, GpuAdapterId, MmError, RationalTime, Result, RgbaImage, Size, TimeRange,
@@ -32,6 +33,9 @@ pub struct EngineParts {
     pub config: RuntimeConfig,
     pub registry: Registry,
     pub renderer: Box<dyn Renderer>,
+    /// レンダラーが素材を開いている途中のために描かなかったレイヤーの数と、開き終わった数。
+    /// バックグラウンドのスレッドで開かない実装は `None`。
+    pub pending: Option<PendingSources>,
     pub decoders: Arc<dyn DecoderFactory>,
     pub encoders: Arc<dyn EncoderFactory>,
     pub mixers: Arc<dyn MixerFactory>,
@@ -89,6 +93,22 @@ impl Engine {
     /// 操作が触った ID（`mm_ops::Touches`）に頼ったキャッシュだけを捨てる。
     pub fn invalidate_touched(&mut self, ids: &[String]) {
         self.parts.renderer.invalidate_touched(ids);
+    }
+
+    /// 直前のフレームで、素材を開いている途中のために描かなかったレイヤーの数（`open_wait_ms` を決めたときだけ数える）。
+    pub fn pending_layers(&self) -> usize {
+        self.parts
+            .pending
+            .as_ref()
+            .map_or(0, PendingSources::layers)
+    }
+
+    /// バックグラウンドのスレッドで素材を開き終わった数。増えたときに描き直すと、描かなかったレイヤーが入る。
+    pub fn sources_opened(&self) -> u64 {
+        self.parts
+            .pending
+            .as_ref()
+            .map_or(0, PendingSources::opened)
     }
 
     /// 種類が使うほかのインターフェースの一式。

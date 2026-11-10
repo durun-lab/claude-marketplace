@@ -15,6 +15,9 @@
 //! - トラックマット（`Layer.track_matte`）は `matte.rs`。切り抜くレイヤーとマットを別のテクスチャに描いて掛け合わせる。
 //! - 書き出しは GPU で NV12 にしてリードバックを先行させ、エンコーダーに押す（[`export`]）。
 //! - デバイスが消えたら（`GpuContext::is_lost`）、次のフレームの前にコンテキストとその上の全部を作り直す。
+//! - 素材を開くのを待つ上限（`WgpuRenderer::with_open_wait`。アプリのプレビュー）があれば、素材はバックグラウンドの
+//!   スレッドで開き、上限までに開き終わらないレイヤーはそのフレームでは描かない。描かなかった数と開き終わった数は
+//!   [`PendingSources`] で読める。
 
 mod audio;
 mod audio_effects;
@@ -34,9 +37,11 @@ mod matte;
 mod renderer;
 mod sequence;
 mod source;
+mod spans;
 pub mod transform;
 
 pub use frame_cache::{FrameCacheConfig, MemoStats, DEFAULT_MEMORY_BYTES};
 pub use layers::{NESTED_KIND, NESTED_PARAM};
 pub use mm_gpu::{GpuContext, GpuRequest, WgpuGpu, FRAME_FORMAT};
 pub use renderer::{WgpuRenderer, WGPU_RENDERER_VERSION};
+pub use source::PendingSources;

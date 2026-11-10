@@ -16,6 +16,7 @@ use crate::crossfade::{crossfade_at, handles_in, params_time, rewind_rate, Cross
 use crate::effects::NodeRun;
 use crate::layers::{CompCx, LayerImage, Prepared, MAX_DEPTH};
 use crate::renderer::WgpuRenderer;
+use crate::spans::layer_span;
 
 /// トランジションが担う進み具合のパラメータの名前（`transition.*` の規約）。
 const PROGRESS_PARAM: &str = "progress";
@@ -160,6 +161,7 @@ impl WgpuRenderer {
         }
         let target = self.gpu.create(cx.size)?;
         let mut temps = Vec::new();
+        let span = layer_span(cx.project, &layer).entered();
         let items: Vec<Prepared> = match self.layer_item(encoder, cx, &layer, &mut temps) {
             Ok(item) => item.into_iter().collect(),
             Err(e) => {
@@ -168,6 +170,7 @@ impl WgpuRenderer {
                 Vec::new()
             }
         };
+        drop(span);
         self.composite(encoder, target, &items);
         for id in temps {
             self.gpu.release_id(id);

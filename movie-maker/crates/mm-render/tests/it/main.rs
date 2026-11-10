@@ -18,6 +18,7 @@ mod mask;
 mod matte;
 mod nested;
 mod node_kinds;
+mod open_wait;
 mod scene;
 mod submit_order;
 mod tone_map;
