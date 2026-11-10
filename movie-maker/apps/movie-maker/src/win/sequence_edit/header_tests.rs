@@ -1,8 +1,8 @@
 //! 見出しのボタンと見出しのドラッグが出す操作（`setLayerEnabled`、`lockLayer`、`setLayerAudio`、`moveLayer`）の試験。
 
-use mm_doc::{Composition, Layer, Node, Project};
+use mm_doc::{Composition, Fade, Layer, Node, Param, Project};
 use mm_ops::{apply_transaction, Entry, OpContext};
-use mm_types::{Id, Rational, RationalTime};
+use mm_types::{Id, ParamValue, Rational, RationalTime};
 
 use super::*;
 
@@ -118,4 +118,39 @@ fn mute_と_solo_は_mixer_と同じ_音の設定の全体を置く() {
     apply(&mut p, header_button_op(HeaderButton::Mute, &both));
     let audio = p.compositions[0].layers[0].audio.clone().unwrap();
     assert!(!audio.mute && audio.solo);
+}
+
+/// Mixer が送るのと同じ形の操作。送る直前の l0 の音の設定に `change` を重ねて全体を置く（`ui/panels/mixer` の `trackOp`）。
+fn mixer_op(p: &Project, change: impl FnOnce(&mut LayerAudio)) -> Op {
+    let layer = &p.compositions[0].layers[0];
+    let mut audio = layer.audio.clone();
+    let audio_mut = audio.get_or_insert_with(|| LayerAudio::new(DEFAULT_AUDIO_ROLE));
+    change(audio_mut);
+    SetLayerAudio {
+        layer: layer.id.clone(),
+        audio,
+    }
+    .into()
+}
+
+#[test]
+fn mixer_と見出しから交互に変えても_もう一方が変えた値を残す() {
+    let mut p = stacked();
+    let gain = Param::constant(ParamValue::Number(-6.0));
+    let op = mixer_op(&p, |a| {
+        a.role = "bgm".into();
+        a.gain_db = gain.clone();
+        a.fade_in = Some(Fade::linear(RationalTime::seconds(1)));
+    });
+    apply(&mut p, op);
+    let layer = p.compositions[0].layers[0].clone();
+    apply(&mut p, header_button_op(HeaderButton::Mute, &layer));
+    let op = mixer_op(&p, |a| a.solo = !a.solo);
+    apply(&mut p, op);
+    let layer = p.compositions[0].layers[0].clone();
+    apply(&mut p, header_button_op(HeaderButton::Mute, &layer));
+    let audio = p.compositions[0].layers[0].audio.clone().unwrap();
+    assert_eq!((audio.mute, audio.solo), (false, true));
+    assert_eq!((audio.role.as_str(), &audio.gain_db), ("bgm", &gain));
+    assert!(audio.fade_in.is_some(), "Mixer の外の設定も残す");
 }
