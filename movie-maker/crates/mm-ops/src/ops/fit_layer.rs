@@ -9,8 +9,8 @@ use crate::op::{Apply, Op};
 use crate::ops::invalid;
 use crate::touches::Touches;
 
-/// sequence を置いたレイヤー `layer` のアウト点を、sequence の長さ（`insertTopics` や `insert` で伸び縮みする）に合わせる。
-/// コンポジションの長さは、これまでレイヤーの終わりと同じだった（または新しい終わりが超える）ときだけ、
+/// sequence を置いたレイヤー `layer` のアウト点を、sequence の長さ（`insertTopics` や `insert` で伸び縮みする。
+/// 1 フレームに満たなければ 1 フレーム）に合わせる。コンポジションの長さは、これまでレイヤーの終わりと同じだった（または新しい終わりが超える）ときだけ、
 /// 全レイヤーの終わりの最大に合わせる。長さを自分で決めたコンポジションは縮めない。
 /// `out_point` と `duration` を渡すとその値を置く（逆操作の形。人は省く）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -45,14 +45,14 @@ fn sequence_length(seq: &Sequence) -> Result<RationalTime> {
         .try_fold(RationalTime::ZERO, |acc, c| acc.checked_add(c.duration()?))
 }
 
-/// レイヤーが sequence に合わせる長さ。レイヤーは in < out の検査があり長さ 0 を持てないので、
-/// 空の sequence（最後のカットを `extract` した後）には 1 フレームを当てる。
+/// レイヤーが sequence に合わせる長さ。sequence の長さと、コンポジションの `fps` の 1 フレームの長い方。
+/// レイヤーは `in < out` の検査で長さ 0 を持てないので、空の sequence（有効なカットが無い）には 1 フレームのレイヤーを残す。
 fn fitted_length(seq: &Sequence, fps: Rational) -> Result<RationalTime> {
     Ok(sequence_length(seq)?.max(RationalTime::from_frames(1, fps)?))
 }
 
-/// 長さが変わりうる操作 `ops` の後ろに、sequence の長さに合わせている（レイヤーの長さが操作の前の sequence の長さと同じ）
-/// レイヤーの `fitLayer` を足す。1 つのトランザクションにするので、取り消し 1 回でレイヤーの長さも戻る。
+/// 長さが変わりうる操作 `ops` の後ろに、sequence の長さに合わせている（レイヤーの長さが、操作の前の sequence に合わせる長さ
+/// `fitted_length` と同じ）レイヤーの `fitLayer` を足す。1 つのトランザクションにするので、取り消し 1 回でレイヤーの長さも戻る。
 /// 自分で縮めたレイヤーや、既に `fitLayer` を含む列には足さない。
 pub fn with_fitted_layers(project: &Project, ops: &[Op]) -> Vec<Op> {
     let mut touched = Touches::new();
