@@ -88,18 +88,18 @@ fn extract_step(env: &Env<'_>, log: &mut Log, before: (usize, f64)) -> bool {
     let shared = env.shared;
     surface::post_key(env.surface_hwnd, VK_BACKSPACE);
     let emptied = wait_until(WAIT, || cuts(shared).is_empty());
-    let kept = shared
+    let sequence_kept = shared
         .doc()
         .is_some_and(|d| sequence_of(&d.project).is_some());
     let [layer, comp, frame] = lengths(shared);
     let inside = wait_until(WAIT, || comp.is_some_and(|c| shared.playhead() < c));
-    let fitted = same(layer, frame) && frame.is_some_and(|f| comp_fits(before, comp, f));
+    let shrunk = same(layer, frame) && frame.is_some_and(|f| comp_fits(before, comp, f));
     log.step(
         "extract_last_cut",
-        emptied && kept && fitted && inside,
+        emptied && sequence_kept && shrunk && inside,
         json!({ "layer_secs": layer, "comp_secs": comp, "playhead_secs": shared.playhead() }),
     );
-    shot(env, log, "2b-extract-last");
+    shot(env, log, "2b-extract-last-cut");
     emptied
 }
 
@@ -142,7 +142,7 @@ fn reinsert_step(env: &Env<'_>, log: &mut Log, before: (usize, f64)) -> bool {
         filled && same(layer, Some(length)) && comp_fits(before, comp, length),
         json!({ "layer_secs": layer, "comp_secs": comp }),
     );
-    shot(env, log, "2c-insert-into-empty");
+    shot(env, log, "2c-insert-into-empty-sequence");
     if !filled {
         return false;
     }
