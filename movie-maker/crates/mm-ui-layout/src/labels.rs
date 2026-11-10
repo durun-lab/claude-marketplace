@@ -439,7 +439,10 @@ mod tests {
 
     #[test]
     fn 目盛りの時刻は主な目盛りの右に置き_右端に収める() {
-        let (out, _) = labels_of(&model(Vec::new()), &state(0.0));
+        // 目盛りの帯は 620 px で、最後の主な目盛りは 6 秒（600 px）。時刻は右端から間隔を空けて収める。
+        let m = model(Vec::new());
+        let width = HEADER_W + 620.0;
+        let (out, _) = labels_in(&m, &TestViewport::new(&m, (width, SIZE.1)), &state(0.0));
         let ruler: Vec<&Label> = out
             .iter()
             .filter(|l| l.y < TOOLBAR_H + RULER_H && l.x >= HEADER_W)
@@ -447,14 +450,10 @@ mod tests {
         assert_eq!(&*ruler[0].text, "0:00");
         assert_eq!(ruler[0].x, HEADER_W + TICK_GAP);
         assert_eq!(ruler[0].color, Palette::DEFAULT.label);
-        // 幅 800 で目盛りの帯は 620 px、最後の主な目盛りは 6 秒（600 px）。時刻は右端から間隔を空けて収める。
         let last = ruler.last().expect("時刻");
         assert_eq!(&*last.text, "0:06");
-        assert_eq!(last.x, 800.0 - TICK_GAP - 4.0 * 5.5, "4 字 × 5.5 px");
-        assert_eq!(
-            last.clip,
-            Rect::new(HEADER_W, TOOLBAR_H, 800.0 - HEADER_W, RULER_H)
-        );
+        assert_eq!(last.x, width - TICK_GAP - 4.0 * 5.5, "4 字 × 5.5 px");
+        assert_eq!(last.clip, Rect::new(HEADER_W, TOOLBAR_H, 620.0, RULER_H));
     }
 
     #[test]

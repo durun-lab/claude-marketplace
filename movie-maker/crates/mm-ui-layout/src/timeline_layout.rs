@@ -21,8 +21,9 @@ pub const SCROLLBAR_W: f32 = 12.0;
 /// ツールバーの高さ。
 pub(crate) const TOOLBAR_H: f32 = 30.0;
 
-/// 見出しの列の幅（論理ピクセル）。
-pub const HEADER_W: f32 = 180.0;
+/// 見出しの列の幅（論理ピクセル）。Mute と Solo とキーフレームの開閉（▸）の列を残した行に、sequence の既定の ID
+/// （Sequence 1 layer）が既定のフォントで切り詰めずに入る幅。
+pub const HEADER_W: f32 = 220.0;
 
 /// ズームバーの高さ。スクロールボックスの両端を狙って掴めるよう、縦のスクロールバーの幅より少し太くする。
 const ZOOMBAR_H: f32 = 14.0;
@@ -133,7 +134,7 @@ impl Viewport<'_> {
         Rect::new(r.x, top, r.w, self.rows.bottom(i) - self.rows.top(i))
     }
 
-    /// 行 `i` の、時刻 `[start, end)` の帯の矩形。短い帯も掴めるように最小の幅を持たせる。
+    /// 行 `i` の、時刻 `[start, end)` の帯の矩形。短い帯も掴めるように幅の下限を持たせる。
     pub fn bar(&self, i: usize, start: f64, end: f64) -> Rect {
         let (x, w) = span(&self.time, start, end);
         let (y, h) = self.rows.bar(i);

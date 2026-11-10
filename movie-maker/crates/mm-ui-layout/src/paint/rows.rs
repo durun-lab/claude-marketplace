@@ -5,8 +5,13 @@ use super::{Canvas, Depth, PaintInput};
 use crate::geom::{Color, Rect};
 use crate::gesture::{EditKind, Side};
 use crate::palette::{self, Palette};
-use crate::timeline::{cut_span, Hit, Item, Part, HANDLE_PX};
+use crate::timeline::{bar_rect, cut_span, Hit, Item, Part, HANDLE_PX};
 
+/// 空の sequence の帯の塗りに掛ける不透明度。再生位置の線の隣でも帯と分かるよう、カットを並べた帯の薄い塗り（0.25）より
+/// 濃くする。無効なレイヤーは帯の色の不透明度に掛けて、ほかの帯と同じく薄くする。
+pub(crate) const EMPTY_FILL_ALPHA: f32 = 0.6;
+/// 空の sequence の帯の枠を、帯の色から明るくする量。
+pub(crate) const EMPTY_EDGE_LIGHTEN: f32 = 0.6;
 /// 無効なレイヤーの帯の不透明度。
 const DISABLED_BAR_ALPHA: f32 = 0.35;
 
@@ -21,7 +26,7 @@ pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
         let band = Rect::new(row.x, row.y + 1.0, row.w, row.h - 1.0);
         c.push_in(Depth::Back, band, stripe(&s.state.palette, i), clip);
         let (start, end) = trimmed(item, i, s.state.preview);
-        let bar = s.vp.bar(i, start, end);
+        let bar = bar_rect(s.vp, i, item, (start, end));
         if item.cuts.is_empty() {
             layer_bar(s, c, (i, item), bar);
         } else {
@@ -35,7 +40,8 @@ pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
     outside(s, c);
 }
 
-/// カットを持たないレイヤーの帯とつまみ。
+/// カットを持たないレイヤーの帯とつまみ。空の sequence の帯は中身が無いので、薄い塗りに明るい枠を引く。当たり判定は
+/// ほかの帯と同じくレイヤーの帯とつまみを返すので、ポインターが乗ったときの明るさとつまみも同じく描く。
 fn layer_bar(s: &PaintInput, c: &mut Canvas, (index, item): (usize, &Item), bar: Rect) {
     let hovered = matches!(s.state.hover, Hit::Layer { index: i, .. } if i == index);
     let color = bar_color(item);
@@ -44,7 +50,14 @@ fn layer_bar(s: &PaintInput, c: &mut Canvas, (index, item): (usize, &Item), bar:
     } else {
         color
     };
-    c.push_in(Depth::Bar, bar, color, s.vp.layout.row_area);
+    let clip = s.vp.layout.row_area;
+    if item.is_empty_sequence() {
+        let fill = color.with_alpha(color.0[3] * EMPTY_FILL_ALPHA);
+        c.push_in(Depth::Bar, bar, fill, clip);
+        outline(c, bar, palette::lighten(color, EMPTY_EDGE_LIGHTEN), clip);
+    } else {
+        c.push_in(Depth::Bar, bar, color, clip);
+    }
     handles(s, c, bar, |hit| match hit {
         Hit::Layer { index: i, part } if i == index => Some(part),
         _ => None,
