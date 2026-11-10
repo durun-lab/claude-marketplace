@@ -32,7 +32,14 @@ const SHOWN_LIMIT: usize = 64;
 pub struct HintSlot {
     hint: Mutex<Hint>,
     status: Mutex<StatusText>,
-    shown: Mutex<Vec<Shown>>,
+    shown: Mutex<ShownLog>,
+}
+
+/// 出したツールチップの記録。上限を超えたら古いものから捨て、捨てた数を数える（後から出したものだけを引けるように）。
+#[derive(Default)]
+struct ShownLog {
+    items: Vec<Shown>,
+    dropped: usize,
 }
 
 impl HintSlot {
@@ -61,15 +68,24 @@ impl HintSlot {
     /// 出したツールチップを記録する（古いものから捨てる）。
     pub fn record_shown(&self, shown: Shown) {
         let mut log = self.shown.lock().expect("shown");
-        if log.len() >= SHOWN_LIMIT {
-            log.remove(0);
+        if log.items.len() >= SHOWN_LIMIT {
+            log.items.remove(0);
+            log.dropped += 1;
         }
-        log.push(shown);
+        log.items.push(shown);
     }
 
-    /// 出したツールチップの記録。
-    pub fn shown(&self) -> Vec<Shown> {
-        self.shown.lock().expect("shown").clone()
+    /// これまでに出したツールチップの数（捨てた分を含む）。[`Self::shown_since`] に渡すと、後から出したものだけを引ける。
+    pub fn shown_count(&self) -> usize {
+        let log = self.shown.lock().expect("shown");
+        log.dropped + log.items.len()
+    }
+
+    /// `count`（[`Self::shown_count`] の値）の後に出したツールチップの記録。
+    pub fn shown_since(&self, count: usize) -> Vec<Shown> {
+        let log = self.shown.lock().expect("shown");
+        let skip = count.saturating_sub(log.dropped);
+        log.items.iter().skip(skip).cloned().collect()
     }
 }
 
@@ -163,9 +179,22 @@ mod tests {
                 at: (0, 0),
             });
         }
-        let shown = slot.shown();
+        let shown = slot.shown_since(0);
         assert_eq!(shown.len(), SHOWN_LIMIT);
         assert_eq!(shown[0].text, "3");
+        let count = slot.shown_count();
+        assert_eq!(count, SHOWN_LIMIT + 3, "捨てた分も数える");
+        slot.record_shown(Shown {
+            text: "new".into(),
+            at: (0, 0),
+        });
+        let later = slot.shown_since(count);
+        assert_eq!(
+            later.len(),
+            1,
+            "上限で捨てた後も、後から出したものだけを引ける"
+        );
+        assert_eq!(later[0].text, "new");
     }
 
     #[test]

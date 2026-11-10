@@ -83,7 +83,7 @@ fn 最前面のツールチップを作り_出した文と位置を記録し_隠
     let window = create(surface).expect("ツールチップを作れる");
     let tip = TooltipContent::Command("timeline.blade_tool");
     show(window, surface, &tip, (50.0, 60.0), &hint);
-    let shown = hint.shown();
+    let shown = hint.shown_since(0);
     assert_eq!(shown.len(), 1);
     assert!(
         shown[0].text.starts_with("Blade Tool (B)\n"),
