@@ -243,12 +243,15 @@ pub fn plan_insert(ctx: &Ctx<'_>, range: &SourceRange, id: CutId) -> Result<Plan
 }
 
 /// Source の範囲で、選んだカット（なければ再生位置のカット）を置き換える（`overwrite`）。
-/// sequence のレイヤーが無いコンポジションでは、置き換えるカットが無いので Insert と同じく sequence から作る。
+/// sequence のレイヤーが無いコンポジションと空の sequence では、置き換えるカットが無いので Insert と同じにする。
 pub fn plan_overwrite(ctx: &Ctx<'_>, range: &SourceRange, id: CutId) -> Result<Planned, String> {
     if target_layer(ctx).is_none() {
         return plan_new_sequence(ctx, range, id);
     }
     let t = target(ctx)?;
+    if t.seq.cuts.is_empty() {
+        return plan_insert(ctx, range, id);
+    }
     let old = t
         .working_cut(ctx.cut)
         .ok_or("No clip to replace")?

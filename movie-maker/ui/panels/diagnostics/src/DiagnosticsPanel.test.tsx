@@ -78,8 +78,8 @@ describe("DiagnosticsPanel の中身", () => {
       [...li.querySelectorAll("span")].map((s) => s.textContent),
     );
     expect(lines).toEqual([
-      ["image", "fxtext-32", "527.8-527.9s"],
-      ["sequence", "main-seq", "0.0-578.4s"],
+      ["image", "fxtext-32", "527.810-527.930s"],
+      ["sequence", "main-seq", "0.000-578.400s"],
     ]);
     expect(host.textContent).toContain("Layers (2)");
   });
@@ -143,9 +143,10 @@ describe("Diagnostics の文言と IPC", () => {
     expect(keepLayers(null, next)).toBe(next);
   });
 
-  it("fps は割り切れない桁を出さず、範囲は小数 1 桁", () => {
+  it("fps は割り切れない桁を出さず、範囲はミリ秒まで出して 1 フレームのレイヤーも長さが見える", () => {
     expect(compositionText({ ...INFO, fps: 30 })).toBe("main 1920x1080 30 fps");
-    expect(rangeText({ id: "a", kind: "text", start: 1.25, end: 2 })).toBe("1.3-2.0s");
+    expect(rangeText({ id: "a", kind: "text", start: 1.25, end: 2 })).toBe("1.250-2.000s");
+    expect(rangeText({ id: "b", kind: "sequence", start: 0, end: 1 / 30 })).toBe("0.000-0.033s");
   });
 
   it("project_info を呼び、拒否された文字は Error にする", async () => {

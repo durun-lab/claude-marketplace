@@ -3,14 +3,14 @@
 use serde::{Deserialize, Serialize};
 
 use mm_doc::{Composition, Layer, Project, Sequence, SEQUENCE_KIND, SEQUENCE_PARAM};
-use mm_types::{Id, LayerId, RationalTime, Result};
+use mm_types::{Id, LayerId, Rational, RationalTime, Result};
 
 use crate::op::{Apply, Op};
 use crate::ops::invalid;
 use crate::touches::Touches;
 
-/// sequence を置いたレイヤー `layer` のアウト点を、sequence の長さ（`insertTopics` や `insert` で伸び縮みする）に合わせる。
-/// コンポジションの長さは、これまでレイヤーの終わりと同じだった（または新しい終わりが超える）ときだけ、
+/// sequence を置いたレイヤー `layer` のアウト点を、sequence の長さ（`insertTopics` や `insert` で伸び縮みする。
+/// 1 フレームに満たなければ 1 フレーム）に合わせる。コンポジションの長さは、これまでレイヤーの終わりと同じだった（または新しい終わりが超える）ときだけ、
 /// 全レイヤーの終わりの最大に合わせる。長さを自分で決めたコンポジションは縮めない。
 /// `out_point` と `duration` を渡すとその値を置く（逆操作の形。人は省く）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -45,8 +45,14 @@ fn sequence_length(seq: &Sequence) -> Result<RationalTime> {
         .try_fold(RationalTime::ZERO, |acc, c| acc.checked_add(c.duration()?))
 }
 
-/// 長さが変わりうる操作 `ops` の後ろに、sequence の長さに合わせている（レイヤーの長さが操作の前の sequence の長さと同じ）
-/// レイヤーの `fitLayer` を足す。1 つのトランザクションにするので、取り消し 1 回でレイヤーの長さも戻る。
+/// レイヤーが sequence に合わせる長さ。sequence の長さと、コンポジションの `fps` の 1 フレームの長い方。
+/// レイヤーは `in < out` の検査で長さ 0 を持てないので、空の sequence（有効なカットが無い）には 1 フレームのレイヤーを残す。
+fn fitted_length(seq: &Sequence, fps: Rational) -> Result<RationalTime> {
+    Ok(sequence_length(seq)?.max(RationalTime::from_frames(1, fps)?))
+}
+
+/// 長さが変わりうる操作 `ops` の後ろに、sequence の長さに合わせている（レイヤーの長さが、操作の前の sequence に合わせる長さ
+/// `fitted_length` と同じ）レイヤーの `fitLayer` を足す。1 つのトランザクションにするので、取り消し 1 回でレイヤーの長さも戻る。
 /// 自分で縮めたレイヤーや、既に `fitLayer` を含む列には足さない。
 pub fn with_fitted_layers(project: &Project, ops: &[Op]) -> Vec<Op> {
     let mut touched = Touches::new();
@@ -68,11 +74,14 @@ pub fn with_fitted_layers(project: &Project, ops: &[Op]) -> Vec<Op> {
         if !mine.overlaps(&touched) {
             continue;
         }
-        let Ok(length) = sequence_length(seq) else {
-            continue;
-        };
-        let layers = project.compositions.iter().flat_map(|c| &c.layers);
-        for layer in layers {
+        let layers = project
+            .compositions
+            .iter()
+            .flat_map(|c| c.layers.iter().map(move |l| (c.fps, l)));
+        for (fps, layer) in layers {
+            let Ok(length) = fitted_length(seq, fps) else {
+                continue;
+            };
             let placed = layer.source.kind == SEQUENCE_KIND
                 && layer.source.text_param(SEQUENCE_PARAM) == Some(seq.id.as_str());
             if placed && layer.duration().is_ok_and(|d| d == length) && !explicit(&layer.id) {
@@ -92,7 +101,7 @@ pub fn with_fitted_layers(project: &Project, ops: &[Op]) -> Vec<Op> {
 
 impl FitLayer {
     /// sequence の長さに合うアウト点。
-    fn fitted_out(&self, project: &Project, layer: &Layer) -> Result<RationalTime> {
+    fn fitted_out(&self, project: &Project, fps: Rational, layer: &Layer) -> Result<RationalTime> {
         if layer.source.kind != SEQUENCE_KIND {
             return Err(invalid(format!(
                 "Layer {} is not a sequence layer",
@@ -100,7 +109,7 @@ impl FitLayer {
             )));
         }
         let id = Id::new(layer.source.text_param(SEQUENCE_PARAM).unwrap_or(""));
-        let length = sequence_length(project.sequence(&id)?)?;
+        let length = fitted_length(project.sequence(&id)?, fps)?;
         layer.in_point.checked_add(length.scale(layer.speed)?)
     }
 }
@@ -135,7 +144,7 @@ impl Apply for FitLayer {
         let old_end = end_of(layer)?;
         let out = match self.out_point {
             Some(out) => out,
-            None => self.fitted_out(project, layer)?,
+            None => self.fitted_out(project, comp.fps, layer)?,
         };
 
         let layer = project.layer_mut(&self.layer)?;

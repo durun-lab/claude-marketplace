@@ -162,6 +162,36 @@ fn 作った_sequence_のレイヤーは次の_insert_の対象になり_レイ�
 }
 
 #[test]
+fn 最後のカットを抜いた空の_sequence_へは_insert_も_overwrite_も先頭に入り_レイヤーが追従する() {
+    let mut p = empty_project(10);
+    let first = plan_insert(&ctx(&p), &range(5, 6), Id::new("k1")).unwrap();
+    apply(&mut p, &first.ops);
+    let extract = with_fitted_layers(&p, &[mm_ops::Extract { cut: Id::new("k1") }.into()]);
+    apply(&mut p, &extract);
+    let (comp, layer) = p.layer(&Id::new("Sequence 1 layer")).unwrap();
+    let frame = RationalTime::from_frames(1, comp.fps).unwrap();
+    assert_eq!((layer.duration().unwrap(), comp.duration), (frame, frame));
+
+    // 再生位置の 4 秒は 1 フレームのレイヤーの外だが、空の sequence の先頭に入る。
+    let insert = plan_insert(&ctx(&p), &range(0, 2), Id::new("k2")).unwrap();
+    let overwrite = plan_overwrite(&ctx(&p), &range(0, 2), Id::new("k2")).unwrap();
+    assert_eq!(
+        overwrite, insert,
+        "置き換えるカットが無いので Insert と同じ"
+    );
+    assert_eq!(
+        names(&insert),
+        ["insert"],
+        "残した sequence とレイヤーに入れる"
+    );
+    let ops = with_fitted_layers(&p, &insert.ops);
+    assert_eq!(ops.len(), 2, "1 フレームのレイヤーは追従している");
+    apply(&mut p, &ops);
+    let (comp, layer) = p.layer(&Id::new("Sequence 1 layer")).unwrap();
+    assert_eq!((layer.out_point, comp.duration), (secs(2), secs(2)));
+}
+
+#[test]
 fn id_はほかの種類の_id_とも重複しない最初の番号にする() {
     let mut p = with_background(10);
     p.sequences.push(Sequence {
