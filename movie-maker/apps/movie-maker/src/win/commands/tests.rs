@@ -76,9 +76,10 @@ fn webview_へは_ui_sdk_の_ui_command_と同じ形で送る() {
             "name": "Lift",
             "keys": ["Delete"],
             "key_label": "Delete",
+            "key_labels": ["Delete"],
             "description": "Remove the selected clip and leave a gap",
-            "menu": "edit",
-            "menu_order": 2,
+            "menu": "Edit",
+            "menu_order": 5,
             "panel": null,
             "enabled": false,
             "checked": null,
@@ -213,14 +214,9 @@ fn shy_は選んだレイヤーにフラグを立て_隠すコマンドと合わ
         Some(true)
     );
     assert!(shared.view.shy().hides("title"));
-    assert_eq!(
-        crate::win::menu::menu_of("timeline.hide_shy_layers"),
-        Some(Menu::View)
-    );
-    assert_eq!(
-        crate::win::menu::menu_of("timeline.shy_selected_layers"),
-        Some(Menu::View)
-    );
+    let menu_of = |id| crate::win::menu::place_of(id).map(|(menu, _)| menu);
+    assert_eq!(menu_of("timeline.hide_shy_layers"), Some(Menu::View));
+    assert_eq!(menu_of("timeline.shy_selected_layers"), Some(Menu::View));
 }
 
 #[test]
@@ -351,6 +347,10 @@ fn keyboard_shortcuts_はウィンドウのフックへ渡し_キーの見た目
         row("app.show_keyboard_shortcuts").key_label.as_deref(),
         Some("?")
     );
+    assert_eq!(row("timeline.zoom_in").key_labels, ["=", "+", "Ctrl+="]);
+    assert_eq!(row("edit.redo").key_labels, ["Ctrl+Y", "Ctrl+Shift+Z"]);
     assert!(row("timeline.zoom_in").menu_order < row("timeline.zoom_out").menu_order);
     assert!(row("timeline.zoom_out").menu_order < row("timeline.full_extent_zoom").menu_order);
+    // 通し番号はメニューをまたぐので、File の項目は Help の項目より前に並ぶ。
+    assert!(row("media.import").menu_order < row("app.show_keyboard_shortcuts").menu_order);
 }

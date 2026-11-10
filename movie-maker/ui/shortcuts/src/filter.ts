@@ -1,30 +1,22 @@
 import type { UiCommand } from "@mm/sdk";
 
-/** メニューバーのメニューの並び（`menu.rs` の `BAR`）。 */
-const MENUS = [
-  ["file", "File"],
-  ["edit", "Edit"],
-  ["view", "View"],
-  ["playback", "Playback"],
-  ["timeline", "Timeline"],
-  ["help", "Help"],
-] as const;
+/** メニューに入っていないコマンド（Stop など、キーだけで呼ぶもの）の区画の見出し。Shotcut の Actions and Shortcuts も、
+ * メニューから読んだ操作をメニューの名前で組にし、残りを Other に入れる。 */
+export const OTHER = "Other";
 
-/** メニューに入っていないコマンド（Stop など、キーだけで呼ぶもの）の組。 */
-const OTHER = ["other", "Other"] as const;
-
+/** メニューの名前か Other を見出しにした、コマンドの行のまとまり。 */
 export interface Section {
-  id: string;
   title: string;
   commands: UiCommand[];
 }
 
-const byMenuOrder = (a: UiCommand, b: UiCommand): number =>
+/** メニューバーの中の位置の順。メニューに無いコマンドは最後に名前の順で並べる。 */
+const byPlace = (a: UiCommand, b: UiCommand): number =>
   (a.menu_order ?? Number.MAX_SAFE_INTEGER) - (b.menu_order ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name);
 
-/** 検索語を空白で分け、全部が名前かキーの見た目に（大文字小文字を問わず）含まれるコマンドだけ通す。 */
+/** 検索語を空白で分け、全部が名前か、どれかのキーの見た目に（大文字小文字を問わず）含まれるコマンドだけ通す。 */
 export const matches = (command: UiCommand, query: string): boolean => {
-  const haystack = `${command.name} ${command.key_label ?? ""}`.toLowerCase();
+  const haystack = [command.name, ...command.key_labels].join(" ").toLowerCase();
   return query
     .toLowerCase()
     .split(/\s+/)
@@ -32,16 +24,17 @@ export const matches = (command: UiCommand, query: string): boolean => {
     .every((token) => haystack.includes(token));
 };
 
-/** 表をメニューの組ごとに、メニューの中の並びで並べる。絞り込みで空になった組は出さない。 */
+/** 絞り込んだ表をメニューバーの中の位置の順に並べ、続く同じメニューを 1 つの区画にする。位置はメニューをまたぐ通し番号なので、
+ * 区画もメニューバーの順に並び、メニューの並びを持たずに済む。 */
 export const sections = (table: readonly UiCommand[], query: string): Section[] => {
-  const found = table.filter((c) => matches(c, query));
-  return [...MENUS, OTHER]
-    .map(([id, title]) => ({
-      id,
-      title,
-      commands: found.filter((c) => (c.menu ?? OTHER[0]) === id).sort(byMenuOrder),
-    }))
-    .filter((s) => s.commands.length > 0);
+  const out: Section[] = [];
+  for (const command of table.filter((c) => matches(c, query)).sort(byPlace)) {
+    const title = command.menu ?? OTHER;
+    const last = out[out.length - 1];
+    if (last?.title === title) last.commands.push(command);
+    else out.push({ title, commands: [command] });
+  }
+  return out;
 };
 
 /** 画面に出る順に並べたコマンド。上下の矢印の移動の並び。 */

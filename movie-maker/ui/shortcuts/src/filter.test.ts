@@ -7,6 +7,7 @@ const command = (id: string, name: string, over: Partial<UiCommand> = {}): UiCom
   name,
   keys: [],
   key_label: null,
+  key_labels: [],
   description: null,
   menu: null,
   menu_order: null,
@@ -16,21 +17,22 @@ const command = (id: string, name: string, over: Partial<UiCommand> = {}): UiCom
   ...over,
 });
 
-// Rust の表は ID の名前の順なので、メニューの中の並びとは違う順で渡す。
+// Rust の表は ID の名前の順なので、メニューバーの中の並びとは違う順で渡す。menu_order はメニューをまたぐ通し番号。
 const TABLE = [
-  command("timeline.full_extent_zoom", "Full Extent Zoom", { menu: "view", menu_order: 2, key_label: "Shift+Z" }),
-  command("playback.stop", "Stop", { key_label: "K" }),
-  command("app.show_about", "About", { menu: "help", menu_order: 1 }),
-  command("timeline.zoom_out", "Zoom Out", { menu: "view", menu_order: 1, key_label: "-" }),
-  command("edit.undo", "Undo", { menu: "edit", menu_order: 0, key_label: "Ctrl+Z" }),
-  command("timeline.zoom_in", "Zoom In", { menu: "view", menu_order: 0, key_label: "=" }),
-  command("media.import", "Import Media…", { menu: "file", menu_order: 0, key_label: "Ctrl+I" }),
+  command("timeline.full_extent_zoom", "Full Extent Zoom", { menu: "View", menu_order: 14, key_labels: ["Shift+Z"] }),
+  command("playback.stop", "Stop", { key_labels: ["K"] }),
+  command("app.show_about", "About", { menu: "Help", menu_order: 40 }),
+  command("timeline.zoom_out", "Zoom Out", { menu: "View", menu_order: 13, key_labels: ["-", "Ctrl+-"] }),
+  command("edit.undo", "Undo", { menu: "Edit", menu_order: 3, key_labels: ["Ctrl+Z"] }),
+  command("timeline.zoom_in", "Zoom In", { menu: "View", menu_order: 12, key_labels: ["=", "+", "Ctrl+="] }),
+  command("media.import", "Import Media…", { menu: "File", menu_order: 0, key_labels: ["Ctrl+I"] }),
+  command("export.choose_target", "Choose Render Target…", { panel: "deliver" }),
 ];
 
 const names = (query: string) => flatten(sections(TABLE, query)).map((c) => c.name);
 
 describe("sections", () => {
-  it("メニューの組の順に並べ、組の中はメニューの中の並びにする。メニューに無いコマンドは最後の Other", () => {
+  it("メニューバーの中の位置の順に並べ、続く同じメニューを 1 つの区画にする。メニューに無いコマンドは最後の Other に名前の順", () => {
     expect(sections(TABLE, "").map((s) => s.title)).toEqual(["File", "Edit", "View", "Help", "Other"]);
     expect(names("")).toEqual([
       "Import Media…",
@@ -39,13 +41,20 @@ describe("sections", () => {
       "Zoom Out",
       "Full Extent Zoom",
       "About",
+      "Choose Render Target…",
       "Stop",
     ]);
   });
 
-  it("zoom で絞ると Zoom In、Zoom Out、Full Extent Zoom がメニューの順に残り、空になった組は消える", () => {
+  it("zoom で絞ると Zoom In、Zoom Out、Full Extent Zoom がメニューの順に残り、空になった区画は消える", () => {
     expect(names("zoom")).toEqual(["Zoom In", "Zoom Out", "Full Extent Zoom"]);
-    expect(sections(TABLE, "zoom").map((s) => s.id)).toEqual(["view"]);
+    expect(sections(TABLE, "zoom").map((s) => s.title)).toEqual(["View"]);
+  });
+
+  it("渡した表の並びは変えない", () => {
+    const before = TABLE.map((c) => c.id);
+    sections(TABLE, "");
+    expect(TABLE.map((c) => c.id)).toEqual(before);
   });
 });
 
@@ -57,10 +66,11 @@ describe("matches", () => {
     expect(matches(zoomIn, "pan")).toBe(false);
   });
 
-  it("キーの見た目でも絞れる", () => {
+  it("先頭のキーだけでなく、割り当てた全部のキーの見た目で絞れる", () => {
     expect(names("shift+z")).toEqual(["Full Extent Zoom"]);
-    expect(names("=")).toEqual(["Zoom In"]);
-    expect(names("ctrl")).toEqual(["Import Media…", "Undo"]);
+    expect(names("ctrl+=")).toEqual(["Zoom In"]);
+    expect(names("ctrl+-")).toEqual(["Zoom Out"]);
+    expect(names("ctrl")).toEqual(["Import Media…", "Undo", "Zoom In", "Zoom Out"]);
   });
 
   it("空白で分けた語を全部含むものだけ残す", () => {

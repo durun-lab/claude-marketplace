@@ -22,6 +22,7 @@ const command = (id: string, over: Partial<UiCommand> = {}): UiCommand => ({
   name: id,
   keys: [],
   key_label: null,
+  key_labels: [],
   description: null,
   menu: null,
   menu_order: null,

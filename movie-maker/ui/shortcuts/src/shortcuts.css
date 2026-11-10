@@ -61,10 +61,27 @@ body {
 .mm-shortcuts-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--mm-space-md);
-  padding: var(--mm-space-xs) var(--mm-space-md);
+  gap: var(--mm-space-sm);
+  padding: var(--mm-space-xs) var(--mm-space-md) var(--mm-space-xs) var(--mm-space-sm);
   cursor: default;
+}
+
+/* チェックの欄。メニューと同じく、入/切の無い行も同じ幅を空けて名前の左端をそろえる。 */
+.mm-shortcuts-check {
+  flex: none;
+  width: var(--mm-space-lg);
+  text-align: center;
+}
+
+.mm-shortcuts-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mm-shortcuts-keys {
+  display: flex;
+  flex: none;
+  gap: var(--mm-space-xs);
 }
 
 .mm-shortcuts-row:hover:not([aria-disabled="true"]) {
@@ -99,9 +116,17 @@ body {
 }
 
 .mm-shortcuts-footer {
+  display: flex;
   flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--mm-space-xs) var(--mm-space-lg);
   color: var(--mm-color-text-muted);
   font-size: var(--mm-font-size-sm);
+}
+
+.mm-shortcuts-hint {
+  white-space: nowrap;
 }
 
 .mm-shortcuts-error {

@@ -32,6 +32,7 @@ mod render;
 mod review;
 mod review_ipc;
 mod sequence_edit;
+mod shortcuts_window;
 mod source;
 mod source_ipc;
 mod state;

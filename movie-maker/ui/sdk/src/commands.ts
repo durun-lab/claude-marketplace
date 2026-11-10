@@ -12,11 +12,13 @@ export interface UiCommand {
   keys: string[];
   /** 先頭のキーの見た目（`Ctrl+Z`）。キーが無ければ null。 */
   key_label: string | null;
+  /** 全部のキーの見た目。並びは `keys` と同じ。 */
+  key_labels: string[];
   /** ツールチップの 2 行目。名前だけで分かるコマンドは null。 */
   description: string | null;
-  /** メニューバーでの場所。 */
+  /** 入っているメニューバーのメニューの名前（`Edit`）。メニューに無いコマンドは null。 */
   menu: string | null;
-  /** メニューの中の位置（グループをまたいだ通し番号）。メニューに無いコマンドは null。 */
+  /** メニューバーの中の位置（メニューとグループをまたいだ通し番号）。メニューに無いコマンドは null。 */
   menu_order: number | null;
   /** 持ち主の WebView のパネルの id。アプリが実行するコマンドは null。 */
   panel: string | null;

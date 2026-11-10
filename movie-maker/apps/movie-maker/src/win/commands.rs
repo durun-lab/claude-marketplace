@@ -362,10 +362,12 @@ pub struct CommandView {
     pub keys: Vec<&'static str>,
     /// 先頭のキーの見た目（`Ctrl+Z`）。キーが無ければ `None`。
     pub key_label: Option<String>,
+    /// 全部のキーの見た目。並びは `keys` と同じで、Keyboard Shortcuts のウィンドウが全部を並べる。
+    pub key_labels: Vec<String>,
     pub description: Option<&'static str>,
-    /// コマンドが入っているメニューバーのメニュー。
+    /// コマンドが入っているメニューバーのメニュー（画面の名前で送る）。
     pub menu: Option<Menu>,
-    /// メニューの中の位置（グループをまたいだ通し番号）。メニューに無いコマンドは `None`。
+    /// メニューバーの中の位置（メニューとグループをまたいだ通し番号）。メニューに無いコマンドは `None`。
     pub menu_order: Option<usize>,
     /// 持ち主の WebView のパネルの id。アプリが実行するコマンドは `None`。
     pub panel: Option<&'static str>,
@@ -375,14 +377,16 @@ pub struct CommandView {
 
 fn view(spec: &'static Spec, state: State) -> CommandView {
     let keys = keys::keys_of(spec.id);
+    let place = menu::place_of(spec.id);
     CommandView {
         id: spec.id,
         name: spec.name,
         key_label: keys.first().map(|k| keys::label(k)),
+        key_labels: keys.iter().map(|k| keys::label(k)).collect(),
         keys,
         description: spec.description,
-        menu: menu::menu_of(spec.id),
-        menu_order: menu::order_of(spec.id),
+        menu: place.map(|(menu, _)| menu),
+        menu_order: place.map(|(_, order)| order),
         panel: match spec.owner {
             Owner::Panel(panel) => Some(panel),
             Owner::App(_) => None,

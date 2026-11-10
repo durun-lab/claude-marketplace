@@ -42,11 +42,12 @@ const useSelection = (flat: readonly UiCommand[]) => {
   return { selected: flat[index], select, step };
 };
 
-/** 押せないコマンドは実行せず、ウィンドウも閉じない。実行できなかったら理由を出して開いたままにする。 */
+/** 実行できたら閉じる。押せないコマンドはアプリの `run_command` が理由をつけて拒否するので、その理由を出して開いたままにする
+ * （表が古くて、もう押せるようになっていれば実行される）。 */
 const useRunner = (commands: CommandsApi, close: ShortcutsProps["close"]) => {
   const [error, setError] = useState<string | null>(null);
   const run = async (command: UiCommand | undefined) => {
-    if (!command?.enabled) return;
+    if (!command) return;
     const failed = await commands.run(command.id);
     if (failed) return setError(failed);
     await close();
@@ -54,9 +55,26 @@ const useRunner = (commands: CommandsApi, close: ShortcutsProps["close"]) => {
   return { error, setError, run };
 };
 
+/** 下端のキーの案内。キーは行と同じ形の枠で出す。 */
+const HINTS = [
+  ["↑↓", "Select"],
+  ["Enter", "Run"],
+  ["Esc", "Close"],
+] as const;
+
 const Footer = ({ error }: { error: string | null }) => (
   <footer class="mm-shortcuts-footer">
-    {error ? <span class="mm-shortcuts-error" role="alert">{error}</span> : "↑↓ Select   Enter Run   Esc Close"}
+    {error ? (
+      <span class="mm-shortcuts-error" role="alert">
+        {error}
+      </span>
+    ) : (
+      HINTS.map(([key, action]) => (
+        <span key={key} class="mm-shortcuts-hint">
+          <kbd class="mm-shortcuts-key">{key}</kbd> {action}
+        </span>
+      ))
+    )}
   </footer>
 );
 
@@ -72,24 +90,38 @@ const SearchBox = ({ input, value, onQuery }: { input: { current: HTMLInputEleme
   />
 );
 
+/** 1 行。入/切のあるコマンドは、メニューと同じく入のときに左にチェックを出す。キーは割り当てた全部を並べる。 */
+const Row = ({ command: c, selected, onRun }: { command: UiCommand; selected: boolean; onRun: (c: UiCommand) => void }) => (
+  <div
+    class="mm-shortcuts-row"
+    role="option"
+    aria-selected={selected}
+    aria-disabled={!c.enabled}
+    aria-checked={c.checked ?? undefined}
+    title={c.description ?? undefined}
+    onClick={() => onRun(c)}
+  >
+    <span class="mm-shortcuts-check" aria-hidden="true">
+      {c.checked ? "✓" : ""}
+    </span>
+    <span class="mm-shortcuts-name">{c.name}</span>
+    <span class="mm-shortcuts-keys">
+      {c.key_labels.map((label) => (
+        <kbd key={label} class="mm-shortcuts-key">
+          {label}
+        </kbd>
+      ))}
+    </span>
+  </div>
+);
+
 const Rows = ({ list, selectedId, onRun }: { list: Section[]; selectedId: string | undefined; onRun: (c: UiCommand) => void }) => (
   <>
     {list.map((section) => (
-      <section key={section.id} class="mm-shortcuts-section" aria-label={section.title}>
+      <section key={section.title} class="mm-shortcuts-section" aria-label={section.title}>
         <h2 class="mm-shortcuts-heading">{section.title}</h2>
         {section.commands.map((c) => (
-          <div
-            key={c.id}
-            class="mm-shortcuts-row"
-            role="option"
-            aria-selected={c.id === selectedId}
-            aria-disabled={!c.enabled}
-            title={c.description ?? undefined}
-            onClick={() => onRun(c)}
-          >
-            <span class="mm-shortcuts-name">{c.name}</span>
-            {c.key_label && <kbd class="mm-shortcuts-key">{c.key_label}</kbd>}
-          </div>
+          <Row key={c.id} command={c} selected={c.id === selectedId} onRun={onRun} />
         ))}
       </section>
     ))}
