@@ -65,6 +65,10 @@ pub struct Spec {
     pub owner: Owner,
 }
 
+// macro_rules! は書いた所より後でしか使えないので、表より前で読み込む。
+#[macro_use]
+mod show_panel;
+
 /// コマンドの表。ID の名前の順に並べ、足すときもその位置に入れる。
 pub static TABLE: &[Spec] = &[
     Spec {
@@ -297,6 +301,21 @@ pub static TABLE: &[Spec] = &[
         description: Some("Zoom out around the playhead"),
         owner: Owner::App(Action::Timeline(TimelineCommand::ZoomOut)),
     },
+    show_panel!("deliver", "Deliver", None),
+    show_panel!("devices", "Devices", None),
+    show_panel!(
+        "diagnostics",
+        "Diagnostics",
+        Some("Show the GPU, clock, sync lag, backends, and the raw layer list")
+    ),
+    show_panel!("feedback", "Feedback", None),
+    show_panel!("inspector", "Inspector", None),
+    show_panel!("media", "Media", None),
+    show_panel!("mixer", "Mixer", None),
+    show_panel!("review", "Review", None),
+    show_panel!("story", "Story", None),
+    show_panel!("tasks", "Tasks", None),
+    show_panel!("transition", "Transitions", None),
 ];
 
 /// ID で表の行を引く。

@@ -1,5 +1,5 @@
 //! `--play-test` の再生テスト。プロジェクトを先頭から要求の秒数だけ再生して、ドロップしたフレームの数、
-//! 映像と音のずれ、WebView の時計の誤差を測り、途中のスクリーンショットと一緒に残す。続けて入力、Inspector、
+//! 映像と音のずれ、WebView の時計の誤差を測り、途中のスクリーンショットと一緒に残す。続けて入力、WebView、Inspector、
 //! 再生の操作のバー、Timeline の編集、Timeline のズームと移動、Timeline のツールバーの工程を通し、テストが適用した
 //! 編集を戻してから結果の JSON を書いて終わる。
 
@@ -27,6 +27,7 @@ use crate::win::verify_restore::{self, Savepoint};
 use crate::win::verify_stage::{self, checkpoint, wait_until, StageError};
 use crate::win::verify_toolbar;
 use crate::win::verify_transport;
+use crate::win::verify_webview;
 use crate::win::verify_zoom;
 
 /// 描画が安定して WebView の初期化が終わるまでの待ち。
@@ -48,6 +49,8 @@ const PAUSE_WAIT: Duration = Duration::from_secs(2);
 const PLAY_SLACK: Duration = Duration::from_secs(10);
 /// 入力は待ちの合計が約 1 秒。
 const INTERACTION_LIMIT: Duration = Duration::from_secs(20);
+/// WebView は、全部の待ちが上限まで待つと約 40 秒（ふだんは 3 秒ほど）。
+const WEBVIEW_LIMIT: Duration = Duration::from_secs(60);
 /// Inspector は待ちの合計が約 8 秒。
 const INSPECTOR_LIMIT: Duration = Duration::from_secs(30);
 /// 再生の操作のバーは、全部の待ちが上限まで待つと約 80 秒（ふだんは数秒）。
@@ -222,6 +225,10 @@ fn run(env: &TestEnv, telemetry: &Telemetry) -> Value {
     let e = env.clone();
     report["interaction"] = stages.run("interaction", INTERACTION_LIMIT, move || {
         interaction(&e.shared, &e.info, &e.target)
+    });
+    let e = env.clone();
+    report["webview"] = stages.run("webview", WEBVIEW_LIMIT, move || {
+        verify_webview::run(&e.shared, e.app.get_webview("ui"), e.hwnd, &e.test)
     });
     let e = env.clone();
     report["inspector"] = stages.run("inspector", INSPECTOR_LIMIT, move || inspector_flow(&e));
@@ -408,7 +415,7 @@ fn layer_click(shared: &Shared, target: &Target) -> Option<(i32, i32)> {
 }
 
 /// スクリーンショットを撮る。返るまで長くかかったら、時間切れの工程はここで止まり、後の入力を送らない。
-fn shoot(hwnd: isize, test: &PlayTest, suffix: &str) -> Option<String> {
+pub(crate) fn shoot(hwnd: isize, test: &PlayTest, suffix: &str) -> Option<String> {
     let path = test
         .screenshot
         .as_ref()?

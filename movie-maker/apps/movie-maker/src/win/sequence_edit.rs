@@ -17,6 +17,7 @@ use mm_ops::{
 };
 use mm_types::{AssetId, Id, RationalTime};
 use mm_ui_layout::{EditKind, HeaderButton, Side};
+use serde::Serialize;
 
 use crate::win::timebase;
 
@@ -31,30 +32,51 @@ pub struct EditState {
     /// 選択を置き直すたびに進む。
     pub cut_serial: AtomicU64,
     next_id: AtomicU64,
-    /// 直近の編集の結果の文言（失敗の理由、取り消したもの）。何も伝えることが無ければ空。
-    message: Mutex<String>,
-    /// 文言を置くたびに進む。同じ文言が続いても、置き直したことを WebView に伝える。
-    pub message_serial: AtomicU64,
+    /// 直近の編集の結果の文言。
+    message: Mutex<EditMessage>,
+}
+
+/// 直近の編集の結果の文言。WebView の Shell にそのまま送る（`mm:edit-message`）。
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct EditMessage {
+    /// 失敗の理由か、取り消したもの。何も伝えることが無ければ空。
+    pub text: String,
+    /// 編集を拒否した理由なら真。Shell は拒否の色で出す。
+    pub failed: bool,
+    /// 文言を置くたびに進む。同じ文言が続いても、置き直したことを Shell が見分けて出し直す。
+    pub serial: u64,
 }
 
 impl EditState {
     /// 直近の編集の結果の文言（失敗の理由、取り消したもの）。空なら伝えることが無い。
     pub fn message(&self) -> String {
+        self.message.lock().expect("edit message").text.clone()
+    }
+
+    /// 直近の編集の結果の文言と、拒否の理由か、置いた回数。
+    pub fn last_message(&self) -> EditMessage {
         self.message.lock().expect("edit message").clone()
     }
 
     /// 直近の編集の結果を置く。空でなければ失敗の理由としてログにも残す。
     pub fn set_message(&self, text: String) {
-        if !text.is_empty() {
+        let failed = !text.is_empty();
+        if failed {
             tracing::warn!(message = %text, "編集できなかった");
         }
-        self.notify(text);
+        self.put(text, failed);
     }
 
     /// 失敗でない知らせ（取り消したものなど）を文言に置く。
     pub fn notify(&self, text: String) {
-        *self.message.lock().expect("edit message") = text;
-        self.message_serial.fetch_add(1, Ordering::SeqCst);
+        self.put(text, false);
+    }
+
+    fn put(&self, text: String, failed: bool) {
+        let mut message = self.message.lock().expect("edit message");
+        message.text = text;
+        message.failed = failed;
+        message.serial += 1;
     }
 
     /// 選んだカットを置く。外すときは `None`。
