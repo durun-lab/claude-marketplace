@@ -15,7 +15,7 @@ export interface Loaded {
   reload: () => Promise<void>;
   /** 操作を順に送る。1 つでも断られたら止めて理由を `error` に出し、`false` を返す。 */
   apply: (ops: Op[]) => Promise<boolean>;
-  /** 編集の頼みを順に送る。`apply` と同じく、断られたら止めて理由を出し、送った後に読み直す。 */
+  /** 編集の依頼を順に送る。`apply` と同じく、拒否されたら止めて理由を出し、送った後に読み直す。 */
   request: (sends: (() => Promise<OpResult>)[]) => Promise<boolean>;
 }
 
