@@ -15,6 +15,8 @@
 //! （[`UnderText::bars`]）も受け、その後ろに帯のサムネイル（[`timeline_thumbs`]）を描く。
 //! 文字の幅は [`TextMeasure`] で `mm-ui-wgpu` に測らせ、矩形の中に文字を置くのは [`place`]（揃え方、余白、切り詰め）。ドラッグ中のツールチップは矩形の幅を文字から決めるので、
 //! 矩形と文字を [`drag_tooltip`] が一緒に置き、文字の上に重ねる線は [`clear_tooltip_area`] でツールチップを避ける。
+//! 再生位置のタイムコード（[`timeline_timecode`]、[`transport_timecodes`]）は再生中に毎フレーム変わるので、ほかの文字と
+//! 分けて返し、等幅の数字で置く（[`place_timecode`]）。ツールチップに重なれば [`clear_tooltip_labels`] で切る。
 //! [`drawing_segments`] はコメントの描き込みを、Program の映像の矩形の上の線分に分ける。
 //! [`EmptyHints`] はコンポジションに中身が無いときの空の状態の案内（Program と Timeline の行の領域の文字）を置く。
 
@@ -50,7 +52,9 @@ pub mod zoombar;
 pub use controller::{
     edit_target, Action, Mods, PointerEvent, TimelineCommand, TimelineController,
 };
-pub use drag_tooltip::{clear_tooltip_area, drag_amount, drag_tooltip, DragTooltip};
+pub use drag_tooltip::{
+    clear_tooltip_area, clear_tooltip_labels, drag_amount, drag_tooltip, DragTooltip,
+};
 pub use drawing::{
     drawing_segments, frame_point, DrawingSegment, DrawingShape, DrawingShapeKind, DRAWING_LINE_PX,
     DRAWING_POINT_PX,
@@ -60,7 +64,7 @@ pub use geom::{fit_rect, Color, Quad, QuadShape, Rect};
 pub use gesture::{body_edit, edge_edit, EditKind, Side};
 pub use header::{button_center, name_center};
 pub use keymarks::MARK_PX;
-pub use labels::{timeline_labels, LABEL_PAD};
+pub use labels::{timeline_labels, timeline_timecode, LABEL_PAD};
 pub use paint::{timeline_overlay, timeline_quads, PaintInput, PaintState, UnderText};
 pub use rows::{RowHeight, RowHeights, Rows};
 pub use ruler::{label, major_step, ticks, Tick};
@@ -72,7 +76,8 @@ pub use screen::{
 };
 pub use snap::{quantize, snap, SnapKind, SnapTarget, Snapped, SNAP_PX};
 pub use text::{
-    fit, line_height, place, Align, Fit, Label, TextMeasure, TextStyle, UiFont, ELLIPSIS,
+    fit, line_height, place, place_timecode, Align, Fit, Label, TextMeasure, TextStyle, UiFont,
+    ELLIPSIS,
 };
 pub use thumbs::{timeline_thumbs, ThumbQuad, THUMB_ASPECT};
 pub use time_view::{TimeView, MAX_PX_PER_SEC, MIN_FIT_PX_PER_SEC, MIN_PX_PER_SEC};
@@ -87,8 +92,9 @@ pub use toolbar::{
     ToolbarNames, ToolbarPart, ToolbarState, ToolbarView,
 };
 pub use transport::{
-    jog_track, transport_button, transport_labels, transport_quads, TransportAction,
-    TransportController, TransportPart, TransportState, Viewer, ViewerState, TRANSPORT_H,
+    jog_track, transport_button, transport_labels, transport_quads, transport_timecodes,
+    TransportAction, TransportController, TransportPart, TransportState, Viewer, ViewerState,
+    TRANSPORT_H,
 };
 pub use view_state::ViewState;
 pub use wave::{Peaks, WaveSource, Waves};

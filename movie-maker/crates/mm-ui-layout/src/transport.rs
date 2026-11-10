@@ -14,7 +14,7 @@ use crate::geom::Rect;
 use crate::screen::SurfaceLayout;
 
 pub use controller::TransportController;
-pub use paint::{transport_labels, transport_quads};
+pub use paint::{transport_labels, transport_quads, transport_timecodes};
 
 /// バーの高さ（タイムコードの行、ジョグバー、ボタンの行）。
 pub const TRANSPORT_H: f32 = TIMECODE_ROW_H + JOG_H + BUTTON_ROW_H;

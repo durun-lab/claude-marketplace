@@ -10,11 +10,10 @@
 use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
-    clear_tooltip_area, drag_tooltip, fit_rect, timeline_labels, timeline_overlay, timeline_quads,
-    transport_labels, Action, DrawingShape, EmptyHints, EmptyKeys, EmptyState, PaintInput,
-    PaintState, Peaks, PointerEvent, Quad, Rect, RowHeights, Scale, SurfaceLayout, TimeView,
-    TimelineController, TimelineModel, TransportController, TransportState, UiFont, UnderText,
-    ViewState, Waves,
+    clear_tooltip_area, fit_rect, timeline_overlay, timeline_quads, Action, DrawingShape,
+    EmptyHints, EmptyKeys, EmptyState, PaintInput, PaintState, Peaks, PointerEvent, Quad, Rect,
+    RowHeights, Scale, SurfaceLayout, TimeView, TimelineController, TimelineModel,
+    TransportController, TransportState, UiFont, UnderText, ViewState, Waves,
 };
 
 use crate::drawing::{DrawingFit, DrawingLayer};
@@ -23,6 +22,7 @@ use crate::quads::QuadRenderer;
 use crate::text::{TextLayer, TextStats};
 use crate::thumbs::ThumbRenderer;
 
+mod labels;
 mod layout;
 mod thumbs;
 mod toolbar;
@@ -150,7 +150,8 @@ impl Ui {
         self.font = font;
     }
 
-    /// 文字の描画の数（シェーピングした回数、頂点を作った回数）。まだ描いていなければ 0。
+    /// 文字の描画の数（シェーピングした回数、頂点を作った回数。頂点は再生位置のタイムコードとほかの文字で分けて数える）。
+    /// まだ描いていなければ 0。
     pub fn text_stats(&self) -> TextStats {
         self.text
             .as_ref()
@@ -374,45 +375,6 @@ impl Ui {
         let front = under_quads.len() as u32;
         under_quads.extend(quads);
         (under_quads, under + front, bars as u32 + front)
-    }
-
-    /// Timeline の文字を置き、文字の描画に渡す。文字の描画は最初に描くときに作る（OS のフォントを読み込む）。
-    /// ドラッグ中のツールチップの矩形は文字を測って決まるので、ここで置いて返す（Timeline の座標）。
-    fn prepare_text(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> Vec<Quad> {
-        let _span = tracing::info_span!("ui.text").entered();
-        let t = self.layout.timeline;
-        let state = self.paint_state();
-        let (format, family) = (self.format, &self.font.family);
-        let text = self
-            .text
-            .get_or_insert_with(|| TextLayer::new(device, queue, format, family));
-        let vp = self.controller.viewport();
-        let (model, font) = (&self.model, &self.font);
-        let mut labels = timeline_labels(model, &vp, &state, font, text.measure());
-        labels.extend(self.empty.timeline(&vp, &state, font, text.measure()));
-        let (timeline, palette) = (&self.controller, &self.palette);
-        labels.extend(self.toolbar.labels(timeline, palette, font, text.measure()));
-        let tooltip = drag_tooltip(model, &vp, &state, font, text.measure(), &mut labels);
-        for l in &mut labels {
-            l.x += t.x;
-            l.y += t.y;
-            l.clip = l.clip.translated(t.x, t.y);
-        }
-        labels.extend(
-            self.empty
-                .program(self.layout.program, &state, font, text.measure()),
-        );
-        labels.extend(transport_labels(
-            &self.layout,
-            &self.transport,
-            &self.transport_controller,
-            &self.palette,
-            &self.font,
-            text.measure(),
-        ));
-        let viewport = (self.size.0 as u32, self.size.1 as u32);
-        text.prepare(device, queue, &labels, self.scale, viewport);
-        tooltip
     }
 }
 

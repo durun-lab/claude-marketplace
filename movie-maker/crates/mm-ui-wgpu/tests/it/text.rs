@@ -247,17 +247,18 @@ fn 表示が変わらない間はシェーピングし直さず_頂点も作り�
     let (mut ui, size) = ui_at(&device, 1.0, model(items));
     render_sized(&device, &queue, &mut ui, size);
     let first = ui.text_stats();
-    assert_eq!(first.uploads, 1);
+    assert_eq!((first.uploads, first.timecode_uploads), (1, 1));
     assert!(first.shaped >= 5, "{first:?}");
     render_sized(&device, &queue, &mut ui, size);
     ui.set_playhead(3.0);
     render_sized(&device, &queue, &mut ui, size);
     let moved = ui.text_stats();
     assert_eq!(
-        moved.uploads, 2,
-        "見出しの列の上の角のタイムコードだけが変わる"
+        (moved.uploads, moved.timecode_uploads),
+        (1, 2),
+        "再生位置のタイムコードの頂点だけを作り直す"
     );
-    assert!(moved.shaped <= first.shaped + 1, "{moved:?} {first:?}");
+    assert_eq!(moved.shaped, first.shaped, "{moved:?} {first:?}");
     render_sized(&device, &queue, &mut ui, size);
     assert_eq!(ui.text_stats(), moved, "再生位置が止まっている間");
     let t = ui.layout().timeline;
@@ -270,7 +271,11 @@ fn 表示が変わらない間はシェーピングし直さず_頂点も作り�
     });
     render_sized(&device, &queue, &mut ui, size);
     let zoomed = ui.text_stats();
-    assert_eq!(zoomed.uploads, 3, "拡大すると置き場所が変わる");
+    assert_eq!(
+        (zoomed.uploads, zoomed.timecode_uploads),
+        (2, 2),
+        "拡大すると置き場所が変わる"
+    );
     render_sized(&device, &queue, &mut ui, size);
     assert_eq!(ui.text_stats(), zoomed);
 }
