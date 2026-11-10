@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { IssueInfo, JiraIssue, PrInfo, RepoRef, Session } from '../shared/types.ts';
-import { badgeTypedAt, candidates, jiraSpaces, typedAt } from '../client/completion.ts';
+import { badgeTypedAt, candidates, jiraSpaces, typedAt, withFavorites } from '../client/completion.ts';
 import { type GhRefs, toRefs } from '../server/integrations.ts';
 
 const REPO = 'https://github.test/o/r';
@@ -134,4 +134,11 @@ test('jiraSpaces は、sessionId のセッションの課題のスペースを�
   assert.deepEqual(jiraSpaces(sessions, 'b'), ['WEB', 'LPO']);
   assert.deepEqual(jiraSpaces(sessions, 'c'), ['CATS']);
   assert.deepEqual(jiraSpaces(sessions, ''), ['LPO', 'WEB']);
+});
+
+test('@ の候補はお気に入りのフォルダーを先に出し、打った語に合わないものとファイルとの重複は除く', () => {
+  const favs = ['/Users/me/work', '/Users/me/notes'];
+  assert.deepEqual(withFavorites(['a.ts', '/Users/me/work/'], favs, ''), ['/Users/me/work/', '/Users/me/notes/', 'a.ts']);
+  assert.deepEqual(withFavorites(['a.ts'], favs, 'WOR'), ['/Users/me/work/', 'a.ts']);
+  assert.deepEqual(withFavorites([], favs, '/Users/me/n'), ['/Users/me/notes/']);
 });

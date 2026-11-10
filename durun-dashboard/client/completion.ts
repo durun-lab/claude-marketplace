@@ -1,6 +1,7 @@
 // メッセージ欄の補完の候補。/ の後ろは skills から、# の後ろは PR と Issue から、@ の後ろはファイルから、JIRA のプロジェクトキーとハイフンの後ろはそのスペースの課題から選ぶ。
 // ハイフンだけの後ろは、見ているセッションに関係するスペースの課題から選ぶ。
 import { rankBy } from '../shared/match.ts';
+import { baseName } from './explorerFavorites.ts';
 import type { JiraIssue, PrInfo, RepoRef, Session, SkillInfo } from '../shared/types.ts';
 
 /** 打ちかけの語。mark は /、#、@、JIRA のプロジェクトキーとハイフン（CATS- など）、ハイフンだけのどれかで、word はその後ろからカーソルまで。 */
@@ -72,6 +73,18 @@ export const jiraSpaces = (sessions: Session[], sessionId: string): string[] =>
 /** spaces のスペースの課題。何も打っていなければ、それらのスペースの課題をすべて出す。 */
 const matchIssues = (issues: JiraIssue[], badges: JiraIssue[], spaces: string[], word: string): JiraIssue[] =>
   rankBy(badgesFirst(badges, issues).filter((j) => spaces.includes(spaceOf(j.key))), word, (j) => j.key.slice(j.key.lastIndexOf('-') + 1), (j) => j.summary ?? '');
+
+/**
+ * @ の候補の先頭に、エクスプローラーのお気に入りのフォルダーを置く。
+ * 打った語がフォルダーの名前に含まれるか、パスの頭に合うものだけを出す。選ぶと続けて中のファイルを選べるよう、/ で終える。
+ */
+export const withFavorites = (files: string[], favorites: string[], word: string): string[] => {
+  const w = word.toLowerCase();
+  const dirs = favorites
+    .filter((p) => p.toLowerCase().startsWith(w) || baseName(p).toLowerCase().includes(w))
+    .map((p) => (p.endsWith('/') ? p : `${p}/`));
+  return [...dirs, ...files.filter((f) => !dirs.includes(f))];
+};
 
 /**
  * refs は新しい順に、issues はスペースごとに自分の課題、ほかの課題の順に、それぞれ更新が新しい順に並べて渡す。
