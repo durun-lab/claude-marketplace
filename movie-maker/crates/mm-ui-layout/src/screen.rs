@@ -197,7 +197,10 @@ mod tests {
     #[test]
     fn 比は下限と上限に丸めて保存し_窓の高さが変わっても割合を保つ() {
         assert_eq!(timeline_ratio(800.0, 0.0), MIN_TIMELINE_H / 800.0);
-        assert_eq!(timeline_ratio(800.0, 5000.0), (800.0 - GAP - MIN_PROGRAM_H) / 800.0);
+        assert_eq!(
+            timeline_ratio(800.0, 5000.0),
+            (800.0 - GAP - MIN_PROGRAM_H) / 800.0
+        );
         let r = timeline_ratio(800.0, 400.0);
         assert_eq!(r, 0.5);
         assert_eq!(timeline_height(1200.0, r), 600.0);
@@ -228,7 +231,11 @@ mod tests {
         let gap = splitter_rect(content_width(w, true), h, r);
         let at = |x: f32, y: f32| splitter_at(w, h, r, true, x, y);
         assert_eq!(at(500.0, gap.y + 1.0), Some(Splitter::Horizontal));
-        assert_eq!(at(500.0, gap.y - 1.9), Some(Splitter::Horizontal), "上へはみ出す");
+        assert_eq!(
+            at(500.0, gap.y - 1.9),
+            Some(Splitter::Horizontal),
+            "上へはみ出す"
+        );
         assert_eq!(at(500.0, gap.y - 2.1), None);
         assert_eq!(at(500.0, gap.bottom() + 1.9), Some(Splitter::Horizontal));
         assert_eq!(at(w - 1.0, 100.0), Some(Splitter::Vertical));
@@ -242,7 +249,10 @@ mod tests {
     fn 縦の仕切りを出さなければ右端は_timeline_のもの() {
         let (w, h, r) = (1000.0, 800.0, 0.5);
         let gap = splitter_rect(w, h, r);
-        assert_eq!(splitter_at(w, h, r, false, w - 1.0, gap.y), Some(Splitter::Horizontal));
+        assert_eq!(
+            splitter_at(w, h, r, false, w - 1.0, gap.y),
+            Some(Splitter::Horizontal)
+        );
         assert_eq!(splitter_at(w, h, r, false, w - 1.0, 100.0), None);
     }
 

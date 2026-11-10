@@ -57,8 +57,10 @@ fn ウィンドウの下限の幅でも_サーフェスは下限を割らず_既
 
 #[test]
 fn 列を閉じるとその分は_webview_から外れ_開いている列は自分の幅を保つ() {
-    let mut w = Workspace::default();
-    w.left_open = false;
+    let mut w = Workspace {
+        left_open: false,
+        ..Workspace::default()
+    };
     assert_eq!(w.columns(WINDOW), cols(0.0, 400.0));
     w.left_open = true;
     w.right_open = false;
@@ -70,8 +72,10 @@ fn 列を閉じるとその分は_webview_から外れ_開いている列は自�
 
 #[test]
 fn 列が_1_つのときの仕切りは_その列の幅を動かし_2_列のときの幅は変えない() {
-    let mut w = Workspace::default();
-    w.left_open = false;
+    let mut w = Workspace {
+        left_open: false,
+        ..Workspace::default()
+    };
     w.drag_web(350.0, WINDOW);
     assert_eq!(w.columns(WINDOW), cols(0.0, 350.0));
     w.drag_web(900.0, WINDOW);
@@ -88,7 +92,10 @@ fn 横の仕切りは_timeline_の高さを割合で保つ() {
     let mut w = Workspace::default();
     w.drag_timeline(400.0, 800.0);
     assert_eq!(w.timeline_ratio, 0.5);
-    assert_eq!(mm_ui_layout::timeline_height(1000.0, w.timeline_ratio), 500.0);
+    assert_eq!(
+        mm_ui_layout::timeline_height(1000.0, w.timeline_ratio),
+        500.0
+    );
 }
 
 #[test]
@@ -135,7 +142,9 @@ fn 設定の場所は環境変数が先で_次にローカルのアプリデー�
     );
     assert_eq!(
         path_from(None, local),
-        Some(PathBuf::from("C:/Users/u/AppData/Local/movie-maker/workspace.json"))
+        Some(PathBuf::from(
+            "C:/Users/u/AppData/Local/movie-maker/workspace.json"
+        ))
     );
     assert_eq!(path_from(None, None), None);
 }

@@ -51,8 +51,10 @@ fn 仕切りで広げた_webview_も_倍率に依らず同じ論理ピクセル�
 
 #[test]
 fn 列を閉じた分だけサーフェスが広がり_全部閉じたら_webview_は幅を持たない() {
-    let mut ws = Workspace::default();
-    ws.left_open = false;
+    let mut ws = Workspace {
+        left_open: false,
+        ..Workspace::default()
+    };
     assert_eq!(split_rects(1600, 900, 1.0, &ws).0 .2, 1200);
     ws.right_open = false;
     assert_eq!(
@@ -97,7 +99,10 @@ fn シェルに渡す見た目は右の列の幅と列の開け閉め() {
     let mut ws = Workspace::default();
     let s = shell_script(&ws, 1600.0);
     assert!(s.contains("--mm-right-w','400px'"), "{s}");
-    assert!(s.contains("mmLeft='open'") && s.contains("mmRight='open'"), "{s}");
+    assert!(
+        s.contains("mmLeft='open'") && s.contains("mmRight='open'"),
+        "{s}"
+    );
     ws.left_open = false;
     assert!(shell_script(&ws, 1600.0).contains("mmLeft='closed'"));
     // 左の列が下限まで縮んだ後は、右の列が縮む。

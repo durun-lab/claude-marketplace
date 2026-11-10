@@ -43,7 +43,11 @@ pub(super) fn run(shared: &Shared, command: LayoutCommand) {
 pub(super) fn reveal(shared: &Shared, panel: &str) {
     let left = LEFT_PANELS.contains(&panel);
     let hidden = shared.workspace.get();
-    if if left { hidden.left_open } else { hidden.right_open } {
+    if if left {
+        hidden.left_open
+    } else {
+        hidden.right_open
+    } {
         return;
     }
     shared.workspace.update(|w| {
@@ -110,7 +114,10 @@ mod tests {
         let shared = Shared::new();
         shared.workspace.update(|w| w.left_open = false);
         reveal(&shared, "inspector");
-        assert!(!shared.workspace.get().left_open, "右の列のパネルは左の列を開けない");
+        assert!(
+            !shared.workspace.get().left_open,
+            "右の列のパネルは左の列を開けない"
+        );
         reveal(&shared, "media");
         assert!(shared.workspace.get().left_open);
         shared.workspace.update(|w| w.right_open = false);
@@ -120,8 +127,10 @@ mod tests {
 
     #[test]
     fn 列のコマンドは今の開閉をチェックに出し_リセットには出さない() {
-        let mut w = Workspace::default();
-        w.right_open = false;
+        let w = Workspace {
+            right_open: false,
+            ..Workspace::default()
+        };
         assert_eq!(checked(&w, LayoutCommand::ToggleLeftColumn), Some(true));
         assert_eq!(checked(&w, LayoutCommand::ToggleRightColumn), Some(false));
         assert_eq!(checked(&w, LayoutCommand::ResetUiLayout), None);

@@ -68,9 +68,11 @@ fn 縦の仕切りを右へ動かしすぎても_左の列が下限で止まり�
 
 #[test]
 fn 列が全部閉じていれば縦の仕切りは無く_横の仕切りが右端まで届く() {
-    let mut ws = Workspace::default();
-    ws.left_open = false;
-    ws.right_open = false;
+    let ws = Workspace {
+        left_open: false,
+        right_open: false,
+        ..Workspace::default()
+    };
     assert_eq!(hit(&ws, GEO, (999.0, 100.0)), None);
     let gap_y = 800.0 - timeline_height(800.0, ws.timeline_ratio) - 2.0;
     assert_eq!(hit(&ws, GEO, (999.0, gap_y)), Some(Splitter::Horizontal));

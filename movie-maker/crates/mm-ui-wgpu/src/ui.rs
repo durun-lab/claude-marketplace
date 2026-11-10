@@ -10,11 +10,11 @@
 use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
-    clear_tooltip_area, drag_tooltip, fit_rect, timeline_labels, timeline_overlay,
-    timeline_quads, transport_labels, Action, DrawingShape, EmptyHints, EmptyKeys, EmptyState,
-    PaintInput, PaintState, Peaks, PointerEvent, Quad, Rect, RowHeights, Scale, SurfaceLayout,
-    TimeView, TimelineController, TimelineModel, TransportController, TransportState, UiFont,
-    UnderText, ViewState, Waves,
+    clear_tooltip_area, drag_tooltip, fit_rect, timeline_labels, timeline_overlay, timeline_quads,
+    transport_labels, Action, DrawingShape, EmptyHints, EmptyKeys, EmptyState, PaintInput,
+    PaintState, Peaks, PointerEvent, Quad, Rect, RowHeights, Scale, SurfaceLayout, TimeView,
+    TimelineController, TimelineModel, TransportController, TransportState, UiFont, UnderText,
+    ViewState, Waves,
 };
 
 use crate::drawing::{DrawingFit, DrawingLayer};
