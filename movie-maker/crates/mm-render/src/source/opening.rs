@@ -3,14 +3,18 @@
 //! そのレイヤーを描かずに先へ進む。開き終わったデコーダーは、次に同じ素材を求められたときに受け取る。
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::path::Path;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use mm_decode_api::{Decoder, DecoderFactory, GpuContextRef};
+use mm_doc::Asset;
 use mm_types::{AssetId, MmError, Result};
+
+use crate::spans::hash_prefix;
 
 /// 素材を開く道具。バックグラウンドのスレッドへ渡せるよう、持ち主の参照で持つ。
 #[derive(Clone)]
@@ -20,9 +24,9 @@ pub struct Opener {
 }
 
 impl Opener {
-    /// 呼んだスレッドで開き終わるまで待つ。
-    fn open_now(&self, path: &Path) -> Result<Box<dyn Decoder>> {
-        let _span = tracing::info_span!("render.open_source").entered();
+    /// 呼んだスレッドで開き終わるまで待つ。スパンにはファイル名でなく素材の `contentHash` の先頭を載せる。
+    fn open_now(&self, path: &Path, hash: &str) -> Result<Box<dyn Decoder>> {
+        let _span = tracing::info_span!("render.open_source", asset = hash).entered();
         self.decoders.open(path, Some(self.gpu.as_ref()))
     }
 }
@@ -85,19 +89,20 @@ impl Opening {
         self.pending.0.layers.store(0, Ordering::SeqCst);
     }
 
-    /// `asset`（ファイルは `path`）を開く。待つ上限が無ければ呼んだスレッドで開く。あればバックグラウンドのスレッドで
-    /// 開き、開き始めたフレームの待ってよい時刻までに開き終わらなければ `None`（次に求められたときに受け取る）。
+    /// `asset` を開く。待つ上限が無ければ呼んだスレッドで開く。あればバックグラウンドのスレッドで開き、開き始めた
+    /// フレームの待ってよい時刻までに開き終わらなければ `None`（次に求められたときに受け取る）。
     pub(crate) fn open(
         &mut self,
         opener: &Opener,
-        (asset, path): (&AssetId, &Path),
+        asset: &Asset,
         frame: u64,
     ) -> Result<Option<Box<dyn Decoder>>> {
         if self.wait.is_none() {
-            return opener.open_now(path).map(Some);
+            let hash = hash_prefix(&asset.content_hash);
+            return opener.open_now(Path::new(&asset.path), hash).map(Some);
         }
-        let job = self.jobs.entry(asset.clone()).or_insert_with(|| Job {
-            rx: spawn(opener.clone(), path.to_owned(), self.pending.clone()),
+        let job = self.jobs.entry(asset.id.clone()).or_insert_with(|| Job {
+            rx: spawn(opener.clone(), asset, self.pending.clone()),
             started: frame,
             asked: frame,
         });
@@ -108,7 +113,7 @@ impl Opening {
         };
         match job.rx.recv_timeout(left) {
             Ok(opened) => {
-                self.jobs.remove(asset);
+                self.jobs.remove(&asset.id);
                 opened.map(Some)
             }
             Err(RecvTimeoutError::Timeout) => {
@@ -116,9 +121,10 @@ impl Opening {
                 Ok(None)
             }
             Err(RecvTimeoutError::Disconnected) => {
-                self.jobs.remove(asset);
+                self.jobs.remove(&asset.id);
                 Err(MmError::Internal(format!(
-                    "素材 {asset} を開くスレッドが結果を返さずに終わった"
+                    "素材 {} を開くスレッドを起こせなかった",
+                    asset.id
                 )))
             }
         }
@@ -146,14 +152,20 @@ impl Opening {
 }
 
 /// バックグラウンドのスレッドで開き、結果を返す受け口。スレッドを起こせなければ送り手ごと捨てられ、受け口が切れたことで分かる。
+/// デコーダーが panic してもエラーを送って開き終わった数を進める。送らずに終わると、描かなかったレイヤーが描き直されない。
 fn spawn(
     opener: Opener,
-    path: PathBuf,
+    asset: &Asset,
     pending: PendingSources,
 ) -> Receiver<Result<Box<dyn Decoder>>> {
     let (tx, rx) = mpsc::channel();
+    let (id, path) = (asset.id.clone(), std::path::PathBuf::from(&asset.path));
+    let hash = hash_prefix(&asset.content_hash).to_owned();
     let job = move || {
-        let _ = tx.send(opener.open_now(&path));
+        let panicked = || MmError::Internal(format!("素材 {id} を開く途中で panic した"));
+        let opened = catch_unwind(AssertUnwindSafe(|| opener.open_now(&path, &hash)))
+            .unwrap_or_else(|_| Err(panicked()));
+        let _ = tx.send(opened);
         pending.0.opened.fetch_add(1, Ordering::SeqCst);
     };
     let _ = std::thread::Builder::new()

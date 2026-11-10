@@ -7,7 +7,6 @@
 //! （`opening`）。
 
 use std::collections::HashMap;
-use std::path::Path;
 use std::time::Duration;
 
 use mm_audio_api::AudioBlock;
@@ -196,8 +195,8 @@ impl SourcePool {
         let slot = match pick(opened, t, frame) {
             Some(i) => i,
             None => {
-                let path = Path::new(&project.asset(asset_id)?.path);
-                let Some(decoder) = self.opening.open(opener, (asset_id, path), frame)? else {
+                let asset = project.asset(asset_id)?;
+                let Some(decoder) = self.opening.open(opener, asset, frame)? else {
                     return Ok(Footage::Pending);
                 };
                 mm_trace::counter!("render.source_opens", 1);

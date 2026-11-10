@@ -24,12 +24,16 @@ fn asset_hash<'p>(project: &'p Project, layer: &Layer) -> Option<&'p str> {
         .params
         .values()
         .find_map(|p| p.value.as_asset())?;
-    let hash = project.asset(id).ok()?.content_hash.as_str();
+    Some(hash_prefix(&project.asset(id).ok()?.content_hash))
+}
+
+/// `contentHash` の先頭 [`HASH_PREFIX`] 字。素材を開くスパンも同じ字数で載せる。
+pub(crate) fn hash_prefix(hash: &str) -> &str {
     let end = hash
         .char_indices()
         .nth(HASH_PREFIX)
         .map_or(hash.len(), |(i, _)| i);
-    Some(&hash[..end])
+    &hash[..end]
 }
 
 #[cfg(test)]
