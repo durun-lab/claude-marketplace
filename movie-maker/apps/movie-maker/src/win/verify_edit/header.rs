@@ -134,19 +134,30 @@ fn reorder_step(env: &Env<'_>, log: &mut Log) {
         return;
     };
     let before = order(shared);
+    // 記録には動かす 2 つのレイヤーの位置（下から）だけを書く（レイヤーが数千あるプロジェクトでも短く）。
+    let ranks = |order: &[String]| {
+        let rank = |id: &str| order.iter().position(|l| l == id);
+        (rank(&r.top.id), rank(&r.below.id))
+    };
     surface::post_press(hwnd, r.from, r.to);
     shot(env, log, "15-header-drag-line");
     cancel_drag(hwnd, r.from);
     let canceled = order(shared) == before;
-    log.step("header_drag_cancel", canceled, json!({ "order": before }));
-    let rank = |order: &[String], id: &str| order.iter().position(|l| l == id);
-    let in_front = |order: &[String]| rank(order, &r.top.id) > rank(order, &r.below.id);
+    log.step(
+        "header_drag_cancel",
+        canceled,
+        json!({ "ranks": ranks(&before) }),
+    );
+    let in_front = |order: &[String]| {
+        let (top, below) = ranks(order);
+        top > below
+    };
     surface::post_drag(hwnd, r.from, r.to);
     let moved = wait_until(WAIT, || !in_front(&order(shared)));
     log.step(
         "header_drag",
         moved && in_front(&before),
-        json!({ "layer": r.top.id, "behind": r.below.id, "order_after": order(shared) }),
+        json!({ "layer": r.top.id, "behind": r.below.id, "ranks_after": ranks(&order(shared)) }),
     );
     shot(env, log, "16-header-drag-done");
     if !moved {
@@ -157,7 +168,8 @@ fn reorder_step(env: &Env<'_>, log: &mut Log) {
     log.step("undo_header_drag", undone, json!({}));
 }
 
-/// 見出しを押してレイヤーを選び、View > Shy Selected Layers と Hide Shy Layers で行を隠し、戻す。
+/// 見出しを押してレイヤーを選び、View > Shy Selected Layers で印を付け（見出しに印が出る）、Hide Shy Layers で
+/// 行を隠し、戻す。
 fn shy_step(env: &Env<'_>, log: &mut Log) {
     let (shared, hwnd) = (env.shared, env.surface_hwnd);
     let Some(r) = reorder(env) else {
@@ -169,6 +181,8 @@ fn shy_step(env: &Env<'_>, log: &mut Log) {
     surface::post_click(hwnd, r.from.0, r.from.1);
     let selected = wait_until(WAIT, || shared.selected_layer() == Some(r.top.id.clone()));
     let marked = commands::run(shared, "timeline.shy_selected_layers").is_ok();
+    std::thread::sleep(SETTLE);
+    shot(env, log, "17-header-shy-marked");
     let hidden = commands::run(shared, "timeline.hide_shy_layers").is_ok();
     let state = shared.view.shy();
     let ok = selected && marked && hidden && state.hides(&r.top.id);
@@ -178,7 +192,7 @@ fn shy_step(env: &Env<'_>, log: &mut Log) {
         json!({ "layer": r.top.id, "shy": state.layers, "hide": state.hide }),
     );
     std::thread::sleep(SETTLE);
-    shot(env, log, "17-header-shy-hidden");
+    shot(env, log, "18-header-shy-hidden");
     let shown = commands::run(shared, "timeline.hide_shy_layers");
     let unmarked = commands::run(shared, "timeline.shy_selected_layers");
     let state = shared.view.shy();
