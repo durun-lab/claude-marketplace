@@ -187,7 +187,8 @@ fn シーケンスの上ではカットとその端に当たり_カットの外�
 #[test]
 fn カットの外にあるシーケンスのレイヤーの端はレイヤーのつまみ() {
     let m = seq_model();
-    let f = viewport(&m);
+    // 行の領域を 10 秒（1000 px）のレイヤーの右端まで見える幅にする。
+    let f = TestViewport::new(&m, (HEADER_W + 1000.0, 300.0));
     let y = f.in_bar(0);
     let at = |x| hit_test(&m, &f.vp(), x + HEADER_W, y);
     let layer = |part| Hit::Layer { index: 0, part };
@@ -202,4 +203,46 @@ fn カットの外にあるシーケンスのレイヤーの端はレイヤー�
             part: Part::InHandle
         }
     );
+}
+
+#[test]
+fn 低い倍率の_1_フレームのカットは次のカットの左端のつまみを覆わない() {
+    let mut m = seq_model();
+    m.items[0].cuts[0].end = 1.0 / 30.0;
+    m.items[0].cuts[1] = CutBar {
+        start: 1.0 / 30.0,
+        end: 4.0,
+        ..CutBar::default()
+    };
+    let mut f = viewport(&m);
+    f.time.px_per_sec = 10.0;
+    let at = |x| hit_test(&m, &f.vp(), x + HEADER_W, f.in_bar(0));
+    let cut = |cut, part| Hit::Cut { item: 0, cut, part };
+    assert_eq!(at(1.0), cut(0, Part::Body), "1 フレームのカットも掴める");
+    assert_eq!(
+        at(5.0),
+        cut(1, Part::InHandle),
+        "次のカットの左端は次のカット"
+    );
+}
+
+#[test]
+fn 空の_sequence_の帯だけを再生位置の線が重なっても見える幅に広げる() {
+    let mut m = model();
+    m.items = vec![
+        Item::layer(0.0, 1.0 / 30.0, ItemKind::Sequence, true),
+        Item::layer(0.0, 1.0 / 30.0, ItemKind::Text, true),
+    ];
+    let mut f = viewport(&m);
+    f.time.px_per_sec = 10.0;
+    let vp = f.vp();
+    let rect = |i: usize| bar_rect(&vp, i, &m.items[i], (0.0, 1.0 / 30.0));
+    assert_eq!(rect(0).w, EMPTY_SEQUENCE_BAR_PX);
+    assert_eq!(rect(1).w, MIN_BAR_PX, "ほかの短い帯は広げない");
+    let at = |x: f32| hit_test(&m, &vp, x, f.in_bar(0));
+    assert!(matches!(
+        at(rect(0).right() - 1.0),
+        Hit::Layer { index: 0, .. }
+    ));
+    assert_eq!(at(rect(0).right() + 1.0), Hit::Empty);
 }

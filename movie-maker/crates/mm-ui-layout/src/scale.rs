@@ -189,11 +189,13 @@ mod tests {
             ..TimelineModel::default()
         };
         let f = TestViewport::new(&model, (800.0, 200.0));
-        // 論理ピクセルの 678（帯の右端 680 の内側 2）は物理ピクセルの 1017。
+        // 帯の右端の内側 2 論理ピクセルは、物理ピクセルでその 1.5 倍。
         let bar = f.vp().bar(0, 0.0, 5.0);
         let y = (bar.y + bar.h / 2.0) * 1.5;
-        let PointerEvent::Move { x, y } = s.pointer_to_logical(PointerEvent::Move { x: 1017.0, y })
-        else {
+        let PointerEvent::Move { x, y } = s.pointer_to_logical(PointerEvent::Move {
+            x: (HEADER_W + 498.0) * 1.5,
+            y,
+        }) else {
             panic!("Move のまま");
         };
         assert_eq!(

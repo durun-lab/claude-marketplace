@@ -61,7 +61,8 @@ pub(crate) fn row_rect(vp: &Viewport, i: usize) -> Rect {
 
 /// 見出しの行 `row` の部品。行の上端の 1 px は行の境界の線に残す。
 /// ボタンはキーフレームの開閉の左に寄せて、左から有効、ロック、Mute、Solo の順に並べる。
-/// 音を持てないレイヤーは Mute と Solo の分を名前に譲る。
+/// 音を持てないレイヤーは Mute と Solo の分を名前に譲る。名前の長さでボタンは省かず、入らない名前は切り詰める
+/// （Mute と Solo はメニューにもキーにも無く、省くと Timeline から押せなくなる）。
 pub(crate) fn cells(row: Rect, item: &Item) -> Cells {
     let (y, h) = (row.y + 1.0, (row.h - 1.0).max(0.0));
     let right = row.right() - RIGHT_PAD - DISCLOSURE_W;
@@ -320,5 +321,7 @@ impl Placer<'_> {
     }
 }
 
+#[cfg(test)]
+mod name_tests;
 #[cfg(test)]
 mod tests;
