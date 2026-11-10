@@ -18,9 +18,12 @@ mod ui;
 
 pub use drawing::DrawingRenderer;
 pub use empty::empty_state;
-pub use model::{timeline_cut_ids, timeline_layer_ids, timeline_model};
+pub use model::{
+    keyframe_rows, timeline_cut_ids, timeline_layer_ids, timeline_model, KeyframeRowSource,
+    KeyframeSource, ParamSpan,
+};
 pub use program::ProgramViewer;
 pub use quads::QuadRenderer;
 pub use text::TextStats;
 pub use thumbs::{slot_image_from_rgb, slot_image_len, SLOT_H, SLOT_W};
-pub use ui::{Hint, Region, StatusText, ThumbStats, Ui};
+pub use ui::{Hint, Region, SplitterState, StatusText, ThumbStats, Ui};

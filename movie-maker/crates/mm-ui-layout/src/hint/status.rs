@@ -100,6 +100,12 @@ fn timeline(hit: Hit, p: &Pointee) -> String {
         (Hit::Ruler, _) => "Click or Drag: Move Playhead",
         (Hit::Header { .. }, _) => "Drag: Reorder Layers",
         (Hit::HeaderButton { button, .. }, _) => header_button(button),
+        (Hit::Disclosure { .. }, _) => "Click: Open or Close Keyframe Rows",
+        (Hit::KeyframeRowHeader { .. }, _) => "Click: Select Property",
+        (Hit::KeyframeRow { .. }, _) => "Click: Select Property \u{B7} Alt+Click: Add Keyframe",
+        (Hit::RowKeyframe(_), _) => {
+            "Drag: Move Keyframe \u{B7} Alt+Click: Add Keyframe \u{B7} Delete: Remove"
+        }
         (Hit::BarMark { .. }, _) => "Click: Move Playhead to Keyframe",
         (Hit::Scrollbar { .. }, _) => "Drag: Scroll Layers",
         (Hit::ZoomBar { part }, _) => zoom_bar(part),

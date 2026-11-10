@@ -9,6 +9,7 @@
 //! （[`TimelineCommand`]）は [`TimelineController`] が受け持つ。
 //! Timeline の中の矩形（ツールバー、目盛りの帯、見出しの列、行の領域、縦のスクロールバー、ズームバー、ステータスバー）は
 //! [`TimelineLayout`]、レイヤーの行の高さと上端は [`Rows`]、それにズームとスクロールを合わせた見えている所は [`Viewport`]。
+//! レイヤーの行の下に開くキーフレームの行は [`KeyframeRow`]、その操作は [`KeyframeAction`] で返す。
 //! [`timeline_quads`] と [`timeline_overlay`] は描く関数の入力 [`PaintInput`]（帯の波形のピーク [`Waves`] を含む）から
 //! Timeline を [`Quad`] の並びに、[`timeline_labels`] は目盛りの時刻と帯の名前を
 //! [`Label`] の並びにし、描画は `mm-ui-wgpu` が行う。`mm-ui-wgpu` は [`timeline_quads`] から帯までの矩形の数
@@ -28,6 +29,7 @@ mod geom;
 mod gesture;
 mod header;
 mod hint;
+mod keyframe_rows;
 mod keymarks;
 mod labels;
 mod paint;
@@ -63,18 +65,26 @@ pub use drawing::{
 pub use empty::{EmptyHints, EmptyKeys, EmptyState};
 pub use geom::{fit_rect, Color, Quad, QuadShape, Rect};
 pub use gesture::{body_edit, edge_edit, EditKind, Side};
-pub use header::{button_center, name_center};
+pub use header::{button_center, disclosure_center, name_center};
 pub use hint::{
     bar_tooltip, cursor_for, status_labels, status_left, status_right, tooltip_of, CursorKind,
     Dragging, EditDrag, HintText, Pointee, TooltipContent, Under,
 };
+pub use keyframe_rows::{
+    keyframe_center, toggle_open, KeyframeAction, KeyframeIndex, KeyframeRow, KeyframeRowState,
+    RowKeyframe, RowPick, ROW_DIAMOND_PX,
+};
 pub use keymarks::MARK_PX;
 pub use labels::{timeline_labels, timeline_timecode, LABEL_PAD};
 pub use paint::{timeline_overlay, timeline_quads, PaintInput, PaintState, UnderText};
-pub use rows::{RowHeight, RowHeights, Rows};
+pub use rows::{RowHeight, RowHeights, Rows, KEYFRAME_ROW_H};
 pub use ruler::{label, major_step, ticks, Tick};
 pub use scale::{Scale, TextPlacement};
-pub use screen::{split_viewers, SurfaceLayout, TIMELINE_RATIO, VIEW_MARGIN};
+pub use screen::{
+    content_width, split_viewers, splitter_at, splitter_rect, surface_layout, timeline_height,
+    timeline_ratio, vertical_splitter_rect, Splitter, SurfaceLayout, MIN_PROGRAM_H, SPLITTER_W,
+    TIMELINE_RATIO, VIEW_MARGIN,
+};
 pub use snap::{quantize, snap, SnapKind, SnapTarget, Snapped, SNAP_PX};
 pub use text::{
     fit, line_height, place, place_timecode, Align, Fit, Label, TextMeasure, TextStyle, UiFont,

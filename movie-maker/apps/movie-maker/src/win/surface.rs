@@ -26,6 +26,7 @@ use crate::win::hotpatch;
 use crate::win::keyboard;
 use crate::win::keys;
 use crate::win::pointer_hint;
+use crate::win::splitter;
 use crate::win::state::Shared;
 
 /// 1 ノッチあたりのホイールの値。
@@ -315,11 +316,16 @@ fn key_released(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     unsafe { DefWindowProcW(hwnd, WM_KEYUP, wparam, lparam) }
 }
 
+/// 共有状態。仕切りのポインター操作（`splitter.rs`）が割り付けを読み書きするのに使う。
+pub fn shared() -> Option<&'static Arc<Shared>> {
+    SHARED.get()
+}
+
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    if let Some(done) = SHARED
+    let hinted = SHARED
         .get()
-        .and_then(|s| pointer_hint::on_message(&s.hint, hwnd, (msg, wparam, lparam)))
-    {
+        .and_then(|s| pointer_hint::on_message(&s.hint, hwnd, (msg, wparam, lparam)));
+    if let Some(done) = hinted.or_else(|| splitter::message(hwnd, msg, lparam)) {
         return done;
     }
     match msg {

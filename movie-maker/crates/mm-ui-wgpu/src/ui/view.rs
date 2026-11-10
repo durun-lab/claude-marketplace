@@ -1,6 +1,10 @@
-//! Timeline の表示の状態（ズーム、スクロール、行の高さ、スナップの入/切）。開いたときの最初の表示と、`.mm/view.json` との出し入れ。
+//! Timeline の表示の状態（ズーム、スクロール、行の高さとキーフレームの行の開閉、スナップの入/切）。開いたときの最初の表示と、
+//! `.mm/view.json` との出し入れ。
 
-use mm_ui_layout::{ItemKind, RowHeights, Rows, TimeView, ViewState, VIEW_MARGIN};
+use mm_ui_layout::{
+    toggle_open, Action, ItemKind, KeyframeAction, RowHeights, Rows, TimeView, ViewState,
+    VIEW_MARGIN,
+};
 
 use super::Ui;
 
@@ -37,6 +41,36 @@ impl Ui {
             heights: self.heights.clone(),
             snapping: self.controller.snapping,
         })
+    }
+
+    /// キーフレームの行の開閉（[`KeyframeAction::ToggleRows`]）を表示の状態に当て、行の並びを作り直す。1 つのレイヤーの
+    /// 行を開いたら、その下のキーフレームの行が見える所までスクロールする。閉じた行で選んでいたものは外し、外したことを
+    /// 操作の並びに足す（アプリが Remove Keyframe を押せないことにする）。
+    pub(super) fn toggle_keyframe_rows(&mut self, actions: &mut Vec<Action>) {
+        let toggles: Vec<Option<usize>> = actions
+            .iter()
+            .filter_map(|a| match a {
+                Action::Keyframe(KeyframeAction::ToggleRows(target)) => Some(*target),
+                _ => None,
+            })
+            .collect();
+        if toggles.is_empty() {
+            return;
+        }
+        let picked = self.controller.keyframe_pick().is_some();
+        let mut opened = None;
+        for target in toggles {
+            let open = &mut self.heights.keyframe_rows_open;
+            let now_open = toggle_open(open, &self.model.items, target);
+            opened = target.filter(|_| now_open);
+        }
+        self.relayout_rows();
+        if let Some(i) = opened {
+            self.controller.reveal_keyframe_rows(i);
+        }
+        if picked && self.controller.keyframe_pick().is_none() {
+            actions.push(Action::Keyframe(KeyframeAction::Select(None)));
+        }
     }
 
     /// モデルか行の高さが変わったら、行の並びと Timeline の割り付けを作り直す。

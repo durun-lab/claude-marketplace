@@ -1,4 +1,4 @@
-//! Timeline の表示の状態（ズーム、スクロール、行の高さ、スナップの入/切）を `.mm/view.json` に置く。
+//! Timeline の表示の状態（ズーム、スクロール、行の高さとキーフレームの行の開閉、スナップの入/切）を `.mm/view.json` に置く。
 //! プロジェクトのデータではないので操作にせず、取り消しの列と `versions/` にも入らない。消すと既定の表示に戻る。
 //!
 //! 描画スレッドが変わった状態を [`ViewSlot::publish`] で置き、書くスレッドが変化の落ち着いたところで書く。
@@ -52,6 +52,9 @@ struct TimelineView {
     /// レイヤーごとの行の高さ。キーはレイヤーの ID。
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     layer_heights: BTreeMap<String, Height>,
+    /// キーフレームの行を開いたレイヤーの ID。
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    keyframe_rows_open: BTreeSet<String>,
     /// スナップの入/切。無ければ入（Premiere と Resolve の既定と同じ）。
     #[serde(default = "snapping_on")]
     snapping: bool,
@@ -111,6 +114,7 @@ impl TimelineView {
                 .iter()
                 .map(|(k, v)| (k.clone(), (*v).into()))
                 .collect(),
+            keyframe_rows_open: s.heights.keyframe_rows_open.clone(),
             snapping: s.snapping,
         }
     }
@@ -140,6 +144,7 @@ impl TimelineView {
                     .iter()
                     .map(|(k, v)| (k.clone(), (*v).into()))
                     .collect(),
+                keyframe_rows_open: self.keyframe_rows_open.clone(),
             },
             snapping: self.snapping,
         })

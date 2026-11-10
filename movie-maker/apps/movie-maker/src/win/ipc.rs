@@ -16,6 +16,7 @@ use tracing::Span;
 
 use crate::win::commands::{self, CommandView, COMMANDS_CHANGED_EVENT};
 use crate::win::hotpatch;
+use crate::win::keyframe_edit::ParamSelection;
 use crate::win::keys;
 use crate::win::playback::Command;
 use crate::win::state::{wall_us, OpenDoc, Shared};
@@ -74,6 +75,8 @@ pub struct LayerSelection {
     pub assets: Vec<Asset>,
     /// 開いているコンポジションの要約。何も選んでいない Inspector が出す。
     pub composition: Option<CompositionSummary>,
+    /// Timeline のキーフレームの行で選んだパラメータ。Inspector と Graph がそのパラメータを選ぶ。
+    pub param: Option<ParamSelection>,
 }
 
 /// コンポジションの要約（`ui/sdk` の `CompositionSummary`）。
@@ -124,15 +127,28 @@ pub fn layer_infos(comp: &Composition) -> Vec<LayerInfo> {
         .collect()
 }
 
-/// 選んだレイヤーの ID から、Inspector に送る中身を作る。レイヤーが無くなっていれば空の選択。
-pub fn selection_of(doc: &OpenDoc, selected: Option<&str>) -> LayerSelection {
+/// 選んだレイヤーの ID と、Timeline のキーフレームの行で選んだパラメータから、Inspector に送る中身を作る。
+/// レイヤーが無くなっていれば空の選択。
+pub fn selection_of(
+    doc: &OpenDoc,
+    selected: Option<&str>,
+    param: Option<ParamSelection>,
+) -> LayerSelection {
     let comp = doc.project.composition(&doc.comp).ok();
     let layer = selected.and_then(|id| comp?.layers.iter().find(|l| l.id.as_str() == id).cloned());
     LayerSelection {
+        param: param.filter(|_| layer.is_some()),
         layer,
         assets: doc.project.assets.clone(),
         composition: comp.map(CompositionSummary::of),
     }
+}
+
+/// 今の選択（選んだレイヤーと、キーフレームの行で選んだパラメータ）で作った、Inspector に送る中身。
+fn selection_now(shared: &Shared, doc: &OpenDoc) -> LayerSelection {
+    let selected = shared.selected_layer();
+    let param = shared.keyframes.param_for(selected.as_deref());
+    selection_of(doc, selected.as_deref(), param)
 }
 
 /// 開いたプロジェクトの情報。WebView の中継スクリプトが始めに fps と長さを、Diagnostics が全部を読む（`ui/panels/diagnostics` の
@@ -271,7 +287,7 @@ fn emit_selection_if_changed(app: &AppHandle, shared: &Shared, sent: &mut (u64, 
     }
     *sent = now;
     let Some(doc) = shared.doc() else { return };
-    let payload = selection_of(&doc, shared.selected_layer().as_deref());
+    let payload = selection_now(shared, &doc);
     let _ = app.emit(LAYER_SELECTED_EVENT, payload);
 }
 
@@ -406,9 +422,7 @@ pub async fn layer_selection(
 ) -> Result<Option<LayerSelection>, String> {
     hotpatch::call(|| {
         let shared = &state.shared;
-        Ok(shared
-            .doc()
-            .map(|doc| selection_of(&doc, shared.selected_layer().as_deref())))
+        Ok(shared.doc().map(|doc| selection_now(shared, &doc)))
     })
 }
 

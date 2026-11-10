@@ -106,6 +106,7 @@ fn expected_moves() -> Expected {
     use crate::win::commands::{Action, Owner};
     use mm_ui_layout::TimelineCommand::{BladeTool, SelectionTool, TrimTool};
     use mm_ui_layout::TimelineCommand::{FullExtentZoom, NextEdit, PreviousEdit};
+    use mm_ui_layout::TimelineCommand::{NextKeyframe, PreviousKeyframe, ShowKeyframeEditor};
     use mm_ui_layout::TimelineCommand::{ToggleSnapping, ZoomIn, ZoomOut};
     use Command::{Pause, Play, Reverse, Seek, Step, StepSeconds, Toggle};
     let p = |c| Owner::App(Action::Playback(c));
@@ -131,6 +132,13 @@ fn expected_moves() -> Expected {
         ("ArrowDown", "playback.next_edit", t(NextEdit)),
         ("Home", "playback.go_to_start", p(Seek(0.0))),
         ("End", "playback.go_to_end", p(Seek(f64::MAX))),
+        ("[", "playback.go_to_previous_keyframe", t(PreviousKeyframe)),
+        ("]", "playback.go_to_next_keyframe", t(NextKeyframe)),
+        (
+            "KeyU",
+            "timeline.show_keyframe_editor",
+            t(ShowKeyframeEditor),
+        ),
         ("Shift+KeyZ", "timeline.full_extent_zoom", t(FullExtentZoom)),
         ("KeyA", "timeline.selection_tool", t(SelectionTool)),
         ("KeyT", "timeline.trim_tool", t(TrimTool)),
@@ -144,13 +152,17 @@ fn expected_moves() -> Expected {
     ]
 }
 
+/// 2 つのコマンドに割り当てたキーと、その 2 つ目のコマンド。キーの先頭のコマンドは `expected_edits` と `expected_moves` が確かめる。
+const TWO_COMMAND_KEYS: &[(&str, &str)] = &[("Delete", "timeline.remove_keyframe")];
+
 #[test]
 fn キーからコマンドの_id_を引き_持ち主のコマンドを実行する() {
     let cases: Expected = expected_edits()
         .into_iter()
         .chain(expected_moves())
         .collect();
-    assert_eq!(cases.len(), BINDINGS.len(), "全部のキーを確かめる");
+    let all = cases.len() + TWO_COMMAND_KEYS.len();
+    assert_eq!(all, BINDINGS.len(), "全部のキーを確かめる");
     for (key, id, owner) in cases {
         assert_eq!(command_for(key), Some(id), "{key}");
         let spec = commands::find(id).expect(id);
@@ -185,6 +197,8 @@ fn 押し続けで繰り返すのはズームと移動のキーだけ() {
         "ArrowLeft",
         "Shift+ArrowRight",
         "ArrowUp",
+        "[",
+        "]",
     ] {
         assert!(repeats(key), "{key}");
     }
@@ -248,10 +262,11 @@ fn webview_の表に無い_alt_英字はウィンドウにメニューを開か�
 }
 
 #[test]
-fn キーは重ならず_id_の順に並び_指すコマンドは表にある() {
+fn キーは_2_つのコマンドに割り当てたもののほかは重ならず_id_の順に並び_指すコマンドは表にある() {
     for (i, (id, key)) in BINDINGS.iter().enumerate() {
         let same = BINDINGS.iter().filter(|(_, k)| k == key).count();
-        assert_eq!(same, 1, "{key} が 2 つのコマンドを指す");
+        let two = TWO_COMMAND_KEYS.iter().any(|(k, _)| k == key);
+        assert_eq!(same, 1 + usize::from(two), "{key} が 2 つのコマンドを指す");
         assert!(commands::find(id).is_some(), "{id} が表に無い");
         if let Some((next, _)) = BINDINGS.get(i + 1) {
             assert!(id <= next, "{id} と {next} の順");
@@ -326,4 +341,38 @@ fn 疑問符は_keyboard_shortcuts_を開き_jis_と_us_のどちらの_shift_�
     );
     assert_eq!(command_for("?"), Some("app.show_keyboard_shortcuts"));
     assert_eq!(key_label_of("app.show_keyboard_shortcuts"), "?");
+}
+
+#[test]
+fn delete_はキーフレームの行で選んだキーフレームがあれば外し_カットを選んでいればカットを抜く() {
+    use crate::win::keyframe_edit::RowSelection;
+    use mm_ui_layout::{PointerEvent, TimelineCommand};
+    let shared = Arc::new(Shared::new());
+    assert_eq!(
+        command_now(&shared, "Delete"),
+        Some("clip.lift"),
+        "どれも押せなければ先頭"
+    );
+    shared.keyframes.select(Some(RowSelection {
+        layer: "title".into(),
+        path: Some("opacity".into()),
+        keyframe: true,
+    }));
+    assert_eq!(
+        command_now(&shared, "Delete"),
+        Some("timeline.remove_keyframe")
+    );
+    dispatch(&shared, "surface", "Delete");
+    let remove = PointerEvent::Command(TimelineCommand::RemoveKeyframe);
+    assert_eq!(
+        *shared.input.lock().unwrap(),
+        [remove],
+        "描画スレッドが選んだキーフレームを外す"
+    );
+    shared.edit.select_cut(Some("k1".into()));
+    assert_eq!(
+        command_now(&shared, "Delete"),
+        Some("clip.lift"),
+        "カットを選んでいればカットが先"
+    );
 }

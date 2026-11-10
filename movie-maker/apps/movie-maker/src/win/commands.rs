@@ -12,6 +12,7 @@ use crate::win::keys;
 use crate::win::menu::{self, Menu};
 use crate::win::playback::Command;
 use crate::win::state::Shared;
+use crate::win::workspace::Workspace;
 
 /// 押せるかが変わったことを WebView に知らせる Tauri のイベント名。中身は新しい表（`Vec<CommandView>`）。
 pub const COMMANDS_CHANGED_EVENT: &str = "mm:commands-changed";
@@ -32,6 +33,8 @@ pub enum Owner {
 pub enum Action {
     /// 名前のついた編集。編集のキューで計画して適用する。
     Edit(EditAction),
+    /// 割り付けのコマンド（WebView の列の開け閉め、Reset UI Layout）。ユーザーの設定を変えるだけで、操作にならない。
+    Layout(LayoutCommand),
     /// 再生のコマンド。Source を最後にクリックしていれば Source の、そうでなければ Program の再生に向く。
     Playback(Command),
     /// Shy のコマンド。表示の状態を変えるだけで、操作にならない。
@@ -93,12 +96,16 @@ struct Ready {
     sequence: bool,
     /// Timeline でカットを選んでいる。lift と extract は選んだカットを抜く。
     cut_selected: bool,
+    /// Timeline のキーフレームの行でキーフレームを選んでいる。Remove Keyframe はそのキーフレームを外す。
+    keyframe_selected: bool,
     /// スナップの入/切（描画スレッドが置いた表示の状態）。
     snapping: bool,
     /// Timeline の今のツール（描画スレッドが置いたもの）。
     tool: Tool,
     /// Shy の行を隠すかどうか（表示の状態）と、選んでいるレイヤーの Shy のフラグ。
     shy: shy::ShyReady,
+    /// 割り付け（WebView の列の開閉をチェックに出す）。
+    workspace: Workspace,
 }
 
 impl Ready {
@@ -112,9 +119,11 @@ impl Ready {
             source_open: shared.source.handle().is_some(),
             sequence,
             cut_selected: shared.edit.selected_cut().is_some(),
+            keyframe_selected: shared.keyframes.keyframe_selected(),
             snapping: shared.view.snapping(),
             tool: *shared.tool.lock().expect("tool"),
             shy: shy::ShyReady::of(shared),
+            workspace: shared.workspace.get(),
         }
     }
 
@@ -127,9 +136,11 @@ impl Ready {
             Owner::App(Action::Edit(Split)) => self.sequence,
             Owner::App(Action::Edit(Lift | Extract)) => self.cut_selected,
             Owner::App(Action::Shy(command)) => self.shy.enabled(command),
+            Owner::App(Action::Timeline(TimelineCommand::RemoveKeyframe)) => self.keyframe_selected,
             Owner::App(_) | Owner::Panel(_) => true,
         };
         let checked = match spec.owner {
+            Owner::App(Action::Layout(command)) => layout::checked(&self.workspace, command),
             Owner::App(Action::Shy(command)) => self.shy.checked(command),
             Owner::App(Action::Timeline(TimelineCommand::ToggleSnapping)) => Some(self.snapping),
             Owner::App(Action::Timeline(command)) => tool_of(command).map(|tool| tool == self.tool),
@@ -227,6 +238,11 @@ fn spec_of(id: &str) -> Result<&'static Spec, String> {
     find(id).ok_or_else(|| format!("Unknown command: {id}"))
 }
 
+/// 今押せるか。同じキーのコマンドから、今押せるものを選ぶのに使う（`keys::dispatch`）。
+pub fn enabled(shared: &Shared, id: &str) -> bool {
+    find(id).is_some_and(|spec| Ready::of(shared).state(spec).enabled)
+}
+
 /// 押せるかを画面に出す呼び出し箇所（メニュー、Tasks の項目）からコマンドを実行する。押せないコマンドは拒否する。
 pub fn run(shared: &Arc<Shared>, id: &str) -> Result<(), String> {
     let spec = spec_of(id)?;
@@ -260,6 +276,7 @@ fn execute(shared: &Arc<Shared>, spec: &'static Spec) -> Result<(), String> {
     match spec.owner {
         Owner::App(Action::Edit(action)) => edit_actions::run(shared, action),
         Owner::App(Action::Playback(command)) => play(shared, command),
+        Owner::App(Action::Layout(command)) => layout::run(shared, command),
         Owner::App(Action::Shy(command)) => shy::run(shared, command),
         Owner::App(Action::Timeline(command)) => {
             timeline_input(shared, PointerEvent::Command(command));
@@ -267,7 +284,10 @@ fn execute(shared: &Arc<Shared>, spec: &'static Spec) -> Result<(), String> {
         Owner::App(Action::Window(action)) => {
             return shared.window_hook.send(Forward::Window(action))
         }
-        Owner::Panel(_) => return shared.window_hook.send(Forward::Panel(spec.id)),
+        Owner::Panel(panel) => {
+            layout::reveal(shared, panel);
+            return shared.window_hook.send(Forward::Panel(spec.id));
+        }
     }
     Ok(())
 }
@@ -281,10 +301,12 @@ fn play(shared: &Shared, command: Command) {
     }
 }
 
+mod layout;
 mod shy;
 mod table;
 mod window_hook;
 
+pub use layout::LayoutCommand;
 pub use shy::ShyCommand;
 pub use table::TABLE;
 pub use window_hook::{Forward, WindowHook};

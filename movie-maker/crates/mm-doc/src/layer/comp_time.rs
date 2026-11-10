@@ -1,16 +1,19 @@
 //! コンポジションの時刻でキーフレームを持つパラメータの一覧。`shiftLayer` が動かすキーフレームと、
-//! Timeline の帯のマーカーが同じ一覧を使う。
+//! Timeline の帯のマーカーとキーフレームの行が同じ一覧を使う。
+//! 帯のマーカーは全部のレイヤーで毎回読むので、パスの文字を作らない一覧（`comp_time_params`）を別に持つ。
 
 use mm_types::RationalTime;
 
+use crate::node::Node;
 use crate::param::Param;
 
-use super::Layer;
+use super::{Layer, Mask};
 
 impl Layer {
     /// コンポジションの時刻でキーフレームを持つパラメータ（`mm-render` が `CompCx::t` で評価するもの）。
     /// 素材の時刻の再フレーミングと、レイヤーの始まりからの時刻のタイムリマップは含めない。
-    /// 一覧を足すときは [`Layer::comp_time_params_mut`] にも足す（mm-ops の試験が JSON から突き合わせる）。
+    /// 一覧を足すときは [`Layer::comp_time_param_paths`] と [`Layer::comp_time_params_mut`] にも足す
+    /// （mm-ops の試験が JSON と操作のパスから突き合わせる）。
     pub fn comp_time_params(&self) -> Vec<&Param> {
         let mut out: Vec<&Param> = vec![
             &self.opacity,
@@ -42,6 +45,43 @@ impl Layer {
         while let Some(node) = nodes.pop() {
             out.extend(node.params.values());
             nodes.extend(node.inputs.iter());
+        }
+        out
+    }
+
+    /// [`Layer::comp_time_params`] のうち、パラメータのパス（`mm-ops` の `ParamRef` の `path`）で指せるものと、そのパス。
+    /// ノードの入力（`Node::inputs`）のノードのパラメータはパスで指せないので含めない。並びは Inspector の区画の順
+    /// （不透明度、変形、切り抜き、ソース、音、効果、マスク）の後に字幕の置き場所。Timeline のキーフレームの行が使う。
+    pub fn comp_time_param_paths(&self) -> Vec<(String, &Param)> {
+        let t = &self.transform;
+        let mut out: Vec<(String, &Param)> = vec![
+            ("opacity".into(), &self.opacity),
+            ("transform.position".into(), &t.position),
+            ("transform.scale".into(), &t.scale),
+            ("transform.rotation".into(), &t.rotation),
+        ];
+        out.extend(t.anchor.as_ref().map(|p| ("transform.anchor".into(), p)));
+        let c = &self.crop;
+        for (side, p) in [
+            ("left", &c.left),
+            ("top", &c.top),
+            ("right", &c.right),
+            ("bottom", &c.bottom),
+        ] {
+            out.extend(p.as_ref().map(|p| (format!("crop.{side}"), p)));
+        }
+        out.extend(node_paths("source", &self.source));
+        if let Some(audio) = &self.audio {
+            out.push(("audio.gain_db".into(), &audio.gain_db));
+            out.push(("audio.pan".into(), &audio.pan));
+        }
+        for effect in &self.effects {
+            out.extend(node_paths(&format!("effects.{}", effect.id), &effect.node));
+        }
+        out.extend(self.masks.iter().flat_map(mask_paths));
+        if let Some(caption) = &self.framing.caption {
+            out.push(("caption.position".into(), &caption.position));
+            out.push(("caption.width".into(), &caption.width));
         }
         out
     }
@@ -98,4 +138,28 @@ impl Layer {
         times.dedup();
         times
     }
+}
+
+/// ノードのパラメータと、そのパス（`<prefix>.<名前>`）。名前の順。
+fn node_paths<'a>(prefix: &str, node: &'a Node) -> impl Iterator<Item = (String, &'a Param)> {
+    let prefix = prefix.to_owned();
+    node.params
+        .iter()
+        .map(move |(name, p)| (format!("{prefix}.{name}"), p))
+}
+
+/// マスクのパラメータと、そのパス（`masks.<マスクの ID>.<名前>`）。
+fn mask_paths(mask: &Mask) -> Vec<(String, &Param)> {
+    let id = &mask.id;
+    let mut out = vec![
+        (format!("masks.{id}.path"), &mask.path),
+        (format!("masks.{id}.feather"), &mask.feather),
+        (format!("masks.{id}.opacity"), &mask.opacity),
+    ];
+    if let Some(rect) = &mask.rect {
+        out.push((format!("masks.{id}.rect.position"), &rect.position));
+        out.push((format!("masks.{id}.rect.size"), &rect.size));
+        out.push((format!("masks.{id}.rect.radius"), &rect.radius));
+    }
+    out
 }

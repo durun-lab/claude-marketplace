@@ -1,11 +1,13 @@
-//! `--play-test` がクリックとドラッグを投げる位置。`Ui` と同じ `mm-ui-layout` の関数（`split_viewers`、
+//! `--play-test` がクリックとドラッグを投げる位置。`Ui` と同じ `mm-ui-layout` の関数（`surface_layout`、
 //! `TimelineLayout`、`Rows`、`Viewport`、`zoombar`）で、サーフェスの割り付けと Timeline の行とズームバーの位置を求める。
+//! 仕切りの位置（縦の仕切りの有無、Timeline の高さの割合）は、描画スレッドと同じ割り付けの設定（`Shared::workspace`）を読む。
 //! ズーム、スクロール、行の高さは、描画スレッドが置いた表示の状態（`ViewSlot::current`）を読み、ツールバーの名前の幅は
 //! 描画スレッドが測って置いたもの（`Shared::toolbar_names`）を読む。
 
 use mm_ui_layout::{
-    button_center, name_center, split_viewers, zoombar, HeaderButton, Item, Rect, Rows, Scale,
-    SurfaceLayout, TimelineLayout, TimelineModel, ToolbarNames, ViewState, Viewport,
+    button_center, disclosure_center, keyframe_center, name_center, surface_layout, zoombar,
+    HeaderButton, Item, Rect, Rows, Scale, SurfaceLayout, TimelineLayout, TimelineModel,
+    ToolbarNames, ViewState, Viewport, ROW_DIAMOND_PX,
 };
 
 use crate::win::state::Shared;
@@ -29,10 +31,13 @@ pub(crate) fn placement(shared: &Shared, hwnd: isize, model: &TimelineModel) -> 
     let state = shared.view.current()?;
     let scale = Scale::new(surface::scale_factor(hwnd));
     let (w, h) = shared.surface_size();
-    let surface = split_viewers(
+    let ws = shared.workspace.get();
+    let surface = surface_layout(
         scale.to_logical(w as f32),
         scale.to_logical(h as f32),
         shared.source.is_shown(),
+        ws.timeline_ratio,
+        ws.has_web(),
     );
     let rows = Rows::of(&model.items, &state.heights);
     let t = surface.timeline;
@@ -100,6 +105,25 @@ impl Placement {
         self.client((x, y + dy))
     }
 
+    /// 行 `row` の見出しのキーフレームの開閉（▸）の中心（クライアントの物理ピクセル）。
+    pub(crate) fn disclosure(&self, item: &Item, row: usize) -> (i32, i32) {
+        self.client(disclosure_center(&self.viewport(), item, row))
+    }
+
+    /// 行 `row` の下のキーフレームの行 `k` の、時刻 `t` のひし形の中心から `dx` ずらした点（クライアントの物理ピクセル）。
+    pub(crate) fn keyframe_point(&self, (row, k): (usize, usize), t: f64, dx: f32) -> (i32, i32) {
+        let (x, y) = keyframe_center(&self.viewport(), (row, k), t);
+        self.client((x + dx, y))
+    }
+
+    /// 行 `row` の下のキーフレームの行 `k` の、時刻 `t` のひし形が行の領域に全部見えているか。
+    pub(crate) fn keyframe_visible(&self, (row, k): (usize, usize), t: f64) -> bool {
+        let (x, y) = keyframe_center(&self.viewport(), (row, k), t);
+        let half = ROW_DIAMOND_PX / 2.0;
+        let a = self.timeline.row_area;
+        x - half >= a.x && x + half <= a.right() && y - half >= a.y && y + half <= a.bottom()
+    }
+
     /// 目盛りの帯の縦の中央の、時刻 `t` の点（クライアントの物理ピクセル）。
     pub(crate) fn ruler_point(&self, t: f64) -> (i32, i32) {
         let r = self.timeline.ruler;
@@ -122,6 +146,12 @@ impl Placement {
     pub(crate) fn zoombar_point(&self, x: f32) -> (i32, i32) {
         let z = self.timeline.zoombar;
         self.client((x, z.y + z.h / 2.0))
+    }
+
+    /// 行の領域の中央（クライアントの物理ピクセル）。ホイールを送る位置。
+    pub(crate) fn row_area_center(&self) -> (i32, i32) {
+        let a = self.timeline.row_area;
+        self.client((a.x + a.w / 2.0, a.y + a.h / 2.0))
     }
 
     /// 行の領域に全部が見えている行のうち、`want` に合う最初の行。

@@ -1,5 +1,5 @@
 //! キーとメニューから Timeline に送るコマンド。表示の範囲を変えるもの（拡大縮小、全体表示）、再生位置を前後の帯の端へ
-//! 動かすもの（Previous Edit、Next Edit）、スナップの入/切。
+//! 動かすもの（Previous Edit、Next Edit）、スナップの入/切、キーフレームの行のもの（`controller/keyframe_rows.rs`）。
 
 use super::zoom::ZOOM_KEY_STEP;
 use super::{Action, TimelineController};
@@ -29,6 +29,14 @@ pub enum TimelineCommand {
     TrimTool,
     /// ツールを Blade にする（Blade Tool）。
     BladeTool,
+    /// 選んだレイヤー（選んでいなければ全部のレイヤー）の前のキーフレームへ再生位置を動かす（Go to Previous Keyframe）。
+    PreviousKeyframe,
+    /// 同じく次のキーフレームへ（Go to Next Keyframe）。
+    NextKeyframe,
+    /// 選んだレイヤー（選んでいなければキーフレームのある全部のレイヤー）のキーフレームの行を開く・閉じる（Show Keyframe Editor）。
+    ShowKeyframeEditor,
+    /// キーフレームの行で選んだキーフレームを外す（Remove Keyframe）。
+    RemoveKeyframe,
 }
 
 impl TimelineController {
@@ -52,12 +60,18 @@ impl TimelineController {
             TimelineCommand::SelectionTool => self.set_tool(Tool::Selection, model, playhead),
             TimelineCommand::TrimTool => self.set_tool(Tool::Trim, model, playhead),
             TimelineCommand::BladeTool => self.set_tool(Tool::Blade, model, playhead),
+            TimelineCommand::PreviousKeyframe
+            | TimelineCommand::NextKeyframe
+            | TimelineCommand::ShowKeyframeEditor
+            | TimelineCommand::RemoveKeyframe => {
+                return self.keyframe_command(command, model, playhead);
+            }
         }
         Vec::new()
     }
 }
 
-fn seek(target: Option<f64>) -> Vec<Action> {
+pub(super) fn seek(target: Option<f64>) -> Vec<Action> {
     target.map(Action::Seek).into_iter().collect()
 }
 
@@ -65,13 +79,24 @@ fn seek(target: Option<f64>) -> Vec<Action> {
 /// 始まりと終わり）か 0 か終わりを、いちばん近いフレームの先頭にそろえ、最後のフレームの始まりまでに収める。
 /// 再生位置から半フレームより近い端は今いる所として数えず、端に止まった再生位置から同じ端へ戻らない。無ければ `None`。
 pub fn edit_target(model: &TimelineModel, playhead: f64, forward: bool) -> Option<f64> {
+    stop_target(model, edges(model), playhead, forward)
+}
+
+/// 時刻の並び `times` のうち、再生位置の前（`forward` が false）か後ろのいちばん近いものを、いちばん近いフレームの先頭に
+/// そろえて最後のフレームの始まりまでに収めたもの（[`edit_target`] と Go to Previous / Next Keyframe の移動先）。
+pub(super) fn stop_target(
+    model: &TimelineModel,
+    times: impl Iterator<Item = f64>,
+    playhead: f64,
+    forward: bool,
+) -> Option<f64> {
     let frame = if model.fps > 0.0 {
         1.0 / model.fps
     } else {
         0.0
     };
     let last = (model.duration - frame).max(0.0);
-    let stops = edges(model).map(|t| quantize(t, model.fps).clamp(0.0, last));
+    let stops = times.map(|t| quantize(t, model.fps).clamp(0.0, last));
     let half = frame / 2.0;
     if forward {
         stops

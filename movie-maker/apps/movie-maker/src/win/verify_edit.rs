@@ -13,7 +13,6 @@ use mm_ui_wgpu::timeline_model;
 use serde_json::{json, Value};
 use trim::{trim_step, trim_target};
 
-use crate::win::capture;
 use crate::win::cli::PlayTest;
 use crate::win::keys;
 use crate::win::playback::Command;
@@ -21,12 +20,16 @@ use crate::win::state::Shared;
 use crate::win::surface;
 use crate::win::verify_first_insert;
 use crate::win::verify_place::{placement, Placement};
-use crate::win::verify_stage::{checkpoint, wait_until};
+use crate::win::verify_stage::wait_until;
 
 mod header;
 mod hints;
+mod keyframes;
+mod log;
 pub(super) mod tools;
 mod trim;
+
+pub(super) use log::{shot, Log};
 
 /// 仮想キーコード。
 const VK_I: u32 = 0x49;
@@ -62,27 +65,6 @@ pub struct Env<'a> {
     pub test: &'a PlayTest,
 }
 
-/// 結果の記録。段ごとの合否と、撮ったスクリーンショット。
-#[derive(Default)]
-pub(super) struct Log {
-    steps: Vec<(String, Value)>,
-    shots: Vec<String>,
-}
-
-impl Log {
-    pub(super) fn step(&mut self, name: &str, ok: bool, detail: Value) -> bool {
-        self.steps
-            .push((name.to_owned(), json!({ "ok": ok, "detail": detail })));
-        ok
-    }
-
-    pub(super) fn into_json(self) -> Value {
-        let all_ok = self.steps.iter().all(|(_, v)| v["ok"] == true);
-        let steps: serde_json::Map<String, Value> = self.steps.into_iter().collect();
-        json!({ "all_ok": all_ok, "steps": steps, "screenshots": self.shots })
-    }
-}
-
 pub(super) fn sequence_of(project: &Project) -> Option<&Sequence> {
     let comp = project.compositions.first()?;
     let layer = comp
@@ -103,20 +85,6 @@ pub(super) fn cuts(shared: &Shared) -> Vec<Cut> {
 
 fn cut_named(shared: &Shared, id: &str) -> Option<Cut> {
     cuts(shared).into_iter().find(|c| c.id.as_str() == id)
-}
-
-/// スクリーンショットを撮る。返るまで長くかかったら、時間切れの工程はここで止まり、後の入力を送らない。
-pub(super) fn shot(env: &Env<'_>, log: &mut Log, name: &str) {
-    let Some(base) = &env.test.screenshot else {
-        return;
-    };
-    std::thread::sleep(SETTLE);
-    let path = base.with_extension(format!("edit-{name}.png"));
-    match capture::capture_window(env.window_hwnd, &path) {
-        Ok(()) => log.shots.push(path.display().to_string()),
-        Err(e) => log.shots.push(format!("失敗: {e}")),
-    }
-    checkpoint();
 }
 
 /// 画面の位置の計算に要るもの。割り付けと Timeline の見えている所、見えているシーケンスの行の添字。
@@ -388,7 +356,7 @@ fn snap_step(env: &Env<'_>, log: &mut Log) {
 }
 
 /// Timeline 編集の通しを行って結果を返す。シーケンスのレイヤーが無いプロジェクトでは、シーケンスを編集する手順の代わりに
-/// 最初の insert の通し（`verify_first_insert`）を行う。見出しの手順は、レイヤーがあれば行う。
+/// 最初の insert の通し（`verify_first_insert`）を行う。見出しとキーフレームの行の手順は、レイヤーがあれば行う。
 pub fn run(env: &Env<'_>) -> Value {
     let mut log = Log::default();
     let has_sequence = env
@@ -403,6 +371,7 @@ pub fn run(env: &Env<'_>) -> Value {
     };
     if verify_first_insert::has_layers(env.shared) {
         header::run(env, &mut log);
+        keyframes::run(env, &mut log);
     }
     let mut out = log.into_json();
     if let Some(note) = skipped {

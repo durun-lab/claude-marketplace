@@ -113,7 +113,7 @@ pub fn run(
 }
 
 /// WebView で `js` を評価して、結果の JSON を返す。`WAIT` までに返らなければ `Value::Null`。
-fn eval_json(webview: &Webview, js: &str) -> Value {
+pub(crate) fn eval_json(webview: &Webview, js: &str) -> Value {
     let (tx, rx) = channel();
     let sent = webview.eval_with_callback(js, move |text| {
         let _ = tx.send(text);
