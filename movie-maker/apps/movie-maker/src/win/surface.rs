@@ -195,9 +195,11 @@ pub fn post_press(hwnd: isize, from: (i32, i32), to: (i32, i32)) {
     post_mouse(hwnd, WM_MOUSEMOVE, to);
 }
 
-/// ポインターを `at` へ動かす（ボタンは押さない。ホバーの画面を撮る `--play-test` 用）。
-pub fn post_move(hwnd: isize, at: (i32, i32)) {
-    post_mouse(hwnd, WM_MOUSEMOVE, at);
+/// ポインターが `at`（クライアントの物理ピクセル）に乗った入力を、ポインターの入力のキューに直に積む（ホバーの画面を撮る
+/// `--play-test` 用）。WM_MOUSEMOVE を投げると、`TrackMouseEvent` が実際のカーソルの位置で WM_MOUSELEAVE を返し、ホバーが消える。
+pub fn push_hover(at: (i32, i32)) {
+    let (x, y) = (at.0 as f32, at.1 as f32);
+    push(PointerEvent::Move { x, y });
 }
 
 /// `at` で左ボタンを離す。

@@ -72,12 +72,12 @@ fn blade_steps(env: &Env<'_>, log: &mut Log) {
     let mid = (start + end) / 2.0;
     let at = g.at(g.row, mid, 0.0);
     let chosen = select_tool(env, Tool::Blade);
-    surface::post_move(hwnd, at);
+    surface::push_hover(at);
     shot(env, log, "19-blade-hover");
     // 再生位置を割る時刻に置いて近くを指すと、線は再生位置に吸い付き、ガイド線の色で再生位置の線の上に出る。
     seek_main(shared, mid);
     std::thread::sleep(SETTLE);
-    surface::post_move(hwnd, g.at(g.row, mid, SNAP_NUDGE_PX));
+    surface::push_hover(g.at(g.row, mid, SNAP_NUDGE_PX));
     shot(env, log, "19b-blade-snapped");
     let before = cuts(shared).len();
     surface::post_click(hwnd, at.0, at.1);
