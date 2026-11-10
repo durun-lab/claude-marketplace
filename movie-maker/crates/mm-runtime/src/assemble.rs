@@ -368,7 +368,11 @@ mod tests {
             ..RuntimeConfig::sample()
         };
         assert!(cache(&missing).is_err());
-        let dir = std::env::temp_dir().join(format!("mm-runtime-cache-{}", std::process::id()));
+        let guard = tempfile::Builder::new()
+            .prefix("mm-runtime-cache-")
+            .tempdir()
+            .unwrap();
+        let dir = guard.path().to_path_buf();
         let config = RuntimeConfig {
             cache_dir: Some(dir.clone()),
             cache_limit_bytes: Some(1024),
@@ -376,7 +380,6 @@ mod tests {
         };
         let store = cache(&config).unwrap();
         assert_eq!((store.id(), store.limit_bytes()), ("fs", Some(1024)));
-        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

@@ -142,7 +142,11 @@ mod tests {
 
     #[test]
     fn 中身が変わるまで_describe_を繰り返さない() {
-        let dir = std::env::temp_dir().join(format!("mm-nodes-ofx-cat-{}", std::process::id()));
+        let guard = tempfile::Builder::new()
+            .prefix("mm-nodes-ofx-cat-")
+            .tempdir()
+            .unwrap();
+        let dir = guard.path().to_path_buf();
         let arch = dir.join("A.ofx.bundle/Contents/Win64");
         std::fs::create_dir_all(&arch).unwrap();
         std::fs::write(arch.join("A.ofx"), b"1").unwrap();
@@ -162,7 +166,6 @@ mod tests {
         let (_, s3) = catalog.plugin(&bundle, "").unwrap();
         assert_ne!(s1, s3, "共有ライブラリが変わればスタンプも変わる");
         assert_eq!(calls.load(Ordering::SeqCst), 2, "変わったら引き直す");
-        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

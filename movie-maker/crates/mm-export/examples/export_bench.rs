@@ -52,7 +52,10 @@ fn main() -> Result<()> {
         ..RuntimeConfig::real()
     };
     let mut engine = assemble(&config)?;
-    let out = std::env::temp_dir().join(format!("mm_export_bench_{}.mp4", std::process::id()));
+    let dir = tempfile::Builder::new()
+        .prefix("mm_export_bench-")
+        .tempdir()?;
+    let out = dir.path().join("bench.mp4");
     let mut fps = Vec::new();
     for _ in 0..repeat {
         let summary = export_project(
@@ -66,7 +69,6 @@ fn main() -> Result<()> {
         )?;
         fps.push(summary.fps);
     }
-    let _ = std::fs::remove_file(&out);
     fps.sort_by(f64::total_cmp);
     println!(
         "decode={} adapter={} frames/run: fps median {:.1} (runs {:?})",
