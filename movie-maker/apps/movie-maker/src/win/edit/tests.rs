@@ -51,7 +51,10 @@ fn 適用し始めた操作は時間を超えても結果を待つ() {
 
 /// `project.mmdb` を書き手として開いたアプリと同じ共有状態。再生スレッドは無い（データの置き直しを待たない）。
 fn saved(dir: &std::path::Path) -> (Arc<Shared>, Arc<Core>) {
-    let project = sample_project();
+    saved_with(dir, sample_project())
+}
+
+fn saved_with(dir: &std::path::Path, project: Project) -> (Arc<Shared>, Arc<Core>) {
     let store = Store::create(dir, &project, 0).expect("project.mmdb を作る");
     let core = Core::new(store, None);
     let shared = Arc::new(Shared::new());
@@ -161,7 +164,7 @@ fn cli_が_extract_した後に古いデータで計画した_insert_は衝突�
     let txn = mm_ops::Transaction::new("mm extract", vec![extract.into()]);
     core.apply(txn, &cli(), None).expect("CLI の extract");
 
-    let refused = submit_based(&shared, vec![planned.op], doc.version);
+    let refused = submit_based(&shared, planned.ops, doc.version);
     let error = refused.expect_err("古い編集点への insert は適用しない");
     assert!(
         error.starts_with("Conflicts with operations applied after version"),
@@ -169,6 +172,40 @@ fn cli_が_extract_した後に古いデータで計画した_insert_は衝突�
     );
     let seq = &core.project().unwrap().project.sequences[0];
     assert!(seq.cuts.iter().all(|c| c.id.as_str() != "k-new"));
+}
+
+#[test]
+fn sequence_のレイヤーが無いコンポジションへの_insert_は保存しても_1_つのトランザクションで_取り消し_1_回で戻る(
+) {
+    let dir = tempfile::tempdir().unwrap();
+    let mut project = sample_project();
+    project.sequences.clear();
+    project.compositions[0].layers.clear();
+    let (shared, core) = saved_with(dir.path(), project);
+    let before = core.project().unwrap();
+    let doc = shared.doc().unwrap();
+    let ctx = Ctx {
+        project: &doc.project,
+        comp: doc.project.composition(&doc.comp).unwrap(),
+        layer: None,
+        cut: None,
+        playhead: 0.0,
+    };
+    let planned = plan_insert(&ctx, &insert_range(), Id::new("k-new")).unwrap();
+    submit_based(&shared, planned.ops, doc.version).expect("insert");
+    let after = core.project().unwrap();
+    assert_eq!(
+        after.undo_depth,
+        before.undo_depth + 1,
+        "1 つのトランザクション"
+    );
+    let comp = &after.project.compositions[0];
+    assert_eq!(comp.layers.len(), 1, "sequence のレイヤーを作る");
+    assert_eq!(after.project.sequences[0].cuts[0].id.as_str(), "k-new");
+    assert!(shared.doc().unwrap().project.cut(&Id::new("k-new")).is_ok());
+
+    core.undo(&Caller::webview()).expect("取り消す");
+    assert_eq!(core.project().unwrap().project, before.project);
 }
 
 #[test]

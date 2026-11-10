@@ -140,6 +140,18 @@ fn 押せるかが変わると表を送り直す() {
 }
 
 #[test]
+fn シーケンスのレイヤーが無くても_source_を開いていれば_insert_と_overwrite_は押せる() {
+    let ready = Ready {
+        source_open: true,
+        ..Ready::default()
+    };
+    let enabled = |id: &str| ready.state(find(id).expect(id)).enabled;
+    assert!(enabled("clip.insert"), "最初の insert がシーケンスを作る");
+    assert!(enabled("clip.overwrite"));
+    assert!(!enabled("clip.split"), "割るカットが無い");
+}
+
+#[test]
 fn snapping_はチェックの状態に表示の状態の入_切を出し_変われば表を送り直す() {
     let shared = Shared::new();
     let mut sent = None;
@@ -182,6 +194,45 @@ fn snapping_はメニューからもキーからも描画スレッドへ入_切�
     assert_eq!(
         *shared.input.lock().unwrap(),
         [toggle, toggle, PointerEvent::SnapKeyUp]
+    );
+}
+
+#[test]
+fn shy_は選んだレイヤーにフラグを立て_隠すコマンドと合わせて表示の状態を変える() {
+    let shared = Arc::new(Shared::new());
+    let state = |shared: &Shared, id: &str| row(&table(shared), id).state;
+    assert!(
+        !state(&shared, "timeline.shy_selected_layers").enabled,
+        "選んでいない"
+    );
+    assert!(run(&shared, "timeline.shy_selected_layers").is_err());
+    shared.select_layer(Some("title".to_owned()));
+    let shy = state(&shared, "timeline.shy_selected_layers");
+    assert_eq!((shy.enabled, shy.checked), (true, Some(false)));
+    run(&shared, "timeline.shy_selected_layers").expect("フラグを立てる");
+    assert_eq!(
+        state(&shared, "timeline.shy_selected_layers").checked,
+        Some(true)
+    );
+    assert!(shared.view.shy().layers.contains("title"));
+    assert!(!shared.view.shy().hide, "フラグを立てただけでは隠さない");
+    assert_eq!(
+        state(&shared, "timeline.hide_shy_layers").checked,
+        Some(false)
+    );
+    run(&shared, "timeline.hide_shy_layers").expect("隠す");
+    assert_eq!(
+        state(&shared, "timeline.hide_shy_layers").checked,
+        Some(true)
+    );
+    assert!(shared.view.shy().hides("title"));
+    assert_eq!(
+        crate::win::menu::menu_of("timeline.hide_shy_layers"),
+        Some(Menu::View)
+    );
+    assert_eq!(
+        crate::win::menu::menu_of("timeline.shy_selected_layers"),
+        Some(Menu::View)
     );
 }
 

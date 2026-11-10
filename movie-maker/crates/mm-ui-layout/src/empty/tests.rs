@@ -25,6 +25,7 @@ fn sequence_only() -> TimelineModel {
         fps: 30.0,
         items: vec![Item::layer(0.0, 5.0, ItemKind::Sequence, true)],
         markers: Vec::new(),
+        ..TimelineModel::default()
     }
 }
 

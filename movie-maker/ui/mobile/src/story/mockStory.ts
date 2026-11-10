@@ -58,6 +58,8 @@ export interface MockStory {
   handle: (req: MockRequest) => Response | null;
   /** 次の操作を 409 `conflict` で拒否する（バージョンが古いときの画面を試す）。 */
   conflictNext: () => void;
+  /** 素材と sequence の一覧（`overview` の応答）。sequence の無いプロジェクトを試すときに差し替える。 */
+  overview: StoryOverview;
   topics: Topic[];
   words: StoryWord[];
   /** 提案として受けた操作の並び。 */
@@ -104,7 +106,7 @@ const search = (s: MockStory, q: string): StoryHit[] =>
 
 const read = (s: MockStory, url: URL): Response | null => {
   const p = url.pathname.replace("/m/api/story/", "");
-  if (p === "overview") return json(HTTP_OK, ASSETS);
+  if (p === "overview") return json(HTTP_OK, s.overview);
   if (p === "transcript") {
     const body: StoryTranscript = { asset: "a1", words: s.words, topics: s.topics, selections: [] };
     return json(HTTP_OK, body);
@@ -124,6 +126,7 @@ const read = (s: MockStory, url: URL): Response | null => {
 export const createMockStory = (): MockStory => {
   let conflict = false;
   const s: MockStory = {
+    overview: ASSETS,
     topics: initialTopics(),
     words: buildWords(),
     proposals: [],

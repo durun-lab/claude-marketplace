@@ -41,6 +41,16 @@ impl<'a> Namer<'a> {
         }
     }
 
+    /// 帯の先頭のサムネイルのキー。撮影素材と静止画の素材のコンテンツハッシュ（キャッシュの `thumbs/` のフォルダー名）。
+    /// 素材が引けないノードと、素材を持たない種類は `None`。
+    pub(crate) fn thumb(&self, node: &Node) -> Option<Arc<str>> {
+        if !matches!(node.kind.as_str(), FOOTAGE_KIND | IMAGE_KIND) {
+            return None;
+        }
+        let id = node.params.get(FOOTAGE_PARAM)?.value.as_asset()?;
+        Some(self.assets.get(id)?.content_hash.as_str().into())
+    }
+
     /// 素材の名前。撮影素材と静止画は素材のファイル名（素材が無ければ ID）、文字は最初の空でない行（ルビの注記を外す）、
     /// 入れ子と sequence は指す先の ID。
     fn source_name(&self, node: &Node) -> Option<String> {
@@ -126,6 +136,26 @@ mod tests {
         let image = Node::new(IMAGE_KIND, 1)
             .with_param(FOOTAGE_PARAM, ParamValue::AssetRef(Id::new("missing")));
         assert_eq!(&*names.label(&image), "missing", "素材が無ければ ID");
+    }
+
+    #[test]
+    fn サムネイルのキーは撮影素材と静止画の素材のコンテンツハッシュ() {
+        let p = project();
+        let names = Namer::new(&p);
+        let hash = p.assets[0].content_hash.as_str();
+        assert_eq!(
+            names.thumb(&Node::footage(&Id::new("a"))).as_deref(),
+            Some(hash)
+        );
+        let image =
+            Node::new(IMAGE_KIND, 1).with_param(FOOTAGE_PARAM, ParamValue::AssetRef(Id::new("a")));
+        assert_eq!(names.thumb(&image).as_deref(), Some(hash));
+        assert_eq!(
+            names.thumb(&Node::footage(&Id::new("missing"))),
+            None,
+            "素材が引けない"
+        );
+        assert_eq!(names.thumb(&text("a")), None, "素材を持たない種類");
     }
 
     #[test]

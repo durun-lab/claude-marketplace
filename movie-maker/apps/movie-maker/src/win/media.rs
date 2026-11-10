@@ -394,6 +394,7 @@ fn import_one(
     Ok((id, true))
 }
 
+/// 素材の表示名（パスのファイル名）。
 fn file_name(path: &str) -> String {
     Path::new(path)
         .file_name()

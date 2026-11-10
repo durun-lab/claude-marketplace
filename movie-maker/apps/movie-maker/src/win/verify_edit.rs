@@ -17,23 +17,26 @@ use crate::win::keys;
 use crate::win::playback::Command;
 use crate::win::state::Shared;
 use crate::win::surface;
+use crate::win::verify_first_insert;
 use crate::win::verify_place::{placement, Placement};
 use crate::win::verify_stage::{checkpoint, wait_until};
+
+mod header;
 
 /// 仮想キーコード。
 const VK_I: u32 = 0x49;
 const VK_O: u32 = 0x4F;
 const VK_B: u32 = 0x42;
-const VK_COMMA: u32 = 0xBC;
+pub(super) const VK_COMMA: u32 = 0xBC;
 const VK_DELETE: u32 = 0x2E;
 const VK_N: u32 = 0x4E;
 /// 入力を投げてから結果を見るまでの待ち。
 const SETTLE: Duration = Duration::from_millis(300);
 /// 結果が出るのを待つ上限。
-const WAIT: Duration = Duration::from_secs(5);
+pub(super) const WAIT: Duration = Duration::from_secs(5);
 /// Source に付けるイン点・アウト点（秒）。
-const MARK_IN: f64 = 0.5;
-const MARK_OUT: f64 = 1.5;
+pub(super) const MARK_IN: f64 = 0.5;
+pub(super) const MARK_OUT: f64 = 1.5;
 /// insert する再生位置（先頭のカットの後半）。
 const INSERT_AT: f64 = 0.8;
 /// 端と中のドラッグの量（秒）。
@@ -57,26 +60,26 @@ pub struct Env<'a> {
 
 /// 結果の記録。段ごとの合否と、撮ったスクリーンショット。
 #[derive(Default)]
-struct Log {
+pub(super) struct Log {
     steps: Vec<(String, Value)>,
     shots: Vec<String>,
 }
 
 impl Log {
-    fn step(&mut self, name: &str, ok: bool, detail: Value) -> bool {
+    pub(super) fn step(&mut self, name: &str, ok: bool, detail: Value) -> bool {
         self.steps
             .push((name.to_owned(), json!({ "ok": ok, "detail": detail })));
         ok
     }
 
-    fn into_json(self) -> Value {
+    pub(super) fn into_json(self) -> Value {
         let all_ok = self.steps.iter().all(|(_, v)| v["ok"] == true);
         let steps: serde_json::Map<String, Value> = self.steps.into_iter().collect();
         json!({ "all_ok": all_ok, "steps": steps, "screenshots": self.shots })
     }
 }
 
-fn sequence_of(project: &Project) -> Option<&Sequence> {
+pub(super) fn sequence_of(project: &Project) -> Option<&Sequence> {
     let comp = project.compositions.first()?;
     let layer = comp
         .layers
@@ -87,7 +90,7 @@ fn sequence_of(project: &Project) -> Option<&Sequence> {
         .ok()
 }
 
-fn cuts(shared: &Shared) -> Vec<Cut> {
+pub(super) fn cuts(shared: &Shared) -> Vec<Cut> {
     shared
         .doc()
         .and_then(|d| sequence_of(&d.project).map(|s| s.cuts.clone()))
@@ -99,7 +102,7 @@ fn cut_named(shared: &Shared, id: &str) -> Option<Cut> {
 }
 
 /// スクリーンショットを撮る。返るまで長くかかったら、時間切れの工程はここで止まり、後の入力を送らない。
-fn shot(env: &Env<'_>, log: &mut Log, name: &str) {
+pub(super) fn shot(env: &Env<'_>, log: &mut Log, name: &str) {
     let Some(base) = &env.test.screenshot else {
         return;
     };
@@ -153,7 +156,7 @@ fn seek_main(shared: &Shared, t: f64) -> bool {
 }
 
 /// Source を開いてイン点・アウト点を付ける。
-fn mark_source(env: &Env<'_>, log: &mut Log) -> Option<String> {
+pub(super) fn mark_source(env: &Env<'_>, log: &mut Log) -> Option<String> {
     let shared = env.shared;
     let doc = shared.doc()?;
     let comp = doc.project.composition(&doc.comp).ok()?;
@@ -459,23 +462,38 @@ fn snap_step(env: &Env<'_>, log: &mut Log) {
     }
 }
 
-/// Timeline 編集の通しを行って結果を返す。シーケンスのレイヤーが無いプロジェクトではスキップする。
+/// Timeline 編集の通しを行って結果を返す。シーケンスのレイヤーが無いプロジェクトでは、シーケンスを編集する手順の代わりに
+/// 最初の insert の通し（`verify_first_insert`）を行う。見出しの手順は、レイヤーがあれば行う。
 pub fn run(env: &Env<'_>) -> Value {
     let mut log = Log::default();
     let has_sequence = env
         .shared
         .doc()
         .is_some_and(|d| sequence_of(&d.project).is_some());
-    if !has_sequence {
-        return json!({ "skipped": "シーケンスのレイヤーが無い" });
+    let skipped = if has_sequence {
+        sequence_steps(env, &mut log);
+        None
+    } else {
+        Some(verify_first_insert::steps(env, &mut log))
+    };
+    if verify_first_insert::has_layers(env.shared) {
+        header::run(env, &mut log);
     }
-    if let Some(asset) = mark_source(env, &mut log) {
-        if let Some(id) = insert_step(env, &mut log, &asset) {
-            drag_steps(env, &mut log, &id);
-            cut_steps(env, &mut log, &id);
+    let mut out = log.into_json();
+    if let Some(note) = skipped {
+        out["skipped"] = json!(note);
+    }
+    out
+}
+
+/// シーケンスを編集する手順（Insert、カットのドラッグと分割、端のつまみ、スナップ）。
+fn sequence_steps(env: &Env<'_>, log: &mut Log) {
+    if let Some(asset) = mark_source(env, log) {
+        if let Some(id) = insert_step(env, log, &asset) {
+            drag_steps(env, log, &id);
+            cut_steps(env, log, &id);
         }
     }
-    trim_step(env, &mut log);
-    snap_step(env, &mut log);
-    log.into_json()
+    trim_step(env, log);
+    snap_step(env, log);
 }

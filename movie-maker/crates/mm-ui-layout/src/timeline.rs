@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use crate::header;
 use crate::keymarks;
 use crate::time_view::TimeView;
 use crate::timeline_layout::Viewport;
@@ -40,6 +41,8 @@ pub struct CutBar {
     pub disabled_before: bool,
     /// シーケンスのカット列で、すぐ後ろのカットが無効。
     pub disabled_after: bool,
+    /// 帯の先頭に出すサムネイルのキー（素材のコンテンツハッシュ）。素材の無いカットは `None`。
+    pub thumb: Option<Arc<str>>,
     /// 帯に波形を出す元（音のある撮影素材のカット）。
     pub wave: Option<WaveSource>,
 }
@@ -90,6 +93,8 @@ pub struct Item {
     pub enabled: bool,
     /// ロック（`lockLayer`）。Claude の操作経路から守る。
     pub locked: bool,
+    /// Shy のフラグ（View > Shy Selected Layers）。表示の状態なのでプロジェクトのデータからは作らず、アプリが立てる。
+    pub shy: bool,
     /// 音を持てるレイヤーの Mute と Solo。音を持てないレイヤーは `None`。
     pub audio: Option<AudioState>,
     /// 帯に出す名前。空なら出さない。シーケンスのレイヤーはカットの名前を出す。
@@ -98,6 +103,8 @@ pub struct Item {
     pub keyframes: Arc<[f64]>,
     /// シーケンスのレイヤーのカット。先頭から順。シーケンス以外は空。
     pub cuts: Vec<CutBar>,
+    /// 帯の先頭に出すサムネイルのキー（素材のコンテンツハッシュ）。撮影素材と静止画のレイヤーだけ。
+    pub thumb: Option<Arc<str>>,
     /// 端のつまみで動かせる範囲。
     pub trim: TrimBounds,
     /// 帯に波形を出す元（音のある撮影素材のレイヤー）。シーケンスはカットが持つ。
@@ -114,9 +121,11 @@ impl Item {
             kind,
             enabled,
             locked: false,
+            shy: false,
             audio: None,
             label: Arc::default(),
             keyframes: Arc::default(),
+            thumb: None,
             cuts: Vec::new(),
             trim: TrimBounds::FREE,
             wave: None,
@@ -138,6 +147,12 @@ impl Item {
     /// キーフレームを持つか（見出しの ▸ が引く）。
     pub fn has_keyframes(&self) -> bool {
         !self.keyframes.is_empty()
+    }
+
+    /// サムネイルのキーを付ける。
+    pub fn with_thumb(mut self, key: &str) -> Self {
+        self.thumb = Some(key.into());
+        self
     }
 
     /// ロックの状態を付ける。
@@ -167,6 +182,21 @@ pub struct TimelineModel {
     pub items: Vec<Item>,
     /// コンポジションのマーカーの時刻（秒）。スナップの目標にする。
     pub markers: Vec<f64>,
+    /// Shy で Timeline から外した行の数。見出しの列の上の角に出す。
+    pub hidden: usize,
+}
+
+/// レイヤーの見出しの、押せるボタン。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeaderButton {
+    /// 有効（`setLayerEnabled`）。
+    Enabled,
+    /// ロック（`lockLayer`）。
+    Lock,
+    /// Mute（`setLayerAudio`）。
+    Mute,
+    /// Solo（`setLayerAudio`）。
+    Solo,
 }
 
 impl TimelineModel {
@@ -202,6 +232,11 @@ pub enum Hit {
     /// レイヤーの見出し。`index` は行の添字。
     Header {
         index: usize,
+    },
+    /// レイヤーの見出しのボタン。`index` は行の添字。
+    HeaderButton {
+        index: usize,
+        button: HeaderButton,
     },
     Ruler,
     Layer {
@@ -308,8 +343,10 @@ fn region_hit(model: &TimelineModel, vp: &Viewport, x: f32, y: f32) -> Option<Hi
     }
     if l.headers.contains(x, y) {
         let row = vp.rows.at(y - l.headers.y + vp.scroll_y);
-        let index = row.filter(|i| *i < model.items.len());
-        return Some(index.map_or(Hit::Empty, |index| Hit::Header { index }));
+        let item = row.and_then(|index| Some((index, model.items.get(index)?)));
+        return Some(item.map_or(Hit::Empty, |(index, item)| {
+            header::hit(vp, (index, item), (x, y))
+        }));
     }
     if l.scrollbar.contains(x, y) {
         let thumb = vp.thumb().contains(x, y);

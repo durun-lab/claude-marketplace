@@ -49,12 +49,12 @@ fn with_asset(mut p: Project) -> Project {
     p
 }
 
-const PROGRAM_ONLY: EmptyState = EmptyState {
-    program: true,
-    timeline: false,
-};
 const BOTH: EmptyState = EmptyState {
     program: true,
+    timeline: true,
+};
+const TIMELINE_ONLY: EmptyState = EmptyState {
+    program: false,
     timeline: true,
 };
 const NONE: EmptyState = EmptyState {
@@ -63,30 +63,28 @@ const NONE: EmptyState = EmptyState {
 };
 
 #[test]
-fn レイヤーも素材も無いと_program_に取り込みの案内だけを出す() {
-    assert_eq!(
-        empty_state(&Project::new(), &comp(Vec::new())),
-        PROGRAM_ONLY
-    );
+fn レイヤーも素材も無いと_program_に取り込みの案内を_timeline_に_insert_の手順を出す() {
+    assert_eq!(empty_state(&Project::new(), &comp(Vec::new())), BOTH);
 }
 
 #[test]
-fn カットの無い_sequence_のレイヤーには_timeline_に_insert_の手順も出す() {
+fn カットの無い_sequence_のレイヤーにも_timeline_に_insert_の手順を出す() {
     let state = empty_state(&project_with(Vec::new()), &comp(vec![sequence_layer()]));
     assert_eq!(state, BOTH);
 }
 
 #[test]
-fn 素材を取り込んだら_program_の取り込みの案内は消す() {
+fn 素材を取り込んだら_program_の取り込みの案内は消し_timeline_の手順は残す() {
     let p = with_asset(project_with(Vec::new()));
     assert_eq!(
         empty_state(&p, &comp(vec![sequence_layer()])),
-        EmptyState {
-            program: false,
-            timeline: true,
-        }
+        TIMELINE_ONLY
     );
-    assert_eq!(empty_state(&p, &comp(Vec::new())), NONE);
+    assert_eq!(
+        empty_state(&p, &comp(Vec::new())),
+        TIMELINE_ONLY,
+        "sequence のレイヤーが無くても、最初の Insert が作る"
+    );
 }
 
 #[test]

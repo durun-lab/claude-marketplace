@@ -54,6 +54,12 @@ fn apply(p: &mut Project, op: Op) -> mm_ops::TxnOutcome {
     apply_transaction(p, &[op], &OpContext::new(Entry::WebView)).expect("適用できる")
 }
 
+/// sequence のレイヤーがあるときの計画は操作 1 つ。その操作。
+fn only(planned: Planned) -> Op {
+    let [op] = <[Op; 1]>::try_from(planned.ops).expect("操作は 1 つ");
+    op
+}
+
 fn cut_ids(p: &Project) -> Vec<String> {
     p.sequences[0]
         .cuts
@@ -109,7 +115,9 @@ fn insert_は再生位置に近い境目へ入り_後ろがずれる() {
     let r = range(&p);
     let index_for = |t: f64| {
         let planned = plan_insert(&ctx(&p, None, t), &r, Id::new("new")).unwrap();
-        let Op::Insert(i) = planned.op else { panic!() };
+        let Op::Insert(i) = only(planned) else {
+            panic!()
+        };
         i.index
     };
     assert_eq!(index_for(0.5), 0, "k1 の前半は k1 の前");
@@ -125,7 +133,7 @@ fn insert_を適用すると_カットが増え_素材のその範囲が並び_�
     let before = p.clone();
     let planned = plan_insert(&ctx(&p, None, 3.2), &range(&p), Id::new("new")).unwrap();
     assert_eq!(planned.select, Some(Id::new("new")));
-    let outcome = apply(&mut p, planned.op);
+    let outcome = apply(&mut p, only(planned));
     assert_eq!(cut_ids(&p), ["k1", "new", "k2", "k3"]);
     let (_, cut) = p.cut(&Id::new("new")).unwrap();
     assert_eq!(
@@ -144,12 +152,12 @@ fn overwrite_は選んだカットを置き換え_選んでいなければ再生
     let p = sample_project();
     let r = range(&p);
     let planned = plan_overwrite(&ctx(&p, Some("k3"), 0.5), &r, Id::new("new")).unwrap();
-    let Op::Overwrite(o) = planned.op else {
+    let Op::Overwrite(o) = only(planned) else {
         panic!()
     };
     assert_eq!(o.cut.as_str(), "k3");
     let planned = plan_overwrite(&ctx(&p, None, 3.5), &r, Id::new("new")).unwrap();
-    let Op::Overwrite(o) = planned.op else {
+    let Op::Overwrite(o) = only(planned) else {
         panic!()
     };
     assert_eq!(o.cut.as_str(), "k2");
@@ -160,7 +168,7 @@ fn overwrite_は選んだカットを置き換え_選んでいなければ再生
 fn split_は再生位置で割り_カットの先頭では割らない() {
     let mut p = sample_project();
     let planned = plan_split(&ctx(&p, None, 1.0), Id::new("k1b")).unwrap();
-    apply(&mut p, planned.op);
+    apply(&mut p, only(planned));
     assert_eq!(cut_ids(&p), ["k1", "k1b", "k2", "k3"]);
     let (_, first) = p.cut(&Id::new("k1")).unwrap();
     assert_eq!(first.out_point, RationalTime::seconds(1));
@@ -171,11 +179,11 @@ fn split_は再生位置で割り_カットの先頭では割らない() {
 #[test]
 fn lift_は隙間を残し_extract_は詰める() {
     let mut p = sample_project();
-    let lift = plan_lift(&ctx(&p, Some("k2"), 0.0)).unwrap().op;
+    let lift = only(plan_lift(&ctx(&p, Some("k2"), 0.0)).unwrap());
     apply(&mut p, lift);
     assert!(p.cut(&Id::new("k2")).unwrap().1.source.is_gap());
     assert_eq!(cut_ids(&p).len(), 3);
-    let extract = plan_extract(&ctx(&p, Some("k2"), 0.0)).unwrap().op;
+    let extract = only(plan_extract(&ctx(&p, Some("k2"), 0.0)).unwrap());
     apply(&mut p, extract);
     assert_eq!(cut_ids(&p), ["k1", "k3"]);
     assert!(plan_lift(&ctx(&p, None, 0.0)).is_err(), "選んでいない");
@@ -284,7 +292,7 @@ fn 再生位置がフレームの後半でも_split_は表示中のフレーム�
     // 1 秒 + 0.9 フレーム。表示は 30 フレーム目なので、割る位置は 1 秒。
     let at = 1.0 + 0.9 / 30.0;
     let planned = plan_split(&ctx(&p, None, at), Id::new("k1b")).unwrap();
-    let Op::Split(split) = planned.op else {
+    let Op::Split(split) = only(planned) else {
         panic!("split になる")
     };
     assert_eq!(split.at, RationalTime::seconds(1));

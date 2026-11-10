@@ -2,7 +2,7 @@
 
 use std::fs;
 
-use mm_doc::{Asset, Cut, Node, Sequence, WordEdit, SEQUENCE_KIND, SEQUENCE_PARAM};
+use mm_doc::{Asset, Cut, Node, Sequence, Topic, WordEdit, SEQUENCE_KIND, SEQUENCE_PARAM};
 use mm_types::{ColorSpace, Id, ParamValue, RationalTime};
 
 use super::*;
@@ -126,4 +126,103 @@ fn 撮影素材のレイヤーでも素材の時刻が再生位置に変わる()
     assert_eq!(story.timeline_time(ASSET, 13.0).unwrap(), Some(5.0));
     assert_eq!(story.timeline_time(ASSET, 20.0).unwrap(), None);
     assert_eq!(story.timeline_time("other", 13.0).unwrap(), None);
+}
+
+/// 素材 1 つと話題 2 つ（素材の 1-3 秒と 4-5 秒）と、レイヤーの無いコンポジション `main` を書き手で開いた Story。
+fn saved_story(dir: &Path) -> (StoryState, Arc<mm_serve::Core>) {
+    let mut project = Project::new();
+    project.assets.push(asset());
+    for (id, from, to) in [("t1", 1, 3), ("t2", 4, 5)] {
+        project.bins.topics.push(Topic {
+            id: Id::new(id),
+            asset: Id::new(ASSET),
+            in_point: secs(from),
+            out_point: secs(to),
+            title: id.into(),
+            rating: Default::default(),
+            tags: Vec::new(),
+        });
+    }
+    let fps = mm_types::Rational::integer(30);
+    let comp = mm_doc::Composition::new(Id::new("main"), 320, 180, fps, secs(10));
+    project.compositions.push(comp);
+    let store = mm_store::Store::create(dir, &project, 0).expect("project.mmdb を作る");
+    let core = mm_serve::Core::new(store, None);
+    let shared = Arc::new(Shared::new());
+    let _ = shared.core.set(core.clone());
+    let version = core.version().expect("バージョン");
+    shared.publish_saved(version, Arc::new(project), Id::new("main"));
+    let story = StoryState::new(shared, &dir.join("project.mmdb"), dir.join("cache"));
+    (story, core)
+}
+
+fn strings<const N: usize>(v: [&str; N]) -> [String; N] {
+    v.map(String::from)
+}
+
+fn cut_ids(project: &Project, sequence: &str) -> Vec<String> {
+    let seq = project.sequence(&Id::new(sequence)).unwrap();
+    seq.cuts.iter().map(|c| c.id.to_string()).collect()
+}
+
+#[test]
+fn sequence_が無ければ_開いているコンポジションに_sequence_とレイヤーを作って並べ_取り消し_1_回で戻る(
+) {
+    let dir = tempfile::tempdir().unwrap();
+    let (story, core) = saved_story(dir.path());
+    let before = core.project().unwrap().project;
+    story
+        .arrange(None, &strings(["t2", "t1"]), &strings(["k2", "k1"]))
+        .expect("並べる");
+    let after = core.project().unwrap().project;
+    assert_eq!(cut_ids(&after, "Sequence 1"), ["k2", "k1"], "話題の順");
+    let (comp, layer) = after.layer(&Id::new("Sequence 1 layer")).unwrap();
+    assert_eq!(
+        (layer.out_point, comp.duration),
+        (secs(3), secs(3)),
+        "話題の長さの和"
+    );
+    let overview = story.overview().unwrap();
+    assert_eq!(overview.open_sequence.as_deref(), Some("Sequence 1"));
+
+    core.undo(&mm_serve::Caller::webview()).expect("取り消す");
+    assert_eq!(core.project().unwrap().project, before);
+}
+
+#[test]
+fn パネルの一覧が古く並べ先を選んでいなくても_sequence_を二重に作らず_先頭の_sequence_に並べる() {
+    let dir = tempfile::tempdir().unwrap();
+    let (story, core) = saved_story(dir.path());
+    story
+        .arrange(None, &strings(["t1"]), &strings(["k1"]))
+        .expect("作って並べる");
+    story
+        .arrange(None, &strings(["t2"]), &strings(["k2"]))
+        .expect("並べる");
+    let after = core.project().unwrap().project;
+    assert_eq!(after.sequences.len(), 1);
+    assert_eq!(cut_ids(&after, "Sequence 1"), ["k1", "k2"]);
+}
+
+#[test]
+fn 並べ先を渡せば_その_sequence_の末尾への_insert_topics_だけにする() {
+    let mut project = Project::new();
+    for id in ["s1", "s2"] {
+        project.sequences.push(Sequence {
+            id: Id::new(id),
+            cuts: Vec::new(),
+            origin: None,
+        });
+    }
+    let comp = Id::new("main");
+    let topics = vec![Id::new("t1")];
+    let ops = arrange_ops(&project, &comp, Some("s2"), topics, vec![Id::new("k1")]).unwrap();
+    let [Op::InsertTopics(insert)] = ops.as_slice() else {
+        panic!("insertTopics だけ: {ops:?}");
+    };
+    assert_eq!(
+        (insert.sequence.as_str(), insert.index),
+        ("s2", None),
+        "末尾"
+    );
 }

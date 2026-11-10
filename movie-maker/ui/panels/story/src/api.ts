@@ -73,12 +73,19 @@ export interface StoryApi {
   cutTime: (cut: string) => Promise<number | null>;
   /** 操作を送る（`apply_op`）。 */
   apply: (op: Op) => Promise<OpResult>;
+  /**
+   * 話題を sequence の末尾に並べる（`story_arrange`。カットの ID は `cuts`）。`sequence` が `null` なら先頭の sequence、
+   * プロジェクトに sequence が無ければ、開いているコンポジションに作って並べる（ID と長さはアプリが決める）。
+   */
+  arrange: (sequence: string | null, topics: string[], cuts: string[]) => Promise<OpResult>;
   /** 再生位置を動かす（`transport` の `seek`）。 */
   seek: (seconds: number) => Promise<void>;
 }
 
 /** Tauri の invoke と同じ形の関数。テストで差し替える。 */
 export type StoryInvoke = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
+
+const errorText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
 /** Tauri の IPC で Story のコマンドを呼ぶ実装。コマンドの名前と引数は ui/sdk/README.md。 */
 export const createIpcStoryApi = (call: StoryInvoke = tauriInvoke): StoryApi => {
@@ -93,6 +100,13 @@ export const createIpcStoryApi = (call: StoryInvoke = tauriInvoke): StoryApi => 
       (await call("story_timeline_time", { asset, at })) as number | null,
     cutTime: async (cut) => (await call("story_cut_time", { cut })) as number | null,
     apply: (op) => transport.send(op),
+    arrange: async (sequence, topics, cuts) => {
+      try {
+        return { ok: true, value: await call("story_arrange", { sequence, topics, cuts }) };
+      } catch (e) {
+        return { ok: false, error: errorText(e) };
+      }
+    },
     seek: async (seconds) => {
       await call("transport", { action: "seek", value: seconds });
     },

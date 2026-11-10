@@ -7,15 +7,23 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use mm_doc::{
-    Composition, Cut, CutId, Layer, Node, Project, Sequence, SEQUENCE_KIND, SEQUENCE_PARAM,
+    Composition, Cut, CutId, Layer, LayerAudio, Node, Project, Sequence, SEQUENCE_KIND,
+    SEQUENCE_PARAM,
 };
-use mm_eval::{place_cuts, PlacedCut};
-use mm_ops::{Edge, Insert, Lift, Op, Overwrite, Ripple, Roll, Slide, Slip, Split, TrimLayer};
+use mm_eval::{place_cuts, PlacedCut, DEFAULT_AUDIO_ROLE};
+use mm_ops::{
+    Edge, Insert, Lift, LockLayer, MoveLayer, Op, Overwrite, Ripple, Roll, SetLayerAudio,
+    SetLayerEnabled, Slide, Slip, Split, TrimLayer,
+};
 use mm_types::{AssetId, Id, RationalTime};
-use mm_ui_layout::{EditKind, Side};
+use mm_ui_layout::{EditKind, HeaderButton, Side};
 use serde::Serialize;
 
 use crate::win::timebase;
+
+pub mod new_sequence;
+
+use new_sequence::NewSequence;
 
 /// 編集の対象にするカットの選択と、カットの ID の採番。
 #[derive(Default)]
@@ -120,7 +128,8 @@ pub struct SourceRange {
 /// 計画した操作と、適用の後に選ぶカット。
 #[derive(Debug, Clone, PartialEq)]
 pub struct Planned {
-    pub op: Op,
+    /// 1 つのトランザクションで適用する操作の並び。取り消し 1 回で全部戻る。
+    pub ops: Vec<Op>,
     pub select: Option<CutId>,
 }
 
@@ -216,21 +225,29 @@ fn footage_cut(id: CutId, range: &SourceRange) -> Cut {
 }
 
 /// Source の範囲を、再生位置に一番近いカットの編集点へ差し込む（`insert`）。後ろのカットはずれる。
+/// sequence のレイヤーが無いコンポジションでは、このカットだけの sequence と sequence のレイヤーを作る。
 pub fn plan_insert(ctx: &Ctx<'_>, range: &SourceRange, id: CutId) -> Result<Planned, String> {
+    if target_layer(ctx).is_none() {
+        return plan_new_sequence(ctx, range, id);
+    }
     let t = target(ctx)?;
     Ok(Planned {
-        op: Insert {
+        ops: vec![Insert {
             sequence: t.seq.id.clone(),
             index: t.boundary_index(),
             cut: footage_cut(id.clone(), range),
         }
-        .into(),
+        .into()],
         select: Some(id),
     })
 }
 
 /// Source の範囲で、選んだカット（なければ再生位置のカット）を置き換える（`overwrite`）。
+/// sequence のレイヤーが無いコンポジションでは、置き換えるカットが無いので Insert と同じく sequence から作る。
 pub fn plan_overwrite(ctx: &Ctx<'_>, range: &SourceRange, id: CutId) -> Result<Planned, String> {
+    if target_layer(ctx).is_none() {
+        return plan_new_sequence(ctx, range, id);
+    }
     let t = target(ctx)?;
     let old = t
         .working_cut(ctx.cut)
@@ -238,11 +255,27 @@ pub fn plan_overwrite(ctx: &Ctx<'_>, range: &SourceRange, id: CutId) -> Result<P
         .id
         .clone();
     Ok(Planned {
-        op: Overwrite {
+        ops: vec![Overwrite {
             cut: old,
             replacement: footage_cut(id.clone(), range),
         }
-        .into(),
+        .into()],
+        select: Some(id),
+    })
+}
+
+/// Source の範囲のカット 1 つを入れた sequence と、それを置く sequence のレイヤーを、1 つのトランザクションで作る。
+fn plan_new_sequence(ctx: &Ctx<'_>, range: &SourceRange, id: CutId) -> Result<Planned, String> {
+    let cut = footage_cut(id.clone(), range);
+    let length = cut.duration().map_err(|e| e.to_string())?;
+    let new = NewSequence::ids(ctx.project);
+    let insert = Insert {
+        sequence: new.sequence.clone(),
+        index: 0,
+        cut,
+    };
+    Ok(Planned {
+        ops: new.ops(ctx.comp, length, vec![insert.into()]),
         select: Some(id),
     })
 }
@@ -256,12 +289,12 @@ pub fn plan_split(ctx: &Ctx<'_>, id: CutId) -> Result<Planned, String> {
         return Err("Can't split at the start of a clip".into());
     }
     Ok(Planned {
-        op: Split {
+        ops: vec![Split {
             cut: p.id.clone(),
             at,
             new_cut: id.clone(),
         }
-        .into(),
+        .into()],
         select: Some(id),
     })
 }
@@ -270,7 +303,7 @@ pub fn plan_split(ctx: &Ctx<'_>, id: CutId) -> Result<Planned, String> {
 pub fn plan_lift(ctx: &Ctx<'_>) -> Result<Planned, String> {
     let cut = selected_cut_id(ctx)?;
     Ok(Planned {
-        op: Lift { cut: cut.clone() }.into(),
+        ops: vec![Lift { cut: cut.clone() }.into()],
         select: Some(cut),
     })
 }
@@ -279,7 +312,7 @@ pub fn plan_lift(ctx: &Ctx<'_>) -> Result<Planned, String> {
 pub fn plan_extract(ctx: &Ctx<'_>) -> Result<Planned, String> {
     let cut = selected_cut_id(ctx)?;
     Ok(Planned {
-        op: mm_ops::Extract { cut }.into(),
+        ops: vec![mm_ops::Extract { cut }.into()],
         select: None,
     })
 }
@@ -295,6 +328,70 @@ fn selected_cut_id(ctx: &Ctx<'_>) -> Result<CutId, String> {
 pub struct TimelineIds<'a> {
     pub layers: &'a [String],
     pub cuts: &'a [Vec<String>],
+}
+
+/// 見出しのボタンを押したときの操作。レイヤーの今の状態を反転する。
+/// Mute と Solo は Mixer と同じく、変えた後の音の設定の全体を `setLayerAudio` で置く（設定が無ければ既定から）。
+pub fn header_button_op(button: HeaderButton, layer: &Layer) -> Op {
+    let id = layer.id.clone();
+    match button {
+        HeaderButton::Enabled => SetLayerEnabled {
+            layer: id,
+            enabled: !layer.enabled,
+        }
+        .into(),
+        HeaderButton::Lock => LockLayer {
+            layer: id,
+            lock: !layer.lock,
+        }
+        .into(),
+        HeaderButton::Mute | HeaderButton::Solo => {
+            let mut audio = layer
+                .audio
+                .clone()
+                .unwrap_or_else(|| LayerAudio::new(DEFAULT_AUDIO_ROLE));
+            if button == HeaderButton::Mute {
+                audio.mute = !audio.mute;
+            } else {
+                audio.solo = !audio.solo;
+            }
+            SetLayerAudio {
+                layer: id,
+                audio: Some(audio),
+            }
+            .into()
+        }
+    }
+}
+
+/// 見出しのドラッグの確定。Timeline の行 `from`（Timeline の添字）を行の境界 `boundary`（0 が先頭の行の上、行の数が
+/// 最後の行の下）に入れる `moveLayer`。並びが変わらなければ `None`。
+/// Timeline の行は上が前のレイヤーで、`moveLayer` の位置は下から数えるので、行の境界の隣のレイヤーの位置から求める。
+/// 隠した行（Shy）や時間軸の壊れた行は Timeline に並ばないので、境界の隣に見えているレイヤーを基準にする。
+pub fn move_layer_op(
+    from: usize,
+    boundary: usize,
+    ids: &TimelineIds<'_>,
+    comp: &Composition,
+) -> Option<Op> {
+    let layer = ids.layers.get(from)?;
+    let mut order: Vec<&str> = comp.layers.iter().map(|l| l.id.as_str()).collect();
+    let current = order.iter().position(|id| id == layer)?;
+    order.remove(current);
+    let position = |id: &String| order.iter().position(|o| *o == id.as_str());
+    let index = match boundary.checked_sub(1) {
+        // 境界の上の行のすぐ後ろ（下）。
+        Some(above) => position(ids.layers.get(above)?)?,
+        // 先頭の行の前（上）。
+        None => position(ids.layers.first()?)? + 1,
+    };
+    (index != current).then(|| {
+        MoveLayer {
+            layer: Id::new(layer.as_str()),
+            index,
+        }
+        .into()
+    })
 }
 
 fn edge_of(side: Side) -> Edge {
@@ -367,5 +464,7 @@ pub fn gesture_op(
     })
 }
 
+#[cfg(test)]
+mod header_tests;
 #[cfg(test)]
 pub(crate) mod tests;

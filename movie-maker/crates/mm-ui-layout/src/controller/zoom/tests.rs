@@ -37,6 +37,7 @@ fn edits() -> TimelineModel {
         fps: 30.0,
         items: vec![seq, text],
         markers: vec![16.0],
+        ..TimelineModel::default()
     }
 }
 

@@ -218,6 +218,7 @@ mod tests {
             fps: 30.0,
             items: vec![seq, text],
             markers: vec![6.5],
+            ..TimelineModel::default()
         }
     }
 

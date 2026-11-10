@@ -255,6 +255,7 @@ mod tests {
         let vp = f.vp();
         let input = crate::paint::PaintInput::new(&model, &vp, &state);
         let widths: Vec<u32> = crate::paint::timeline_quads(&input)
+            .quads
             .iter()
             .filter(|q| q.rect.w == 1.0)
             .map(|q| {

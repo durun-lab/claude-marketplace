@@ -34,6 +34,8 @@ pub enum Action {
     Edit(EditAction),
     /// 再生のコマンド。Source を最後にクリックしていれば Source の、そうでなければ Program の再生に向く。
     Playback(Command),
+    /// Shy のコマンド。表示の状態を変えるだけで、操作にならない。
+    Shy(ShyCommand),
     /// Timeline の表示と再生位置のコマンド。ポインターの入力のキューで描画スレッドへ渡し、Timeline の操作が
     /// ドラッグとの前後を保って実行する。
     Timeline(TimelineCommand),
@@ -63,18 +65,9 @@ pub struct Spec {
     pub owner: Owner,
 }
 
-/// パネルを選ぶコマンド（View のパネルの項目）。ID は `view.show_<パネルの id>`、持ち主はそのパネル。Shell はタブを
-/// 選ぶだけで、パネルの `requests`（Media の取り込みなど）は進めない。
-macro_rules! show_panel {
-    ($panel:literal, $name:literal, $description:expr) => {
-        Spec {
-            id: concat!("view.show_", $panel),
-            name: $name,
-            description: $description,
-            owner: Owner::Panel($panel),
-        }
-    };
-}
+// macro_rules! は書いた所より後でしか使えないので、表より前で読み込む。
+#[macro_use]
+mod show_panel;
 
 /// コマンドの表。ID の名前の順に並べ、足すときもその位置に入れる。
 pub static TABLE: &[Spec] = &[
@@ -257,6 +250,20 @@ pub static TABLE: &[Spec] = &[
         owner: Owner::App(Action::Timeline(TimelineCommand::FullExtentZoom)),
     },
     Spec {
+        id: "timeline.hide_shy_layers",
+        name: "Hide Shy Layers",
+        description: Some(
+            "Hide the Shy layers from the Timeline; rendering and export don't change",
+        ),
+        owner: Owner::App(Action::Shy(ShyCommand::HideShyLayers)),
+    },
+    Spec {
+        id: "timeline.shy_selected_layers",
+        name: "Shy Selected Layers",
+        description: Some("Mark the selected layer Shy so Hide Shy Layers can hide its row"),
+        owner: Owner::App(Action::Shy(ShyCommand::ShySelectedLayers)),
+    },
+    Spec {
         id: "timeline.toggle_snapping",
         name: "Snapping",
         description: Some(
@@ -307,15 +314,18 @@ pub struct State {
 }
 
 /// 押せるかを決める今の状態。表を作るたびに 1 度だけ読む。
+#[derive(Default)]
 struct Ready {
     /// Source に素材を開いている。イン点・アウト点と insert、overwrite は Source の範囲を使う。
     source_open: bool,
-    /// 開いているコンポジションにシーケンスのレイヤーがある。split、insert、overwrite はそのカットを編集する。
+    /// 開いているコンポジションにシーケンスのレイヤーがある。split はそのカットを割る。
     sequence: bool,
     /// Timeline でカットを選んでいる。lift と extract は選んだカットを抜く。
     cut_selected: bool,
     /// スナップの入/切（描画スレッドが置いた表示の状態）。
     snapping: bool,
+    /// Shy の行を隠すかどうか（表示の状態）と、選んでいるレイヤーの Shy のフラグ。
+    shy: shy::ShyReady,
 }
 
 impl Ready {
@@ -330,6 +340,7 @@ impl Ready {
             sequence,
             cut_selected: shared.edit.selected_cut().is_some(),
             snapping: shared.view.snapping(),
+            shy: shy::ShyReady::of(shared),
         }
     }
 
@@ -337,12 +348,15 @@ impl Ready {
         use EditAction::{ClearInOut, Extract, Insert, Lift, MarkIn, MarkOut, Overwrite, Split};
         let enabled = match spec.owner {
             Owner::App(Action::Edit(ClearInOut | MarkIn | MarkOut)) => self.source_open,
-            Owner::App(Action::Edit(Insert | Overwrite)) => self.source_open && self.sequence,
+            // シーケンスのレイヤーが無ければ作って入れるので、Source の範囲だけで押せる。
+            Owner::App(Action::Edit(Insert | Overwrite)) => self.source_open,
             Owner::App(Action::Edit(Split)) => self.sequence,
             Owner::App(Action::Edit(Lift | Extract)) => self.cut_selected,
+            Owner::App(Action::Shy(command)) => self.shy.enabled(command),
             Owner::App(_) | Owner::Panel(_) => true,
         };
         let checked = match spec.owner {
+            Owner::App(Action::Shy(command)) => self.shy.checked(command),
             Owner::App(Action::Timeline(TimelineCommand::ToggleSnapping)) => Some(self.snapping),
             Owner::App(_) | Owner::Panel(_) => None,
         };
@@ -454,6 +468,7 @@ fn execute(shared: &Arc<Shared>, spec: &'static Spec) -> Result<(), String> {
     match spec.owner {
         Owner::App(Action::Edit(action)) => edit_actions::run(shared, action),
         Owner::App(Action::Playback(command)) => play(shared, command),
+        Owner::App(Action::Shy(command)) => shy::run(shared, command),
         Owner::App(Action::Timeline(command)) => {
             timeline_input(shared, PointerEvent::Command(command));
         }
@@ -474,8 +489,10 @@ fn play(shared: &Shared, command: Command) {
     }
 }
 
+mod shy;
 mod window_hook;
 
+pub use shy::ShyCommand;
 pub use window_hook::{Forward, WindowHook};
 
 #[cfg(test)]

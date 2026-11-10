@@ -7,5 +7,6 @@ mod shapes;
 mod snap;
 mod support;
 mod text;
+mod thumbs;
 mod transport;
 mod zoom;

@@ -126,7 +126,8 @@ export const useActions = (cx: ActionContext): Actions => {
       }),
     arrange: (topics) =>
       guard(async () => {
-        if (!cx.sequence) return warn("No sequence is open on the PC.");
+        // モバイル版は sequence を作れない（addSequence と addLayer が即時に適用できる操作の表に無い）ので、作れる操作を案内する。
+        if (!cx.sequence) return warn("No sequence yet. Press Insert or Arrange on the PC to create one.");
         await send(topics.length > 0 ? [insertTopicsOp(cx.sequence, topics)] : [], "Arrange");
       }),
     undo: () =>
