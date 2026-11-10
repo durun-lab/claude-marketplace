@@ -80,6 +80,11 @@ pub fn keys_of(id: &str) -> Vec<&'static str> {
         .collect()
 }
 
+/// コマンドのキーを画面に出す見た目（`keys_of` の先頭を `label` に通したもの）。割り当てが無ければ空。
+pub fn key_label_of(id: &str) -> String {
+    keys_of(id).first().map(|k| label(k)).unwrap_or_default()
+}
+
 /// キーの名前の先頭に付く修飾キー。`with_modifiers` が付ける順。
 const MODIFIERS: [&str; 3] = ["Ctrl+", "Shift+", "Alt+"];
 
@@ -293,6 +298,15 @@ mod tests {
         assert_eq!(label("Ctrl+="), "Ctrl+=");
         assert_eq!(label("Ctrl++"), "Ctrl++");
         assert_eq!(label("-"), "-");
+    }
+
+    #[test]
+    fn 空の状態の案内が引くコマンドにはキーがある() {
+        assert_eq!(key_label_of("media.import"), "Ctrl+I");
+        assert_eq!(key_label_of("source.mark_in"), "I");
+        assert_eq!(key_label_of("source.mark_out"), "O");
+        assert_eq!(key_label_of("clip.insert"), ",");
+        assert_eq!(key_label_of("no.such"), "");
     }
 
     #[test]
