@@ -53,18 +53,22 @@ mod tests {
     use super::*;
 
     /// `roots/Vendor/A.ofx.bundle/Contents/Win64/A.ofx` と、置き場所の外の `outside/B.ofx.bundle` を作る。
-    fn tree(tag: &str) -> (PathBuf, PathBuf) {
-        let base = std::env::temp_dir().join(format!("mm-nodes-ofx-{tag}-{}", std::process::id()));
+    fn tree(tag: &str) -> (tempfile::TempDir, PathBuf, PathBuf) {
+        let guard = tempfile::Builder::new()
+            .prefix(&format!("mm-nodes-ofx-{tag}-"))
+            .tempdir()
+            .unwrap();
+        let base = guard.path().to_path_buf();
         let root = base.join("plugins");
         std::fs::create_dir_all(root.join("Vendor/A.ofx.bundle/Contents/Win64")).unwrap();
         std::fs::write(root.join("Vendor/A.ofx.bundle/Contents/Win64/A.ofx"), b"").unwrap();
         std::fs::create_dir_all(base.join("outside/B.ofx.bundle")).unwrap();
-        (base, root)
+        (guard, base, root)
     }
 
     #[test]
     fn 置き場所の中のバンドルだけを受ける() {
-        let (base, root) = tree("named");
+        let (_guard, base, root) = tree("named");
         let roots = vec![base.join("none"), root.clone()];
         let real = resolve_named(&roots, "Vendor/A.ofx.bundle").expect("相対の名前");
         assert!(real.ends_with("A.ofx.bundle"));
@@ -80,18 +84,16 @@ mod tests {
         assert!(matches!(none, Err(MmError::NotFound(_))), "{none:?}");
         let not_bundle = resolve_named(&roots, "Vendor");
         assert!(matches!(not_bundle, Err(MmError::InvalidArgument(_))));
-        std::fs::remove_dir_all(&base).unwrap();
     }
 
     #[test]
     fn 素材はバンドルかその中のファイル() {
-        let (base, root) = tree("asset");
+        let (_guard, _base, root) = tree("asset");
         let bundle = root.join("Vendor/A.ofx.bundle");
         let real = resolve_asset(&bundle).expect("バンドルのフォルダー");
         let inner = resolve_asset(&bundle.join("Contents/Win64/A.ofx")).expect("中のファイル");
         assert_eq!(real, inner);
         let err = resolve_asset(&root.join("Vendor"));
         assert!(matches!(err, Err(MmError::InvalidArgument(_))), "{err:?}");
-        std::fs::remove_dir_all(&base).unwrap();
     }
 }

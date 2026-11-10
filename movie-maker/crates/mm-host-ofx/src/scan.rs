@@ -99,7 +99,11 @@ mod tests {
 
     #[test]
     fn 入れ子のフォルダーのバンドルも見つける() {
-        let root = std::env::temp_dir().join(format!("mm-host-ofx-scan-{}", std::process::id()));
+        let guard = tempfile::Builder::new()
+            .prefix("mm-host-ofx-scan-")
+            .tempdir()
+            .unwrap();
+        let root = guard.path().to_path_buf();
         let nested = root.join("Vendor").join("B.ofx.bundle").join("Contents");
         std::fs::create_dir_all(&nested).unwrap();
         std::fs::create_dir_all(root.join("A.ofx.bundle")).unwrap();
@@ -110,6 +114,5 @@ mod tests {
             .filter_map(|p| p.file_name()?.to_str())
             .collect();
         assert_eq!(names, ["A.ofx.bundle", "B.ofx.bundle"]);
-        std::fs::remove_dir_all(&root).unwrap();
     }
 }

@@ -38,7 +38,11 @@ fn ページの遷移と外への要求を拒否し_data_の画像は描く() {
     let listener = TcpListener::bind("127.0.0.1:0").expect("待ち受けられる");
     listener.set_nonblocking(true).expect("非同期にできる");
     let port = listener.local_addr().expect("ポート").port();
-    let red = std::env::temp_dir().join(format!("mm-host-cef-red-{}.svg", std::process::id()));
+    let dir = tempfile::Builder::new()
+        .prefix("mm-host-cef-red-")
+        .tempdir()
+        .expect("一時フォルダー");
+    let red = dir.path().join("red.svg");
     std::fs::write(
         &red,
         "<svg xmlns='http://www.w3.org/2000/svg' width='4' height='4'><rect width='4' height='4' fill='red'/></svg>",
@@ -62,7 +66,6 @@ fn ページの遷移と外への要求を拒否し_data_の画像は描く() {
         serde_json::json!({}),
     );
     let image = to_image(&frame, &ctx);
-    let _ = std::fs::remove_file(&red);
     let left = image.pixel(16, 16);
     // 読み込めなかった画像は Chromium の壊れた画像のアイコン（緑と灰色）になる。
     assert!(left.r < 0.5, "ファイルの赤い画像は読み込まない: {left:?}");
@@ -320,6 +323,11 @@ fn kill_したホストの一時フォルダーを消す() {
     assert!(
         std::fs::read_dir(&dir).is_ok_and(|mut d| d.next().is_some()),
         "キャッシュとページを置いている"
+    );
+    assert!(
+        crate::locate::work_dirs().contains(&dir),
+        "{} を名前で見つけられる",
+        dir.display()
     );
     host.kill().expect("kill");
     assert!(!dir.exists(), "{} が残っている", dir.display());

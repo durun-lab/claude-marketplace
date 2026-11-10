@@ -115,8 +115,11 @@ fn 壊れた_json_と無いファイルは誤りを返す() {
 
 #[test]
 fn 素材の_json_を書き換えると指紋が変わり_読めなければキャッシュしない() {
-    let dir = std::env::temp_dir().join(format!("mm-nodes-lottie-fp-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("一時フォルダー");
+    let guard = tempfile::Builder::new()
+        .prefix("mm-nodes-lottie-fp-")
+        .tempdir()
+        .unwrap();
+    let dir = guard.path().to_path_buf();
     let path = dir.join("anim.json");
     let json = std::fs::read_to_string(fixture("shapes.json")).expect("読める");
     std::fs::write(&path, &json).expect("書ける");
@@ -135,8 +138,11 @@ fn 素材の_json_を書き換えると指紋が変わり_読めなければキ�
 
 #[test]
 fn 更新時刻の刻みの中で書き換えた_json_も読み直して描く() {
-    let dir = std::env::temp_dir().join(format!("mm-nodes-lottie-tick-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("一時フォルダー");
+    let guard = tempfile::Builder::new()
+        .prefix("mm-nodes-lottie-tick-")
+        .tempdir()
+        .unwrap();
+    let dir = guard.path().to_path_buf();
     let path = dir.join("tick.json");
     let json = std::fs::read_to_string(fixture("shapes.json")).expect("読める");
     // 2 回の書き込みが同じ刻みに入った形。大きさも同じにして、更新時刻と大きさでは見分けられなくする。
