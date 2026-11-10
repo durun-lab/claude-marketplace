@@ -4,7 +4,7 @@ import { useFitToColumn } from "./fit.ts";
 import { InspectorPanel } from "./InspectorPanel.tsx";
 import { useLayerKinds, type KindLookup } from "./kinds.ts";
 import { describeLayer } from "./model.ts";
-import type { Asset, Layer, Op } from "@mm/sdk";
+import type { Asset, CompositionSummary, Layer, Op } from "@mm/sdk";
 
 /** 再生位置を知らせる DOM のイベント。アプリの再生の操作列（`web/transport.js`）が時計の通知ごとに投げる。 */
 export const PLAYHEAD_EVENT = "mm:playhead";
@@ -38,6 +38,8 @@ const seek = (time: number) => window.dispatchEvent(new CustomEvent(SEEK_EVENT, 
 export interface KeyframePanelsProps {
   layer: Layer | null;
   assets?: readonly Asset[];
+  /** 何も選んでいないときに出す、コンポジションの要約。 */
+  composition?: CompositionSummary;
   onOp: (op: Op) => void;
   /** パラメータの定義を引く。渡さなければプロジェクトにある値だけで入力欄を作る。 */
   lookup?: KindLookup;
@@ -47,7 +49,7 @@ export interface KeyframePanelsProps {
  * 右の列の Inspector と、その下の Graph。Inspector で名前を押したパラメータを Graph に出す。
  * 列の見えている高さに収め、Inspector の行はその中でスクロールして、Graph は下に残す。
  */
-export const KeyframePanels = ({ layer, assets, onOp, lookup }: KeyframePanelsProps) => {
+export const KeyframePanels = ({ layer, assets, composition, onOp, lookup }: KeyframePanelsProps) => {
   const box = useRef<HTMLDivElement>(null);
   useFitToColumn(box);
   const kinds = useLayerKinds(layer, lookup);
@@ -63,6 +65,7 @@ export const KeyframePanels = ({ layer, assets, onOp, lookup }: KeyframePanelsPr
         <InspectorPanel
           layer={layer}
           assets={assets}
+          composition={composition}
           kinds={kinds}
           onOp={onOp}
           time={playhead?.time}

@@ -13,10 +13,12 @@
 //! 矩形の中に文字を置くのは [`place`]（揃え方、余白、切り詰め）。ドラッグ中のツールチップは矩形の幅を文字から決めるので、
 //! 矩形と文字を [`drag_tooltip`] が一緒に置き、文字の上に重ねる線は [`clear_tooltip_area`] でツールチップを避ける。
 //! [`drawing_segments`] はコメントの描き込みを、Program の映像の矩形の上の線分に分ける。
+//! [`EmptyHints`] はコンポジションに中身が無いときの空の状態の案内（Program と Timeline の行の領域の文字）を置く。
 
 mod controller;
 mod drag_tooltip;
 mod drawing;
+mod empty;
 mod geom;
 mod gesture;
 mod header;
@@ -35,6 +37,7 @@ mod thumbs;
 mod time_view;
 mod timeline;
 mod timeline_layout;
+mod transport;
 mod view_state;
 
 pub use controller::{Action, Mods, PointerEvent, TimelineController};
@@ -43,6 +46,7 @@ pub use drawing::{
     drawing_segments, frame_point, DrawingSegment, DrawingShape, DrawingShapeKind, DRAWING_LINE_PX,
     DRAWING_POINT_PX,
 };
+pub use empty::{EmptyHints, EmptyKeys, EmptyState};
 pub use geom::{fit_rect, Color, Quad, QuadShape, Rect};
 pub use gesture::{body_edit, edge_edit, EditKind, Side};
 pub use keymarks::MARK_PX;
@@ -63,4 +67,8 @@ pub use timeline::{
     TrimBounds, HANDLE_PX,
 };
 pub use timeline_layout::{TimelineLayout, Viewport, HEADER_W, RULER_H, SCROLLBAR_W};
+pub use transport::{
+    jog_track, transport_button, transport_labels, transport_quads, TransportAction,
+    TransportController, TransportPart, TransportState, Viewer, ViewerState, TRANSPORT_H,
+};
 pub use view_state::ViewState;

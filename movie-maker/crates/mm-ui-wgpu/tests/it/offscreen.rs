@@ -303,7 +303,8 @@ fn 描き込みは表示の倍率とウィンドウの大きさが変わると�
         "倍率 2 では点の中 {wide:?}"
     );
 
-    let small = (W / 2, H / 2);
+    // 再生の操作のバーの分だけ映像の領域の高さが減るので、映像が残る大きさにする。
+    let small = (W * 3 / 4, H * 3 / 4);
     ui.resize(small.0, small.1);
     let out = render_sized(&device, &queue, &mut ui, small);
     let [sx, sy] = frame_point(fit_rect(16.0, 9.0, ui.layout().program), [0.5, 0.5]);

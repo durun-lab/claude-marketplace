@@ -25,6 +25,7 @@ const BINDINGS: &[(&str, &str)] = &[
     ("playback.step_forward", "ArrowRight"),
     ("playback.stop", "KeyK"),
     ("playback.toggle", "Space"),
+    ("source.clear_in_out", "Alt+KeyX"),
     ("source.mark_in", "KeyI"),
     ("source.mark_out", "KeyO"),
     ("timeline.toggle_snapping", "KeyN"),
@@ -77,6 +78,11 @@ pub fn keys_of(id: &str) -> Vec<&'static str> {
         .filter(|(i, _)| *i == id)
         .map(|(_, k)| *k)
         .collect()
+}
+
+/// コマンドのキーを画面に出す見た目（`keys_of` の先頭を `label` に通したもの）。割り当てが無ければ空。
+pub fn key_label_of(id: &str) -> String {
+    keys_of(id).first().map(|k| label(k)).unwrap_or_default()
 }
 
 /// キーの名前の先頭に付く修飾キー。`with_modifiers` が付ける順。
@@ -182,6 +188,7 @@ mod tests {
         let edit = |a| Owner::App(Action::Edit(a));
         let play = |c| Owner::App(Action::Playback(c));
         let cases = [
+            ("Alt+KeyX", "source.clear_in_out", edit(E::ClearInOut)),
             ("KeyI", "source.mark_in", edit(E::MarkIn)),
             ("KeyO", "source.mark_out", edit(E::MarkOut)),
             ("Comma", "clip.insert", edit(E::Insert)),
@@ -291,6 +298,15 @@ mod tests {
         assert_eq!(label("Ctrl+="), "Ctrl+=");
         assert_eq!(label("Ctrl++"), "Ctrl++");
         assert_eq!(label("-"), "-");
+    }
+
+    #[test]
+    fn 空の状態の案内が引くコマンドにはキーがある() {
+        assert_eq!(key_label_of("media.import"), "Ctrl+I");
+        assert_eq!(key_label_of("source.mark_in"), "I");
+        assert_eq!(key_label_of("source.mark_out"), "O");
+        assert_eq!(key_label_of("clip.insert"), ",");
+        assert_eq!(key_label_of("no.such"), "");
     }
 
     #[test]

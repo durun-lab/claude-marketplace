@@ -88,7 +88,7 @@ export const StoryPanel = ({ api, refreshKey = 0 }: StoryPanelProps) => {
             actions={topicActions(actions, tray)}
           />
         ) : (
-          <p class="mm-story-empty">No transcript yet. Transcribe a clip with tools/transcribe, then reopen this tab.</p>
+          <p class="mm-story-empty">No transcript yet. Transcription runs outside the app for now: run tools/transcribe on a clip, then reopen this tab.</p>
         )}
       </div>
       <SelectionBar

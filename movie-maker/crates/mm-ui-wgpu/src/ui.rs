@@ -10,8 +10,9 @@ use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
     clear_tooltip_area, drag_tooltip, fit_rect, split_viewers, timeline_labels, timeline_overlay,
-    timeline_quads_split, Action, DrawingShape, PaintState, PointerEvent, Quad, Rect, RowHeights,
-    Scale, SurfaceLayout, TimeView, TimelineController, TimelineModel, UiFont, ViewState,
+    timeline_quads_split, transport_labels, Action, DrawingShape, EmptyHints, EmptyKeys,
+    EmptyState, PaintState, PointerEvent, Quad, Rect, RowHeights, Scale, SurfaceLayout, TimeView,
+    TimelineController, TimelineModel, TransportController, TransportState, UiFont, ViewState,
 };
 
 use crate::drawing::{DrawingFit, DrawingLayer};
@@ -21,6 +22,7 @@ use crate::text::{TextLayer, TextStats};
 use crate::thumbs::ThumbRenderer;
 
 mod thumbs;
+mod transport;
 mod view;
 
 pub use thumbs::ThumbStats;
@@ -60,12 +62,17 @@ pub struct Ui {
     restore: Option<ViewState>,
     /// 割り付け（論理ピクセル）。
     layout: SurfaceLayout,
+    /// 再生の操作のバーの状態。Program の再生位置、長さ、フレームレートは Timeline のモデルと再生位置から埋める。
+    transport: TransportState,
+    transport_controller: TransportController,
     /// サーフェスの大きさ（物理ピクセル）。
     size: (f32, f32),
     playhead: f64,
     /// 最初の表示（戻した表示の状態か、全体表示と sequence の行）を当てたか。
     opened: bool,
     palette: Palette,
+    /// 空の状態の案内（どれを出すかと、案内に出すキー）。
+    empty: EmptyHints,
 }
 
 impl Ui {
@@ -91,14 +98,29 @@ impl Ui {
             restore: None,
             layout: SurfaceLayout {
                 program: Rect::default(),
+                program_transport: Rect::default(),
                 timeline: Rect::default(),
                 source: None,
+                source_transport: None,
             },
+            transport: TransportState::default(),
+            transport_controller: TransportController::default(),
             size: (0.0, 0.0),
             playhead: 0.0,
             opened: false,
             palette: Palette::DEFAULT,
+            empty: EmptyHints::default(),
         }
+    }
+
+    /// 空の状態の案内に出すキー（アプリのキーの表から作ったもの）。
+    pub fn set_empty_keys(&mut self, keys: EmptyKeys) {
+        self.empty.keys = keys;
+    }
+
+    /// 空の状態の案内のどれを出すか（プロジェクトのデータから決めたもの。[`crate::empty_state`]）。
+    pub fn set_empty_state(&mut self, show: EmptyState) {
+        self.empty.show = show;
     }
 
     /// Timeline の色（`ui/theme` の theme.json から作ったもの）。
@@ -234,11 +256,12 @@ impl Ui {
     pub fn region_at(&self, x: f32, y: f32) -> Region {
         let (x, y) = (self.scale.to_logical(x), self.scale.to_logical(y));
         let l = self.layout;
+        let in_source = |r: Option<Rect>| r.is_some_and(|r| r.contains(x, y));
         if l.timeline.contains(x, y) {
             Region::Timeline
-        } else if l.source.is_some_and(|s| s.contains(x, y)) {
+        } else if in_source(l.source) || in_source(l.source_transport) {
             Region::Source
-        } else if l.program.contains(x, y) {
+        } else if l.program.contains(x, y) || l.program_transport.contains(x, y) {
             Region::Program
         } else {
             Region::Outside
@@ -307,6 +330,8 @@ impl Ui {
     /// 描くもの（矩形、文字、Program と Source の映像、描き込み）を GPU に渡し、パスで描く数を返す。
     fn prepare(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) -> Counts {
         let (w, h) = self.size;
+        // 再生の操作のバーの文字と矩形が、同じ再生位置と長さを見る。
+        self.sync_program();
         let tooltip = self.prepare_text(device, queue);
         let (quads, under, below) = self.timeline_quads(tooltip);
         let count = self.quads.prepare(device, queue, &quads, (w, h));
@@ -362,7 +387,11 @@ impl Ui {
         for q in &mut quads {
             q.rect = self.scale.rect_to_physical(q.rect.translated(t.x, t.y));
         }
-        (quads, under, below as u32)
+        // 再生の操作のバーの矩形も文字の下に描く。帯までの数もその分だけ後ろへずれる。
+        let mut under_quads = self.transport_quads();
+        let front = under_quads.len() as u32;
+        under_quads.extend(quads);
+        (under_quads, under + front, below as u32 + front)
     }
 
     /// Timeline の文字を置き、文字の描画に渡す。文字の描画は最初に描くときに作る（OS のフォントを読み込む）。
@@ -378,12 +407,25 @@ impl Ui {
         let vp = self.controller.viewport();
         let (model, font) = (&self.model, &self.font);
         let mut labels = timeline_labels(model, &vp, &state, font, text.measure());
+        labels.extend(self.empty.timeline(&vp, &state, font, text.measure()));
         let tooltip = drag_tooltip(model, &vp, &state, font, text.measure(), &mut labels);
         for l in &mut labels {
             l.x += t.x;
             l.y += t.y;
             l.clip = l.clip.translated(t.x, t.y);
         }
+        labels.extend(
+            self.empty
+                .program(self.layout.program, &state, font, text.measure()),
+        );
+        labels.extend(transport_labels(
+            &self.layout,
+            &self.transport,
+            &self.transport_controller,
+            &self.palette,
+            &self.font,
+            text.measure(),
+        ));
         let viewport = (self.size.0 as u32, self.size.1 as u32);
         text.prepare(device, queue, &labels, self.scale, viewport);
         tooltip
