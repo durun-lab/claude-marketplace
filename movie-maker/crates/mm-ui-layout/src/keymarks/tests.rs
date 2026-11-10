@@ -2,7 +2,7 @@ use super::*;
 use crate::controller::{Action, Mods, PointerEvent, TimelineController};
 use crate::geom::QuadShape;
 use crate::paint::tests::state;
-use crate::paint::timeline_quads;
+use crate::paint::{timeline_quads, PaintInput};
 use crate::palette::{self, Palette};
 use crate::rows::{RowHeight, RowHeights, Rows};
 use crate::time_view::TimeView;
@@ -105,7 +105,7 @@ fn small_の縦線は帯の下端から_4_px_で_名前の字の下の方にだ�
 fn 描くひし形は切らずに行の領域に収まり_縦線は領域で切る() {
     let m = model(&[0.0, 1.0]);
     let f = TestViewport::new(&m, SIZE);
-    let quads = timeline_quads(&m, &f.vp(), &state(0.0));
+    let quads = timeline_quads(&PaintInput::new(&m, &f.vp(), &state(0.0)));
     let area = f.layout.row_area;
     let diamonds: Vec<_> = quads
         .iter()
@@ -133,7 +133,7 @@ fn ホバーしたマーカーは中を_accent_にし_縁を明るくする() {
         hover,
         ..state(0.0)
     };
-    let quads = timeline_quads(&m, &f.vp(), &st);
+    let quads = timeline_quads(&PaintInput::new(&m, &f.vp(), &st));
     let colors = |w: f32| -> Vec<_> {
         quads
             .iter()
@@ -160,7 +160,7 @@ fn 見えない行のマーカーは描かない() {
     let mut f = TestViewport::new(&m, SIZE);
     f.scroll_y = 28.0 * 10.0;
     let vp = f.vp();
-    let quads = timeline_quads(&m, &vp, &state(0.0));
+    let quads = timeline_quads(&PaintInput::new(&m, &vp, &state(0.0)));
     let whole = vp
         .visible_rows()
         .filter(|&i| !is_line(&vp, i, mark_rect(&vp, i, vp.x_of(1.0))))

@@ -9,6 +9,7 @@ use mm_ui_layout::{Action, EditKind, PointerEvent, TransportAction, Viewer};
 use mm_ui_wgpu::{timeline_cut_ids, timeline_layer_ids, timeline_model, Region, Ui};
 
 use super::transport::{self, Seeks};
+use super::waves::WaveWanted;
 use super::View;
 use crate::win::sequence_edit::{gesture_op, TimelineIds};
 use crate::win::state::{FrameImage, OpenDoc, Shared};
@@ -24,6 +25,9 @@ pub(super) struct DocSync {
     layer_ids: Vec<String>,
     /// レイヤーごとのカットの ID（シーケンスでないレイヤーは空）。
     cut_ids: Vec<Vec<String>>,
+    /// 帯の波形を出す素材のコンテンツハッシュ（Timeline のモデルから引く）と、一覧を作り直すたびに進む通し番号。
+    wave_hashes: Vec<Arc<str>>,
+    wave_serial: u64,
 }
 
 /// Source のフレームを Program と同じサーフェスの Source の領域に出す。
@@ -68,7 +72,10 @@ impl DocSync {
             let Ok(comp) = doc.project.composition(&doc.comp) else {
                 return;
             };
-            ui.update_model(timeline_model(&doc.project, comp));
+            let model = timeline_model(&doc.project, comp);
+            self.wave_hashes = model.wave_hashes();
+            self.wave_serial += 1;
+            ui.update_model(model);
             ui.set_empty_state(mm_ui_wgpu::empty_state(&doc.project, comp));
             // SDR の書き出しと同じ素材の上限の明るさでトーンマップし、プレビューと書き出しの映像を揃える。
             ui.set_hdr_peak(tone_map_peak(&doc.project));
@@ -83,6 +90,14 @@ impl DocSync {
         self.seen_cut = cut_serial;
         let selected = shared.edit.selected_cut();
         ui.select_cut(selected.and_then(|id| self.position_of_cut(&id)));
+    }
+
+    /// 帯の波形を読みたい素材。
+    pub(super) fn wave_wanted(&self) -> WaveWanted<'_> {
+        WaveWanted {
+            hashes: &self.wave_hashes,
+            serial: self.wave_serial,
+        }
     }
 
     /// カットの ID の Timeline での位置（レイヤーの添字、カットの添字）。
