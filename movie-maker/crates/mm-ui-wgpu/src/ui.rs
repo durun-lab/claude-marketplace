@@ -2,7 +2,7 @@
 //!
 //! 外とやりとりする座標と大きさは物理ピクセル、割り付けと Timeline の寸法は論理ピクセルで持つ。
 //! 換算は描く所（[`Ui::render`]）と入力を受ける所（[`Ui::pointer`]、[`Ui::region_at`]）で [`Scale`] を 1 回だけ通す。
-//! Timeline は矩形（背景、帯、目盛り、ドラッグ中のツールチップの矩形）、文字（目盛りの時刻、帯の名前、ツールチップの量）、
+//! Timeline は矩形（背景、帯、目盛り、ドラッグ中のツールチップの矩形。帯までの矩形の後に帯のサムネイルを挟む）、文字（目盛りの時刻、帯の名前、ツールチップの量）、
 //! 矩形（再生位置の線、スナップの表示。ツールチップの矩形の上は除く）の順に重ねる。
 //! Timeline の表示の状態（ズーム、スクロール、行の高さ、スナップの入/切）は [`Ui::view_state`] で出し、[`Ui::restore_view`] で戻す。
 //! キーとメニューの Timeline のコマンドも、ドラッグとの前後を保つため [`Ui::pointer`] で受ける。
@@ -14,16 +14,22 @@ use mm_ui_layout::{
     timeline_quads, transport_labels, Action, DrawingShape, EmptyHints, EmptyKeys, EmptyState,
     PaintInput, PaintState, Peaks, PointerEvent, Quad, Rect, RowHeights, Scale, SurfaceLayout,
     TimeView, TimelineController, TimelineModel, TransportController, TransportState, UiFont,
-    ViewState, Waves,
+    UnderText, ViewState, Waves,
 };
 
 use crate::drawing::{DrawingFit, DrawingLayer};
 use crate::program::ProgramViewer;
 use crate::quads::QuadRenderer;
 use crate::text::{TextLayer, TextStats};
+use crate::thumbs::ThumbRenderer;
 
+mod thumbs;
+mod toolbar;
 mod transport;
 mod view;
+
+use thumbs::DroppedThumbs;
+pub use thumbs::ThumbStats;
 
 /// サーフェスの上のどの領域か。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,6 +49,10 @@ pub struct Ui {
     format: wgpu::TextureFormat,
     font: UiFont,
     program: ProgramViewer,
+    /// 帯の先頭のサムネイル。
+    thumbs: ThumbRenderer,
+    /// 読めなかったので帯から外したサムネイルのキー。
+    dropped_thumbs: DroppedThumbs,
     /// Program の上に重ねる描き込み。
     drawing: DrawingLayer,
     /// 表示の倍率（DPI / 96）。
@@ -59,6 +69,7 @@ pub struct Ui {
     /// 再生の操作のバーの状態。Program の再生位置、長さ、フレームレートは Timeline のモデルと再生位置から埋める。
     transport: TransportState,
     transport_controller: TransportController,
+    toolbar: toolbar::Toolbar,
     /// サーフェスの大きさ（物理ピクセル）。
     size: (f32, f32),
     playhead: f64,
@@ -80,6 +91,8 @@ impl Ui {
             format,
             font: UiFont::default(),
             program: ProgramViewer::new(device, format),
+            thumbs: ThumbRenderer::new(format),
+            dropped_thumbs: DroppedThumbs::default(),
             drawing: DrawingLayer::new(device, format),
             scale: Scale::ONE,
             source: ProgramViewer::new(device, format),
@@ -99,6 +112,7 @@ impl Ui {
             },
             transport: TransportState::default(),
             transport_controller: TransportController::default(),
+            toolbar: toolbar::Toolbar::default(),
             size: (0.0, 0.0),
             playhead: 0.0,
             opened: false,
@@ -156,6 +170,7 @@ impl Ui {
     /// Timeline に出すもの。最初に渡されたときに全体表示にし、sequence の行が見える所までスクロールする。
     pub fn set_model(&mut self, model: TimelineModel) {
         self.model = model;
+        self.drop_missing_thumbs();
         self.opened = false;
         self.relayout_rows();
     }
@@ -164,6 +179,7 @@ impl Ui {
     pub fn update_model(&mut self, model: TimelineModel) {
         self.controller.model_changed(&model);
         self.model = model;
+        self.drop_missing_thumbs();
         self.relayout_rows();
     }
 
@@ -277,6 +293,7 @@ impl Ui {
         let t = self.layout.timeline;
         let local = match self.scale.pointer_to_logical(ev) {
             PointerEvent::Down { x, y, .. } if !t.contains(x, y) => return Vec::new(),
+            PointerEvent::Down { x, y, .. } if self.on_toolbar(x, y) => return Vec::new(),
             PointerEvent::Wheel { x, y, .. } if !t.contains(x, y) => return Vec::new(),
             PointerEvent::Down { x, y, mods } => PointerEvent::Down {
                 x: x - t.x,
@@ -322,7 +339,9 @@ impl Ui {
             self.program.draw(&mut pass);
             self.drawing.draw(&mut pass, counts.drawing);
             self.source.draw(&mut pass);
-            self.quads.draw(&mut pass, 0..counts.under);
+            self.quads.draw(&mut pass, 0..counts.bars);
+            self.thumbs.draw(&mut pass, counts.thumbs);
+            self.quads.draw(&mut pass, counts.bars..counts.under);
             if let Some(text) = &self.text {
                 text.draw(&mut pass);
             }
@@ -336,8 +355,9 @@ impl Ui {
         let (w, h) = self.size;
         // 再生の操作のバーの文字と矩形が、同じ再生位置と長さを見る。
         self.sync_program();
+        self.sync_toolbar();
         let tooltip = self.prepare_text(device, queue);
-        let (quads, under) = self.timeline_quads(tooltip);
+        let (quads, under, bars) = self.timeline_quads(tooltip);
         let count = self.quads.prepare(device, queue, &quads, (w, h));
         let layout = self.layout();
         let mut drawing = 0;
@@ -358,8 +378,11 @@ impl Ui {
             let rect = fit_rect(iw as f32, ih as f32, area);
             self.source.prepare(queue, rect, (w, h));
         }
+        let thumbs = self.prepare_thumbs(device, queue);
         Counts {
             under,
+            bars,
+            thumbs,
             quads: count,
             drawing,
         }
@@ -374,17 +397,18 @@ impl Ui {
     }
 
     /// Timeline の矩形を、サーフェスの座標（物理ピクセル）に置いた並びにする。文字の下に描く矩形が先で、
-    /// その数も返す（残りは文字の上に重ねる再生位置の線とスナップの表示）。`tooltip` はドラッグ中のツールチップの矩形で、
-    /// 文字の下に描く矩形のいちばん上に重ね、文字の上に重ねる矩形はその外だけに描く。
-    fn timeline_quads(&self, tooltip: Vec<Quad>) -> (Vec<Quad>, u32) {
+    /// その数と、そのうち帯までの数も返す（残りは文字の上に重ねる再生位置の線とスナップの表示）。
+    /// `tooltip` はドラッグ中のツールチップの矩形で、文字の下に描く矩形のいちばん上に重ね、文字の上に重ねる矩形はその外だけに描く。
+    fn timeline_quads(&self, tooltip: Vec<Quad>) -> (Vec<Quad>, u32, u32) {
         let t = self.layout.timeline;
         let state = self.paint_state();
         let vp = self.controller.viewport();
         let input = PaintInput {
             waves: Some(&self.waves),
+            toolbar: Some(self.toolbar.view()),
             ..PaintInput::new(&self.model, &vp, &state)
         };
-        let mut quads = timeline_quads(&input);
+        let UnderText { mut quads, bars } = timeline_quads(&input);
         let overlay = clear_tooltip_area(timeline_overlay(&input), &tooltip);
         quads.extend(tooltip);
         let under = quads.len() as u32;
@@ -392,11 +416,11 @@ impl Ui {
         for q in &mut quads {
             q.rect = self.scale.rect_to_physical(q.rect.translated(t.x, t.y));
         }
-        // 再生の操作のバーの矩形も文字の下に描く。
+        // 再生の操作のバーの矩形も文字の下に描く。帯までの数もその分だけ後ろへずれる。
         let mut under_quads = self.transport_quads();
-        let under = under + under_quads.len() as u32;
+        let front = under_quads.len() as u32;
         under_quads.extend(quads);
-        (under_quads, under)
+        (under_quads, under + front, bars as u32 + front)
     }
 
     /// Timeline の文字を置き、文字の描画に渡す。文字の描画は最初に描くときに作る（OS のフォントを読み込む）。
@@ -413,6 +437,8 @@ impl Ui {
         let (model, font) = (&self.model, &self.font);
         let mut labels = timeline_labels(model, &vp, &state, font, text.measure());
         labels.extend(self.empty.timeline(&vp, &state, font, text.measure()));
+        let (timeline, palette) = (&self.controller, &self.palette);
+        labels.extend(self.toolbar.labels(timeline, palette, font, text.measure()));
         let tooltip = drag_tooltip(model, &vp, &state, font, text.measure(), &mut labels);
         for l in &mut labels {
             l.x += t.x;
@@ -441,6 +467,10 @@ impl Ui {
 struct Counts {
     /// 文字の下に描く矩形の数。残りの矩形（`under..quads`）は文字の上に重ねる。
     under: u32,
+    /// 帯までの矩形の数。サムネイルはその後ろに描く。
+    bars: u32,
+    /// 描くサムネイルの数。
+    thumbs: u32,
     quads: u32,
     /// 描き込みの線分の数。
     drawing: u32,

@@ -5,7 +5,7 @@ use crate::common;
 use common::{canon, project, quarters, secs};
 use mm_doc::{Node, Project, Rating, FOOTAGE_KIND};
 use mm_ops::*;
-use mm_types::Id;
+use mm_types::{Id, RationalTime};
 
 fn apply(p: &mut Project, op: impl Into<Op>) -> OpResult<Applied> {
     op.into().apply(p, &OpContext::human())
@@ -266,4 +266,118 @@ fn 自分で縮めたレイヤーには追従しない() {
 fn fit_layer_は_sequence_でないレイヤーを拒否する() {
     let mut p = project();
     assert!(apply(&mut p, fit("l1")).is_err());
+}
+
+/// カットが 1 つ（k1 の 2 秒）だけの sequence s1 と、それに追従しているレイヤー ls。
+fn one_cut_project() -> Project {
+    let mut p = project();
+    p.sequences[0].cuts.truncate(1);
+    with_sequence_layer(&mut p, secs(1));
+    apply(&mut p, fit("ls")).unwrap();
+    p
+}
+
+fn extract_op_of(cut: &str) -> Op {
+    Extract { cut: Id::new(cut) }.into()
+}
+
+fn insert_k5() -> Op {
+    Insert {
+        sequence: Id::new("s1"),
+        index: 0,
+        cut: common::cut("k5", 0, 3, (1, 1)),
+    }
+    .into()
+}
+
+/// `Store::apply_txn` と同じく、追従の `fitLayer` を足してから 1 つのトランザクションで適用する。
+fn apply_fitted(p: &mut Project, op: Op) -> TxnOutcome {
+    let ops = with_fitted_layers(p, &[op]);
+    apply_transaction(p, &ops, &OpContext::human()).unwrap()
+}
+
+/// レイヤー ls の長さ、そのコンポジションの長さと 1 フレームの長さ。
+fn ls_lengths(p: &Project) -> (RationalTime, RationalTime, RationalTime) {
+    let (comp, layer) = p.layer(&Id::new("ls")).unwrap();
+    let frame = RationalTime::from_frames(1, comp.fps).unwrap();
+    (layer.duration().unwrap(), comp.duration, frame)
+}
+
+#[test]
+fn 最後のカットを_extract_すると空の_sequence_と_1_フレームのレイヤーが残り_逆操作_1_回で戻る() {
+    let mut p = one_cut_project();
+    let before = canon(&p);
+    let out = apply_fitted(&mut p, extract_op_of("k1"));
+    assert!(p.sequences[0].cuts.is_empty());
+    let (layer, comp, frame) = ls_lengths(&p);
+    assert_eq!((layer, comp), (frame, frame));
+    p.validate().unwrap();
+    apply_transaction(&mut p, &out.inverse_ops().unwrap(), &OpContext::human()).unwrap();
+    assert_eq!(canon(&p), before);
+}
+
+#[test]
+fn 空の_sequence_に_insert_するとレイヤーがカットの長さに追従する() {
+    let mut p = one_cut_project();
+    apply_fitted(&mut p, extract_op_of("k1"));
+    let ops = with_fitted_layers(&p, &[insert_k5()]);
+    assert_eq!(ops.len(), 2);
+    apply_transaction(&mut p, &ops, &OpContext::human()).unwrap();
+    let (layer, comp, _) = ls_lengths(&p);
+    assert_eq!((layer, comp), (secs(3), secs(3)));
+}
+
+#[test]
+fn カットを全部まとめて抜いても_1_フレームのレイヤーが残り_逆操作_1_回で戻る() {
+    let mut p = project();
+    with_sequence_layer(&mut p, secs(1));
+    apply(&mut p, fit("ls")).unwrap();
+    let before = canon(&p);
+    let all = ExtractCuts {
+        sequence: Id::new("s1"),
+        index: 0,
+        count: 4,
+    };
+    let out = apply_fitted(&mut p, all.into());
+    assert!(p.sequences[0].cuts.is_empty());
+    let (layer, comp, frame) = ls_lengths(&p);
+    assert_eq!((layer, comp), (frame, frame));
+    apply_transaction(&mut p, &out.inverse_ops().unwrap(), &OpContext::human()).unwrap();
+    assert_eq!(canon(&p), before);
+}
+
+#[test]
+fn fps_が整数でないコンポジションでも_1_フレームのレイヤーは丸めで長さ_0_にならない() {
+    let mut p = one_cut_project();
+    p.compositions[1].fps = mm_types::Rational::new(30000, 1001).unwrap();
+    apply_fitted(&mut p, extract_op_of("k1"));
+    let (layer, comp, _) = ls_lengths(&p);
+    let frame = RationalTime::new(1001, 30000).unwrap();
+    assert_eq!((layer, comp), (frame, frame));
+}
+
+#[test]
+fn カットが_1_つの_sequence_の_lift_は隙間を残し_レイヤーの長さを変えない() {
+    let mut p = one_cut_project();
+    apply_fitted(&mut p, Lift { cut: Id::new("k1") }.into());
+    assert!(p.sequences[0].cuts[0].source.is_gap());
+    let (layer, comp, _) = ls_lengths(&p);
+    assert_eq!((layer, comp), (secs(2), secs(2)));
+}
+
+#[test]
+fn 唯一のカットを無効にすると_1_フレームのレイヤーになり_有効に戻すとカットの長さに戻る() {
+    let mut p = one_cut_project();
+    let disable = |disabled| {
+        Op::from(Disable {
+            cut: Id::new("k1"),
+            disabled,
+        })
+    };
+    apply_fitted(&mut p, disable(true));
+    let (layer, _, frame) = ls_lengths(&p);
+    assert_eq!(layer, frame);
+    apply_fitted(&mut p, disable(false));
+    let (layer, comp, _) = ls_lengths(&p);
+    assert_eq!((layer, comp), (secs(2), secs(2)));
 }

@@ -94,7 +94,7 @@ pub fn plan_and_apply(shared: &Shared, action: EditAction) -> Result<(), String>
         playhead: shared.playhead(),
     };
     let planned = plan_action(shared, &ctx, action)?;
-    edit::submit_based(shared, vec![planned.op], doc.version)?;
+    edit::submit_based(shared, planned.ops, doc.version)?;
     // イン点・アウト点は素材の整理で、Timeline で選んだカットには関係しない。
     if !matches!(action, EditAction::MarkIn | EditAction::MarkOut) {
         shared
@@ -162,7 +162,10 @@ fn mark(shared: &Shared, is_in: bool) -> Result<Planned, String> {
     } else {
         MarkOut { asset, at }.into()
     };
-    Ok(Planned { op, select: None })
+    Ok(Planned {
+        ops: vec![op],
+        select: None,
+    })
 }
 
 #[cfg(test)]
@@ -383,6 +386,27 @@ mod tests {
             wait_until(Duration::from_secs(5), || marks() == (Some(5.0), Some(6.0))),
             "取り消し 1 回で両方戻る: {:?}",
             marks()
+        );
+    }
+
+    #[test]
+    fn コンポジションが止めた再生位置より短くなると_再生位置は最後のフレームの始まりへ寄る() {
+        let (shared, _playback) = start();
+        shared.send(Command::Seek(15.0));
+        assert!(wait_playhead(&shared, 15.0));
+        // 20 秒の l-seq を sequence の 7 秒に合わせると、20 秒のコンポジションも 7 秒に縮む。
+        let fit: Op = mm_ops::FitLayer {
+            layer: Id::new("l-seq"),
+            out_point: None,
+            duration: None,
+        }
+        .into();
+        edit::submit(&shared, vec![fit]).expect("適用できる");
+        let last = 7.0 - 1.0 / 30.0;
+        assert!(
+            wait_playhead(&shared, last),
+            "再生位置 {} が {last} に寄る",
+            shared.playhead()
         );
     }
 }

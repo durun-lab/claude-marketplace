@@ -181,7 +181,7 @@
 
   const showSource = (s) => {
     source = s;
-    const options = s.assets.map((a) => el("option", { value: a.id, textContent: `${a.id} (${fmt(a.duration)})` }));
+    const options = s.assets.map((a) => el("option", { value: a.id, textContent: `${a.name} (${fmt(a.duration)})` }));
     ui.srcSelect.replaceChildren(el("option", { value: "", textContent: "Choose a clip…" }), ...options);
     ui.srcSelect.value = s.asset ?? "";
     ui.srcTc.textContent = fmt(s.t);
@@ -208,7 +208,7 @@
     );
     ui.layers.replaceChildren(
       ...info.layers.map((l) =>
-        el("li", { textContent: `${l.kind.padEnd(11)} ${l.id}  ${l.start.toFixed(1)}-${l.end.toFixed(1)}s` }),
+        el("li", { textContent: `${l.kind.padEnd(11)} ${l.id}  ${l.start.toFixed(3)}-${l.end.toFixed(3)}s` }),
       ),
     );
   };

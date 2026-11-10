@@ -10,7 +10,7 @@ use crate::text::tests::FakeMeasure;
 use crate::time_view::TimeView;
 use crate::timeline::{hit_test, Hit};
 use crate::timeline_layout::tests::TestViewport;
-use crate::timeline_layout::{HEADER_W, RULER_H};
+use crate::timeline_layout::{HEADER_W, RULER_H, TOOLBAR_H};
 
 /// 幅 800、高さ 200 の Timeline。
 const SIZE: (f32, f32) = (800.0, 200.0);
@@ -46,7 +46,7 @@ fn 見出しの列は幅_180_で_行の領域と目盛りの帯はその右か�
     assert_eq!(l.row_area.x, HEADER_W);
     assert_eq!(l.row_area.w, SIZE.0 - HEADER_W);
     assert_eq!((l.ruler.x, l.ruler.w), (HEADER_W, SIZE.0 - HEADER_W));
-    assert_eq!(l.corner, Rect::new(0.0, 0.0, HEADER_W, RULER_H));
+    assert_eq!(l.corner, Rect::new(0.0, TOOLBAR_H, HEADER_W, RULER_H));
 }
 
 #[test]
@@ -88,6 +88,7 @@ fn キーフレームの開閉は見出しの右端に置き_キーフレーム�
     let f = TestViewport::new(&m, SIZE);
     let vp = f.vp();
     let tris: Vec<Rect> = timeline_quads(&PaintInput::new(&m, &vp, &state(0.0)))
+        .quads
         .into_iter()
         .filter(|q| q.shape == QuadShape::TriRight)
         .map(|q| q.rect)
@@ -211,7 +212,7 @@ fn 見出しの列の上の角に再生位置のタイムコードを出す() {
         .iter()
         .find(|l| &*l.text == "00:00:02:05")
         .expect("タイムコード");
-    let corner = Rect::new(0.0, 0.0, HEADER_W, RULER_H);
+    let corner = Rect::new(0.0, TOOLBAR_H, HEADER_W, RULER_H);
     assert_eq!(t.clip, corner);
     assert!(t.x >= corner.x && t.y >= corner.y);
 }
@@ -226,7 +227,7 @@ fn 見出しの上に当たると_header_見出しの列の上の角は_corner()
     let vp = f.vp();
     let y1 = f.in_bar(1);
     assert_eq!(hit_test(&m, &vp, 20.0, y1), Hit::Header { index: 1 });
-    assert_eq!(hit_test(&m, &vp, 20.0, 5.0), Hit::Corner);
+    assert_eq!(hit_test(&m, &vp, 20.0, TOOLBAR_H + 5.0), Hit::Corner);
     assert_eq!(hit_test(&m, &vp, 20.0, 190.0), Hit::Empty, "行の無い所");
     assert!(matches!(
         hit_test(&m, &vp, HEADER_W + 50.0, y1),
@@ -240,7 +241,7 @@ fn controller(m: &TimelineModel) -> TimelineController {
         px_per_sec: 100.0,
     });
     c.set_rows(Rows::of(&m.items, &RowHeights::default()));
-    c.resize((800.0, 120.0));
+    c.resize((800.0, 120.0 + TOOLBAR_H));
     c
 }
 
@@ -313,7 +314,7 @@ fn 見出しの列の上の角のクリックは選択を変えない() {
     let y = c.viewport().row(1).y + 5.0;
     c.handle(click(20.0, y), &m, 0.0);
     c.handle(PointerEvent::Up, &m, 0.0);
-    assert!(c.handle(click(20.0, 5.0), &m, 0.0).is_empty());
+    assert!(c.handle(click(20.0, TOOLBAR_H + 5.0), &m, 0.0).is_empty());
     assert_eq!(c.paint_state(0.0).selected, Some(1));
 }
 
@@ -382,12 +383,12 @@ fn ポインターが乗ったボタンは背景を明るくする() {
         index: 0,
         button: HeaderButton::Lock,
     };
-    let plain = timeline_quads(&PaintInput::new(&m, &f.vp(), &state(0.0)));
+    let plain = timeline_quads(&PaintInput::new(&m, &f.vp(), &state(0.0))).quads;
     let hot = PaintState {
         hover,
         ..state(0.0)
     };
-    let hot = timeline_quads(&PaintInput::new(&m, &f.vp(), &hot));
+    let hot = timeline_quads(&PaintInput::new(&m, &f.vp(), &hot)).quads;
     let behind = |quads: &[Quad]| {
         quads
             .iter()
@@ -403,7 +404,7 @@ fn 無効なレイヤーの見出しに斜線を引く_有効なら引かない(
     let off = model(vec![Item::layer(0.0, 5.0, ItemKind::Image, false)]);
     let count = |m: &TimelineModel| {
         let f = TestViewport::new(m, SIZE);
-        let quads = timeline_quads(&PaintInput::new(m, &f.vp(), &state(0.0)));
+        let quads = timeline_quads(&PaintInput::new(m, &f.vp(), &state(0.0))).quads;
         let dot = |q: &&Quad| q.rect.right() <= HEADER_W && q.rect.w <= 3.0 && q.rect.h <= 3.0;
         quads.iter().filter(dot).count()
     };
@@ -419,7 +420,7 @@ fn 隠した行があれば見出しの列の上の角に隠した数を出す_�
     m.hidden = 4;
     let out = labels_of(&m, 0.0);
     let hidden = out.iter().find(|l| &*l.text == "4 hidden").expect("数");
-    assert_eq!(hidden.clip, Rect::new(0.0, 0.0, HEADER_W, RULER_H));
+    assert_eq!(hidden.clip, Rect::new(0.0, TOOLBAR_H, HEADER_W, RULER_H));
     let time = out.iter().find(|l| &*l.text == "00:00:00:00").unwrap();
     assert!(hidden.x > time.x, "タイムコードの右");
 }
@@ -472,12 +473,14 @@ fn 隠しているときは見出しの列の上の角に隠した数だけを�
 fn 見出しのドラッグで入る位置に線を出す() {
     let m = many(3);
     let f = TestViewport::new(&m, SIZE);
-    let plain = timeline_quads(&PaintInput::new(&m, &f.vp(), &state(0.0))).len();
+    let plain = timeline_quads(&PaintInput::new(&m, &f.vp(), &state(0.0)))
+        .quads
+        .len();
     let st = PaintState {
         header_drop: Some(1),
         ..state(0.0)
     };
-    let quads = timeline_quads(&PaintInput::new(&m, &f.vp(), &st));
+    let quads = timeline_quads(&PaintInput::new(&m, &f.vp(), &st)).quads;
     assert_eq!(quads.len(), plain + 2, "見出しの列と行の領域に 1 本ずつ");
     let y = f.vp().row(1).y;
     let on_edge = |q: &Quad| (q.rect.y + q.rect.h / 2.0 - y).abs() < 0.01;

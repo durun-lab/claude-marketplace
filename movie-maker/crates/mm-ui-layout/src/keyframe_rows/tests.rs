@@ -214,7 +214,7 @@ fn 開いた行にひし形を描き_選んだものは_accent_の輪で囲む()
         },
         ..state(0.0)
     };
-    let quads = timeline_quads(&PaintInput::new(&m, &vp, &st));
+    let quads = timeline_quads(&PaintInput::new(&m, &vp, &st)).quads;
     let rims: Vec<(f32, f32)> = diamonds(&quads, ROW_DIAMOND_PX)
         .iter()
         .map(center)
@@ -251,7 +251,7 @@ fn ドラッグ中のキーフレームは動かした先に描き_元の位置�
         },
         ..state(0.0)
     };
-    let quads = timeline_quads(&PaintInput::new(&m, &vp, &st));
+    let quads = timeline_quads(&PaintInput::new(&m, &vp, &st)).quads;
     let rims: Vec<(f32, f32)> = diamonds(&quads, ROW_DIAMOND_PX)
         .iter()
         .map(center)
@@ -271,7 +271,7 @@ fn 行の領域に収まらないひし形は縦線にして切る() {
     m.items[0].keyframe_rows[1] = row("Transform › Position", &[8.18]);
     let (layout, rows) = opened(&m);
     let vp = vp(&layout, &rows);
-    let quads = timeline_quads(&PaintInput::new(&m, &vp, &state(0.0)));
+    let quads = timeline_quads(&PaintInput::new(&m, &vp, &state(0.0))).quads;
     let (x, _) = keyframe_center(&vp, (0, 1), 8.18);
     assert!(diamonds(&quads, ROW_DIAMOND_PX)
         .iter()
@@ -292,7 +292,7 @@ fn 開いたレイヤーの見出しの開閉は下向きの三角() {
         }
         let rows = Rows::of(&m.items, &heights);
         let layout = TimelineLayout::new(SIZE, rows.content_height());
-        let quads = timeline_quads(&PaintInput::new(&m, &vp(&layout, &rows), &state(0.0)));
+        let quads = timeline_quads(&PaintInput::new(&m, &vp(&layout, &rows), &state(0.0))).quads;
         let tri = |s: QuadShape| quads.iter().filter(|q| q.shape == s).count();
         (tri(QuadShape::TriRight), tri(QuadShape::TriDown))
     };

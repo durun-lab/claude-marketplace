@@ -364,10 +364,10 @@ impl Player {
         self.size = size;
     }
 
-    /// 内容が変わった後に、今の位置を描き直す。再生中は先読みの音も古いので、位置を置き直して音を作り直す。
+    /// 内容が変わった後に、今の位置を描き直す。再生中（先読みの音も古い）と、縮んだコンポジションの終わりより後ろに残った位置は置き直す。
     fn resync(&mut self) {
-        if self.playing {
-            let at = self.clock.position();
+        let at = self.clock.position();
+        if self.playing || at > self.last_start() {
             self.seek_to(at);
         } else if let Some(index) = self.last_frame {
             let index = index.clamp(0, (self.frames_total - 1).max(0));

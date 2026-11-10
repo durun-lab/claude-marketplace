@@ -50,6 +50,7 @@ impl TransportSync {
             mark_out: self.in_out.1,
             disabled: self.disabled.clone(),
         });
+        ui.set_toolbar_disabled(self.disabled.clone());
         ui.set_transport(program, source);
     }
 }

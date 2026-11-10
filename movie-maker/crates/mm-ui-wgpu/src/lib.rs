@@ -13,6 +13,7 @@ mod names;
 mod program;
 mod quads;
 mod text;
+mod thumbs;
 mod ui;
 
 pub use drawing::DrawingRenderer;
@@ -24,4 +25,5 @@ pub use model::{
 pub use program::ProgramViewer;
 pub use quads::QuadRenderer;
 pub use text::TextStats;
-pub use ui::{Region, Ui};
+pub use thumbs::{slot_image_from_rgb, slot_image_len, SLOT_H, SLOT_W};
+pub use ui::{Region, ThumbStats, Ui};

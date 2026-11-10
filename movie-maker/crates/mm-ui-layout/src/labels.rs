@@ -14,7 +14,8 @@ use crate::palette;
 use crate::rows::RowHeight;
 use crate::ruler::{label, major_step, ticks};
 use crate::text::{place, Align, Label, TextMeasure, TextStyle, UiFont};
-use crate::timeline::{cut_span, Item, TimelineModel};
+use crate::thumbs::{cut_rect, name_inset};
+use crate::timeline::{Item, TimelineModel};
 use crate::timeline_layout::Viewport;
 
 /// 帯の端と名前の間の余白。
@@ -91,29 +92,33 @@ impl Placer<'_> {
                 break;
             };
             let (start, end) = trimmed(item, i, state.preview);
-            let bar = name_area(self.vp.bar(i, start, end), self.vp.rows.height(i));
+            let full = self.vp.bar(i, start, end);
+            let named = name_area(full, self.vp.rows.height(i));
             if item.cuts.is_empty() {
                 let color = layer_text(item, stripe(&state.palette, i));
-                self.name(&item.label, bar, TextStyle { size, color });
+                let rect = self.after_thumb((i, item.thumb.as_ref()), full, named);
+                self.name(&item.label, rect, TextStyle { size, color });
                 continue;
             }
             let style = TextStyle {
                 size,
                 color: cut_text(item),
             };
-            let left_edge = self.vp.layout.row_area.x;
             for cut in item.cuts.iter().filter(|c| !c.gap) {
                 // カットはレイヤーの帯の内側だけを描くので、名前もその中に収める。
-                let (cx, cw) = cut_span(&self.vp.time, cut);
-                let left = (left_edge + cx).max(bar.x);
-                let right = (left_edge + cx + cw).min(bar.right());
-                self.name(
-                    &cut.label,
-                    Rect::new(left, bar.y, right - left, bar.h),
-                    style,
-                );
+                let span = cut_rect(self.vp, full, cut);
+                let rect = self.after_thumb((i, cut.thumb.as_ref()), span, named);
+                self.name(&cut.label, rect, style);
             }
         }
+    }
+
+    /// 帯の矩形 `span` の名前の矩形。サムネイルを出す帯はサムネイルの右から始める（サムネイルは見えている所の左に寄る）。
+    /// `named` は帯の名前を置く所（縦の位置と高さ）。
+    fn after_thumb(&self, thumb: (usize, Option<&Arc<str>>), span: Rect, named: Rect) -> Rect {
+        let left = span.x.max(self.vp.layout.row_area.x);
+        let left = left + name_inset(self.vp, thumb.0, thumb.1, span);
+        Rect::new(left, named.y, span.right() - left, named.h)
     }
 
     /// 帯 `bar` の行の領域に見えている所に名前を置く。入らなければ切り詰め、1 字と「…」も入らなければ置かない。
@@ -179,7 +184,7 @@ mod tests {
     use crate::time_view::TimeView;
     use crate::timeline::{CutBar, ItemKind};
     use crate::timeline_layout::tests::TestViewport;
-    use crate::timeline_layout::{HEADER_W, RULER_H};
+    use crate::timeline_layout::{HEADER_W, RULER_H, TOOLBAR_H};
 
     /// 幅 800、高さ 200 の Timeline。
     const SIZE: (f32, f32) = (800.0, 200.0);
@@ -202,7 +207,7 @@ mod tests {
     /// 帯の名前（字を描く矩形が行の領域にあるもの）。
     fn bar_labels(out: &[Label]) -> Vec<&Label> {
         out.iter()
-            .filter(|l| l.clip.y >= RULER_H && l.clip.x >= HEADER_W)
+            .filter(|l| l.clip.y >= TOOLBAR_H + RULER_H && l.clip.x >= HEADER_W)
             .collect()
     }
 
@@ -415,7 +420,7 @@ mod tests {
         let (out, _) = labels_of(&model(Vec::new()), &state(0.0));
         let ruler: Vec<&Label> = out
             .iter()
-            .filter(|l| l.y < RULER_H && l.x >= HEADER_W)
+            .filter(|l| l.y < TOOLBAR_H + RULER_H && l.x >= HEADER_W)
             .collect();
         assert_eq!(&*ruler[0].text, "0:00");
         assert_eq!(ruler[0].x, HEADER_W + TICK_GAP);
@@ -426,7 +431,7 @@ mod tests {
         assert_eq!(last.x, 800.0 - TICK_GAP - 4.0 * 5.5, "4 字 × 5.5 px");
         assert_eq!(
             last.clip,
-            Rect::new(HEADER_W, 0.0, 800.0 - HEADER_W, RULER_H)
+            Rect::new(HEADER_W, TOOLBAR_H, 800.0 - HEADER_W, RULER_H)
         );
     }
 
@@ -438,7 +443,7 @@ mod tests {
         let (out, _) = labels_in(&m, &f, &state(0.0));
         let last = out
             .iter()
-            .rfind(|l| l.y < RULER_H && l.x >= HEADER_W)
+            .rfind(|l| l.y < TOOLBAR_H + RULER_H && l.x >= HEADER_W)
             .expect("時刻");
         assert_eq!(&*last.text, "0:05");
     }

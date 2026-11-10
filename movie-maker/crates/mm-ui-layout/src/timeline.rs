@@ -42,6 +42,8 @@ pub struct CutBar {
     pub disabled_before: bool,
     /// シーケンスのカット列で、すぐ後ろのカットが無効。
     pub disabled_after: bool,
+    /// 帯の先頭に出すサムネイルのキー（素材のコンテンツハッシュ）。素材の無いカットは `None`。
+    pub thumb: Option<Arc<str>>,
     /// 帯に波形を出す元（音のある撮影素材のカット）。
     pub wave: Option<WaveSource>,
 }
@@ -104,6 +106,8 @@ pub struct Item {
     pub keyframe_rows: Vec<KeyframeRow>,
     /// シーケンスのレイヤーのカット。先頭から順。シーケンス以外は空。
     pub cuts: Vec<CutBar>,
+    /// 帯の先頭に出すサムネイルのキー（素材のコンテンツハッシュ）。撮影素材と静止画のレイヤーだけ。
+    pub thumb: Option<Arc<str>>,
     /// 端のつまみで動かせる範囲。
     pub trim: TrimBounds,
     /// 帯に波形を出す元（音のある撮影素材のレイヤー）。シーケンスはカットが持つ。
@@ -125,6 +129,7 @@ impl Item {
             label: Arc::default(),
             keyframes: Arc::default(),
             keyframe_rows: Vec::new(),
+            thumb: None,
             cuts: Vec::new(),
             trim: TrimBounds::FREE,
             wave: None,
@@ -152,6 +157,12 @@ impl Item {
     /// キーフレームを持つか（見出しの ▸ が引く）。
     pub fn has_keyframes(&self) -> bool {
         !self.keyframes.is_empty()
+    }
+
+    /// サムネイルのキーを付ける。
+    pub fn with_thumb(mut self, key: &str) -> Self {
+        self.thumb = Some(key.into());
+        self
     }
 
     /// ロックの状態を付ける。

@@ -280,3 +280,25 @@ fn 選択かドロップで渡されていないパスは取り込まない() {
         "選んだパスは受ける（無いファイルは素材ごとの失敗）"
     );
 }
+
+#[test]
+fn 取り込み直した素材でも通し番号が進み_断った取り込みと失敗では進まない() {
+    let dir = tempfile::tempdir().unwrap();
+    let Some(clip) = make_clip(dir.path()) else {
+        return;
+    };
+    let report = mm_ingest::ingest(&options(dir.path()), &clip).unwrap();
+    let path = clip.to_string_lossy().into_owned();
+    let state = state_with(dir.path(), vec![asset(&path, &report.asset.content_hash)]);
+    let missing = dir.path().join("missing.mp4");
+    state.offer([clip, missing.clone()]);
+    let serial = || state.shared.ingest_serial.load(Ordering::SeqCst);
+    let emit = |_| {};
+    let refused = state.import(&["C:/Windows/win.ini".to_owned()], &emit);
+    let failed = state.import(&[missing.to_string_lossy().into_owned()], &emit);
+    assert!(refused.is_err() && failed.is_ok());
+    assert_eq!(serial(), 0);
+    // プロジェクトにある素材は素材の一覧を変えないが、キャッシュを作り直したので進む（帯のサムネイルが読み直す）。
+    assert!(state.import(&[path], &emit).is_ok());
+    assert_eq!(serial(), 1);
+}

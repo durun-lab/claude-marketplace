@@ -11,32 +11,35 @@ use mm_types::{Id, ParamValue};
 use mm_ui_wgpu::timeline_model;
 use serde_json::{json, Value};
 
-use crate::win::capture;
 use crate::win::cli::PlayTest;
 use crate::win::keys;
 use crate::win::playback::Command;
 use crate::win::state::Shared;
 use crate::win::surface;
+use crate::win::verify_first_insert;
 use crate::win::verify_place::{placement, Placement};
-use crate::win::verify_stage::{checkpoint, wait_until};
+use crate::win::verify_stage::wait_until;
 
 mod header;
 mod keyframes;
+mod log;
+
+pub(super) use log::{shot, Log};
 
 /// 仮想キーコード。
 const VK_I: u32 = 0x49;
 const VK_O: u32 = 0x4F;
 const VK_B: u32 = 0x42;
-const VK_COMMA: u32 = 0xBC;
+pub(super) const VK_COMMA: u32 = 0xBC;
 const VK_DELETE: u32 = 0x2E;
 const VK_N: u32 = 0x4E;
 /// 入力を投げてから結果を見るまでの待ち。
 const SETTLE: Duration = Duration::from_millis(300);
 /// 結果が出るのを待つ上限。
-const WAIT: Duration = Duration::from_secs(5);
+pub(super) const WAIT: Duration = Duration::from_secs(5);
 /// Source に付けるイン点・アウト点（秒）。
-const MARK_IN: f64 = 0.5;
-const MARK_OUT: f64 = 1.5;
+pub(super) const MARK_IN: f64 = 0.5;
+pub(super) const MARK_OUT: f64 = 1.5;
 /// insert する再生位置（先頭のカットの後半）。
 const INSERT_AT: f64 = 0.8;
 /// 端と中のドラッグの量（秒）。
@@ -58,28 +61,7 @@ pub struct Env<'a> {
     pub test: &'a PlayTest,
 }
 
-/// 結果の記録。段ごとの合否と、撮ったスクリーンショット。
-#[derive(Default)]
-struct Log {
-    steps: Vec<(String, Value)>,
-    shots: Vec<String>,
-}
-
-impl Log {
-    fn step(&mut self, name: &str, ok: bool, detail: Value) -> bool {
-        self.steps
-            .push((name.to_owned(), json!({ "ok": ok, "detail": detail })));
-        ok
-    }
-
-    fn into_json(self) -> Value {
-        let all_ok = self.steps.iter().all(|(_, v)| v["ok"] == true);
-        let steps: serde_json::Map<String, Value> = self.steps.into_iter().collect();
-        json!({ "all_ok": all_ok, "steps": steps, "screenshots": self.shots })
-    }
-}
-
-fn sequence_of(project: &Project) -> Option<&Sequence> {
+pub(super) fn sequence_of(project: &Project) -> Option<&Sequence> {
     let comp = project.compositions.first()?;
     let layer = comp
         .layers
@@ -90,7 +72,7 @@ fn sequence_of(project: &Project) -> Option<&Sequence> {
         .ok()
 }
 
-fn cuts(shared: &Shared) -> Vec<Cut> {
+pub(super) fn cuts(shared: &Shared) -> Vec<Cut> {
     shared
         .doc()
         .and_then(|d| sequence_of(&d.project).map(|s| s.cuts.clone()))
@@ -99,20 +81,6 @@ fn cuts(shared: &Shared) -> Vec<Cut> {
 
 fn cut_named(shared: &Shared, id: &str) -> Option<Cut> {
     cuts(shared).into_iter().find(|c| c.id.as_str() == id)
-}
-
-/// スクリーンショットを撮る。返るまで長くかかったら、時間切れの工程はここで止まり、後の入力を送らない。
-fn shot(env: &Env<'_>, log: &mut Log, name: &str) {
-    let Some(base) = &env.test.screenshot else {
-        return;
-    };
-    std::thread::sleep(SETTLE);
-    let path = base.with_extension(format!("edit-{name}.png"));
-    match capture::capture_window(env.window_hwnd, &path) {
-        Ok(()) => log.shots.push(path.display().to_string()),
-        Err(e) => log.shots.push(format!("失敗: {e}")),
-    }
-    checkpoint();
 }
 
 /// 画面の位置の計算に要るもの。割り付けと Timeline の見えている所、見えているシーケンスの行の添字。
@@ -138,7 +106,7 @@ impl Geometry {
 }
 
 /// カット `id` の Timeline の上の範囲（秒）。
-fn cut_span_secs(shared: &Shared, id: &str) -> Option<(f64, f64)> {
+pub(super) fn cut_span_secs(shared: &Shared, id: &str) -> Option<(f64, f64)> {
     let doc = shared.doc()?;
     let comp = doc.project.composition(&doc.comp).ok()?;
     let ids = mm_ui_wgpu::timeline_cut_ids(&doc.project, comp);
@@ -156,7 +124,7 @@ fn seek_main(shared: &Shared, t: f64) -> bool {
 }
 
 /// Source を開いてイン点・アウト点を付ける。
-fn mark_source(env: &Env<'_>, log: &mut Log) -> Option<String> {
+pub(super) fn mark_source(env: &Env<'_>, log: &mut Log) -> Option<String> {
     let shared = env.shared;
     let doc = shared.doc()?;
     let comp = doc.project.composition(&doc.comp).ok()?;
@@ -462,23 +430,27 @@ fn snap_step(env: &Env<'_>, log: &mut Log) {
     }
 }
 
-/// Timeline 編集の通しを行って結果を返す。シーケンスのレイヤーが無いプロジェクトでは、シーケンスを編集する手順を
-/// スキップし、レイヤーだけで確かめられる見出しの手順を行う。
+/// Timeline 編集の通しを行って結果を返す。シーケンスのレイヤーが無いプロジェクトでは、シーケンスを編集する手順の代わりに
+/// 最初の insert の通し（`verify_first_insert`）を行う。見出しとキーフレームの行の手順は、レイヤーがあれば行う。
 pub fn run(env: &Env<'_>) -> Value {
     let mut log = Log::default();
     let has_sequence = env
         .shared
         .doc()
         .is_some_and(|d| sequence_of(&d.project).is_some());
-    if has_sequence {
+    let skipped = if has_sequence {
         sequence_steps(env, &mut log);
+        None
+    } else {
+        Some(verify_first_insert::steps(env, &mut log))
+    };
+    if verify_first_insert::has_layers(env.shared) {
+        header::run(env, &mut log);
+        keyframes::run(env, &mut log);
     }
-    header::run(env, &mut log);
-    keyframes::run(env, &mut log);
     let mut out = log.into_json();
-    if !has_sequence {
-        out["skipped"] =
-            json!("シーケンスのレイヤーが無いので、シーケンスを編集する手順をスキップした");
+    if let Some(note) = skipped {
+        out["skipped"] = json!(note);
     }
     out
 }
