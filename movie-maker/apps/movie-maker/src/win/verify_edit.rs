@@ -20,6 +20,8 @@ use crate::win::surface;
 use crate::win::verify_place::{placement, Placement};
 use crate::win::verify_stage::{checkpoint, wait_until};
 
+mod header;
+
 /// 仮想キーコード。
 const VK_I: u32 = 0x49;
 const VK_O: u32 = 0x4F;
@@ -477,5 +479,6 @@ pub fn run(env: &Env<'_>) -> Value {
     }
     trim_step(env, &mut log);
     snap_step(env, &mut log);
+    header::run(env, &mut log);
     log.into_json()
 }

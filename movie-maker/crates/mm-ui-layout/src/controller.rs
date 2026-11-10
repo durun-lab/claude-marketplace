@@ -6,7 +6,7 @@
 //! 当たり判定と描画が同じ値を見るよう、割り付けと行の並びもここが持つ（[`TimelineController::viewport`]）。
 //! スナップの入/切とドラッグ中の反転、ドラッグ中のツールチップは `controller/snapping.rs`。
 
-use crate::gesture::{body_edit, EditKind};
+use crate::gesture::{body_edit, frame_secs, EditKind};
 use crate::paint::PaintState;
 use crate::palette::Palette;
 use crate::rows::Rows;
@@ -14,7 +14,7 @@ use crate::screen::VIEW_MARGIN;
 use crate::scroll::{clamp_scroll, reveal, scroll_for_thumb};
 use crate::snap::{quantize, SnapTarget};
 use crate::time_view::TimeView;
-use crate::timeline::{hit_test, Hit, Part, TimelineModel};
+use crate::timeline::{hit_test, HeaderButton, Hit, Part, TimelineModel};
 use crate::timeline_layout::{TimelineLayout, Viewport};
 
 /// ホイール 1 目盛りあたりの拡大率。
@@ -75,6 +75,10 @@ pub enum Action {
     /// 端のつまみや中のドラッグが表す編集。`by` はコンポジションの時間軸の秒（スナップ後。フレームへの丸めは受け取る側）。
     /// 確定するのは `done` のときだけで、それまではドラッグ中の表示（スナップのガイド線）に使う。
     Edit { kind: EditKind, by: f64, done: bool },
+    /// 見出しのボタンを押した。行の添字とボタン。受け取る側がレイヤーの今の状態から操作にする。
+    HeaderButton { index: usize, button: HeaderButton },
+    /// 見出しのドラッグを離した。行 `from` を行の境目 `slot`（0 が先頭の行の上、行の数が最後の行の下）へ動かす。
+    MoveLayer { from: usize, slot: usize },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -94,6 +98,11 @@ enum Drag {
         cut: usize,
         mods: Mods,
         from: f64,
+    },
+    /// 見出しの縦のドラッグ。`grab_y` は押した縦の位置。
+    Header {
+        index: usize,
+        grab_y: f32,
     },
     /// スクロールボックスのドラッグ。`grab_offset` は押した点の、スクロールボックスの上端からの距離。
     Thumb {
@@ -126,6 +135,8 @@ pub struct TimelineController {
     pointer: (f32, f32),
     /// ドラッグで最後に返した編集。離したときの確定にそのまま使う。
     last_edit: Option<(EditKind, f64)>,
+    /// 見出しのドラッグで入る行の境目。動き始めてから離すまで。
+    drop_slot: Option<usize>,
     drag: Drag,
 }
 
@@ -145,6 +156,7 @@ impl TimelineController {
             snap_held: false,
             pointer: (0.0, 0.0),
             last_edit: None,
+            drop_slot: None,
             drag: Drag::None,
         }
     }
@@ -213,6 +225,7 @@ impl TimelineController {
             snap: self.snap,
             preview: self.last_edit,
             drag_tooltip: self.drag_tooltip(),
+            header_drop: self.drop_slot,
             palette: Palette::DEFAULT,
         }
     }
@@ -260,11 +273,7 @@ impl TimelineController {
 
     /// 時刻 `t` に再生位置を動かすときの時刻。いちばん近いフレームの先頭にそろえ、コンポジションの中に収める。
     fn seek_time(t: f64, model: &TimelineModel) -> f64 {
-        let frame = if model.fps > 0.0 {
-            1.0 / model.fps
-        } else {
-            0.0
-        };
+        let frame = frame_secs(model);
         let t = quantize(t, model.fps);
         t.clamp(0.0, (model.duration - frame).max(0.0))
     }
@@ -282,6 +291,10 @@ impl TimelineController {
             }
             // 見出しの列の上の角はタイムコードを出すだけで、選択もカットの選択も変えない。
             Hit::Corner => return Vec::new(),
+            // ボタンは操作にするだけで、レイヤーの選択は変えない（Premiere と Resolve の見出しのボタンと同じ）。
+            Hit::HeaderButton { index, button } => {
+                return vec![Action::HeaderButton { index, button }];
+            }
             _ => {}
         }
         let had_cut = self.selected_cut.take();
@@ -303,7 +316,7 @@ impl TimelineController {
                 self.press_bar_mark((item, keyframe), had_cut, model)
             }
             Hit::Header { index } => {
-                self.selected = Some(index);
+                self.press_header(index, y);
                 deselect_cut(Action::Select(Some(index)), had_cut)
             }
             _ => {
@@ -381,6 +394,10 @@ impl TimelineController {
                 Vec::new()
             }
             Drag::Scrub => vec![Action::Seek(self.seek_at(x, model))],
+            Drag::Header { grab_y, .. } => {
+                self.drag_header(grab_y, y, model.items.len());
+                Vec::new()
+            }
             Drag::Thumb { grab_offset } => {
                 let content = self.rows.content_height();
                 self.scroll_y = scroll_for_thumb(self.layout.scrollbar, content, y - grab_offset);
@@ -415,13 +432,12 @@ impl TimelineController {
     }
 
     fn up(&mut self, model: &TimelineModel) -> Vec<Action> {
-        let (drag, last) = (self.drag, self.last_edit);
+        let (drag, last, slot) = (self.drag, self.last_edit, self.drop_slot);
         self.end_drag();
-        let frame = if model.fps > 0.0 {
-            1.0 / model.fps
-        } else {
-            0.0
-        };
+        if let Drag::Header { index, .. } = drag {
+            return self.release_header(index, slot);
+        }
+        let frame = frame_secs(model);
         match (drag, last) {
             // 動かさずに離したクリックは編集にしない。
             (Drag::Edge { .. } | Drag::Body { .. }, Some((kind, by)))
@@ -465,6 +481,7 @@ fn deselect_cut(select: Action, had_cut: Option<(usize, usize)>) -> Vec<Action> 
     out
 }
 
+mod header_drag;
 mod snapping;
 
 #[cfg(test)]

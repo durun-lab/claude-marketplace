@@ -26,6 +26,7 @@ pub(crate) fn state(playhead: f64) -> PaintState {
         snap: None,
         preview: None,
         drag_tooltip: None,
+        header_drop: None,
         palette: Palette::DEFAULT,
     }
 }

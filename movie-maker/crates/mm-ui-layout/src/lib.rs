@@ -44,6 +44,7 @@ pub use drawing::{
 };
 pub use geom::{fit_rect, Color, Quad, QuadShape, Rect};
 pub use gesture::{body_edit, edge_edit, EditKind, Side};
+pub use header::{button_center, name_center};
 pub use keymarks::MARK_PX;
 pub use labels::{timeline_labels, LABEL_PAD};
 pub use paint::{timeline_overlay, timeline_quads, PaintState};
@@ -57,8 +58,8 @@ pub use text::{
 };
 pub use time_view::{TimeView, MAX_PX_PER_SEC, MIN_FIT_PX_PER_SEC, MIN_PX_PER_SEC};
 pub use timeline::{
-    bar_span, cut_span, hit_test, AudioState, CutBar, Hit, Item, ItemKind, Part, TimelineModel,
-    TrimBounds, HANDLE_PX,
+    bar_span, cut_span, hit_test, AudioState, CutBar, HeaderButton, Hit, Item, ItemKind, Part,
+    TimelineModel, TrimBounds, HANDLE_PX,
 };
 pub use timeline_layout::{TimelineLayout, Viewport, HEADER_W, RULER_H, SCROLLBAR_W};
 pub use view_state::ViewState;

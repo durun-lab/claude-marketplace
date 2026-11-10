@@ -7,12 +7,16 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 
 use mm_doc::{
-    Composition, Cut, CutId, Layer, Node, Project, Sequence, SEQUENCE_KIND, SEQUENCE_PARAM,
+    Composition, Cut, CutId, Layer, LayerAudio, Node, Project, Sequence, SEQUENCE_KIND,
+    SEQUENCE_PARAM,
 };
-use mm_eval::{place_cuts, PlacedCut};
-use mm_ops::{Edge, Insert, Lift, Op, Overwrite, Ripple, Roll, Slide, Slip, Split, TrimLayer};
+use mm_eval::{place_cuts, PlacedCut, DEFAULT_AUDIO_ROLE};
+use mm_ops::{
+    Edge, Insert, Lift, LockLayer, MoveLayer, Op, Overwrite, Ripple, Roll, SetLayerAudio,
+    SetLayerEnabled, Slide, Slip, Split, TrimLayer,
+};
 use mm_types::{AssetId, Id, RationalTime};
-use mm_ui_layout::{EditKind, Side};
+use mm_ui_layout::{EditKind, HeaderButton, Side};
 
 use crate::win::timebase;
 
@@ -275,6 +279,70 @@ pub struct TimelineIds<'a> {
     pub cuts: &'a [Vec<String>],
 }
 
+/// 見出しのボタンを押したときの操作。レイヤーの今の状態を反転する。
+/// Mute と Solo は Mixer と同じく、変えた後の音の設定の全体を `setLayerAudio` で置く（設定が無ければ既定から）。
+pub fn header_button_op(button: HeaderButton, layer: &Layer) -> Op {
+    let id = layer.id.clone();
+    match button {
+        HeaderButton::Enabled => SetLayerEnabled {
+            layer: id,
+            enabled: !layer.enabled,
+        }
+        .into(),
+        HeaderButton::Lock => LockLayer {
+            layer: id,
+            lock: !layer.lock,
+        }
+        .into(),
+        HeaderButton::Mute | HeaderButton::Solo => {
+            let mut audio = layer
+                .audio
+                .clone()
+                .unwrap_or_else(|| LayerAudio::new(DEFAULT_AUDIO_ROLE));
+            if button == HeaderButton::Mute {
+                audio.mute = !audio.mute;
+            } else {
+                audio.solo = !audio.solo;
+            }
+            SetLayerAudio {
+                layer: id,
+                audio: Some(audio),
+            }
+            .into()
+        }
+    }
+}
+
+/// 見出しのドラッグの確定。Timeline の行 `from`（Timeline の添字）を行の境目 `slot`（0 が先頭の行の上、行の数が最後の行の下）に入れる
+/// `moveLayer`。並びが変わらなければ `None`。
+/// Timeline の行は上が前のレイヤーで、`moveLayer` の位置は下から数えるので、行の境目の隣のレイヤーの位置から求める。
+/// 隠した行（Shy）や時間軸の壊れた行は Timeline に並ばないので、境目の隣に見えているレイヤーを基準にする。
+pub fn move_layer_op(
+    from: usize,
+    slot: usize,
+    ids: &TimelineIds<'_>,
+    comp: &Composition,
+) -> Option<Op> {
+    let layer = ids.layers.get(from)?;
+    let mut order: Vec<&str> = comp.layers.iter().map(|l| l.id.as_str()).collect();
+    let current = order.iter().position(|id| id == layer)?;
+    order.remove(current);
+    let position = |id: &String| order.iter().position(|o| *o == id.as_str());
+    let index = match slot.checked_sub(1) {
+        // 境目の上の行のすぐ後ろ（下）。
+        Some(above) => position(ids.layers.get(above)?)?,
+        // 先頭の行の前（上）。
+        None => position(ids.layers.first()?)? + 1,
+    };
+    (index != current).then(|| {
+        MoveLayer {
+            layer: Id::new(layer.as_str()),
+            index,
+        }
+        .into()
+    })
+}
+
 fn edge_of(side: Side) -> Edge {
     match side {
         Side::In => Edge::In,
@@ -345,5 +413,7 @@ pub fn gesture_op(
     })
 }
 
+#[cfg(test)]
+mod header_tests;
 #[cfg(test)]
 pub(crate) mod tests;

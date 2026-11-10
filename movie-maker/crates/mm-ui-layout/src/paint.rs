@@ -39,6 +39,8 @@ pub struct PaintState {
     pub preview: Option<(EditKind, f64)>,
     /// ドラッグ中のツールチップ。編集のドラッグの間だけ。
     pub drag_tooltip: Option<DragTooltip>,
+    /// 見出しのドラッグで入る行の境目（0 が先頭の行の上、行の数が最後の行の下）。入る位置に線を出す。
+    pub header_drop: Option<usize>,
     /// 色。
     pub palette: Palette,
 }

@@ -24,6 +24,7 @@ impl TimelineController {
         self.snap = None;
         self.snap_held = false;
         self.last_edit = None;
+        self.drop_slot = None;
     }
 
     /// 端のつまみを x へドラッグしたときの編集。スナップが効いていれば近い目標に寄せ、吸い付かなければいちばん近い

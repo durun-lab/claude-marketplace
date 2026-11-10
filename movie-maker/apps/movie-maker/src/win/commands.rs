@@ -43,6 +43,10 @@ pub enum Action {
 /// Timeline の表示のコマンドの中身。ポインターの入力のキューで描画スレッドへ渡し、ドラッグとの前後を保つ。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimelineAction {
+    /// Shy の印の付いた行を Timeline から外す・戻す。表示の状態を変えるだけ。
+    HideShyLayers,
+    /// 選んだレイヤーの Shy の印を付ける・外す。表示の状態を変えるだけ。
+    ShySelectedLayers,
     /// スナップの入/切。ドラッグ中のキーは、押している間だけ反転する。
     ToggleSnapping,
 }
@@ -212,6 +216,20 @@ pub static TABLE: &[Spec] = &[
         owner: Owner::App(Action::Edit(EditAction::MarkOut)),
     },
     Spec {
+        id: "timeline.hide_shy_layers",
+        name: "Hide Shy Layers",
+        description: Some(
+            "Hide the Shy layers from the Timeline; rendering and export don't change",
+        ),
+        owner: Owner::App(Action::Timeline(TimelineAction::HideShyLayers)),
+    },
+    Spec {
+        id: "timeline.shy_selected_layers",
+        name: "Shy Selected Layers",
+        description: Some("Mark the selected layer Shy so Hide Shy Layers can hide its row"),
+        owner: Owner::App(Action::Timeline(TimelineAction::ShySelectedLayers)),
+    },
+    Spec {
         id: "timeline.toggle_snapping",
         name: "Snapping",
         description: Some(
@@ -244,6 +262,10 @@ struct Ready {
     cut_selected: bool,
     /// スナップの入/切（描画スレッドが置いた表示の状態）。
     snapping: bool,
+    /// Timeline で選んでいるレイヤーがあり、それに Shy の印が付いているか（選んでいなければ `None`）。
+    selected_shy: Option<bool>,
+    /// Shy の行を隠している。
+    hide_shy: bool,
 }
 
 impl Ready {
@@ -253,7 +275,12 @@ impl Ready {
                 .composition(&doc.comp)
                 .is_ok_and(|c| c.layers.iter().any(|l| l.source.kind == SEQUENCE_KIND))
         });
+        let shy = shared.view.shy();
         Self {
+            hide_shy: shy.hide,
+            selected_shy: shared
+                .selected_layer()
+                .map(|id| shy.layers.contains(id.as_str())),
             source_open: shared.source.handle().is_some(),
             sequence,
             cut_selected: shared.edit.selected_cut().is_some(),
@@ -268,9 +295,14 @@ impl Ready {
             Owner::App(Action::Edit(Insert | Overwrite)) => self.source_open && self.sequence,
             Owner::App(Action::Edit(Split)) => self.sequence,
             Owner::App(Action::Edit(Lift | Extract)) => self.cut_selected,
+            Owner::App(Action::Timeline(TimelineAction::ShySelectedLayers)) => {
+                self.selected_shy.is_some()
+            }
             Owner::App(_) | Owner::Panel(_) => true,
         };
         let checked = match spec.owner {
+            Owner::App(Action::Timeline(TimelineAction::HideShyLayers)) => Some(self.hide_shy),
+            Owner::App(Action::Timeline(TimelineAction::ShySelectedLayers)) => self.selected_shy,
             Owner::App(Action::Timeline(TimelineAction::ToggleSnapping)) => Some(self.snapping),
             Owner::App(_) | Owner::Panel(_) => None,
         };
@@ -371,6 +403,14 @@ fn execute(shared: &Arc<Shared>, spec: &'static Spec) -> Result<(), String> {
     match spec.owner {
         Owner::App(Action::Edit(action)) => edit_actions::run(shared, action),
         Owner::App(Action::Playback(command)) => play(shared, command),
+        Owner::App(Action::Timeline(TimelineAction::HideShyLayers)) => {
+            shared.view.toggle_hide_shy();
+        }
+        Owner::App(Action::Timeline(TimelineAction::ShySelectedLayers)) => {
+            if let Some(id) = shared.selected_layer() {
+                shared.view.toggle_shy(&id);
+            }
+        }
         Owner::App(Action::Timeline(TimelineAction::ToggleSnapping)) => {
             timeline_input(shared, PointerEvent::ToggleSnapping);
         }

@@ -83,7 +83,7 @@ fn 項目は並びの順にコマンドの表の名前とキーの見た目で�
     assert_eq!(menu_texts(Menu::Help, &table), ["About"]);
     assert_eq!(
         menu_texts(Menu::View, &table),
-        ["Snapping\tN"],
+        ["Snapping\tN", "-", "Shy Selected Layers", "Hide Shy Layers"],
         "ズームは後の PR が表に足す"
     );
 }

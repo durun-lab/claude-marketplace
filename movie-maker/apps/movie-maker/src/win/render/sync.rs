@@ -4,19 +4,24 @@
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use mm_ops::Op;
 use mm_render_api::tone_map_peak;
-use mm_ui_layout::{Action, EditKind, PointerEvent};
+use mm_types::Id;
+use mm_ui_layout::{Action, EditKind, HeaderButton, PointerEvent, TimelineModel};
 use mm_ui_wgpu::{timeline_cut_ids, timeline_layer_ids, timeline_model, Region, Ui};
 
 use super::View;
 use crate::win::playback::Command;
-use crate::win::sequence_edit::{gesture_op, TimelineIds};
+use crate::win::sequence_edit::{gesture_op, header_button_op, move_layer_op, TimelineIds};
 use crate::win::state::{FrameImage, OpenDoc, Shared};
+use crate::win::view_state::Shy;
 
 /// 編集で変わったプロジェクトのデータを Timeline に反映する。Timeline の添字とレイヤー、カットの ID の対応も持つ。
 #[derive(Default)]
 pub(super) struct DocSync {
     seen: u64,
+    /// Shy の状態の通し番号。変わったら、プロジェクトが同じでも行を作り直す。
+    seen_shy: u64,
     /// カットの選択が変わったことを見分ける通し番号。
     seen_cut: u64,
     /// Timeline に出しているデータ。ドラッグの編集は、人が見ていたこのデータとそのバージョンで計画する。
@@ -62,17 +67,20 @@ impl DocSync {
     pub(super) fn refresh(&mut self, shared: &Shared, ui: &mut Ui) {
         let serial = shared.doc_serial.load(Ordering::SeqCst);
         let cut_serial = shared.edit.cut_serial.load(Ordering::SeqCst);
-        if serial != self.seen {
-            self.seen = serial;
+        let shy_serial = shared.view.shy_serial();
+        if serial != self.seen || shy_serial != self.seen_shy {
+            (self.seen, self.seen_shy) = (serial, shy_serial);
             let Some(doc) = shared.doc() else { return };
             let Ok(comp) = doc.project.composition(&doc.comp) else {
                 return;
             };
-            ui.update_model(timeline_model(&doc.project, comp));
+            let mut model = timeline_model(&doc.project, comp);
             // SDR の書き出しと同じ素材の上限の明るさでトーンマップし、プレビューと書き出しの映像を揃える。
             ui.set_hdr_peak(tone_map_peak(&doc.project));
             self.layer_ids = timeline_layer_ids(comp);
             self.cut_ids = timeline_cut_ids(&doc.project, comp);
+            self.drop_shy(&shared.view.shy(), &mut model);
+            ui.update_model(model);
             self.shown = Some(doc.clone());
             let selected = shared.selected_layer();
             ui.select(selected.and_then(|id| self.layer_ids.iter().position(|i| *i == id)));
@@ -84,6 +92,16 @@ impl DocSync {
         ui.select_cut(selected.and_then(|id| self.position_of_cut(&id)));
     }
 
+    /// Shy で隠すレイヤーの行を、モデルと ID の対応（同じ並び）から外し、外した数をモデルに持たせる。
+    /// 描画と書き出しはプロジェクトのデータを見るので変わらない。
+    fn drop_shy(&mut self, shy: &Shy, model: &mut TimelineModel) {
+        let keep: Vec<bool> = self.layer_ids.iter().map(|id| !shy.hides(id)).collect();
+        model.hidden = keep.iter().filter(|k| !**k).count();
+        keep_rows(&mut model.items, &keep);
+        keep_rows(&mut self.layer_ids, &keep);
+        keep_rows(&mut self.cut_ids, &keep);
+    }
+
     /// カットの ID の Timeline での位置（レイヤーの添字、カットの添字）。
     fn position_of_cut(&self, id: &str) -> Option<(usize, usize)> {
         self.cut_ids
@@ -91,6 +109,12 @@ impl DocSync {
             .enumerate()
             .find_map(|(item, cuts)| cuts.iter().position(|c| c == id).map(|cut| (item, cut)))
     }
+}
+
+/// `keep` が真の行だけを残す。`rows` と `keep` は同じ並び。
+fn keep_rows<T>(rows: &mut Vec<T>, keep: &[bool]) {
+    let mut keep = keep.iter();
+    rows.retain(|_| keep.next().copied().unwrap_or(true));
 }
 
 /// ポインターの入力を UI に渡し、起きた操作を送る。選択は共有状態へ、シークは再生スレッドへ、
@@ -119,6 +143,10 @@ pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
                     done: true,
                 } => apply_gesture(shared, doc, kind, by),
                 Action::Edit { .. } => {}
+                Action::HeaderButton { index, button } => {
+                    apply_header_button(shared, doc, index, button);
+                }
+                Action::MoveLayer { from, slot } => apply_move_layer(shared, doc, from, slot),
             }
         }
     }
@@ -154,7 +182,39 @@ fn apply_gesture(shared: &Arc<Shared>, doc: &DocSync, kind: EditKind, by: f64) {
     let Some(op) = gesture_op(kind, by, &ids, comp) else {
         return;
     };
-    let (s, base) = (shared.clone(), shown.version);
+    queue_op(shared, shown.version, op);
+}
+
+/// 見出しのボタンを、Timeline に出しているデータのレイヤーの今の状態から操作にして適用する。
+fn apply_header_button(shared: &Arc<Shared>, doc: &DocSync, index: usize, button: HeaderButton) {
+    let Some(shown) = &doc.shown else { return };
+    let layer = doc.layer_ids.get(index).and_then(|id| {
+        let (_, layer) = shown.project.layer(&Id::new(id.as_str())).ok()?;
+        Some(layer)
+    });
+    if let Some(layer) = layer {
+        queue_op(shared, shown.version, header_button_op(button, layer));
+    }
+}
+
+/// 見出しのドラッグの確定を `moveLayer` にして適用する。
+fn apply_move_layer(shared: &Arc<Shared>, doc: &DocSync, from: usize, slot: usize) {
+    let Some(shown) = &doc.shown else { return };
+    let Ok(comp) = shown.project.composition(&shown.comp) else {
+        return;
+    };
+    let ids = TimelineIds {
+        layers: &doc.layer_ids,
+        cuts: &doc.cut_ids,
+    };
+    if let Some(op) = move_layer_op(from, slot, &ids, comp) {
+        queue_op(shared, shown.version, op);
+    }
+}
+
+/// 操作を、Timeline に出しているデータのバージョンを付けて編集のキューで適用する。
+fn queue_op(shared: &Arc<Shared>, base: Option<i64>, op: Op) {
+    let s = shared.clone();
     crate::win::edit::queue(shared, move || {
         let result = crate::win::edit::submit_based(&s, vec![op], base);
         s.edit.set_message(result.err().unwrap_or_default());

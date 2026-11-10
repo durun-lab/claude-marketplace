@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use crate::header;
 use crate::keymarks;
 use crate::time_view::TimeView;
 use crate::timeline_layout::Viewport;
@@ -160,6 +161,21 @@ pub struct TimelineModel {
     pub items: Vec<Item>,
     /// コンポジションのマーカーの時刻（秒）。スナップの目標にする。
     pub markers: Vec<f64>,
+    /// Shy で Timeline から外した行の数。見出しの列の上の角に出す。
+    pub hidden: usize,
+}
+
+/// レイヤーの見出しの、押せるボタン。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeaderButton {
+    /// 有効（`setLayerEnabled`）。
+    Enabled,
+    /// ロック（`lockLayer`）。
+    Lock,
+    /// Mute（`setLayerAudio`）。
+    Mute,
+    /// Solo（`setLayerAudio`）。
+    Solo,
 }
 
 /// 帯の上の位置。
@@ -178,6 +194,11 @@ pub enum Hit {
     /// レイヤーの見出し。`index` は行の添字。
     Header {
         index: usize,
+    },
+    /// レイヤーの見出しのボタン。`index` は行の添字。
+    HeaderButton {
+        index: usize,
+        button: HeaderButton,
     },
     Ruler,
     Layer {
@@ -244,8 +265,13 @@ pub fn hit_test(model: &TimelineModel, vp: &Viewport, x: f32, y: f32) -> Hit {
         return vp
             .rows
             .at(y - l.headers.y + vp.scroll_y)
-            .filter(|i| *i < model.items.len())
-            .map_or(Hit::Empty, |index| Hit::Header { index });
+            .and_then(|index| Some((index, model.items.get(index)?)))
+            .map_or(Hit::Empty, |(index, item)| {
+                header::button_at(&header::cells(header::row_rect(vp, index), item), x, y).map_or(
+                    Hit::Header { index },
+                    |button| Hit::HeaderButton { index, button },
+                )
+            });
     }
     if l.scrollbar.contains(x, y) {
         return Hit::Scrollbar {

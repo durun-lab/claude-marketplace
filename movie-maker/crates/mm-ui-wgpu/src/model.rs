@@ -105,6 +105,7 @@ pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
         fps: comp.fps.to_f64(),
         items,
         markers: comp.markers.iter().map(|m| m.time.to_f64()).collect(),
+        hidden: 0,
     }
 }
 

@@ -146,6 +146,37 @@ fn 読めないファイルと知らないバージョンは既定に戻し_書�
 }
 
 #[test]
+fn shy_の印と隠すかどうかを書いて戻し_コンポジションごとに持つ() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = json_project(tmp.path());
+    let shared = opened(&project, "main");
+    assert_eq!(shared.view.shy(), Shy::default());
+    let before = shared.view.shy_serial();
+    shared.view.publish(state(42.0, 0.0));
+    shared.view.toggle_shy("title");
+    shared.view.toggle_shy("bg");
+    shared.view.toggle_shy("bg");
+    shared.view.toggle_hide_shy();
+    assert_eq!(shared.view.shy_serial(), before + 4, "変わるたびに進む");
+    shared.view.flush();
+    let text = std::fs::read_to_string(tmp.path().join(".mm").join("view.json")).unwrap();
+    assert!(text.contains("\"hideShy\": true"), "{text}");
+    let again = opened(&project, "main").view.shy();
+    assert_eq!(again.layers.iter().collect::<Vec<_>>(), ["title"]);
+    assert!(again.hides("title") && !again.hides("bg"));
+    assert_eq!(opened(&project, "other").view.shy(), Shy::default());
+}
+
+#[test]
+fn 隠さない間は_shy_の印が付いた行も隠さない() {
+    let shy = Shy {
+        layers: ["title".to_owned()].into(),
+        hide: false,
+    };
+    assert!(!shy.hides("title"));
+}
+
+#[test]
 fn 置き場所は_project_mmdb_のフォルダーかプロジェクトの_json_のあるフォルダーの_mm() {
     let tmp = tempfile::tempdir().unwrap();
     let project = json_project(tmp.path());

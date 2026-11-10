@@ -4,7 +4,7 @@
 //! 座標は Timeline の矩形の左上を (0, 0) とする。
 //!
 //! 見出しの部品の矩形は [`cells`] 1 か所で決め、描く関数（`paint/header.rs`）と文字（[`labels`]）が同じ値を見る。
-//! ボタンは状態を表示するだけで、見出しのどこを押してもレイヤーを選ぶ。
+//! ボタンを押すと操作になり（レイヤーは選ばない）、ボタンの外を押すとレイヤーを選ぶ。
 
 use std::sync::Arc;
 
@@ -12,7 +12,7 @@ use crate::geom::{Color, Rect};
 use crate::paint::PaintState;
 use crate::palette::{text_on, Palette};
 use crate::text::{place, Align, Label, TextMeasure, TextStyle, UiFont};
-use crate::timeline::{Item, ItemKind, TimelineModel};
+use crate::timeline::{HeaderButton, Item, ItemKind, TimelineModel};
 use crate::timeline_layout::Viewport;
 
 /// 種類の色の帯の幅。
@@ -79,6 +79,42 @@ pub(crate) fn cells(row: Rect, item: &Item) -> Cells {
     }
 }
 
+/// 点 (x, y)（Timeline の座標）にあるボタン。
+pub(crate) fn button_at(c: &Cells, x: f32, y: f32) -> Option<HeaderButton> {
+    [
+        (Some(c.enabled), HeaderButton::Enabled),
+        (Some(c.lock), HeaderButton::Lock),
+        (c.mute, HeaderButton::Mute),
+        (c.solo, HeaderButton::Solo),
+    ]
+    .into_iter()
+    .find_map(|(cell, button)| cell.filter(|r| r.contains(x, y)).map(|_| button))
+}
+
+/// 行 `index` のボタン `button` の中心（Timeline の座標）。音を持てないレイヤーの Mute と Solo は `None`。
+/// 自動試験がクリックの位置を求めるのに使う。
+pub fn button_center(
+    vp: &Viewport,
+    item: &Item,
+    index: usize,
+    button: HeaderButton,
+) -> Option<(f32, f32)> {
+    let c = cells(row_rect(vp, index), item);
+    let cell = match button {
+        HeaderButton::Enabled => Some(c.enabled),
+        HeaderButton::Lock => Some(c.lock),
+        HeaderButton::Mute => c.mute,
+        HeaderButton::Solo => c.solo,
+    }?;
+    Some((cell.x + cell.w / 2.0, cell.y + cell.h / 2.0))
+}
+
+/// 行 `index` の見出しの、ボタンの左の名前の中央（Timeline の座標）。見出しをつかむ位置。
+pub fn name_center(vp: &Viewport, item: &Item, index: usize) -> (f32, f32) {
+    let name = cells(row_rect(vp, index), item).name;
+    (name.x + name.w / 2.0, name.y + name.h / 2.0)
+}
+
 /// 種類の略号。`Other` は無し。
 pub(crate) fn abbreviation(kind: ItemKind) -> Option<&'static str> {
     match kind {
@@ -123,7 +159,7 @@ fn audio_button_text(p: &Palette, lit: Option<Color>) -> Color {
 }
 
 /// `cell` のうち `area`（見出しの列）に入る所。入らなければ `None`。
-fn inside(cell: Rect, area: Rect) -> Option<Rect> {
+pub(crate) fn inside(cell: Rect, area: Rect) -> Option<Rect> {
     let (x0, y0) = (cell.x.max(area.x), cell.y.max(area.y));
     let (x1, y1) = (
         cell.right().min(area.right()),
@@ -175,7 +211,28 @@ pub(crate) fn labels(
         label.clip = corner;
         out.push(label);
     }
+    if model.hidden > 0 {
+        let text: Arc<str> = format!("{} hidden", model.hidden).into();
+        out.extend(hidden_label(&text, corner, font, state, placer.measure));
+    }
     out
+}
+
+/// 見出しの列の上の角の右に出す、隠した行の数の文字。
+fn hidden_label(
+    text: &Arc<str>,
+    corner: Rect,
+    font: &UiFont,
+    state: &PaintState,
+    measure: &mut dyn TextMeasure,
+) -> Option<Label> {
+    let style = TextStyle {
+        size: font.small,
+        color: state.palette.label,
+    };
+    let mut label = place(text, corner, CORNER_PAD, Align::Right, style, measure)?;
+    label.clip = corner;
+    Some(label)
 }
 
 /// 見出しの文字を置いていく途中の状態。

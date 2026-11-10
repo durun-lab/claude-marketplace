@@ -4,8 +4,9 @@
 //! 描画スレッドが変わった状態を [`ViewSlot::publish`] で置き、書くスレッドが変化の落ち着いたところで書く。
 //! 閉じるときは描画スレッドが止まる前に [`ViewSlot::flush`] で書き残す。自動試験は今の状態を [`ViewSlot::current`] で読む。
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -54,6 +55,12 @@ struct TimelineView {
     /// スナップの入/切。無ければ入（Premiere と Resolve の既定と同じ）。
     #[serde(default = "snapping_on")]
     snapping: bool,
+    /// Shy の印を付けたレイヤーの ID。
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    shy: BTreeSet<String>,
+    /// 印の付いた行を Timeline から外す。
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    hide_shy: bool,
 }
 
 fn snapping_on() -> bool {
@@ -90,8 +97,10 @@ impl From<Height> for RowHeight {
 }
 
 impl TimelineView {
-    fn of(s: &ViewState) -> Self {
+    fn of(s: &ViewState, shy: &Shy) -> Self {
         Self {
+            shy: shy.layers.clone(),
+            hide_shy: shy.hide,
             origin: s.time.origin,
             px_per_sec: s.time.px_per_sec,
             scroll_y: s.scroll_y,
@@ -103,6 +112,13 @@ impl TimelineView {
                 .map(|(k, v)| (k.clone(), (*v).into()))
                 .collect(),
             snapping: s.snapping,
+        }
+    }
+
+    fn shy(&self) -> Shy {
+        Shy {
+            layers: self.shy.clone(),
+            hide: self.hide_shy,
         }
     }
 
@@ -144,6 +160,8 @@ struct Inner {
     /// `current` をまだ書いていない。
     dirty: bool,
     target: Option<Target>,
+    /// Shy の印と隠すかどうか。
+    shy: Shy,
 }
 
 /// 表示の状態の置き場所。描画スレッドが置き、書くスレッドと自動試験が読む。
@@ -155,6 +173,8 @@ pub struct ViewSlot {
     writing: Mutex<()>,
     /// 書くスレッドを起こす。
     wake: Mutex<Option<Sender<()>>>,
+    /// Shy の状態を変えるたびに進む。
+    shy_serial: AtomicU64,
 }
 
 impl ViewSlot {
@@ -168,6 +188,11 @@ impl ViewSlot {
             inner.current = Some(state);
             inner.dirty = true;
         }
+        self.wake();
+    }
+
+    /// 書くスレッドを起こす。
+    fn wake(&self) {
         if let Some(tx) = self.wake.lock().expect("view wake").as_ref() {
             let _ = tx.send(());
         }
@@ -198,15 +223,18 @@ impl ViewSlot {
     /// まだ書いていない状態を書き先の中身に入れ、書くファイルの場所と中身を返す。書くものが無ければ `None`。
     fn take_dirty(&self) -> Option<(PathBuf, ViewFile)> {
         let mut inner = self.inner.lock().expect("view");
-        if !std::mem::take(&mut inner.dirty) {
+        if !inner.dirty {
             return None;
         }
+        // 表示の状態がまだ無ければ書かず、次に置かれたときに一緒に書く。
         let state = inner.current.clone()?;
+        inner.dirty = false;
+        let shy = inner.shy.clone();
         let target = inner.target.as_mut()?;
         target
             .file
             .timelines
-            .insert(target.comp.clone(), TimelineView::of(&state));
+            .insert(target.comp.clone(), TimelineView::of(&state, &shy));
         target.file.version = VERSION;
         Some((target.path.clone(), target.file.clone()))
     }
@@ -221,9 +249,16 @@ pub fn open(shared: &Arc<Shared>, project: &Path, comp: &CompositionId, read_onl
         .timelines
         .get(comp.as_str())
         .and_then(TimelineView::state);
+    let shy = file
+        .timelines
+        .get(comp.as_str())
+        .map(TimelineView::shy)
+        .unwrap_or_default();
     {
         let mut inner = shared.view.inner.lock().expect("view");
         inner.current = current;
+        inner.shy = shy;
+        shared.view.shy_serial.fetch_add(1, Ordering::SeqCst);
         inner.target = (!read_only).then(|| Target {
             path,
             comp: comp.to_string(),
@@ -287,6 +322,10 @@ fn write(path: &Path, file: &ViewFile) -> std::io::Result<()> {
     std::fs::write(&tmp, text)?;
     std::fs::rename(&tmp, path)
 }
+
+mod shy;
+
+pub use shy::Shy;
 
 #[cfg(test)]
 mod tests;
