@@ -181,7 +181,7 @@
 
   const showSource = (s) => {
     source = s;
-    const options = s.assets.map((a) => el("option", { value: a.id, textContent: `${a.id} (${fmt(a.duration)})` }));
+    const options = s.assets.map((a) => el("option", { value: a.id, textContent: `${a.name} (${fmt(a.duration)})` }));
     ui.srcSelect.replaceChildren(el("option", { value: "", textContent: "Choose a clip…" }), ...options);
     ui.srcSelect.value = s.asset ?? "";
     ui.srcTc.textContent = fmt(s.t);
