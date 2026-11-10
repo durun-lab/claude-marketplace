@@ -8,7 +8,7 @@ import { useCollapsed } from './hooks.ts';
 import { ARROW_STEP, arrangeSessions, gatherAfter, moveTo } from './order.ts';
 import { href } from './router.ts';
 import { WORKFLOW_ICON } from './Workflow.tsx';
-import { Chip, Empty, IssueChip, JiraChips, PinIcon, PrChips, StatusBadge, StatusCounts, Time } from './ui.tsx';
+import { Chip, Empty, IssueChip, JiraChips, PinIcon, PrChips, StatusBadge, StatusCounts, StatusDot, Time } from './ui.tsx';
 
 const UNCLASSIFIED = '未分類';
 // テーマの名前は空にならない（空のテーマは未分類にまとめる）ので、空の名前をピン留めのまとまりに使う。
@@ -112,20 +112,12 @@ const toggleWhileSelecting = (e: MouseEvent, s: Session, sel: Selection): void =
   sel.toggle([s.id], !sel.selected.has(s.id));
 };
 
-/** 子セッションを畳むボタン。count は子の数。 */
-type Fold = { count: number; open: boolean; toggle: () => void };
-
-const SessionCard = ({ s, sel, dragging, drag, fold }: { s: Session; sel: Selection; dragging: boolean; drag: DragHandlers; fold?: Fold }) => {
+const SessionCard = ({ s, sel, dragging, drag }: { s: Session; sel: Selection; dragging: boolean; drag: DragHandlers }) => {
   const drafting = hasDraft(s.id);
   return (
     <article class={`card session-card is-${s.status}${drafting ? ' has-draft' : ''}${dragging ? ' is-dragging' : ''}`} draggable {...drag}>
       <header class="card-head">
         <SelectBox ids={[s.id]} sel={sel} label={`${s.name} を選ぶ`} />
-        {fold && (
-          <button type="button" class="fold" aria-expanded={fold.open} title={`子セッション ${fold.count} 件を${fold.open ? '畳む' : '開く'}`} onClick={fold.toggle}>
-            {fold.open ? '▾' : '▸'} {fold.count}
-          </button>
-        )}
         <StatusBadge status={s.status} waitingFor={s.waitingFor} />
         {drafting && <Chip tone="info" title="チャットに送っていない書きかけのメッセージがある">✎ 入力中</Chip>}
         <h3 class="card-title"><a class="stretched" href={href.session(s.id)} onClick={(e) => toggleWhileSelecting(e, s, sel)}>{s.name}</a></h3>
@@ -397,8 +389,11 @@ const useThemeOrder = (themes: string[]) => {
   return { themes: order, dragging, headDrag, listDrop };
 };
 
-/** 子のあるカードは、子を一段下げてその下に並べ、畳めるようにする。all はまとまりのセッションで、並びはその順に従う。 */
-const Tree = ({ roots, all, render, folded }: { roots: Session[]; all: Session[]; render: (s: Session, fold?: Fold) => JSX.Element; folded: ReturnType<typeof useCollapsed> }) => (
+/**
+ * 子のあるカードは、子を一段下げてその下に並べる。親のカードの下のボタンで畳むと、子は名前と更新時刻だけを小さく並べる。
+ * all はまとまりのセッションで、並びはその順に従う。
+ */
+const Tree = ({ roots, all, render, folded }: { roots: Session[]; all: Session[]; render: (s: Session) => JSX.Element; folded: ReturnType<typeof useCollapsed> }) => (
   <>
     {roots.map((s) => {
       const children = all.filter((c) => c.parent === s.id);
@@ -406,8 +401,25 @@ const Tree = ({ roots, all, render, folded }: { roots: Session[]; all: Session[]
       const open = !folded.collapsed.has(s.id);
       return (
         <Fragment key={s.id}>
-          {render(s, { count: children.length, open, toggle: () => folded.toggle(s.id, !open) })}
-          {open && <div class="cards session-children"><Tree roots={children} all={all} render={render} folded={folded} /></div>}
+          {render(s)}
+          <div class="session-children">
+            <button type="button" class="fold" aria-expanded={open} onClick={() => folded.toggle(s.id, !open)}>
+              {open ? '▾' : '▸'} 子セッション {children.length} 件
+            </button>
+            {open ? (
+              <div class="cards"><Tree roots={children} all={all} render={render} folded={folded} /></div>
+            ) : (
+              <ul class="child-list">
+                {children.map((c) => (
+                  <li key={c.id}>
+                    <StatusDot status={c.status} waitingFor={c.waitingFor} />
+                    <a href={href.session(c.id)}>{c.name}</a>
+                    <span class="muted nowrap"><Time at={c.updatedAt} /></span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </Fragment>
       );
     })}
@@ -435,7 +447,7 @@ export const ThemeGroups = ({ snapshot, sel }: { snapshot: Snapshot; sel: Select
             </h3>
           </summary>
           <div class="cards">
-            {g.sessions.length > 0 && <Tree roots={rootsOf(g.sessions)} all={g.sessions} render={(s, fold) => <SessionCard key={s.id} s={s} sel={sel} dragging={carried.has(s.id)} drag={dragOf(s, g.theme)} fold={fold} />} folded={folded} />}
+            {g.sessions.length > 0 && <Tree roots={rootsOf(g.sessions)} all={g.sessions} render={(s) => <SessionCard key={s.id} s={s} sel={sel} dragging={carried.has(s.id)} drag={dragOf(s, g.theme)} />} folded={folded} />}
           </div>
         </details>
       ))}

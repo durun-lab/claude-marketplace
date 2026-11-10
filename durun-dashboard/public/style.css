@@ -2028,7 +2028,11 @@ table.data { width: 100%; border-collapse: collapse; }
 .workflow-number { width: 4em; }
 .workflow-prompt { min-height: 160px; resize: vertical; font-family: inherit; }
 /* start_session で起動した子セッションは、親のカードの下に一段下げて並べる。 */
-.session-children { margin-left: 24px; padding-left: 10px; border-left: 2px solid var(--border); }
-.fold { position: relative; z-index: 1; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; background: none; color: var(--muted); font: inherit; cursor: pointer; }
+.session-children { display: grid; gap: 6px; margin-left: 24px; padding-left: 10px; border-left: 2px solid var(--border); }
+.fold { justify-self: start; padding: 0 6px; border: 1px solid var(--border); border-radius: 4px; background: none; color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
 .fold:hover { color: var(--text); }
+/* 畳んだ子セッションは、丸と名前と更新時刻だけを小さく並べる。 */
+.child-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; font-size: 12px; }
+.child-list li { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.child-list a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .family a + a { margin-left: 10px; }
