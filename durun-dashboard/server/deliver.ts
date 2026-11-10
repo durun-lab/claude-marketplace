@@ -141,18 +141,19 @@ const modelFlags = (model?: string, effort?: string, permissionMode?: string): s
 /**
  * 人間が画面から始めるセッション。依頼が - で始まる箇条書きでもオプションと解釈されないよう、-- の後に置く。
  * model と effort が空なら Claude Code の設定に従う。
- * theme を渡すと、起動したセッションに付ける。
+ * theme を渡すと、起動したセッションに付ける。parent を渡すと、そのセッションの子として記録する。
  */
-export const startSession = async (cwd: string, prompt: string, model?: string, effort?: string, theme?: string): Promise<void> => {
+export const startSession = async (cwd: string, prompt: string, model?: string, effort?: string, theme?: string, parent?: string): Promise<void> => {
   const output = await claudeOutput(['--bg', ...modelFlags(model, effort), '--', prompt], cwd);
   // 空のテーマを付けると、リポジトリ名にならず未分類になる。
-  if (!theme) return;
-  // 起動は済んでいるので、テーマを付けられなくても失敗にしない。
+  const known = parent && state.sessions[parent] ? parent : undefined;
+  if (!theme && !known) return;
+  // 起動は済んでいるので、テーマや親を付けられなくても失敗にしない。
   try {
-    (await trackedSession(output, cwd)).theme = theme;
+    Object.assign(await trackedSession(output, cwd), theme ? { theme } : {}, known ? { parent: known } : {});
     touch();
   } catch (e) {
-    console.error(`起動したセッションにテーマを付けられません: ${(e as Error).message}`);
+    console.error(`起動したセッションにテーマや親を付けられません: ${(e as Error).message}`);
   }
 };
 
