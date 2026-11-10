@@ -160,7 +160,7 @@ const fakeCommands = (table: UiCommand[]) => {
 };
 
 const TABLE = [
-  command("clip.split", { name: "Split Clip", key_label: "B" }),
+  command("clip.split", { name: "Split Clip", key_label: "Ctrl+B" }),
   command("export.start", { name: "Export…", panel: "deliver" }),
   command("media.import", { name: "Import Media…", panel: "media" }),
 ];
@@ -384,7 +384,7 @@ describe("Shell と UI のコマンドの表", () => {
     const { api } = fakeCommands(TABLE);
     act(() => render(<Shell sendOp={vi.fn()} commands={api} />, host));
     await settle();
-    expect(taskLink("Split at playhead")?.getAttribute("title")).toBe("Split Clip (B)");
+    expect(taskLink("Split at playhead")?.getAttribute("title")).toBe("Split Clip (Ctrl+B)");
     click(taskLink("Split at playhead"));
     await settle();
     expect(api.run).toHaveBeenCalledWith("clip.split");
