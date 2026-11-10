@@ -468,3 +468,14 @@ describe("Shell", () => {
     expect(host.querySelector('.mm-shell-right [aria-label="opacity"]')).not.toBeNull();
   });
 });
+
+describe("Shell と Timeline のキーフレームの行", () => {
+  it("選択のイベントの、キーフレームの行で選んだパラメータを Inspector と Graph で選ぶ", () => {
+    act(() => render(<Shell sendOp={vi.fn()} />, host));
+    act(() => {
+      const detail = { layer, param: { path: "opacity", serial: 1 } };
+      window.dispatchEvent(new CustomEvent(LAYER_SELECTED_EVENT, { detail }));
+    });
+    expect(host.querySelector(".mm-shell-right .mm-graph-title")?.textContent).toBe("Graph: opacity");
+  });
+});

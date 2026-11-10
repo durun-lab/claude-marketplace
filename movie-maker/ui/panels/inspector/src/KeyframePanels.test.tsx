@@ -48,6 +48,23 @@ describe("KeyframePanels", () => {
     expect(host.querySelector(".mm-graph-title")?.textContent).toBe("Graph: opacity");
     expect(host.querySelectorAll(".mm-graph-key")).toHaveLength(2);
   });
+
+  it("Timeline のキーフレームの行で選んだパラメータを Inspector と Graph で選び、選び直すたびに従う", () => {
+    const show = (serial: number) =>
+      act(() => render(<KeyframePanels layer={layer} param={{ path: "opacity", serial }} onOp={vi.fn()} />, host));
+    const selected = () => host.querySelector('.mm-insp-row[data-selected="true"]');
+    show(1);
+    expect(host.querySelector(".mm-graph-title")?.textContent).toBe("Graph: opacity");
+    expect(selected()?.querySelector(".mm-insp-label")?.textContent).toContain("opacity");
+    const scale = [...host.querySelectorAll<HTMLButtonElement>(".mm-insp-pick")].find((b) => b.textContent?.includes("scale"));
+    act(() => scale?.click());
+    expect(host.querySelector(".mm-graph-title")?.textContent).toBe("Graph: scale");
+    show(1);
+    const kept = host.querySelector(".mm-graph-title")?.textContent;
+    expect(kept, "同じ選択が送り直されても Inspector で選んだものを保つ").toBe("Graph: scale");
+    show(2);
+    expect(host.querySelector(".mm-graph-title")?.textContent).toBe("Graph: opacity");
+  });
 });
 
 describe("KeyframePanels の入力中の入力欄", () => {

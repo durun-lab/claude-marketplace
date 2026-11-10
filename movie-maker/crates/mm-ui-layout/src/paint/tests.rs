@@ -29,6 +29,7 @@ pub(crate) fn state(playhead: f64) -> PaintState {
         preview: None,
         drag_tooltip: None,
         header_drop: None,
+        keyframe_rows: KeyframeRowState::default(),
         palette: Palette::DEFAULT,
     }
 }
