@@ -436,6 +436,10 @@ mod tests {
         assert!(slot.newer_than(f.serial).is_none());
         slot.put(0.6, img, 2);
         let next = slot.newer_than(f.serial).expect("次");
-        assert_eq!((next.serial, next.pending), (2, 2), "描かなかったレイヤーの数も渡す");
+        assert_eq!(
+            (next.serial, next.pending),
+            (2, 2),
+            "描かなかったレイヤーの数も渡す"
+        );
     }
 }
