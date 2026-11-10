@@ -80,10 +80,12 @@ impl ToolbarController {
                 self.hover = None;
                 Vec::new()
             }
-            // ホイール、キーとメニューのコマンド、スナップのキーは Timeline だけに効く。
-            PointerEvent::Wheel { .. } | PointerEvent::Command(_) | PointerEvent::SnapKeyUp => {
-                Vec::new()
-            }
+            // ホイール、キーとメニューのコマンド、スナップのキー、右クリックのメニューは Timeline だけに効く。
+            PointerEvent::Wheel { .. }
+            | PointerEvent::Command(_)
+            | PointerEvent::SnapKeyUp
+            | PointerEvent::ContextMenu { .. }
+            | PointerEvent::ContextMenuKey => Vec::new(),
         }
     }
 

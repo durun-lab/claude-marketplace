@@ -26,6 +26,8 @@ pub enum EditAction {
     Overwrite,
     /// 再生位置でカットを割る。
     Split,
+    /// 右クリックした時刻で、選んだレイヤーのカットを割る（Split Clip Here）。
+    SplitHere,
     /// 選んだカットを隙間にする・抜いて詰める。
     Lift,
     Extract,
@@ -67,13 +69,23 @@ pub fn plan_and_apply(shared: &Shared, action: EditAction) -> Result<(), String>
         .composition(&doc.comp)
         .map_err(|e| e.to_string())?;
     let layer = shared.selected_layer();
-    let cut = shared.edit.selected_cut();
+    // Split Clip Here は右クリックした時刻の、選んだレイヤーのカットを割る（選んだカットは見ない）。
+    let here = (action == EditAction::SplitHere).then(|| shared.context.time());
+    let cut = if here.is_some() {
+        None
+    } else {
+        shared.edit.selected_cut()
+    };
+    let playhead = match here {
+        Some(time) => time.ok_or("Right-click a clip to split it there")?,
+        None => shared.playhead(),
+    };
     let ctx = Ctx {
         project: &doc.project,
         comp,
         layer: layer.as_deref(),
         cut: cut.as_deref(),
-        playhead: shared.playhead(),
+        playhead,
     };
     let planned = plan_action(shared, &ctx, action)?;
     edit::submit_based(shared, planned.ops, doc.version)?;
@@ -93,7 +105,7 @@ fn plan_action(shared: &Shared, ctx: &Ctx<'_>, action: EditAction) -> Result<Pla
         EditAction::MarkIn | EditAction::MarkOut => mark(shared, action == EditAction::MarkIn),
         EditAction::Insert => plan::plan_insert(ctx, &source_range(shared, ctx)?, new_id()),
         EditAction::Overwrite => plan::plan_overwrite(ctx, &source_range(shared, ctx)?, new_id()),
-        EditAction::Split => plan::plan_split(ctx, new_id()),
+        EditAction::Split | EditAction::SplitHere => plan::plan_split(ctx, new_id()),
         EditAction::Lift => plan::plan_lift(ctx),
         EditAction::Extract => plan::plan_extract(ctx),
         EditAction::Undo | EditAction::Redo => Err("History actions are not planned".into()),

@@ -297,7 +297,7 @@ Z2 で決めたこと（新しく設計したもの）:
 
 ### 右クリックのメニュー
 
-サーフェスの右クリックで、当たった所に合わせたメニューをネイティブのポップアップで出す。Tauri の `Window::popup_menu_at`（muda が `TrackPopupMenu` を呼ぶ [125]）で出し、メニューバーと同じ `on_menu_event` で受ける〔推。D3 で確かめる〕。項目はコマンドの表から作り、キーを右に出す。当たり判定の結果は描画のスレッドの `TimelineController` が持つので、右クリックを受ける UI のスレッドから引ける形にする。
+サーフェスの右クリックで、当たった所に合わせたメニューをネイティブのポップアップで出す。Tauri の `Window::popup_menu_at`（muda が `TrackPopupMenu` を呼ぶ [125]）で出し、メニューバーと同じ `on_menu_event` で受ける〔推。D3 で確かめた。下の「D3 が決めた形」〕。項目はコマンドの表から作り、キーを右に出す。当たり判定の結果は描画のスレッドの `TimelineController` が持つので、右クリックを受ける UI のスレッドから引ける形にする。
 
 | 当たった所 | 項目 |
 |---|---|
@@ -305,6 +305,17 @@ Z2 で決めたこと（新しく設計したもの）:
 | レイヤーの帯とレイヤーの見出し | Enable Layer、Lock Layer、Shy、Bring Forward、Send Backward、Track Height、Show Keyframe Editor |
 | 目盛り | Full Extent Zoom（マーカーの追加は後） |
 | 空き | Full Extent Zoom、Snapping |
+
+D3 が決めた形（先例）: 右クリックで、ポインターの下のカットとレイヤーを先に選んでからメニューを出す。メニューの項目が選んだものに効く Premiere と Resolve の Timeline と同じ形で、右クリックしたものと項目の対象がずれない。目盛りと空きでは選択を変えない（今の選択に効くメニューを出す）。ネイティブのポップアップを `Window::popup_menu_at` で出し、選んだ項目を `on_menu_event` で受ける形は動いた。`--play-test` が本物のポップアップ（`TrackPopupMenu`）をカットの右クリックで出し、キーで Split Clip Here を選ぶと、メニューバーと同じ道でカットが割れ、ポップアップが閉じる（2026-11-10）。メニューが出ている間も、ウィンドウのスレッドは止まらない。
+
+D3 が決めた形（新規設計。先例が解消しない所）:
+
+- 当たった所は `mm-ui-layout` の `Place`（Cut、Layer、Header、Ruler、Empty）1 つの型で持ち、当たり判定の結果（`Hit`）から `Place::of` で引く。右クリックの流れは、サーフェスの `WM_CONTEXTMENU`（右クリックとメニューキー）→ `context_menu::requested` が `PointerEvent::ContextMenu` か `ContextMenuKey` にしてポインターの入力のキューへ → 描画スレッドの `TimelineController` が当たり判定と選択を行い `Action::ContextMenu { place, time, at }` を返す → `context_menu::on_action` がウィンドウのフック（`Forward::ContextMenu`）でメインスレッドに頼み、ポップアップを出す。`surface.rs` には振り分けの `WM_CONTEXTMENU` の 1 つの腕だけを足した。カーソル、ツールチップ、ステータスバー（Z5）が「ポインターの下の部品」を UI のスレッドに渡すときは、同じ `Place` に足し（部品を細かく分けるなら `Hit` の側）、`Place::of` を通す。UI のスレッドから引く入口を 2 つ作らず、Z5 が後から入るならこの型と入口に寄せる。D3 はホバーを UI のスレッドへ公開しない（右クリックは押した点で当たり判定をその場で行い、選択と順序が決まるため）。
+- 右クリックの時刻（Split Clip Here の割る時刻）は、Blade と同じ規則で出す。ポインターの時刻をフレームにそろえ、Snapping が入なら再生位置に吸い付ける。`ContextSlot` が右クリックの時刻を次の左クリックまで持ち、Split Clip Here は選んだレイヤーのその時刻のカットを割る（選んだカットは見ない）。右クリックしていなければ押せない。
+- メニューキー（Shift+F10、アプリケーションキー）は、選んでいるカット、レイヤーの順にその位置で出し、何も選んでいなければ再生位置の下の空きに出す。時刻は再生位置がカットかレイヤーの中ならそれ、外なら中央。OS が送る `WM_CONTEXTMENU`（lParam は -1）を受けるので、サーフェスはキーを既定のウィンドウプロシージャに渡したままにする。キーのメッセージを投げても OS は `WM_CONTEXTMENU` にしないので、`--play-test` は `WM_CONTEXTMENU` を直に投げる。実機のキーでの確かめは手で行う。
+- 並びは `menu.rs` の `context_groups`（当たった所ごとのコマンドの ID のグループ。メニューバーの `BAR` と同じ形）で持ち、同じ `menu::lines` と `menu::items` で作る。見出しと帯は同じ並び。コマンドの表に足したのは、`clip.split_here`（Split Clip Here）と、選んだレイヤーの `layer.toggle_enabled`（Enable Layer）、`layer.toggle_lock`（Lock Layer）、`layer.bring_forward`（Bring Forward）、`layer.send_backward`（Send Backward）。Enable Layer と Lock Layer は今の状態をチェックで出し、Bring Forward は先頭、Send Backward は最後のレイヤーでは押せない。重ねの順は `moveLayer` の位置（下から数える）の ±1 で、Timeline では 1 行ずつ上下する。メニューバーの項目にはせず、Keyboard Shortcuts のウィンドウでは Other に並ぶ。Shy は既存の Shy Selected Layers。Show Keyframe Editor（K2）と Track Height（L3）はコマンドが表に入るとメニューに出る（並びに置いてある）。
+- キーフレームの行（K2、#226）が main に入ったら、ひし形の右クリックに Delete Keyframe などを足す（`Place` に足す）。D3 は入れていない。
+- ポップアップは項目の押せるかとチェックを、出す時点の表から作る（出すたびに作り直し、メニューバーのように後から反映しない）。選んだ項目は `menu::run` でコマンドを実行する。
 
 ### 空の状態
 

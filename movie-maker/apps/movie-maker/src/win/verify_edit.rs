@@ -23,6 +23,7 @@ use crate::win::verify_first_insert;
 use crate::win::verify_place::{placement, Placement};
 use crate::win::verify_stage::{checkpoint, wait_until};
 
+mod context;
 mod header;
 pub(super) mod tools;
 mod trim;
@@ -421,4 +422,5 @@ fn sequence_steps(env: &Env<'_>, log: &mut Log) {
     trim_step(env, log);
     snap_step(env, log);
     tools::run(env, log);
+    context::run(env, log);
 }

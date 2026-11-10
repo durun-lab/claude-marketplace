@@ -32,6 +32,8 @@ pub enum Owner {
 pub enum Action {
     /// 名前のついた編集。編集のキューで計画して適用する。
     Edit(EditAction),
+    /// 選んだレイヤーのコマンド（有効、ロック、重なりの順）。操作にして編集のキューで適用する。
+    Layer(LayerCommand),
     /// 再生のコマンド。Source を最後にクリックしていれば Source の、そうでなければ Program の再生に向く。
     Playback(Command),
     /// Shy のコマンド。表示の状態を変えるだけで、操作にならない。
@@ -99,6 +101,10 @@ struct Ready {
     tool: Tool,
     /// Shy の行を隠すかどうか（表示の状態）と、選んでいるレイヤーの Shy のフラグ。
     shy: shy::ShyReady,
+    /// 選んでいるレイヤーの有効とロックと並び。
+    layer: layer::LayerReady,
+    /// 右クリックのメニューを出している。Split Clip Here は右クリックした時刻で割る。
+    context: bool,
 }
 
 impl Ready {
@@ -115,22 +121,29 @@ impl Ready {
             snapping: shared.view.snapping(),
             tool: *shared.tool.lock().expect("tool"),
             shy: shy::ShyReady::of(shared),
+            layer: layer::LayerReady::of(shared),
+            context: shared.context.time().is_some(),
         }
     }
 
     fn state(&self, spec: &Spec) -> State {
-        use EditAction::{ClearInOut, Extract, Insert, Lift, MarkIn, MarkOut, Overwrite, Split};
+        use EditAction::{
+            ClearInOut, Extract, Insert, Lift, MarkIn, MarkOut, Overwrite, Split, SplitHere,
+        };
         let enabled = match spec.owner {
             Owner::App(Action::Edit(ClearInOut | MarkIn | MarkOut)) => self.source_open,
             // シーケンスのレイヤーが無ければ作って入れるので、Source の範囲だけで押せる。
             Owner::App(Action::Edit(Insert | Overwrite)) => self.source_open,
             Owner::App(Action::Edit(Split)) => self.sequence,
+            Owner::App(Action::Edit(SplitHere)) => self.sequence && self.context,
             Owner::App(Action::Edit(Lift | Extract)) => self.cut_selected,
             Owner::App(Action::Shy(command)) => self.shy.enabled(command),
+            Owner::App(Action::Layer(command)) => self.layer.enabled(command),
             Owner::App(_) | Owner::Panel(_) => true,
         };
         let checked = match spec.owner {
             Owner::App(Action::Shy(command)) => self.shy.checked(command),
+            Owner::App(Action::Layer(command)) => self.layer.checked(command),
             Owner::App(Action::Timeline(TimelineCommand::ToggleSnapping)) => Some(self.snapping),
             Owner::App(Action::Timeline(command)) => tool_of(command).map(|tool| tool == self.tool),
             Owner::App(_) | Owner::Panel(_) => None,
@@ -261,6 +274,7 @@ fn execute(shared: &Arc<Shared>, spec: &'static Spec) -> Result<(), String> {
         Owner::App(Action::Edit(action)) => edit_actions::run(shared, action),
         Owner::App(Action::Playback(command)) => play(shared, command),
         Owner::App(Action::Shy(command)) => shy::run(shared, command),
+        Owner::App(Action::Layer(command)) => layer::run(shared, command),
         Owner::App(Action::Timeline(command)) => {
             timeline_input(shared, PointerEvent::Command(command));
         }
@@ -281,10 +295,12 @@ fn play(shared: &Shared, command: Command) {
     }
 }
 
+mod layer;
 mod shy;
 mod table;
 mod window_hook;
 
+pub use layer::LayerCommand;
 pub use shy::ShyCommand;
 pub use table::TABLE;
 pub use window_hook::{Forward, WindowHook};

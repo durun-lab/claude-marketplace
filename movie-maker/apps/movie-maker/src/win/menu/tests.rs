@@ -10,8 +10,17 @@ use crate::win::playback::Command;
 use crate::win::sequence_edit::tests::sample_project;
 
 /// メニューバーに出さないコマンド。Stop は Play / Stop と J/K/L のキーで足り、Choose Render Target… は
-/// Deliver のパネルの中の操作なので Tasks の項目から呼ぶ。
-const NOT_IN_MENUS: &[&str] = &["export.choose_target", "playback.stop"];
+/// Deliver のパネルの中の操作なので Tasks の項目から呼ぶ。Split Clip Here と選んだレイヤーのコマンドは、右クリックで
+/// 選んだものに効くので、右クリックのメニューだけに置く。
+const NOT_IN_MENUS: &[&str] = &[
+    "clip.split_here",
+    "export.choose_target",
+    "layer.bring_forward",
+    "layer.send_backward",
+    "layer.toggle_enabled",
+    "layer.toggle_lock",
+    "playback.stop",
+];
 
 /// 項目と区切り線を、項目の文字と `-` にする。
 fn texts(lines: &[Line]) -> Vec<String> {

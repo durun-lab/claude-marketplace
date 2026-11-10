@@ -56,7 +56,7 @@ impl TimelineController {
 
     /// x の下の時刻を、Snapping が入なら再生位置に吸い付け、いちばん近いフレームの先頭にそろえた割る時刻と、
     /// 再生位置に吸い付いたか。
-    fn blade_time(&self, x: f32, model: &TimelineModel, playhead: f64) -> (f64, bool) {
+    pub(super) fn blade_time(&self, x: f32, model: &TimelineModel, playhead: f64) -> (f64, bool) {
         let t = self.viewport().t_of(x);
         let near = std::iter::once(SnapTarget {
             time: playhead,

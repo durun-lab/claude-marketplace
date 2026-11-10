@@ -181,6 +181,8 @@ pub struct Shared {
     pub toolbar_names: Mutex<ToolbarNames>,
     /// Timeline の今のツール。描画スレッドが置く。コマンドの表のチェックの状態に出す。履歴にも `.mm/view.json` にも残さない。
     pub tool: Mutex<Tool>,
+    /// サーフェスの右クリックのメニューの状態（右クリックした時刻、出したメニューの記録）。
+    pub context: crate::win::context_menu::ContextSlot,
 }
 
 impl Shared {
@@ -223,6 +225,7 @@ impl Shared {
             view: crate::win::view_state::ViewSlot::default(),
             toolbar_names: Mutex::new(ToolbarNames::default()),
             tool: Mutex::new(Tool::default()),
+            context: crate::win::context_menu::ContextSlot::default(),
         }
     }
 

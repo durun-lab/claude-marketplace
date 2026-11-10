@@ -18,6 +18,7 @@ use super::tools;
 use super::transport::{self, Seeks, TransportSync};
 use super::waves::{WaveSync, WaveWanted};
 use super::View;
+use crate::win::context_menu;
 use crate::win::review::drawing::DrawingSync;
 use crate::win::sequence_edit::{gesture_op, header_button_op, move_layer_op, TimelineIds};
 use crate::win::state::{FrameImage, OpenDoc, Shared};
@@ -196,6 +197,7 @@ pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
     for ev in events {
         if let PointerEvent::Down { x, y, .. } = ev {
             focus_viewer(shared, ui.region_at(x, y));
+            shared.context.clear_time();
         }
         for action in ui.transport_pointer(ev) {
             match action {
@@ -229,6 +231,9 @@ pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
                     apply_move_layer(shared, doc, from, boundary)
                 }
                 Action::Split { item, time } => tools::apply_split(shared, doc, item, time),
+                Action::ContextMenu { place, time, at } => {
+                    context_menu::on_action(shared, place, time, at);
+                }
             }
         }
     }

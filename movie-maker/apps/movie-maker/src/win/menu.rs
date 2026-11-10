@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use mm_ui_layout::Place;
 use serde::{Serialize, Serializer};
 use tauri::menu::{
     CheckMenuItem, IsMenuItem, Menu as NativeMenu, MenuItem, PredefinedMenuItem, Submenu,
@@ -12,6 +13,7 @@ use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, SC_KEYMENU, WM_SYSCOMMAND};
 
 use crate::win::commands::{self, CommandView, Forward, State, WindowAction, PANEL_COMMAND_EVENT};
+use crate::win::context_menu;
 use crate::win::shortcuts_window;
 use crate::win::state::Shared;
 
@@ -143,6 +145,32 @@ pub static BAR: &[(Menu, Groups)] = &[
         &[&["app.show_keyboard_shortcuts"], &["app.show_about"]],
     ),
 ];
+
+/// サーフェスの右クリックのメニューの並び。当たった所ごとに、メニューバーと同じ形（区切り線で分けたコマンドの ID のグループ）で
+/// 持つ。表に無い ID はスキップするので、後の PR が表にコマンドを足すと出る（Show Keyframe Editor と Track Height）。
+pub fn context_groups(place: Place) -> Groups {
+    match place {
+        Place::Cut => &[
+            &["clip.split_here"],
+            &["clip.lift", "clip.extract"],
+            &["timeline.show_keyframe_editor"],
+        ],
+        Place::Layer | Place::Header => &[
+            &[
+                "layer.toggle_enabled",
+                "layer.toggle_lock",
+                "timeline.shy_selected_layers",
+            ],
+            &["layer.bring_forward", "layer.send_backward"],
+            &["timeline.track_height", "timeline.show_keyframe_editor"],
+        ],
+        Place::Ruler => &[&["timeline.full_extent_zoom"]],
+        Place::Empty => &[
+            &["timeline.full_extent_zoom"],
+            &["timeline.toggle_snapping"],
+        ],
+    }
+}
 
 /// メニューの項目か区切り線の 1 つ。
 #[derive(Debug, PartialEq)]
@@ -276,6 +304,13 @@ pub fn items(app: &AppHandle, lines: &[Line]) -> tauri::Result<Vec<Item>> {
     lines.iter().map(|line| Item::new(app, line)).collect()
 }
 
+/// 項目と区切り線の並びから右クリックのメニューを作る。出すたびに作り直すので、押せるかとチェックの状態は作るときの表のもの。
+pub fn context_menu(app: &AppHandle, lines: &[Line]) -> tauri::Result<NativeMenu<Wry>> {
+    let items = items(app, lines)?;
+    let natives: Vec<&dyn IsMenuItem<Wry>> = items.iter().map(Item::native).collect();
+    NativeMenu::with_items(app, &natives)
+}
+
 /// メニューバーに出すメニューと、その項目と区切り線。項目の無いメニューは開いても何もできないので出さず、
 /// 後の PR が表にコマンドを足すと出る。
 pub fn shown(table: &[CommandView]) -> Vec<(Menu, Vec<Line<'_>>)> {
@@ -308,6 +343,7 @@ pub fn connect(app: &App, window: &Window, shared: &Arc<Shared>, bar: MenuBar) {
     window.on_menu_event(move |_, event| run(&on_menu, event.id().as_ref()));
     let handle = app.handle().clone();
     let target = window.clone();
+    let for_context = shared.clone();
     shared.window_hook.set(move |forward| match forward {
         Forward::Panel(id) => {
             let _ = handle.emit(PANEL_COMMAND_EVENT, id);
@@ -320,6 +356,9 @@ pub fn connect(app: &App, window: &Window, shared: &Arc<Shared>, bar: MenuBar) {
             shortcuts_window::open(&handle, &target);
         }
         Forward::MenuKey(c) => open_by_access_key(&target, c),
+        Forward::ContextMenu(place, at) => {
+            context_menu::show(&handle, &target, &for_context, place, at);
+        }
     });
 }
 
