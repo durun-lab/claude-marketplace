@@ -464,6 +464,10 @@ if (args[0] === '--bg') console.log('backgrounded · ' + (args.at(-1) === 'lost'
   await startSession(tmp, '依頼', undefined, undefined, '起動時のテーマ');
   assert.deepEqual([state.sessions.s20?.cwd, state.sessions.s20?.theme], [tmp, '起動時のテーマ']);
 
+  ensureSession('p20', tmp);
+  await startSession(tmp, '依頼', undefined, undefined, undefined, 'p20');
+  assert.equal(state.sessions.s20?.parent, 'p20');
+
   const before = Object.keys(state.sessions).length;
   await startSession(tmp, 'lost', undefined, undefined, '付かないテーマ');
   assert.equal(Object.keys(state.sessions).length, before);

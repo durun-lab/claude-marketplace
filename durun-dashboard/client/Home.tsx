@@ -72,8 +72,8 @@ const useSaved = (key: string, options?: readonly string[]) => {
 };
 
 // 新規セッションのウィンドウを開くときに、ディレクトリとテーマの欄へ入れる値。ウィンドウが開いていれば、入力欄へ直に渡す。
-// prompt は、起動できなかった最初の依頼を書き戻すときだけ渡す。
-type Preset = { cwd: string; theme: string; prompt?: string };
+// prompt は、起動できなかった最初の依頼を書き戻すときだけ渡す。parent は、セッションの画面から開いたときの、そのセッションの id。
+type Preset = { cwd: string; theme: string; prompt?: string; parent?: string };
 let presetOnOpen: Preset | undefined;
 const presetListeners = new Set<(preset: Preset) => void>();
 
@@ -84,6 +84,8 @@ const NewSession = ({ cwds, themes, sessions, onClose }: { cwds: string[]; theme
   // 前回のテーマを残すと、無関係なセッションまで同じテーマに入るので、保存しない。
   const [theme, setTheme] = useState('');
   const [prompt, setPrompt] = useState('');
+  const [parent, setParent] = useState<string>();
+  const [asChild, setAsChild] = useState(false);
   const [model, setModel] = useSaved('dashboard-new-session-model', MODELS);
   const [effort, setEffort] = useSaved('dashboard-new-session-effort', EFFORT_LEVELS);
   // セッションの画面から開いたときは、そのセッションの作業ディレクトリとテーマを入れる。開いている間にもう一度開かれたら、入れ直す。
@@ -94,6 +96,7 @@ const NewSession = ({ cwds, themes, sessions, onClose }: { cwds: string[]; theme
     const fill = (p: Preset) => {
       setCwd(p.cwd);
       setTheme(p.theme);
+      setParent(p.parent);
       if (p.prompt) setPrompt(p.prompt);
     };
     if (preset) fill(preset);
@@ -109,8 +112,9 @@ const NewSession = ({ cwds, themes, sessions, onClose }: { cwds: string[]; theme
   const start = async () => {
     if (!ready) return;
     onClose();
-    if (await attempt('セッションの起動', () => api.startSession(cwd.trim(), prompt, model, effort, theme))) toast('セッションを起動しました');
-    else if (!presetListeners.size) openNewSession(cwd.trim(), theme, prompt);
+    const child = asChild ? parent : undefined;
+    if (await attempt('セッションの起動', () => api.startSession(cwd.trim(), prompt, model, effort, theme, child))) toast('セッションを起動しました');
+    else if (!presetListeners.size) openNewSession(cwd.trim(), theme, prompt, parent);
   };
   return (
     <div class="stack new-session">
@@ -133,6 +137,12 @@ const NewSession = ({ cwds, themes, sessions, onClose }: { cwds: string[]; theme
       <div class="actions">
         <Choice label="モデル" value={model} options={MODELS} onChange={setModel} />
         <Choice label="effort" value={effort} options={EFFORT_LEVELS} onChange={setEffort} />
+        {parent && (
+          <label class="inline-field">
+            <input type="checkbox" checked={asChild} onChange={(e) => setAsChild(e.currentTarget.checked)} />
+            子セッションとして開始
+          </label>
+        )}
       </div>
       <div class="actions">
         <span class="help">バックグラウンドで Claude Code を起動し、最初の依頼を渡します。</span>
@@ -153,21 +163,24 @@ const NEW_SESSION_SIZE = { w: 640, h: 333 };
 export const NEW_SESSION_TITLE = '新規セッション';
 export const NEW_SESSION_ICON = '/claude-new.svg';
 
-/** 新規セッションのウィンドウを開く。開いていれば手前に出す。cwd と theme と prompt を渡すと、ディレクトリとテーマと最初の依頼の欄にそれぞれ入れる。 */
-export const openNewSession = (cwd?: string, theme = '', prompt?: string): void => {
-  const preset = cwd ? { cwd, theme, prompt } : undefined;
+/**
+ * 新規セッションのウィンドウを開く。開いていれば手前に出す。cwd と theme と prompt を渡すと、ディレクトリとテーマと最初の依頼の欄にそれぞれ入れる。
+ * parent を渡すと、そのセッションの子として起動するチェックボックスを出す。
+ */
+export const openNewSession = (cwd?: string, theme = '', prompt?: string, parent?: string): void => {
+  const preset = cwd ? { cwd, theme, prompt, parent } : undefined;
   if (preset && presetListeners.size > 0) presetListeners.forEach((fn) => fn(preset));
   else presetOnOpen = preset;
   floatUp(NEW_SESSION_KEY, '', NEW_SESSION_TAB, NEW_SESSION_SIZE);
 };
 
 /** アプリ「新規セッション」のアイコン。cwd と theme は、セッションの画面に置いたときの、そのセッションの作業ディレクトリとテーマ。 */
-export const NewSessionIcon = ({ cwd, theme }: { cwd?: string; theme?: string }) => (
+export const NewSessionIcon = ({ cwd, theme, parent }: { cwd?: string; theme?: string; parent?: string }) => (
   <DesktopIcon
     icon={NEW_SESSION_ICON}
     title={NEW_SESSION_TITLE}
     hint={cwd ? `ダブルクリックで、${cwd} で始めるセッションの入力欄を開きます` : 'ダブルクリックで、新しいセッションの入力欄を開きます'}
-    onLaunch={() => openNewSession(cwd, theme)}
+    onLaunch={() => openNewSession(cwd, theme, undefined, parent)}
   />
 );
 

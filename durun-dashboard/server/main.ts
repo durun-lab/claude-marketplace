@@ -1056,8 +1056,8 @@ const newSession = (body: unknown): Promise<void> => {
   if (!path.isAbsolute(cwd) || !fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) {
     throw new HttpError(400, `ディレクトリがありません: ${cwd}`);
   }
-  const { theme } = body as { theme?: unknown };
-  return startSession(cwd, prompt, oneOf(body, 'model', MODELS), oneOf(body, 'effort', EFFORT_LEVELS), typeof theme === 'string' ? theme.trim() || undefined : undefined);
+  const { theme, parent } = body as { theme?: unknown; parent?: unknown };
+  return startSession(cwd, prompt, oneOf(body, 'model', MODELS), oneOf(body, 'effort', EFFORT_LEVELS), typeof theme === 'string' ? theme.trim() || undefined : undefined, typeof parent === 'string' ? parent : undefined);
 };
 
 const conversation = (id: string): Conversation => {
