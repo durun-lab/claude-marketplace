@@ -41,6 +41,7 @@ impl Ui {
 
     /// モデルか行の高さが変わったら、行の並びと Timeline の割り付けを作り直す。
     pub(super) fn relayout_rows(&mut self) {
+        self.waves.invalidate();
         self.controller
             .set_rows(Rows::of(&self.model.items, &self.heights));
         self.resize(self.size.0 as u32, self.size.1 as u32);

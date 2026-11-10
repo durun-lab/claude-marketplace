@@ -182,7 +182,9 @@ pub fn run() {
     // 書き手として開けなかった project.mmdb（別のプロセスが書き手）は、表示の状態も書かない。
     let read_only = opened.store.is_none() && mm_store::store_dir(&args.project).is_some();
     crate::win::view_state::open(&shared, &args.project, &comp_id, read_only);
-    let mobile_cache = media::project_cache_dir(&args.project).join("mobile");
+    let cache_dir = media::project_cache_dir(&args.project);
+    let mobile_cache = cache_dir.join("mobile");
+    let _ = shared.cache_dir.set(cache_dir);
     let server = start_serve(&shared, opened.store.take(), mobile_cache);
     if args.play_test.is_some() {
         shared.collect_series();
