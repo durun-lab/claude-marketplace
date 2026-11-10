@@ -1,7 +1,8 @@
-//! キーフレームの行の操作。キーフレームを押すと選び（レイヤーと、Inspector と Graph のパラメータも選ぶ）、ドラッグで動かし
-//! （離したときに 1 回の `moveKeyframe`。Esc で取りやめ）、Alt+クリックでその時刻に打ち（Resolve の Option+クリック）、
-//! Remove Keyframe（Delete）で外す。見出しのキーフレームの開閉と Show Keyframe Editor（U）で行を開閉し、
-//! Go to Previous / Next Keyframe（[ と ]）で再生位置を動かす。
+//! キーフレームの操作。帯のマーカーを押すとその時刻へ再生位置を動かす。キーフレームの行では、キーフレームを押すと選び
+//! （レイヤーと、Inspector と Graph のパラメータも選ぶ）、ドラッグで動かし（離したときに 1 回の `moveKeyframe`。
+//! Esc で取りやめ）、Alt+クリックでその時刻に打ち（Resolve の Option+クリック）、Remove Keyframe（Delete）で外す。
+//! 見出しのキーフレームの開閉と Show Keyframe Editor（U）で行を開閉し、Go to Previous / Next Keyframe（[ と ]）で
+//! 再生位置を動かす。
 //!
 //! 選んだキーフレームはレイヤーの ID、行の名前、時刻で持ち、操作の後にモデルが作り直されても同じキーフレームを指す。
 
@@ -124,6 +125,23 @@ impl TimelineController {
         if had.is_some() {
             out.push(Action::Keyframe(KeyframeAction::Select(None)));
         }
+        out
+    }
+
+    /// 帯のマーカーを押した。レイヤーを選び、再生位置をそのキーフレームの時刻へ動かす（ドラッグは始めない）。
+    pub(super) fn press_bar_mark(
+        &mut self,
+        (item, keyframe): (usize, usize),
+        had_cut: Option<(usize, usize)>,
+        model: &TimelineModel,
+    ) -> Vec<Action> {
+        self.selected = Some(item);
+        let t = model
+            .items
+            .get(item)
+            .and_then(|it| it.keyframes.get(keyframe));
+        let mut out = deselect_cut(Action::Select(Some(item)), had_cut);
+        out.extend(t.map(|t| Action::Seek(Self::seek_time(*t, model))));
         out
     }
 

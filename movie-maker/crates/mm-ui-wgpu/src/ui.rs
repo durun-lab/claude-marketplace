@@ -23,6 +23,7 @@ use crate::quads::QuadRenderer;
 use crate::text::{TextLayer, TextStats};
 use crate::thumbs::ThumbRenderer;
 
+mod selection;
 mod thumbs;
 mod toolbar;
 mod transport;
@@ -186,26 +187,6 @@ impl Ui {
     /// コンテンツハッシュ `content_hash` の素材のピークを置く。置くと、その素材の帯に波形が出る。
     pub fn set_wave(&mut self, content_hash: std::sync::Arc<str>, peaks: Peaks) {
         self.waves.insert(content_hash, peaks);
-    }
-
-    /// 選択を置く（`None` で外す）。添字は `TimelineModel::items` のもの。
-    pub fn select(&mut self, index: Option<usize>) {
-        self.controller.selected = index.filter(|i| *i < self.model.items.len());
-    }
-
-    /// 選んだカットを置く（`None` で外す）。添字は `TimelineModel::items` とそのカットのもの。
-    pub fn select_cut(&mut self, cut: Option<(usize, usize)>) {
-        self.controller.selected_cut = cut.filter(|(i, c)| {
-            self.model
-                .items
-                .get(*i)
-                .is_some_and(|item| *c < item.cuts.len())
-        });
-    }
-
-    /// キーフレームの行で選んだもの。モデルを作り直した後は、作り直したモデルで引き直したもの。
-    pub fn keyframe_pick(&self) -> Option<mm_ui_layout::RowPick> {
-        self.controller.keyframe_pick()
     }
 
     /// 再生位置（秒）。再生とキーで行の領域の端を越えたら、その向きへ 1 画面ずつ送る（`TimelineController::page_scroll`）。

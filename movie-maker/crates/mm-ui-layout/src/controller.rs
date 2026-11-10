@@ -6,6 +6,7 @@
 //! ドラッグから編集の操作と量を決める所は [`crate::gesture`]。操作の適用（`mm-ops`）はここの外で行う。
 //! 当たり判定と描画が同じ値を見るよう、割り付けと行の並びもここが持つ（[`TimelineController::viewport`]）。
 //! スナップの入/切とドラッグ中の反転、ドラッグ中のツールチップは `controller/snapping.rs`。
+//! 帯のマーカーとキーフレームの行の操作は `controller/keyframe_rows.rs`。
 
 mod command;
 mod zoom;
@@ -342,23 +343,6 @@ impl TimelineController {
                 deselect_cut(Action::Select(None), had_cut)
             }
         }
-    }
-
-    /// 帯のマーカーを押した。レイヤーを選び、再生位置をそのキーフレームの時刻へ動かす（ドラッグは始めない）。
-    fn press_bar_mark(
-        &mut self,
-        (item, keyframe): (usize, usize),
-        had_cut: Option<(usize, usize)>,
-        model: &TimelineModel,
-    ) -> Vec<Action> {
-        self.selected = Some(item);
-        let t = model
-            .items
-            .get(item)
-            .and_then(|it| it.keyframes.get(keyframe));
-        let mut out = deselect_cut(Action::Select(Some(item)), had_cut);
-        out.extend(t.map(|t| Action::Seek(Self::seek_time(*t, model))));
-        out
     }
 
     /// カットを押した。レイヤーとカットを選び、端ならつまみの、中ならカットのドラッグを始める。
