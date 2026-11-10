@@ -36,6 +36,12 @@ export const StatusBadge = ({ status, waitingFor }: { status: SessionStatus; wai
   );
 };
 
+/** StatusBadge の丸だけを出す。見出しは title に入れる。 */
+export const StatusDot = ({ status, waitingFor }: { status: SessionStatus; waitingFor?: WaitingFor }) => {
+  const { label, tone } = BADGES[waitingFor ?? status];
+  return <i class={`dot badge-${tone}`} title={label} role="img" aria-label={label} />;
+};
+
 /** セッションを StatusBadge と同じ見出しで数える。1 件もない状態は出さない。 */
 export const StatusCounts = ({ sessions }: { sessions: Session[] }) => {
   const keys = sessions.map((s) => s.waitingFor ?? s.status);
