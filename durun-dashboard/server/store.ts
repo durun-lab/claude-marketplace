@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { type AgentPriority, type AskedQuestion, type Bookmark, type BranchView, type Dashboards, type DiffRange, type DocFormat, type LearnRun, type LearnSettings, MEDIA_TYPES, type MentionTrigger, type OutboxMessage, type PrThreadNote, type QueuedMessage, type RatePoint, type SavedDoc, type SavedFile, type SavedLink, type SavedProof, type SavedTerm } from '../shared/types.ts';
+import { type AgentPriority, type AskedQuestion, type Bookmark, type BranchView, type Dashboards, type DiffRange, type DocFormat, type LearnRun, type LearnSettings, MEDIA_TYPES, type BurstKind, type OutboxMessage, type PrThreadNote, type QueuedMessage, type RatePoint, type SavedDoc, type SavedFile, type SavedLink, type SavedProof, type SavedTerm } from '../shared/types.ts';
 
 // 利用者ごとのデータはツールのリポジトリと分けてホームに置く。テストでは一時ディレクトリに向けて、実際の状態に触れないようにする。
 export const DATA_DIR = process.env.DURUN_DASHBOARD_DATA_DIR ?? path.join(os.homedir(), '.durun-dashboard');
@@ -129,10 +129,10 @@ export type FeedbackWave = { items: string[]; sessionId?: string; stalled?: 'unm
  * ワークフローの動き。queue はまだセッションに渡していないイベントの本文。sessionId は continue で引き継いでいるセッション。
  * seenPrs は、既に動いたレビュー依頼の PR の URL。無ければまだ一度も読んでおらず、そのとき届いている依頼では動かない。
  * seenMentions と seenJira は、既に動いた Slack と JIRA のメンションのリンク。seenPrs と同じく、初めて読んだときに届いていたものでは動かない。
- * bursts は、まとめて渡すために待たせているメンションの URL と、最後に届いた時刻。トリガーの種類ごとに持つ。
+ * bursts は、まとめて渡すために待たせているイベントの本文と、最後に届いた時刻。トリガーの種類ごとに持つ。
  * feedback は、改善要望のトリガーで最後に渡したウェーブ。
  */
-export type WorkflowRun = { queue: string[]; sessionId?: string; lastRunAt?: number; seenPrs?: string[]; seenMentions?: string[]; seenJira?: string[]; bursts?: Partial<Record<MentionTrigger['kind'], { texts: string[]; lastAt: number }>>; feedback?: FeedbackWave; error?: string };
+export type WorkflowRun = { queue: string[]; sessionId?: string; lastRunAt?: number; seenPrs?: string[]; seenMentions?: string[]; seenJira?: string[]; bursts?: Partial<Record<BurstKind, { texts: string[]; lastAt: number }>>; feedback?: FeedbackWave; error?: string };
 
 /** ダッシュボード自身で起きた想定外のエラー。同じエラーは 1 件にまとめて数える。item は起票した改善要望のファイル名。 */
 export type ErrorRecord = {

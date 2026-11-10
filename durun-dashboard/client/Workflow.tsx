@@ -23,10 +23,8 @@ const close = () => dock(WORKFLOW_KEY, '', WORKFLOW_KEY);
 
 export const WorkflowIcon = () => <DesktopIcon icon={WORKFLOW_ICON} title={WORKFLOW_TITLE} hint="時刻やレビュー依頼、改善要望をきっかけに、セッションを動かします。ダブルクリックで開きます" onLaunch={openWorkflow} />;
 
-const burstText = (t: WorkflowTrigger): string => ('burstMinutes' in t && t.burstMinutes ? `（${t.burstMinutes} 分でまとめる）` : '');
-
 const triggerText = (t: WorkflowTrigger): string =>
-  t.kind === 'github-review' ? 'レビュー依頼' : t.kind === 'slack-mention' ? `Slack のメンション${burstText(t)}` : t.kind === 'jira-mention' ? `JIRA のメンション${burstText(t)}` : t.kind === 'feedback' ? '改善要望' : `${t.days ? `${t.days.map((d) => DAYS[d]).join('')} ` : '毎日 '}${t.at}`;
+  t.kind === 'github-review' ? 'レビュー依頼' : t.kind === 'slack-mention' ? 'Slack のメンション' : t.kind === 'jira-mention' ? 'JIRA のメンション' : t.kind === 'feedback' ? '改善要望' : `${t.days ? `${t.days.map((d) => DAYS[d]).join('')} ` : '毎日 '}${t.at}`;
 
 const actionText = (w: WorkflowInfo): string => (w.mode === 'continue' ? `1 つのセッションを引き継ぐ${w.compact ? '（毎回 compact）' : ''}` : `新しいセッション（同時 ${w.maxSessions ?? 1} まで）`);
 
@@ -43,7 +41,7 @@ const Row = ({ w, now, onEdit }: { w: WorkflowInfo; now: number; onEdit: () => v
       <input type="checkbox" role="switch" class="learn-switch" checked={w.enabled} aria-label={`${w.name}を動かす`} onChange={(e) => void attempt('ワークフローの切り替え', () => api.workflowEnabled(w.id, e.currentTarget.checked))} />
       {w.name}
     </td>
-    <td>{w.triggers.map(triggerText).join('、') || 'なし'}</td>
+    <td>{w.triggers.map(triggerText).join('、') || 'なし'}{w.burstMinutes ? `（${w.burstMinutes} 分でまとめる）` : ''}</td>
     <td>{actionText(w)}</td>
     <td>
       {w.lastRunAt ? shortDateTime(w.lastRunAt, now) : '—'}

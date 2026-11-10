@@ -429,9 +429,9 @@ export type Harness = { items: HarnessItem[]; kindToggles: Partial<Record<Harnes
  * github-review は、自分へのレビュー依頼が新しく届いたときに動く。slack-mention と jira-mention は、Slack と JIRA のコメントで自分へのメンションが新しく届いたときに動く。
  * feedback は、ダッシュボードへの改善要望がたまっているときに、前のウェーブを終えてから、たまった要望を 1 つのウェーブとして渡す。
  */
-/** burstMinutes は、メンションが続けて届いたとき、最後のメンションからこの分数だけ新しいものが届かなくなるまで待ち、1 つの依頼にまとめる。 */
-export type MentionTrigger = { kind: 'slack-mention'; burstMinutes?: number } | { kind: 'jira-mention'; burstMinutes?: number };
-export type WorkflowTrigger = { kind: 'schedule'; at: string; days?: number[] } | { kind: 'github-review' } | MentionTrigger | { kind: 'feedback' };
+export type WorkflowTrigger = { kind: 'schedule'; at: string; days?: number[] } | { kind: 'github-review' } | { kind: 'slack-mention' } | { kind: 'jira-mention' } | { kind: 'feedback' };
+/** バースト制御でまとめるトリガー。時刻と改善要望は、それぞれ 1 回で 1 つの依頼になるので含めない。 */
+export type BurstKind = 'github-review' | 'slack-mention' | 'jira-mention';
 
 /**
  * ワークフローの定義。人間とエージェントが workflows.json に書く。
@@ -448,6 +448,8 @@ export type WorkflowDef = {
   prompt: string;
   triggers: WorkflowTrigger[];
   mode: 'new' | 'continue';
+  /** イベントが続けて届いたとき、最後のものからこの分数だけ次が届かなくなるまで待ち、トリガーの種類ごとに 1 つの依頼にまとめる。 */
+  burstMinutes?: number;
   maxSessions?: number;
   compact?: boolean;
   model?: string;
