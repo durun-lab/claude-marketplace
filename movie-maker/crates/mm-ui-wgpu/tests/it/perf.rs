@@ -6,7 +6,7 @@ use std::time::{Duration, Instant};
 
 use mm_ui_layout::{
     CutBar, Item, ItemKind, KeyframeRow, Peaks, PointerEvent, RowKeyframe, TimelineCommand,
-    TimelineModel, WaveSource,
+    TimelineModel, ViewerState, WaveSource,
 };
 use mm_ui_wgpu::{slot_image_len, TextStats, Ui};
 
@@ -185,6 +185,7 @@ impl Bench {
             text: TextStats {
                 shaped: after.shaped - before.shaped,
                 uploads: after.uploads - before.uploads,
+                timecode_uploads: after.timecode_uploads - before.timecode_uploads,
             },
             thumbs,
         }
@@ -232,11 +233,11 @@ fn bench() -> Option<Bench> {
 /// シナリオごとの結果を表にして出す。
 fn print_phases(phases: &[Phase]) {
     println!(
-        "シナリオ | CPU p50 / p99 / 最大 | GPU の完了まで p50 / p99 / 最大 | シェーピングした数 | 頂点を作った数 | 描いたサムネイルの最大"
+        "シナリオ | CPU p50 / p99 / 最大 | GPU の完了まで p50 / p99 / 最大 | シェーピングした数 | 頂点を作った数（タイムコードのほか / タイムコード） | 描いたサムネイルの最大"
     );
     for p in phases {
         println!(
-            "{} | {:.2} / {:.2} / {:.2} ms | {:.2} / {:.2} / {:.2} ms | {} | {} | {}",
+            "{} | {:.2} / {:.2} / {:.2} ms | {:.2} / {:.2} / {:.2} ms | {} | {} / {} | {}",
             p.name,
             quantile(&p.cpu, 0.5),
             quantile(&p.cpu, 0.99),
@@ -246,9 +247,24 @@ fn print_phases(phases: &[Phase]) {
             quantile(&p.total, 1.0),
             p.text.shaped,
             p.text.uploads,
+            p.text.timecode_uploads,
             p.thumbs,
         );
     }
+}
+
+/// 再生の `i` フレーム目。再生位置と、Transport の再生中のタイムコードを進める。
+fn play_frame(ui: &mut Ui, i: usize) {
+    let t = i as f64 / 60.0;
+    ui.set_playhead(t);
+    let viewer = ViewerState {
+        t,
+        duration: 60.0,
+        fps: 30.0,
+        playing: true,
+        ..ViewerState::default()
+    };
+    ui.set_transport(viewer, None);
 }
 
 #[test]
@@ -277,14 +293,14 @@ fn 数千のカットの_timeline_を拡大と移動と再生で描く時間() {
         b.phase("縦のスクロール", 120, |ui, _| {
             ui.pointer(wheel(-1.0, false, true));
         }),
-        b.phase("再生", 120, |ui, i| ui.set_playhead(i as f64 / 60.0)),
+        b.phase("再生", 120, play_frame),
     ];
     print_phases(&phases);
     let play = &phases[4];
     assert_eq!(
         play.text.shaped + play.text.uploads,
         0,
-        "再生中はシェーピングせず、頂点も作らない"
+        "再生中はシェーピングせず、再生位置のタイムコードのほかの文字の頂点も作らない"
     );
 }
 
@@ -317,9 +333,13 @@ fn キーフレームの行を全部開いた_timeline_を描く時間() {
         b.phase("開いて縦のスクロール", 120, |ui, _| {
             ui.pointer(wheel(-1.0, false, true));
         }),
-        b.phase("開いて再生", 120, |ui, i| {
-            ui.set_playhead(i as f64 / 60.0)
-        }),
+        b.phase("開いて再生", 120, play_frame),
     ];
     print_phases(&phases);
+    let play = &phases[4];
+    assert_eq!(
+        play.text.shaped + play.text.uploads,
+        0,
+        "行を開いても、再生中はシェーピングせず、再生位置のタイムコードのほかの文字の頂点も作らない"
+    );
 }

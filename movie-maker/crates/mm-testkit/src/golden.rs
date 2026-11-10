@@ -262,11 +262,11 @@ mod tests {
 
     use super::*;
 
-    fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("mm-golden-{name}-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
+    fn scratch(name: &str) -> tempfile::TempDir {
+        tempfile::Builder::new()
+            .prefix(&format!("mm-golden-{name}-"))
+            .tempdir()
+            .unwrap()
     }
 
     fn picture(offset: u32) -> RgbaImage {
@@ -309,22 +309,24 @@ mod tests {
 
     #[test]
     fn 更新した画像と同じ画像は合う() {
-        let root = scratch("same");
-        golden_with(&root, "t", true)
+        let tmp = scratch("same");
+        let root = tmp.path();
+        golden_with(root, "t", true)
             .check("a", &picture(0))
             .unwrap();
-        golden_with(&root, "t", false)
+        golden_with(root, "t", false)
             .check("a", &picture(0))
             .unwrap();
     }
 
     #[test]
     fn ずれた画像は合わず描いた画像を書き出す() {
-        let root = scratch("shift");
-        golden_with(&root, "t", true)
+        let tmp = scratch("shift");
+        let root = tmp.path();
+        golden_with(root, "t", true)
             .check("a", &picture(0))
             .unwrap();
-        let err = golden_with(&root, "t", false)
+        let err = golden_with(root, "t", false)
             .check("a", &picture(5))
             .unwrap_err();
         assert!(err.contains("SSIM"), "{err}");
@@ -333,9 +335,10 @@ mod tests {
 
     #[test]
     fn 期待画像が無ければ失敗する() {
-        let root = scratch("missing");
+        let tmp = scratch("missing");
+        let root = tmp.path();
         std::fs::create_dir_all(root.join("t")).unwrap();
-        let err = golden_with(&root, "t", false)
+        let err = golden_with(root, "t", false)
             .check("none", &picture(0))
             .unwrap_err();
         assert!(err.contains("読めない"), "{err}");
@@ -343,9 +346,10 @@ mod tests {
 
     #[test]
     fn 大きさが違う画像は拒否する() {
-        let root = scratch("size");
+        let tmp = scratch("size");
+        let root = tmp.path();
         let small = RgbaImage::transparent(Size::new(8, 8));
-        assert!(golden_with(&root, "t", false).check("a", &small).is_err());
+        assert!(golden_with(root, "t", false).check("a", &small).is_err());
     }
 
     #[test]

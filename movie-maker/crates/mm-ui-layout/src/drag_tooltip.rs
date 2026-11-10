@@ -112,6 +112,18 @@ fn clip_labels(labels: &mut Vec<Label>, rect: Rect, measure: &mut dyn TextMeasur
     });
 }
 
+/// [`drag_tooltip`] に渡さなかった文字（見出しの列の上の角の再生位置のタイムコード）のうち、ドラッグ中のツールチップ
+/// `tooltip` に重なるものを、[`drag_tooltip`] と同じく矩形の手前で切るか外す。
+pub fn clear_tooltip_labels(
+    labels: &mut Vec<Label>,
+    tooltip: &[Quad],
+    measure: &mut dyn TextMeasure,
+) {
+    if let Some(q) = tooltip.first() {
+        clip_labels(labels, q.rect, measure);
+    }
+}
+
 /// 文字の上に重ねる矩形（再生位置の線、スナップの表示）から、ドラッグ中のツールチップ `tooltip` に重なる所を除く。
 /// 文字は 1 回でまとめて描くのでツールチップを線より上には描けず、線の側を矩形の外だけにしてツールチップを手前に見せる。
 pub fn clear_tooltip_area(overlay: Vec<Quad>, tooltip: &[Quad]) -> Vec<Quad> {
@@ -253,6 +265,28 @@ mod tests {
             !measure.asked.iter().any(|t| t == "far"),
             "字を描いてよい矩形が重ならない文字は測らない"
         );
+    }
+
+    #[test]
+    fn ツールチップに渡さなかった文字も_重なれば矩形の手前で切り_左端が矩形の中なら外す() {
+        let (quads, mut measure) = tooltip((300.0, 100.0), 0.4, &mut Vec::new());
+        let rect = quads[0].rect;
+        let timecode = |x: f32| Label {
+            text: "00:00:01:00".into(),
+            x,
+            y: 94.0,
+            size: 12.0,
+            color: crate::palette::LABEL,
+            cut: None,
+            clip: Rect::new(x - 4.0, 90.0, 400.0, 20.0),
+        };
+        let mut timecodes = vec![timecode(260.0), timecode(330.0)];
+        clear_tooltip_labels(&mut timecodes, &quads, &mut measure);
+        assert_eq!(timecodes.len(), 1, "{timecodes:?}");
+        assert_eq!(timecodes[0].clip.right(), rect.x, "矩形の手前で切る");
+        let mut kept = vec![timecode(260.0)];
+        clear_tooltip_labels(&mut kept, &[], &mut measure);
+        assert_eq!(kept[0].clip.w, 400.0, "ツールチップが無ければそのまま");
     }
 
     #[test]

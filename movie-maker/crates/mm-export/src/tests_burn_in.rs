@@ -190,14 +190,18 @@ fn 字幕にできる文字起こしが無ければレイヤーを足さない()
 #[test]
 fn 焼き込む設定で文字起こしが無いと書き出しを拒否する() {
     let (mut p, _) = project();
-    p.render_targets[0].output_path = temp("burn_nosub").join("out.json").to_string_lossy().into();
+    let tmp = temp("burn_nosub");
+    p.render_targets[0].output_path = tmp.path().join("out.json").to_string_lossy().into();
     let mut engine = assemble(&RuntimeConfig::sample()).unwrap();
     let err = export_project(&mut engine, &p, &ExportOptions::default()).unwrap_err();
     assert!(matches!(err, MmError::InvalidArgument(_)), "{err}");
 }
 
-fn temp(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("mm_export_{name}_{}", std::process::id()))
+fn temp(name: &str) -> tempfile::TempDir {
+    tempfile::Builder::new()
+        .prefix(&format!("mm_export_{name}_"))
+        .tempdir()
+        .unwrap()
 }
 
 /// sequence を展開できる wgpu のレンダラーと、モックのデコーダー。GPU が無ければ `None`

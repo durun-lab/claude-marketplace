@@ -1,7 +1,8 @@
 //! レイヤーの見出し。行ごとに、左から種類の色の帯、種類の略号、名前、有効、ロック、Mute、Solo のボタン、
 //! キーフレームの開閉（▸）を並べる。
 //! 名前はレイヤーの ID（レイヤーに名前の欄は無く、素材の名前は帯に出す）。Shy のフラグを立てたレイヤーは名前を accent の色で
-//! 描く。見出しの列の上の角には再生位置のタイムコードと、Shy の行の数を出す。座標は Timeline の矩形の左上を (0, 0) とする。
+//! 描く。見出しの列の上の角には再生位置のタイムコード（[`crate::timeline_timecode`] が置く）と、Shy の行の数を出す。
+//! 座標は Timeline の矩形の左上を (0, 0) とする。
 //!
 //! 見出しの部品の矩形は [`cells`] 1 か所で決め、描く関数（`paint/header.rs`）と文字（[`labels`]）が同じ値を見る。
 //! ボタンを押すと操作になり（レイヤーは選ばない）、ボタンの外を押すとレイヤーを選ぶ。
@@ -29,7 +30,7 @@ const RIGHT_PAD: f32 = 4.0;
 /// 文字と矩形の端の余白。
 const TEXT_PAD: f32 = 3.0;
 /// 見出しの列の上の角の、タイムコードの左の余白。
-const CORNER_PAD: f32 = 8.0;
+pub(crate) const CORNER_PAD: f32 = 8.0;
 /// 無効なレイヤーの文字の不透明度。帯と同じく薄くする。
 const DISABLED_ALPHA: f32 = 0.6;
 /// 切のボタンのアイコンと字の不透明度。入のボタンだけが目立つようにする。
@@ -187,7 +188,8 @@ pub(crate) fn inside(cell: Rect, area: Rect) -> Option<Rect> {
     (x1 > x0 && y1 > y0).then(|| Rect::new(x0, y0, x1 - x0, y1 - y0))
 }
 
-/// 見出しの文字。見えている行の略号、名前、Mute と Solo の字と、見出しの列の上の角のタイムコードと Shy の行の数。
+/// 見出しの文字。見えている行の略号、名前、Mute と Solo の字と、見出しの列の上の角の Shy の行の数。
+/// 角の再生位置のタイムコードは毎フレーム変わるので、ここでは置かない（[`crate::timeline_timecode`]）。
 pub(crate) fn labels(
     model: &TimelineModel,
     vp: &Viewport,
@@ -212,24 +214,8 @@ pub(crate) fn labels(
             state.selected == Some(i),
         );
     }
-    let time: Arc<str> = timecode(state.playhead, model.fps).into();
     let corner = vp.layout.corner;
-    let style = TextStyle {
-        size: font.base,
-        color: state.palette.selection,
-    };
     let mut out = placer.out;
-    if let Some(mut label) = place(
-        &time,
-        corner,
-        CORNER_PAD,
-        Align::Left,
-        style,
-        placer.measure,
-    ) {
-        label.clip = corner;
-        out.push(label);
-    }
     if let Some((text, color)) = shy_count(model, &state.palette) {
         let style = TextStyle {
             size: font.small,
