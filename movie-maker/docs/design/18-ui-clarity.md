@@ -251,7 +251,7 @@ Z2 で決めたこと（新しく設計したもの）:
 | 名前 | 英語の文言（[文言](#文言)） |
 | キー | キーの表の名前（`Shift+KeyZ`）。画面にはキーの見た目（Shift+Z）で出す |
 | 説明 | ツールチップの 2 行目。要るときだけ |
-| メニュー | メニューと右クリックのメニューでの場所。表には置かず、メニューの並び（`menu.rs`。[メニューバー](#メニューバー)）が持つ。WebView に送る表の `menu` はそこから引く |
+| メニュー | メニューと右クリックのメニューでの場所。表には置かず、メニューの並び（`menu.rs`。[メニューバー](#メニューバー)）が持つ。WebView に送る表の `menu`（メニューの画面の名前）と `menu_order`（メニューバーの中の通し番号）はそこから引く |
 | 持ち主 | Rust で実行するか、WebView のパネル（パネルを開く。`media.import` は Media） |
 | 押せるか | 今押せるか、チェックの状態（Snapping） |
 
@@ -285,8 +285,13 @@ Z2 で決めたこと（新しく設計したもの）:
 
 - `?` と Help > Keyboard Shortcuts… で開く。Tauri の別の小さなウィンドウ（最上位の WebView のウィンドウ）にし、本体のウィンドウの中央の上に出す。サーフェスの上にも重なる（Shotcut の Actions and Shortcuts は独立したダイアログ [116]）。
 - コマンドの表をメニューごとに並べ、名前とキーで絞り込む。Enter で実行して閉じる。今押せないものは薄い色で出す。
-- ページは `ui/shortcuts/`（`ui/dist/shortcuts.html`）。表の `menu`（メニューバーのメニュー）で組を分け、組の中は `menu_order`（メニューの中の通し番号）で並べる。メニューに無いコマンド（Stop など、キーだけで呼ぶもの）は最後の Other にまとめる。絞り込みは空白で分けた語を全部、名前かキーの見た目に含むものだけ通す。上下の矢印で選び、Enter は `run_command` を呼んで成功したら閉じ、押せないもの（と失敗）は閉じずに理由を出す。Esc で閉じる。
-- ウィンドウは本体をオーナーにして作る（Windows の owned window。本体の前に出続け、本体を閉じると一緒に閉じる）。閉じるのは Rust の `close_shortcuts`。`capabilities/default.json` はウィンドウの権限を足さず、アプリのコマンドに任せる。
+- ページは `ui/shortcuts/`（`ui/dist/shortcuts.html`）、ウィンドウは `shortcuts_window.rs`。行はコマンドの名前と、割り当てた全部のキーの見た目（Zoom In は `=`、`+`、`Ctrl+=`。表の `key_labels`）。入/切のあるコマンドは、メニューと同じく入のときに名前の左にチェックを出す。
+  - 先行事例: Premiere の Keyboard Shortcuts は 1 つのコマンドの行に複数のキーを並べ、コマンドの一覧をメニューのコマンド（Application）とパネルのコマンド（Panels）に分ける [94]。Resolve の Keyboard Customization はコマンドを入っているメニューごとに並べ、全部のキーをカンマで区切って出す [101]。Shotcut の Actions and Shortcuts はメニューから読んだ操作をメニューの名前で組にし、組の無い操作を Other に入れ、キーを Shortcut 1 と Shortcut 2 の 2 列で出す [116]。
+  - 新規設計: 区画はメニューごとに 1 つで、見出しは表の `menu`（メニューの画面の名前。`Edit`）。区画と行は `menu_order`（メニューバーの中の通し番号。メニューとグループをまたぐ）の順に並べる。どちらもメニューの並び（`menu.rs` の `menu::place_of`）から作り、ページはメニューの並びを持たない。メニューに無いコマンド（Stop、Choose Render Target…）は最後の区画 Other に名前の順でまとめる（Shotcut と同じ名前。Premiere と Resolve の 2 段の分け方は、パネルのコマンドが表に無いので採らない）。
+- 絞り込みは空白で分けた語を全部、名前かどれかのキーの見た目に含むものだけ通す。上下の矢印で選び、Enter は `run_command` を呼んで成功したら閉じる。押せないものは `run_command` が拒否した理由（「Lift isn't available now」）を下に出し、閉じない。Esc で閉じる。表は `mm:commands-changed` で送り直されるので、開いている間も押せるかとチェックが追従する。
+- ウィンドウはメインウィンドウをオーナーにして作る（Windows の owned window。メインウィンドウの前に出続け、メインウィンドウを閉じると一緒に閉じる）。メインウィンドウの中心で隠したまま作り（そのモニターの倍率で大きさが決まる）、外形の大きさで中心を合わせ、作業領域からはみ出す分を寄せてから出す。開いていれば前面に出すだけ。閉じるのは Rust の `close_shortcuts`。`capabilities/default.json` はウィンドウの権限を足さず、アプリのコマンドに任せる。
+- 閉じたら、開く前にメインウィンドウでフォーカスを持っていた子 HWND（サーフェスか WebView。フレームにあったときはサーフェス）にフォーカスを戻す。Windows は閉じたウィンドウのオーナーを前面に出し、既定のウィンドウプロシージャがフレームにフォーカスを置く [130]。フレームのキーは Tauri が使わないので、戻さないと次のキーがサーフェスにも WebView にも届かない。ダイアログの既定の処理も、活性に戻ったときに前のフォーカスを戻す [130]。
+- 左右の列の入力欄にフォーカスがあるときの `?` は、ほかのキーと同じく `transport.js` が送らず、文字として入る。
 - キーの割り当ての変更は後。
 
 ### 右クリックのメニュー
@@ -480,7 +485,7 @@ L1 が決めた形: 再生の操作のバーは `mm-ui-layout/src/transport.rs`�
 | PR | 中身 | 依存 | 触る範囲 | 終わりの条件 |
 |---|---|---|---|---|
 | D1 `feature/movie-maker-menu-bar` | メニューバー（コマンドの表から）。キーの見た目は項目の文字の `\t` の後ろ（アクセラレーターは登録しない）。チェックと押せるかの状態。Ctrl+I の Import Media。キーでメニューを開く手段 | B3 | `apps/movie-maker/src/win/menu.rs`（新）、`layout.rs`（新。`app.rs` からウィンドウを作る所と割り付けの関数を移す）、`commands.rs`、`keys.rs`、`surface.rs`（F10）、`ui/sdk/src/commands.ts`、`ui/shell/src/Shell.tsx` | ウィンドウの上端に File、Edit、Playback、Timeline、Help（View は Z1 が Zoom を表に足すと出る） |
-| D2 `feature/movie-maker-shortcuts-window` | Keyboard Shortcuts のウィンドウ（`?`、絞り込み、Enter で実行） | B3、D1、Z1（記号のキーの名前） | `ui/shortcuts/`（新）、`ui/tools/build.ts`（ページの入口を足す）、`apps/movie-maker/src/win/layout.rs` か `menu.rs`（ウィンドウを開く。ウィンドウはコードで作り、`capabilities/default.json` は全部のウィンドウに当たる） | 「zoom」で絞ったウィンドウに Zoom In (=)、Zoom Out (-)、Full Extent Zoom (Shift+Z) |
+| D2 `feature/movie-maker-shortcuts-window` | Keyboard Shortcuts のウィンドウ（`?`、絞り込み、Enter で実行） | B3、D1、Z1（記号のキーの名前） | `ui/shortcuts/`（新）、`ui/tools/build.ts`（ページの入口を足す）、`apps/movie-maker/src/win/shortcuts_window.rs`（新。ウィンドウを開く。ウィンドウはコードで作り、`capabilities/default.json` は全部のウィンドウに当たる。L2 の `layout.rs` と重ねないよう分けた）、`menu.rs` | 「zoom」で絞ったウィンドウに Zoom In (=、+、Ctrl+=)、Zoom Out (-、Ctrl+-)、Full Extent Zoom (Shift+Z) |
 | D3 `feature/movie-maker-context-menus` | 右クリックのメニュー（`Window::popup_menu_at`） | B3、T3、Z4 | `apps/movie-maker/src/win/surface.rs`、`context_menu.rs`（新） | 項目の並びはテスト（ポップアップは PrintWindow に写らない） |
 | D4 `feature/movie-maker-empty-states` | 空の状態の案内（Program、Timeline、Inspector、Story） | 文字の PR、B3、T1 | `crates/mm-ui-layout/src/empty.rs`（新）、`crates/mm-ui-wgpu/src/empty.rs`（新）、`ui.rs`、`apps/movie-maker/src/win/ipc.rs`、`web/transport.js`、`ui/shell/src/Shell.tsx`、`ui/panels/inspector/src/EmptyInspector.tsx`（新）、`ui/panels/story/src/StoryPanel.tsx` | 空のプロジェクトで Program に案内、カットの無い sequence のレイヤーだけのコンポジションで Timeline に案内、Inspector にコンポジションの要約 |
 
@@ -493,7 +498,7 @@ L1 が決めた形: 再生の操作のバーは `mm-ui-layout/src/transport.rs`�
 | `crates/mm-ui-wgpu/tests/` | 文字の PR、B2 | 文字の PR が `tests/it/` にまとめた後に足す |
 | `apps/movie-maker/src/win/keys.rs`、`commands.rs` | B3、T3、Z1、Z2、Z4、K2、L1、D1、D2 | B3 が先。キーの名前の決まりは Z1。コマンドとキーは ID の名前の順に足す（キーの試験は `keys/tests.rs`） |
 | `apps/movie-maker/src/win/surface.rs` | Z1、Z3、Z5、L1、L3、D1、D3 | 当たった所ごとの処理は別のファイルに置き、`surface.rs` には振り分けの 1 行だけ足す |
-| `apps/movie-maker/src/win/app.rs`、`layout.rs` | D1、D2、L2 | ウィンドウを作る所と割り付けの関数は `layout.rs` が持ち、`app.rs` には起動の流れだけを置く |
+| `apps/movie-maker/src/win/app.rs`、`layout.rs` | D1、L2 | ウィンドウを作る所と割り付けの関数は `layout.rs` が持ち、`app.rs` には起動の流れだけを置く。D2 の Keyboard Shortcuts のウィンドウは `shortcuts_window.rs` に分けた |
 | `apps/movie-maker/src/win/verify_edit.rs` | T1、Z4 | 行の位置は `mm-ui-layout` の関数から引く（定数の `ROW_H` を使わない） |
 | `apps/movie-maker/web/transport.js` | E1、Z1、L2 | E1 が先。Z1 は `keyName` と、keydown で送る `repeat` だけ |
 | `crates/mm-ops/` と生成物（`ops.json`、`ops.ts`） | B1、E2 | 生成物が衝突したら `scripts/regen.sh` で作り直す |
