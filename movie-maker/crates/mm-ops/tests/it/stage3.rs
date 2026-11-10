@@ -267,3 +267,54 @@ fn fit_layer_は_sequence_でないレイヤーを拒否する() {
     let mut p = project();
     assert!(apply(&mut p, fit("l1")).is_err());
 }
+
+/// カットが 1 つ（k1 の 2 秒）だけの sequence s1 と、それに追従しているレイヤー ls。
+fn one_cut_project() -> Project {
+    let mut p = project();
+    p.sequences[0].cuts.truncate(1);
+    with_sequence_layer(&mut p, secs(1));
+    apply(&mut p, fit("ls")).unwrap();
+    p
+}
+
+fn insert_k5() -> Op {
+    Insert {
+        sequence: Id::new("s1"),
+        index: 0,
+        cut: common::cut("k5", 0, 3, (1, 1)),
+    }
+    .into()
+}
+
+#[test]
+fn 最後のカットを_extract_すると空の_sequence_と_1_フレームのレイヤーが残り_1_回の逆で戻る() {
+    let mut p = one_cut_project();
+    let before = canon(&p);
+    let ops = with_fitted_layers(&p, &[extract_op_of("k1")]);
+    let out = apply_transaction(&mut p, &ops, &OpContext::human()).unwrap();
+    assert!(p.sequences[0].cuts.is_empty());
+    let (comp, layer) = p.layer(&Id::new("ls")).unwrap();
+    let frame = mm_types::RationalTime::from_frames(1, comp.fps).unwrap();
+    assert_eq!(layer.duration().unwrap(), frame);
+    assert_eq!(comp.duration, frame);
+    p.validate().unwrap();
+    apply_transaction(&mut p, &out.inverse_ops().unwrap(), &OpContext::human()).unwrap();
+    assert_eq!(canon(&p), before);
+}
+
+fn extract_op_of(cut: &str) -> Op {
+    Extract { cut: Id::new(cut) }.into()
+}
+
+#[test]
+fn 空の_sequence_に_insert_するとレイヤーがカットの長さに追従する() {
+    let mut p = one_cut_project();
+    let ops = with_fitted_layers(&p, &[extract_op_of("k1")]);
+    apply_transaction(&mut p, &ops, &OpContext::human()).unwrap();
+    let ops = with_fitted_layers(&p, &[insert_k5()]);
+    assert_eq!(ops.len(), 2);
+    apply_transaction(&mut p, &ops, &OpContext::human()).unwrap();
+    let (comp, layer) = p.layer(&Id::new("ls")).unwrap();
+    assert_eq!(layer.duration().unwrap(), secs(3));
+    assert_eq!(comp.duration, secs(3));
+}
