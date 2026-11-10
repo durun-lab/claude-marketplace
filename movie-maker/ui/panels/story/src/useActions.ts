@@ -1,6 +1,6 @@
 import type { Op, Rating, Topic } from "@mm/sdk";
 import type { StoryApi, StoryHit, StoryWord, WordRange } from "./api.ts";
-import { addTopicOp, cutOp, fixOp, hideOp, insertTopicsOp, rateOp, tagOp } from "./ops.ts";
+import { addTopicOp, arrangeIds, cutOp, fixOp, hideOp, rateOp, tagOp } from "./ops.ts";
 import { seekToCut, seekToSource, type Loaded, type Tray } from "./useStory.ts";
 
 export interface Actions {
@@ -13,7 +13,8 @@ export interface Actions {
   rate: (topic: Topic, rating: Rating) => Promise<void>;
   tag: (topic: Topic, tag: string, remove: boolean) => Promise<void>;
   removeTopic: (topic: Topic) => Promise<void>;
-  arrange: (sequence: string) => Promise<void>;
+  /** 選んだ話題を `sequence` の末尾に並べる。`null` なら、アプリが並べ先を決め、sequence が無ければ作って並べる。 */
+  arrange: (sequence: string | null) => Promise<void>;
   /** 単語の始まりの時刻に再生位置を移す。 */
   jump: (word: StoryWord) => Promise<void>;
   openHit: (hit: StoryHit) => Promise<void>;
@@ -40,6 +41,20 @@ const sendForRange = async (cx: ActionContext, build: (asset: string, range: Wor
   if (!asset || !first || !last) return;
   const op = build(asset, await cx.api.range(asset, first.id, last.id));
   if (op && (await cx.loaded.apply([op]))) cx.clearSelection();
+};
+
+/**
+ * 選んだ話題を `sequence` の末尾に並べ、先頭のカットへ移る。並べ先の決め方と、sequence が無いときに作るのはアプリ
+ * （`story_arrange`）が最新のデータで行うので、パネルは選んだ並べ先をそのまま渡す。
+ */
+const arrangePicked = async (cx: ActionContext, sequence: string | null) => {
+  const { api, loaded, tray } = cx;
+  if (tray.picked.length === 0) return;
+  const { topics, cuts } = arrangeIds(tray.picked);
+  if (!(await loaded.request([() => api.arrange(sequence, topics, cuts)]))) return;
+  tray.clear();
+  const moved = await seekToCut(api, cuts[0] ?? "");
+  cx.setNotice(moved ? null : "This part is not on the timeline yet.");
 };
 
 /** パネルの操作を、操作の組み立てと送信と再生位置の移動につなぐ。 */
@@ -73,14 +88,7 @@ export const createActions = (cx: ActionContext): Actions => {
         if (tray.picked.some((t) => t.id === topic.id)) tray.toggle(topic);
       }
     },
-    arrange: async (sequence) => {
-      if (tray.picked.length === 0) return;
-      const op = insertTopicsOp(sequence, tray.picked);
-      if (!(await send(op))) return;
-      tray.clear();
-      const moved = await seekToCut(api, op.cuts[0] ?? "");
-      cx.setNotice(moved ? null : "This part is not on the timeline yet.");
-    },
+    arrange: (sequence) => arrangePicked(cx, sequence),
     jump: async (word) => {
       if (asset) await jumpTo(asset, word);
     },

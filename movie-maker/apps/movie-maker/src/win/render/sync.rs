@@ -12,12 +12,58 @@ use mm_ui_layout::{
 };
 use mm_ui_wgpu::{timeline_cut_ids, timeline_layer_ids, timeline_model, Region, Ui};
 
-use super::transport::{self, Seeks};
-use super::waves::WaveWanted;
+use super::thumbs::ThumbSync;
+use super::transport::{self, Seeks, TransportSync};
+use super::waves::{WaveSync, WaveWanted};
 use super::View;
+use crate::win::review::drawing::DrawingSync;
 use crate::win::sequence_edit::{gesture_op, header_button_op, move_layer_op, TimelineIds};
 use crate::win::state::{FrameImage, OpenDoc, Shared};
 use crate::win::view_state::Shy;
+
+/// 描画スレッドが共有状態から `Ui` へ渡すものごとの、最後に渡した状態。
+pub(super) struct Syncs {
+    pub(super) doc: DocSync,
+    source: SourceSync,
+    drawing: DrawingSync,
+    thumbs: ThumbSync,
+    transport: TransportSync,
+    waves: WaveSync,
+}
+
+impl Syncs {
+    pub(super) fn new(shared: &Shared) -> Self {
+        Self {
+            doc: DocSync::default(),
+            source: SourceSync::default(),
+            drawing: DrawingSync::default(),
+            thumbs: ThumbSync::new(shared),
+            transport: TransportSync::default(),
+            waves: WaveSync::new(),
+        }
+    }
+
+    /// `Ui` を作り直したときに、渡した状態を捨てて次の周で渡し直す。読み込みのスレッドは残す
+    /// （サムネイルは、新しい `Ui` が見えている分を頼み直す）。
+    pub(super) fn forget(&mut self) {
+        self.doc = DocSync::default();
+        self.source = SourceSync::default();
+        self.drawing = DrawingSync::default();
+        self.transport = TransportSync::default();
+        self.waves.forget();
+    }
+
+    /// 共有状態の変わった所を `view` の `Ui` に渡す。
+    pub(super) fn refresh(&mut self, shared: &Shared, view: &mut View) {
+        self.doc.refresh(shared, &mut view.ui);
+        self.waves
+            .refresh(shared, &mut view.ui, self.doc.wave_wanted());
+        self.source.refresh(shared, view);
+        self.drawing.refresh(shared, &mut view.ui);
+        self.thumbs.refresh(shared, &view.gpu, &mut view.ui);
+        self.transport.refresh(shared, &mut view.ui);
+    }
+}
 
 /// 編集で変わったプロジェクトのデータを Timeline に反映する。Timeline の添字とレイヤー、カットの ID の対応も持つ。
 #[derive(Default)]

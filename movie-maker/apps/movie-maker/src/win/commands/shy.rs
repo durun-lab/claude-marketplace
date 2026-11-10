@@ -13,6 +13,7 @@ pub enum ShyCommand {
 }
 
 /// 押せるかとチェックの状態を決める今の Shy の状態。
+#[derive(Default)]
 pub(super) struct ShyReady {
     /// 選んだレイヤーに Shy のフラグが立っているか。レイヤーを選んでいなければ `None`。
     selected: Option<bool>,

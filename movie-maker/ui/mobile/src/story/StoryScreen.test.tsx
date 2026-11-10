@@ -22,9 +22,12 @@ const buttonByText = (text: string): HTMLButtonElement =>
 const wordButton = (text: string): HTMLButtonElement =>
   must([...host.querySelectorAll<HTMLButtonElement>(".st-word")].find((b) => b.textContent === text));
 
-/** Story のタブで 1 つ目の素材を開いた状態。 */
-const openStory = async () => {
+type MockServer = ReturnType<typeof createMockServer>;
+
+/** Story のタブで 1 つ目の素材を開いた状態。`setup` は開く前にモックの PC を変える。 */
+const openStory = async (setup?: (server: MockServer) => void) => {
   const server = createMockServer({ paired: true, online: true });
+  setup?.(server);
   const controller = createController({
     ...server.platform,
     onNetworkBack: () => undefined,
@@ -133,5 +136,16 @@ describe("Story の衝突と並べ替え", () => {
     await click(buttonByText("Insert 1 topic"));
     await settle();
     expect(must(server.story.applied.at(-1)).ops[0]).toMatchObject({ op: "insertTopics", sequence: "s1", topics: ["t1"] });
+  });
+
+  it("sequence が無ければ送らず、PC で sequence を作る操作を案内する", async () => {
+    const server = await openStory((s) => {
+      s.story.overview = { ...s.story.overview, sequences: [], open_sequence: null };
+    });
+    await click(buttonByText("Arrange"));
+    await click(buttonByText("Insert 1 topic"));
+    await settle();
+    expect(server.story.applied).toHaveLength(0);
+    expect(host.querySelector(".st-notice")?.textContent).toContain("Press Insert or Arrange on the PC");
   });
 });
