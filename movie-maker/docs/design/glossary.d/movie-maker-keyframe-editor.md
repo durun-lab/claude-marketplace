@@ -2,9 +2,10 @@
 
 | 用語 | 定義 | 識別子 |
 |---|---|---|
-| 開く（キーフレームの行を） | キーフレームの開閉（見出しの）か `U`（Show Keyframe Editor）で、レイヤーの行の下にキーフレームの行を出すこと。`U` は選んだレイヤー、選んでいなければキーフレームのある全部のレイヤーを開く（全部開いていれば全部閉じる）。開いたレイヤーの ID は表示の状態で、`.mm/view.json` に置く | `RowHeights::keyframe_rows_open`、`toggle_open`、`KeyframeAction::ToggleRows`、`timeline.show_keyframe_editor` |
+| 開く（キーフレームの行を） | キーフレームの開閉（見出しの）か `U`（Show Keyframe Editor）で、レイヤーの行の下にキーフレームの行を出すこと。`U` は選んだレイヤー（キーフレームの行が無ければ開かない）、選んでいなければキーフレームのある全部のレイヤーを開く（全部開いていれば全部閉じる）。開いたレイヤーの ID は表示の状態で、`.mm/view.json` に置く | `RowHeights::keyframe_rows_open`、`toggle_open`、`KeyframeAction::ToggleRows`、`timeline.show_keyframe_editor` |
 | 行の見出し（キーフレームの行の） | キーフレームの行の、見出しの列の部分。パラメータの名前（「Transform › Position」）を出し、押すとそのパラメータを選ぶ | `header_rect`、`Hit::KeyframeRowHeader` |
 | ひし形（キーフレームの行の） | キーフレームの行でキーフレーム 1 つを表す形。一辺 11 論理ピクセル。押すと選び、ドラッグで動かす。選んだものは accent の輪で囲む。行の領域に収まらない位置では縦線にして切る | `RowKeyframe`、`ROW_DIAMOND_PX`、`Hit::RowKeyframe`、`KeyframeIndex` |
+| まとめる（キーフレームの行のひし形を） | 帯のマーカーをまとめる幅（6 論理ピクセル）で時刻を区切った列ごとに、ひし形を 1 つだけ描くこと。描くのは見えている時刻の範囲だけ。列は左端の時刻によらず時刻とズームで決まる。選んだものとポインターの乗ったものはまとめない | `merge_column`、`keyframes_within`、`MERGE_PX` |
 | 選んだキーフレーム（キーフレームの行の） | キーフレームの行で選んだひし形。レイヤーの ID、行の名前、時刻で持ち、モデルが変わると探し直す。Delete（Remove Keyframe）で外す | `Picked`、`RowPick`、`timeline.remove_keyframe` |
 | 選んだパラメータ（Timeline の） | キーフレームの行で選んだ行のパラメータ。パスと通し番号を `mm:layer-selected` の `param` で送り、Inspector と Graph で同じパラメータを選ぶ。Inspector は通し番号が変わったときだけ選び直す | `ParamSelection`、`KeyframeSlot`、`KeyframeAction::Select` |
 | 範囲（キーフレームの行のパラメータの） | キーフレームを動かせる時間。レイヤーのパラメータはコンポジションの全体、再フレーミングはカットが映るコンポジションの範囲。ドラッグはその最後のフレームの始まりまで | `ParamSpan`、`RowKeyframe::min`、`RowKeyframe::max` |
