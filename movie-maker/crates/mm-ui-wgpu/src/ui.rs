@@ -92,6 +92,11 @@ pub struct Ui {
     empty: EmptyHints,
     /// 帯の波形のピーク（読み込みが終わった素材から）。
     waves: Waves,
+    /// Program と Source のフレームが、素材を開いている途中のレイヤーを除いたものか（[`Ui::set_program_pending`]）。
+    program_pending: bool,
+    source_pending: bool,
+    /// その印の下に敷く矩形（論理ピクセル）。文字を置くときに決め、矩形の並びに足す。
+    pending_quads: Vec<Quad>,
 }
 
 impl Ui {
@@ -133,6 +138,9 @@ impl Ui {
             palette: Palette::DEFAULT,
             empty: EmptyHints::default(),
             waves: Waves::default(),
+            program_pending: false,
+            source_pending: false,
+            pending_quads: Vec::new(),
         }
     }
 
@@ -221,6 +229,7 @@ impl Ui {
 
     /// Source を閉じる（領域を畳んで Program を広げる）。
     pub fn close_source(&mut self) {
+        self.source_pending = false;
         if self.source.has_image() {
             self.source.clear();
             self.resize(self.size.0 as u32, self.size.1 as u32);
@@ -235,6 +244,16 @@ impl Ui {
     /// Program に出すフレームを、同じデバイスのテクスチャのまま渡す。
     pub fn set_frame_texture(&mut self, device: &wgpu::Device, texture: &wgpu::Texture) {
         self.program.set_texture(device, texture);
+    }
+
+    /// Program に出しているフレームが、素材を開いている途中のレイヤーを除いたものか。真の間は左上に印を出す。
+    pub fn set_program_pending(&mut self, pending: bool) {
+        self.program_pending = pending;
+    }
+
+    /// Source に出しているフレームについての [`Ui::set_program_pending`]。
+    pub fn set_source_pending(&mut self, pending: bool) {
+        self.source_pending = pending;
     }
 
     /// サーフェスの座標（物理ピクセル）のポインターの入力を受ける。Timeline の外から始まったドラッグは捨てる。
@@ -387,8 +406,13 @@ impl Ui {
         for q in &mut quads {
             q.rect = self.scale.rect_to_physical(q.rect.translated(t.x, t.y));
         }
-        // 再生の操作のバーの矩形も文字の下に描く。帯までの数もその分だけ後ろへずれる。
+        // 再生の操作のバーの矩形と、素材を開いている途中の印の矩形も文字の下に描く。帯までの数もその分だけ後ろへずれる。
         let mut under_quads = self.transport_quads();
+        let pending = self.pending_quads.iter().map(|q| Quad {
+            rect: self.scale.rect_to_physical(q.rect),
+            ..*q
+        });
+        under_quads.extend(pending);
         let front = under_quads.len() as u32;
         under_quads.extend(quads);
         (under_quads, under + front, bars as u32 + front)

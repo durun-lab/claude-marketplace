@@ -498,7 +498,7 @@ impl Player {
         };
         match result {
             Ok(img) => {
-                self.shared.frames.put(index as f64 / self.fps_f, img);
+                self.put_frame(index, img);
                 self.shared.rendered_frames.fetch_add(1, Ordering::SeqCst);
                 self.shared
                     .record("render_frame_ms", started.elapsed().as_secs_f64() * 1000.0);

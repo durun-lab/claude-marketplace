@@ -69,14 +69,16 @@ fn comp_fits(before: (usize, f64), after: Option<f64>, fitted: f64) -> bool {
 
 /// `,` を押してから、Program の再生スレッドが insert の結果を描画に取り込んで今のフレームを描き直すまでの時間を残す。
 /// 再生スレッドが長い録画の素材を開き終わるのを待つと数十秒止まるので、上限（`WAIT`）までに描き直さなければ失敗にする。
+/// 描き直したフレームで、素材を開いている途中のために描かなかったレイヤーの数も残す。
 fn redraw_step(env: &Env<'_>, log: &mut Log, (pressed, adopted): (Instant, u64)) {
     let shared = env.shared;
     let redrawn = wait_until(WAIT, || shared.adopted.load(Ordering::SeqCst) > adopted);
     let redraw_ms = redrawn.then(|| pressed.elapsed().as_millis());
+    let pending = shared.frames.newer_than(0).map(|f| f.pending);
     log.step(
         "redraw_after_first_insert",
         redrawn,
-        json!({ "redraw_ms": redraw_ms }),
+        json!({ "redraw_ms": redraw_ms, "pending_layers": pending }),
     );
 }
 

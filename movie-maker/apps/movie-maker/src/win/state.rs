@@ -70,6 +70,8 @@ pub struct PreviewFrame {
     /// コンポジションの時間軸での時刻（秒）。
     pub time: f64,
     pub image: FrameImage,
+    /// 素材を開いている途中のために描かなかったレイヤーの数。0 でなければ描画スレッドがビューアーに印を出す。
+    pub pending: usize,
 }
 
 /// 再生スレッドから描画スレッドへ最新の 1 フレームを渡すスロット。描画が遅れたときは古いフレームを捨てる。
@@ -80,13 +82,14 @@ pub struct FrameSlot {
 }
 
 impl FrameSlot {
-    /// 新しいフレームを置く。
-    pub fn put(&self, time: f64, image: FrameImage) {
+    /// 新しいフレームを置く。`pending` は素材を開いている途中のために描かなかったレイヤーの数。
+    pub fn put(&self, time: f64, image: FrameImage, pending: usize) {
         let serial = self.serial.fetch_add(1, Ordering::SeqCst) + 1;
         *self.slot.lock().expect("frame slot") = Some(PreviewFrame {
             serial,
             time,
             image,
+            pending,
         });
     }
 
@@ -427,11 +430,12 @@ mod tests {
         let slot = FrameSlot::default();
         let img = FrameImage::Cpu(Arc::new(RgbaImage::filled(Size::new(2, 2), Rgba::WHITE)));
         assert!(slot.newer_than(0).is_none());
-        slot.put(0.5, img.clone());
+        slot.put(0.5, img.clone(), 0);
         let f = slot.newer_than(0).expect("新しい");
-        assert_eq!((f.serial, f.time), (1, 0.5));
+        assert_eq!((f.serial, f.time, f.pending), (1, 0.5, 0));
         assert!(slot.newer_than(f.serial).is_none());
-        slot.put(0.6, img);
-        assert_eq!(slot.newer_than(f.serial).expect("次").serial, 2);
+        slot.put(0.6, img, 2);
+        let next = slot.newer_than(f.serial).expect("次");
+        assert_eq!((next.serial, next.pending), (2, 2), "描かなかったレイヤーの数も渡す");
     }
 }

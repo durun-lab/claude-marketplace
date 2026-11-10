@@ -113,6 +113,7 @@ impl SourceSync {
         if let FrameImage::Cpu(image) = &frame.image {
             view.ui
                 .set_source_frame(&view.gpu.device, &view.gpu.queue, image);
+            view.ui.set_source_pending(frame.pending > 0);
             shared.source.set_shown(true);
         }
     }

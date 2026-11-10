@@ -1,11 +1,14 @@
 //! 素材を開いている途中のレイヤーの描き直し。プレビューの描画は長い録画の素材を開き終わるのを待たず、そのレイヤーを
-//! 抜いて描く（`open_wait_ms`）。止まっている間は開き終わったかを見張り、開き終わったら今のフレームを描き直す。
+//! 抜いて描く（`open_wait_ms`）。抜いたフレームは描かなかったレイヤーの数と一緒に渡し、描画スレッドがビューアー
+//! （Program、Source）に印を出す。
+//! 止まっている間は開き終わったかを見張り、開き終わったら今のフレームを描き直す。
 
 use std::time::Duration;
 
 use mm_runtime::RuntimeConfig;
 
 use super::{runtime_config, Player};
+use crate::win::state::FrameImage;
 
 /// 1 フレームで素材を開くのを待つ上限（ミリ秒）。画像や短い素材は数 ms〜十数 ms で開けるので待ち、PTS の索引を作る長い
 /// 録画（4 GB で十数秒）だけをバックグラウンドのスレッドに任せる。
@@ -37,5 +40,13 @@ impl Player {
         if let Some(index) = self.last_frame {
             self.render_frame(index);
         }
+    }
+
+    /// 描いたフレームを、描かなかったレイヤーの数と一緒に描画スレッドへ渡す。数が 0 でなければビューアーに印が出る。
+    pub(super) fn put_frame(&self, index: i64, image: FrameImage) {
+        let pending = self.engine.pending_layers();
+        self.shared
+            .frames
+            .put(index as f64 / self.fps_f, image, pending);
     }
 }
