@@ -7,10 +7,10 @@ import { PLAYHEAD_EVENT, SEEK_EVENT } from "../../panels/inspector/src/KeyframeP
 import { LAYER_SELECTED_EVENT, LAYER_SELECTION_REQUEST_EVENT } from "./Shell.tsx";
 
 /**
- * アプリが initialization_script で shell に入れる WebView の橋。jsdom の試験は Vite が `new URL(…, import.meta.url)` を
- * ページの URL に書き換えるので、ディレクトリのパスから組む。
+ * アプリが initialization_script で shell に入れる WebView の中継スクリプト。jsdom のテストは Vite が
+ * `new URL(…, import.meta.url)` をページの URL に書き換えるので、ディレクトリのパスから組む。
  */
-const BRIDGE = readFileSync(resolve(import.meta.dirname, "../../../apps/movie-maker/web/transport.js"), "utf8");
+const RELAY = readFileSync(resolve(import.meta.dirname, "../../../apps/movie-maker/web/transport.js"), "utf8");
 const INFO = { fps: 30, duration: 10 };
 const SELECTION = { layer: null, assets: [], composition: null };
 const ANSWERS: Record<string, unknown> = { project_info: INFO, layer_selection: SELECTION };
@@ -25,9 +25,9 @@ const invoke = vi.fn<(command: string, args?: Record<string, unknown>) => Promis
 class FakeChannel {
   onmessage: ((msg: unknown) => void) | null = null;
 }
-/** 橋が `subscribe` に渡した Channel。 */
+/** 中継スクリプトが `subscribe` に渡した Channel。 */
 let channel: FakeChannel | null = null;
-/** 橋が始まった直後のページの要素の数（body の子、head の style）。 */
+/** 中継スクリプトが始まった直後のページの要素の数（body の子、head の style）。 */
 let added = { body: -1, styles: -1 };
 
 const flush = () => new Promise<void>((ok) => setTimeout(ok, 0));
@@ -55,7 +55,7 @@ beforeAll(async () => {
     return () => undefined;
   };
   Object.assign(window, { __TAURI__: { core: { invoke, Channel: FakeChannel }, event: { listen } } });
-  new Function(BRIDGE)();
+  new Function(RELAY)();
   await flush();
   channel = (argsOf("subscribe")[0]?.["onTick"] as FakeChannel | undefined) ?? null;
   added = { body: document.body.children.length, styles: document.head.querySelectorAll("style").length };
@@ -66,13 +66,13 @@ beforeEach(() => {
   document.body.replaceChildren();
 });
 
-describe("WebView の橋のキー", () => {
+describe("WebView の中継スクリプトのキー", () => {
   it("画面を持たず、再生位置の通知を購読する", () => {
     expect(added).toEqual({ body: 0, styles: 0 });
     expect(channel?.onmessage).toBeTypeOf("function");
   });
 
-  it("WebView のキーをアプリのキーの表に送り、押し続けは繰り返しの印を付け、Space はページのスクロールに使わせない", () => {
+  it("WebView のキーをアプリのキーの表に送り、押し続けは繰り返しのフラグを付け、Space はページのスクロールに使わせない", () => {
     const space = key({ code: "Space", key: " " });
     key({ code: "KeyZ", key: "Z", ctrlKey: true, shiftKey: true });
     key({ code: "KeyL", key: "l", repeat: true });
@@ -103,7 +103,7 @@ describe("WebView の橋のキー", () => {
   });
 });
 
-describe("WebView の橋のイベント", () => {
+describe("WebView の中継スクリプトのイベント", () => {
   it("再生位置の通知を fps 付きの再生位置のイベントにして、画面に出した時刻を返す", () => {
     const seen = record(PLAYHEAD_EVENT);
     channel?.onmessage?.({ seq: 7, t: 2.5, sent_us: nowUs(), playing: false });

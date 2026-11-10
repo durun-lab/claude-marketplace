@@ -1,5 +1,5 @@
-//! Source のビューアーを WebView につなぐ Tauri のコマンド。WebView の橋は、Media と Story が選んだ素材を `source_open`
-//! で開く。再生とイン点・アウト点はサーフェスの再生の操作のバーとキーとメニューが持つ。
+//! Source のビューアーを WebView につなぐ Tauri のコマンド。WebView の中継スクリプトは、Media と Story が選んだ素材を
+//! `source_open` で開く。再生とイン点・アウト点はサーフェスの再生の操作のバーとキーとメニューが持つ。
 
 use std::sync::Arc;
 

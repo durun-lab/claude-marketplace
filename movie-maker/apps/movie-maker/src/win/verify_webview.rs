@@ -1,9 +1,9 @@
 //! `--play-test` の WebView の工程。WebView の中でイベントを投げ、画面の様子を `eval_with_callback` で読んで確かめる。
 //! WebView にフォーカスを移さずに確かめられるよう、イベントは WebView の中で作る。
-//! - 橋（`web/transport.js`）: WebView で押した Space が再生を始めて止め、シークの頼みが再生位置を動かす。
+//! - 中継スクリプト（`web/transport.js`）: WebView で押した Space が再生を始めて止め、シークの頼みが再生位置を動かす。
 //! - 割り付け: 中央の列が無く、WebView の幅が 2 列の幅の和。View > Diagnostics で開いたタブに GPU が出る。
 //! - キーフレームの欄: キーフレームのあるレイヤーを選ぶと、Inspector のキーフレームの欄が行の右（3 列目）に出る。
-//! - 編集の結果の文言: 失敗した編集の理由が、Shell のステータスの行に断った理由として出る。
+//! - 編集の結果の文言: 失敗した編集の理由が、Shell のステータスの行に拒否の理由として出る。
 
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::channel;
@@ -23,7 +23,7 @@ use crate::win::verify_stage::wait_until;
 
 /// 投げたイベントの結果が出るのを待つ上限。
 const WAIT: Duration = Duration::from_secs(3);
-/// 結果が出てから WebView が描き終えるのを待つ。スクリーンショットに前の画が写らないように。
+/// 結果が出てから WebView が描き終えるのを待つ。スクリーンショットに前の画面が写らないように。
 const PAINT_WAIT: Duration = Duration::from_millis(300);
 /// シークの頼みで狙う時刻（秒）。`SEEK_JS` の `time` と同じ。
 const SEEK_TARGET: f64 = 1.0;
@@ -36,7 +36,7 @@ const SPACE_JS: &str = r#"document.body.dispatchEvent(new KeyboardEvent("keydown
 /// Inspector の前後のキーフレームへの移動と同じシークの頼み（`mm:seek`）を投げる。
 const SEEK_JS: &str =
     r#"window.dispatchEvent(new CustomEvent("mm:seek", { detail: { time: 1 } }))"#;
-/// 列の様子。中央の列の有無、WebView と右の列の幅（CSS ピクセル）、右の列のタブ、選んだタブ、Diagnostics の GPU の欄。
+/// 列の様子。中央の列の有無、WebView と右の列の幅（CSS ピクセル）、右の列のタブ、選んだタブ、Diagnostics の GPU の行。
 const COLUMNS_JS: &str = r#"(() => {
   const right = document.querySelector(".mm-shell-right");
   const tabs = [...document.querySelectorAll(".mm-shell-right-tabs [role=tab]")];
@@ -63,7 +63,7 @@ const STRIP_JS: &str = r#"(() => {
   };
 })()"#;
 
-/// Shell のステータスの行に出ている編集の結果の文言、断った理由として出しているか、WebView の下端にあるか、
+/// Shell のステータスの行に出ている編集の結果の文言、拒否の理由として出しているか、WebView の下端にあるか、
 /// 左右の列のタブの行の高さがそろったままか。
 const MESSAGE_JS: &str = r#"(() => {
   const m = document.querySelector(".mm-shell-status > .mm-shell-message");
@@ -83,7 +83,7 @@ struct Env<'a> {
     test: &'a PlayTest,
 }
 
-/// 橋、割り付け、キーフレームの欄、編集の結果の文言を順に確かめる。スクリーンショットはウィンドウ `window_hwnd` を撮る。
+/// 中継スクリプト、割り付け、キーフレームの欄、編集の結果の文言を順に確かめる。スクリーンショットはウィンドウ `window_hwnd` を撮る。
 pub fn run(
     shared: &Arc<Shared>,
     webview: Option<Webview>,
@@ -203,7 +203,7 @@ fn keyframe_strip(env: &Env, webview: &Webview) -> Value {
     })
 }
 
-/// Source に素材が無いときの Mark In（データを変えずに失敗する編集）の理由が、Shell のステータスの行に断った理由として
+/// Source に素材が無いときの Mark In（データを変えずに失敗する編集）の理由が、Shell のステータスの行に拒否の理由として
 /// 出るか。撮った後は文言を消す。
 fn edit_message(env: &Env, webview: &Webview) -> Value {
     let shared = env.shared;

@@ -6,7 +6,7 @@ import { useLayerKinds, type KindLookup } from "./kinds.ts";
 import { describeLayer } from "./model.ts";
 import type { Asset, CompositionSummary, Layer, Op } from "@mm/sdk";
 
-/** 再生位置を知らせる DOM のイベント。アプリの WebView の橋（`web/transport.js`）が時計の通知ごとに投げる。 */
+/** 再生位置を知らせる DOM のイベント。アプリの WebView の中継スクリプト（`web/transport.js`）が時計の通知ごとに投げる。 */
 export const PLAYHEAD_EVENT = "mm:playhead";
 /** 再生位置を動かしてほしいときに投げる DOM のイベント（`detail.time` は秒）。`web/transport.js` が受けてシークする。 */
 export const SEEK_EVENT = "mm:seek";

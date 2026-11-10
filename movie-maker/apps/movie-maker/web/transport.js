@@ -1,4 +1,4 @@
-// WebView とアプリの間の橋。画面は持たない。ui/dist の shell に入れる（アプリが initialization_script で読み込む）。
+// WebView とアプリの間の中継スクリプト。画面は持たない。ui/dist の shell に入れる（アプリが initialization_script で読み込む）。
 // WebView にフォーカスがあるときのキーをアプリのキーの表に送り、再生位置と Timeline の選択（Rust の Tauri イベント）を
 // shell のパネルが受ける DOM のイベントにつなぐ。パネルが投げる素材の選択とシークの頼みはアプリに送る。
 // 再生位置は Rust の時計が持つ。ここでは受けた位置を、送られてから経った時間だけ進めて知らせる。
@@ -59,7 +59,7 @@
   };
 
   // 選択の中身のコンポジションの要約から fps と長さを取り直す。project_info はレイヤーの一覧まで運ぶので、選択と編集のたびには読まない。
-  const takeTiming = (selection) => {
+  const takeFpsAndDuration = (selection) => {
     const comp = selection?.composition;
     if (comp) info = { fps: comp.fps, duration: comp.duration };
   };
@@ -67,7 +67,7 @@
   const readSelection = async () => {
     const detail = await invoke("layer_selection");
     if (!detail) return;
-    takeTiming(detail);
+    takeFpsAndDuration(detail);
     window.dispatchEvent(new CustomEvent(LAYER_SELECTED_EVENT, { detail }));
   };
 
@@ -97,7 +97,7 @@
     // 選択かプロジェクトのデータが変わったら、Inspector に中身を渡し、fps と長さを取り直す。
     window.__TAURI__.event.listen(LAYER_SELECTED_EVENT, (e) => {
       window.dispatchEvent(new CustomEvent(LAYER_SELECTED_EVENT, { detail: e.payload }));
-      takeTiming(e.payload);
+      takeFpsAndDuration(e.payload);
     }).then(markSubscribed);
     window.addEventListener(ASSET_SELECTED_EVENT, (e) => e.detail?.asset && openSource(e.detail.asset));
     window.addEventListener(SEEK_EVENT, (e) => Number.isFinite(e.detail?.time) && act("seek", e.detail.time));

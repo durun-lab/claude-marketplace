@@ -112,14 +112,14 @@ body {
   animation: mm-shell-message-in 600ms ease-out;
 }
 
-/* 断った理由は拒否の文と同じ色にし、取り消しの知らせと見分ける。 */
+/* 拒否の理由は拒否の文と同じ色にし、取り消しの知らせと見分ける。 */
 .mm-shell-message[data-failed="true"] {
   border-top-color: var(--mm-color-danger);
   color: var(--mm-color-danger);
   font-weight: 700;
 }
 
-/* 置き直すたびに背景を一度だけ光らせ、同じ文言が続いても押したことが分かるようにする。 */
+/* 置き直すたびに背景の色を一瞬変え、同じ文言が続いても押したことが分かるようにする。 */
 @keyframes mm-shell-message-in {
   from {
     background: var(--mm-color-border-strong);

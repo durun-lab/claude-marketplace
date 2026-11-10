@@ -134,7 +134,7 @@ pub fn selection_of(doc: &OpenDoc, selected: Option<&str>) -> LayerSelection {
     }
 }
 
-/// 開いたプロジェクトの情報。WebView の橋が始めに fps と長さを、Diagnostics が全部を読む（`ui/panels/diagnostics` の
+/// 開いたプロジェクトの情報。WebView の中継スクリプトが始めに fps と長さを、Diagnostics が全部を読む（`ui/panels/diagnostics` の
 /// `DiagnosticsInfo`）。
 #[derive(Clone, Serialize)]
 pub struct ProjectInfo {
@@ -227,7 +227,7 @@ pub fn spawn(app: AppHandle, state: Arc<SyncState>) {
             let mut deadline = Instant::now();
             let mut last: (f64, bool, Instant) = (f64::NAN, false, Instant::now());
             let mut sent_selection = (0, 0);
-            let mut sent_message = 0;
+            let mut sent_edit_message = 0;
             let mut sent_commands = None;
             let mut meters_playing = false;
             while !state.shared.quit.load(Ordering::SeqCst) {
@@ -239,7 +239,7 @@ pub fn spawn(app: AppHandle, state: Arc<SyncState>) {
                     deadline = now;
                 }
                 emit_selection_if_changed(&app, &state.shared, &mut sent_selection);
-                emit_message_if_changed(&app, &state.shared, &mut sent_message);
+                emit_edit_message_if_changed(&app, &state.shared, &mut sent_edit_message);
                 if let Some(table) = commands::changed(&state.shared, &mut sent_commands) {
                     crate::win::menu::reflect(&app, &table);
                     let _ = app.emit(COMMANDS_CHANGED_EVENT, table);
@@ -275,7 +275,7 @@ fn emit_selection_if_changed(app: &AppHandle, shared: &Shared, sent: &mut (u64, 
 }
 
 /// 編集の結果の文言を置き直していたら WebView に送る。同じ文言でも送り、Shell が出し直す。
-fn emit_message_if_changed(app: &AppHandle, shared: &Shared, sent: &mut u64) {
+fn emit_edit_message_if_changed(app: &AppHandle, shared: &Shared, sent: &mut u64) {
     let message = shared.edit.last_message();
     if message.serial == *sent {
         return;

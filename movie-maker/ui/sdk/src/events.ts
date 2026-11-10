@@ -11,7 +11,7 @@ export const EDIT_MESSAGE_EVENT = "mm:edit-message";
 export interface EditMessage {
   /** 失敗の理由か、取り消したもの。空なら伝えることが無い。 */
   text: string;
-  /** 編集を断った理由なら真。 */
+  /** 編集を拒否した理由なら真。 */
   failed: boolean;
   /** 文言を置くたびに進む。同じ文言が続いても、置き直したことが分かる。 */
   serial: number;

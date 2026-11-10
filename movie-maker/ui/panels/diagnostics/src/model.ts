@@ -3,7 +3,7 @@ import type { DiagnosticsInfo, LayerInfo } from "./api.ts";
 /** fps の小数の桁。29.97 のような値を、割り切れない分の桁を出さずに見せる。 */
 const FPS_DIGITS = 3;
 
-/** 描画スレッドが GPU を選ぶ前の GPU の欄。 */
+/** 描画スレッドが GPU を選ぶ前の GPU の行。 */
 export const NO_ADAPTER = "Not selected yet";
 
 /** 時計の種類（アプリの `PlaybackInfo::clock`）。音の出力が無いときは壁時計で進める。 */

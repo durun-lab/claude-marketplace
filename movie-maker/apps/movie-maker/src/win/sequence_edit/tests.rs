@@ -345,7 +345,7 @@ fn 編集用のフィクスチャは隙間を含む_3_カットのシーケン�
 }
 
 #[test]
-fn 編集の結果の文言は断った理由と知らせを見分け_置くたびに番号が進む() {
+fn 編集の結果の文言は拒否の理由と知らせを見分け_置くたびに番号が進む() {
     let edit = EditState::default();
     assert_eq!(edit.last_message(), EditMessage::default());
     edit.set_message("No clip at the playhead".into());

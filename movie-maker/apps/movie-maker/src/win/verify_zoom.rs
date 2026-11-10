@@ -55,7 +55,7 @@ pub struct Env<'a> {
     pub surface_hwnd: isize,
     pub window_hwnd: isize,
     pub test: &'a PlayTest,
-    /// 橋（`web/transport.js`）を持つ WebView。キーの名前を WebView の側でも確かめる。
+    /// 中継スクリプト（`web/transport.js`）を持つ WebView。キーの名前を WebView の側でも確かめる。
     pub webview: Option<Webview>,
 }
 

@@ -1,5 +1,5 @@
 //! ウィンドウの割り付け。メニューバーつきの Tauri のウィンドウを作り、その下の左に wgpu のサーフェス（子 HWND。
-//! Program と Timeline）、右に子 WebView（`ui/dist/` の shell の 2 列と、キーと再生位置の橋）を並べる。
+//! Program と Timeline）、右に子 WebView（`ui/dist/` の shell の 2 列と、キーと再生位置の中継スクリプト）を並べる。
 
 use std::sync::Arc;
 
@@ -23,7 +23,7 @@ const INITIAL_SIZE: (f64, f64) = (1600.0, 900.0);
 const MIN_SURFACE_W: f64 = 400.0;
 /// WebView が最初に読むページ。`ui/dist/` の shell。
 const UI_ENTRY: &str = "index.html";
-/// WebView に入れる橋。WebView にフォーカスがあるときのキーと、再生位置と選択のイベントをつなぐ。
+/// WebView に入れる中継スクリプト。WebView にフォーカスがあるときのキーと、再生位置と選択のイベントをつなぐ。
 const TRANSPORT_JS: &str = include_str!("../../web/transport.js");
 
 /// 配置を直すのに要るもの。
@@ -156,10 +156,10 @@ mod tests {
     }
 
     #[test]
-    fn 橋がボタンから送らない編集のキーはキーの表の編集のキーと同じ() {
+    fn 中継スクリプトがボタンから送らない編集のキーはキーの表の編集のキーと同じ() {
         let start = TRANSPORT_JS
             .find("const EDIT_KEYS = new Set([")
-            .expect("橋に EDIT_KEYS がある");
+            .expect("中継スクリプトに EDIT_KEYS がある");
         let body = &TRANSPORT_JS[start..];
         let list = &body[..body.find("]);").expect("EDIT_KEYS の終わり")];
         let mut bridge: Vec<&str> = list.split('"').skip(1).step_by(2).collect();

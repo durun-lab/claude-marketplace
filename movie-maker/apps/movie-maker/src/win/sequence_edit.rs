@@ -41,7 +41,7 @@ pub struct EditState {
 pub struct EditMessage {
     /// 失敗の理由か、取り消したもの。何も伝えることが無ければ空。
     pub text: String,
-    /// 編集を断った理由なら真。Shell は拒否の色で出す。
+    /// 編集を拒否した理由なら真。Shell は拒否の色で出す。
     pub failed: bool,
     /// 文言を置くたびに進む。同じ文言が続いても、置き直したことを Shell が見分けて出し直す。
     pub serial: u64,
@@ -53,7 +53,7 @@ impl EditState {
         self.message.lock().expect("edit message").text.clone()
     }
 
-    /// 直近の編集の結果の文言と、断った理由か、置いた回数。
+    /// 直近の編集の結果の文言と、拒否の理由か、置いた回数。
     pub fn last_message(&self) -> EditMessage {
         self.message.lock().expect("edit message").clone()
     }

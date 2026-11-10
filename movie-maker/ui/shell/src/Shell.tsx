@@ -14,10 +14,10 @@ import {
 } from "@mm/sdk";
 import { PANELS } from "./registry.ts";
 
-/** 選択の変わったことを知らせるイベント。アプリの WebView の橋（`apps/movie-maker/web/transport.js`）が、Timeline の選択の Tauri イベントをこの名前の DOM のイベントにつなぐ。 */
+/** 選択の変わったことを知らせるイベント。アプリの WebView の中継スクリプト（`apps/movie-maker/web/transport.js`）が、Timeline の選択の Tauri イベントをこの名前の DOM のイベントにつなぐ。 */
 export const LAYER_SELECTED_EVENT = "mm:layer-selected";
 
-/** Shell が選択のイベントを聞き始めたときに投げる頼み。アプリの WebView の橋（`transport.js`）が、今の選択を読んで選択のイベントで答える。 */
+/** Shell が選択のイベントを聞き始めたときに投げる頼み。アプリの WebView の中継スクリプト（`transport.js`）が、今の選択を読んで選択のイベントで答える。 */
 export const LAYER_SELECTION_REQUEST_EVENT = "mm:layer-selection-request";
 
 export type { LayerSelection };
@@ -79,7 +79,7 @@ const useSendOp = (sendOp: ShellProps["sendOp"]) => {
 const subscribe = (start: () => Promise<() => void>): (() => void) => {
   let off: (() => void) | null = null;
   let stopped = false;
-  // Tauri の外（デモや試験）では購読できないので、届かないまま動かす。
+  // Tauri の外（デモやテスト）では購読できないので、届かないまま動かす。
   start().then(
     (fn) => {
       if (stopped) fn();
@@ -241,7 +241,7 @@ export const Shell = ({ sendOp, apis = {}, listen, panels = PANELS, commands: co
   };
   const state = { left: useColumn(columns.left), right: useColumn(columns.right) };
   // 持ち主がパネルならそのタブを開き、アプリならアプリで実行する。押せないコマンドと表に無いコマンドは何もしない。
-  // パネルを選ぶコマンド（View のパネルの項目）はタブを押したのと同じにし、パネルの頼み（Media の取り込みなど）は進めない。
+  // パネルを選ぶコマンド（View のパネルの項目）はタブを押したのと同じにし、パネルの `requests`（Media の取り込みなど）は進めない。
   const runCommand = (id: string) => {
     const command = commands?.find((c) => c.id === id);
     if (!command?.enabled) return;

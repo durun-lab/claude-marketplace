@@ -58,7 +58,7 @@ Rust の側は `#[tauri::command] fn apply_op(op: mm_ops::Op, ...) -> Result<_, 
 
 パネルが持ち主のコマンドをアプリのメニューやキー（Ctrl+I の Import Media…）から呼ぶと、Tauri のイベント `mm:panel-command`（`PANEL_COMMAND_EVENT`）がコマンドの ID を届ける。Shell は `CommandsApi.onPanelCommand` で受け、`runCommand` と同じくタブを開き、パネルの `PanelContext.requests` を進める。パネルを選ぶコマンド（View のパネルの項目。`view.show_<パネルの id>`）はタブを押したのと同じで、`requests` は進めない（View > Media で取り込みを始めない）。
 
-編集の結果の文言は、Tauri のイベント `mm:edit-message`（`EDIT_MESSAGE_EVENT`）が `EditMessage`（`text`、`failed`、`serial`）で届ける（`onEditMessage`）。アプリが文言を置くたびに届き、同じ文言でも `serial` が進む。`text` が空なら伝えることが無く、`failed` は編集を断った理由のとき真。
+編集の結果の文言は、Tauri のイベント `mm:edit-message`（`EDIT_MESSAGE_EVENT`）が `EditMessage`（`text`、`failed`、`serial`）で届ける（`onEditMessage`）。アプリが文言を置くたびに届き、同じ文言でも `serial` が進む。`text` が空なら伝えることが無く、`failed` は編集を拒否した理由のとき真。
 
 ## Media のコマンド
 

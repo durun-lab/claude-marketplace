@@ -22,7 +22,7 @@ const mount = async () => {
 };
 
 describe("Shell のステータスの行", () => {
-  it("編集の結果の文言を列の下に出し、断った理由を見分け、次の編集が成功して空になると消す", async () => {
+  it("編集の結果の文言を列の下に出し、拒否の理由を見分け、次の編集が成功して空になると消す", async () => {
     const send = await mount();
     expect(host.querySelector(".mm-shell-status")?.getAttribute("role")).toBe("status");
     send("No clip at the playhead", true, 1);
