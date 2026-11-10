@@ -40,7 +40,7 @@ Rust の側は `#[tauri::command] fn apply_op(op: mm_ops::Op, ...) -> Result<_, 
 | コマンド | 引数 | 成功 |
 |---|---|---|
 | `command_table` | なし | `UiCommand[]`（ID の名前の順） |
-| `run_command` | `{ id }` | すぐ `()`（編集は編集のキューに積む）。編集の失敗は Source の状態の `message`（`mm:source`）に出る。今押せるコマンドだけを受け、表に無い ID と今押せないコマンドは `Err`。パネルが持ち主のコマンドは `mm:panel-command` で Shell に渡す。キー（`key_event`）は押せるかを見ずに実行し、拒否した理由は編集の `message` に出る |
+| `run_command` | `{ id }` | すぐ `()`（編集は編集のキューに積む）。編集の失敗は Source の状態の `message`（`mm:source`）に出て、Shell が右の列の上に出す（`onEditMessage`）。今押せるコマンドだけを受け、表に無い ID と今押せないコマンドは `Err`。パネルが持ち主のコマンドは `mm:panel-command` で Shell に渡す。キー（`key_event`）は押せるかを見ずに実行し、拒否した理由は編集の `message` に出る |
 
 | `UiCommand` の項目 | 中身 |
 |---|---|

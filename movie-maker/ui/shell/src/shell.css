@@ -76,23 +76,32 @@ body {
   outline-offset: var(--mm-size-focus-offset);
 }
 
-.mm-shell-center {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
+/*
+ * アプリは WebView の幅を 2 列の幅の和にするので、右の列は残りを全部取り、物理ピクセルへの丸めの差も埋める。
+ * 左の列と同じくタブを上に残して本体だけをスクロールし、縦のスクロールバーの分でタブの行が狭まって折り返さないようにする。
+ */
 .mm-shell-right {
-  width: var(--mm-size-right-column);
+  display: flex;
+  flex: 1 1 var(--mm-size-right-column);
+  flex-direction: column;
+  min-width: 0;
   border-left: var(--mm-border-width) solid var(--mm-color-border);
 }
 
-.mm-shell-error {
+.mm-shell-error,
+.mm-shell-status {
   margin: 0;
   padding: var(--mm-space-sm);
   border-bottom: var(--mm-border-width) solid var(--mm-color-danger);
   color: var(--mm-color-danger);
   font-size: var(--mm-font-size-sm);
   overflow-wrap: anywhere;
+}
+
+/* 編集の結果の文言は失敗の理由と取り消したものの両方なので、エラーの色にしない。 */
+.mm-shell-status {
+  border-bottom-color: var(--mm-color-border);
+  color: var(--mm-color-text);
 }
 
 .mm-shell-right-tabs {
@@ -102,8 +111,11 @@ body {
 /* Inspector のタブは Inspector と Graph を縦に並べる。 */
 .mm-shell-right-body {
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: var(--mm-space-md);
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .mm-shell-right-body[hidden] {

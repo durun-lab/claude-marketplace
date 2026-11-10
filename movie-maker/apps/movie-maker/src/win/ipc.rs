@@ -58,7 +58,7 @@ pub struct Tick {
     pub lag_ms: f64,
 }
 
-/// レイヤー 1 本の情報（一覧に出す）。
+/// レイヤー 1 本の情報（Diagnostics のレイヤーの生の一覧に出す）。
 #[derive(Clone, Serialize)]
 pub struct LayerInfo {
     pub id: String,
@@ -106,7 +106,8 @@ pub fn selection_of(doc: &OpenDoc, selected: Option<&str>) -> LayerSelection {
     }
 }
 
-/// 開いたプロジェクトの情報。
+/// 開いたプロジェクトの情報。WebView の橋が fps と長さを、Diagnostics が全部を読む（`ui/panels/diagnostics` の
+/// `DiagnosticsInfo`）。
 #[derive(Clone, Serialize)]
 pub struct ProjectInfo {
     pub name: String,
@@ -120,6 +121,8 @@ pub struct ProjectInfo {
     pub backends: Vec<(String, String)>,
     pub layers: Vec<LayerInfo>,
     pub adapter: String,
+    /// 再生位置を送ってから WebView が画面に出すまでの直近の中央値（ミリ秒）。通知の `lag_ms` と同じ。
+    pub lag_ms: f64,
 }
 
 struct Pending {
@@ -155,6 +158,7 @@ impl SyncState {
     }
 
     /// 開いたプロジェクトの情報。レイヤーの一覧と fps、長さ、大きさは、いまのプロジェクトのデータから作る。
+    /// GPU と通知の遅れは、描画スレッドと ack が後から変えるので、そのときの値を入れる。
     fn current_info(&self) -> Option<ProjectInfo> {
         let mut info = self.info.lock().expect("info").clone()?;
         if let Some(doc) = self.shared.doc() {
@@ -166,6 +170,7 @@ impl SyncState {
             }
         }
         info.adapter = self.shared.adapter.lock().expect("adapter").clone();
+        info.lag_ms = self.lag_median();
         Some(info)
     }
 

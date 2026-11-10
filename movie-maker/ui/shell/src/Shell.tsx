@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "preact/hooks";
 import {
   onDocChanged,
+  onEditMessage,
   type AnyPanel,
   type CommandsApi,
   type LayerSelection,
@@ -12,7 +13,7 @@ import {
 } from "@mm/sdk";
 import { PANELS } from "./registry.ts";
 
-/** 選択の変わったことを知らせるイベント。アプリの再生の操作列（`apps/movie-maker/web/transport.js`）が、Timeline の選択の Tauri イベントをこの名前の DOM のイベントにつなぐ。 */
+/** 選択の変わったことを知らせるイベント。アプリの WebView の橋（`apps/movie-maker/web/transport.js`）が、Timeline の選択の Tauri イベントをこの名前の DOM のイベントにつなぐ。 */
 export const LAYER_SELECTED_EVENT = "mm:layer-selected";
 
 export type { LayerSelection };
@@ -68,27 +69,36 @@ const useSendOp = (sendOp: ShellProps["sendOp"]) => {
   return { send, opError, setOpError };
 };
 
+/** `start` で Tauri のイベントを購読し、外す関数を返す。購読が確立する前に外れた場合も、確立した後で外す。 */
+const subscribe = (start: () => Promise<() => void>): (() => void) => {
+  let off: (() => void) | null = null;
+  let stopped = false;
+  // Tauri の外（デモや試験）では購読できないので、届かないまま動かす。
+  start().then(
+    (fn) => {
+      if (stopped) fn();
+      else off = fn;
+    },
+    () => undefined,
+  );
+  return () => {
+    stopped = true;
+    off?.();
+  };
+};
+
 /** `mm:doc-changed` が届いた回数。パネルの読み直しの合図にする。 */
 const useDocChanges = (listen: MediaListen | undefined): number => {
   const [count, setCount] = useState(0);
-  useEffect(() => {
-    // 購読が確立する前に外れた場合も、確立した後で外す。
-    let off: (() => void) | null = null;
-    let stopped = false;
-    // Tauri の外（デモや試験）では購読できないので、通知なしで動かす。
-    onDocChanged(() => setCount((n) => n + 1), listen).then(
-      (fn) => {
-        if (stopped) fn();
-        else off = fn;
-      },
-      () => undefined,
-    );
-    return () => {
-      stopped = true;
-      off?.();
-    };
-  }, [listen]);
+  useEffect(() => subscribe(() => onDocChanged(() => setCount((n) => n + 1), listen)), [listen]);
   return count;
+};
+
+/** 直近の編集の結果の文言（失敗の理由、取り消したもの）。次の編集が成功すると空になる。 */
+const useEditMessage = (listen: MediaListen | undefined): string => {
+  const [message, setMessage] = useState("");
+  useEffect(() => subscribe(() => onEditMessage(setMessage, listen)), [listen]);
+  return message;
 };
 
 /** アプリから読んだ UI のコマンドの表。押せるかが変わるたびに届く表に置き換える。読めない間は null。 */
@@ -200,6 +210,7 @@ const Column = ({ name, panels, state, apis, shared }: ColumnProps) => (
 /** 2 つの列。パネルは記述子の `column` の列に `order` の順でタブとして並ぶ。API の要るパネルは API があるときだけ出す。 */
 export const Shell = ({ sendOp, apis = {}, listen, panels = PANELS, commands: commandsApi }: ShellProps) => {
   const docChanges = useDocChanges(listen);
+  const editMessage = useEditMessage(listen);
   const { send, opError, setOpError } = useSendOp(sendOp);
   const selection = useLayerSelection();
   const commands = useCommandTable(commandsApi);
@@ -226,11 +237,15 @@ export const Shell = ({ sendOp, apis = {}, listen, panels = PANELS, commands: co
       <aside class={COLUMN_VIEW.left.asideClass}>
         <Column name="left" panels={columns.left} state={state.left} apis={apis} shared={shared} />
       </aside>
-      <main class="mm-shell-center" />
       <aside class={COLUMN_VIEW.right.asideClass}>
         {opError && (
           <p class="mm-shell-error" role="alert">
             {opError}
+          </p>
+        )}
+        {editMessage && (
+          <p class="mm-shell-status" role="status">
+            {editMessage}
           </p>
         )}
         <Column name="right" panels={columns.right} state={state.right} apis={apis} shared={shared} />

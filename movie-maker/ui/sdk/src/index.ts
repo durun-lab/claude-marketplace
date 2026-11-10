@@ -25,4 +25,4 @@ export type * from "./comments.ts";
 export type { MediaInvoke, MediaListen } from "./ipc.ts";
 export { definePanel, type AnyPanel, type PanelColumn, type PanelContext, type PanelDescriptor, type LayerSelection } from "./panel.ts";
 export { DOC_CHANGED_EVENT, onDocChanged, type DocChanged } from "./docChanged.ts";
-export { ASSET_SELECTED_EVENT, announceAsset } from "./events.ts";
+export { ASSET_SELECTED_EVENT, announceAsset, onEditMessage, SOURCE_EVENT } from "./events.ts";

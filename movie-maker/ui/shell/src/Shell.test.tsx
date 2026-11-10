@@ -3,6 +3,7 @@ import { render } from "preact";
 import { act } from "preact/test-utils";
 import type { CommandsApi, Layer, UiCommand } from "@mm/sdk";
 import type { DeliverApi } from "../../panels/deliver/src/api.ts";
+import type { DiagnosticsApi, DiagnosticsInfo } from "../../panels/diagnostics/src/api.ts";
 import type { FeedbackApi } from "../../panels/feedback/src/api.ts";
 import type { MediaApi } from "../../panels/media/src/api.ts";
 import type { MixerApi } from "../../panels/mixer/src/api.ts";
@@ -101,6 +102,21 @@ const fakeFeedback = (): FeedbackApi => ({
   reportError: vi.fn().mockResolvedValue(undefined),
   onChanged: vi.fn().mockResolvedValue(() => {}),
 });
+
+const DIAGNOSTICS: DiagnosticsInfo = {
+  name: "ep03",
+  composition: "main",
+  width: 1920,
+  height: 1080,
+  fps: 30,
+  duration: 60,
+  clock: "audio",
+  audio_device: null,
+  backends: [],
+  layers: [],
+  adapter: "NVIDIA GeForce RTX 5090",
+  lag_ms: 2,
+};
 
 const click = (el: Element | null | undefined) =>
   act(() => {
@@ -260,16 +276,35 @@ describe("Shell の右の列", () => {
     expect(feedback.status).toHaveBeenCalled();
     expect(feedback.list).toHaveBeenCalledWith("all");
   });
+
+  it("列は左と右の 2 つだけで、Diagnostics は右の列の最後のタブにし、開いてから読む", async () => {
+    const diagnostics: DiagnosticsApi = { info: vi.fn().mockResolvedValue(DIAGNOSTICS) };
+    act(() => render(<Shell sendOp={vi.fn()} apis={{ diagnostics }} />, host));
+    expect([...host.children].map((c) => c.className)).toEqual(["mm-shell-left", "mm-shell-right"]);
+    const tabs = host.querySelectorAll(".mm-shell-right-tabs .mm-shell-tab");
+    expect([...tabs].map((t) => t.textContent)).toEqual(["Inspector", "Diagnostics"]);
+    expect(diagnostics.info).not.toHaveBeenCalled();
+    click(tabs[1]);
+    await settle();
+    expect(host.querySelector(".mm-diag dd")?.textContent).toBe("NVIDIA GeForce RTX 5090");
+  });
 });
+
+/** Tauri の listen の代わり。イベント名ごとに最後の購読を持ち、`fire` で届ける。 */
+const fakeListen = () => {
+  const handlers = new Map<string, (e: { payload: unknown }) => void>();
+  const off = vi.fn();
+  const listen = vi.fn(async (event: string, handler: (e: { payload: unknown }) => void) => {
+    handlers.set(event, handler);
+    return off;
+  });
+  const fire = (event: string, payload: unknown) => handlers.get(event)?.({ payload });
+  return { listen, off, fire };
+};
 
 describe("Shell の外からの変更", () => {
   it("mm:doc-changed が届くと Story と Media が読み直す", async () => {
-    let fire: (e: { payload: unknown }) => void = () => undefined;
-    const off = vi.fn();
-    const listen = vi.fn(async (_event: string, handler: typeof fire) => {
-      fire = handler;
-      return off;
-    });
+    const { listen, off, fire } = fakeListen();
     const story = fakeStory();
     const media = fakeMedia();
     act(() => render(<Shell sendOp={vi.fn()} apis={{ media, story }} listen={listen} />, host));
@@ -277,12 +312,23 @@ describe("Shell の外からの変更", () => {
     expect(listen.mock.calls[0]?.[0]).toBe("mm:doc-changed");
     const before = [vi.mocked(story.overview).mock.calls.length, vi.mocked(media.list).mock.calls.length];
     await act(async () => {
-      fire({ payload: { version: 2, txn_id: "x", kind: "op", name: "n", actor: "cli", touched: [] } });
+      fire("mm:doc-changed", { version: 2, txn_id: "x", kind: "op", name: "n", actor: "cli", touched: [] });
     });
     expect(vi.mocked(story.overview).mock.calls.length).toBe((before[0] ?? 0) + 1);
     expect(vi.mocked(media.list).mock.calls.length).toBe((before[1] ?? 0) + 1);
     act(() => render(null, host));
     expect(off).toHaveBeenCalled();
+  });
+
+  it("編集の結果の文言を右の列の上に出し、次の編集が成功して空になると消す", async () => {
+    const { listen, fire } = fakeListen();
+    act(() => render(<Shell sendOp={vi.fn()} listen={listen} />, host));
+    await settle();
+    act(() => fire("mm:source", { asset: null, message: "No clip at the playhead" }));
+    const status = host.querySelector(".mm-shell-right > [role=status]");
+    expect(status?.textContent).toBe("No clip at the playhead");
+    act(() => fire("mm:source", { asset: null, message: "" }));
+    expect(host.querySelector(".mm-shell-right > [role=status]")).toBeNull();
   });
 
   it("Tasks の取り込みの項目は Media を開いてファイルの選択を始める", async () => {
@@ -320,6 +366,20 @@ describe("アプリのメニューとキーから届いたパネルのコマン�
     await settle();
     expect(panels[1]?.hidden).toBe(false);
     expect(api.run).not.toHaveBeenCalled();
+  });
+
+  it("View > Diagnostics は右の列の Diagnostics のタブを開く", async () => {
+    const diagnostics: DiagnosticsApi = { info: vi.fn().mockResolvedValue(DIAGNOSTICS) };
+    const table = [...TABLE, command("view.show_diagnostics", { name: "Diagnostics", panel: "diagnostics" })];
+    const { api, fromApp } = fakeCommands(table);
+    act(() => render(<Shell sendOp={vi.fn()} apis={{ diagnostics }} commands={api} />, host));
+    await settle();
+    const panels = host.querySelectorAll<HTMLElement>(".mm-shell-right-body");
+    expect(panels[1]?.hidden).toBe(true);
+    act(() => fromApp("view.show_diagnostics"));
+    await settle();
+    expect(panels[1]?.hidden).toBe(false);
+    expect(diagnostics.info).toHaveBeenCalled();
   });
 });
 

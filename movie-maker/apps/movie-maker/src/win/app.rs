@@ -101,6 +101,7 @@ fn project_info(
         backends: playback.backends.clone(),
         layers,
         adapter: String::new(),
+        lag_ms: 0.0,
     })
 }
 

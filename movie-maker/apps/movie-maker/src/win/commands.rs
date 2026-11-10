@@ -225,6 +225,12 @@ pub static TABLE: &[Spec] = &[
         ),
         owner: Owner::App(Action::Timeline(TimelineAction::ToggleSnapping)),
     },
+    Spec {
+        id: "view.show_diagnostics",
+        name: "Diagnostics",
+        description: Some("Show the GPU, clock, sync lag, backends, and the raw layer list"),
+        owner: Owner::Panel("diagnostics"),
+    },
 ];
 
 /// ID で表の行を引く。

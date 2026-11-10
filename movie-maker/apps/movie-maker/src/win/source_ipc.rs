@@ -1,4 +1,5 @@
-//! Source のビューアーと編集のボタンを WebView につなぐ Tauri のコマンドと、状態のイベント（`mm:source`）。
+//! Source のビューアーと編集を WebView につなぐ Tauri のコマンドと、状態のイベント（`mm:source`）。WebView の橋は
+//! パネルが選んだ素材を `source_open` で開き、Shell は状態のイベントから編集の結果の文言を出す。
 
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -23,7 +24,7 @@ pub fn handler(invoke: tauri::ipc::Invoke) -> bool {
     h(invoke)
 }
 
-/// WebView へ Source の状態を送る Tauri のイベント名。`web/transport.js` が受ける。
+/// WebView へ Source の状態を送る Tauri のイベント名。Shell が直近の編集の結果の文言（`message`）を右の列の上に出す。
 const SOURCE_EVENT: &str = "mm:source";
 
 /// Source の状態の変化を見分ける値。位置は 1 フレームより細かく見分ける必要はないが、比べやすいよう bit のまま持つ。

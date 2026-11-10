@@ -68,6 +68,7 @@ pub static BAR: &[(Menu, Groups)] = &[
             ],
             &["timeline.toggle_snapping"],
             &["timeline.show_keyframe_editor", "timeline.hide_shy_layers"],
+            &["view.show_diagnostics"],
             &["view.reset_ui_layout"],
         ],
     ),

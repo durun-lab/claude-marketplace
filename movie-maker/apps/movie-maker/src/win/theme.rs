@@ -1,5 +1,7 @@
-//! サーフェスの配色と字。WebView と同じ `ui/theme` の theme.json の色と字を、Timeline に使う。
-//! サーフェスは映像の周りなので、ダークのモードを使う。
+//! サーフェスの配色と字と、WebView の列の幅。WebView と同じ `ui/theme` の theme.json の色と字を Timeline に使い、
+//! 列の幅で割り付けを決める。サーフェスは映像の周りなので、ダークのモードを使う。
+
+use std::sync::LazyLock;
 
 use mm_ui_layout::palette::{parse_hex, Palette};
 use mm_ui_layout::UiFont;
@@ -9,6 +11,33 @@ use serde_json::Value;
 const THEME_JSON: &str = include_str!("../../../../ui/theme/theme.json");
 /// サーフェスに使うモード。
 const MODE: &str = "dark";
+/// theme.json を読めないときの WebView の 2 列の幅の和（論理ピクセル）。
+const DEFAULT_WEBVIEW_W: f64 = 660.0;
+
+/// WebView の 2 列の幅の和（論理ピクセル）。theme.json の `left-column` と `right-column`。大きさが変わるたびに引くので、
+/// 最初の 1 回だけ読む。
+static WEBVIEW_W: LazyLock<f64> = LazyLock::new(|| {
+    columns_from(THEME_JSON).unwrap_or_else(|e| {
+        tracing::warn!(error = %e, "theme.json の列の幅を読めないので既定の幅にする");
+        DEFAULT_WEBVIEW_W
+    })
+});
+
+/// WebView の 2 列（Tasks などの左の列と、Inspector などの右の列）の幅の和（論理ピクセル）。
+pub fn webview_width() -> f64 {
+    *WEBVIEW_W
+}
+
+fn columns_from(json: &str) -> Result<f64, String> {
+    let theme: Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
+    let size = |name: &str| {
+        theme
+            .pointer(&format!("/shape/size/{name}"))
+            .and_then(Value::as_f64)
+            .ok_or_else(|| format!("shape.size.{name} が無い"))
+    };
+    Ok(size("left-column")? + size("right-column")?)
+}
 
 /// theme.json のダークのモードから作った Timeline の色。読めなければ既定の色。
 pub fn surface_palette() -> Palette {
@@ -88,5 +117,19 @@ mod tests {
             theme["font"]["size"]["base"].as_f64().unwrap()
         );
         assert!(font_from("{}").is_err());
+    }
+
+    #[test]
+    fn webview_の幅は左の列と右の列の幅の和() {
+        let theme: Value = serde_json::from_str(THEME_JSON).unwrap();
+        let size = |name: &str| theme["shape"]["size"][name].as_f64().unwrap();
+        assert_eq!(
+            size("right-column"),
+            400.0,
+            "右の列はキーフレームの欄が行の右に出る幅"
+        );
+        assert_eq!(webview_width(), size("left-column") + size("right-column"));
+        assert_eq!(webview_width(), DEFAULT_WEBVIEW_W);
+        assert!(columns_from("{}").is_err());
     }
 }

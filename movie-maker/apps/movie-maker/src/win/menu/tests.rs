@@ -84,7 +84,7 @@ fn 項目は並びの順にコマンドの表の名前とキーの見た目で�
     assert_eq!(menu_texts(Menu::Help, &table), ["About"]);
     assert_eq!(
         menu_texts(Menu::View, &table),
-        ["Snapping\tN"],
+        ["Snapping\tN", "-", "Diagnostics"],
         "ズームは後の PR が表に足す"
     );
 }
@@ -267,7 +267,13 @@ fn メニューのイベントは表のコマンドを実行し_パネルとウ�
     run(&shared, "playback.go_to_end");
     assert_eq!(rx.try_recv(), Ok(Command::Toggle));
     assert_eq!(rx.try_recv(), Ok(Command::Seek(f64::MAX)));
-    for id in ["media.import", "export.start", "app.exit", "app.show_about"] {
+    for id in [
+        "media.import",
+        "export.start",
+        "view.show_diagnostics",
+        "app.exit",
+        "app.show_about",
+    ] {
         run(&shared, id);
     }
     assert_eq!(
@@ -275,6 +281,7 @@ fn メニューのイベントは表のコマンドを実行し_パネルとウ�
         [
             Forward::Panel("media.import"),
             Forward::Panel("export.start"),
+            Forward::Panel("view.show_diagnostics"),
             Forward::Window(WindowAction::Exit),
             Forward::Window(WindowAction::About),
         ]
