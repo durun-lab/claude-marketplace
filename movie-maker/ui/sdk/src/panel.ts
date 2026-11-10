@@ -17,12 +17,24 @@ export interface CompositionSummary {
   layer_count: number;
 }
 
+/**
+ * Timeline のキーフレームの行で選んだパラメータ（アプリの `keyframe_edit.rs` の `ParamSelection`）。Inspector と Graph がそのパラメータを選ぶ。
+ * Timeline で選び直すたびに `serial` が進むので、Inspector で別のパラメータを選んだ後に同じ行を押しても選び直せる。
+ */
+export interface ParamSelection {
+  /** パラメータのパス（`setParam` の target.path）。 */
+  path: string;
+  serial: number;
+}
+
 /** Timeline で選ばれているレイヤーと、それが指す素材。 */
 export interface LayerSelection {
   layer: Layer | null;
   assets?: Asset[];
   /** 開いているコンポジションの要約。何も選んでいない Inspector が出す。 */
   composition?: CompositionSummary;
+  /** Timeline のキーフレームの行で選んだパラメータ。 */
+  param?: ParamSelection | null;
 }
 
 /** Shell がパネルの `render` に渡すもの。 */

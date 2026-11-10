@@ -30,14 +30,13 @@ test('メンションのトリガーは、正の整数のバースト時間だ�
   assert.deepEqual(parseWorkflows(JSON.stringify({ workflows: [def({ triggers })] })).workflows[0]?.triggers, [{ kind: 'jira-mention', burstMinutes: 5 }, { kind: 'slack-mention' }]);
 });
 
-test('バーストは、最後のメンションからバースト時間が過ぎたら 1 つにまとめて渡す', () => {
+test('バーストは、最後のメンションからバースト時間が過ぎたら URL を並べた 1 つの依頼にまとめて渡す', () => {
   const w = parseWorkflows(JSON.stringify({ workflows: [def({ triggers: [{ kind: 'slack-mention', burstMinutes: 5 }] })] })).workflows[0];
   assert.ok(w);
   const run = { queue: [], bursts: { 'slack-mention': { texts: ['a', 'b'], lastAt: 0 } } };
   assert.deepEqual(flushBursts(w, run, 4 * 60_000), []);
   const [text] = flushBursts(w, run, 5 * 60_000);
-  assert.ok(text?.startsWith('2 件のメンションをまとめて'));
-  assert.ok(text?.endsWith('a\n\n---\n\nb'));
+  assert.equal(text, 'Slack で自分へのメンションが届きました:\na\nb');
   assert.deepEqual(run.bursts, {});
 });
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "preact/hooks";
+import { useEffect, useMemo, useRef, useState } from "preact/hooks";
 import { type Asset, type CompositionSummary, type Layer, type Op, type ParamRef, type ParamValue, evalParam } from "@mm/sdk";
 import { Editor } from "./editors.tsx";
 import { EmptyInspector } from "./EmptyInspector.tsx";
@@ -83,13 +83,24 @@ const RowLabel = ({ row, onSelect }: { row: FieldRow; onSelect?: () => void }) =
   );
 };
 
+/** 選ばれた行を Inspector の見えている所へ寄せる（Timeline のキーフレームの行で選んだパラメータが画面の外の行でも見える）。 */
+const useRevealSelected = (selected: boolean) => {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    // jsdom は scrollIntoView を持たない。
+    if (selected) ref.current?.scrollIntoView?.({ block: "nearest" });
+  }, [selected]);
+  return ref;
+};
+
 const RowView = ({ row, target, assets, at, span, selected, onOp, onSeek, onSelect }: RowViewProps) => {
+  const ref = useRevealSelected(selected);
   const animated = hasKeyframes(row.param);
   const value: ParamValue = at && animated ? evalParam(row.param, at.sec) : shownValue(row.param);
   const commit = (next: ParamValue) =>
     onOp(animated && at ? valueAtOp(target, row.param, at, next) : setParamOp(target.layer ?? "", row.path, next));
   return (
-    <div class="mm-insp-row" data-animated={animated} data-selected={selected} data-default={row.isDefault === true}>
+    <div ref={ref} class="mm-insp-row" data-animated={animated} data-selected={selected} data-default={row.isDefault === true}>
       <RowLabel row={row} onSelect={onSelect} />
       <div class="mm-insp-value">
         <Editor

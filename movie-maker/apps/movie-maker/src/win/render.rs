@@ -24,6 +24,7 @@ use mm_ui_wgpu::Ui;
 
 use crate::win::keys;
 use crate::win::playback::Command;
+use crate::win::splitter;
 use crate::win::state::{FrameImage, PreviewFrame, Shared};
 use crate::win::surface;
 use crate::win::theme;
@@ -313,6 +314,7 @@ fn run(
             syncs.forget();
         }
         view.configure(hwnd, size);
+        splitter::sync_ui(shared, &mut view.ui);
         syncs.refresh(shared, &mut view);
         handle_input(shared, &mut view.ui, &syncs.doc);
         if let Some(state) = view.ui.view_state() {

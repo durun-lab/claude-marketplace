@@ -10,9 +10,9 @@
 use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
-    clear_tooltip_area, fit_rect, split_viewers, timeline_overlay, timeline_quads, Action,
-    DrawingShape, EmptyHints, EmptyKeys, EmptyState, PaintInput, PaintState, Peaks, PointerEvent,
-    Quad, Rect, RowHeights, Scale, SurfaceLayout, TimeView, TimelineController, TimelineModel,
+    clear_tooltip_area, fit_rect, timeline_overlay, timeline_quads, Action, DrawingShape,
+    EmptyHints, EmptyKeys, EmptyState, PaintInput, PaintState, Peaks, PointerEvent, Quad, Rect,
+    RowHeights, Scale, SurfaceLayout, TimeView, TimelineController, TimelineModel,
     TransportController, TransportState, UiFont, UnderText, ViewState, Waves,
 };
 
@@ -23,11 +23,14 @@ use crate::text::{TextLayer, TextStats};
 use crate::thumbs::ThumbRenderer;
 
 mod labels;
+mod layout;
+mod selection;
 mod thumbs;
 mod toolbar;
 mod transport;
 mod view;
 
+pub use layout::SplitterState;
 use thumbs::DroppedThumbs;
 pub use thumbs::ThumbStats;
 
@@ -66,6 +69,8 @@ pub struct Ui {
     restore: Option<ViewState>,
     /// 割り付け（論理ピクセル）。
     layout: SurfaceLayout,
+    /// 2 つの仕切りの状態。
+    splitter: SplitterState,
     /// 再生の操作のバーの状態。Program の再生位置、長さ、フレームレートは Timeline のモデルと再生位置から埋める。
     transport: TransportState,
     transport_controller: TransportController,
@@ -110,6 +115,7 @@ impl Ui {
                 source: None,
                 source_transport: None,
             },
+            splitter: SplitterState::default(),
             transport: TransportState::default(),
             transport_controller: TransportController::default(),
             toolbar: toolbar::Toolbar::default(),
@@ -153,21 +159,6 @@ impl Ui {
             .map_or_else(TextStats::default, TextLayer::stats)
     }
 
-    /// サーフェスの大きさ（物理ピクセル）。割り付けを論理ピクセルで計算し直す。
-    pub fn resize(&mut self, width: u32, height: u32) {
-        self.size = (width as f32, height as f32);
-        self.layout = split_viewers(
-            self.scale.to_logical(self.size.0),
-            self.scale.to_logical(self.size.1),
-            self.source.has_image(),
-        );
-        let t = self.layout.timeline;
-        self.controller.resize((t.w, t.h));
-        if !self.opened {
-            self.open_view();
-        }
-    }
-
     /// Timeline に出すもの。最初に渡されたときに全体表示にし、sequence の行が見える所までスクロールする。
     pub fn set_model(&mut self, model: TimelineModel) {
         self.model = model;
@@ -187,21 +178,6 @@ impl Ui {
     /// コンテンツハッシュ `content_hash` の素材のピークを置く。置くと、その素材の帯に波形が出る。
     pub fn set_wave(&mut self, content_hash: std::sync::Arc<str>, peaks: Peaks) {
         self.waves.insert(content_hash, peaks);
-    }
-
-    /// 選択を置く（`None` で外す）。添字は `TimelineModel::items` のもの。
-    pub fn select(&mut self, index: Option<usize>) {
-        self.controller.selected = index.filter(|i| *i < self.model.items.len());
-    }
-
-    /// 選んだカットを置く（`None` で外す）。添字は `TimelineModel::items` とそのカットのもの。
-    pub fn select_cut(&mut self, cut: Option<(usize, usize)>) {
-        self.controller.selected_cut = cut.filter(|(i, c)| {
-            self.model
-                .items
-                .get(*i)
-                .is_some_and(|item| *c < item.cuts.len())
-        });
     }
 
     /// 再生位置（秒）。再生とキーで行の領域の端を越えたら、その向きへ 1 画面ずつ送る（`TimelineController::page_scroll`）。
@@ -248,40 +224,9 @@ impl Ui {
         self.drawing.set_shapes(drawing);
     }
 
-    /// 表示の倍率（DPI / 96）。Timeline の寸法と描き込みの太さを論理ピクセルで揃える。
-    /// 表示の倍率の違うモニターへ動かしたときは、物理ピクセルの大きさが同じでも割り付けを計算し直す。
-    pub fn set_scale_factor(&mut self, factor: f32) {
-        let scale = Scale::new(factor);
-        if scale != self.scale {
-            self.scale = scale;
-            self.resize(self.size.0 as u32, self.size.1 as u32);
-        }
-    }
-
     /// Program に出すフレームを、同じデバイスのテクスチャのまま渡す。
     pub fn set_frame_texture(&mut self, device: &wgpu::Device, texture: &wgpu::Texture) {
         self.program.set_texture(device, texture);
-    }
-
-    /// 現在の割り付け（物理ピクセル）。
-    pub fn layout(&self) -> SurfaceLayout {
-        self.scale.layout_to_physical(self.layout)
-    }
-
-    /// サーフェスの座標（物理ピクセル）の点がどの領域か。
-    pub fn region_at(&self, x: f32, y: f32) -> Region {
-        let (x, y) = (self.scale.to_logical(x), self.scale.to_logical(y));
-        let l = self.layout;
-        let in_source = |r: Option<Rect>| r.is_some_and(|r| r.contains(x, y));
-        if l.timeline.contains(x, y) {
-            Region::Timeline
-        } else if in_source(l.source) || in_source(l.source_transport) {
-            Region::Source
-        } else if l.program.contains(x, y) || l.program_transport.contains(x, y) {
-            Region::Program
-        } else {
-            Region::Outside
-        }
     }
 
     /// サーフェスの座標（物理ピクセル）のポインターの入力を受ける。Timeline の外から始まったドラッグは捨てる。
@@ -315,7 +260,9 @@ impl Ui {
             },
             other => other,
         };
-        self.controller.handle(local, &self.model, self.playhead)
+        let mut actions = self.controller.handle(local, &self.model, self.playhead);
+        self.toggle_keyframe_rows(&mut actions);
+        actions
     }
 
     /// 1 フレーム描く。`target` はサーフェスのテクスチャのビュー。

@@ -1,6 +1,6 @@
 //! `--play-test` の再生テスト。プロジェクトを先頭から要求の秒数だけ再生して、ドロップしたフレームの数、
 //! 映像と音のずれ、WebView の時計の誤差を測り、途中のスクリーンショットと一緒に残す。続けて入力、WebView、Inspector、
-//! 再生の操作のバー、Timeline の編集、Timeline のズームと移動、Timeline のツールバーの工程を通し、テストが適用した
+//! 再生の操作のバー、Timeline の編集、Timeline のズームと移動、Timeline のツールバー、割り付けの工程を通し、テストが適用した
 //! 編集を戻してから結果の JSON を書いて終わる。
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
@@ -21,7 +21,9 @@ use crate::win::feedback::panic_message;
 use crate::win::playback::{Command, PlaybackInfo};
 use crate::win::state::Shared;
 use crate::win::surface;
+use crate::win::verify_baseline::Baseline;
 use crate::win::verify_edit;
+use crate::win::verify_layout;
 use crate::win::verify_place::placement;
 use crate::win::verify_restore::{self, Savepoint};
 use crate::win::verify_stage::{self, checkpoint, wait_until, StageError};
@@ -61,6 +63,8 @@ const EDIT_LIMIT: Duration = Duration::from_secs(90);
 const TOOLBAR_LIMIT: Duration = Duration::from_secs(90);
 /// Timeline のズームと移動は、全部の待ちが上限まで待つと約 70 秒（ふだんは数秒）。
 const ZOOM_LIMIT: Duration = Duration::from_secs(90);
+/// 割り付けは、全部の待ちが上限まで待つと約 100 秒（ふだんは 10 秒ほど）。
+const LAYOUT_LIMIT: Duration = Duration::from_secs(120);
 
 /// スクラブで狙う時刻（秒）。
 const SCRUB_TARGET: f64 = 3.0;
@@ -109,25 +113,6 @@ struct TestEnv {
     test: Arc<PlayTest>,
     /// ウィンドウの HWND（スクリーンショットと表示の倍率に使う）。
     hwnd: isize,
-}
-
-/// 再生の前の数字。再生の区間だけを数えるために引く。
-struct Baseline {
-    dropped: u64,
-    rendered: u64,
-    presented: u64,
-    underruns: u64,
-}
-
-impl Baseline {
-    fn take(shared: &Shared) -> Self {
-        Self {
-            dropped: shared.dropped_frames.load(Ordering::SeqCst),
-            rendered: shared.rendered_frames.load(Ordering::SeqCst),
-            presented: shared.frames_presented.load(Ordering::SeqCst),
-            underruns: shared.clock.get().map_or(0, |c| c.underruns()),
-        }
-    }
 }
 
 /// 工程を順に実行し、結果を返さなかった工程の名前を集める。時間切れが出たら、後の工程は実行しない
@@ -241,6 +226,18 @@ fn run(env: &TestEnv, telemetry: &Telemetry) -> Value {
     let e = env.clone();
     report["timeline_toolbar"] = stages.run("timeline_toolbar", TOOLBAR_LIMIT, move || {
         verify_toolbar::run(&e.shared, e.target.surface_hwnd, e.hwnd, &e.test)
+    });
+    let e = env.clone();
+    report["layout"] = stages.run("layout", LAYOUT_LIMIT, move || {
+        let (window, webview) = (e.target.window.clone(), e.app.get_webview("ui"));
+        verify_layout::run(
+            &e.shared,
+            &window,
+            webview,
+            e.target.surface_hwnd,
+            e.hwnd,
+            &e.test,
+        )
     });
     report["restore"] = verify_restore::restore(savepoint.as_ref(), shared);
     report["failed_stages"] = json!(stages.failed);

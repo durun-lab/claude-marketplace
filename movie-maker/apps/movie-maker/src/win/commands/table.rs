@@ -2,7 +2,7 @@
 
 use mm_ui_layout::TimelineCommand;
 
-use super::{Action, Owner, ShyCommand, Spec, WindowAction};
+use super::{Action, LayoutCommand, Owner, ShyCommand, Spec, WindowAction};
 use crate::win::edit_actions::EditAction;
 use crate::win::playback::Command;
 
@@ -99,6 +99,22 @@ pub static TABLE: &[Spec] = &[
         name: "Go to End",
         description: None,
         owner: Owner::App(Action::Playback(Command::Seek(f64::MAX))),
+    },
+    Spec {
+        id: "playback.go_to_next_keyframe",
+        name: "Go to Next Keyframe",
+        description: Some(
+            "Move the playhead to the next keyframe of the selected layer, or of any layer",
+        ),
+        owner: Owner::App(Action::Timeline(TimelineCommand::NextKeyframe)),
+    },
+    Spec {
+        id: "playback.go_to_previous_keyframe",
+        name: "Go to Previous Keyframe",
+        description: Some(
+            "Move the playhead to the previous keyframe of the selected layer, or of any layer",
+        ),
+        owner: Owner::App(Action::Timeline(TimelineCommand::PreviousKeyframe)),
     },
     Spec {
         id: "playback.go_to_start",
@@ -207,10 +223,24 @@ pub static TABLE: &[Spec] = &[
         owner: Owner::App(Action::Shy(ShyCommand::HideShyLayers)),
     },
     Spec {
+        id: "timeline.remove_keyframe",
+        name: "Remove Keyframe",
+        description: Some("Remove the keyframe selected in the Timeline's keyframe rows"),
+        owner: Owner::App(Action::Timeline(TimelineCommand::RemoveKeyframe)),
+    },
+    Spec {
         id: "timeline.selection_tool",
         name: "Selection Tool",
         description: Some("Drag a layer to move it in time; select clips and trim their edges"),
         owner: Owner::App(Action::Timeline(TimelineCommand::SelectionTool)),
+    },
+    Spec {
+        id: "timeline.show_keyframe_editor",
+        name: "Show Keyframe Editor",
+        description: Some(
+            "Open or close a row per keyframed property below the selected layer, or all layers",
+        ),
+        owner: Owner::App(Action::Timeline(TimelineCommand::ShowKeyframeEditor)),
     },
     Spec {
         id: "timeline.shy_selected_layers",
@@ -244,6 +274,12 @@ pub static TABLE: &[Spec] = &[
         description: Some("Zoom out around the playhead"),
         owner: Owner::App(Action::Timeline(TimelineCommand::ZoomOut)),
     },
+    Spec {
+        id: "view.reset_ui_layout",
+        name: "Reset UI Layout",
+        description: Some("Put the splitters and both panel columns back to the default layout"),
+        owner: Owner::App(Action::Layout(LayoutCommand::ResetUiLayout)),
+    },
     show_panel!("deliver", "Deliver", None),
     show_panel!("devices", "Devices", None),
     show_panel!(
@@ -259,4 +295,16 @@ pub static TABLE: &[Spec] = &[
     show_panel!("story", "Story", None),
     show_panel!("tasks", "Tasks", None),
     show_panel!("transition", "Transitions", None),
+    Spec {
+        id: "view.toggle_left_column",
+        name: "Left Panels",
+        description: Some("Show or hide the column with Tasks, Media, Story, and the other panels"),
+        owner: Owner::App(Action::Layout(LayoutCommand::ToggleLeftColumn)),
+    },
+    Spec {
+        id: "view.toggle_right_column",
+        name: "Right Panels",
+        description: Some("Show or hide the column with Inspector, Review, and the other panels"),
+        owner: Owner::App(Action::Layout(LayoutCommand::ToggleRightColumn)),
+    },
 ];

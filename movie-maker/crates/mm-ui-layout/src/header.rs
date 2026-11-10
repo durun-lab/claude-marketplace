@@ -10,6 +10,7 @@
 use std::sync::Arc;
 
 use crate::geom::{Color, Rect};
+use crate::keyframe_rows;
 use crate::paint::PaintState;
 use crate::palette::{text_on, Palette};
 use crate::text::{place, Align, Label, TextMeasure, TextStyle, UiFont};
@@ -102,9 +103,16 @@ fn name_width(id: &str) -> f32 {
     chars + TEXT_PAD * 2.0
 }
 
-/// 行 `index` の見出しの点 (x, y)（Timeline の座標）に当たるもの。ボタンの上ならそのボタン、ほかは見出し。
+/// 行 `index` の見出しの点 (x, y)（Timeline の座標）に当たるもの。ボタンの上ならそのボタン、キーフレームのある
+/// レイヤーの ▸ の上ならキーフレームの開閉、下に開いたキーフレームの行ならその見出し、ほかは見出し。
 pub(crate) fn hit(vp: &Viewport, (index, item): (usize, &Item), (x, y): (f32, f32)) -> Hit {
+    if let Some(row) = keyframe_rows::row_at(vp, index, y) {
+        return Hit::KeyframeRowHeader { item: index, row };
+    }
     let c = cells(row_rect(vp, index), item);
+    if item.has_keyframes() && c.disclosure.contains(x, y) {
+        return Hit::Disclosure { index };
+    }
     let button = [
         (Some(c.enabled), HeaderButton::Enabled),
         (Some(c.lock), HeaderButton::Lock),
@@ -135,6 +143,12 @@ pub fn button_center(
         HeaderButton::Solo => c.solo,
     }?;
     Some((cell.x + cell.w / 2.0, cell.y + cell.h / 2.0))
+}
+
+/// 行 `index` の見出しのキーフレームの開閉（▸）の中心（Timeline の座標）。自動試験がクリックの位置を求めるのに使う。
+pub fn disclosure_center(vp: &Viewport, item: &Item, index: usize) -> (f32, f32) {
+    let cell = cells(row_rect(vp, index), item).disclosure;
+    (cell.x + cell.w / 2.0, cell.y + cell.h / 2.0)
 }
 
 /// 行 `index` の見出しの、ボタンの左の名前の中央（Timeline の座標）。見出しをつかむ位置。
