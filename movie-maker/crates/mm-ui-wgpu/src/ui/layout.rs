@@ -3,7 +3,7 @@
 
 use mm_ui_layout::palette;
 use mm_ui_layout::{
-    content_width, split_viewers_with, splitter_rect, vertical_splitter_rect, Quad, Rect, Scale,
+    content_width, splitter_rect, surface_layout, vertical_splitter_rect, Quad, Rect, Scale,
     Splitter, SurfaceLayout, TIMELINE_RATIO,
 };
 
@@ -34,11 +34,12 @@ impl Ui {
     /// サーフェスの大きさ（物理ピクセル）。割り付けを論理ピクセルで計算し直す。
     pub fn resize(&mut self, width: u32, height: u32) {
         self.size = (width as f32, height as f32);
-        self.layout = split_viewers_with(
-            content_width(self.scale.to_logical(self.size.0), self.splitter.vertical),
+        self.layout = surface_layout(
+            self.scale.to_logical(self.size.0),
             self.scale.to_logical(self.size.1),
             self.source.has_image(),
             self.splitter.timeline_ratio,
+            self.splitter.vertical,
         );
         let t = self.layout.timeline;
         self.controller.resize((t.w, t.h));

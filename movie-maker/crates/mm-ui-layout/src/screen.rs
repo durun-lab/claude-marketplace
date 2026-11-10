@@ -92,6 +92,18 @@ pub fn splitter_rect(w: f32, h: f32, ratio: f32) -> Rect {
     Rect::new(0.0, h - timeline_height(h, ratio) - GAP, w, GAP)
 }
 
+/// 仕切りの今の位置でサーフェスを分ける。縦の仕切りを出すとき（`vertical`）は右端の [`SPLITTER_W`] を除いた幅を
+/// Program と Timeline に分ける。`Ui` と `--play-test` のクリックの位置が同じ割り付けを引くよう、ここ 1 か所で決める。
+pub fn surface_layout(
+    w: f32,
+    h: f32,
+    with_source: bool,
+    timeline_ratio: f32,
+    vertical: bool,
+) -> SurfaceLayout {
+    split_viewers_with(content_width(w, vertical), h, with_source, timeline_ratio)
+}
+
 /// 既定の Timeline の高さの割合（[`TIMELINE_RATIO`]）でサーフェスを分ける。
 pub fn split_viewers(w: f32, h: f32, with_source: bool) -> SurfaceLayout {
     split_viewers_with(w, h, with_source, TIMELINE_RATIO)
@@ -100,7 +112,7 @@ pub fn split_viewers(w: f32, h: f32, with_source: bool) -> SurfaceLayout {
 /// 幅 `w`、高さ `h` のサーフェスを分ける。Timeline の高さはサーフェスの `timeline_ratio` 倍（[`timeline_height`]）。
 /// ビューアーの領域は映像の領域の下に再生の操作のバー（[`TRANSPORT_H`]。領域が低ければ高さ 0）を取り、`with_source` なら
 /// 左の Source と右の Program に半分ずつ分ける。
-pub fn split_viewers_with(w: f32, h: f32, with_source: bool, timeline_ratio: f32) -> SurfaceLayout {
+fn split_viewers_with(w: f32, h: f32, with_source: bool, timeline_ratio: f32) -> SurfaceLayout {
     let h = h.max(0.0);
     let th = timeline_height(h, timeline_ratio);
     let ph = (h - th - GAP).max(0.0);
@@ -223,6 +235,11 @@ mod tests {
         assert_eq!(content_width(1000.0, false), 1000.0);
         let v = vertical_splitter_rect(1000.0, 800.0);
         assert_eq!((v.right(), v.w, v.h), (1000.0, SPLITTER_W, 800.0));
+        let l = surface_layout(1000.0, 800.0, false, 0.5, true);
+        assert_eq!((l.timeline.w, l.timeline.h), (1000.0 - SPLITTER_W, 400.0));
+        assert_eq!(l.program.w, 1000.0 - SPLITTER_W);
+        let full = surface_layout(1000.0, 800.0, false, 0.5, false);
+        assert_eq!(full.timeline.w, 1000.0, "縦の仕切りが無ければ全幅");
     }
 
     #[test]
