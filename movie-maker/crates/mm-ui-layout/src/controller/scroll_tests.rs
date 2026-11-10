@@ -4,7 +4,7 @@ use super::tests::{ctl, down, in_bar};
 use super::*;
 use crate::rows::{RowHeights, Rows};
 use crate::timeline::{Item, ItemKind};
-use crate::timeline_layout::HEADER_W;
+use crate::timeline_layout::{HEADER_W, TOOLBAR_H};
 
 /// 画像のレイヤーを `n` 本（Medium の行が `n` 本）。
 fn many(n: usize) -> TimelineModel {
@@ -51,7 +51,7 @@ fn shift_ホイールは縦にスクロールし_範囲に収め_横は動かさ
 fn スクロールした後は見えている行に当たる() {
     let m = many(100);
     let mut c = ctl(&m);
-    c.handle(wheel(300.0, 100.0, -3.0, true), &m, 0.0);
+    c.handle(wheel(300.0, 100.0 + TOOLBAR_H, -3.0, true), &m, 0.0);
     // 180 px 送ると、y 100 は行の並びの 254 px で、行 9（252 から 280）の帯の上端。
     assert_eq!(
         c.hover,

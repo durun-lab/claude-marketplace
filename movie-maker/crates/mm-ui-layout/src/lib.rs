@@ -38,6 +38,7 @@ mod text;
 mod time_view;
 mod timeline;
 mod timeline_layout;
+mod toolbar;
 mod transport;
 mod view_state;
 mod wave;
@@ -71,6 +72,10 @@ pub use timeline::{
     TrimBounds, HANDLE_PX,
 };
 pub use timeline_layout::{TimelineLayout, Viewport, HEADER_W, RULER_H, SCROLLBAR_W};
+pub use toolbar::{
+    toolbar_button, toolbar_labels, zoom_fraction, zoom_px, ToolbarAction, ToolbarController,
+    ToolbarPart, ToolbarState, ToolbarView,
+};
 pub use transport::{
     jog_track, transport_button, transport_labels, transport_quads, TransportAction,
     TransportController, TransportPart, TransportState, Viewer, ViewerState, TRANSPORT_H,

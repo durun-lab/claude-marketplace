@@ -10,7 +10,7 @@ use crate::text::tests::FakeMeasure;
 use crate::time_view::TimeView;
 use crate::timeline::{hit_test, Hit};
 use crate::timeline_layout::tests::TestViewport;
-use crate::timeline_layout::{HEADER_W, RULER_H};
+use crate::timeline_layout::{HEADER_W, RULER_H, TOOLBAR_H};
 
 /// 幅 800、高さ 200 の Timeline。
 const SIZE: (f32, f32) = (800.0, 200.0);
@@ -46,7 +46,7 @@ fn 見出しの列は幅_180_で_行の領域と目盛りの帯はその右か�
     assert_eq!(l.row_area.x, HEADER_W);
     assert_eq!(l.row_area.w, SIZE.0 - HEADER_W);
     assert_eq!((l.ruler.x, l.ruler.w), (HEADER_W, SIZE.0 - HEADER_W));
-    assert_eq!(l.corner, Rect::new(0.0, 0.0, HEADER_W, RULER_H));
+    assert_eq!(l.corner, Rect::new(0.0, TOOLBAR_H, HEADER_W, RULER_H));
 }
 
 #[test]
@@ -211,7 +211,7 @@ fn 見出しの列の上の角に再生位置のタイムコードを出す() {
         .iter()
         .find(|l| &*l.text == "00:00:02:05")
         .expect("タイムコード");
-    let corner = Rect::new(0.0, 0.0, HEADER_W, RULER_H);
+    let corner = Rect::new(0.0, TOOLBAR_H, HEADER_W, RULER_H);
     assert_eq!(t.clip, corner);
     assert!(t.x >= corner.x && t.y >= corner.y);
 }
@@ -226,7 +226,7 @@ fn 見出しの上に当たると_header_見出しの列の上の角は_corner()
     let vp = f.vp();
     let y1 = f.in_bar(1);
     assert_eq!(hit_test(&m, &vp, 20.0, y1), Hit::Header { index: 1 });
-    assert_eq!(hit_test(&m, &vp, 20.0, 5.0), Hit::Corner);
+    assert_eq!(hit_test(&m, &vp, 20.0, TOOLBAR_H + 5.0), Hit::Corner);
     assert_eq!(hit_test(&m, &vp, 20.0, 190.0), Hit::Empty, "行の無い所");
     assert!(matches!(
         hit_test(&m, &vp, HEADER_W + 50.0, y1),
@@ -240,7 +240,7 @@ fn controller(m: &TimelineModel) -> TimelineController {
         px_per_sec: 100.0,
     });
     c.set_rows(Rows::of(&m.items, &RowHeights::default()));
-    c.resize((800.0, 120.0));
+    c.resize((800.0, 120.0 + TOOLBAR_H));
     c
 }
 
@@ -313,6 +313,6 @@ fn 見出しの列の上の角のクリックは選択を変えない() {
     let y = c.viewport().row(1).y + 5.0;
     c.handle(click(20.0, y), &m, 0.0);
     c.handle(PointerEvent::Up, &m, 0.0);
-    assert!(c.handle(click(20.0, 5.0), &m, 0.0).is_empty());
+    assert!(c.handle(click(20.0, TOOLBAR_H + 5.0), &m, 0.0).is_empty());
     assert_eq!(c.paint_state(0.0).selected, Some(1));
 }

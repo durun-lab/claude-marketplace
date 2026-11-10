@@ -87,7 +87,7 @@ fn sequence_of(project: &Project) -> Option<&Sequence> {
         .ok()
 }
 
-fn cuts(shared: &Shared) -> Vec<Cut> {
+pub(crate) fn cuts(shared: &Shared) -> Vec<Cut> {
     shared
         .doc()
         .and_then(|d| sequence_of(&d.project).map(|s| s.cuts.clone()))
@@ -135,7 +135,7 @@ impl Geometry {
 }
 
 /// カット `id` の Timeline の上の範囲（秒）。
-fn cut_span_secs(shared: &Shared, id: &str) -> Option<(f64, f64)> {
+pub(crate) fn cut_span_secs(shared: &Shared, id: &str) -> Option<(f64, f64)> {
     let doc = shared.doc()?;
     let comp = doc.project.composition(&doc.comp).ok()?;
     let ids = mm_ui_wgpu::timeline_cut_ids(&doc.project, comp);

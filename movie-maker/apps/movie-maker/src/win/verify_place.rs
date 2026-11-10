@@ -123,6 +123,13 @@ impl Placement {
         (p(t.x + x), p(t.y + y))
     }
 
+    /// Timeline のツールバーのボタン `command` の中央（クライアントの物理ピクセル）。ツールバーを出していないか、
+    /// 幅が足りずにそのボタンを出していなければ `None`。
+    pub(crate) fn toolbar_button(&self, command: &str) -> Option<(i32, i32)> {
+        let r = mm_ui_layout::toolbar_button(self.timeline.toolbar, command)?;
+        Some(self.client((r.x + r.w / 2.0, r.y + r.h / 2.0)))
+    }
+
     /// 再生の操作のバーのボタン `command` の中央（クライアントの物理ピクセル）。バーを出していないか、
     /// そのバーにボタンが無ければ `None`。
     pub(crate) fn transport_button(

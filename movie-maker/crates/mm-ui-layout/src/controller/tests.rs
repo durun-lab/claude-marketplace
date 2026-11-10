@@ -6,7 +6,7 @@ use crate::gesture::Side;
 use crate::rows::{RowHeights, Rows};
 use crate::time_view::MIN_PX_PER_SEC;
 use crate::timeline::{Item, ItemKind};
-use crate::timeline_layout::HEADER_W;
+use crate::timeline_layout::{HEADER_W, TOOLBAR_H};
 
 fn model() -> TimelineModel {
     TimelineModel {
@@ -59,7 +59,7 @@ pub(super) fn move_to(x: f32, y: f32) -> PointerEvent {
 fn 目盛りの上のドラッグは再生位置をフレームの境目で追う() {
     let m = model();
     let mut c = ctl(&m);
-    let a = c.handle(down(251.0, 5.0), &m, 0.0);
+    let a = c.handle(down(251.0, TOOLBAR_H + 5.0), &m, 0.0);
     assert_eq!(a, vec![Action::Seek(quantize(2.51, 30.0))]);
     let b = c.handle(move_to(5000.0, 80.0), &m, 0.0);
     let Action::Seek(t) = b[0] else {

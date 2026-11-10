@@ -1,6 +1,6 @@
 use super::*;
 use crate::timeline_layout::tests::TestViewport;
-use crate::timeline_layout::{HEADER_W, RULER_H};
+use crate::timeline_layout::{HEADER_W, RULER_H, TOOLBAR_H};
 
 fn model() -> TimelineModel {
     TimelineModel {
@@ -23,7 +23,7 @@ fn viewport(m: &TimelineModel) -> TestViewport {
 fn 目盛りの帯は_ruler() {
     let m = model();
     let f = viewport(&m);
-    assert_eq!(hit_test(&m, &f.vp(), 300.0, 10.0), Hit::Ruler);
+    assert_eq!(hit_test(&m, &f.vp(), 300.0, TOOLBAR_H + 10.0), Hit::Ruler);
 }
 
 #[test]
@@ -76,7 +76,7 @@ fn 帯と帯の隙間は何も無い() {
     let m = model();
     let f = viewport(&m);
     let (top, h) = f.rows.bar(0);
-    let y = RULER_H + top + h + 1.0;
+    let y = TOOLBAR_H + RULER_H + top + h + 1.0;
     assert_eq!(hit_test(&m, &f.vp(), 300.0, y), Hit::Empty);
 }
 
@@ -101,7 +101,10 @@ fn スクロールした分だけ下の行に当たり_目盛りの帯の下に�
             part: Part::Body
         }
     );
-    assert_eq!(hit_test(&m, &f.vp(), 300.0, RULER_H - 1.0), Hit::Ruler);
+    assert_eq!(
+        hit_test(&m, &f.vp(), 300.0, TOOLBAR_H + RULER_H - 1.0),
+        Hit::Ruler
+    );
 }
 
 #[test]

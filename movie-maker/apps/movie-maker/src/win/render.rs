@@ -12,6 +12,7 @@ use std::time::{Duration, Instant};
 
 mod acquire;
 mod sync;
+mod toolbar;
 mod transport;
 mod waves;
 

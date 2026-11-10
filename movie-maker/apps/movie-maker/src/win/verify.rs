@@ -25,6 +25,7 @@ use crate::win::verify_edit;
 use crate::win::verify_place::placement;
 use crate::win::verify_restore::{self, Savepoint};
 use crate::win::verify_stage::{self, checkpoint, wait_until, StageError};
+use crate::win::verify_toolbar;
 use crate::win::verify_transport;
 use crate::win::verify_zoom;
 
@@ -53,6 +54,8 @@ const INSPECTOR_LIMIT: Duration = Duration::from_secs(30);
 const TRANSPORT_LIMIT: Duration = Duration::from_secs(90);
 /// Timeline の編集は待ちの合計が約 75 秒。
 const EDIT_LIMIT: Duration = Duration::from_secs(90);
+/// Timeline のツールバーは、全部の待ちが上限まで待つと約 60 秒（ふだんは数秒）。
+const TOOLBAR_LIMIT: Duration = Duration::from_secs(90);
 /// Timeline のズームと移動は、全部の待ちが上限まで待つと約 70 秒（ふだんは数秒）。
 const ZOOM_LIMIT: Duration = Duration::from_secs(90);
 
@@ -228,6 +231,10 @@ fn run(env: &TestEnv, telemetry: &Telemetry) -> Value {
     report["timeline_edit"] = stages.run("timeline_edit", EDIT_LIMIT, move || timeline_edit(&e));
     let e = env.clone();
     report["timeline_zoom"] = stages.run("timeline_zoom", ZOOM_LIMIT, move || timeline_zoom(&e));
+    let e = env.clone();
+    report["timeline_toolbar"] = stages.run("timeline_toolbar", TOOLBAR_LIMIT, move || {
+        timeline_toolbar(&e)
+    });
     report["restore"] = verify_restore::restore(savepoint.as_ref(), shared);
     report["failed_stages"] = json!(stages.failed);
     let _ = env.target.window.set_always_on_top(false);
@@ -460,6 +467,16 @@ fn transport_flow(env: &TestEnv) -> Value {
 /// Timeline の編集の工程（`verify_edit`）。
 fn timeline_edit(env: &TestEnv) -> Value {
     verify_edit::run(&verify_edit::Env {
+        shared: &env.shared,
+        surface_hwnd: env.target.surface_hwnd,
+        window_hwnd: env.hwnd,
+        test: &env.test,
+    })
+}
+
+/// Timeline のツールバーの工程（`verify_toolbar`）。
+fn timeline_toolbar(env: &TestEnv) -> Value {
+    verify_toolbar::run(&verify_toolbar::Env {
         shared: &env.shared,
         surface_hwnd: env.target.surface_hwnd,
         window_hwnd: env.hwnd,

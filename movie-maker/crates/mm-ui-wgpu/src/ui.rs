@@ -11,10 +11,10 @@ use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
     clear_tooltip_area, drag_tooltip, fit_rect, split_viewers, timeline_labels, timeline_overlay,
-    timeline_quads, transport_labels, Action, DrawingShape, EmptyHints, EmptyKeys, EmptyState,
-    PaintInput, PaintState, Peaks, PointerEvent, Quad, Rect, RowHeights, Scale, SurfaceLayout,
-    TimeView, TimelineController, TimelineModel, TransportController, TransportState, UiFont,
-    ViewState, Waves,
+    timeline_quads, toolbar_labels, transport_labels, Action, DrawingShape, EmptyHints, EmptyKeys,
+    EmptyState, PaintInput, PaintState, Peaks, PointerEvent, Quad, Rect, RowHeights, Scale,
+    SurfaceLayout, TimeView, TimelineController, TimelineModel, ToolbarController, ToolbarState,
+    TransportController, TransportState, UiFont, ViewState, Waves,
 };
 
 use crate::drawing::{DrawingFit, DrawingLayer};
@@ -22,6 +22,7 @@ use crate::program::ProgramViewer;
 use crate::quads::QuadRenderer;
 use crate::text::{TextLayer, TextStats};
 
+mod toolbar;
 mod transport;
 mod view;
 
@@ -59,6 +60,9 @@ pub struct Ui {
     /// 再生の操作のバーの状態。Program の再生位置、長さ、フレームレートは Timeline のモデルと再生位置から埋める。
     transport: TransportState,
     transport_controller: TransportController,
+    /// Timeline のツールバーの状態と、ポインター操作の状態。
+    toolbar: ToolbarState,
+    toolbar_controller: ToolbarController,
     /// サーフェスの大きさ（物理ピクセル）。
     size: (f32, f32),
     playhead: f64,
@@ -99,6 +103,8 @@ impl Ui {
             },
             transport: TransportState::default(),
             transport_controller: TransportController::default(),
+            toolbar: ToolbarState::default(),
+            toolbar_controller: ToolbarController::default(),
             size: (0.0, 0.0),
             playhead: 0.0,
             opened: false,
@@ -297,6 +303,11 @@ impl Ui {
             },
             other => other,
         };
+        // ツールバーを押しても、Timeline の選択は変えない（ツールバーは `toolbar_pointer` が受ける）。
+        let bar = self.controller.layout().toolbar;
+        if matches!(local, PointerEvent::Down { x, y, .. } if bar.contains(x, y)) {
+            return Vec::new();
+        }
         self.controller.handle(local, &self.model, self.playhead)
     }
 
@@ -329,6 +340,7 @@ impl Ui {
         let (w, h) = self.size;
         // 再生の操作のバーの文字と矩形が、同じ再生位置と長さを見る。
         self.sync_program();
+        self.sync_toolbar();
         let tooltip = self.prepare_text(device, queue);
         let (quads, under) = self.timeline_quads(tooltip);
         let count = self.quads.prepare(device, queue, &quads, (w, h));
@@ -375,6 +387,7 @@ impl Ui {
         let vp = self.controller.viewport();
         let input = PaintInput {
             waves: Some(&self.waves),
+            toolbar: Some(self.toolbar_view()),
             ..PaintInput::new(&self.model, &vp, &state)
         };
         let mut quads = timeline_quads(&input);
@@ -406,6 +419,14 @@ impl Ui {
         let (model, font) = (&self.model, &self.font);
         let mut labels = timeline_labels(model, &vp, &state, font, text.measure());
         labels.extend(self.empty.timeline(&vp, &state, font, text.measure()));
+        labels.extend(toolbar_labels(
+            self.controller.layout().toolbar,
+            &self.toolbar,
+            &self.toolbar_controller,
+            &self.palette,
+            font,
+            text.measure(),
+        ));
         let tooltip = drag_tooltip(model, &vp, &state, font, text.measure(), &mut labels);
         for l in &mut labels {
             l.x += t.x;

@@ -8,6 +8,7 @@ use mm_render_api::tone_map_peak;
 use mm_ui_layout::{Action, EditKind, PointerEvent, TransportAction, Viewer};
 use mm_ui_wgpu::{timeline_cut_ids, timeline_layer_ids, timeline_model, Region, Ui};
 
+use super::toolbar::Zoom;
 use super::transport::{self, Seeks};
 use super::waves::WaveWanted;
 use super::View;
@@ -116,6 +117,7 @@ impl DocSync {
 pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
     let events = std::mem::take(&mut *shared.input.lock().expect("input"));
     let mut seeks = Seeks::default();
+    let mut zoom = Zoom::default();
     for ev in events {
         if let PointerEvent::Down { x, y, .. } = ev {
             focus_viewer(shared, ui.region_at(x, y));
@@ -126,6 +128,7 @@ pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
                 TransportAction::Command(id) => transport::run_command(shared, id),
             }
         }
+        zoom.input(shared, ui, ev);
         let command = matches!(ev, PointerEvent::Command(_));
         for action in ui.pointer(ev) {
             match action {
@@ -147,6 +150,7 @@ pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
             }
         }
     }
+    zoom.apply(ui);
     seeks.send(shared);
 }
 
