@@ -96,11 +96,11 @@ fn 選んだ行のパラメータは同じレイヤーを選んでいる間だ�
         again.map(|p| p.serial),
         "選び直すと通し番号が進む"
     );
-    shared.keyframes.follow(Some(false));
+    shared.keyframes.match_pick(Some(false));
     assert!(
         !shared.keyframes.keyframe_selected(),
         "キーフレームが無くなれば外す"
     );
-    shared.keyframes.follow(None);
+    shared.keyframes.match_pick(None);
     assert_eq!(shared.keyframes.param_for(Some("a")), None);
 }

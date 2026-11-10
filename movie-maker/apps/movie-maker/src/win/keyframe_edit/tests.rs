@@ -8,7 +8,7 @@ fn secs(s: i64) -> RationalTime {
     RationalTime::seconds(s)
 }
 
-fn key(t: RationalTime, v: f64) -> Keyframe {
+fn keyframe(t: RationalTime, v: f64) -> Keyframe {
     Keyframe::new(t, ParamValue::Number(v), Interpolation::Linear)
 }
 
@@ -16,7 +16,7 @@ fn key(t: RationalTime, v: f64) -> Keyframe {
 /// 1 秒から置いた seq（k1 だけ再フレーミングの位置のキーフレームが素材の 11 秒）。k1 はコンポジションの 1〜4 秒に映る。
 fn project() -> Project {
     let mut title = Layer::new("title", Node::new("text", 1), secs(0), secs(0), secs(8));
-    title.opacity.keyframes = vec![key(secs(1), 0.0), key(secs(4), 1.0)];
+    title.opacity.keyframes = vec![keyframe(secs(1), 0.0), keyframe(secs(4), 1.0)];
     let mut seq = Layer::new(
         "seq",
         Node::new(SEQUENCE_KIND, 1),

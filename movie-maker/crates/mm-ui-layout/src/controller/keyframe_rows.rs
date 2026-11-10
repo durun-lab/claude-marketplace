@@ -29,7 +29,7 @@ pub(super) struct KeyframeDrag {
     /// 動かす前の時刻。
     from: f64,
     /// 押した点の時刻。ポインターとキーフレームのずれを保って動かす。
-    grab: f64,
+    grab_time: f64,
     /// 動かせる範囲。
     span: (f64, f64),
     /// 動かした先。押しただけでまだ動いていなければ `None`。
@@ -71,8 +71,12 @@ impl Picked {
             Some(r) if r.name == self.name => self.row,
             _ => rows.iter().position(|r| r.name == self.name)?,
         };
-        let keys = &rows[row].keyframes;
-        let find = |t: f64| keys.iter().position(|k| (k.time - t).abs() < SAME_TIME);
+        let keyframes = &rows[row].keyframes;
+        let find = |t: f64| {
+            keyframes
+                .iter()
+                .position(|k| (k.time - t).abs() < SAME_TIME)
+        };
         let keyframe = self
             .time
             .and_then(find)
@@ -81,7 +85,7 @@ impl Picked {
             item,
             row,
             keyframe,
-            time: keyframe.map(|k| keys[k].time),
+            time: keyframe.map(|k| keyframes[k].time),
             before: None,
             ..self.clone()
         })
@@ -153,7 +157,7 @@ impl TimelineController {
         self.drag = Drag::Keyframe(KeyframeDrag {
             at,
             from: k.time,
-            grab: self.viewport().t_of(x),
+            grab_time: self.viewport().t_of(x),
             span: (k.min, k.max.max(k.min)),
             to: None,
         });
@@ -248,7 +252,7 @@ impl TimelineController {
         model: &TimelineModel,
         playhead: f64,
     ) -> Vec<Action> {
-        let t = drag.from + (self.viewport().t_of(x) - drag.grab);
+        let t = drag.from + (self.viewport().t_of(x) - drag.grab_time);
         let (time, target) = self.place_time(t, model, playhead, (drag.at.item, drag.at.row));
         let to = time.clamp(drag.span.0, drag.span.1);
         self.snap = target.filter(|s| (s.time - to).abs() < LANDED_EPS);
@@ -269,12 +273,12 @@ impl TimelineController {
         let Some(to) = drag.to.filter(|to| (to - drag.from).abs() >= half) else {
             return Vec::new();
         };
-        let keys = model
+        let keyframes = model
             .items
             .get(drag.at.item)
             .and_then(|it| it.keyframe_rows.get(drag.at.row))
             .map_or(&[][..], |r| &r.keyframes);
-        let taken = keys
+        let taken = keyframes
             .iter()
             .enumerate()
             .any(|(j, k)| j != drag.at.keyframe && (k.time - to).abs() < half);

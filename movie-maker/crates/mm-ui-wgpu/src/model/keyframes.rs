@@ -104,15 +104,15 @@ fn param_row<'a>(
     param: &'a Param,
     (start, end): (f64, f64),
 ) -> KeyframeRowSource<'a> {
-    let keys = param.keyframes.iter().enumerate();
-    let keys = keys.map(|(index, k)| KeyframeSource {
+    let keyframes = param.keyframes.iter().enumerate();
+    let keyframes = keyframes.map(|(index, k)| KeyframeSource {
         span: 0,
         index,
         comp: k.time.to_f64(),
     });
     KeyframeRowSource {
         name: row_name(layer, &path),
-        keyframes: keys.collect(),
+        keyframes: keyframes.collect(),
         spans: vec![ParamSpan {
             path,
             param,
@@ -165,19 +165,19 @@ fn reframe_row<'a>(
             })
         })
         .collect();
-    let mut keys = Vec::new();
+    let mut keyframes = Vec::new();
     for (span, s) in spans.iter().enumerate() {
         for (index, k) in s.param.keyframes.iter().enumerate() {
             let comp = s.comp_secs(layer, k.time).filter(|t| s.contains(*t));
-            keys.extend(comp.map(|comp| KeyframeSource { span, index, comp }));
+            keyframes.extend(comp.map(|comp| KeyframeSource { span, index, comp }));
         }
     }
     // 行のキーフレームは前から順（Timeline が二分探索で見えている所を引く）。カットの並びと速さによらずそろえる。
-    keys.sort_by(|a, b| a.comp.total_cmp(&b.comp));
-    (!keys.is_empty()).then(|| KeyframeRowSource {
+    keyframes.sort_by(|a, b| a.comp.total_cmp(&b.comp));
+    (!keyframes.is_empty()).then(|| KeyframeRowSource {
         name: format!("Reframe › {}", title(field)),
         spans,
-        keyframes: keys,
+        keyframes,
     })
 }
 

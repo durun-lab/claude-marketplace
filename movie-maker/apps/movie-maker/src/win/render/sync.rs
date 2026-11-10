@@ -139,7 +139,7 @@ impl DocSync {
             ui.update_model(model);
             shared
                 .keyframes
-                .follow(ui.keyframe_pick().map(|p| p.keyframe.is_some()));
+                .match_pick(ui.keyframe_pick().map(|p| p.keyframe.is_some()));
             self.shown = Some(doc.clone());
             let selected = shared.selected_layer();
             ui.select(selected.and_then(|id| self.layer_ids.iter().position(|i| *i == id)));

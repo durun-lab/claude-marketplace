@@ -11,7 +11,7 @@ use crate::timeline::{Item, ItemKind};
 const BAR_TOP: f32 = 2.0;
 /// 帯の下端から行の下端まで（縞の色）。
 const BAR_BOTTOM: f32 = 1.0;
-/// キーフレームの行 1 本の高さ。上の 1 px は行どうしの境の線。
+/// キーフレームの行 1 本の高さ。上の 1 px は行の境界の線。
 pub const KEYFRAME_ROW_H: f32 = 20.0;
 
 /// 行の高さ（Timeline の）。高さに応じて帯に出すものを変える（Resolve の帯の見せ方の 3 つに倣う）。

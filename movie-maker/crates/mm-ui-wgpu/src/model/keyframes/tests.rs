@@ -9,7 +9,7 @@ fn secs(s: i64) -> RationalTime {
     RationalTime::seconds(s)
 }
 
-fn key(t: RationalTime) -> Keyframe {
+fn keyframe(t: RationalTime) -> Keyframe {
     Keyframe::new(t, ParamValue::Number(1.0), Interpolation::Linear)
 }
 
@@ -28,24 +28,24 @@ fn names(rows: &[KeyframeRowSource]) -> Vec<String> {
 #[test]
 fn キーフレームのあるパラメータだけを_inspector_の区画の順に並べる() {
     let mut l = text("title");
-    l.transform.position.keyframes = vec![key(secs(2))];
-    l.opacity.keyframes = vec![key(secs(1)), key(secs(4))];
+    l.transform.position.keyframes = vec![keyframe(secs(2))];
+    l.opacity.keyframes = vec![keyframe(secs(1)), keyframe(secs(4))];
     l.source.params.insert(
         "size".into(),
         Param {
-            keyframes: vec![key(secs(3))],
+            keyframes: vec![keyframe(secs(3))],
             ..Param::constant(ParamValue::Number(10.0))
         },
     );
     let mut blur = Node::new("blur", 1).with_param("radius", ParamValue::Number(2.0));
-    blur.params.get_mut("radius").unwrap().keyframes = vec![key(secs(5))];
+    blur.params.get_mut("radius").unwrap().keyframes = vec![keyframe(secs(5))];
     l.effects = vec![Effect {
         id: Id::new("fx"),
         node: blur,
         enabled: true,
     }];
     let mut mask = Mask::rect("m1", MaskRect::new([0.0, 0.0], [8.0, 8.0], 0.0));
-    mask.feather.keyframes = vec![key(secs(6))];
+    mask.feather.keyframes = vec![keyframe(secs(6))];
     l.masks = vec![mask];
     let c = comp(vec![l.clone()]);
     let project = mm_doc::Project::new();
@@ -100,12 +100,12 @@ fn reframed() -> (mm_doc::Project, Composition) {
     let mut first = Transform::default();
     // 素材の 9 秒はカットの範囲（10〜13 秒）の外なので、行に出さない。
     first.position.keyframes = vec![
-        key(secs(9)),
-        key(secs(11)),
-        key(RationalTime::new(25, 2).unwrap()),
+        keyframe(secs(9)),
+        keyframe(secs(11)),
+        keyframe(RationalTime::new(25, 2).unwrap()),
     ];
     let mut second = Transform::default();
-    second.position.keyframes = vec![key(secs(21))];
+    second.position.keyframes = vec![keyframe(secs(21))];
     seq.framing.cuts = vec![
         CutReframe {
             cut: Id::new("k1"),
@@ -131,13 +131,13 @@ fn 再フレーミングはカットを通してコンポジションの時刻�
     assert_eq!(paths, ["reframe.k1.position", "reframe.k2.position"]);
     let spans: Vec<(f64, f64)> = row.spans.iter().map(|s| (s.start, s.end)).collect();
     assert_eq!(spans, [(1.0, 4.0), (4.0, 6.0)]);
-    let keys: Vec<(usize, usize, f64)> = row
+    let keyframes: Vec<(usize, usize, f64)> = row
         .keyframes
         .iter()
         .map(|k| (k.span, k.index, k.comp))
         .collect();
     assert_eq!(
-        keys,
+        keyframes,
         [(0, 1, 2.0), (0, 2, 3.5), (1, 0, 5.0)],
         "素材の 9 秒は外す"
     );

@@ -86,15 +86,15 @@ fn ひし形はそのキーフレーム_無い所は行_見出しの列は行の
     let (layout, rows) = opened(&m);
     let vp = vp(&layout, &rows);
     let (x, y) = keyframe_center(&vp, (0, 0), 4.0);
-    let key = KeyframeIndex {
+    let at = KeyframeIndex {
         item: 0,
         row: 0,
         keyframe: 1,
     };
-    assert_eq!(hit_test(&m, &vp, x, y), Hit::RowKeyframe(key));
+    assert_eq!(hit_test(&m, &vp, x, y), Hit::RowKeyframe(at));
     assert_eq!(
         hit_test(&m, &vp, x + ROW_DIAMOND_PX / 2.0 + 1.5, y),
-        Hit::RowKeyframe(key),
+        Hit::RowKeyframe(at),
         "ひし形の外接する正方形より 2 px 広く掴める"
     );
     assert_eq!(

@@ -96,7 +96,7 @@ pub struct KeyframeRowState {
     pub dragging: Option<(KeyframeIndex, f64)>,
 }
 
-/// 行 `i` の下のキーフレームの行 `k` の、行の領域の幅の矩形。上端の 1 px は行どうしの境の線。
+/// 行 `i` の下のキーフレームの行 `k` の、行の領域の幅の矩形。上端の 1 px は行の境界の線。
 pub(crate) fn row_rect(vp: &Viewport, i: usize, k: usize) -> Rect {
     let area = vp.layout.row_area;
     let y = area.y + vp.rows.keyframe_row_top(i, k) - vp.scroll_y;
@@ -151,8 +151,8 @@ pub(crate) fn merge_column(vp: &Viewport, t: f64) -> i64 {
 pub(crate) fn hit(vp: &Viewport, (index, item): (usize, &Item), (x, y): (f32, f32)) -> Option<Hit> {
     let row = row_at(vp, index, y)?;
     let r = item.keyframe_rows.get(row)?;
-    let reach = ROW_DIAMOND_PX / 2.0 + HIT_SLACK;
-    let near = keyframes_within(vp, r, (x - reach, x + reach))
+    let half = ROW_DIAMOND_PX / 2.0 + HIT_SLACK;
+    let near = keyframes_within(vp, r, (x - half, x + half))
         .map(|j| (j, keyframe_center(vp, (index, row), r.keyframes[j].time)))
         .filter(|(_, c)| square(*c, ROW_DIAMOND_PX + 2.0 * HIT_SLACK).contains(x, y))
         .min_by(|a, b| (a.1 .0 - x).abs().total_cmp(&(b.1 .0 - x).abs()));

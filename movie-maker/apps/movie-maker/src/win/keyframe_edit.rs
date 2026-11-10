@@ -49,7 +49,7 @@ impl KeyframeSlot {
 
     /// 描画スレッドの選択に合わせる（モデルを作り直して、選んだキーフレームや行が無くなったとき）。`picked` は選んで
     /// いればキーフレームを選んでいるか。選び直しではないので通し番号は進めない。
-    pub fn follow(&self, picked: Option<bool>) {
+    pub fn match_pick(&self, picked: Option<bool>) {
         let mut selected = self.selected.lock().expect("keyframe selection");
         match picked {
             None => *selected = None,

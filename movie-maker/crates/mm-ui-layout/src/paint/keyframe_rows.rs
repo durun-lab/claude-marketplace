@@ -58,8 +58,8 @@ pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
 fn backgrounds(s: &PaintInput, c: &mut Canvas, (i, item): (usize, &Item), k: usize) {
     let p = &s.state.palette;
     let (headers, area) = (s.vp.layout.headers, s.vp.layout.row_area);
-    let head = band(header_rect(s.vp, i, k));
-    let row = band(row_rect(s.vp, i, k));
+    let head = back(header_rect(s.vp, i, k));
+    let row = back(row_rect(s.vp, i, k));
     c.push_in(Depth::Back, head, stripe(p, i), headers);
     c.push_in(Depth::Back, row, stripe(p, i), area);
     let strip = Rect::new(head.x, head.y, KIND_STRIP_W, head.h);
@@ -85,8 +85,8 @@ fn backgrounds(s: &PaintInput, c: &mut Canvas, (i, item): (usize, &Item), k: usi
     }
 }
 
-/// 上端の 1 px を行どうしの境の線に残した矩形。
-fn band(r: Rect) -> Rect {
+/// 行の背景。上端の 1 px を行の境界の線に残した矩形（見出しの行の背景と同じ）。
+fn back(r: Rect) -> Rect {
     Rect::new(r.x, r.y + 1.0, r.w, (r.h - 1.0).max(0.0))
 }
 
@@ -96,10 +96,10 @@ fn diamonds(s: &PaintInput, c: &mut Canvas, (i, k): (usize, usize), row: &Keyfra
     let st = &s.state.keyframe_rows;
     let dragging = st.dragging.filter(|(at, _)| (at.item, at.row) == (i, k));
     let area = s.vp.layout.row_area;
-    let reach = RING_PX / 2.0;
+    let half = RING_PX / 2.0;
     let mut column = None;
     let mut on_top = Vec::new();
-    for j in keyframes_within(s.vp, row, (area.x - reach, area.right() + reach)) {
+    for j in keyframes_within(s.vp, row, (area.x - half, area.right() + half)) {
         if dragging.is_some_and(|(d, _)| d.keyframe == j) {
             continue;
         }

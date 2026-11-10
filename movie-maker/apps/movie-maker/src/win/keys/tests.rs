@@ -148,8 +148,8 @@ fn expected_moves() -> Expected {
     ]
 }
 
-/// 場面で使い分けるキーの、2 つ目のコマンド。キーの先頭のコマンドは `expected_edits` と `expected_moves` が確かめる。
-const SCENE_KEYS: &[(&str, &str)] = &[("Delete", "timeline.remove_keyframe")];
+/// 2 つのコマンドに割り当てたキーと、その 2 つ目のコマンド。キーの先頭のコマンドは `expected_edits` と `expected_moves` が確かめる。
+const TWO_COMMAND_KEYS: &[(&str, &str)] = &[("Delete", "timeline.remove_keyframe")];
 
 #[test]
 fn キーからコマンドの_id_を引き_持ち主のコマンドを実行する() {
@@ -157,7 +157,7 @@ fn キーからコマンドの_id_を引き_持ち主のコマンドを実行す
         .into_iter()
         .chain(expected_moves())
         .collect();
-    let all = cases.len() + SCENE_KEYS.len();
+    let all = cases.len() + TWO_COMMAND_KEYS.len();
     assert_eq!(all, BINDINGS.len(), "全部のキーを確かめる");
     for (key, id, owner) in cases {
         assert_eq!(command_for(key), Some(id), "{key}");
@@ -258,15 +258,11 @@ fn webview_の表に無い_alt_英字はウィンドウにメニューを開か�
 }
 
 #[test]
-fn キーは場面で使い分けるもののほかは重ならず_id_の順に並び_指すコマンドは表にある() {
+fn キーは_2_つのコマンドに割り当てたもののほかは重ならず_id_の順に並び_指すコマンドは表にある() {
     for (i, (id, key)) in BINDINGS.iter().enumerate() {
         let same = BINDINGS.iter().filter(|(_, k)| k == key).count();
-        let scene = SCENE_KEYS.iter().any(|(k, _)| k == key);
-        assert_eq!(
-            same,
-            1 + usize::from(scene),
-            "{key} が 2 つのコマンドを指す"
-        );
+        let two = TWO_COMMAND_KEYS.iter().any(|(k, _)| k == key);
+        assert_eq!(same, 1 + usize::from(two), "{key} が 2 つのコマンドを指す");
         assert!(commands::find(id).is_some(), "{id} が表に無い");
         if let Some((next, _)) = BINDINGS.get(i + 1) {
             assert!(id <= next, "{id} と {next} の順");

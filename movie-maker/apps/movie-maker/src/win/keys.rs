@@ -132,7 +132,7 @@ pub fn command_for(key: &str) -> Option<&'static str> {
 }
 
 /// キーで今実行するコマンドの ID。同じキーのコマンドのうち、今押せる先頭のもの（VS Code のキーの割り当ての `when` と
-/// 同じく、場面でキーを使い分ける。Delete はキーフレームの行で選んだキーフレームがあれば外し、無ければカットを抜く）。
+/// 同じく、そのときの状態でキーのコマンドを選ぶ。Delete はキーフレームの行で選んだキーフレームがあれば外し、無ければカットを抜く）。
 /// どれも押せなければ先頭のもの（押せない理由を編集が画面に出す）。
 fn command_now(shared: &Shared, key: &str) -> Option<&'static str> {
     let mut ids = BINDINGS
