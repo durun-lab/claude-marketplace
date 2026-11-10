@@ -3,9 +3,10 @@
 //! 取り消し 1 回で全部消えることを確かめ、工程ごとにスクリーンショットを残す。
 
 use mm_doc::{Project, SEQUENCE_KIND};
-use serde_json::{json, Value};
+use serde_json::json;
 
 use crate::win::keys;
+use crate::win::state::Shared;
 use crate::win::surface;
 use crate::win::verify_edit::{
     cuts, mark_source, sequence_of, shot, Env, Log, MARK_IN, MARK_OUT, VK_COMMA, WAIT,
@@ -80,20 +81,37 @@ fn undo_step(env: &Env<'_>, log: &mut Log, sequences: usize, before: (usize, f64
     shot(env, log, "3-first-insert-undo");
 }
 
-/// 最初の insert の通しを行って結果を返す。取り込んだ素材が無ければスキップする。
-pub fn run(env: &Env<'_>) -> Value {
-    let Some(doc) = env.shared.doc().filter(|d| !d.project.assets.is_empty()) else {
-        return json!({ "skipped": "シーケンスのレイヤーも素材も無い" });
-    };
-    let (sequences, before) = (doc.project.sequences.len(), comp_shape(&doc.project));
-    let mut log = Log::default();
-    if let (Some(before), Some(_)) = (before, mark_source(env, &mut log)) {
-        if insert_step(env, &mut log, before) {
-            undo_step(env, &mut log, sequences, before);
+/// Source を開いてイン点とアウト点を付け、insert して取り消す。
+fn insert_and_undo(env: &Env<'_>, log: &mut Log, project: &Project) {
+    let (sequences, before) = (project.sequences.len(), comp_shape(project));
+    if let (Some(before), Some(_)) = (before, mark_source(env, log)) {
+        if insert_step(env, log, before) {
+            undo_step(env, log, sequences, before);
         } else {
             let why = json!("insert が適用されなかったので取り消さない");
             log.step("undo_first_insert", false, why);
         }
     }
-    log.into_json()
+}
+
+/// 最初のコンポジションにレイヤーがあるか。見出しの手順はレイヤーが無いと行えない。
+pub fn has_layers(shared: &Shared) -> bool {
+    let doc = shared.doc();
+    doc.and_then(|d| comp_shape(&d.project))
+        .is_some_and(|(n, _)| n > 0)
+}
+
+/// シーケンスのレイヤーが無いプロジェクトで、シーケンスを編集する手順の代わりに最初の insert の通しを `log` に足し、
+/// 行わなかった手順の説明を返す。取り込んだ素材が無ければ insert の通しを行わない。
+pub fn steps(env: &Env<'_>, log: &mut Log) -> String {
+    let mut note =
+        String::from("シーケンスのレイヤーが無いので、シーケンスを編集する手順をスキップした");
+    match env.shared.doc().filter(|d| !d.project.assets.is_empty()) {
+        Some(doc) => insert_and_undo(env, log, &doc.project),
+        None => note.push_str("。素材も無いので、最初の insert の通しも行わない"),
+    }
+    if !has_layers(env.shared) {
+        note.push_str("。レイヤーも無いので、見出しの手順も行わない");
+    }
+    note
 }

@@ -31,7 +31,8 @@ pub enum EditKind {
     Slide { item: usize, cut: usize },
 }
 
-fn frame_secs(model: &TimelineModel) -> f64 {
+/// 1 フレームの長さ（秒）。フレームレートが無ければ 0。
+pub(crate) fn frame_secs(model: &TimelineModel) -> f64 {
     if model.fps > 0.0 {
         1.0 / model.fps
     } else {

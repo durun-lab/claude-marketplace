@@ -20,6 +20,7 @@ fn model() -> TimelineModel {
         fps: 30.0,
         items: vec![text, Item::layer(2.0, 4.0, ItemKind::Footage, true)],
         markers: vec![8.0],
+        ..TimelineModel::default()
     }
 }
 
