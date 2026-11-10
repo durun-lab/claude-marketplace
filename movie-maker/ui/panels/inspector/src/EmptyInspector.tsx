@@ -4,7 +4,7 @@ const DIGITS = 2;
 const SECS_PER_MIN = 60;
 const MINS_PER_HOUR = 60;
 const SECS_PER_HOUR = SECS_PER_MIN * MINS_PER_HOUR;
-/** フレームの境目の誤差。`mm-ui-layout` の `header.rs` の `FRAME_EPS` と同じ。 */
+/** フレームを切り捨てる前に足す量（`mm-ui-layout` の `header.rs` の `FRAME_EPS` と同じ）。フレームの境界の時刻を前のフレームにしない。 */
 const FRAME_EPS = 1e-6;
 const FPS_DECIMALS = 100;
 
@@ -26,12 +26,12 @@ export const timecode = (sec: number, fps: number): string => {
 /** fps を小数で出す（29.97 は 29.97、30 は 30）。 */
 const fpsText = (fps: number): string => String(Math.round(fps * FPS_DECIMALS) / FPS_DECIMALS);
 
-const rows = (c: CompositionSummary): [string, string][] => [
+const summaryRows = (c: CompositionSummary): [string, string][] => [
   ["Name", c.name],
   ["Size", `${c.width} × ${c.height}`],
   ["Frame rate", `${fpsText(c.fps)} fps`],
   ["Duration", timecode(c.duration, c.fps)],
-  ["Layers", String(c.layers)],
+  ["Layers", String(c.layer_count)],
 ];
 
 /** 何も選んでいない Inspector。コンポジションの要約と、次にすること。 */
@@ -39,7 +39,7 @@ export const EmptyInspector = ({ composition }: { composition?: CompositionSumma
   <div class="mm-insp mm-insp-empty">
     {composition && (
       <dl class="mm-insp-summary" aria-label="Composition">
-        {rows(composition).map(([term, value]) => (
+        {summaryRows(composition).map(([term, value]) => (
           <div key={term} class="mm-insp-summary-row">
             <dt>{term}</dt>
             <dd>{value}</dd>
@@ -47,6 +47,6 @@ export const EmptyInspector = ({ composition }: { composition?: CompositionSumma
         ))}
       </dl>
     )}
-    <p class="mm-insp-hint">Select a layer in the Timeline to see its properties.</p>
+    <p class="mm-insp-empty-hint">Select a layer in the Timeline to see its properties.</p>
   </div>
 );

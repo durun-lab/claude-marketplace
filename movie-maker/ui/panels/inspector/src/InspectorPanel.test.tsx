@@ -135,7 +135,7 @@ describe("InspectorPanel", () => {
   });
 
   it("選んだレイヤーが無いときはコンポジションの要約を出す", () => {
-    const composition = { name: "main", width: 1920, height: 1080, fps: 30000 / 1001, duration: 83.5, layers: 3 };
+    const composition = { name: "main", width: 1920, height: 1080, fps: 30000 / 1001, duration: 83.5, layer_count: 3 };
     render(<InspectorPanel layer={null} composition={composition} onOp={vi.fn()} />, host);
     const summary = [...host.querySelectorAll(".mm-insp-summary-row")].map((r) => r.textContent);
     expect(summary).toEqual([
@@ -148,7 +148,7 @@ describe("InspectorPanel", () => {
   });
 
   it("レイヤーを選ぶと案内と要約は消える", () => {
-    const composition = { name: "main", width: 1920, height: 1080, fps: 30, duration: 5, layers: 1 };
+    const composition = { name: "main", width: 1920, height: 1080, fps: 30, duration: 5, layer_count: 1 };
     render(<InspectorPanel layer={layer} composition={composition} onOp={vi.fn()} />, host);
     expect(host.querySelector(".mm-insp-summary")).toBeNull();
     expect(host.textContent).not.toContain("Select a layer");

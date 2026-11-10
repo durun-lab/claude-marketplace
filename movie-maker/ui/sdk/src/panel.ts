@@ -14,8 +14,7 @@ export interface CompositionSummary {
   fps: number;
   /** 秒。 */
   duration: number;
-  /** レイヤーの数。 */
-  layers: number;
+  layer_count: number;
 }
 
 /** Timeline で選ばれているレイヤーと、それが指す素材。 */

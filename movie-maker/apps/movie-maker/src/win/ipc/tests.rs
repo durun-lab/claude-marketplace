@@ -42,7 +42,7 @@ fn 何も選んでいなくてもコンポジションの要約を送る() {
             height: 1080,
             fps: 30.0,
             duration: 12.0,
-            layers: 2,
+            layer_count: 2,
         })
     );
 }
@@ -50,7 +50,7 @@ fn 何も選んでいなくてもコンポジションの要約を送る() {
 #[test]
 fn レイヤーが無いコンポジションはレイヤーの数が_0() {
     let sel = selection_of(&open(Vec::new()), None);
-    assert_eq!(sel.composition.map(|c| c.layers), Some(0));
+    assert_eq!(sel.composition.map(|c| c.layer_count), Some(0));
 }
 
 #[test]

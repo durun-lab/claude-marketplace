@@ -79,7 +79,7 @@ pub fn keys_of(id: &str) -> Vec<&'static str> {
         .collect()
 }
 
-/// コマンドの画面に出すキー（`keys_of` の先頭を `label` にしたもの）。割り当てが無ければ空。
+/// コマンドのキーを画面に出す見た目（`keys_of` の先頭を `label` に通したもの）。割り当てが無ければ空。
 pub fn key_label_of(id: &str) -> String {
     keys_of(id).first().map(|k| label(k)).unwrap_or_default()
 }

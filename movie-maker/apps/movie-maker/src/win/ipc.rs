@@ -87,7 +87,7 @@ pub struct CompositionSummary {
     pub fps: f64,
     /// 秒。
     pub duration: f64,
-    pub layers: usize,
+    pub layer_count: usize,
 }
 
 impl CompositionSummary {
@@ -98,7 +98,7 @@ impl CompositionSummary {
             height: comp.height,
             fps: comp.fps.to_f64(),
             duration: comp.duration.to_f64(),
-            layers: comp.layers.len(),
+            layer_count: comp.layers.len(),
         }
     }
 }
