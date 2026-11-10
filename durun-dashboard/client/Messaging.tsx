@@ -7,6 +7,7 @@ import { type Badges, type Candidate, type Typed, badgeTypedAt, candidates, type
 import { useFavorites } from './explorerFavorites.ts';
 import { WidgetPanel } from './Dashboard.tsx';
 import { chatIndexOf } from './delivery.ts';
+import { loadDraft, saveDraft } from './drafts.ts';
 import { dateTime } from './format.ts';
 import { useCached, useFetch } from './hooks.ts';
 import { AttentionCard } from './Inbox.tsx';
@@ -341,26 +342,6 @@ const useModelChoice = (s: Session) => {
       </>
     ),
   };
-};
-
-// 書きかけのメッセージは、画面を移っても残るようセッションごとにブラウザへ保存する。
-const draftKey = (sessionId: string): string => `message-draft:${sessionId}`;
-
-const loadDraft = (sessionId: string): string => {
-  try {
-    return localStorage.getItem(draftKey(sessionId)) ?? '';
-  } catch {
-    return '';
-  }
-};
-
-const saveDraft = (sessionId: string, text: string): void => {
-  try {
-    if (text) localStorage.setItem(draftKey(sessionId), text);
-    else localStorage.removeItem(draftKey(sessionId));
-  } catch {
-    // 保存できなくても、画面上の書きかけはそのまま使える。
-  }
 };
 
 /** 送信欄の文を、セッションごとに保存した書きかけから始める。別のセッションに切り替わったら、そのセッションの書きかけを読み直す。 */
