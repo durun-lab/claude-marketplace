@@ -34,7 +34,7 @@ flowchart LR
 | 描画の 1 フレーム（GPU） | wgpu のタイムスタンプのクエリ。`Features::TIMESTAMP_QUERY` で compute と render のパスの先頭と末尾に `timestamp_writes` を書き、`Queue::get_timestamp_period()`（1 tick のナノ秒）で換算する [44]。パスの中の点は `TIMESTAMP_QUERY_INSIDE_PASSES`（native のみ）[44] | スパン（GPU のトラック） |
 | デコード | `Decoder::next_frame` と `seek` のスパン。シークは「頼んでから正しいフレームが出るまで」。実装（`d3d12va`、`cuvid`、`ffmpeg`）と素材の形（コーデック、解像度、GOP）をフィールドに。素材を開く所（`render.open_source`。素材の `contentHash` の先頭 8 桁を `asset` に付ける。プレビューではバックグラウンドのスレッドに出る）、PTS の索引の走査（`decode.scan_index`）、レンダラーのシーク（`render.seek_source`）も測る | スパン |
 | キャッシュ | 引いた回数とヒットした回数（フレーム、プレビュー動画、文字の画像、音の PCM の種類ごと）。大きさ | カウンタ |
-| 操作の適用 | `mm-ops` の `apply` のスパン（検証、適用、逆操作の生成、`touches`、記録の書き込み）。トランザクションは全体で 1 つ。アプリの保存する編集は `edit.apply_saved`（取り消しとやり直しは `edit.step_saved`）、保存した後のプロジェクトのデータの読み直しは `edit.refresh_saved`、ドラッグの編集が編集のスレッドの順番を待った長さは `edit.queue_wait`、描画スレッドが Timeline のモデルを作り直す所は `window.doc_sync` | スパン |
+| 操作の適用 | `mm-ops` の `apply` のスパン（検証、適用、逆操作の生成、`touches`、記録の書き込み）。トランザクションは全体で 1 つ。アプリの保存する編集は `edit.apply_saved`（取り消しとやり直しは `edit.step_saved`）、保存した後のプロジェクトのデータの読み直しは `edit.refresh_saved`、ドラッグの編集が編集のスレッドで前の仕事を待った長さは `edit.queue_wait`、描画スレッドが Timeline のモデルを作り直す所は `window.doc_sync` | スパン |
 | 操作から画面まで | 入力のイベントが届いた時刻から、その結果のフレームがサーフェスに出た時刻まで。wgpu のサーフェスは Rust の中で閉じる。WebView の画面は、`performance.now()` の時刻を操作に添えて送り、Rust が受けた時刻と、変更の通知が画面に戻って描かれた時刻（`requestAnimationFrame` の後）まで。サーフェスの UI の 1 フレームは `window.frame` で、その中の文字は `ui.text`、矩形の並びを作って GPU に書く所は `ui.quads`、帯のサムネイルは `ui.thumbs`、提出は `ui.submit` | スパン（流れとしてつなぐ） |
 | 再生 | ドロップしたフレーム（音の時計に対して遅れたフレーム）の数、サーフェスに出す間隔のばらつき | カウンタ |
 | 書き出し | 1 フレームあたりの時間（描画の工程の `export.render`、そのうちリードバックの `export.readback`、受け渡しのキューの待ちの `export.queue_wait`、エンコードの工程の `export.encode`）、区間ごとの fps、全体の fps、並行の数 | スパンとカウンタ |

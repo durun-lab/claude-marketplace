@@ -259,7 +259,7 @@ impl WgpuRenderer {
         let at = source_time(layer, cx.t)?;
         let opened = if kind.decodes_asset() {
             match sources.footage_with_backend(&opener, cx.project, params, at)? {
-                // 開き終わるまでこのレイヤーは描かない。抜いたまま描いた入れ子の画像は覚えない（`nested_image`）。
+                // 開き終わるまでこのレイヤーは描かない。除いたまま描いた入れ子の画像は覚えない（`nested_image`）。
                 Footage::Pending => return Ok(None),
                 Footage::Ready(source, backend) => Some((source, backend)),
                 Footage::Absent => None,
@@ -362,7 +362,7 @@ impl WgpuRenderer {
             cached: false,
         };
         // 描けなかったレイヤーがあった画像は、次も描き直して同じエラーを出すために覚えない。素材を開いている途中の
-        // レイヤーを抜いた画像も、開いた後に描き直すために覚えない。
+        // レイヤーを除いた画像も、開いた後に描き直すために覚えない。
         let complete =
             self.errors.len() == errors_before && self.sources.pending_layers() == pending_before;
         let key = key.filter(|_| complete);

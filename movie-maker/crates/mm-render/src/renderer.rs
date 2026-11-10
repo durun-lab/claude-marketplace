@@ -105,7 +105,7 @@ impl WgpuRenderer {
         self.sources.pending()
     }
 
-    /// 素材を開く道具（バックグラウンドのスレッドへ渡せる形）。
+    /// 素材を開くのに要るもの（デコーダーのファクトリーと GPU のコンテキスト）。バックグラウンドのスレッドへ渡せる。
     pub(crate) fn opener(&self) -> Opener {
         Opener {
             decoders: self.decoders.clone(),

@@ -189,12 +189,15 @@ impl Rig {
         (matches!(footage, Footage::Pending), started.elapsed())
     }
 
-    /// 裏のスレッドで開き終わった数が `n` になるまで待つ。
+    /// バックグラウンドのスレッドで開き終わった数が `n` になるまで待つ。
     fn wait_opened(&self, n: u64) {
         let pending = self.pool.pending();
         let deadline = Instant::now() + Duration::from_secs(10);
         while pending.opened() < n {
-            assert!(Instant::now() < deadline, "裏のスレッドが開き終わらない");
+            assert!(
+                Instant::now() < deadline,
+                "バックグラウンドのスレッドが開き終わらない"
+            );
             std::thread::sleep(Duration::from_millis(5));
         }
     }
@@ -291,7 +294,11 @@ fn 待つ上限までに開き終わらない素材は待たずに返し_開き�
     let (pending, _) = r.ask();
     assert!(!pending, "開き終わったデコーダーを受け取る");
     assert_eq!(r.pool.pending_layers(), 0, "フレームの始めに数え直す");
-    assert_eq!(r.opens(), 1, "裏で開いたものを使い、開き直さない");
+    assert_eq!(
+        r.opens(),
+        1,
+        "バックグラウンドのスレッドで開いたものを使い、開き直さない"
+    );
 }
 
 #[test]

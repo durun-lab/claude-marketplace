@@ -1,5 +1,5 @@
 //! 素材を開いている途中のレイヤーの描き直し。プレビューの描画は長い録画の素材を開き終わるのを待たず、そのレイヤーを
-//! 抜いて描く（`open_wait_ms`）。抜いたフレームは描かなかったレイヤーの数と一緒に渡し、描画スレッドがビューアー
+//! 除いて描く（`open_wait_ms`）。除いたフレームは描かなかったレイヤーの数と一緒に渡し、描画スレッドがビューアー
 //! （Program、Source）に印を出す。
 //! 止まっている間は開き終わったかを見張り、開き終わったら今のフレームを描き直す。
 
@@ -18,7 +18,7 @@ const OPEN_WAIT_MS: u64 = 100;
 const OPENED_POLL: Duration = Duration::from_millis(50);
 
 /// プレビューの描画の設定。素材を開くのは [`OPEN_WAIT_MS`] まで待ち、超えたらバックグラウンドのスレッドで開いて、
-/// そのレイヤーを抜いて描く。書き出しと配信は [`runtime_config`] のまま、開き終わるまで待つ。
+/// そのレイヤーを除いて描く。書き出しと配信は [`runtime_config`] のまま、開き終わるまで待つ。
 pub(super) fn preview_config() -> RuntimeConfig {
     RuntimeConfig {
         open_wait_ms: Some(OPEN_WAIT_MS),

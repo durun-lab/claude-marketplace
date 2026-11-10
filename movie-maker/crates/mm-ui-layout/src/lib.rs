@@ -20,7 +20,7 @@
 //! 分けて返し、等幅の数字で置く（[`place_timecode`]）。ツールチップに重なれば [`clear_tooltip_labels`] で切る。
 //! [`drawing_segments`] はコメントの描き込みを、Program の映像の矩形の上の線分に分ける。
 //! [`EmptyHints`] はコンポジションに中身が無いときの空の状態の案内（Program と Timeline の行の領域の文字）を置く。
-//! [`pending_badge`] は、素材を開いている途中のレイヤーを抜いたフレームを出している間の、ビューアーの左上の印を置く。
+//! [`pending_badge`] は、素材を開いている途中のレイヤーを除いたフレームを出している間の、ビューアーの左上の印を置く。
 
 mod controller;
 mod drag_tooltip;

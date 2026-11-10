@@ -277,7 +277,8 @@ fn frame_cache(config: &RuntimeConfig, cache: &Arc<dyn CacheStore>) -> FrameCach
     }
 }
 
-/// レンダラーと、素材を開いている途中のレイヤーの数え（バックグラウンドのスレッドで開ける wgpu のレンダラーだけ）。
+/// レンダラーと、描かなかったレイヤーの数と開き終わった数（`PendingSources`。バックグラウンドのスレッドで開ける wgpu の
+/// レンダラーだけ）。
 fn renderer(
     config: &RuntimeConfig,
     gpu: Option<&Arc<GpuContext>>,

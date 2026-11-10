@@ -118,7 +118,7 @@ pub struct Player {
     store_dir: Option<PathBuf>,
     /// 字幕を焼き込んだプロジェクトのデータ。元の `project` と文字起こしが同じ間は作り直さない。
     burned: Option<Burned>,
-    /// 直前のフレームを描き始めたときの、裏のスレッドで素材を開き終わった数（`sources`）。
+    /// 直前のフレームを描き始めたときの、バックグラウンドのスレッドで素材を開き終わった数（`sources`）。
     opened_seen: u64,
 }
 

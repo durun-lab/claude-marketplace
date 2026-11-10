@@ -12,7 +12,7 @@
 //!   `Engine` も組むので、組むたびに置き直すと、先に作った索引が引けなくなる。
 //! - 大きな素材（長い録画）の全パケットを読む走査は、処理全体で一度に 1 つ。長い録画を並べて読むとどれも遅くなり
 //!   （4 本を並べると 4 GB の走査が 28 秒から 65 秒）、同じ素材を複数のデコーダーが同時に開くと同じファイルを読み直すため。
-//!   待つ間に同じ素材の索引が置かれたら、読まずに引く。小さな素材（画像、短い素材）は順番を待たない。
+//!   待つ間に同じ素材の索引が置かれたら、読まずに引く。小さな素材（画像、短い素材）は走査のロックを待たない。
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -30,11 +30,11 @@ const INDEX_VERSION: u32 = 1;
 const SAMPLE_BYTES: u64 = 64 * 1024;
 /// 指紋に使う、素材の中の場所の数（先頭、中央、末尾）。
 const SAMPLE_SPOTS: u64 = 3;
-/// 走査の順番を待つ素材の大きさの下限。150 MB/s のディスクで 2 秒ほど読む大きさ。
+/// 走査のロックを取る素材の大きさの下限。150 MB/s のディスクで 2 秒ほど読む大きさ。
 const LARGE_BYTES: u64 = 256 * 1024 * 1024;
 
 static STORE: RwLock<Option<Arc<dyn CacheStore>>> = RwLock::new(None);
-/// 大きな素材の全パケットを読む走査の順番。
+/// 大きな素材の全パケットを読む走査のロック。走査を処理全体で一度に 1 つにする。
 static SCANNING: Mutex<()> = Mutex::new(());
 
 /// 索引を置く場所を決める。`None` で置かない（毎回読む）。
@@ -56,7 +56,7 @@ fn store() -> Option<Arc<dyn CacheStore>> {
     STORE.read().expect("index cache lock").clone()
 }
 
-/// `scan_video` の結果を `cache/` から引く。無ければ読んで置く（大きな素材は走査の順番を待つ）。
+/// `scan_video` の結果を `cache/` から引く。無ければ読んで置く（大きな素材は走査のロックを待つ）。
 pub fn scan_video_cached(path: &Path, stream_index: usize) -> Result<VideoScan> {
     let large = std::fs::metadata(path).is_ok_and(|m| m.len() >= LARGE_BYTES);
     let scan = || scan_video(path, stream_index);
@@ -71,13 +71,13 @@ pub fn scan_video_cached(path: &Path, stream_index: usize) -> Result<VideoScan> 
     match key {
         Some((store, Ok(key))) => cached_or_scan(store.as_ref(), &key, large, scan),
         _ => {
-            let _turn = turn(large);
+            let _lock = scan_lock(large);
             scan()
         }
     }
 }
 
-/// 置いてある索引を引く。無ければ（大きな素材は走査の順番を待ってから）`scan` で作って置く。待つ間に置かれた索引は読まずに引く。
+/// 置いてある索引を引く。無ければ（大きな素材は走査のロックを取ってから）`scan` で作って置く。待つ間に置かれた索引は読まずに引く。
 fn cached_or_scan(
     store: &dyn CacheStore,
     key: &CacheKey,
@@ -87,7 +87,7 @@ fn cached_or_scan(
     if let Some(found) = cached(store, key) {
         return Ok(found);
     }
-    let _turn = turn(large);
+    let _lock = scan_lock(large);
     if let Some(found) = cached(store, key) {
         return Ok(found);
     }
@@ -98,8 +98,8 @@ fn cached_or_scan(
     Ok(made)
 }
 
-/// 大きな素材の走査の順番。小さな素材は取らない。
-fn turn(large: bool) -> Option<MutexGuard<'static, ()>> {
+/// 大きな素材の走査のロック。小さな素材は取らない。
+fn scan_lock(large: bool) -> Option<MutexGuard<'static, ()>> {
     large.then(|| SCANNING.lock().unwrap_or_else(PoisonError::into_inner))
 }
 

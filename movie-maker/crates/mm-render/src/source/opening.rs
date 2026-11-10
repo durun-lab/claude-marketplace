@@ -16,7 +16,8 @@ use mm_types::{AssetId, MmError, Result};
 
 use crate::spans::hash_prefix;
 
-/// 素材を開く道具。バックグラウンドのスレッドへ渡せるよう、持ち主の参照で持つ。
+/// 素材を開くのに要るもの（デコーダーのファクトリーと GPU のコンテキスト）。バックグラウンドのスレッドへ渡せるよう、
+/// 共有の参照（`Arc`）で持つ。
 #[derive(Clone)]
 pub struct Opener {
     pub decoders: Arc<dyn DecoderFactory>,
@@ -151,7 +152,8 @@ impl Opening {
     }
 }
 
-/// バックグラウンドのスレッドで開き、結果を返す受け口。スレッドを起こせなければ送り手ごと捨てられ、受け口が切れたことで分かる。
+/// バックグラウンドのスレッドで開き、結果の受け手を返す。スレッドを起こせなければ送り手ごと捨てられ、受け手が切れた
+/// （`Disconnected`）ことで分かる。
 /// デコーダーが panic してもエラーを送って開き終わった数を進める。送らずに終わると、描かなかったレイヤーが描き直されない。
 fn spawn(
     opener: Opener,
