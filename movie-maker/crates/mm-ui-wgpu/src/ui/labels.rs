@@ -3,8 +3,8 @@
 //! 文字の描画がその頂点だけを作り直す。
 
 use mm_ui_layout::{
-    clear_tooltip_labels, drag_tooltip, timeline_labels, timeline_timecode, transport_labels,
-    transport_timecodes, Quad,
+    clear_tooltip_labels, drag_tooltip, status_labels, timeline_labels, timeline_timecode,
+    transport_labels, transport_timecodes, Quad,
 };
 
 use super::Ui;
@@ -17,6 +17,7 @@ impl Ui {
         let _span = tracing::info_span!("ui.text").entered();
         let t = self.layout.timeline;
         let state = self.paint_state();
+        self.hint.shown = self.status_strings();
         let (format, family) = (self.format, &self.font.family);
         let text = self
             .text
@@ -29,6 +30,9 @@ impl Ui {
         labels.extend(self.empty.timeline(&vp, &state, font, text.measure()));
         let (timeline, palette) = (&self.controller, &self.palette);
         labels.extend(self.toolbar.labels(timeline, palette, font, text.measure()));
+        let (shown, bar) = (&self.hint.shown, timeline.layout().status);
+        let status = (shown.0.as_str(), shown.1.as_str());
+        labels.extend(status_labels(bar, status, palette, font, text.measure()));
         let tooltip = drag_tooltip(model, &vp, &state, font, text.measure(), &mut labels);
         clear_tooltip_labels(&mut timecodes, &tooltip, text.measure());
         for l in labels.iter_mut().chain(&mut timecodes) {

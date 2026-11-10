@@ -60,10 +60,12 @@ impl TransportController {
                 self.hover = None;
                 Vec::new()
             }
-            // Timeline のコマンドとスナップのキーは Timeline だけに効く。
-            PointerEvent::Wheel { .. } | PointerEvent::Command(_) | PointerEvent::SnapKeyUp => {
-                Vec::new()
-            }
+            // Timeline のコマンド、スナップのキー、右クリックのメニューは Timeline だけに効く。
+            PointerEvent::Wheel { .. }
+            | PointerEvent::Command(_)
+            | PointerEvent::SnapKeyUp
+            | PointerEvent::ContextMenu { .. }
+            | PointerEvent::ContextMenuKey => Vec::new(),
         }
     }
 

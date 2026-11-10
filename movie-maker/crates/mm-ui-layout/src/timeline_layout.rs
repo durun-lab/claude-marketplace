@@ -2,7 +2,7 @@
 //! ズームバー、ステータスバーの矩形に分ける。座標は Timeline の矩形の左上を (0, 0) とする。
 //!
 //! 領域を足す PR は、ここに自分の大きさの定数を置き、描く関数を `paint/` の下の自分のファイルに置く。
-//! まだ無い領域（ステータスバー）は大きさ 0 で、場所だけを決めてある。
+//! ステータスバーは下端の 1 行（下限の高さに足りなければ 0）。
 
 use std::ops::Range;
 
@@ -28,8 +28,8 @@ pub const HEADER_W: f32 = 220.0;
 /// ズームバーの高さ。スクロールボックスの両端を狙って掴めるよう、縦のスクロールバーの幅より少し太くする。
 const ZOOMBAR_H: f32 = 14.0;
 
-/// ステータスバーの高さ。
-const STATUS_H: f32 = 0.0;
+/// ステータスバーの高さ。字の大きさ 12 の 1 行（15）に上下 3.5 の余白を足し、ツールバーのボタン（24）と再生の操作のバー（26）の間にそろえる。
+pub(crate) const STATUS_H: f32 = 22.0;
 
 /// Timeline の高さの下限。どの領域も潰さずに、Medium の行が 2 本見える高さ（領域の大きさを変える PR は、ここを変えなくてよい）。
 pub const MIN_TIMELINE_H: f32 =
@@ -62,7 +62,8 @@ impl TimelineLayout {
     /// 大きさ `(w, h)` の Timeline を、行の並びの高さ `content_h` に合わせて割る。
     pub fn new((w, h): (f32, f32), content_h: f32) -> Self {
         let (w, h) = (w.max(0.0), h.max(0.0));
-        let status_h = STATUS_H.min(h);
+        // ツールバーと同じく、下限の高さに足りなければ出さずに行へ回す（ポインターの下の操作はツールチップにもあるため）。
+        let status_h = if h >= MIN_TIMELINE_H { STATUS_H } else { 0.0 };
         // 高さが足りないときは、再生位置を動かす目盛りの帯をズームバーより先に取る。
         let ruler_h = RULER_H.min(h - status_h);
         let zoombar_h = ZOOMBAR_H.min(h - status_h - ruler_h);
@@ -177,7 +178,10 @@ pub(crate) mod tests {
         pub(crate) fn new(model: &TimelineModel, size: (f32, f32)) -> Self {
             let rows = Rows::of(&model.items, &RowHeights::default());
             Self {
-                layout: TimelineLayout::new((size.0, size.1 + TOOLBAR_H), rows.content_height()),
+                layout: TimelineLayout::new(
+                    (size.0, size.1 + TOOLBAR_H + STATUS_H),
+                    rows.content_height(),
+                ),
                 rows,
                 time: TimeView {
                     origin: 0.0,
@@ -207,7 +211,7 @@ pub(crate) mod tests {
         let l = TimelineLayout::new((800.0, 300.0), 200.0);
         let w = 800.0 - HEADER_W;
         assert_eq!(l.ruler, Rect::new(HEADER_W, TOOLBAR_H, w, RULER_H));
-        let rows_h = 300.0 - TOOLBAR_H - RULER_H - ZOOMBAR_H;
+        let rows_h = 300.0 - TOOLBAR_H - RULER_H - ZOOMBAR_H - STATUS_H;
         assert_eq!(
             l.row_area,
             Rect::new(HEADER_W, TOOLBAR_H + RULER_H, w, rows_h)
@@ -223,7 +227,7 @@ pub(crate) mod tests {
             let z = l.zoombar;
             assert_eq!((z.x, z.w), (l.row_area.x, l.row_area.w), "{content}");
             assert_eq!((z.y, z.h), (l.row_area.bottom(), ZOOMBAR_H));
-            assert_eq!(z.bottom(), 300.0, "Timeline の下端");
+            assert_eq!(z.bottom(), 300.0 - STATUS_H, "ステータスバーの上");
         }
     }
 
@@ -247,15 +251,17 @@ pub(crate) mod tests {
                 HEADER_W,
                 TOOLBAR_H,
                 l.row_area.w,
-                300.0 - TOOLBAR_H - ZOOMBAR_H
+                300.0 - TOOLBAR_H - ZOOMBAR_H - STATUS_H
             )
         );
     }
 
     #[test]
-    fn ステータスバーはまだ無く_矩形は負にならない() {
+    fn ステータスバーは下端の_1_行で_下限に足りなければ出さない_矩形は負にならない() {
         let l = TimelineLayout::new((800.0, 300.0), 1000.0);
-        assert!(l.status.w == 0.0 || l.status.h == 0.0, "{:?}", l.status);
+        assert_eq!(l.status, Rect::new(0.0, 300.0 - STATUS_H, 800.0, STATUS_H));
+        let low = TimelineLayout::new((800.0, MIN_TIMELINE_H - 1.0), 1000.0);
+        assert_eq!(low.status.h, 0.0);
         let tiny = TimelineLayout::new((5.0, 10.0), 1000.0);
         for r in [
             tiny.ruler,
@@ -282,14 +288,15 @@ pub(crate) mod tests {
         assert_eq!(
             low.row_area.h,
             MIN_TIMELINE_H - 1.0 - RULER_H - ZOOMBAR_H,
-            "ツールバーの分も行に回す"
+            "ツールバーとステータスバーの分も行に回す"
         );
     }
 
     #[test]
     fn 見えている所は行の領域の左上とスクロールから帯と行を置く() {
         let rows = Rows::new([RowHeight::Medium; 10]);
-        let layout = TimelineLayout::new((800.0, 100.0 + TOOLBAR_H), rows.content_height());
+        let layout =
+            TimelineLayout::new((800.0, 100.0 + TOOLBAR_H + STATUS_H), rows.content_height());
         let vp = Viewport {
             layout: &layout,
             rows: &rows,

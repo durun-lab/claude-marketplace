@@ -3,6 +3,7 @@
 
 use std::sync::Arc;
 
+use mm_ui_layout::HitKind;
 use serde::{Serialize, Serializer};
 use tauri::menu::{
     CheckMenuItem, IsMenuItem, Menu as NativeMenu, MenuItem, PredefinedMenuItem, Submenu,
@@ -12,6 +13,7 @@ use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, SC_KEYMENU, WM_SYSCOMMAND};
 
 use crate::win::commands::{self, CommandView, Forward, State, WindowAction, PANEL_COMMAND_EVENT};
+use crate::win::context_menu;
 use crate::win::shortcuts_window;
 use crate::win::state::Shared;
 
@@ -145,6 +147,38 @@ pub static BAR: &[(Menu, Groups)] = &[
     ),
 ];
 
+/// サーフェスの右クリックのメニューの並び。当たった所の種類ごとに、メニューバーと同じ形（区切り線で分けたコマンドの ID の
+/// グループ）で持つ。表に無い ID はスキップするので、後の PR が表にコマンドを足すと出る（Track Height）。
+pub fn context_groups(kind: HitKind) -> Groups {
+    const KEYFRAME_STEPS: &[&str] = &[
+        "playback.go_to_previous_keyframe",
+        "playback.go_to_next_keyframe",
+    ];
+    match kind {
+        HitKind::Cut => &[
+            &["clip.split_here"],
+            &["clip.lift", "clip.extract"],
+            &["timeline.show_keyframe_editor"],
+        ],
+        HitKind::Layer | HitKind::Header => &[
+            &[
+                "layer.toggle_enabled",
+                "layer.toggle_lock",
+                "timeline.shy_selected_layers",
+            ],
+            &["layer.move_up", "layer.move_down"],
+            &["timeline.track_height", "timeline.show_keyframe_editor"],
+        ],
+        HitKind::KeyframeRow => &[KEYFRAME_STEPS, &["timeline.show_keyframe_editor"]],
+        HitKind::Keyframe => &[&["timeline.remove_keyframe"], KEYFRAME_STEPS],
+        HitKind::Ruler => &[&["timeline.full_extent_zoom"]],
+        HitKind::Empty => &[
+            &["timeline.full_extent_zoom"],
+            &["timeline.toggle_snapping"],
+        ],
+    }
+}
+
 /// メニューの項目か区切り線の 1 つ。
 #[derive(Debug, PartialEq)]
 pub enum Line<'a> {
@@ -205,19 +239,25 @@ pub enum Item {
 }
 
 impl Item {
-    fn new(app: &AppHandle, line: &Line) -> tauri::Result<Self> {
+    /// 項目の ID は、メニューバーではコマンドの ID、右クリックのメニューでは `context_menu::item_id` のもの。
+    fn new(app: &AppHandle, line: &Line, context: bool) -> tauri::Result<Self> {
         let Line::Command(c) = line else {
             return Ok(Item::Separator(PredefinedMenuItem::separator(app)?));
         };
         let (id, text, state) = (c.id, label(c), c.state);
+        let native = if context {
+            context_menu::item_id(id)
+        } else {
+            id.to_owned()
+        };
         Ok(match state.checked {
             Some(on) => Item::Check(
                 id,
-                CheckMenuItem::with_id(app, id, text, state.enabled, on, None::<&str>)?,
+                CheckMenuItem::with_id(app, native, text, state.enabled, on, None::<&str>)?,
             ),
             None => Item::Plain(
                 id,
-                MenuItem::with_id(app, id, text, state.enabled, None::<&str>)?,
+                MenuItem::with_id(app, native, text, state.enabled, None::<&str>)?,
             ),
         })
     }
@@ -272,9 +312,23 @@ fn apply<T: Reflect>(items: &[T], states: &[(&'static str, State)]) {
     }
 }
 
-/// 項目と区切り線の並びから Tauri のメニューの項目を作る。右クリックのメニューも同じ形の並びから作る。
+/// 項目と区切り線の並びからメニューバーの項目を作る。右クリックのメニューも同じ形の並びから作る（`context_menu`）。
 pub fn items(app: &AppHandle, lines: &[Line]) -> tauri::Result<Vec<Item>> {
-    lines.iter().map(|line| Item::new(app, line)).collect()
+    lines
+        .iter()
+        .map(|line| Item::new(app, line, false))
+        .collect()
+}
+
+/// 項目と区切り線の並びから右クリックのメニューを作る。出すたびに作り直すので、押せるかとチェックの状態は作るときの表のもの。
+/// 項目の ID はメニューバーと分け、選んだ項目を `context_menu::run` が右クリックの時刻で実行する。
+pub fn context_menu(app: &AppHandle, lines: &[Line]) -> tauri::Result<NativeMenu<Wry>> {
+    let items = lines
+        .iter()
+        .map(|line| Item::new(app, line, true))
+        .collect::<tauri::Result<Vec<_>>>()?;
+    let natives: Vec<&dyn IsMenuItem<Wry>> = items.iter().map(Item::native).collect();
+    NativeMenu::with_items(app, &natives)
 }
 
 /// メニューバーに出すメニューと、その項目と区切り線。項目の無いメニューは開いても何もできないので出さず、
@@ -309,6 +363,7 @@ pub fn connect(app: &App, window: &Window, shared: &Arc<Shared>, bar: MenuBar) {
     window.on_menu_event(move |_, event| run(&on_menu, event.id().as_ref()));
     let handle = app.handle().clone();
     let target = window.clone();
+    let for_context = shared.clone();
     shared.window_hook.set(move |forward| match forward {
         Forward::Panel(id) => {
             let _ = handle.emit(PANEL_COMMAND_EVENT, id);
@@ -321,6 +376,9 @@ pub fn connect(app: &App, window: &Window, shared: &Arc<Shared>, bar: MenuBar) {
             shortcuts_window::open(&handle, &target);
         }
         Forward::MenuKey(c) => open_by_access_key(&target, c),
+        Forward::ContextMenu(hit, at) => {
+            context_menu::show(&handle, &target, &for_context, hit, at);
+        }
     });
 }
 
@@ -350,10 +408,15 @@ pub fn reflect(app: &AppHandle, table: &[CommandView]) {
     });
 }
 
-/// メニューの項目のイベントからコマンドを実行する。項目の ID はコマンドの ID。
+/// メニューの項目のイベントからコマンドを実行する。メニューバーの項目の ID はコマンドの ID、右クリックのメニューの項目は
+/// `context_menu::item_id` の ID で、メニューを出したときの右クリックの時刻で実行する。
 pub fn run(shared: &Arc<Shared>, id: &str) {
     let _span = tracing::info_span!("window.menu").entered();
-    if let Err(e) = commands::run(shared, id) {
+    let result = match context_menu::command_of(id) {
+        Some(command) => context_menu::run(shared, command),
+        None => commands::run(shared, id),
+    };
+    if let Err(e) = result {
         tracing::warn!(id, error = %e, "メニューのコマンドを実行できない");
     }
 }

@@ -24,10 +24,12 @@ use mm_ui_wgpu::Ui;
 
 use crate::win::keys;
 use crate::win::playback::Command;
+use crate::win::pointer_hint;
 use crate::win::splitter;
 use crate::win::state::{FrameImage, PreviewFrame, Shared};
 use crate::win::surface;
 use crate::win::theme;
+use crate::win::tooltip;
 use acquire::Recovery;
 use sync::{handle_input, Syncs};
 
@@ -267,6 +269,7 @@ impl View {
         ui.set_palette(theme::surface_palette());
         ui.set_font(theme::surface_font());
         ui.set_empty_keys(empty_keys());
+        ui.set_hint_text(tooltip::hint_text());
         Ok(Self {
             gpu,
             ui,
@@ -322,7 +325,10 @@ fn run(
         }
         toolbar::publish_names(shared, &view.ui);
         toolbar::publish_tool(shared, &view.ui);
-        match frame(shared, &view.gpu, &mut view.ui, &mut seen) {
+        let frame_result = frame(shared, &view.gpu, &mut view.ui, &mut seen);
+        // 描いた後のステータスバーの文と、ポインターの下の手がかりを UI のスレッドへ渡す。
+        pointer_hint::publish(shared, hwnd, &view.ui);
+        match frame_result {
             Ok(()) => failed_frames = 0,
             Err(recovery) => {
                 view.gpu.recover(hwnd, recovery)?;

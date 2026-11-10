@@ -5,7 +5,7 @@ use super::snapping::LANDED_EPS;
 use super::{Action, Drag, Mods, TimelineController};
 use crate::gesture::{shift_layer_edit, EditKind};
 use crate::snap::{quantize, snap, targets, Moving, SnapKind, SnapTarget, SNAP_PX};
-use crate::timeline::{hit_test, Hit, Part, TimelineModel};
+use crate::timeline::{hit_test, CutBar, Hit, Part, TimelineModel};
 use crate::tool::{BladeLine, Tool};
 
 /// 割る時刻がカットの端に重なったとみなす差（秒）。フレームに丸めた時刻と、有理数の時刻から求めた端の誤差を吸収する。
@@ -37,7 +37,8 @@ impl TimelineController {
     }
 
     /// カット `(item, cut)` を x で割るときの線。隙間と、割る時刻がカットの端に丸まる所では `None`（割るものが無い）。
-    fn blade_at(
+    /// 右クリックのメニューの Split Clip Here も、この時刻で割る。
+    pub(super) fn blade_at(
         &self,
         (item, cut): (usize, usize),
         x: f32,
@@ -46,8 +47,7 @@ impl TimelineController {
     ) -> Option<BladeLine> {
         let bar = model.items.get(item)?.cuts.get(cut)?;
         let (time, snapped) = self.blade_time(x, model, playhead);
-        let inside = time - bar.start > EDGE_EPS && bar.end - time > EDGE_EPS;
-        (!bar.gap && inside).then_some(BladeLine {
+        splits(bar, time).then_some(BladeLine {
             item,
             time,
             snapped,
@@ -78,6 +78,10 @@ impl TimelineController {
         mods: Mods,
         (model, playhead): (&TimelineModel, f64),
     ) -> Vec<Action> {
+        // ステータスバーは文を出すだけで、押しても選択を変えない。
+        if self.layout.status.contains(x, y) {
+            return Vec::new();
+        }
         self.blade_line = None;
         if self.tool == Tool::Blade {
             let hit = hit_test(model, &self.viewport(), x, y);
@@ -199,4 +203,9 @@ impl TimelineController {
             })
             .min_by(|a, b| (a.1 - raw).abs().total_cmp(&(b.1 - raw).abs()))
     }
+}
+
+/// カット `bar` を時刻 `time` で割れるか。隙間と、端に丸まる時刻では割れない。
+pub(super) fn splits(bar: &CutBar, time: f64) -> bool {
+    !bar.gap && time - bar.start > EDGE_EPS && bar.end - time > EDGE_EPS
 }

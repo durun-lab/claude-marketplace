@@ -17,14 +17,16 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateWindowExW, DefWindowProcW, IsWindow, LoadCursorW, PostMessageW, RegisterClassW,
     SetWindowPos, CS_HREDRAW, CS_VREDRAW, IDC_ARROW, SWP_NOACTIVATE, SWP_NOZORDER,
-    WM_CAPTURECHANGED, WM_ERASEBKGND, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP,
-    WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_SYSCHAR, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW, WS_CHILD,
-    WS_CLIPSIBLINGS, WS_EX_NOPARENTNOTIFY, WS_VISIBLE,
+    WM_CAPTURECHANGED, WM_CONTEXTMENU, WM_ERASEBKGND, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN,
+    WM_LBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL, WM_SYSCHAR, WM_SYSKEYDOWN, WM_SYSKEYUP, WNDCLASSW,
+    WS_CHILD, WS_CLIPSIBLINGS, WS_EX_NOPARENTNOTIFY, WS_VISIBLE,
 };
 
+use crate::win::context_menu;
 use crate::win::hotpatch;
 use crate::win::keyboard;
 use crate::win::keys;
+use crate::win::pointer_hint;
 use crate::win::splitter;
 use crate::win::state::Shared;
 
@@ -167,7 +169,7 @@ fn key_down(vk: u16) -> bool {
 }
 
 /// いま押している修飾キー。ドラッグの種類（ripple か roll、slip か slide）を選ぶ。
-fn pointer_mods() -> Mods {
+pub(crate) fn pointer_mods() -> Mods {
     Mods {
         shift: key_down(VK_SHIFT.0),
         alt: key_down(VK_MENU.0),
@@ -320,9 +322,16 @@ pub fn shared() -> Option<&'static Arc<Shared>> {
     SHARED.get()
 }
 
+/// Timeline の操作より先に受けるメッセージ。カーソルとツールチップ（`pointer_hint.rs`）、仕切りの操作（`splitter.rs`）。
+fn intercept(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
+    let shared = SHARED.get()?;
+    pointer_hint::on_message(&shared.hint, hwnd, (msg, wparam, lparam))
+        .or_else(|| splitter::message(hwnd, msg, lparam))
+}
+
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    if let Some(handled) = splitter::message(hwnd, msg, lparam) {
-        return handled;
+    if let Some(done) = intercept(hwnd, msg, wparam, lparam) {
+        return done;
     }
     match msg {
         // 子 HWND は自動ではフォーカスを取らないので、クリックで自分に移す。ドラッグ中は外に出ても追う。
@@ -359,6 +368,10 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             track_leave(hwnd);
             let (x, y) = client_xy(lparam);
             push(PointerEvent::Move { x, y });
+            LRESULT(0)
+        }
+        WM_CONTEXTMENU => {
+            push(context_menu::requested(hwnd, lparam));
             LRESULT(0)
         }
         WM_MOUSELEAVE => {

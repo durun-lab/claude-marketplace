@@ -1,7 +1,8 @@
 //! サーフェスの上の 2 つの仕切りのポインター操作。サーフェスと WebView の境界（縦。サーフェスの右端）と、Program と
 //! Timeline の境界（横）。どちらも押した所を `mm-ui-layout` の `splitter_at` で当たり判定し、ドラッグ中はキャプチャーして
 //! 割り付け（`workspace.rs`）を動かす。離したときに設定に書き、キャプチャーを失ったとき（Esc）は押す前に戻す。
-//! 仕切りの色は描画スレッドが [`hot`] を読んで変える。カーソルは仕切りの上で左右・上下の矢印にする。
+//! 仕切りの色は描画スレッドが [`hot`] を読んで変える。カーソルを決める仕切り（[`cursor_target`]）は、サーフェスのカーソルの
+//! 振り分け（`pointer_hint::on_message`）が引き、仕切りの上で左右・上下の矢印にする。
 
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Mutex;
@@ -10,10 +11,12 @@ use mm_ui_layout::{content_width, splitter_at, splitter_rect, Splitter, SPLITTER
 use mm_ui_wgpu::{SplitterState, Ui};
 use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, RECT};
 use windows::Win32::Graphics::Gdi::ScreenToClient;
-use windows::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, SetFocus};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    GetCapture, ReleaseCapture, SetCapture, SetFocus,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
-    GetClientRect, GetCursorPos, GetParent, LoadCursorW, SetCursor, IDC_SIZENS, IDC_SIZEWE,
-    WM_CAPTURECHANGED, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MOUSEMOVE, WM_SETCURSOR,
+    GetClientRect, GetCursorPos, GetParent, WM_CAPTURECHANGED, WM_LBUTTONDOWN, WM_LBUTTONUP,
+    WM_MOUSEMOVE,
 };
 
 use crate::win::hotpatch;
@@ -24,8 +27,6 @@ use crate::win::workspace::Workspace;
 
 /// マウスがウィンドウから出た通知（`TrackMouseEvent` で頼んだもの）。
 const WM_MOUSELEAVE: u32 = 0x02A3;
-/// `WM_SETCURSOR` の下位語で、クライアント領域の上を示す値。
-const HTCLIENT: isize = 1;
 
 /// 乗っているか、つかんでいる仕切り。0 は無し、1 は縦、2 は横。描画スレッドが読む。
 static HOT: AtomicU8 = AtomicU8::new(0);
@@ -141,7 +142,7 @@ fn grab_offset(ws: &Workspace, geo: Geometry, which: Splitter, (x, y): (f32, f32
     }
 }
 
-/// サーフェスの `WM_LBUTTONDOWN`、`WM_MOUSEMOVE`、`WM_LBUTTONUP`、`WM_CAPTURECHANGED`、`WM_MOUSELEAVE`、`WM_SETCURSOR` を先に受ける。
+/// サーフェスの `WM_LBUTTONDOWN`、`WM_MOUSEMOVE`、`WM_LBUTTONUP`、`WM_CAPTURECHANGED`、`WM_MOUSELEAVE` を先に受ける。
 /// 仕切りの操作なら `Some` で、サーフェスの Timeline の操作には渡さない。
 pub fn message(hwnd: HWND, msg: u32, lparam: LPARAM) -> Option<LRESULT> {
     let shared = surface::shared()?;
@@ -151,7 +152,6 @@ pub fn message(hwnd: HWND, msg: u32, lparam: LPARAM) -> Option<LRESULT> {
         WM_LBUTTONUP => release(shared),
         WM_CAPTURECHANGED => cancel(shared),
         WM_MOUSELEAVE => leave(),
-        WM_SETCURSOR => cursor(hwnd, shared, lparam),
         _ => None,
     }
 }
@@ -225,36 +225,24 @@ fn leave() -> Option<LRESULT> {
     None
 }
 
-fn cursor(hwnd: HWND, shared: &Shared, lparam: LPARAM) -> Option<LRESULT> {
-    if lparam.0 & 0xFFFF != HTCLIENT {
+/// カーソルを仕切りの形にする仕切り。つかんでいればその仕切り、Timeline のドラッグ中（サーフェスがキャプチャーしている）
+/// でなければポインターの下の仕切り。
+pub fn cursor_target(hwnd: HWND) -> Option<Splitter> {
+    if let Some(d) = drag() {
+        return Some(d.which);
+    }
+    if unsafe { GetCapture() } == hwnd {
         return None;
     }
-    let which = match drag() {
-        Some(d) => d.which,
-        None => {
-            let (geo, scale) = geometry(hwnd)?;
-            let mut p = POINT::default();
-            unsafe {
-                GetCursorPos(&mut p).ok()?;
-                let _ = ScreenToClient(hwnd, &mut p);
-            }
-            hit(
-                &shared.workspace.get(),
-                geo,
-                (p.x as f32 / scale, p.y as f32 / scale),
-            )?
-        }
-    };
-    let id = match which {
-        Splitter::Vertical => IDC_SIZEWE,
-        Splitter::Horizontal => IDC_SIZENS,
-    };
+    let shared = surface::shared()?;
+    let (geo, scale) = geometry(hwnd)?;
+    let mut p = POINT::default();
     unsafe {
-        if let Ok(c) = LoadCursorW(None, id) {
-            SetCursor(Some(c));
-        }
+        GetCursorPos(&mut p).ok()?;
+        let _ = ScreenToClient(hwnd, &mut p);
     }
-    Some(LRESULT(1))
+    let at = (p.x as f32 / scale, p.y as f32 / scale);
+    hit(&shared.workspace.get(), geo, at)
 }
 
 #[cfg(test)]
