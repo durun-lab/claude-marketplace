@@ -187,6 +187,47 @@ fn ドラッグ中の_trim_layer_は帯の端を動かして描く() {
     );
 }
 
+#[test]
+fn ドラッグ中の_shift_layer_は帯を同じ幅のまま動かして描く() {
+    let shift = |item, by| Some((EditKind::ShiftLayer { item }, by));
+    let r = bar_of(&model(), shift(0, 0.5));
+    assert_eq!((r.x, r.w), (HEADER_W + 150.0, 200.0), "後ろへ");
+    let r = bar_of(&model(), shift(0, -1.0));
+    assert_eq!((r.x, r.w), (HEADER_W, 200.0), "前へ");
+    assert_eq!(bar_of(&model(), shift(1, 1.0)).x, HEADER_W + 100.0);
+}
+
+#[test]
+fn blade_の線は指したレイヤーの帯の高さで割る時刻に立つ() {
+    use crate::tool::BladeLine;
+    let m = model();
+    let f = TestViewport::new(&m, SIZE);
+    let st = state(0.0);
+    let guide = palette::GUIDE;
+    let vp = f.vp();
+    let lines = |blade| {
+        let input = PaintInput {
+            blade,
+            ..PaintInput::new(&m, &vp, &st)
+        };
+        timeline_overlay(&input)
+            .into_iter()
+            .filter(|q| q.color == guide)
+            .collect::<Vec<_>>()
+    };
+    assert!(lines(None).is_empty());
+    let line = lines(Some(BladeLine { item: 0, time: 2.0 }));
+    assert_eq!(line.len(), 1);
+    let bar = f.vp().bar(0, 1.0, 3.0);
+    let r = line[0].rect;
+    assert_eq!(r.x + r.w / 2.0, HEADER_W + 200.0, "2 秒の位置");
+    assert!(
+        r.y < bar.y && r.bottom() > bar.bottom(),
+        "帯の上下に少し出る"
+    );
+    assert!(lines(Some(BladeLine { item: 9, time: 2.0 })).is_empty());
+}
+
 fn seq_model() -> TimelineModel {
     let cut = |start, end, gap| CutBar {
         start,

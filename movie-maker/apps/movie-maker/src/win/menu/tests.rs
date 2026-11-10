@@ -82,8 +82,15 @@ fn 項目は並びの順にコマンドの表の名前とキーの見た目で�
     );
     assert_eq!(
         menu_texts(Menu::Timeline, &table),
-        ["Split Clip\tB", "Add Transition…"],
-        "ツールは後の PR が表に足す"
+        [
+            "Selection Tool\tA",
+            "Trim Tool\tT",
+            "Blade Tool\tB",
+            "-",
+            "Split Clip\tCtrl+B",
+            "Add Transition…",
+        ],
+        "ツールのグループと編集のグループの間に区切り線"
     );
     assert_eq!(menu_texts(Menu::Help, &table), ["About"]);
     assert_eq!(
@@ -172,7 +179,11 @@ fn キーの見た目はタブの後ろに置き_名前のアンパサンドは�
         name: "Fit & Fill",
         ..row("clip.split").clone()
     };
-    assert_eq!(label(&named), "Fit && Fill\tB", "& はアクセスキーにしない");
+    assert_eq!(
+        label(&named),
+        "Fit && Fill\tCtrl+B",
+        "& はアクセスキーにしない"
+    );
 }
 
 #[test]

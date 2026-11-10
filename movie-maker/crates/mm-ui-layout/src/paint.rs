@@ -5,6 +5,7 @@
 //! 領域ごとの描く関数は `paint/` の下のファイルに置き、ここから名前の順に呼ぶ。描く関数は自分の領域の矩形の外に描かず、
 //! 重ね順は呼ぶ順でなく [`Depth`] で決めるので、領域を足す PR はファイルを 1 つと、呼び出しを 1 行足せばよい。
 
+mod blade;
 mod header;
 mod keymarks;
 mod playhead;
@@ -23,6 +24,7 @@ use crate::palette::Palette;
 use crate::snap::SnapTarget;
 use crate::timeline::{Hit, TimelineModel};
 use crate::timeline_layout::Viewport;
+use crate::tool::BladeLine;
 use crate::toolbar::ToolbarView;
 use crate::wave::Waves;
 
@@ -61,6 +63,8 @@ pub struct PaintInput<'a> {
     pub waves: Option<&'a Waves>,
     /// ツールバーの状態。`None` のときはツールバーを描かない。
     pub toolbar: Option<ToolbarView<'a>>,
+    /// Blade のときの、ポインターの下のカットの割る時刻の線。`None` のときは描かない。
+    pub blade: Option<BladeLine>,
 }
 
 impl<'a> PaintInput<'a> {
@@ -72,6 +76,7 @@ impl<'a> PaintInput<'a> {
             state,
             waves: None,
             toolbar: None,
+            blade: None,
         }
     }
 }
@@ -175,9 +180,10 @@ pub fn timeline_quads(input: &PaintInput) -> UnderText {
     canvas.into_under_text()
 }
 
-/// 文字の上に重ねる矩形（再生位置の線とスナップの表示）。目盛りの帯と行の領域を縦に貫く。
+/// 文字の上に重ねる矩形（Blade の割る時刻の線、再生位置の線、スナップの表示）。目盛りの帯と行の領域を縦に貫く。
 pub fn timeline_overlay(input: &PaintInput) -> Vec<Quad> {
     let mut canvas = Canvas::default();
+    blade::paint(input, &mut canvas);
     playhead::paint(input, &mut canvas);
     snap::paint(input, &mut canvas);
     canvas.into_quads()

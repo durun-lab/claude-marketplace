@@ -287,6 +287,21 @@ fn 速さ_2_のレイヤーではカットの操作の量はシーケンスの�
 }
 
 #[test]
+fn レイヤーを動かすドラッグはコンポジションの時間軸の_shift_layer() {
+    let p = sample_project();
+    let comp = p.compositions[0].clone();
+    let layers = vec!["l-seq".to_owned()];
+    let cuts = vec![vec!["k1".to_owned()]];
+    let kind = EditKind::ShiftLayer { item: 0 };
+    let Some(Op::ShiftLayer(shift)) = gesture_op(kind, 1.0, &ids(&layers, &cuts), &comp) else {
+        panic!("shiftLayer になる")
+    };
+    assert_eq!(shift.layer.as_str(), "l-seq");
+    assert_eq!(shift.by, RationalTime::seconds(1));
+    assert!(gesture_op(kind, 0.001, &ids(&layers, &cuts), &comp).is_none());
+}
+
+#[test]
 fn 再生位置がフレームの後半でも_split_は表示中のフレームで割る() {
     let p = sample_project();
     // 1 秒 + 0.9 フレーム。表示は 30 フレーム目なので、割る位置は 1 秒。

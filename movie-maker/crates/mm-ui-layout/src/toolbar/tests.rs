@@ -4,9 +4,12 @@ use crate::geom::{Quad, QuadShape};
 use crate::palette::Palette;
 use crate::text::tests::FakeMeasure;
 
-const COMMANDS: [&str; 9] = [
+const COMMANDS: [&str; 12] = [
     "edit.undo",
     "edit.redo",
+    "timeline.selection_tool",
+    "timeline.trim_tool",
+    "timeline.blade_tool",
     "clip.split",
     "clip.lift",
     "clip.extract",
@@ -66,19 +69,34 @@ fn mv(
 }
 
 #[test]
-fn コマンドのあるボタンは表の_id_で引け_ツールのボタンは場所だけで押せない() {
+fn ボタンは表の_id_で引け_今のツールのボタンだけが入の見た目() {
     let b = bar(1000.0);
-    let s = state();
+    let mut s = state();
     for id in COMMANDS {
         assert!(toolbar_button(b, &s.names, id).is_some(), "{id}");
     }
-    let look = |name: &str| ButtonLook::of(&cell(b, &s, name), &s, &ToolbarController::default());
-    assert!(look("Selection").is_lit() && look("Selection").is_enabled());
-    assert!(!look("Trim").is_enabled() && !look("Blade").is_enabled());
+    let lit = |s: &ToolbarState, name: &str| {
+        ButtonLook::of(&cell(b, s, name), s, &ToolbarController::default()).is_lit()
+    };
+    let tools = [
+        (Tool::Selection, "Selection"),
+        (Tool::Trim, "Trim"),
+        (Tool::Blade, "Blade"),
+    ];
+    for (now, _) in tools {
+        s.tool = now;
+        for (tool, name) in tools {
+            assert_eq!(lit(&s, name), tool == now, "{name} at {now:?}");
+        }
+    }
+    s.tool = Tool::Blade;
     let ctl = &mut ToolbarController::default();
     down(ctl, b, &s, center(cell(b, &s, "Trim").rect));
-    assert_eq!(ctl.pressed(), None, "コマンドの無いボタンは押せない");
-    assert_eq!(ctl.hover(), None);
+    assert_eq!(
+        ctl.pressed(),
+        Some(Tool::Trim.command()),
+        "ツールのボタンも押せる"
+    );
 }
 
 #[test]

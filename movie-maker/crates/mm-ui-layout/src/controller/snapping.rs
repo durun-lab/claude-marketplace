@@ -14,7 +14,7 @@ const LANDED_EPS: f64 = 1e-9;
 
 impl TimelineController {
     /// 今のドラッグで吸い付くか。入/切を、押している間の反転と合わせる。
-    fn snaps(&self) -> bool {
+    pub(super) fn snaps(&self) -> bool {
         self.snapping != self.snap_held
     }
 
@@ -82,10 +82,15 @@ impl TimelineController {
 
     /// 端のドラッグを今のポインターの位置で置き直す。押しただけでまだ動かしていなければ、その位置を編集にしない。
     fn resnap(&mut self, model: &TimelineModel, playhead: f64) -> Vec<Action> {
-        if !matches!(self.drag, Drag::Edge { .. }) || self.last_edit.is_none() {
+        if self.last_edit.is_none() {
             return Vec::new();
         }
-        let edit = self.edge_drag(self.pointer.0, model, playhead);
+        let x = self.pointer.0;
+        let edit = match self.drag {
+            Drag::Edge { .. } => self.edge_drag(x, model, playhead),
+            Drag::Move { .. } => self.move_drag(x, model, playhead),
+            _ => return Vec::new(),
+        };
         self.report(edit)
     }
 

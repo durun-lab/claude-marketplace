@@ -13,7 +13,7 @@ use mm_doc::{
 use mm_eval::{place_cuts, PlacedCut, DEFAULT_AUDIO_ROLE};
 use mm_ops::{
     Edge, Insert, Lift, LockLayer, MoveLayer, Op, Overwrite, Ripple, Roll, SetLayerAudio,
-    SetLayerEnabled, Slide, Slip, Split, TrimLayer,
+    SetLayerEnabled, ShiftLayer, Slide, Slip, Split, TrimLayer,
 };
 use mm_types::{AssetId, Id, RationalTime};
 use mm_ui_layout::{EditKind, HeaderButton, Side};
@@ -400,7 +400,8 @@ pub fn gesture_op(
         | EditKind::Ripple { item, .. }
         | EditKind::Roll { item, .. }
         | EditKind::Slip { item, .. }
-        | EditKind::Slide { item, .. } => item,
+        | EditKind::Slide { item, .. }
+        | EditKind::ShiftLayer { item } => item,
     };
     let layer_id = ids.layers.get(item)?;
     let layer = comp.layers.iter().find(|l| l.id.as_str() == layer_id)?;
@@ -415,9 +416,18 @@ pub fn gesture_op(
             .into(),
         );
     }
+    if matches!(kind, EditKind::ShiftLayer { .. }) {
+        return Some(
+            ShiftLayer {
+                layer: layer.id.clone(),
+                by,
+            }
+            .into(),
+        );
+    }
     let by = timebase::layer_inner_delta(layer, by).ok()?;
     Some(match kind {
-        EditKind::TrimLayer { .. } => return None,
+        EditKind::TrimLayer { .. } | EditKind::ShiftLayer { .. } => return None,
         EditKind::Ripple { item, cut, side } => Ripple {
             cut: cut_id(item, cut)?,
             edge: edge_of(side),

@@ -50,8 +50,8 @@ fn パネルが持ち主のコマンドは登録されたパネルを指す() {
 fn 表のキーの列はキーの表から引き_見た目を付ける() {
     let table = table(&Shared::new());
     let split = row(&table, "clip.split");
-    assert_eq!(split.keys, ["KeyB"]);
-    assert_eq!(split.key_label.as_deref(), Some("B"));
+    assert_eq!(split.keys, ["Ctrl+KeyB"]);
+    assert_eq!(split.key_label.as_deref(), Some("Ctrl+B"));
     assert_eq!(split.panel, None);
     let redo = row(&table, "edit.redo");
     assert_eq!(redo.keys, ["Ctrl+KeyY", "Ctrl+Shift+KeyZ"]);
@@ -135,6 +135,23 @@ fn シーケンスのレイヤーが無くても_source_を開いていれば_in
     assert!(enabled("clip.insert"), "最初の insert がシーケンスを作る");
     assert!(enabled("clip.overwrite"));
     assert!(!enabled("clip.split"), "割るカットが無い");
+}
+
+#[test]
+fn ツールのコマンドは今のツールだけがチェックされ_変われば表を送り直す() {
+    let shared = Shared::new();
+    let mut sent = None;
+    let ids = [
+        "timeline.selection_tool",
+        "timeline.trim_tool",
+        "timeline.blade_tool",
+    ];
+    let checked = |table: &[CommandView]| ids.map(|id| row(table, id).state.checked);
+    let first = changed(&shared, &mut sent).expect("最初は送る");
+    assert_eq!(checked(&first), [Some(true), Some(false), Some(false)]);
+    *shared.tool.lock().unwrap() = mm_ui_layout::Tool::Blade;
+    let blade = changed(&shared, &mut sent).expect("ツールが変われば送る");
+    assert_eq!(checked(&blade), [Some(false), Some(false), Some(true)]);
 }
 
 #[test]

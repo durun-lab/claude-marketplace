@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use mm_doc::SEQUENCE_KIND;
-use mm_ui_layout::{PointerEvent, TimelineCommand};
+use mm_ui_layout::{PointerEvent, TimelineCommand, Tool};
 use serde::Serialize;
 
 use crate::win::edit_actions::{self, EditAction};
@@ -114,7 +114,7 @@ pub static TABLE: &[Spec] = &[
     Spec {
         id: "clip.split",
         name: "Split Clip",
-        description: Some("Split the clip at the playhead"),
+        description: Some("Split the clip at the playhead (Blade Tool splits at the pointer)"),
         owner: Owner::App(Action::Edit(EditAction::Split)),
     },
     Spec {
@@ -238,6 +238,12 @@ pub static TABLE: &[Spec] = &[
         owner: Owner::App(Action::Edit(EditAction::MarkOut)),
     },
     Spec {
+        id: "timeline.blade_tool",
+        name: "Blade Tool",
+        description: Some("Click a clip to split it at the pointer"),
+        owner: Owner::App(Action::Timeline(TimelineCommand::BladeTool)),
+    },
+    Spec {
         id: "timeline.full_extent_zoom",
         name: "Full Extent Zoom",
         description: Some(
@@ -254,6 +260,12 @@ pub static TABLE: &[Spec] = &[
         owner: Owner::App(Action::Shy(ShyCommand::HideShyLayers)),
     },
     Spec {
+        id: "timeline.selection_tool",
+        name: "Selection Tool",
+        description: Some("Drag a layer to move it in time; select clips and trim their edges"),
+        owner: Owner::App(Action::Timeline(TimelineCommand::SelectionTool)),
+    },
+    Spec {
         id: "timeline.shy_selected_layers",
         name: "Shy Selected Layers",
         description: Some("Mark the selected layer Shy so Hide Shy Layers can hide its row"),
@@ -266,6 +278,12 @@ pub static TABLE: &[Spec] = &[
             "Snap dragged edges to the playhead, clip and layer edges, keyframes, and markers",
         ),
         owner: Owner::App(Action::Timeline(TimelineCommand::ToggleSnapping)),
+    },
+    Spec {
+        id: "timeline.trim_tool",
+        name: "Trim Tool",
+        description: Some("Drag inside a clip to slip its content; Shift to slide the clip"),
+        owner: Owner::App(Action::Timeline(TimelineCommand::TrimTool)),
     },
     Spec {
         id: "timeline.zoom_in",
@@ -305,6 +323,8 @@ struct Ready {
     cut_selected: bool,
     /// スナップの入/切（描画スレッドが置いた表示の状態）。
     snapping: bool,
+    /// Timeline の今のツール（描画スレッドが置いたもの）。
+    tool: Tool,
     /// Shy の行を隠すかどうか（表示の状態）と、選んでいるレイヤーの Shy のフラグ。
     shy: shy::ShyReady,
 }
@@ -321,6 +341,7 @@ impl Ready {
             sequence,
             cut_selected: shared.edit.selected_cut().is_some(),
             snapping: shared.view.snapping(),
+            tool: *shared.tool.lock().expect("tool"),
             shy: shy::ShyReady::of(shared),
         }
     }
@@ -339,9 +360,20 @@ impl Ready {
         let checked = match spec.owner {
             Owner::App(Action::Shy(command)) => self.shy.checked(command),
             Owner::App(Action::Timeline(TimelineCommand::ToggleSnapping)) => Some(self.snapping),
+            Owner::App(Action::Timeline(command)) => tool_of(command).map(|tool| tool == self.tool),
             Owner::App(_) | Owner::Panel(_) => None,
         };
         State { enabled, checked }
+    }
+}
+
+/// ツールを選ぶコマンドが選ぶツール。ツールのコマンドはチェックの状態（今のツール）を持つ。
+fn tool_of(command: TimelineCommand) -> Option<Tool> {
+    match command {
+        TimelineCommand::SelectionTool => Some(Tool::Selection),
+        TimelineCommand::TrimTool => Some(Tool::Trim),
+        TimelineCommand::BladeTool => Some(Tool::Blade),
+        _ => None,
     }
 }
 

@@ -48,6 +48,11 @@ impl Ui {
         self.toolbar.state.disabled = disabled;
     }
 
+    /// 今のツール。アプリがコマンドの表のチェックの状態に使う。
+    pub fn tool(&self) -> mm_ui_layout::Tool {
+        self.controller.tool
+    }
+
     /// 最後に描いたツールバーの名前の幅。`--play-test` がボタンの位置を引く（[`mm_ui_layout::toolbar_button`]）。
     pub fn toolbar_names(&self) -> &ToolbarNames {
         &self.toolbar.state.names
@@ -86,6 +91,7 @@ impl Ui {
         let width = self.controller.layout().row_area.w;
         let state = &mut self.toolbar.state;
         state.snapping = self.controller.snapping;
+        state.tool = self.controller.tool;
         state.px_per_sec = self.controller.view.px_per_sec;
         state.floor = TimeView::zoom_floor(self.model.duration, width, VIEW_MARGIN);
     }
