@@ -13,7 +13,7 @@ use mm_doc::{
 use mm_eval::{place_cuts, PlacedCut, DEFAULT_AUDIO_ROLE};
 use mm_ops::{
     Edge, Insert, Lift, LockLayer, MoveLayer, Op, Overwrite, Ripple, Roll, SetLayerAudio,
-    SetLayerEnabled, Slide, Slip, Split, TrimLayer,
+    SetLayerEnabled, ShiftLayer, Slide, Slip, Split, TrimLayer,
 };
 use mm_types::{AssetId, Id, RationalTime};
 use mm_ui_layout::{EditKind, HeaderButton, Side};
@@ -405,7 +405,8 @@ fn edge_of(side: Side) -> Edge {
 }
 
 /// ドラッグの編集を操作にする。`by`（コンポジションの秒）は comp のフレームに丸め、0 フレームなら操作にしない。
-/// trimLayer はコンポジションの時間軸のまま、カットの操作はレイヤーの `speed` を掛けたシーケンスの時間軸で渡す。
+/// レイヤーの操作（trimLayer、shiftLayer）はコンポジションの時間軸のまま、カットの操作はレイヤーの `speed` を掛けた
+/// シーケンスの時間軸で渡す。
 pub fn gesture_op(
     kind: EditKind,
     by: f64,
@@ -417,32 +418,42 @@ pub fn gesture_op(
         return None;
     }
     let by = RationalTime::from_frames(frames, comp.fps).ok()?;
-    let cut_id = |item: usize, cut: usize| -> Option<CutId> {
-        Some(Id::new(ids.cuts.get(item)?.get(cut)?.as_str()))
-    };
-    let item = match kind {
+    let layer_id = ids.layers.get(edit_item(kind))?;
+    let layer = comp.layers.iter().find(|l| l.id.as_str() == layer_id)?;
+    let id = layer.id.clone();
+    match kind {
+        EditKind::TrimLayer { side, .. } => Some(
+            TrimLayer {
+                layer: id,
+                edge: edge_of(side),
+                by,
+            }
+            .into(),
+        ),
+        EditKind::ShiftLayer { .. } => Some(ShiftLayer { layer: id, by }.into()),
+        _ => cut_op(kind, timebase::layer_inner_delta(layer, by).ok()?, ids),
+    }
+}
+
+/// 編集が触るレイヤーの添字。
+fn edit_item(kind: EditKind) -> usize {
+    match kind {
         EditKind::TrimLayer { item, .. }
         | EditKind::Ripple { item, .. }
         | EditKind::Roll { item, .. }
         | EditKind::Slip { item, .. }
-        | EditKind::Slide { item, .. } => item,
-    };
-    let layer_id = ids.layers.get(item)?;
-    let layer = comp.layers.iter().find(|l| l.id.as_str() == layer_id)?;
-    if let EditKind::TrimLayer { side, .. } = kind {
-        let edge = edge_of(side);
-        return Some(
-            TrimLayer {
-                layer: layer.id.clone(),
-                edge,
-                by,
-            }
-            .into(),
-        );
+        | EditKind::Slide { item, .. }
+        | EditKind::ShiftLayer { item } => item,
     }
-    let by = timebase::layer_inner_delta(layer, by).ok()?;
+}
+
+/// カットの編集の操作。`by` はシーケンスの時間軸。
+fn cut_op(kind: EditKind, by: RationalTime, ids: &TimelineIds<'_>) -> Option<Op> {
+    let cut_id = |item: usize, cut: usize| -> Option<CutId> {
+        Some(Id::new(ids.cuts.get(item)?.get(cut)?.as_str()))
+    };
     Some(match kind {
-        EditKind::TrimLayer { .. } => return None,
+        EditKind::TrimLayer { .. } | EditKind::ShiftLayer { .. } => return None,
         EditKind::Ripple { item, cut, side } => Ripple {
             cut: cut_id(item, cut)?,
             edge: edge_of(side),

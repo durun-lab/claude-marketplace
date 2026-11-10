@@ -1,6 +1,7 @@
 use super::*;
 use crate::controller::{Action, Mods, PointerEvent, TimelineController};
 use crate::geom::{Quad, QuadShape};
+use crate::labels::timeline_timecode;
 use crate::paint::bar_color;
 use crate::paint::tests::state;
 use crate::paint::{timeline_quads, PaintInput};
@@ -34,6 +35,14 @@ fn labels_of(m: &TimelineModel, playhead: f64) -> Vec<Label> {
         &font,
         &mut FakeMeasure::default(),
     )
+}
+
+/// 見出しの列の上の角の再生位置のタイムコード。
+fn timecode_of(m: &TimelineModel, playhead: f64) -> Label {
+    let f = TestViewport::new(m, SIZE);
+    let font = UiFont::default();
+    let mut measure = FakeMeasure::default();
+    timeline_timecode(m, &f.vp(), &state(playhead), &font, &mut measure).expect("タイムコード")
 }
 
 #[test]
@@ -207,14 +216,15 @@ fn 長い名前は切り詰めて_見出しの列の外に描かない() {
 #[test]
 fn 見出しの列の上の角に再生位置のタイムコードを出す() {
     let m = model(vec![Item::layer(0.0, 5.0, ItemKind::Text, true)]);
-    let out = labels_of(&m, 2.0 + 5.0 / 30.0);
-    let t = out
-        .iter()
-        .find(|l| &*l.text == "00:00:02:05")
-        .expect("タイムコード");
+    let t = timecode_of(&m, 2.0 + 5.0 / 30.0);
+    assert_eq!(&*t.text, "00:00:02:05");
     let corner = Rect::new(0.0, TOOLBAR_H, HEADER_W, RULER_H);
     assert_eq!(t.clip, corner);
     assert!(t.x >= corner.x && t.y >= corner.y);
+    assert!(
+        !labels_of(&m, 2.0).iter().any(|l| l.text.starts_with("00:")),
+        "見出しのほかの文字とは分けて置く"
+    );
 }
 
 #[test]
@@ -421,8 +431,7 @@ fn 隠した行があれば見出しの列の上の角に隠した数を出す_�
     let out = labels_of(&m, 0.0);
     let hidden = out.iter().find(|l| &*l.text == "4 hidden").expect("数");
     assert_eq!(hidden.clip, Rect::new(0.0, TOOLBAR_H, HEADER_W, RULER_H));
-    let time = out.iter().find(|l| &*l.text == "00:00:00:00").unwrap();
-    assert!(hidden.x > time.x, "タイムコードの右");
+    assert!(hidden.x > timecode_of(&m, 0.0).x, "タイムコードの右");
 }
 
 #[test]

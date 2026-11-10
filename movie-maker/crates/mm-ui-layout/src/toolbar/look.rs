@@ -28,14 +28,11 @@ impl ButtonLook {
     pub(crate) fn of(cell: &ButtonCell, state: &ToolbarState, ctl: &ToolbarController) -> Self {
         let spec = cell.spec;
         let enabled = state.enabled(spec);
-        let hovered = matches!(
-            (spec.command, ctl.hover()),
-            (Some(id), Some(ToolbarPart::Button(h))) if id == h
-        );
+        let hovered = ctl.hover() == Some(ToolbarPart::Button(spec.command));
         Self {
             enabled,
             hovered: enabled && hovered,
-            pressed: enabled && spec.command.is_some() && ctl.pressed() == spec.command,
+            pressed: enabled && ctl.pressed() == Some(spec.command),
             lit: enabled && state.lit(spec),
         }
     }

@@ -222,11 +222,21 @@ fn texts(l: &SurfaceLayout, s: &TransportState) -> Vec<String> {
     .collect()
 }
 
+/// バーごとの再生位置のタイムコード（ほかの文字と分けて置く）。
+fn timecodes(l: &SurfaceLayout, s: &TransportState) -> Vec<String> {
+    let (palette, font) = (Palette::DEFAULT, UiFont::default());
+    transport_timecodes(l, s, &palette, &font, &mut FakeMeasure::default())
+        .into_iter()
+        .map(|l| l.text.to_string())
+        .collect()
+}
+
 #[test]
 fn program_のバーは再生位置と全体の長さをタイムコードで出す() {
     let mut s = state(65.5);
     s.program.t = 3.0 + 7.0 / 30.0;
-    assert_eq!(texts(&layout(false), &s), ["00:00:03:07", "00:01:05:15"]);
+    assert_eq!(timecodes(&layout(false), &s), ["00:00:03:07"]);
+    assert_eq!(texts(&layout(false), &s), ["00:01:05:15"]);
 }
 
 #[test]
@@ -237,10 +247,10 @@ fn source_のバーは再生位置とイン点とアウト点とボタンの名�
         src.t = 1.5;
         src.mark_in = Some(1.0);
     }
+    assert_eq!(timecodes(&layout(true), &s)[1..], ["00:00:01:12"]);
     assert_eq!(
-        texts(&layout(true), &s)[2..],
+        texts(&layout(true), &s)[1..],
         [
-            "00:00:01:12",
             "In 00:00:01:00  Out --:--:--:--",
             "In",
             "Out",

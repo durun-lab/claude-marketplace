@@ -70,8 +70,17 @@ pub(crate) struct Shaped {
     pub(crate) buffer: Buffer,
     /// 切り詰めの位置ごとの左端からの距離（[`TextMeasure::stops`]）。
     stops: Vec<f32>,
+    /// 送り幅（空白も幅を持つ）。
+    advance: f32,
     /// 最後に使ったフレーム。
     used: u64,
+}
+
+impl Shaped {
+    /// 送り幅（論理ピクセル）。1 字ずつのシェーピングの結果を並べるとき、次の字の左端まで進める幅。
+    pub(crate) fn advance(&self) -> f32 {
+        self.advance
+    }
 }
 
 /// シェーピングの結果のキャッシュ。字の大きさ（f32 のビット）ごとに、文字列から引く。
@@ -92,6 +101,17 @@ impl ShapeCache {
     /// これまでにシェーピングした回数。
     pub(crate) fn count(&self) -> u64 {
         self.count
+    }
+
+    /// 再生位置のタイムコードの字 `c` の送り幅。数字は 0〜9 の一番広い送り幅にそろえる（等幅の数字）。
+    /// 1 字ずつシェーピングしてキャッシュした結果を引くので、キャッシュに無ければ `None`。
+    pub(crate) fn timecode_advance(&self, c: char, size: f32) -> Option<f32> {
+        let of = |c: char| Some(self.get(c.encode_utf8(&mut [0; 4]), size)?.advance);
+        if c.is_ascii_digit() {
+            ('0'..='9').try_fold(0.0_f32, |w, d| of(d).map(|a| w.max(a)))
+        } else {
+            of(c)
+        }
     }
 }
 
@@ -164,8 +184,9 @@ impl Shaper {
     }
 }
 
-impl TextMeasure for Shaper {
-    fn stops(&mut self, text: &str, size: f32) -> &[f32] {
+impl Shaper {
+    /// `text` をシェーピングしてキャッシュし、キャッシュしたものを返す。
+    fn shaped(&mut self, text: &str, size: f32) -> &Shaped {
         let cache = &mut self.cache;
         let map = cache.shaped.entry(size.to_bits()).or_default();
         if !map.contains_key(text) {
@@ -178,7 +199,30 @@ impl TextMeasure for Shaper {
         }
         let shaped = map.get_mut(text).expect("キャッシュしたばかり");
         shaped.used = cache.frame;
-        &shaped.stops
+        shaped
+    }
+}
+
+impl TextMeasure for Shaper {
+    fn stops(&mut self, text: &str, size: f32) -> &[f32] {
+        &self.shaped(text, size).stops
+    }
+
+    /// 字と 0〜9 を 1 字ずつシェーピングしてキャッシュし、送り幅を足していく。同じ字はシェーピングし直さないので、
+    /// 再生中に数字だけが変わる間はシェーピングしない。
+    fn timecode_stops(&mut self, text: &str, size: f32) -> Vec<f32> {
+        for c in text.chars().chain('0'..='9') {
+            self.shaped(c.encode_utf8(&mut [0; 4]), size);
+        }
+        let mut x = 0.0;
+        let mut stops = Vec::with_capacity(text.len());
+        for c in text.chars() {
+            x += self.cache.timecode_advance(c, size).unwrap_or(0.0);
+            if !c.is_whitespace() {
+                stops.push(x);
+            }
+        }
+        stops
     }
 }
 
@@ -196,9 +240,11 @@ fn shape(fonts: &mut FontSystem, family: &str, text: &str, size: f32) -> Shaped 
     buffer.set_text(text, &attrs, Shaping::Advanced, None);
     buffer.shape_until_scroll(fonts, false);
     let stops = stops_of(&buffer);
+    let advance = buffer.layout_runs().next().map_or(0.0, |run| run.line_w);
     Shaped {
         buffer,
         stops,
+        advance,
         used: 0,
     }
 }
@@ -387,4 +433,6 @@ mod tests {
         assert!(s.cache().get("old 0", 12.0).is_none());
         assert!(s.cache().get("new", 12.0).is_some());
     }
+
+    mod timecode;
 }

@@ -28,13 +28,19 @@ pub(crate) struct BarMark {
 /// `item` の、行の領域の横の範囲に見えるマーカー（左から順）。
 /// まとめ方は先頭のキーフレームから数えるので、横に動かしてもマーカーの位置は変わらない。
 pub(crate) fn marks(vp: &Viewport, item: &Item) -> Vec<BarMark> {
+    marks_shifted(vp, item, 0.0)
+}
+
+/// `item` のキーフレームを `by` 秒動かしたときに見えるマーカー（ドラッグ中の `shiftLayer`）。動かした後の位置で
+/// 見えるものを選ぶので、行の領域の外から入ってくるマーカーも描ける。
+pub(crate) fn marks_shifted(vp: &Viewport, item: &Item, by: f64) -> Vec<BarMark> {
     let area = vp.layout.row_area;
     let half = MARK_PX / 2.0;
     let (left, right) = (area.x - half, area.right() + half);
     let mut out = Vec::new();
     let mut last_x = f32::NEG_INFINITY;
     for (keyframe, t) in item.keyframes.iter().enumerate() {
-        let x = vp.x_of(*t);
+        let x = vp.x_of(*t + by);
         if x > right {
             break;
         }
