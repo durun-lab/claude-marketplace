@@ -9,17 +9,20 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use super::*;
-use crate::win::commands::{self, table, TABLE};
+use crate::win::commands::{self, context_table, TABLE};
+use crate::win::keyframe_edit::RowSelection;
 use crate::win::menu::{context_groups, lines};
 use crate::win::sequence_edit::tests::sample_project;
 
 /// 項目が表に無くても並びに置いてある、後の PR のコマンド（Track Height）。
 const PENDING: &[&str] = &["timeline.track_height"];
 
-const PLACES: [Place; 5] = [
+const PLACES: [Place; 7] = [
     Place::Cut,
     Place::Layer,
     Place::Header,
+    Place::KeyframeRow,
+    Place::Keyframe,
     Place::Ruler,
     Place::Empty,
 ];
@@ -37,8 +40,9 @@ fn open_shared() -> Arc<Shared> {
     shared
 }
 
-fn texts(shared: &Shared, place: Place) -> Vec<String> {
-    describe(&lines(context_groups(place), &table(shared)))
+/// 割る時刻 `time` で出したメニューの項目。
+fn texts(shared: &Shared, place: Place, time: Option<f64>) -> Vec<String> {
+    describe(&lines(context_groups(place), &context_table(shared, time)))
 }
 
 #[test]
@@ -55,13 +59,12 @@ fn 並びの_id_は表にあるか_後の_pr_のコマンドで_グループは�
 }
 
 #[test]
-fn カットのメニューは_split_clip_here_lift_extract_を区切り線で分けて出す() {
+fn カットのメニューは_split_clip_here_lift_extract_show_keyframe_editor_を区切り線で分けて出す() {
     let shared = open_shared();
     shared.select_layer(Some("l-seq".to_owned()));
     shared.edit.select_cut(Some("k1".to_owned()));
-    shared.context.set_time(1.5);
     assert_eq!(
-        texts(&shared, Place::Cut),
+        texts(&shared, Place::Cut, Some(1.5)),
         [
             "Split Clip Here",
             "-",
@@ -74,10 +77,10 @@ fn カットのメニューは_split_clip_here_lift_extract_を区切り線で�
 }
 
 #[test]
-fn 右クリックの前は_split_clip_here_を押せず_カットを選ぶまで_lift_と_extract_を押せない() {
+fn 割れない所のメニューでは_split_clip_here_を押せず_カットを選ぶまで_lift_と_extract_を押せない() {
     let shared = open_shared();
     assert_eq!(
-        texts(&shared, Place::Cut),
+        texts(&shared, Place::Cut, None),
         [
             "Split Clip Here (disabled)",
             "-",
@@ -98,30 +101,57 @@ fn レイヤーのメニューは有効とロックと_shy_を上に_重なり�
         "Lock Layer",
         "Shy Selected Layers",
         "-",
-        "Bring Forward (disabled)",
-        "Send Backward",
+        "Move Layer Up (disabled)",
+        "Move Layer Down",
         "-",
         "Show Keyframe Editor  U",
     ];
-    assert_eq!(texts(&shared, Place::Layer), expected);
-    assert_eq!(texts(&shared, Place::Header), expected);
+    assert_eq!(texts(&shared, Place::Layer, None), expected);
+    assert_eq!(texts(&shared, Place::Header, None), expected);
+}
+
+#[test]
+fn ひし形のメニューは_remove_keyframe_と前後のキーフレームへの移動_行のメニューは移動と_show_keyframe_editor(
+) {
+    let shared = open_shared();
+    shared.select_layer(Some("l-a".to_owned()));
+    let steps = ["Go to Previous Keyframe  [", "Go to Next Keyframe  ]"];
+    shared.keyframes.select(Some(RowSelection {
+        layer: "l-a".to_owned(),
+        path: None,
+        keyframe: true,
+    }));
+    let keyframe = texts(&shared, Place::Keyframe, None);
+    assert_eq!(keyframe[..2], ["Remove Keyframe  Delete", "-"]);
+    assert_eq!(keyframe[2..], steps);
+    let row = texts(&shared, Place::KeyframeRow, None);
+    assert_eq!(row[..2], steps);
+    assert_eq!(row[2..], ["-", "Show Keyframe Editor  U"]);
 }
 
 #[test]
 fn 目盛りと空きのメニュー() {
     let shared = open_shared();
-    assert_eq!(texts(&shared, Place::Ruler), ["Full Extent Zoom  Shift+Z"]);
     assert_eq!(
-        texts(&shared, Place::Empty),
+        texts(&shared, Place::Ruler, None),
+        ["Full Extent Zoom  Shift+Z"]
+    );
+    assert_eq!(
+        texts(&shared, Place::Empty, None),
         ["Full Extent Zoom  Shift+Z", "-", "Snapping  N (checked)"]
     );
 }
 
 #[test]
-fn 選んだ項目はメニューバーと同じ道でコマンドとして実行する() {
+fn 項目の_id_はメニューバーと重ならず_選んだ項目はコマンドとして実行する() {
     let shared = open_shared();
-    menu::run(&shared, "timeline.toggle_snapping");
-    menu::run(&shared, "timeline.full_extent_zoom");
+    for command in ["timeline.toggle_snapping", "timeline.full_extent_zoom"] {
+        let id = item_id(command);
+        assert!(TABLE.iter().all(|s| s.id != id), "{id}");
+        assert_eq!(command_of(&id), Some(command));
+        menu::run(&shared, &id);
+    }
+    assert_eq!(command_of("timeline.full_extent_zoom"), None);
     use mm_ui_layout::TimelineCommand::{FullExtentZoom, ToggleSnapping};
     assert_eq!(
         *shared.input.lock().unwrap(),
@@ -133,20 +163,32 @@ fn 選んだ項目はメニューバーと同じ道でコマンドとして実�
 }
 
 #[test]
-fn 右クリックしていなければ_split_clip_here_を拒否する() {
+fn split_clip_here_は右クリックのメニューの項目からだけ押せ_選ばずに閉じた時刻をほかの呼び出し箇所が使わない(
+) {
     let shared = open_shared();
+    shared.select_layer(Some("l-seq".to_owned()));
+    shared.context.set_time(Some(1.0));
+    let refused = Err("Split Clip Here isn't available now".to_owned());
     assert_eq!(
         commands::run(&shared, "clip.split_here"),
-        Err("Split Clip Here isn't available now".to_owned())
+        refused,
+        "Tasks の項目"
     );
-    shared.context.set_time(1.0);
-    assert!(commands::run(&shared, "clip.split_here").is_ok());
-    shared.context.clear_time();
-    assert!(commands::run(&shared, "clip.split_here").is_err());
+    let row = commands::table(&shared)
+        .into_iter()
+        .find(|c| c.id == "clip.split_here")
+        .expect("表の行");
+    assert!(
+        !row.state.enabled,
+        "WebView と Keyboard Shortcuts の表では押せない"
+    );
+    assert!(run(&shared, "clip.split_here").is_ok(), "メニューの項目");
+    assert_eq!(shared.context.time(), None, "選んだ項目が時刻を使い切る");
+    assert_eq!(run(&shared, "clip.split_here"), refused, "2 度目は割らない");
 }
 
 #[test]
-fn 描画スレッドの右クリックは時刻を置いてウィンドウのフックへ点を丸めて渡す() {
+fn 描画スレッドの右クリックは割る時刻を置いてウィンドウのフックへ点を丸めて渡す() {
     let shared = open_shared();
     let cut = Hit::Cut {
         item: 0,
@@ -158,9 +200,22 @@ fn 描画スレッドの右クリックは時刻を置いてウィンドウの�
     shared
         .window_hook
         .set(move |f| sink.lock().unwrap().push(f));
-    on_action(&shared, cut, 2.5, (10.4, 20.6));
+    on_action(&shared, cut, Some(2.5), (10.4, 20.6));
     assert_eq!(shared.context.time(), Some(2.5));
-    assert_eq!(*seen.lock().unwrap(), [Forward::ContextMenu(cut, (10, 21))]);
+    let ruler = Hit::Ruler;
+    on_action(&shared, ruler, None, (30.0, 4.0));
+    assert_eq!(
+        shared.context.time(),
+        None,
+        "割れない所のメニューで置き直す"
+    );
+    assert_eq!(
+        *seen.lock().unwrap(),
+        [
+            Forward::ContextMenu(cut, (10, 21)),
+            Forward::ContextMenu(ruler, (30, 4))
+        ]
+    );
 }
 
 #[test]

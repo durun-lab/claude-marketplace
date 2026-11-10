@@ -1,4 +1,4 @@
-//! 選んだレイヤーのコマンド（Enable Layer、Lock Layer、Bring Forward、Send Backward）。右クリックのメニューが、見出しと帯を
+//! 選んだレイヤーのコマンド（Enable Layer、Lock Layer、Move Layer Up、Move Layer Down）。右クリックのメニューが、見出しと帯を
 //! 右クリックして選んだレイヤーに対して呼ぶ。操作（`setLayerEnabled`、`lockLayer`、`moveLayer`）にして編集のキューで適用する。
 
 use std::sync::Arc;
@@ -19,10 +19,10 @@ pub enum LayerCommand {
     ToggleEnabled,
     /// ロックを切り替える（Lock Layer）。
     ToggleLock,
-    /// 1 つ前へ出す（Bring Forward）。Timeline では 1 行上へ動く。
-    BringForward,
-    /// 1 つ後ろへ回す（Send Backward）。Timeline では 1 行下へ動く。
-    SendBackward,
+    /// 1 つ前へ出す（Move Layer Up）。Timeline では 1 行上へ動く。
+    MoveUp,
+    /// 1 つ後ろへ回す（Move Layer Down）。Timeline では 1 行下へ動く。
+    MoveDown,
 }
 
 /// 選んでいるレイヤーの今の状態。押せるかとチェックの状態を決める。
@@ -54,12 +54,12 @@ impl LayerReady {
         Self(flags)
     }
 
-    /// レイヤーを選んでいるときだけ押せる。Bring Forward は先頭、Send Backward は最後のレイヤーでは押せない。
+    /// レイヤーを選んでいるときだけ押せる。Move Layer Up は先頭、Move Layer Down は最後のレイヤーでは押せない。
     pub(super) fn enabled(&self, command: LayerCommand) -> bool {
         let Some(f) = &self.0 else { return false };
         match command {
-            LayerCommand::BringForward => f.index + 1 < f.count,
-            LayerCommand::SendBackward => f.index > 0,
+            LayerCommand::MoveUp => f.index + 1 < f.count,
+            LayerCommand::MoveDown => f.index > 0,
             LayerCommand::ToggleEnabled | LayerCommand::ToggleLock => true,
         }
     }
@@ -70,7 +70,7 @@ impl LayerReady {
         match command {
             LayerCommand::ToggleEnabled => Some(f.enabled),
             LayerCommand::ToggleLock => Some(f.lock),
-            LayerCommand::BringForward | LayerCommand::SendBackward => None,
+            LayerCommand::MoveUp | LayerCommand::MoveDown => None,
         }
     }
 }
@@ -106,8 +106,8 @@ fn op_of(command: LayerCommand, comp: &Composition, id: &str) -> Result<Op, Stri
     let to = match command {
         LayerCommand::ToggleEnabled => return Ok(header_button_op(HeaderButton::Enabled, layer)),
         LayerCommand::ToggleLock => return Ok(header_button_op(HeaderButton::Lock, layer)),
-        LayerCommand::BringForward => index + 1,
-        LayerCommand::SendBackward => index.checked_sub(1).ok_or("Already at the back")?,
+        LayerCommand::MoveUp => index + 1,
+        LayerCommand::MoveDown => index.checked_sub(1).ok_or("Already at the back")?,
     };
     if to >= comp.layers.len() {
         return Err("Already at the front".into());

@@ -56,9 +56,24 @@ pub fn run(shared: &Arc<Shared>, action: EditAction) {
     edit::queue(shared, job);
 }
 
+/// 右クリックのメニューの Split Clip Here。選んだレイヤーの、右クリックした時刻 `time` のカットを割る。
+/// 時刻はメニューの項目を選んだときに渡すので、編集のキューが待っている間の左クリックや再生に左右されない。
+pub fn split_here(shared: &Arc<Shared>, time: f64) {
+    let s = shared.clone();
+    edit::queue(shared, move || {
+        let result = apply_at(&s, EditAction::SplitHere, Some(time));
+        s.edit.set_message(result.err().unwrap_or_default());
+    });
+}
+
 /// 編集を計画して適用し、成功したら新しいカットを選ぶ。失敗は文言で返す。
 /// 計画に使ったデータのバージョンを付けて適用するので、間に CLI などが同じ所を触っていたら衝突で断られる。
 pub fn plan_and_apply(shared: &Shared, action: EditAction) -> Result<(), String> {
+    apply_at(shared, action, None)
+}
+
+/// `plan_and_apply` の中身。`here` は Split Clip Here の割る時刻（右クリックのメニューから呼んだときだけ持つ）。
+fn apply_at(shared: &Shared, action: EditAction, here: Option<f64>) -> Result<(), String> {
     let doc = shared.doc().ok_or("No project open")?;
     if action == EditAction::ClearInOut {
         let ops = clear_in_out(shared, &doc.project)?;
@@ -70,15 +85,16 @@ pub fn plan_and_apply(shared: &Shared, action: EditAction) -> Result<(), String>
         .map_err(|e| e.to_string())?;
     let layer = shared.selected_layer();
     // Split Clip Here は右クリックした時刻の、選んだレイヤーのカットを割る（選んだカットは見ない）。
-    let here = (action == EditAction::SplitHere).then(|| shared.context.time());
-    let cut = if here.is_some() {
+    let split_here = action == EditAction::SplitHere;
+    let cut = if split_here {
         None
     } else {
         shared.edit.selected_cut()
     };
-    let playhead = match here {
-        Some(time) => time.ok_or("Right-click a clip to split it there")?,
-        None => shared.playhead(),
+    let playhead = match (split_here, here) {
+        (true, Some(time)) => time,
+        (true, None) => return Err("Right-click a clip to split it there".into()),
+        (false, _) => shared.playhead(),
     };
     let ctx = Ctx {
         project: &doc.project,
@@ -402,5 +418,33 @@ mod tests {
             "再生位置 {} が {last} に寄る",
             shared.playhead()
         );
+    }
+
+    /// カット `id` の素材の時間軸でのイン点（秒）。
+    fn cut_in(shared: &Shared, id: &str) -> f64 {
+        let doc = shared.doc().expect("開いている");
+        let cut = doc.project.sequences[0]
+            .cuts
+            .iter()
+            .find(|c| c.id.as_str() == id);
+        cut.expect("カット").in_point.to_f64()
+    }
+
+    #[test]
+    fn split_clip_here_は再生位置でなく右クリックした時刻で割り_時刻が無ければ断る() {
+        let (shared, _playback) = start();
+        shared.select_layer(Some("l-seq".to_owned()));
+        assert_eq!(
+            apply_at(&shared, EditAction::SplitHere, None),
+            Err("Right-click a clip to split it there".to_owned())
+        );
+        let k2 = cut_in(&shared, "k2");
+        // 再生位置 0 秒は k1 の始まりで割れないので、割れたら右クリックした時刻（k2 の 0.5 秒目）で割っている。
+        apply_at(&shared, EditAction::SplitHere, Some(3.5)).expect("右クリックした時刻で割る");
+        let new = shared
+            .edit
+            .selected_cut()
+            .expect("割った後ろのカットを選ぶ");
+        assert!((cut_in(&shared, &new) - k2 - 0.5).abs() < 1e-6, "{new}");
     }
 }

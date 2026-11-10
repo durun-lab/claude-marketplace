@@ -42,7 +42,7 @@ pub enum PointerEvent {
     Command(TimelineCommand),
     /// ドラッグ中に押したスナップの入/切のキーを離した。
     SnapKeyUp,
-    /// 点 `(x, y)` の右クリック。ポインターの下のカットとレイヤーを選び、[`Action::ContextMenu`] を返す。
+    /// 点 `(x, y)` の右クリック。ポインターの下のカット、レイヤー、キーフレームの行を選び、[`Action::ContextMenu`] を返す。
     ContextMenu {
         x: f32,
         y: f32,
@@ -71,8 +71,13 @@ pub enum Action {
     Keyframe(KeyframeAction),
     /// Blade でカットを押した。レイヤー `item` の、時刻 `time`（秒。再生位置とフレームに合わせたもの）で割る。
     Split { item: usize, time: f64 },
-    /// 右クリックのメニューを出す。`hit` は当たった所（添字を含む。`Place::of` で右クリックのメニューの種類にする）、`time` はその時刻（秒。Snapping が入なら再生位置とフレームに合わせたもの。
-    /// Split Clip Here の時刻）、`at` はメニューを出す点（Timeline の座標）。ポインターの下のカットとレイヤーはこの前の
-    /// `Select` と `SelectCut` で選んである。
-    ContextMenu { hit: Hit, time: f64, at: (f32, f32) },
+    /// 右クリックのメニューを出す。`hit` は当たった所（添字を含む。`Place::of` で右クリックのメニューの種類にする）。
+    /// `time` は Split Clip Here の割る時刻（秒。Blade と同じく Snapping が入なら再生位置に吸い付け、フレームにそろえる）で、
+    /// 割れるカットの中を右クリックしたときだけ持つ。`at` はメニューを出す点（Timeline の座標）。ポインターの下のものは、
+    /// この前の `Select`、`SelectCut`、`Keyframe(Select)` で選んである。
+    ContextMenu {
+        hit: Hit,
+        time: Option<f64>,
+        at: (f32, f32),
+    },
 }

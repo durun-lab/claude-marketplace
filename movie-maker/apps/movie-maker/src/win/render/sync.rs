@@ -200,7 +200,6 @@ pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
     for ev in events {
         if let PointerEvent::Down { x, y, .. } = ev {
             focus_viewer(shared, ui.region_at(x, y));
-            shared.context.clear_time();
         }
         for action in ui.transport_pointer(ev) {
             match action {

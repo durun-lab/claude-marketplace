@@ -108,7 +108,7 @@ struct Ready {
     shy: shy::ShyReady,
     /// 選んでいるレイヤーの有効とロックと並び。
     layer: layer::LayerReady,
-    /// 右クリックのメニューを出している。Split Clip Here は右クリックした時刻で割る。
+    /// 右クリックのメニューの表で、割れるカットを右クリックした。Split Clip Here はそのメニューの中でだけ押せる。
     context: bool,
     /// 割り付け（WebView の列の開閉をチェックに出す）。
     workspace: Workspace,
@@ -130,8 +130,16 @@ impl Ready {
             tool: *shared.tool.lock().expect("tool"),
             shy: shy::ShyReady::of(shared),
             layer: layer::LayerReady::of(shared),
-            context: shared.context.time().is_some(),
+            context: false,
             workspace: shared.workspace.get(),
+        }
+    }
+
+    /// 右クリックのメニューの状態。Split Clip Here の割る時刻 `time` があれば押せる。
+    fn in_context(shared: &Shared, time: Option<f64>) -> Self {
+        Self {
+            context: time.is_some(),
+            ..Self::of(shared)
         }
     }
 
@@ -221,6 +229,12 @@ pub fn table(shared: &Shared) -> Vec<CommandView> {
     TABLE.iter().map(|s| view(s, ready.state(s))).collect()
 }
 
+/// 右クリックのメニューの表。Split Clip Here は、メニューを出したときの割る時刻 `time` があるときだけ押せる。
+pub fn context_table(shared: &Shared, time: Option<f64>) -> Vec<CommandView> {
+    let ready = Ready::in_context(shared, time);
+    TABLE.iter().map(|s| view(s, ready.state(s))).collect()
+}
+
 /// 今は押せないコマンドの ID。サーフェスの再生の操作のバーがボタンを薄くするのに使う。
 pub fn disabled_ids(shared: &Shared) -> Vec<&'static str> {
     let ready = Ready::of(shared);
@@ -263,6 +277,22 @@ pub fn run(shared: &Arc<Shared>, id: &str) -> Result<(), String> {
         return Err(format!("{} isn't available now", spec.name));
     }
     execute(shared, spec)
+}
+
+/// 右クリックのメニューの項目からコマンドを実行する。押せないコマンドは拒否し、Split Clip Here はメニューを出したときの
+/// 割る時刻 `time` で割る（メニューを出している間に再生位置が動いても、右クリックした所で割る）。
+pub fn run_in_context(shared: &Arc<Shared>, id: &str, time: Option<f64>) -> Result<(), String> {
+    let spec = spec_of(id)?;
+    if !Ready::in_context(shared, time).state(spec).enabled {
+        return Err(format!("{} isn't available now", spec.name));
+    }
+    match (spec.owner, time) {
+        (Owner::App(Action::Edit(EditAction::SplitHere)), Some(time)) => {
+            edit_actions::split_here(shared, time);
+            Ok(())
+        }
+        _ => execute(shared, spec),
+    }
 }
 
 /// キーからコマンドを実行する。押せるかは見ない。押せないときは編集が拒否した理由が画面に出て、何が足りないかが分かるため。

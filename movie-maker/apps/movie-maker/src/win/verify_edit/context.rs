@@ -1,5 +1,6 @@
 //! `--play-test` の右クリックのメニューの通し。サーフェスに本物の WM_CONTEXTMENU を投げ、描画スレッドがカットとレイヤーを選んで
-//! メニューの並びを作ることを確かめ、メニューの代わりに選んだ項目の ID をメニューバーと同じ道（`menu::run`）に流して実行する。
+//! メニューの並びを作ることを確かめ、メニューの代わりに選んだ項目の ID（`context_menu::item_id`）をメニューバーと同じ道
+//! （`menu::run`）に流して実行する。
 //! ポップアップは画面の撮影に写らず、モーダルで止まるので、出さずに並びの記録だけを読む。
 
 use mm_ui_layout::Place;
@@ -9,7 +10,7 @@ use super::*;
 use crate::win::context_menu;
 use crate::win::menu;
 
-fn wait_shown(shared: &Shared, place: Place) -> Option<context_menu::Shown> {
+pub(super) fn wait_shown(shared: &Shared, place: Place) -> Option<context_menu::Shown> {
     let mut found = None;
     wait_until(WAIT, || {
         found = shared.context.take_shown();
@@ -47,7 +48,7 @@ fn cut_menu_step(env: &Env<'_>, log: &mut Log) {
         selected && split_listed,
         json!({ "items": items, "selected_cut": shared.edit.selected_cut() }),
     );
-    menu::run(shared, "clip.split_here");
+    menu::run(shared, &context_menu::item_id("clip.split_here"));
     let split = wait_until(WAIT, || cuts(shared).len() == before + 1);
     let near = cut_starts_near(shared, g.row, (start, mid), 1.0 / 24.0);
     log.step(
@@ -84,7 +85,7 @@ fn layer_menu_steps(env: &Env<'_>, log: &mut Log) {
         json!({ "layer": id, "items": items }),
     );
     let before = layer_lock(shared, &id);
-    menu::run(shared, "layer.toggle_lock");
+    menu::run(shared, &context_menu::item_id("layer.toggle_lock"));
     let locked = wait_until(WAIT, || layer_lock(shared, &id) != before);
     log.step(
         "context_lock_layer",

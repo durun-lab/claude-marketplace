@@ -1,6 +1,8 @@
 //! サーフェスの右クリックのメニュー。WM_CONTEXTMENU（右クリックとメニューキー）をポインターの入力のキューで描画スレッドへ渡し、
 //! 描画スレッドが当たった所を決めて選択を置いた後、UI のスレッド（メインスレッド）がネイティブのポップアップで出す。
-//! 項目の並びは `menu.rs`、名前とキーと押せるかはコマンドの表。選んだ項目はメニューバーと同じ `on_menu_event` で実行する。
+//! 項目の並びは `menu.rs`、名前とキーと押せるかはコマンドの表。選んだ項目はメニューバーと同じ `on_menu_event` で受ける。
+//! 項目の ID はコマンドの ID に [`ID_PREFIX`] を付けたもので、メニューバーの項目と分けて、メニューを出したときの
+//! 右クリックの時刻で実行する（Split Clip Here）。
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -25,10 +27,24 @@ pub struct Shown {
     pub items: Vec<String>,
 }
 
+/// 右クリックのメニューの項目の ID の頭。メニューバーの項目の ID（コマンドの ID）と重ならない。
+pub const ID_PREFIX: &str = "context:";
+
+/// コマンド `command` の、右クリックのメニューの項目の ID。
+pub fn item_id(command: &str) -> String {
+    format!("{ID_PREFIX}{command}")
+}
+
+/// 右クリックのメニューの項目の ID なら、そのコマンドの ID。
+pub fn command_of(item: &str) -> Option<&str> {
+    item.strip_prefix(ID_PREFIX)
+}
+
 /// 右クリックのメニューの状態。
 #[derive(Default)]
 pub struct ContextSlot {
-    /// 右クリックした時刻（秒）。Split Clip Here の割る時刻。次の左クリックまで持つ。
+    /// 出したメニューの Split Clip Here の割る時刻（秒）。割れるカットを右クリックしたときだけ持ち、次のメニューで置き直す。
+    /// メニューの項目のイベントだけが取り出すので、選ばずに閉じたメニューの時刻はほかの呼び出し箇所から使われない。
     time: Mutex<Option<f64>>,
     shown: Mutex<Option<Shown>>,
     /// ポップアップを出さず、並びの記録だけを残す（自動試験は、モーダルのメニューで止まらないため）。
@@ -36,17 +52,19 @@ pub struct ContextSlot {
 }
 
 impl ContextSlot {
-    pub fn set_time(&self, time: f64) {
-        *self.time.lock().expect("context time") = Some(time);
+    /// 出すメニューの割る時刻を置く。割れない所のメニューは `None`。
+    pub fn set_time(&self, time: Option<f64>) {
+        *self.time.lock().expect("context time") = time;
     }
 
-    pub fn clear_time(&self) {
-        *self.time.lock().expect("context time") = None;
-    }
-
-    /// 右クリックした時刻。右クリックのメニューを出していなければ `None`。
+    /// 出したメニューの割る時刻。
     pub fn time(&self) -> Option<f64> {
         *self.time.lock().expect("context time")
+    }
+
+    /// 出したメニューの割る時刻を取り出す（取り出すと空に戻る）。メニューの項目を選んだときに 1 度だけ使う。
+    pub fn take_time(&self) -> Option<f64> {
+        self.time.lock().expect("context time").take()
     }
 
     /// 直近に出したメニューを取り出す（取り出すと空に戻る）。
@@ -144,7 +162,7 @@ fn popup(app: &AppHandle, window: &Window, shared: &Arc<Shared>, hit: Hit, at: (
     let Some(place) = Place::of(&hit) else {
         return;
     };
-    let table = commands::table(shared);
+    let table = commands::context_table(shared, shared.context.time());
     let lines = menu::lines(menu::context_groups(place), &table);
     if lines.is_empty() {
         return;
@@ -182,13 +200,18 @@ fn describe(lines: &[Line]) -> Vec<String> {
         .collect()
 }
 
-/// 描画スレッドが `Action::ContextMenu` を受けたとき。右クリックした時刻を置き、メニューを出すようウィンドウのフックへ頼む。
-pub fn on_action(shared: &Arc<Shared>, hit: Hit, time: f64, at: (f32, f32)) {
+/// 描画スレッドが `Action::ContextMenu` を受けたとき。Split Clip Here の割る時刻を置き、メニューを出すようウィンドウのフックへ頼む。
+pub fn on_action(shared: &Arc<Shared>, hit: Hit, time: Option<f64>, at: (f32, f32)) {
     shared.context.set_time(time);
     let at = (at.0.round() as i32, at.1.round() as i32);
     if let Err(e) = shared.window_hook.send(Forward::ContextMenu(hit, at)) {
         tracing::warn!("右クリックのメニューを出せない: {e}");
     }
+}
+
+/// 右クリックのメニューの項目を選んだとき。メニューを出したときの割る時刻を取り出して、コマンド `command` を実行する。
+pub fn run(shared: &Arc<Shared>, command: &str) -> Result<(), String> {
+    commands::run_in_context(shared, command, shared.context.take_time())
 }
 
 #[cfg(test)]

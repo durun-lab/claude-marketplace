@@ -42,17 +42,14 @@ fn 重なりの順は_comp_の下から数え_前へは_1_つ大きい位置_後
         Op::MoveLayer(m) => m.index,
         other => panic!("{other:?}"),
     };
+    assert_eq!(index_of(op_of(LayerCommand::MoveUp, comp, "l-seq")), 1);
+    assert_eq!(index_of(op_of(LayerCommand::MoveDown, comp, "l-b")), 1);
     assert_eq!(
-        index_of(op_of(LayerCommand::BringForward, comp, "l-seq")),
-        1
-    );
-    assert_eq!(index_of(op_of(LayerCommand::SendBackward, comp, "l-b")), 1);
-    assert_eq!(
-        op_of(LayerCommand::BringForward, comp, "l-b"),
+        op_of(LayerCommand::MoveUp, comp, "l-b"),
         Err("Already at the front".to_owned())
     );
     assert_eq!(
-        op_of(LayerCommand::SendBackward, comp, "l-seq"),
+        op_of(LayerCommand::MoveDown, comp, "l-seq"),
         Err("Already at the back".to_owned())
     );
 }
@@ -84,8 +81,8 @@ fn レイヤーを選ぶまでレイヤーのコマンドは押せない() {
     for id in [
         "layer.toggle_enabled",
         "layer.toggle_lock",
-        "layer.bring_forward",
-        "layer.send_backward",
+        "layer.move_up",
+        "layer.move_down",
     ] {
         assert_eq!(state_of(&shared, id), (false, None), "{id}");
     }
@@ -99,9 +96,9 @@ fn 選んだレイヤーの有効とロックをチェックで出し_先頭と�
         (true, Some(true))
     );
     assert_eq!(state_of(&shared, "layer.toggle_lock"), (true, Some(false)));
-    assert!(!state_of(&shared, "layer.bring_forward").0, "先頭");
-    assert!(state_of(&shared, "layer.send_backward").0);
+    assert!(!state_of(&shared, "layer.move_up").0, "先頭");
+    assert!(state_of(&shared, "layer.move_down").0);
     shared.select_layer(Some("l-seq".to_owned()));
-    assert!(state_of(&shared, "layer.bring_forward").0);
-    assert!(!state_of(&shared, "layer.send_backward").0, "最後");
+    assert!(state_of(&shared, "layer.move_up").0);
+    assert!(!state_of(&shared, "layer.move_down").0, "最後");
 }
