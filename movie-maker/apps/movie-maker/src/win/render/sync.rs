@@ -1,16 +1,14 @@
 //! 描画スレッドの、共有状態と UI の行き来。Timeline に出すプロジェクトのデータ、Source のフレーム、
 //! ポインターの入力から選択とシークとドラッグの編集へ。
 
-use std::collections::HashMap;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use mm_doc::Project;
 use mm_render_api::tone_map_peak;
-use mm_ui_layout::{Action, EditKind, PointerEvent, TimelineModel};
+use mm_ui_layout::{Action, EditKind, PointerEvent};
 use mm_ui_wgpu::{timeline_cut_ids, timeline_layer_ids, timeline_model, Region, Ui};
 
-use super::waves::{Wanted, WaveWanted};
+use super::waves::WaveWanted;
 use super::View;
 use crate::win::playback::Command;
 use crate::win::sequence_edit::{gesture_op, TimelineIds};
@@ -27,8 +25,8 @@ pub(super) struct DocSync {
     layer_ids: Vec<String>,
     /// レイヤーごとのカットの ID（シーケンスでないレイヤーは空）。
     cut_ids: Vec<Vec<String>>,
-    /// 波形を出す素材（Timeline のモデルから引く）。
-    wave_assets: Vec<Wanted>,
+    /// 帯の波形を出す素材のコンテンツハッシュ（Timeline のモデルから引く）と、それを作り直した回数。
+    wave_hashes: Vec<Arc<str>>,
     wave_rev: u64,
 }
 
@@ -75,7 +73,7 @@ impl DocSync {
                 return;
             };
             let model = timeline_model(&doc.project, comp);
-            self.wave_assets = wave_assets(&model, &doc.project);
+            self.wave_hashes = model.wave_hashes();
             self.wave_rev += 1;
             ui.update_model(model);
             // SDR の書き出しと同じ素材の上限の明るさでトーンマップし、プレビューと書き出しの映像を揃える。
@@ -93,10 +91,10 @@ impl DocSync {
         ui.select_cut(selected.and_then(|id| self.position_of_cut(&id)));
     }
 
-    /// 波形を読みたい素材。
+    /// 帯の波形を読みたい素材。
     pub(super) fn wave_wanted(&self) -> WaveWanted<'_> {
         WaveWanted {
-            assets: &self.wave_assets,
+            hashes: &self.wave_hashes,
             rev: self.wave_rev,
         }
     }
@@ -108,23 +106,6 @@ impl DocSync {
             .enumerate()
             .find_map(|(item, cuts)| cuts.iter().position(|c| c == id).map(|cut| (item, cut)))
     }
-}
-
-/// モデルの波形の元の素材を、コンテンツハッシュと組にする。素材がプロジェクトに無ければ読まない。
-fn wave_assets(model: &TimelineModel, project: &Project) -> Vec<Wanted> {
-    let hashes: HashMap<&str, &str> = project
-        .assets
-        .iter()
-        .map(|a| (a.id.as_str(), a.content_hash.as_str()))
-        .collect();
-    model
-        .wave_assets()
-        .into_iter()
-        .filter_map(|id| {
-            let hash = hashes.get(&*id)?.to_string();
-            Some((id, hash))
-        })
-        .collect()
 }
 
 /// ポインターの入力を UI に渡し、起きた操作を送る。選択は共有状態へ、シークは再生スレッドへ、

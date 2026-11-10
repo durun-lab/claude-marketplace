@@ -45,12 +45,26 @@ pub struct PaintState {
     pub palette: Palette,
 }
 
-/// 領域の描く関数が見るもの。
-pub(crate) struct PaintInput<'a> {
+/// 描く関数の入力。領域の描く関数は全部これを見る。描くものを足す PR は、入口の関数を増やさずにフィールドを足し、
+/// [`PaintInput::new`] は足したものを無しで置く。
+pub struct PaintInput<'a> {
     pub model: &'a TimelineModel,
     pub vp: &'a Viewport<'a>,
     pub state: &'a PaintState,
-    pub waves: &'a Waves,
+    /// 帯の波形のピーク。`None` のときと、ピークの無い素材の帯には波形を描かない。
+    pub waves: Option<&'a Waves>,
+}
+
+impl<'a> PaintInput<'a> {
+    /// モデル、見えている所、描く時点の状態だけの入力（波形は描かない）。
+    pub fn new(model: &'a TimelineModel, vp: &'a Viewport<'a>, state: &'a PaintState) -> Self {
+        Self {
+            model,
+            vp,
+            state,
+            waves: None,
+        }
+    }
 }
 
 /// 重ね順。下から順に描く。
@@ -109,47 +123,29 @@ impl Canvas {
     }
 }
 
-/// 文字の下に描く矩形（背景、行の縞、帯、吸い付いた帯の端の強調、目盛りの帯、スクロールバー）。
-pub fn timeline_quads(model: &TimelineModel, vp: &Viewport, state: &PaintState) -> Vec<Quad> {
-    timeline_quads_with(model, vp, state, &Waves::default())
-}
-
-/// [`timeline_quads`] に、帯の波形（`waves` にピークのある素材）を足したもの。
-pub fn timeline_quads_with(
-    model: &TimelineModel,
-    vp: &Viewport,
-    state: &PaintState,
-    waves: &Waves,
-) -> Vec<Quad> {
-    let input = PaintInput {
-        model,
-        vp,
-        state,
-        waves,
-    };
+/// 文字の下に描く矩形（背景、行の縞、帯、帯の波形、吸い付いた帯の端の強調、目盛りの帯、スクロールバー）。
+pub fn timeline_quads(input: &PaintInput) -> Vec<Quad> {
     let mut canvas = Canvas::default();
-    canvas.push(Depth::Back, vp.layout.bounds, state.palette.panel);
-    header::paint(&input, &mut canvas);
-    keymarks::paint(&input, &mut canvas);
-    rows::paint(&input, &mut canvas);
-    ruler::paint(&input, &mut canvas);
-    scrollbar::paint(&input, &mut canvas);
-    snap::edge_highlight(&input, &mut canvas);
-    wave::paint(&input, &mut canvas);
+    canvas.push(
+        Depth::Back,
+        input.vp.layout.bounds,
+        input.state.palette.panel,
+    );
+    header::paint(input, &mut canvas);
+    keymarks::paint(input, &mut canvas);
+    rows::paint(input, &mut canvas);
+    ruler::paint(input, &mut canvas);
+    scrollbar::paint(input, &mut canvas);
+    snap::edge_highlight(input, &mut canvas);
+    wave::paint(input, &mut canvas);
     canvas.into_quads()
 }
 
 /// 文字の上に重ねる矩形（再生位置の線とスナップの表示）。目盛りの帯と行の領域を縦に貫く。
-pub fn timeline_overlay(model: &TimelineModel, vp: &Viewport, state: &PaintState) -> Vec<Quad> {
-    let input = PaintInput {
-        model,
-        vp,
-        state,
-        waves: &Waves::default(),
-    };
+pub fn timeline_overlay(input: &PaintInput) -> Vec<Quad> {
     let mut canvas = Canvas::default();
-    playhead::paint(&input, &mut canvas);
-    snap::paint(&input, &mut canvas);
+    playhead::paint(input, &mut canvas);
+    snap::paint(input, &mut canvas);
     canvas.into_quads()
 }
 

@@ -250,7 +250,9 @@ mod tests {
         f.time.px_per_sec = 37.3;
         let state = crate::paint::tests::state(0.0);
         let s = Scale::new(1.25);
-        let widths: Vec<u32> = crate::paint::timeline_quads(&model, &f.vp(), &state)
+        let vp = f.vp();
+        let input = crate::paint::PaintInput::new(&model, &vp, &state);
+        let widths: Vec<u32> = crate::paint::timeline_quads(&input)
             .iter()
             .filter(|q| q.rect.w == 1.0)
             .map(|q| {

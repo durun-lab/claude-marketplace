@@ -1,12 +1,11 @@
 use super::*;
 use crate::keymarks::MARK_PX;
 use crate::paint::tests::state;
-use crate::paint::timeline_quads_with;
+use crate::paint::timeline_quads;
 use crate::rows::{RowHeight, Rows};
 use crate::time_view::TimeView;
 use crate::timeline::{CutBar, ItemKind, TimelineModel};
 use crate::timeline_layout::{TimelineLayout, Viewport, HEADER_W};
-use crate::wave::{Peaks, Waves};
 
 const SIZE: (f32, f32) = (800.0, 200.0);
 
@@ -19,7 +18,7 @@ fn flat(peak: f32) -> Waves {
 
 fn src(at: f64, src: f64) -> Option<WaveSource> {
     Some(WaveSource {
-        asset: "a".into(),
+        content_hash: "a".into(),
         at,
         src,
         speed: 1.0,
@@ -72,8 +71,11 @@ fn drawn(m: &TimelineModel, height: RowHeight, waves: &Waves) -> (Vec<Quad>, Rec
         scroll_y: 0.0,
     };
     let st = state(0.0);
-    let without = timeline_quads_with(m, &vp, &st, &Waves::default());
-    let with = timeline_quads_with(m, &vp, &st, waves);
+    let without = timeline_quads(&PaintInput::new(m, &vp, &st));
+    let with = timeline_quads(&PaintInput {
+        waves: Some(waves),
+        ..PaintInput::new(m, &vp, &st)
+    });
     let added = with.into_iter().filter(|q| !without.contains(q)).collect();
     (added, vp.bar(0, m.items[0].start, m.items[0].end))
 }

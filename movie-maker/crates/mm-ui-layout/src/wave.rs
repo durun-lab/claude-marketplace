@@ -1,5 +1,5 @@
 //! 帯の波形。キャッシュの波形（1 秒に 100 個のピーク）を、素材の範囲とズームに合わせて縦の矩形の高さにする。
-//! 描くのは `paint/wave.rs`。ここは素材の時刻への換算、ズームごとのピークの取り直し、描いた結果の使い回しを持つ。
+//! 描くのは `paint/wave.rs`。ここは波形の時刻への換算、ズームごとのピークの取り直し、列の並び、描いた結果の使い回しを持つ。
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -11,44 +11,49 @@ use crate::keymarks::MARK_PX;
 use crate::rows::RowHeight;
 use crate::time_view::TimeView;
 
-/// 帯の波形の元。コンポジションの時刻 `at` に素材の時刻 `src`（秒）が当たり、素材は `speed` 倍の速さで進む。
+/// 見た目の振幅の 1 に当たる値。帯の波形は高さ 26 論理ピクセルまでなので、1 バイトの 255 段で足りる。
+const FULL: f32 = 255.0;
+
+/// 帯の波形の元。コンポジションの時刻 `at` に波形の時刻 `src`（秒）が当たり、波形は `speed` 倍の速さで進む。
+/// 波形の時刻は音の最初のサンプルから数える（素材の時刻に、音と映像の先頭のずれを足したもの）。
 #[derive(Debug, Clone, PartialEq)]
 pub struct WaveSource {
-    /// 素材の ID（[`Waves`] を引く）。
-    pub asset: Arc<str>,
+    /// 素材のコンテンツハッシュ（[`Waves`] を引く）。
+    pub content_hash: Arc<str>,
     pub at: f64,
     pub src: f64,
     pub speed: f64,
 }
 
 impl WaveSource {
-    /// コンポジションの時刻 `t` の素材の時刻。
+    /// コンポジションの時刻 `t` の波形の時刻。
     pub fn src_at(&self, t: f64) -> f64 {
         self.src + (t - self.at) * self.speed
     }
 }
 
-/// 素材 1 つのピーク。ズームごとに粗さを変えられるよう、2 個ずつの最大を重ねた段を持つ（作るのは読み込みの 1 回だけ）。
+/// 素材 1 つのピーク。見た目の振幅（ピークの平方根。話し声の小さな音も見えるよう持ち上げる）を 1 バイトに丸め、
+/// ズームごとに粗さを変えられるよう、2 個ずつの最大を重ねた段を持つ（作るのは読み込みの 1 回だけ）。
 #[derive(Debug, PartialEq)]
 pub struct Peaks {
     per_second: f64,
     /// 段 `k` の要素は、元のピーク `2^k` 個の最大。段 0 は全チャンネルの最大。
-    levels: Vec<Vec<f32>>,
+    levels: Vec<Vec<u8>>,
 }
 
 impl Peaks {
-    /// チャンネルごとにインターリーブしたピーク（`MediaState::waveform` と同じ、1 秒に `per_second` 個）から作る。
+    /// チャンネルごとにインターリーブしたピーク（キャッシュの波形と同じ、1 秒に `per_second` 個）から作る。
     pub fn new(per_second: f64, channels: usize, interleaved: &[f32]) -> Self {
         let channels = channels.max(1);
-        let base: Vec<f32> = interleaved
+        let base: Vec<u8> = interleaved
             .chunks(channels)
-            .map(|c| c.iter().fold(0.0, |a: f32, v| a.max(v.abs())))
+            .map(|c| shown(c.iter().fold(0.0, |a: f32, v| a.max(v.abs()))))
             .collect();
         let mut levels = vec![base];
         while levels.last().is_some_and(|l| l.len() > 1) {
             let next = levels[levels.len() - 1]
                 .chunks(2)
-                .map(|c| c.iter().fold(0.0, |a: f32, v| a.max(*v)))
+                .map(|c| c.iter().copied().max().unwrap_or(0))
                 .collect();
             levels.push(next);
         }
@@ -58,8 +63,8 @@ impl Peaks {
         }
     }
 
-    /// 素材の時刻 `[from, to)`（秒）のピークの最大。範囲が 1 個に満たないときは、含まれるピーク 1 個。範囲の外は 0。
-    /// 段の境に揃えて引くので、粗い範囲では両端の外のピークを少し含む。
+    /// 波形の時刻 `[from, to)`（秒）の見た目の振幅（0..=1）の最大。範囲が 1 個に満たないときは、含まれるピーク 1 個。
+    /// 範囲の外は 0。段の境に揃えて引くので、粗い範囲では両端の外のピークを少し含む。
     pub fn max_in(&self, from: f64, to: f64) -> f32 {
         let len = self.levels[0].len();
         let first = (from * self.per_second).floor().max(0.0) as usize;
@@ -70,10 +75,18 @@ impl Peaks {
         let k = ((last - first).ilog2() as usize).min(self.levels.len() - 1);
         let level = &self.levels[k];
         let (lo, hi) = (first >> k, (last + (1 << k) - 1) >> k);
-        level[lo..hi.min(level.len())]
+        let max = level[lo..hi.min(level.len())]
             .iter()
-            .fold(0.0, |a: f32, v| a.max(*v))
+            .copied()
+            .max()
+            .unwrap_or(0);
+        f32::from(max) / FULL
     }
+}
+
+/// ピーク（0..=1）の見た目の振幅を 1 バイトにする。
+fn shown(peak: f32) -> u8 {
+    (peak.clamp(0.0, 1.0).sqrt() * FULL).round() as u8
 }
 
 /// 描く矩形を作り直すかを決める入力。これが同じなら、前に作った矩形を使い回す。
@@ -85,23 +98,18 @@ pub(crate) struct WaveKey {
     pub preview: Option<(EditKind, f64)>,
 }
 
-/// 素材の ID ごとのピークと、描いた矩形の使い回し。
+/// 素材のコンテンツハッシュごとのピークと、描いた矩形の使い回し。
 #[derive(Debug, Default)]
 pub struct Waves {
-    peaks: HashMap<Arc<str>, Arc<Peaks>>,
+    peaks: HashMap<Arc<str>, Peaks>,
     memo: RefCell<Option<(WaveKey, Arc<[Quad]>)>>,
 }
 
 impl Waves {
     /// 素材のピークを置く（読み込みが終わった素材から）。
-    pub fn insert(&mut self, asset: Arc<str>, peaks: Peaks) {
-        self.peaks.insert(asset, Arc::new(peaks));
+    pub fn insert(&mut self, content_hash: Arc<str>, peaks: Peaks) {
+        self.peaks.insert(content_hash, peaks);
         self.invalidate();
-    }
-
-    /// 素材のピークがあるか。
-    pub fn contains(&self, asset: &str) -> bool {
-        self.peaks.contains_key(asset)
     }
 
     /// モデルや行の高さが変わったときに、使い回しを捨てる（`WaveKey` に入らない入力）。
@@ -109,8 +117,8 @@ impl Waves {
         *self.memo.get_mut() = None;
     }
 
-    pub(crate) fn get(&self, asset: &str) -> Option<&Peaks> {
-        self.peaks.get(asset).map(Arc::as_ref)
+    pub(crate) fn get(&self, content_hash: &str) -> Option<&Peaks> {
+        self.peaks.get(content_hash)
     }
 
     /// `key` が前と同じなら前の矩形、違えば `build` で作り直した矩形。
@@ -126,11 +134,6 @@ impl Waves {
     }
 }
 
-/// 波形の高さの 0..=1 の見た目の振幅。小さな音（話し声）も見えるよう平方根で持ち上げる。
-pub(crate) fn amplitude(peak: f32) -> f32 {
-    peak.clamp(0.0, 1.0).sqrt()
-}
-
 /// 帯 `bar` の中の波形の領域。Small は出さない。Medium は下端のマーカーの高さ（マーカーはこの上に重なる）、
 /// Large は帯の下半分。名前は帯の上の部分なので重ならない。
 pub(crate) fn region(height: RowHeight, bar: Rect) -> Option<Rect> {
@@ -142,22 +145,53 @@ pub(crate) fn region(height: RowHeight, bar: Rect) -> Option<Rect> {
     (bar.h >= h && h > 0.0).then(|| Rect::new(bar.x, bar.bottom() - h, bar.w, h))
 }
 
-/// 横 `[x0, x1)`（Timeline の座標）を `step` px ごとの列にした、元 `src` の振幅（0..=1）。列は左から順。
-/// 1 列が受け持つ素材の時間（拡大で短く、縮小で長く）のピークの最大を取る。
-pub(crate) fn amplitudes(
-    peaks: &Peaks,
-    src: &WaveSource,
-    t_of: impl Fn(f32) -> f64,
-    (x0, x1): (f32, f32),
+/// 波形の列の並び。列の境は時刻に固定する（時刻 0 から `step` px ごと）ので、横に動かしても同じ列が同じ時間を受け持ち、
+/// 縮小した波形がちらつかない。
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct Grid {
+    /// 最初の列の番号（時刻 0 から始まる列が 0）。
+    first: i64,
+    /// 列の数。
+    pub n: usize,
+    /// 列の幅（論理ピクセル）。
     step: f32,
-) -> Vec<f32> {
-    let n = ((x1 - x0) / step).ceil().max(0.0) as usize;
-    (0..n)
-        .map(|i| {
-            let x = x0 + i as f32 * step;
-            let (a, b) = (src.src_at(t_of(x)), src.src_at(t_of(x + step)));
-            amplitude(peaks.max_in(a.min(b), a.max(b)))
-        })
+    /// 最初の列の左端（Timeline の座標）。
+    left: f32,
+    px_per_sec: f64,
+}
+
+impl Grid {
+    /// 横 `[x0, x1)`（Timeline の座標）を覆う列。`row_x` は行の領域の左端（時刻 `time.origin` の x）。
+    pub(crate) fn covering(time: &TimeView, row_x: f32, (x0, x1): (f32, f32), step: f32) -> Self {
+        // 時刻 0 の x。f32 では長いコンポジションの後ろで桁が落ちるので、f64 で求める。
+        let zero = f64::from(row_x) - time.origin * time.px_per_sec;
+        let first = ((f64::from(x0) - zero) / f64::from(step)).floor();
+        let left = (zero + first * f64::from(step)) as f32;
+        Self {
+            first: first as i64,
+            n: ((x1 - left) / step).ceil().max(0.0) as usize,
+            step,
+            left,
+            px_per_sec: time.px_per_sec,
+        }
+    }
+
+    /// 列 `i` の左端（Timeline の座標）。
+    pub(crate) fn x(&self, i: usize) -> f32 {
+        self.left + i as f32 * self.step
+    }
+
+    /// 列 `i` の左端の時刻（秒）。
+    fn time(&self, i: usize) -> f64 {
+        (self.first + i as i64) as f64 * f64::from(self.step) / self.px_per_sec
+    }
+}
+
+/// 列ごとの、元 `src` の見た目の振幅（0..=1）。列は左から順。
+/// 1 列が受け持つ波形の時間（拡大で短く、縮小で長く）のピークの最大を取る。
+pub(crate) fn amplitudes(peaks: &Peaks, src: &WaveSource, grid: &Grid) -> Vec<f32> {
+    (0..grid.n)
+        .map(|i| peaks.max_in(src.src_at(grid.time(i)), src.src_at(grid.time(i + 1))))
         .collect()
 }
 

@@ -10,7 +10,7 @@ use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
     clear_tooltip_area, drag_tooltip, fit_rect, split_viewers, timeline_labels, timeline_overlay,
-    timeline_quads_with, Action, DrawingShape, PaintState, Peaks, PointerEvent, Quad, Rect,
+    timeline_quads, Action, DrawingShape, PaintInput, PaintState, Peaks, PointerEvent, Quad, Rect,
     RowHeights, Scale, SurfaceLayout, TimeView, TimelineController, TimelineModel, UiFont,
     ViewState, Waves,
 };
@@ -144,14 +144,9 @@ impl Ui {
         self.relayout_rows();
     }
 
-    /// 素材 `asset` のピークを置く。置くと、その素材の帯に波形が出る。
-    pub fn set_wave(&mut self, asset: std::sync::Arc<str>, peaks: Peaks) {
-        self.waves.insert(asset, peaks);
-    }
-
-    /// 素材のピークを置いてあるか。
-    pub fn has_wave(&self, asset: &str) -> bool {
-        self.waves.contains(asset)
+    /// コンテンツハッシュ `content_hash` の素材のピークを置く。置くと、その素材の帯に波形が出る。
+    pub fn set_wave(&mut self, content_hash: std::sync::Arc<str>, peaks: Peaks) {
+        self.waves.insert(content_hash, peaks);
     }
 
     /// 選択を置く（`None` で外す）。添字は `TimelineModel::items` のもの。
@@ -351,8 +346,12 @@ impl Ui {
         let t = self.layout.timeline;
         let state = self.paint_state();
         let vp = self.controller.viewport();
-        let mut quads = timeline_quads_with(&self.model, &vp, &state, &self.waves);
-        let overlay = clear_tooltip_area(timeline_overlay(&self.model, &vp, &state), &tooltip);
+        let input = PaintInput {
+            waves: Some(&self.waves),
+            ..PaintInput::new(&self.model, &vp, &state)
+        };
+        let mut quads = timeline_quads(&input);
+        let overlay = clear_tooltip_area(timeline_overlay(&input), &tooltip);
         quads.extend(tooltip);
         let under = quads.len() as u32;
         quads.extend(overlay);

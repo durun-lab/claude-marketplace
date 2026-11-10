@@ -1,17 +1,20 @@
 //! プロジェクトのデータから Timeline のモデルを作る。
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use mm_doc::{
-    Composition, Cut, Layer, Node, Project, Sequence, SequenceId, FOOTAGE_KIND, FOOTAGE_PARAM,
-    NESTED_KIND, SEQUENCE_KIND, SEQUENCE_PARAM,
+    Composition, Layer, Project, Sequence, SequenceId, FOOTAGE_KIND, NESTED_KIND, SEQUENCE_KIND,
+    SEQUENCE_PARAM,
 };
 use mm_eval::{place_cuts, PlacedCut};
-use mm_types::{AssetId, Id};
-use mm_ui_layout::{AudioState, CutBar, Item, ItemKind, TimelineModel, TrimBounds, WaveSource};
+use mm_types::Id;
+use mm_ui_layout::{AudioState, CutBar, Item, ItemKind, TimelineModel, TrimBounds};
 
 use crate::names::Namer;
+
+mod wave;
+
+use wave::WaveRefs;
 
 /// 音を持てるレイヤーの種類。Mixer のトラック（`apps/movie-maker` の `mixer.rs`）と同じで、見出しに Mute と Solo を出す。
 const AUDIO_KINDS: [&str; 3] = [FOOTAGE_KIND, NESTED_KIND, SEQUENCE_KIND];
@@ -86,7 +89,7 @@ pub fn timeline_cut_ids(project: &Project, comp: &Composition) -> Vec<Vec<String
 /// シーケンスのレイヤーには、有効なカットを先頭から並べる（隙間は空きとして区別する）。
 pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
     let names = Namer::new(project);
-    let mut waves = WaveRefs::default();
+    let mut waves = WaveRefs::new(project);
     let items = visible_layers(comp)
         .map(|(layer, range)| Item {
             id: layer.id.as_str().into(),
@@ -140,7 +143,12 @@ fn trim_bounds(project: &Project, layer: &Layer, range: mm_types::TimeRange) -> 
     }
 }
 
-fn cut_bars(project: &Project, layer: &Layer, names: &Namer, waves: &mut WaveRefs) -> Vec<CutBar> {
+fn cut_bars(
+    project: &Project,
+    layer: &Layer,
+    names: &Namer,
+    waves: &mut WaveRefs<'_>,
+) -> Vec<CutBar> {
     let Some((seq, placed)) = layer_cuts(project, layer) else {
         return Vec::new();
     };
@@ -156,51 +164,6 @@ fn cut_bars(project: &Project, layer: &Layer, names: &Namer, waves: &mut WaveRef
             wave: waves.cut(layer, &seq.cuts[p.index], p.range.start.to_f64()),
         })
         .collect()
-}
-
-/// 帯の波形の元を作る。素材の ID の文字列は、同じ素材のカットどうしで共有する。
-#[derive(Default)]
-struct WaveRefs {
-    ids: HashMap<AssetId, Arc<str>>,
-}
-
-impl WaveRefs {
-    /// 撮影素材のレイヤー。コンポジションの `start` に素材の `in` が当たる。タイムリマップのあるレイヤーは出さない。
-    fn layer(&mut self, layer: &Layer) -> Option<WaveSource> {
-        if layer.time_remap.is_some() {
-            return None;
-        }
-        let (start, in_point) = (layer.start.to_f64(), layer.in_point.to_f64());
-        self.source(&layer.source, (start, in_point), layer.speed.to_f64())
-    }
-
-    /// sequence のカット。`seq_start` はカットの始まり（sequence の秒）。素材の速さはカットの速さにレイヤーの速さを掛ける。
-    fn cut(&mut self, layer: &Layer, cut: &Cut, seq_start: f64) -> Option<WaveSource> {
-        if layer.time_remap.is_some() {
-            return None;
-        }
-        let at = (comp_secs(layer, seq_start), cut.in_point.to_f64());
-        self.source(&cut.source, at, cut.speed.to_f64() * layer.speed.to_f64())
-    }
-
-    /// 撮影素材のノード `node` の元。`(at, src)` はコンポジションの時刻と、それに当たる素材の時刻。
-    fn source(&mut self, node: &Node, (at, src): (f64, f64), speed: f64) -> Option<WaveSource> {
-        if node.kind != FOOTAGE_KIND {
-            return None;
-        }
-        let id = node.params.get(FOOTAGE_PARAM)?.value.as_asset()?;
-        let asset = self
-            .ids
-            .entry(id.clone())
-            .or_insert_with(|| id.to_string().into())
-            .clone();
-        Some(WaveSource {
-            asset,
-            at,
-            src,
-            speed,
-        })
-    }
 }
 
 #[cfg(test)]
@@ -307,76 +270,6 @@ mod tests {
             "カットの名前は素材の ID（素材が無い）。隙間は空"
         );
         assert_eq!(&*item.label, "s");
-    }
-
-    #[test]
-    fn 波形の元は撮影素材のレイヤーとカットに付き_素材の時刻はイン点と速さで決まる() {
-        use mm_doc::Cut;
-        let mut project = Project::new();
-        let mut fast = Cut::new(
-            "k1",
-            Node::footage(&Id::new("a")),
-            RationalTime::seconds(10),
-            RationalTime::seconds(13),
-        );
-        fast.speed = Rational::integer(2);
-        let gap = Cut::new(
-            "k2",
-            Node::gap(),
-            RationalTime::seconds(0),
-            RationalTime::seconds(1),
-        );
-        let normal = Cut::new(
-            "k3",
-            Node::footage(&Id::new("b")),
-            RationalTime::seconds(5),
-            RationalTime::seconds(7),
-        );
-        project.sequences.push(Sequence {
-            id: Id::new("s"),
-            cuts: vec![fast, gap, normal],
-            origin: None,
-        });
-        let mut seq = layer("seq", SEQUENCE_KIND, 1, 0, 9);
-        seq.source = Node::new(SEQUENCE_KIND, 1)
-            .with_param(SEQUENCE_PARAM, mm_types::ParamValue::Text("s".into()));
-        let mut talk = layer("talk", "footage", 2, 4, 10);
-        talk.source = Node::footage(&Id::new("a"));
-        talk.speed = Rational::integer(2);
-        let mut remapped = talk.clone();
-        remapped.id = Id::new("remapped");
-        remapped.time_remap = Some(mm_doc::TimeRemap {
-            keyframes: Vec::new(),
-        });
-        let mut c = comp();
-        c.layers = vec![talk, remapped, layer("title", "text", 0, 0, 5), seq];
-        let m = timeline_model(&project, &c);
-        let wave = |i: usize| {
-            m.items[i]
-                .wave
-                .as_ref()
-                .map(|w| (&*w.asset, w.at, w.src, w.speed))
-        };
-        assert_eq!(wave(0), None, "シーケンスのレイヤーは持たず、カットが持つ");
-        assert_eq!(wave(1), None, "文字");
-        assert_eq!(wave(2), None, "タイムリマップのあるレイヤーは出さない");
-        assert_eq!(wave(3), Some(("a", 2.0, 4.0, 2.0)), "始まりに素材のイン点");
-        let cuts: Vec<_> = m.items[0]
-            .cuts
-            .iter()
-            .map(|b| b.wave.as_ref().map(|w| (&*w.asset, w.at, w.src, w.speed)))
-            .collect();
-        assert_eq!(
-            cuts,
-            [
-                Some(("a", 1.0, 10.0, 2.0)),
-                None,
-                Some(("b", 3.5, 5.0, 1.0))
-            ],
-            "カットの始まりにカットのイン点。隙間は無し"
-        );
-        let assets: Vec<String> = m.wave_assets().iter().map(|a| a.to_string()).collect();
-        assert_eq!(assets, ["a", "b"], "重複なし、出てきた順");
     }
 
     /// k1、無効な k2、k3、k4 の順に並べたシーケンスのレイヤーを持つコンポジション。

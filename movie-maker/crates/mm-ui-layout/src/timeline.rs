@@ -169,15 +169,15 @@ pub struct TimelineModel {
 }
 
 impl TimelineModel {
-    /// 波形の元の素材の ID（重複なし、初めに出てきた順）。波形の読み込みが、読む素材を知るのに使う。
-    pub fn wave_assets(&self) -> Vec<Arc<str>> {
+    /// 波形の元の素材のコンテンツハッシュ（重複なし、初めに出てきた順）。波形の読み込みが、読むキャッシュを知るのに使う。
+    pub fn wave_hashes(&self) -> Vec<Arc<str>> {
         let mut seen = std::collections::HashSet::new();
         let mut out = Vec::new();
         for item in &self.items {
             let cuts = item.cuts.iter().filter_map(|c| c.wave.as_ref());
             for w in item.wave.iter().chain(cuts) {
-                if seen.insert(w.asset.clone()) {
-                    out.push(w.asset.clone());
+                if seen.insert(w.content_hash.clone()) {
+                    out.push(w.content_hash.clone());
                 }
             }
         }

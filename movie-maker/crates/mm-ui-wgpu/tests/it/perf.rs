@@ -31,7 +31,7 @@ fn model() -> TimelineModel {
             end: i as f64 * 2.0 + 2.0,
             label: format!("take-{i:04}.mp4").into(),
             wave: Some(WaveSource {
-                asset: format!("take-{}", i % WAVE_ASSETS).into(),
+                content_hash: format!("take-{}", i % WAVE_ASSETS).into(),
                 at: i as f64 * 2.0,
                 src: (i / WAVE_ASSETS % (WAVE_SECS / 2)) as f64 * 2.0,
                 speed: 1.0,

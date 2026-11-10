@@ -87,7 +87,7 @@ fn edge_strip(s: &PaintInput) -> Option<Rect> {
 #[cfg(test)]
 mod tests {
     use super::super::tests::state;
-    use super::super::{timeline_overlay, timeline_quads, PaintState};
+    use super::super::{timeline_overlay, timeline_quads, PaintInput, PaintState};
     use crate::geom::{Quad, QuadShape};
     use crate::gesture::Side;
     use crate::palette;
@@ -125,7 +125,7 @@ mod tests {
 
     fn overlay(st: &PaintState) -> Vec<Quad> {
         let m = model();
-        timeline_overlay(&m, &TestViewport::new(&m, SIZE).vp(), st)
+        timeline_overlay(&PaintInput::new(&m, &TestViewport::new(&m, SIZE).vp(), st))
     }
 
     fn guide_quads(quads: &[Quad]) -> Vec<Quad> {
@@ -159,7 +159,8 @@ mod tests {
     fn 吸い付いていなければスナップの表示を出さない() {
         assert!(guide_quads(&overlay(&state(0.0))).is_empty());
         let m = model();
-        let under = timeline_quads(&m, &TestViewport::new(&m, SIZE).vp(), &state(0.0));
+        let vp = TestViewport::new(&m, SIZE);
+        let under = timeline_quads(&PaintInput::new(&m, &vp.vp(), &state(0.0)));
         let highlight = palette::GUIDE.with_alpha(super::EDGE_ALPHA);
         assert!(!under.iter().any(|q| q.color == highlight));
     }
@@ -178,7 +179,7 @@ mod tests {
         let m = model();
         let f = TestViewport::new(&m, SIZE);
         let highlight = palette::GUIDE.with_alpha(super::EDGE_ALPHA);
-        timeline_quads(&m, &f.vp(), &snapped(time, kind))
+        timeline_quads(&PaintInput::new(&m, &f.vp(), &snapped(time, kind)))
             .into_iter()
             .find(|q| q.color == highlight)
     }
