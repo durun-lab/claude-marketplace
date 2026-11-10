@@ -64,7 +64,7 @@ pub struct PaintInput<'a> {
     /// ツールバーの状態。`None` のときはツールバーを描かない。
     pub toolbar: Option<ToolbarView<'a>>,
     /// Blade のときの、ポインターの下のカットの割る時刻の線。`None` のときは描かない。
-    pub blade: Option<BladeLine>,
+    pub blade_line: Option<BladeLine>,
 }
 
 impl<'a> PaintInput<'a> {
@@ -76,7 +76,7 @@ impl<'a> PaintInput<'a> {
             state,
             waves: None,
             toolbar: None,
-            blade: None,
+            blade_line: None,
         }
     }
 }

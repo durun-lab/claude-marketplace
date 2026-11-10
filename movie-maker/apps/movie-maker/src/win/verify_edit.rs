@@ -254,7 +254,7 @@ fn drag_steps(env: &Env<'_>, log: &mut Log, id: &str) {
     shot(env, log, "3-ripple");
 
     let in_before = cut_named(shared, id).map(|c| c.in_point.to_f64());
-    tools::select(env, Tool::Trim);
+    tools::select_tool(env, Tool::Trim);
     let mid = (start + end - DRAG_SECS) / 2.0;
     let by = (DRAG_SECS * g.place.px_per_sec() / 2.0) as f32;
     surface::post_drag(
@@ -272,7 +272,7 @@ fn drag_steps(env: &Env<'_>, log: &mut Log, id: &str) {
         json!({ "in_before": in_before, "in_after": in_after }),
     );
     shot(env, log, "4-slip");
-    tools::select(env, Tool::Selection);
+    tools::select_tool(env, Tool::Selection);
 }
 
 /// 再生位置で split、選んだカットの lift、取り消し。

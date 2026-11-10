@@ -106,8 +106,8 @@ enum Drag {
         mods: Mods,
         from: f64,
     },
-    /// レイヤーの帯の中（Selection）。`from` はつかんだ時刻。
-    Move {
+    /// レイヤーの帯の中（Selection）。離したときに `shiftLayer` にする。`from` はつかんだ時刻。
+    ShiftLayer {
         item: usize,
         from: f64,
     },
@@ -137,7 +137,7 @@ pub struct TimelineController {
     /// 今のツール。取り消しの履歴にも `.mm/view.json` にも入れず、開くたびに Selection から始める。
     pub tool: Tool,
     /// Blade のときの、ポインターの下のカットに描く割る時刻の線。
-    blade: Option<BladeLine>,
+    blade_line: Option<BladeLine>,
     rows: Rows,
     layout: TimelineLayout,
     /// Timeline の大きさ（論理ピクセル）。
@@ -165,7 +165,7 @@ impl TimelineController {
             selected_cut: None,
             snapping: true,
             tool: Tool::default(),
-            blade: None,
+            blade_line: None,
             rows: Rows::default(),
             layout: TimelineLayout::default(),
             size: (0.0, 0.0),
@@ -229,7 +229,7 @@ impl TimelineController {
             .selected_cut
             .filter(|(i, c)| model.items.get(*i).is_some_and(|it| *c < it.cuts.len()));
         self.hover = Hit::Empty;
-        self.blade = None;
+        self.blade_line = None;
         self.end_drag();
     }
 
@@ -270,18 +270,18 @@ impl TimelineController {
                 self.follow_scroll(model.items.len());
                 if self.drag == Drag::None {
                     self.hover = hit_test(model, &self.viewport(), x, y);
-                    self.update_blade(model, playhead);
+                    self.update_blade_line(model, playhead);
                 }
                 Vec::new()
             }
             PointerEvent::Leave => {
                 self.hover = Hit::Empty;
-                self.blade = None;
+                self.blade_line = None;
                 Vec::new()
             }
             PointerEvent::Cancel => {
                 self.end_drag();
-                self.update_blade(model, playhead);
+                self.update_blade_line(model, playhead);
                 Vec::new()
             }
             PointerEvent::Command(command) => self.command(command, model, playhead),
@@ -308,7 +308,7 @@ impl TimelineController {
         (model, playhead): (&TimelineModel, f64),
     ) -> Vec<Action> {
         let hit = hit_test(model, &self.viewport(), x, y);
-        self.blade = None;
+        self.blade_line = None;
         if self.tool == Tool::Blade {
             if let Some(out) = self.press_blade(hit, x, model, playhead) {
                 return out;
@@ -409,11 +409,11 @@ impl TimelineController {
         match self.drag {
             Drag::None => {
                 self.hover = hit_test(model, &self.viewport(), x, y);
-                self.update_blade(model, playhead);
+                self.update_blade_line(model, playhead);
                 Vec::new()
             }
-            Drag::Move { .. } => {
-                let edit = self.move_drag(x, model, playhead);
+            Drag::ShiftLayer { .. } => {
+                let edit = self.shift_layer_drag(x, model, playhead);
                 self.report(edit)
             }
             Drag::Scrub => vec![Action::Seek(self.seek_at(x, model))],
@@ -462,7 +462,7 @@ impl TimelineController {
         match (drag, last) {
             (Drag::Header(header), _) => header.release(),
             // 動かさずに離したクリックは編集にしない。
-            (Drag::Edge { .. } | Drag::Body { .. } | Drag::Move { .. }, Some((kind, by)))
+            (Drag::Edge { .. } | Drag::Body { .. } | Drag::ShiftLayer { .. }, Some((kind, by)))
                 if by.abs() >= frame / 2.0 =>
             {
                 vec![Action::Edit {

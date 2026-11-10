@@ -197,14 +197,14 @@ fn ドラッグ中の_shift_layer_は帯を同じ幅のまま動かして描く(
     assert_eq!(bar_of(&model(), shift(1, 1.0)).x, HEADER_W + 100.0);
 }
 
-/// Blade の線 `blade` を、再生位置 `playhead` と一緒に描いた文字の上の矩形。
-fn blade_overlay(blade: Option<crate::tool::BladeLine>, playhead: f64) -> Vec<Quad> {
+/// Blade の線 `blade_line` を、再生位置 `playhead` と一緒に描いた文字の上の矩形。
+fn blade_overlay(blade_line: Option<crate::tool::BladeLine>, playhead: f64) -> Vec<Quad> {
     let m = model();
     let f = TestViewport::new(&m, SIZE);
     let st = state(playhead);
     let vp = f.vp();
     timeline_overlay(&PaintInput {
-        blade,
+        blade_line,
         ..PaintInput::new(&m, &vp, &st)
     })
 }
@@ -218,8 +218,8 @@ fn blade_の線は指したレイヤーの帯の高さで割る時刻に立ち_�
         snapped: false,
     };
     let text = Palette::DEFAULT.selection;
-    let lines = |blade| -> Vec<Quad> {
-        let over = blade_overlay(blade, 0.0);
+    let lines = |blade_line| -> Vec<Quad> {
+        let over = blade_overlay(blade_line, 0.0);
         over.into_iter().filter(|q| q.color == text).collect()
     };
     assert!(lines(None).is_empty());

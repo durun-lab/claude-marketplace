@@ -171,7 +171,7 @@ fn undo_step(env: &Env<'_>, log: &mut Log, sequences: usize, before: (usize, f64
 
 /// Source を開いてイン点とアウト点を付け、insert して、空の sequence の工程とツールの工程を通してから取り消す。
 /// 空の sequence の工程の途中で止まったら、どこまで戻せばよいか分からないので取り消さない（通しの最後の restore が戻す）。
-/// ツールの工程は押す帯が行の領域に見えているときだけ行い（入れた sequence の行は、行の多いプロジェクトでは画面の外に
+/// ツールの工程はクリックする行が行の領域に見えているときだけ行い（入れた sequence の行は、行の多いプロジェクトでは画面の外に
 /// 足される）、行わなかったら skipped に足す説明を返す。
 fn insert_and_undo(env: &Env<'_>, log: &mut Log, project: &Project) -> Option<&'static str> {
     let (sequences, before) = (project.sequences.len(), comp_shape(project));
@@ -186,12 +186,12 @@ fn insert_and_undo(env: &Env<'_>, log: &mut Log, project: &Project) -> Option<&'
     if !(extract_step(env, log, before) && redo_step(env, log) && reinsert_step(env, log, before)) {
         return None;
     }
-    let visible = tools::targets_visible(env);
+    let visible = tools::tool_rows_visible(env);
     if visible {
         tools::run(env, log);
     }
     undo_step(env, log, sequences, before);
-    (!visible).then_some("。押す帯が Timeline の行の領域に見えないので、ツールの手順も行わない")
+    (!visible).then_some("。ツールの手順でクリックする行が Timeline の行の領域に見えないので、ツールの手順も行わない")
 }
 
 /// 最初のコンポジションにレイヤーがあるか。見出しの手順はレイヤーが無いと行えない。

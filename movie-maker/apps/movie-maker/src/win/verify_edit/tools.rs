@@ -5,10 +5,10 @@ use mm_ui_layout::Tool;
 
 use super::*;
 
-/// レイヤーを動かすドラッグの量（秒）。帯が動いたのが画面で分かる長さにする。
-const MOVE_SECS: f64 = 1.0;
+/// レイヤーを時間の上で動かすドラッグの量（秒）。帯が動いたのが画面で分かる長さにする。
+const SHIFT_SECS: f64 = 1.0;
 /// 動かした量の許容（秒）。近くのスナップの目標に吸い付いても通す。
-const MOVE_TOLERANCE: f64 = 0.5;
+const SHIFT_TOLERANCE: f64 = 0.5;
 /// カットの中をドラッグする量（論理ピクセル）。
 const BODY_DRAG_PX: f32 = 40.0;
 /// 割るカットに求める長さ（秒）。中央をクリックしても端に掛からない長さ。
@@ -17,7 +17,7 @@ const MIN_CUT_SECS: f64 = 0.5;
 const SNAP_NUDGE_PX: f32 = 3.0;
 
 /// ツールのキーを押し、描画スレッドが今のツールを共有状態に置くまで待つ。
-pub(super) fn select(env: &Env<'_>, tool: Tool) -> bool {
+pub(super) fn select_tool(env: &Env<'_>, tool: Tool) -> bool {
     let key = match tool {
         Tool::Selection => "KeyA",
         Tool::Trim => "KeyT",
@@ -71,7 +71,7 @@ fn blade_steps(env: &Env<'_>, log: &mut Log) {
     };
     let mid = (start + end) / 2.0;
     let at = g.at(g.row, mid, 0.0);
-    let chosen = select(env, Tool::Blade);
+    let chosen = select_tool(env, Tool::Blade);
     surface::post_move(hwnd, at);
     shot(env, log, "19-blade-hover");
     // 再生位置を割る時刻に置いて近くを指すと、線は再生位置に吸い付き、ガイド線の色で再生位置の線の上に出る。
@@ -94,7 +94,7 @@ fn blade_steps(env: &Env<'_>, log: &mut Log) {
     if split {
         undo_to(env, log, "undo_blade", before);
     }
-    select(env, Tool::Selection);
+    select_tool(env, Tool::Selection);
 }
 
 /// Selection のカットの中のドラッグは、カットを選ぶだけで中身を動かさない。
@@ -126,40 +126,40 @@ fn layer_start(shared: &Shared, id: &str) -> Option<f64> {
 }
 
 /// Selection でレイヤーの帯の中を引いて、離す前（帯だけが動く）と離した後（shiftLayer）を撮り、取り消し 1 回で戻す。
-fn move_steps(env: &Env<'_>, log: &mut Log) {
+fn shift_layer_steps(env: &Env<'_>, log: &mut Log) {
     let (shared, hwnd) = (env.shared, env.surface_hwnd);
     let found = geometry(shared, hwnd).and_then(|g| {
         let (row, id, end) = trim_target(shared, &g.place)?;
         Some((g, row, layer_start(shared, &id)?, (id, end)))
     });
     let Some((g, row, start, (id, end))) = found else {
-        log.step("move_layer", false, json!("レイヤーの位置を引けない"));
+        log.step("shift_layer", false, json!("レイヤーの位置を引けない"));
         return;
     };
     let mid = (start + end) / 2.0;
-    let (from, to) = (g.at(row, mid, 0.0), g.at(row, mid + MOVE_SECS, 0.0));
+    let (from, to) = (g.at(row, mid, 0.0), g.at(row, mid + SHIFT_SECS, 0.0));
     surface::post_press(hwnd, from, to);
     std::thread::sleep(SETTLE);
     let held = layer_start(shared, &id) == Some(start);
-    shot(env, log, "21-move-dragging");
+    shot(env, log, "21-shift-layer-dragging");
     surface::post_release(hwnd, to);
     let moved = wait_until(WAIT, || {
         layer_start(shared, &id).is_some_and(|s| (s - start).abs() > 1e-6)
     });
     let after = layer_start(shared, &id);
-    let near = after.is_some_and(|s| (s - start - MOVE_SECS).abs() <= MOVE_TOLERANCE);
+    let near = after.is_some_and(|s| (s - start - SHIFT_SECS).abs() <= SHIFT_TOLERANCE);
     log.step(
-        "move_layer",
+        "shift_layer",
         held && moved && near,
         json!({ "layer": id, "start_before": start, "start_after": after, "unchanged_while_dragging": held }),
     );
-    shot(env, log, "22-move-layer");
+    shot(env, log, "22-shift-layer");
     if !moved {
         return;
     }
     keys::dispatch(shared, "play-test", "Ctrl+KeyZ");
     let undone = wait_until(WAIT, || layer_start(shared, &id) == Some(start));
-    log.step("undo_move", undone, json!({}));
+    log.step("undo_shift_layer", undone, json!({}));
 }
 
 /// Ctrl+B（Split Clip）は再生位置でカットを割り、取り消し 1 回で戻る。
@@ -184,12 +184,12 @@ fn split_clip_step(env: &Env<'_>, log: &mut Log) {
 pub(crate) fn run(env: &Env<'_>, log: &mut Log) {
     blade_steps(env, log);
     selection_cut_step(env, log);
-    move_steps(env, log);
+    shift_layer_steps(env, log);
     split_clip_step(env, log);
 }
 
-/// ツールの通しで押す帯（カットのある行と、シーケンスでないレイヤーの行）が、どちらも行の領域に見えているか。
-pub(crate) fn targets_visible(env: &Env<'_>) -> bool {
+/// ツールの通しでクリックする行（カットのある行と、シーケンスでないレイヤーの行）が、どちらも行の領域に見えているか。
+pub(crate) fn tool_rows_visible(env: &Env<'_>) -> bool {
     let shared = env.shared;
     geometry(shared, env.surface_hwnd).is_some_and(|g| trim_target(shared, &g.place).is_some())
 }

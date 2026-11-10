@@ -137,7 +137,7 @@ fn shrink_limit(by: f64, side: Side, len: f64, frame: f64) -> f64 {
 
 /// レイヤー `item` の帯を `by`（秒。スナップ後）動かす `shiftLayer` の編集。帯の左端は 0 で止め、0 より前から始まる
 /// レイヤーは今の位置より前へ動かさない（0 より前の部分は書き出しにも Timeline にも出ず、先頭が欠けても気づきにくいため）。
-pub fn layer_move(model: &TimelineModel, item: usize, by: f64) -> Option<(EditKind, f64)> {
+pub fn shift_layer_edit(model: &TimelineModel, item: usize, by: f64) -> Option<(EditKind, f64)> {
     let it = model.items.get(item)?;
     let floor = if it.start > 0.0 {
         -whole_frames(it.start, model.fps)
@@ -361,10 +361,10 @@ mod tests {
     #[test]
     fn レイヤーを動かす量は始まりが_0_になる所で止まる() {
         let m = model();
-        let (kind, by) = layer_move(&m, 1, 0.5).unwrap();
+        let (kind, by) = shift_layer_edit(&m, 1, 0.5).unwrap();
         assert_eq!(kind, EditKind::ShiftLayer { item: 1 });
         assert!((by - 0.5).abs() < 1e-9);
-        let (_, by) = layer_move(&m, 1, -9.0).unwrap();
+        let (_, by) = shift_layer_edit(&m, 1, -9.0).unwrap();
         assert!((by + 1.0).abs() < 1e-9, "始まりの 1 秒まで: {by}");
     }
 
@@ -372,7 +372,7 @@ mod tests {
     fn 始まりがフレームの境に無いレイヤーは_0_を割らない() {
         let mut m = model();
         m.items[1].start = 1.5 / 30.0;
-        let (_, by) = layer_move(&m, 1, -9.0).unwrap();
+        let (_, by) = shift_layer_edit(&m, 1, -9.0).unwrap();
         assert!((by * 30.0 + 1.0).abs() < 1e-9, "1 フレーム戻るまで: {by}");
     }
 
@@ -380,9 +380,9 @@ mod tests {
     fn 始まりが_0_より前のレイヤーは前へ動かさない() {
         let mut m = model();
         m.items[1].start = -2.0;
-        assert_eq!(layer_move(&m, 1, -1.0).unwrap().1, 0.0);
-        assert!((layer_move(&m, 1, 1.0).unwrap().1 - 1.0).abs() < 1e-9);
-        assert!(layer_move(&m, 9, 1.0).is_none());
+        assert_eq!(shift_layer_edit(&m, 1, -1.0).unwrap().1, 0.0);
+        assert!((shift_layer_edit(&m, 1, 1.0).unwrap().1 - 1.0).abs() < 1e-9);
+        assert!(shift_layer_edit(&m, 9, 1.0).is_none());
     }
 
     #[test]

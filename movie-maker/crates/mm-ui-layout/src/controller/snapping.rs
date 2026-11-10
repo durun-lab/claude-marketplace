@@ -88,7 +88,7 @@ impl TimelineController {
         let x = self.pointer.0;
         let edit = match self.drag {
             Drag::Edge { .. } => self.edge_drag(x, model, playhead),
-            Drag::Move { .. } => self.move_drag(x, model, playhead),
+            Drag::ShiftLayer { .. } => self.shift_layer_drag(x, model, playhead),
             _ => return Vec::new(),
         };
         self.report(edit)

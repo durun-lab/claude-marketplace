@@ -399,7 +399,7 @@ impl Ui {
         let input = PaintInput {
             waves: Some(&self.waves),
             toolbar: Some(self.toolbar.view()),
-            blade: self.controller.blade_line(),
+            blade_line: self.controller.blade_line(),
             ..PaintInput::new(&self.model, &vp, &state)
         };
         let UnderText { mut quads, bars } = timeline_quads(&input);

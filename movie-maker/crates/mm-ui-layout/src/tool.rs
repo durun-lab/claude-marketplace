@@ -25,13 +25,13 @@ impl Tool {
     }
 }
 
-/// Blade のときにポインターの下のカットへ描く、割る時刻の縦線（Final Cut Pro の Blade の skimmer の線と同じ考え）。
+/// Blade のときにポインターの下のカットへ描く、割る時刻の縦線（Final Cut Pro の Blade のスキマーと同じ考え）。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BladeLine {
     /// レイヤーの添字。線はその行の帯の高さに描く。
     pub item: usize,
     /// 割る時刻（秒。スナップとフレームへの丸めの後）。
     pub time: f64,
-    /// 再生位置に吸い付いた。線をガイド線の色にする（FCP の skimmer も吸い付いたときだけ黄色になる）。
+    /// 再生位置に吸い付いた。線をガイド線の色にする（FCP のスキマーも吸い付いたときだけ黄色になる）。
     pub snapped: bool,
 }

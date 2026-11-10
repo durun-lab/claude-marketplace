@@ -3,7 +3,7 @@
 
 use super::snapping::LANDED_EPS;
 use super::{Action, Drag, Mods, TimelineController};
-use crate::gesture::{layer_move, EditKind};
+use crate::gesture::{shift_layer_edit, EditKind};
 use crate::snap::{quantize, snap, targets, Moving, SnapKind, SnapTarget, SNAP_PX};
 use crate::timeline::{Hit, Part, TimelineModel};
 use crate::tool::{BladeLine, Tool};
@@ -16,19 +16,19 @@ impl TimelineController {
     pub(super) fn set_tool(&mut self, tool: Tool, model: &TimelineModel, playhead: f64) {
         if self.drag == Drag::None {
             self.tool = tool;
-            self.update_blade(model, playhead);
+            self.update_blade_line(model, playhead);
         }
     }
 
     /// Blade のホバー中の縦線。ポインターが割れるカットの上にあるときだけ。
     pub fn blade_line(&self) -> Option<BladeLine> {
-        self.blade
+        self.blade_line
     }
 
     /// ポインターの下のカットに割る時刻の縦線を置き直す。Blade でないとき、ドラッグ中、割れない所（カットの外、隙間、
     /// 割る時刻がカットの端に丸まる所）では出さない。
-    pub(super) fn update_blade(&mut self, model: &TimelineModel, playhead: f64) {
-        self.blade = match self.hover {
+    pub(super) fn update_blade_line(&mut self, model: &TimelineModel, playhead: f64) {
+        self.blade_line = match self.hover {
             Hit::Cut { item, cut, .. } if self.tool == Tool::Blade && self.drag == Drag::None => {
                 self.blade_at((item, cut), self.pointer.0, model, playhead)
             }
@@ -96,7 +96,7 @@ impl TimelineController {
     /// レイヤーの帯を押したときのドラッグ。端は `trimLayer`、中は Selection のときだけレイヤーを動かす。
     pub(super) fn layer_press(&self, item: usize, part: Part, mods: Mods, x: f32) -> Drag {
         match part {
-            Part::Body if self.tool == Tool::Selection => Drag::Move {
+            Part::Body if self.tool == Tool::Selection => Drag::ShiftLayer {
                 item,
                 from: self.viewport().t_of(x),
             },
@@ -136,13 +136,13 @@ impl TimelineController {
 
     /// レイヤーの帯を x へドラッグしたときの編集。Snapping が入なら、帯の始まりと終わりのうち近い方を近い目標に寄せ、
     /// 吸い付かなければいちばん近いフレームに量をそろえる。0 で止めた量では吸い付いた表示を出さない。
-    pub(super) fn move_drag(
+    pub(super) fn shift_layer_drag(
         &mut self,
         x: f32,
         model: &TimelineModel,
         playhead: f64,
     ) -> Option<(EditKind, f64)> {
-        let Drag::Move { item, from } = self.drag else {
+        let Drag::ShiftLayer { item, from } = self.drag else {
             return None;
         };
         let raw = self.viewport().t_of(x) - from;
@@ -152,7 +152,7 @@ impl TimelineController {
             None
         };
         let by = landed.map_or_else(|| quantize(raw, model.fps), |(_, by, _)| by);
-        let edit = layer_move(model, item, by);
+        let edit = shift_layer_edit(model, item, by);
         self.snap = landed
             .zip(edit)
             .filter(|((target, _, edge), (_, by))| (edge + by - target.time).abs() < LANDED_EPS)

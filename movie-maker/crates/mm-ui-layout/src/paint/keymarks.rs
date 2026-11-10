@@ -3,7 +3,7 @@
 use super::{Canvas, Depth, PaintInput};
 use crate::geom::{Color, Quad, Rect};
 use crate::gesture::EditKind;
-use crate::keymarks::{is_line, line_rect, mark_rect, marks_moved, BarMark, MARK_PX};
+use crate::keymarks::{is_line, line_rect, mark_rect, marks_shifted, BarMark, MARK_PX};
 use crate::palette;
 use crate::timeline::Hit;
 
@@ -21,7 +21,7 @@ pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
             Some((EditKind::ShiftLayer { item }, by)) if item == i => by,
             _ => 0.0,
         };
-        for mark in marks_moved(s.vp, item, by) {
+        for mark in marks_shifted(s.vp, item, by) {
             let rect = mark_rect(s.vp, i, mark.x);
             let (rim, fill) = colors(s, i, mark);
             if is_line(s.vp, i, rect) {

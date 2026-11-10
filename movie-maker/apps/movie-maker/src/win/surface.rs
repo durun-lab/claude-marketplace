@@ -195,7 +195,7 @@ pub fn post_press(hwnd: isize, from: (i32, i32), to: (i32, i32)) {
     post_mouse(hwnd, WM_MOUSEMOVE, to);
 }
 
-/// ポインターを `at` へ動かす（ボタンは押さない。ホバーの画面を撮る自動試験用）。
+/// ポインターを `at` へ動かす（ボタンは押さない。ホバーの画面を撮る `--play-test` 用）。
 pub fn post_move(hwnd: isize, at: (i32, i32)) {
     post_mouse(hwnd, WM_MOUSEMOVE, at);
 }
