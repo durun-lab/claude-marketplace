@@ -1,7 +1,7 @@
 //! `--play-test` の再生テスト。プロジェクトを先頭から要求の秒数だけ再生して、ドロップしたフレームの数、
 //! 映像と音のずれ、WebView の時計の誤差を測り、途中のスクリーンショットと一緒に残す。続けて入力、Inspector、
-//! 再生の操作のバー、Timeline の編集、Timeline のズームと移動の工程を通し、テストが適用した編集を戻してから結果の
-//! JSON を書いて終わる。
+//! 再生の操作のバー、Timeline の編集、Timeline のズームと移動、Timeline のツールバーの工程を通し、テストが適用した
+//! 編集を戻してから結果の JSON を書いて終わる。
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::Ordering;
@@ -233,7 +233,7 @@ fn run(env: &TestEnv, telemetry: &Telemetry) -> Value {
     report["timeline_zoom"] = stages.run("timeline_zoom", ZOOM_LIMIT, move || timeline_zoom(&e));
     let e = env.clone();
     report["timeline_toolbar"] = stages.run("timeline_toolbar", TOOLBAR_LIMIT, move || {
-        timeline_toolbar(&e)
+        verify_toolbar::run(&e.shared, e.target.surface_hwnd, e.hwnd, &e.test)
     });
     report["restore"] = verify_restore::restore(savepoint.as_ref(), shared);
     report["failed_stages"] = json!(stages.failed);
@@ -474,16 +474,6 @@ fn timeline_edit(env: &TestEnv) -> Value {
     })
 }
 
-/// Timeline のツールバーの工程（`verify_toolbar`）。
-fn timeline_toolbar(env: &TestEnv) -> Value {
-    verify_toolbar::run(&verify_toolbar::Env {
-        shared: &env.shared,
-        surface_hwnd: env.target.surface_hwnd,
-        window_hwnd: env.hwnd,
-        test: &env.test,
-    })
-}
-
 /// Timeline のズームと移動の工程（`verify_zoom`）。
 fn timeline_zoom(env: &TestEnv) -> Value {
     verify_zoom::run(&verify_zoom::Env {
@@ -496,20 +486,4 @@ fn timeline_zoom(env: &TestEnv) -> Value {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn スクラブの許容誤差は_1_物理ピクセルが長い全体表示で広がり_下限は_2_フレーム() {
-        // 9:38 の全体表示（1 秒が約 1.25 物理ピクセル）。半画素は 0.4 秒。
-        let wide = scrub_tolerance(1.25, 30.0);
-        assert!((wide - (0.4 + 0.5 / 30.0)).abs() < 1e-6, "{wide}");
-        // 1 秒 125 物理ピクセルなら 2 フレーム。ちょうど 2 フレームずれた結果も許す。
-        let zoomed = scrub_tolerance(125.0, 30.0);
-        assert!(
-            (2.0 / 30.0..2.0 / 30.0 + 1e-6).contains(&zoomed),
-            "{zoomed}"
-        );
-        assert!((3.066_666_666_666_667_f64 - 3.0).abs() <= zoomed);
-    }
-}
+mod tests;

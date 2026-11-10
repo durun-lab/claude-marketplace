@@ -1,6 +1,7 @@
 //! `--play-test` の Timeline のツールバーの通し。実際のウィンドウへのクリックで、Snapping（入/切の往復）、Zoom In（倍率が √2 倍）、
 //! Full Extent Zoom（全体表示と、もう一度押して戻る）、Split Clip と Undo（カットの数が 1 つ増えて戻る）を押し、
-//! 表示の状態とプロジェクトのデータが期待どおり変わったかを確かめる。ボタンの位置は `Ui` と同じ `mm-ui-layout` の関数で引く。
+//! 表示の状態とプロジェクトのデータが期待どおり変わったかを確かめる。ボタンの位置は `Ui` と同じ `mm-ui-layout` の関数で、
+//! 描画スレッドが測った名前の幅から引く（`Placement::toolbar_button`）。
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -26,11 +27,11 @@ const WAIT: Duration = Duration::from_secs(5);
 const EPS: f64 = 1e-6;
 
 /// 試験の対象。
-pub struct Env<'a> {
-    pub shared: &'a Arc<Shared>,
-    pub surface_hwnd: isize,
-    pub window_hwnd: isize,
-    pub test: &'a PlayTest,
+struct Env<'a> {
+    shared: &'a Arc<Shared>,
+    surface_hwnd: isize,
+    window_hwnd: isize,
+    test: &'a PlayTest,
 }
 
 /// 結果の記録。手順ごとの合否と、撮ったスクリーンショット。
@@ -189,9 +190,20 @@ fn split_undo_step(env: &Env<'_>, log: &mut Log) {
 }
 
 /// ツールバーの工程。
-pub fn run(env: &Env<'_>) -> Value {
+pub fn run(
+    shared: &Arc<Shared>,
+    surface_hwnd: isize,
+    window_hwnd: isize,
+    test: &PlayTest,
+) -> Value {
+    let env = &Env {
+        shared,
+        surface_hwnd,
+        window_hwnd,
+        test,
+    };
     let mut log = Log::default();
-    let duration = model(env.shared).map_or(0.0, |m| m.duration);
+    let duration = model(shared).map_or(0.0, |m| m.duration);
     let has_bar = place_of(env).is_some_and(|p| p.toolbar_button("edit.undo").is_some());
     log.step("toolbar_visible", has_bar, json!({}));
     if has_bar {
