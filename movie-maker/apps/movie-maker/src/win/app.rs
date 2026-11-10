@@ -28,6 +28,7 @@ use crate::win::media::{self, MediaState};
 use crate::win::media_ipc;
 use crate::win::mixer_ipc;
 use crate::win::pack_ipc;
+use crate::win::play_test_lock;
 use crate::win::playback::{Playback, PlaybackInfo, PlayerOptions};
 use crate::win::project;
 use crate::win::render::Renderer;
@@ -162,6 +163,17 @@ fn forward_changes(app: &tauri::AppHandle, shared: &Arc<Shared>) {
     review_ipc::forward_comments(app, shared);
 }
 
+/// `--play-test` は同じデスクトップで 1 つずつ動かす。ユーザーがふだん起動するアプリは待たせない。
+fn enter_play_test_lock(args: &Args) {
+    let Some(test) = &args.play_test else {
+        return;
+    };
+    if let Err(why) = play_test_lock::enter(&test.report) {
+        eprintln!("{why}");
+        std::process::exit(1);
+    }
+}
+
 fn fail(message: &str) -> ! {
     eprintln!("{message}");
     std::process::exit(2);
@@ -204,6 +216,7 @@ pub fn run() {
     let telemetry = init_tracing();
     let args =
         cli::parse(&std::env::args().skip(1).collect::<Vec<_>>()).unwrap_or_else(|e| fail(&e));
+    enter_play_test_lock(&args);
     feedback::start(&args.project);
     let mut opened = project::open(&args.project).unwrap_or_else(|e| fail(&e.to_string()));
     let comp_id = project::pick_composition(&opened.project, args.composition.as_deref())
