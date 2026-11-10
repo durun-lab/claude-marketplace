@@ -301,14 +301,22 @@ const checkReviews = async (list: WorkflowDef[]): Promise<void> => {
 
 const mentionTrigger = (w: WorkflowDef, kind: MentionTrigger['kind']): MentionTrigger | undefined => w.triggers.find((t): t is MentionTrigger => t.kind === kind);
 
-/** メンションを積む。トリガーに burstMinutes があれば、まとめて渡すまで待たせる。 */
-const enqueueMentions = (w: WorkflowDef, kind: MentionTrigger['kind'], texts: string[], now: number): void => {
-  if (!texts.length) return;
-  if (!mentionTrigger(w, kind)?.burstMinutes) return texts.forEach((t) => enqueue(w, t));
+// 本文は依頼に写さず、Claude が URL から読む。
+const MENTION_HEADER: Record<MentionTrigger['kind'], string> = {
+  'slack-mention': 'Slack で自分へのメンションが届きました:',
+  'jira-mention': 'JIRA で自分へのメンションが届きました:',
+};
+
+const mentionRequest = (kind: MentionTrigger['kind'], urls: string[]): string => `${MENTION_HEADER[kind]}\n${urls.join('\n')}`;
+
+/** メンションの URL を積む。トリガーに burstMinutes があれば、まとめて渡すまで待たせる。 */
+const enqueueMentions = (w: WorkflowDef, kind: MentionTrigger['kind'], urls: string[], now: number): void => {
+  if (!urls.length) return;
+  if (!mentionTrigger(w, kind)?.burstMinutes) return urls.forEach((u) => enqueue(w, mentionRequest(kind, [u])));
   const run = runOf(w.id);
   run.bursts ??= {};
   const burst = (run.bursts[kind] ??= { texts: [], lastAt: now });
-  burst.texts.push(...texts);
+  burst.texts.push(...urls);
   burst.lastAt = now;
 };
 
@@ -320,7 +328,7 @@ export const flushBursts = (w: WorkflowDef, run: WorkflowRun, now: number): stri
     const minutes = mentionTrigger(w, kind)?.burstMinutes ?? 0;
     if (!burst || now - burst.lastAt < minutes * 60_000) continue;
     delete run.bursts?.[kind];
-    flushed.push(burst.texts.length > 1 ? `${burst.texts.length} 件のメンションをまとめて渡します。${SEPARATOR}${burst.texts.join(SEPARATOR)}` : (burst.texts[0] ?? ''));
+    flushed.push(mentionRequest(kind, burst.texts));
   }
   return flushed;
 };
@@ -333,7 +341,7 @@ const checkMentions = async (list: WorkflowDef[], now: number): Promise<void> =>
     const run = runOf(w.id);
     const fresh = run.seenMentions ? mentions.filter((m) => !run.seenMentions?.includes(m.url)) : [];
     // 検索の結果は新しい順なので、古いものから積む。
-    enqueueMentions(w, 'slack-mention', fresh.reverse().map((m) => `Slack で自分へのメンションが届きました（${m.channel}）:\n${m.text}\n${m.url}`), now);
+    enqueueMentions(w, 'slack-mention', fresh.reverse().map((m) => m.url), now);
     run.seenMentions = [...new Set([...mentions.map((m) => m.url), ...(run.seenMentions ?? [])])].slice(0, SEEN_KEPT);
     if (run.error?.startsWith(MENTION_ERROR)) run.error = undefined;
   }
@@ -346,7 +354,7 @@ const checkJiraMentions = async (list: WorkflowDef[], now: number): Promise<void
   for (const w of list) {
     const run = runOf(w.id);
     const fresh = run.seenJira ? mentions.filter((m) => !run.seenJira?.includes(m.url)) : [];
-    enqueueMentions(w, 'jira-mention', fresh.reverse().map((m) => `JIRA で自分へのメンションが届きました（${m.key} ${m.summary ?? ''}）:\n${m.text}\n${m.url}`), now);
+    enqueueMentions(w, 'jira-mention', fresh.reverse().map((m) => m.url), now);
     run.seenJira = [...new Set([...mentions.map((m) => m.url), ...(run.seenJira ?? [])])].slice(0, SEEN_KEPT);
     if (run.error?.startsWith(JIRA_MENTION_ERROR)) run.error = undefined;
   }
