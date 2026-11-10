@@ -12,6 +12,7 @@ mod rows;
 mod ruler;
 mod scrollbar;
 mod snap;
+mod toolbar;
 mod wave;
 mod zoombar;
 
@@ -22,6 +23,7 @@ use crate::palette::Palette;
 use crate::snap::SnapTarget;
 use crate::timeline::{Hit, TimelineModel};
 use crate::timeline_layout::Viewport;
+use crate::toolbar::ToolbarView;
 use crate::wave::Waves;
 
 pub(crate) use rows::{bar_color, stripe, trimmed};
@@ -57,6 +59,8 @@ pub struct PaintInput<'a> {
     pub state: &'a PaintState,
     /// 帯の波形のピーク。`None` のときと、ピークの無い素材の帯には波形を描かない。
     pub waves: Option<&'a Waves>,
+    /// ツールバーの状態。`None` のときはツールバーを描かない。
+    pub toolbar: Option<ToolbarView<'a>>,
 }
 
 impl<'a> PaintInput<'a> {
@@ -67,6 +71,7 @@ impl<'a> PaintInput<'a> {
             vp,
             state,
             waves: None,
+            toolbar: None,
         }
     }
 }
@@ -164,6 +169,7 @@ pub fn timeline_quads(input: &PaintInput) -> UnderText {
     ruler::paint(input, &mut canvas);
     scrollbar::paint(input, &mut canvas);
     snap::edge_highlight(input, &mut canvas);
+    toolbar::paint(input, &mut canvas);
     wave::paint(input, &mut canvas);
     zoombar::paint(input, &mut canvas);
     canvas.into_under_text()

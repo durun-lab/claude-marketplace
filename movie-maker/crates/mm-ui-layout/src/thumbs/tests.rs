@@ -8,7 +8,7 @@ use crate::text::tests::FakeMeasure;
 use crate::text::UiFont;
 use crate::timeline::{Item, ItemKind};
 use crate::timeline_layout::tests::TestViewport;
-use crate::timeline_layout::{TimelineLayout, HEADER_W, RULER_H};
+use crate::timeline_layout::{TimelineLayout, HEADER_W};
 use crate::wave::{Peaks, WaveSource, Waves};
 
 const SIZE: (f32, f32) = (800.0, 200.0);
@@ -115,11 +115,12 @@ fn 目盛りの帯の下に隠れかけた行のサムネイルは行の領域�
     f.scroll_y = 10.0;
     let t = thumbs(&m, &f);
     let first = &t[0];
-    assert_eq!(first.rect.y, RULER_H, "目盛りの帯の下から");
-    let hidden = (RULER_H - f.vp().bar(0, 0.0, 5.0).y) / 25.0;
+    let area = f.layout.row_area;
+    assert_eq!(first.rect.y, area.y, "目盛りの帯の下から");
+    let hidden = (area.y - f.vp().bar(0, 0.0, 5.0).y) / 25.0;
     assert!((first.uv.y - hidden).abs() < 1e-4, "{first:?}");
     assert!((first.uv.y + first.uv.h - 1.0).abs() < 1e-4);
-    assert!(t.iter().all(|q| q.rect.bottom() <= SIZE.1));
+    assert!(t.iter().all(|q| q.rect.bottom() <= area.bottom()));
 }
 
 #[test]

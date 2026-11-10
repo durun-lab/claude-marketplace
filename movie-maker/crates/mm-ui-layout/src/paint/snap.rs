@@ -94,7 +94,7 @@ mod tests {
     use crate::snap::{SnapKind, SnapTarget};
     use crate::timeline::{CutBar, Item, ItemKind, TimelineModel};
     use crate::timeline_layout::tests::TestViewport;
-    use crate::timeline_layout::{HEADER_W, RULER_H};
+    use crate::timeline_layout::HEADER_W;
 
     /// 幅 800、高さ 120 の Timeline。
     const SIZE: (f32, f32) = (800.0, 120.0);
@@ -153,7 +153,11 @@ mod tests {
             .iter()
             .find(|q| q.shape == QuadShape::TriDown)
             .expect("目盛りの帯の三角形");
-        assert_eq!(down.rect.bottom(), RULER_H, "目盛りの帯の下端から下を指す");
+        assert_eq!(
+            down.rect.bottom(),
+            layout.ruler.bottom(),
+            "目盛りの帯の下端から下を指す"
+        );
         assert_eq!(down.rect.x + down.rect.w / 2.0, HEADER_W + 150.0);
         let up = quads
             .iter()
