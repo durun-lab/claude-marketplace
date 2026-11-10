@@ -25,6 +25,7 @@ mod empty;
 mod geom;
 mod gesture;
 mod header;
+mod hint;
 mod keymarks;
 mod labels;
 mod paint;
@@ -59,6 +60,10 @@ pub use empty::{EmptyHints, EmptyKeys, EmptyState};
 pub use geom::{fit_rect, Color, Quad, QuadShape, Rect};
 pub use gesture::{body_edit, edge_edit, EditKind, Side};
 pub use header::{button_center, name_center};
+pub use hint::{
+    bar_tooltip, cursor_for, status_labels, status_left, status_right, tooltip_of, CursorKind,
+    Dragging, EditDrag, HintText, Pointee, TooltipContent, Under,
+};
 pub use keymarks::MARK_PX;
 pub use labels::{timeline_labels, LABEL_PAD};
 pub use paint::{timeline_overlay, timeline_quads, PaintInput, PaintState, UnderText};

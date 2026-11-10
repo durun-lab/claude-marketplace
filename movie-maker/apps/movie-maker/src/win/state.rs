@@ -179,6 +179,8 @@ pub struct Shared {
     pub view: crate::win::view_state::ViewSlot,
     /// 描画スレッドが最後に描いた Timeline のツールバーの名前の幅。`--play-test` がボタンの位置を引く。
     pub toolbar_names: Mutex<ToolbarNames>,
+    /// ポインターの下の手がかり（カーソル、ツールチップ、右クリックのメニューが UI のスレッドから引く入口）と、確かめるための記録。
+    pub hint: crate::win::pointer_hint::HintSlot,
     /// Timeline の今のツール。描画スレッドが置く。コマンドの表のチェックの状態に出す。履歴にも `.mm/view.json` にも残さない。
     pub tool: Mutex<Tool>,
 }
@@ -221,6 +223,7 @@ impl Shared {
             series: Mutex::new(BTreeMap::new()),
             meters: Mutex::new(crate::win::mixer::MeterLane::default()),
             view: crate::win::view_state::ViewSlot::default(),
+            hint: crate::win::pointer_hint::HintSlot::default(),
             toolbar_names: Mutex::new(ToolbarNames::default()),
             tool: Mutex::new(Tool::default()),
         }

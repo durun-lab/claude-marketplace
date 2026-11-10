@@ -8,6 +8,7 @@
 //! スナップの入/切とドラッグ中の反転、ドラッグ中のツールチップは `controller/snapping.rs`。
 
 mod command;
+mod pointee;
 mod tools;
 mod zoom;
 

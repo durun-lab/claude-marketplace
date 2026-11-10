@@ -364,7 +364,12 @@ fn スクロールで目盛りの帯の下に隠れた行は行の領域の上�
     f.scroll_y = 14.0;
     let all = timeline_quads(&PaintInput::new(&m, &f.vp(), &state(0.0))).quads;
     let area = f.layout.row_area;
-    let outside_rows = [palette::RULER, palette::TICK, palette::LABEL];
+    let outside_rows = [
+        palette::RULER,
+        palette::TICK,
+        palette::LABEL,
+        palette::PANEL,
+    ];
     let in_rows = |q: &&Quad| !outside_rows.contains(&q.color);
     for q in all.iter().skip(1).filter(in_rows) {
         assert!(

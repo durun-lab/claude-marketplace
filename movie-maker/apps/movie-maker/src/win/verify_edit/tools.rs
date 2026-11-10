@@ -28,7 +28,7 @@ pub(super) fn select_tool(env: &Env<'_>, tool: Tool) -> bool {
 }
 
 /// 行 `row` の、隙間でなく `MIN_CUT_SECS` より長い最初のカットの範囲（秒）。
-fn splittable_span(shared: &Shared, row: usize) -> Option<(f64, f64)> {
+pub(super) fn splittable_span(shared: &Shared, row: usize) -> Option<(f64, f64)> {
     let doc = shared.doc()?;
     let comp = doc.project.composition(&doc.comp).ok()?;
     let model = timeline_model(&doc.project, comp);

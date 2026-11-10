@@ -4,7 +4,7 @@
 use mm_ui_layout::palette::Palette;
 use mm_ui_layout::{
     toolbar_labels, Label, PointerEvent, TimeView, TimelineController, ToolbarAction,
-    ToolbarController, ToolbarNames, ToolbarState, ToolbarView, UiFont, VIEW_MARGIN,
+    ToolbarController, ToolbarNames, ToolbarPart, ToolbarState, ToolbarView, UiFont, VIEW_MARGIN,
 };
 
 use super::Ui;
@@ -31,6 +31,11 @@ impl Toolbar {
         self.state.symbols = shaper.has_symbol_font();
         let bar = timeline.layout().toolbar;
         toolbar_labels(bar, &self.state, &self.controller, palette, font, shaper)
+    }
+
+    /// ポインターが乗っている部品。
+    pub(super) fn hover(&self) -> Option<ToolbarPart> {
+        self.controller.hover()
     }
 
     /// 描く関数に渡す、ツールバーの状態。

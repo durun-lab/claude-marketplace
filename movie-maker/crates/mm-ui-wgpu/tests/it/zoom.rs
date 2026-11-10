@@ -67,7 +67,7 @@ fn timeline_の下端にズームバーを描き_全体表示でスクロール�
     for scale in [1.0_f32, 1.5] {
         let (mut ui, size) = zoomed_ui(&device, scale, &m);
         let l = layout(&ui, &m, scale);
-        assert!(l.zoombar.h > 0.0 && l.zoombar.bottom() == l.bounds.bottom());
+        assert!(l.zoombar.h > 0.0 && l.zoombar.bottom() == l.status.y);
         let thumb = zoombar::thumb(l.zoombar, m.duration, &ZOOMED, l.row_area.w);
         let out = render_sized(&device, &queue, &mut ui, size);
         let timeline = ui.layout().timeline;

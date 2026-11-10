@@ -201,6 +201,17 @@ Z2 で決めたこと（新しく設計したもの）:
 
 右には「Snapping On」「Selection Tool」を出す。
 
+Z5 が決めた形（先例）: ツールチップの文は Premiere のツールのツールチップ（名前とキー）、ポインターの下の操作をステータスバーに出すのは Blender と Kdenlive、辺で Resize、編集点で Roll のカーソルに替えるのは Resolve と Premiere。ツールチップを出すまでの待ち時間と消える時機は Windows の標準のツールチップ（`TTM_GETDELAYTIME` の `TTDT_INITIAL`、`TTDT_RESHOW`、`TTDT_AUTOPOP`）をそのまま読む。
+
+Z5 が決めた形（新規設計。先例が解消しない所）:
+
+- ポインターの下にあるものは、`mm-ui-layout` の `Pointee`（`hint.rs`）1 つにまとめる。`Under`（Timeline の `Hit`、ツールバーの部品、再生の操作のバーの部品。レイヤーとカットの添字を含む）、今のツール、編集のドラッグの様子（`Dragging`）、隙間の上か、Blade で割れる位置があるかを持つ。描画のスレッドの `Ui::hint()` が作り、アプリの `HintSlot::current()`（`pointer_hint.rs`）が UI のスレッドへ渡す入口になる。カーソル（`WM_SETCURSOR`）、ツールチップ、右クリックのメニュー（D3）は、この入口 1 つから引く。ポインターが動いたら描画のスレッドが `WM_MM_HINT` を投げ、UI のスレッドがツールチップとカーソルを差し替える。
+- カーソルは `cursor_for(&Pointee, Mods)`。修飾キーは UI のスレッドが読む瞬間の値で、Alt と Shift を押した・離したときにも `WM_KEYDOWN` と `WM_KEYUP` で替え直す。ドラッグ中は押したときの種類のまま（途中で Alt を離しても roll のまま）。Blade は割れる位置のあるカットの上だけ刃の形で、隙間、割れない所、レイヤーの上は禁止の形にする。ズームバーの両端も左右の矢印にする。
+- 自前のカーソル（roll、slip、slide、刃）は画像のファイルを持たず、`cursor/art.rs` で 0..1 の座標の多角形を 4x4 のスーパーサンプリングで描く（白の塗りと黒の縁）。大きさは `GetSystemMetricsForDpi(SM_CXCURSOR)` で、表示の倍率 100%、125%、150% で 32、40、48 画素になり、倍率ごとに 1 度だけ作るのでぼやけない。形は、roll が編集点の 2 本線と両側へ向く矢印、slip が窓の枠（中身が動く）と外へ向く矢印、slide が塗りつぶした枠（カットごと動く）と前後との境の線と矢印、刃が縦の刃物（Premiere と Resolve のカーソルを手本に、ホットスポットは中央）。
+- ツールチップは Win32 のトラッキングのツールチップ 1 つ（最前面のポップアップ。子 WebView の上にも出る）。トラッキングのツールチップは Windows が待ち時間を数えないので、`tooltip/dwell.rs` の状態機械と `SetTimer` で標準と同じ動きにする。部品の上で止まって `TTDT_INITIAL`（既定 500 ms）で出し、出ている間に別の部品へ移れば隠して `TTDT_RESHOW`（既定 100 ms）で差し替え、`TTDT_AUTOPOP`（既定 5 秒）で消す。押下、ホイール、キーでも消し、同じ部品の上では出し直さない。位置はポインターの下（表示の倍率に合わせて 22 論理ピクセル）で、画面の右に掛かれば左へ寄せ、下に入らなければポインターの上に出す（`tooltip::place`）。文はコマンドの表の名前とキーと説明（`tooltip/text.rs`。説明が無いコマンドは 1 行）、帯は `bar_tooltip`。帯の長さは「秒:フレーム」（3 秒ちょうどが `3:00`。1 分を超えても秒のまま）。見出しのボタンは表に無いので、`mm-ui-layout` が文を持つ。出したツールチップの文と位置は `HintSlot::shown` に記録し、`--play-test` が確かめる。
+- ステータスバーの高さは 22 論理ピクセル（`STATUS_H`。字の大きさ 12 の 1 行に上下の余白で、ツールバーのボタンの 24 と再生の操作のバーの 26 の間）。Timeline が `MIN_TIMELINE_H` より低ければ、ツールバーと同じく出さずに行へ回す。`MIN_TIMELINE_H` は `STATUS_H` を含む。左は `status_left`、右は `status_right`（「Snapping On · Selection Tool」）。左が長ければ右の手前で切り詰める。ツールバーと再生の操作のバーのボタンの上では「Click: コマンドの名前」を出す。
+- 表に無い部品の文: Blade のカット（`Click: Split at Pointer`、隙間は `Nothing to Split in a Gap`）、Blade のレイヤー（`Blade Tool: Layers Can't Be Split`）、レイヤーの端（`Drag: Trim Layer`）、ズームバー、スクロールバー、見出しのボタン、帯のマーカー。レイヤーの見出しの `Right-click: Layer Menu` は、右クリックのメニュー（D3）が入ったら足す。キーフレームの行（K2、#226）のひし形の文（`Drag: Move Keyframe · Alt+Click: Add Keyframe · Delete: Remove`）は、K2 が入ってから `status_left` に足す。サーフェスの仕切りのカーソル（L3、#229）は、`WM_SETCURSOR` の振り分け（`pointer_hint::on_message`）に入れる。
+
 ### キーの表に足すもの
 
 | キー | コマンド | 先行事例 | PR |

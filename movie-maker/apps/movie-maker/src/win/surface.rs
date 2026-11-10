@@ -25,6 +25,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use crate::win::hotpatch;
 use crate::win::keyboard;
 use crate::win::keys;
+use crate::win::pointer_hint;
 use crate::win::state::Shared;
 
 /// 1 ノッチあたりのホイールの値。
@@ -166,7 +167,7 @@ fn key_down(vk: u16) -> bool {
 }
 
 /// いま押している修飾キー。ドラッグの種類（ripple か roll、slip か slide）を選ぶ。
-fn pointer_mods() -> Mods {
+pub(crate) fn pointer_mods() -> Mods {
     Mods {
         shift: key_down(VK_SHIFT.0),
         alt: key_down(VK_MENU.0),
@@ -315,6 +316,12 @@ fn key_released(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
 }
 
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if let Some(done) = SHARED
+        .get()
+        .and_then(|s| pointer_hint::on_message(&s.hint, hwnd, (msg, wparam, lparam)))
+    {
+        return done;
+    }
     match msg {
         // 子 HWND は自動ではフォーカスを取らないので、クリックで自分に移す。ドラッグ中は外に出ても追う。
         WM_LBUTTONDOWN => {

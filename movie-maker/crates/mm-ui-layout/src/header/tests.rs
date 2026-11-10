@@ -10,7 +10,7 @@ use crate::text::tests::FakeMeasure;
 use crate::time_view::TimeView;
 use crate::timeline::{hit_test, Hit};
 use crate::timeline_layout::tests::TestViewport;
-use crate::timeline_layout::{HEADER_W, RULER_H, TOOLBAR_H};
+use crate::timeline_layout::{HEADER_W, RULER_H, STATUS_H, TOOLBAR_H};
 
 /// 幅 800、高さ 200 の Timeline。
 const SIZE: (f32, f32) = (800.0, 200.0);
@@ -241,7 +241,7 @@ fn controller(m: &TimelineModel) -> TimelineController {
         px_per_sec: 100.0,
     });
     c.set_rows(Rows::of(&m.items, &RowHeights::default()));
-    c.resize((800.0, 120.0 + TOOLBAR_H));
+    c.resize((800.0, 120.0 + TOOLBAR_H + STATUS_H));
     c
 }
 

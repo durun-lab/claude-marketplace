@@ -13,6 +13,7 @@ mod rows;
 mod ruler;
 mod scrollbar;
 mod snap;
+mod status;
 mod toolbar;
 mod wave;
 mod zoombar;
@@ -176,6 +177,7 @@ pub fn timeline_quads(input: &PaintInput) -> UnderText {
     ruler::paint(input, &mut canvas);
     scrollbar::paint(input, &mut canvas);
     snap::edge_highlight(input, &mut canvas);
+    status::paint(input, &mut canvas);
     toolbar::paint(input, &mut canvas);
     wave::paint(input, &mut canvas);
     zoombar::paint(input, &mut canvas);

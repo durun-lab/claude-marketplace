@@ -154,7 +154,7 @@ mod tests {
     use crate::paint::tests::state;
     use crate::text::tests::FakeMeasure;
     use crate::timeline_layout::tests::TestViewport;
-    use crate::timeline_layout::TOOLBAR_H;
+    use crate::timeline_layout::{STATUS_H, TOOLBAR_H};
 
     #[test]
     fn 一秒より短い量はフレーム数_一秒からは時刻() {
@@ -220,10 +220,10 @@ mod tests {
     #[test]
     fn 右に入らなければ左に置き_縦は_timeline_の中に収める() {
         let mut labels = Vec::new();
-        let (quads, _) = tooltip((790.0, 199.0 + TOOLBAR_H), -2.0, &mut labels);
+        let (quads, _) = tooltip((790.0, 199.0 + TOOLBAR_H + STATUS_H), -2.0, &mut labels);
         let rect = quads[0].rect;
         assert!(rect.right() <= 790.0 - OFFSET + 0.5, "{rect:?}");
-        assert!(rect.bottom() <= 200.0 + TOOLBAR_H, "{rect:?}");
+        assert!(rect.bottom() <= 200.0 + TOOLBAR_H + STATUS_H, "{rect:?}");
         assert_eq!(&*labels[0].text, "\u{2212}00:00:02:00");
     }
 
