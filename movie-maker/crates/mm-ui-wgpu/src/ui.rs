@@ -8,7 +8,7 @@
 //! キーとメニューの Timeline のコマンドも、ドラッグとの前後を保つため [`Ui::pointer`] で受ける。
 
 use mm_types::RgbaImage;
-use mm_ui_layout::palette::{self, Palette};
+use mm_ui_layout::palette::Palette;
 use mm_ui_layout::{
     clear_tooltip_area, fit_rect, timeline_overlay, timeline_quads, Action, DrawingShape,
     EmptyHints, EmptyKeys, EmptyState, PaintInput, PaintState, Peaks, PointerEvent, Quad, Rect,
@@ -22,15 +22,20 @@ use crate::quads::QuadRenderer;
 use crate::text::{TextLayer, TextStats};
 use crate::thumbs::ThumbRenderer;
 
+mod hint;
 mod labels;
 mod layout;
+mod pass;
 mod selection;
 mod thumbs;
 mod toolbar;
 mod transport;
 mod view;
 
+use hint::HintState;
+pub use hint::{Hint, StatusText};
 pub use layout::SplitterState;
+use pass::{begin_pass, Counts};
 use thumbs::DroppedThumbs;
 pub use thumbs::ThumbStats;
 
@@ -75,6 +80,8 @@ pub struct Ui {
     transport: TransportState,
     transport_controller: TransportController,
     toolbar: toolbar::Toolbar,
+    /// ステータスバーとツールチップの状態。
+    hint: HintState,
     /// サーフェスの大きさ（物理ピクセル）。
     size: (f32, f32),
     playhead: f64,
@@ -119,6 +126,7 @@ impl Ui {
             transport: TransportState::default(),
             transport_controller: TransportController::default(),
             toolbar: toolbar::Toolbar::default(),
+            hint: HintState::default(),
             size: (0.0, 0.0),
             playhead: 0.0,
             opened: false,
@@ -231,6 +239,7 @@ impl Ui {
 
     /// サーフェスの座標（物理ピクセル）のポインターの入力を受ける。Timeline の外から始まったドラッグは捨てる。
     pub fn pointer(&mut self, ev: PointerEvent) -> Vec<Action> {
+        self.note_pointer(&ev);
         let t = self.layout.timeline;
         let local = match self.scale.pointer_to_logical(ev) {
             PointerEvent::Down { x, y, .. } if !t.contains(x, y) => return Vec::new(),
@@ -384,46 +393,4 @@ impl Ui {
         under_quads.extend(quads);
         (under_quads, under + front, bars as u32 + front)
     }
-}
-
-/// 1 フレームのパスで描く数。
-struct Counts {
-    /// 文字の下に描く矩形の数。残りの矩形（`under..quads`）は文字の上に重ねる。
-    under: u32,
-    /// 帯までの矩形の数。サムネイルはその後ろに描く。
-    bars: u32,
-    /// 描くサムネイルの数。
-    thumbs: u32,
-    quads: u32,
-    /// 描き込みの線分の数。
-    drawing: u32,
-}
-
-/// サーフェス全体を Program の背景色で塗るパスを始める。
-fn begin_pass<'a>(
-    enc: &'a mut wgpu::CommandEncoder,
-    target: &'a wgpu::TextureView,
-) -> wgpu::RenderPass<'a> {
-    let c = palette::PROGRAM_BACKDROP.0;
-    enc.begin_render_pass(&wgpu::RenderPassDescriptor {
-        label: Some("ui"),
-        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-            view: target,
-            depth_slice: None,
-            resolve_target: None,
-            ops: wgpu::Operations {
-                load: wgpu::LoadOp::Clear(wgpu::Color {
-                    r: f64::from(c[0]),
-                    g: f64::from(c[1]),
-                    b: f64::from(c[2]),
-                    a: 1.0,
-                }),
-                store: wgpu::StoreOp::Store,
-            },
-        })],
-        depth_stencil_attachment: None,
-        timestamp_writes: None,
-        occlusion_query_set: None,
-        multiview_mask: None,
-    })
 }

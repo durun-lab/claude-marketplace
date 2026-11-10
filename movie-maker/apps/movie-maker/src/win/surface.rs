@@ -26,6 +26,7 @@ use crate::win::context_menu;
 use crate::win::hotpatch;
 use crate::win::keyboard;
 use crate::win::keys;
+use crate::win::pointer_hint;
 use crate::win::splitter;
 use crate::win::state::Shared;
 
@@ -168,7 +169,7 @@ fn key_down(vk: u16) -> bool {
 }
 
 /// いま押している修飾キー。ドラッグの種類（ripple か roll、slip か slide）を選ぶ。
-fn pointer_mods() -> Mods {
+pub(crate) fn pointer_mods() -> Mods {
     Mods {
         shift: key_down(VK_SHIFT.0),
         alt: key_down(VK_MENU.0),
@@ -321,9 +322,16 @@ pub fn shared() -> Option<&'static Arc<Shared>> {
     SHARED.get()
 }
 
+/// Timeline の操作より先に受けるメッセージ。カーソルとツールチップ（`pointer_hint.rs`）、仕切りの操作（`splitter.rs`）。
+fn intercept(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
+    let shared = SHARED.get()?;
+    pointer_hint::on_message(&shared.hint, hwnd, (msg, wparam, lparam))
+        .or_else(|| splitter::message(hwnd, msg, lparam))
+}
+
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    if let Some(handled) = splitter::message(hwnd, msg, lparam) {
-        return handled;
+    if let Some(done) = intercept(hwnd, msg, wparam, lparam) {
+        return done;
     }
     match msg {
         // 子 HWND は自動ではフォーカスを取らないので、クリックで自分に移す。ドラッグ中は外に出ても追う。

@@ -11,6 +11,7 @@
 mod command;
 mod context;
 mod event;
+mod pointee;
 mod tools;
 mod zoom;
 

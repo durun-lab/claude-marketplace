@@ -24,6 +24,7 @@ use crate::win::verify_stage::wait_until;
 
 mod context;
 mod header;
+mod hints;
 mod keyframes;
 mod log;
 pub(super) mod tools;
@@ -392,4 +393,5 @@ fn sequence_steps(env: &Env<'_>, log: &mut Log) {
     snap_step(env, log);
     tools::run(env, log);
     context::run(env, log);
+    hints::run(env, log);
 }

@@ -205,7 +205,9 @@ fn 再生位置の線が時刻の位置に立つ() {
     let t = ui.layout().timeline;
     // 全体表示は 10 秒が余白 16 px を除いた幅に収まる。5 秒はその中央。
     let x = (t.x + HEADER_W + 16.0 + (t.w - HEADER_W - 32.0) / 2.0) as u32;
-    let y = (t.y + t.h - 3.0) as u32;
+    // ズームバーの中。ステータスバーは時刻の線を通さない。
+    let status_h = mm_ui_layout::TimelineLayout::new((t.w, t.h), 0.0).status.h;
+    let y = (t.y + t.h - status_h - 3.0) as u32;
     let found =
         (x.saturating_sub(2)..=x + 2).any(|xx| close(px(&out, xx, y), hex(palette::PLAYHEAD), 3));
     assert!(found, "x={x} の近くに再生位置の線");
@@ -304,8 +306,8 @@ fn 描き込みは表示の倍率とウィンドウの大きさが変わると�
     );
 
     // 表示の倍率 2 で論理ピクセル 240x150。Timeline の高さの下限（MIN_TIMELINE_H）と再生の操作のバーを
-    // 除いても映像が残る。
-    let small = (W * 3 / 4, H * 3 / 4);
+    // （ステータスバーを含む）除いても映像が残る。
+    let small = (W * 3 / 4, H * 3 / 4 + 44);
     ui.resize(small.0, small.1);
     let out = render_sized(&device, &queue, &mut ui, small);
     let [sx, sy] = frame_point(fit_rect(16.0, 9.0, ui.layout().program), [0.5, 0.5]);

@@ -78,6 +78,10 @@ impl TimelineController {
         mods: Mods,
         (model, playhead): (&TimelineModel, f64),
     ) -> Vec<Action> {
+        // ステータスバーは文を出すだけで、押しても選択を変えない。
+        if self.layout.status.contains(x, y) {
+            return Vec::new();
+        }
         self.blade_line = None;
         if self.tool == Tool::Blade {
             let hit = hit_test(model, &self.viewport(), x, y);
