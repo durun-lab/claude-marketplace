@@ -101,7 +101,7 @@ fn fnv1a(bytes: &[u8]) -> u64 {
 mod tests {
     use super::*;
 
-    /// 試験ごとに別のファイル。並行の試験が同じパスを書かない。
+    /// 呼ぶたびに別の一時フォルダーのファイルと、そのガード。並行のテストが同じパスを書かない。
     fn temp_file(name: &str) -> (tempfile::TempDir, PathBuf) {
         let guard = tempfile::Builder::new()
             .prefix("mm-node-api-fp-")
@@ -139,7 +139,7 @@ mod tests {
 
     #[test]
     fn 中身が同じなら場所と更新時刻が違っても同じハッシュ() {
-        let ((_da, a), (_db, b)) = (temp_file("same-a.json"), temp_file("same-b.json"));
+        let ((_dir_a, a), (_dir_b, b)) = (temp_file("same-a.json"), temp_file("same-b.json"));
         std::fs::write(&a, "{}").expect("書ける");
         std::fs::write(&b, "{}").expect("書ける");
         settle(&a);

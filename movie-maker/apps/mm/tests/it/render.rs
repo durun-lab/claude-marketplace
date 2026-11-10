@@ -22,7 +22,7 @@ fn project_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/projects/stage0/project.json")
 }
 
-/// 素材を用意してから `mm render` を呼び、出力先と、それを守る一時フォルダーを返す。
+/// 素材を用意してから `mm render` を呼び、出力先と、ドロップされると出力先ごと消すガード（`TempDir`）を返す。
 fn render_stage0(name: &str) -> (tempfile::TempDir, PathBuf) {
     common::fixtures();
     let dir = tempfile::Builder::new()

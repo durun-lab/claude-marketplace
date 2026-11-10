@@ -28,7 +28,7 @@ pub const SERVE_COMMAND: &str = "serve";
 const CLEANUP_LIMIT: Duration = Duration::from_secs(5);
 /// 一時フォルダーを消し直す間隔。
 const CLEANUP_STEP: Duration = Duration::from_millis(50);
-/// 一時フォルダーの名前が残っていたときに、番号を進めて作り直す回数の上限。
+/// 同じ名前のフォルダーがあったときに、番号を進めて一時フォルダーを作り直す回数の上限。
 const WORK_DIR_ATTEMPTS: u32 = 64;
 /// `Shutdown` の応答と、その後にプロセスが終わるのを待つ期限。
 const SHUTDOWN_WAIT: Duration = Duration::from_secs(2);
@@ -179,17 +179,17 @@ impl PipeHost {
 /// このプロセスが起こすホストごとの一時フォルダー（`mm-<名前>-<pid>-<番号>`）を作る。
 fn create_work_dir(name: &str) -> Result<PathBuf> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
-    let stem = format!("mm-{name}-{}", std::process::id());
-    create_fresh_dir(&std::env::temp_dir(), &stem, || {
+    let prefix = format!("mm-{name}-{}", std::process::id());
+    create_fresh_dir(&std::env::temp_dir(), &prefix, || {
         NEXT.fetch_add(1, Ordering::Relaxed)
     })
 }
 
-/// `base` の下に `<stem>-<番号>` のフォルダーを新しく作る。Windows は pid を使い回すので、前に同じ pid だった
-/// プロセスが残した名前は使わず次の番号にする（`mkdtemp` と同じく、新しく作れた名前だけを使う）。
-fn create_fresh_dir(base: &Path, stem: &str, mut next: impl FnMut() -> u64) -> Result<PathBuf> {
+/// `base` の下に `<prefix>-<番号>` のフォルダーを新しく作る。Windows は pid を使い回すので、前に同じ pid だった
+/// プロセスが残したフォルダーの名前は使わず次の番号にする（`mkdtemp` と同じく、新しく作れた名前だけを使う）。
+fn create_fresh_dir(base: &Path, prefix: &str, mut next: impl FnMut() -> u64) -> Result<PathBuf> {
     for _ in 0..WORK_DIR_ATTEMPTS {
-        let dir = base.join(format!("{stem}-{}", next()));
+        let dir = base.join(format!("{prefix}-{}", next()));
         match std::fs::create_dir(&dir) {
             Ok(()) => return Ok(dir),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
@@ -202,7 +202,7 @@ fn create_fresh_dir(base: &Path, stem: &str, mut next: impl FnMut() -> u64) -> R
         }
     }
     Err(MmError::Internal(format!(
-        "{} の {stem}-<番号> が {WORK_DIR_ATTEMPTS} 個とも残っている",
+        "{} に {prefix}-<番号> のフォルダーが {WORK_DIR_ATTEMPTS} 個ともある",
         base.display()
     )))
 }

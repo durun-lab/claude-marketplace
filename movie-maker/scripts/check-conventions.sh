@@ -47,7 +47,7 @@ if [ -n "$raw_spawn" ]; then
 fi
 
 # テストの一時フォルダーは tempfile で作る。temp_dir() にプロセスの ID だけを足した名前は、Windows が ID を使い回すため前の実行が残したフォルダーと同じ名前になる。
-# rustfmt が分けた文も拾うよう、temp_dir() の行から 3 行先か文の終わり（;）までを見る。例外は開く前に同じ名前の残りを消す host/mod.rs だけ。コメントの行は除く。
+# rustfmt が分けた文も拾うよう、temp_dir() の行から 3 行先か文の終わり（;）までを見る。例外は、開く前に前の実行が残したフォルダーを消す host/mod.rs だけ。コメントの行は除く。
 temp_pid="$(grep -rlE 'process::id\(\)' crates apps --include='*.rs' \
   | grep -v '^crates/mm-host-cef/src/host/mod\.rs$' \
   | xargs -r awk '
