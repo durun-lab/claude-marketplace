@@ -17,6 +17,7 @@ const lift: UiCommand = {
   key_label: "Delete",
   description: "Remove the selected clip and leave a gap",
   menu: "edit",
+  menu_order: 2,
   panel: null,
   enabled: false,
   checked: null,

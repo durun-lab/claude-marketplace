@@ -30,6 +30,7 @@ pub fn handler(invoke: tauri::ipc::Invoke) -> bool {
         key_event,
         layer_selection,
         command_table,
+        crate::win::layout::close_shortcuts,
         run_command,
         crate::win::edit::apply_op,
         crate::win::edit::apply_ops,

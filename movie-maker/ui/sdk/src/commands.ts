@@ -16,6 +16,8 @@ export interface UiCommand {
   description: string | null;
   /** メニューバーでの場所。 */
   menu: string | null;
+  /** メニューの中の位置（グループをまたいだ通し番号）。メニューに無いコマンドは null。 */
+  menu_order: number | null;
   /** 持ち主の WebView のパネルの id。アプリが実行するコマンドは null。 */
   panel: string | null;
   enabled: boolean;
@@ -66,4 +68,12 @@ export const commandTitle = (command: UiCommand | undefined): string => {
   if (!command) return NOT_AVAILABLE;
   const head = command.key_label ? `${command.name} (${command.key_label})` : command.name;
   return command.description ? `${head}\n${command.description}` : head;
+};
+
+/** Keyboard Shortcuts のウィンドウを閉じる Tauri のコマンドの名前。 */
+export const IPC_CLOSE_SHORTCUTS = "close_shortcuts";
+
+/** Keyboard Shortcuts のウィンドウを閉じる。ウィンドウの権限は付けず、アプリのコマンドに任せる。 */
+export const closeShortcutsWindow = async (call: MediaInvoke = tauriInvoke): Promise<void> => {
+  await call(IPC_CLOSE_SHORTCUTS);
 };

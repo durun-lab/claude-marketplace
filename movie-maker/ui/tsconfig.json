@@ -16,6 +16,6 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["theme", "sdk", "shell", "panels", "mobile", "tools"],
+  "include": ["theme", "sdk", "shell", "shortcuts", "panels", "mobile", "tools"],
   "exclude": ["**/node_modules", "dist"]
 }

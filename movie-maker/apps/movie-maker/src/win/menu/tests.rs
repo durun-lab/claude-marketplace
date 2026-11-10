@@ -85,7 +85,10 @@ fn 項目は並びの順にコマンドの表の名前とキーの見た目で�
         ["Split Clip\tB", "Add Transition…"],
         "ツールは後の PR が表に足す"
     );
-    assert_eq!(menu_texts(Menu::Help, &table), ["About"]);
+    assert_eq!(
+        menu_texts(Menu::Help, &table),
+        ["Keyboard Shortcuts…	?", "-", "About"]
+    );
     assert_eq!(
         menu_texts(Menu::View, &table),
         [
@@ -279,7 +282,13 @@ fn メニューのイベントは表のコマンドを実行し_パネルとウ�
     run(&shared, "playback.go_to_end");
     assert_eq!(rx.try_recv(), Ok(Command::Toggle));
     assert_eq!(rx.try_recv(), Ok(Command::Seek(f64::MAX)));
-    for id in ["media.import", "export.start", "app.exit", "app.show_about"] {
+    for id in [
+        "media.import",
+        "export.start",
+        "app.exit",
+        "app.show_about",
+        "app.show_keyboard_shortcuts",
+    ] {
         run(&shared, id);
     }
     assert_eq!(
@@ -289,6 +298,7 @@ fn メニューのイベントは表のコマンドを実行し_パネルとウ�
             Forward::Panel("export.start"),
             Forward::Window(WindowAction::Exit),
             Forward::Window(WindowAction::About),
+            Forward::Window(WindowAction::ShowKeyboardShortcuts),
         ]
     );
 }
@@ -301,4 +311,12 @@ fn 押せない項目と表に無い_id_のイベントは何もしない() {
     run(&shared, "timeline.zoom_in");
     assert_eq!(shared.edit.message(), "", "編集を積まない");
     assert!(seen.lock().unwrap().is_empty());
+}
+
+#[test]
+fn メニューの中の位置はグループをまたいだ通し番号() {
+    assert_eq!(order_of("timeline.zoom_in"), Some(0));
+    assert_eq!(order_of("timeline.full_extent_zoom"), Some(2));
+    assert_eq!(order_of("timeline.toggle_snapping"), Some(3));
+    assert_eq!(order_of("playback.stop"), None, "メニューに無いコマンド");
 }

@@ -12,6 +12,7 @@ use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, SC_KEYMENU, WM_SYSCOMMAND};
 
 use crate::win::commands::{self, CommandView, Forward, State, WindowAction, PANEL_COMMAND_EVENT};
+use crate::win::layout;
 use crate::win::state::Shared;
 
 /// メニューバーのメニュー。
@@ -162,6 +163,13 @@ pub fn menu_of(id: &str) -> Option<Menu> {
         .map(|(menu, _)| *menu)
 }
 
+/// コマンドのメニューの中の位置（グループをまたいだ通し番号）。Keyboard Shortcuts のウィンドウがメニューと同じ順に並べる。
+pub fn order_of(id: &str) -> Option<usize> {
+    BAR.iter()
+        .find(|(_, groups)| groups.iter().any(|g| g.contains(&id)))
+        .and_then(|(_, groups)| groups.iter().flat_map(|g| g.iter()).position(|i| *i == id))
+}
+
 /// メニューの項目か区切り線の、Tauri の項目。押せるかとチェックの状態を後から反映するため、コマンドの ID を持つ。
 pub enum Item {
     Separator(PredefinedMenuItem<Wry>),
@@ -282,6 +290,9 @@ pub fn connect(app: &App, window: &Window, shared: &Arc<Shared>, bar: MenuBar) {
             let _ = target.close();
         }
         Forward::Window(WindowAction::About) => about(&target),
+        Forward::Window(WindowAction::ShowKeyboardShortcuts) => {
+            layout::open_shortcuts(&handle, &target);
+        }
         Forward::MenuKey(c) => open_by_access_key(&target, c),
     });
 }

@@ -3,9 +3,12 @@
 
 use std::sync::Arc;
 
-use tauri::webview::WebviewBuilder;
+use tauri::webview::{WebviewBuilder, WebviewWindowBuilder};
 use tauri::window::WindowBuilder;
-use tauri::{PhysicalPosition, PhysicalSize, Position, Rect, Size, Webview, WebviewUrl, Window};
+use tauri::{
+    AppHandle, Manager, PhysicalPosition, PhysicalSize, Position, Rect, Size, Webview, WebviewUrl,
+    Window,
+};
 
 use crate::win::commands;
 use crate::win::menu;
@@ -76,9 +79,84 @@ pub fn create_window(
     Ok((window, webview, surface_hwnd))
 }
 
+/// Keyboard Shortcuts のウィンドウの label。
+pub const SHORTCUTS_LABEL: &str = "shortcuts";
+/// Keyboard Shortcuts のページ（`ui/dist/`）。
+const SHORTCUTS_ENTRY: &str = "shortcuts.html";
+/// Keyboard Shortcuts のウィンドウの大きさ（論理ピクセル）。
+const SHORTCUTS_SIZE: (f64, f64) = (560.0, 640.0);
+const SHORTCUTS_MIN_SIZE: (f64, f64) = (360.0, 320.0);
+
+/// 本体のウィンドウ `(x, y, 幅, 高さ)` の中央に、大きさ `size` のウィンドウの中心を合わせたときの左上の位置。
+pub fn centered_over(main: (i32, i32, u32, u32), size: (u32, u32)) -> (i32, i32) {
+    let (x, y, w, h) = main;
+    (
+        x + (i64::from(w) - i64::from(size.0)) as i32 / 2,
+        y + (i64::from(h) - i64::from(size.1)) as i32 / 2,
+    )
+}
+
+/// Keyboard Shortcuts のウィンドウを本体の中央の上に出す。開いていれば前に出すだけ。ウィンドウの生成は
+/// メインスレッドの返りを待つので、メニューのイベントと IPC のスレッドを止めないよう別のスレッドで作る。
+pub fn open_shortcuts(app: &AppHandle, main: &Window) {
+    if let Some(existing) = app.get_webview_window(SHORTCUTS_LABEL) {
+        let _ = existing.show();
+        let _ = existing.set_focus();
+        return;
+    }
+    let (app, main) = (app.clone(), main.clone());
+    let spawned = std::thread::Builder::new()
+        .name("shortcuts".into())
+        .spawn(move || {
+            if let Err(e) = build_shortcuts(&app, &main) {
+                tracing::warn!(error = %e, "Keyboard Shortcuts のウィンドウを作れない");
+            }
+        });
+    if let Err(e) = spawned {
+        tracing::warn!("Keyboard Shortcuts のスレッドを起こせない: {e}");
+    }
+}
+
+/// 本体をオーナーにして、本体の前に出し続ける。位置は作った後に置く（作る前の位置は論理座標で、画面の縮尺が違うと外れる）。
+fn build_shortcuts(app: &AppHandle, main: &Window) -> tauri::Result<()> {
+    let scale = main.scale_factor()?;
+    let size = (
+        (SHORTCUTS_SIZE.0 * scale).round() as u32,
+        (SHORTCUTS_SIZE.1 * scale).round() as u32,
+    );
+    let (pos, outer) = (main.outer_position()?, main.outer_size()?);
+    let (x, y) = centered_over((pos.x, pos.y, outer.width, outer.height), size);
+    let url = WebviewUrl::App(SHORTCUTS_ENTRY.into());
+    let window = WebviewWindowBuilder::new(app, SHORTCUTS_LABEL, url)
+        .title("Keyboard Shortcuts")
+        .inner_size(SHORTCUTS_SIZE.0, SHORTCUTS_SIZE.1)
+        .min_inner_size(SHORTCUTS_MIN_SIZE.0, SHORTCUTS_MIN_SIZE.1)
+        .maximizable(false)
+        .minimizable(false)
+        .owner_raw(main.hwnd()?)
+        .focused(true)
+        .build()?;
+    window.set_position(PhysicalPosition::new(x, y))
+}
+
+/// Keyboard Shortcuts のウィンドウを閉じる。ページが Enter（実行の後）と Esc で呼ぶ。
+#[tauri::command]
+pub async fn close_shortcuts(app: AppHandle) -> Result<(), String> {
+    match app.get_webview_window(SHORTCUTS_LABEL) {
+        Some(window) => window.close().map_err(|e| e.to_string()),
+        None => Ok(()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shortcuts_のウィンドウは本体の中央に重なる() {
+        assert_eq!(centered_over((100, 50, 1600, 900), (560, 640)), (620, 180));
+        assert_eq!(centered_over((0, 0, 400, 300), (560, 640)), (-80, -170));
+    }
 
     #[test]
     fn サーフェスと_webview_は隙間も重なりもなくウィンドウを埋める() {

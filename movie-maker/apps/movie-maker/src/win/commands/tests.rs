@@ -78,6 +78,7 @@ fn webview_へは_ui_sdk_の_ui_command_と同じ形で送る() {
             "key_label": "Delete",
             "description": "Remove the selected clip and leave a gap",
             "menu": "edit",
+            "menu_order": 2,
             "panel": null,
             "enabled": false,
             "checked": null,
@@ -316,4 +317,28 @@ fn 再生の操作のバーは_source_が無ければ範囲のボタンを押せ
     for id in ["playback.toggle", "playback.stop", "playback.go_to_start"] {
         assert!(!disabled.contains(&id), "{id}");
     }
+}
+
+#[test]
+fn keyboard_shortcuts_はウィンドウのフックへ渡し_キーの見た目とメニューの位置を表に載せる() {
+    let shared = Arc::new(Shared::new());
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let sink = seen.clone();
+    shared
+        .window_hook
+        .set(move |f| sink.lock().unwrap().push(f));
+    run(&shared, "app.show_keyboard_shortcuts").expect("開く");
+    run_from_key(&shared, "app.show_keyboard_shortcuts").expect("? でも開く");
+    assert_eq!(
+        *seen.lock().unwrap(),
+        [Forward::Window(WindowAction::ShowKeyboardShortcuts); 2]
+    );
+    let table = table(&shared);
+    let row = |id: &str| table.iter().find(|c| c.id == id).expect("表にある");
+    assert_eq!(
+        row("app.show_keyboard_shortcuts").key_label.as_deref(),
+        Some("?")
+    );
+    assert!(row("timeline.zoom_in").menu_order < row("timeline.zoom_out").menu_order);
+    assert!(row("timeline.zoom_out").menu_order < row("timeline.full_extent_zoom").menu_order);
 }

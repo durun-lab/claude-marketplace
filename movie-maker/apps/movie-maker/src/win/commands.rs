@@ -50,6 +50,8 @@ pub enum WindowAction {
     Exit,
     /// アプリの名前とバージョンを出す。
     About,
+    /// Keyboard Shortcuts のウィンドウを出す。開いていれば前に出す。
+    ShowKeyboardShortcuts,
 }
 
 /// 表の 1 行。キーはキーの表（`keys.rs`）、メニューでの場所はメニューの並び（`menu.rs`）が持ち、
@@ -78,6 +80,12 @@ pub static TABLE: &[Spec] = &[
         name: "About",
         description: None,
         owner: Owner::App(Action::Window(WindowAction::About)),
+    },
+    Spec {
+        id: "app.show_keyboard_shortcuts",
+        name: "Keyboard Shortcuts…",
+        description: Some("List every command with its key, and run one by name"),
+        owner: Owner::App(Action::Window(WindowAction::ShowKeyboardShortcuts)),
     },
     Spec {
         id: "clip.add_transition",
@@ -355,6 +363,8 @@ pub struct CommandView {
     pub description: Option<&'static str>,
     /// コマンドが入っているメニューバーのメニュー。
     pub menu: Option<Menu>,
+    /// メニューの中の位置（グループをまたいだ通し番号）。メニューに無いコマンドは `None`。
+    pub menu_order: Option<usize>,
     /// 持ち主の WebView のパネルの id。アプリが実行するコマンドは `None`。
     pub panel: Option<&'static str>,
     #[serde(flatten)]
@@ -370,6 +380,7 @@ fn view(spec: &'static Spec, state: State) -> CommandView {
         keys,
         description: spec.description,
         menu: menu::menu_of(spec.id),
+        menu_order: menu::order_of(spec.id),
         panel: match spec.owner {
             Owner::Panel(panel) => Some(panel),
             Owner::App(_) => None,

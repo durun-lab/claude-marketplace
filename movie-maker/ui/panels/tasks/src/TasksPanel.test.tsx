@@ -24,6 +24,7 @@ const command = (id: string, over: Partial<UiCommand> = {}): UiCommand => ({
   key_label: null,
   description: null,
   menu: null,
+  menu_order: null,
   panel: null,
   enabled: true,
   checked: null,
