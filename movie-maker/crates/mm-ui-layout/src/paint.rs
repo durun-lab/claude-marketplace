@@ -46,7 +46,7 @@ pub struct PaintState {
     pub palette: Palette,
 }
 
-/// 描く関数の入力。領域の描く関数は全部これを見る。描くものを足す PR は、入口の関数を増やさずにフィールドを足し、
+/// 描く関数の入力。領域の描く関数は全部これを見る。描くものを足す PR は公開する関数を増やさずにフィールドを足し、
 /// [`PaintInput::new`] は足したものを無しで置く。
 pub struct PaintInput<'a> {
     pub model: &'a TimelineModel,

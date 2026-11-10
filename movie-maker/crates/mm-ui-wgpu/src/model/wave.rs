@@ -1,4 +1,4 @@
-//! 帯の波形の元。撮影素材のレイヤーとカットに、コンポジションの時刻から波形の時刻への写像を付ける。
+//! 帯の波形の元。撮影素材のレイヤーとカットに、コンポジションの時刻から波形の時刻への換算を付ける。
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -24,7 +24,7 @@ impl<'a> WaveResolver<'a> {
         }
     }
 
-    /// 撮影素材のレイヤー。コンポジションの `start` に素材の `in` が当たる（`mm_eval::source_time` と同じ写像）。
+    /// 撮影素材のレイヤー。コンポジションの `start` に素材の `in` が当たる（`mm_eval::source_time` と同じ換算）。
     /// タイムリマップのあるレイヤーは出さない。
     pub(super) fn layer(&mut self, layer: &Layer) -> Option<WaveSource> {
         if layer.time_remap.is_some() {

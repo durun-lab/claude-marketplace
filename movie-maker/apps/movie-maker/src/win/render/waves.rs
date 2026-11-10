@@ -138,8 +138,8 @@ impl WaveSync {
     }
 }
 
-/// 波形の付属ファイルを読む。読めなければ `None`（無い、ハッシュが違う）。付属ファイルは書き終えてから名前を付けるので、
-/// 書きかけは見えない。
+/// 波形の付属ファイルを読む。読めなければ `None`（無い、ハッシュが違う）。付属ファイルは一時ファイルに書き終えてから名前を
+/// 変えるので、書いている途中の内容は読まない。
 fn read(path: &Path, hash: &str) -> Option<Peaks> {
     let sidecar = read_sidecar(path, hash).ok()?;
     let SidecarBody::Waveform(w) = sidecar.body else {

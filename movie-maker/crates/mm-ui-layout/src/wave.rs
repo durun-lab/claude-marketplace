@@ -11,7 +11,7 @@ use crate::keymarks::MARK_PX;
 use crate::rows::RowHeight;
 use crate::time_view::TimeView;
 
-/// 見た目の振幅の 1（フルスケール）に当たる 1 バイトの値。帯の波形は高さ 26 論理ピクセルまでなので、255 段で足りる。
+/// 見た目の振幅の 1（フルスケール）に当たる 1 バイトの値。帯の波形は高さ 26 論理ピクセルまでなので、255 階調で足りる。
 const FULL_SCALE: f32 = 255.0;
 
 /// 帯の波形の元。コンポジションの時刻 `comp_time` に波形の時刻 `wave_time`（秒）が当たり、波形は `speed` 倍の速さで進む。
@@ -33,11 +33,11 @@ impl WaveSource {
 }
 
 /// 素材 1 つのピーク。見た目の振幅（ピークの平方根。話し声の小さな音も見えるよう持ち上げる）を 1 バイトに丸め、
-/// ズームごとに粗さを変えられるよう、2 個ずつの最大を重ねた段を持つ（作るのは読み込みの 1 回だけ）。
+/// ズームごとに粗さを変えられるよう、2 個ずつの最大を重ねた階層を持つ（作るのは読み込みの 1 回だけ）。
 #[derive(Debug, PartialEq)]
 pub struct Peaks {
     per_second: f64,
-    /// 段 `k` の要素は、元のピーク `2^k` 個の最大。段 0 は全チャンネルの最大。
+    /// 階層 `k` の要素は、元のピーク `2^k` 個の最大。階層 0 は全チャンネルの最大。
     levels: Vec<Vec<u8>>,
 }
 
@@ -64,7 +64,7 @@ impl Peaks {
     }
 
     /// 波形の時刻 `[from, to)`（秒）の見た目の振幅（0..=1）の最大。範囲が 1 個に満たないときは、含まれるピーク 1 個。
-    /// 範囲の外は 0。段の境に揃えて引くので、粗い範囲では両端の外のピークを少し含む。
+    /// 範囲の外は 0。階層の境に揃えて引くので、粗い範囲では両端の外のピークを少し含む。
     pub fn max_in(&self, from: f64, to: f64) -> f32 {
         let len = self.levels[0].len();
         let first = (from * self.per_second).floor().max(0.0) as usize;
@@ -89,7 +89,7 @@ fn display_byte(peak: f32) -> u8 {
     (peak.clamp(0.0, 1.0).sqrt() * FULL_SCALE).round() as u8
 }
 
-/// 波形の使い回しの鍵。描く矩形を作り直すかを決める入力で、これが同じなら前に作った矩形を使い回す。
+/// 波形の使い回しのキー。描く矩形を作り直すかを決める入力で、これが同じなら前に作った矩形を使い回す。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct ReuseKey {
     pub time: TimeView,
@@ -102,7 +102,7 @@ pub(crate) struct ReuseKey {
 #[derive(Debug, Default)]
 pub struct Waves {
     peaks: HashMap<Arc<str>, Peaks>,
-    /// 前に作った矩形と、そのときの使い回しの鍵。
+    /// 前に作った矩形と、そのときの使い回しのキー。
     last_built: RefCell<Option<(ReuseKey, Arc<[Quad]>)>>,
 }
 
@@ -113,7 +113,7 @@ impl Waves {
         self.invalidate();
     }
 
-    /// モデルや行の高さが変わったときに、使い回しを捨てる（使い回しの鍵に入らない入力）。
+    /// モデルや行の高さが変わったときに、使い回しを捨てる（使い回しのキーに入らない入力）。
     pub fn invalidate(&mut self) {
         *self.last_built.get_mut() = None;
     }
@@ -168,7 +168,7 @@ pub(crate) struct Columns {
 impl Columns {
     /// 横 `[x0, x1)`（Timeline の座標）を覆う列。`row_x` は行の領域の左端（時刻 `time.origin` の x）。
     pub(crate) fn covering(time: &TimeView, row_x: f32, (x0, x1): (f32, f32), step: f32) -> Self {
-        // 時刻 0 の x。f32 では長いコンポジションの後ろで桁が落ちるので、f64 で求める。
+        // 時刻 0 の x。f32 では長いコンポジションの後ろで精度が足りないので、f64 で求める。
         let zero = f64::from(row_x) - time.origin * time.px_per_sec;
         let first = ((f64::from(x0) - zero) / f64::from(step)).floor();
         let left = (zero + first * f64::from(step)) as f32;

@@ -1,15 +1,15 @@
 //! GPU のデバイスを同時に作るプロセスの数を、PC 全体で絞る。
 //!
 //! 多くのプロセス（並べて回すテストと、別の worktree のテスト）が同時に D3D12 のデバイスを作ると、VRAM に余裕があっても
-//! デバイスの作成が `Not enough memory left`（E_OUTOFMEMORY）や `D3D12CreateDevice` の失敗で落ちる。作り終えたデバイスが
-//! いくつあっても落ちないので、作る間だけ枠を 1 つ持つ。枠は名前付きのミューテックスで、持ち主のプロセスが落ちても OS が放す。
+//! デバイスの作成が `Not enough memory left`（E_OUTOFMEMORY）や `D3D12CreateDevice` で失敗する。作り終えたデバイスが
+//! いくつあっても失敗しないので、作る間だけ枠を 1 つ持つ。枠は名前付きのミューテックスで、持ち主のプロセスがクラッシュしても OS が放す。
 
-/// 同時にデバイスを作れるプロセスの数。4 なら mm-ui-wgpu の結合テストを 4 本並べて（各 48 スレッド）回しても落ちず、
+/// 同時にデバイスを作れるプロセスの数。4 なら mm-ui-wgpu の結合テストを 4 本並べて（各 48 スレッド）回しても失敗せず、
 /// 1 本で回す時間も変わらない。
 #[cfg(windows)]
 const SLOTS: usize = 4;
 
-/// デバイスを作る枠。作る間だけ持ち、落とすと放す（中身は落とすときだけ使う）。
+/// デバイスを作る枠。作る間だけ持ち、破棄すると放す（中身は破棄するときだけ使う）。
 pub(crate) struct DeviceSlot {
     #[cfg(windows)]
     _held: Option<win::Held>,
@@ -37,7 +37,7 @@ mod win {
         index: usize,
     }
 
-    /// `count` 個のミューテックスのどれかが空くまで待って持つ。前の持ち主が落ちて放されたもの（abandoned）も持てる。
+    /// `count` 個のミューテックスのどれかが空くまで待って持つ。前の持ち主がクラッシュして放されたもの（abandoned）も持てる。
     pub(super) fn acquire(count: usize) -> Option<Held> {
         let mut handles = Vec::with_capacity(count);
         for i in 0..count {
