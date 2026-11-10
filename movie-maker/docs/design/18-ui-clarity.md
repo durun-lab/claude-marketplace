@@ -216,7 +216,7 @@ Z2 で決めたこと（新しく設計したもの）:
 - キーの名前の決まりは Z1 が `keys.rs` の `with_modifiers` と `transport.js` の `keyName` に入れ、後の PR は割り当てだけを足す。修飾キーは Ctrl、Shift、Alt の順に付ける。Shift は英字、数字、矢印に付け（`Shift+KeyZ`、`Shift+ArrowLeft`）、Space、Home、Delete などほかの名前のキーには今どおり Ctrl と一緒のときだけ付ける（Shift+Space は Space）。
 - 記号のキー（`=`、`+`、`-`、`,`、`.`、`[`、`]`、`?` など）はキー配列でキーの位置が違う（JIS のキー配列では `=` が Shift+-）。記号のキーは押された文字を名前にする（サーフェスは `WM_KEYDOWN` の仮想キーを今のキー配列で文字にし〔`ToUnicodeEx`。デッドキーの途中の状態を変えない指定で文字にする〕、WebView は `KeyboardEvent.key`）。Shift は文字に含まれるので、記号の名前には付けない（JIS のキー配列の `Ctrl+=` は Ctrl+Shift+- で押すが、名前は `Ctrl+=`）。サーフェスで文字にするときは Shift だけを押した状態で文字にする（Ctrl を含めると制御文字になる）。画面のキーの見た目も文字で出す。テンキーの数字と記号も押された文字（`1`、`+`）。英字、数字、矢印、Space、Home、End、Delete、Backspace、Enter、Escape、Tab、PageUp、PageDown、Insert、F1〜F12 は code の名前のキーで、`KeyZ` の形の名前にする（サーフェスは仮想キー、WebView は `KeyboardEvent.code` から作る。JIS と US のキー配列で同じ）。
 - 日本語の IME が入っていると、サーフェスの `WM_KEYDOWN` は英字が `VK_PROCESSKEY` で届き、英字のキーが効かない〔推〕。サーフェスの HWND には IME を結び付けない（`ImmAssociateContextEx` に空の入力のコンテキストと flags 0 を渡す）。外すのはサーフェスの HWND だけで、同じ親の子の WebView の HWND と親の IME は変えない（WebView の入力欄が日本語を受けるのは WebView2 の別のプロセスの窓で、ここで外す IME には掛からない〔推〕）。外した HWND が入力のコンテキストを持たず、隣の HWND と親が持ったままなことは単体テストで、JIS のキー配列の記号のキーは `--play-test` で確かめた（2026-11-10）。IME をオンにして打つ確かめは、キーを送る試験では IME を通らないので手で行う。
-- キーを押し続けたときは、ズーム（Zoom In、Zoom Out）と移動（← →、Shift+← →、↑ ↓）だけを、OS のキーの繰り返しのたびに実行する（Premiere と Resolve の矢印とズームのキー〔推〕）。再生と停止（Space、J、K、L）、編集、Full Extent Zoom は、繰り返すと押した回数より多く働くので最初の押下だけ。繰り返すコマンドは `keys.rs` の `REPEATS` に ID で足す。再生スレッドは届いているフレームと秒の移動を足して 1 回で描き、描くのが繰り返しより遅くても、キーを離した後に進み続けない。
+- キーを押し続けたときは、ズーム（Zoom In、Zoom Out）と移動（← →、Shift+← →、↑ ↓、`[` `]`）だけを、OS のキーの繰り返しのたびに実行する（Premiere と Resolve の矢印とズームのキー〔推〕）。再生と停止（Space、J、K、L）、編集、Full Extent Zoom は、繰り返すと押した回数より多く働くので最初の押下だけ。繰り返すコマンドは `keys.rs` の `REPEATS` に ID で足す。再生スレッドは届いているフレームと秒の移動を足して 1 回で描き、描くのが繰り返しより遅くても、キーを離した後に進み続けない。
 
 ## キーフレーム
 
@@ -227,6 +227,16 @@ Z2 で決めたこと（新しく設計したもの）:
 - キーフレームの行: 見出しの ▸ か `U` で、そのレイヤーの行の下に、キーフレームのあるパラメータごとの行を開く（AE のプロパティの行、Resolve の Keyframe Editor）。キーフレームの行の見出しはパラメータの名前（「Transform › Position」）。
 - キーフレームの行の操作: クリックで選び、そのパラメータを Inspector と Graph で選ぶ。ドラッグで `moveKeyframe`（再生位置、帯の端、他のキーフレームに吸い付く）。Delete で `removeKeyframe`。Alt+クリックで、その時刻のパラメータの値を `setKeyframe` で打つ（Resolve の Option+クリック [102]）。値の曲線は Graph に任せる。
 - レイヤーのパラメータのキーフレームの時刻はコンポジションの時刻なので（`mm-render` は合成の時刻 `CompCx::t` で評価し、Inspector も再生位置で評価する）、そのまま描く。再フレーミング（`reframe.<カット>.*`）のキーフレームは素材の時刻なので（[データの形](03-data-model.md)）、カットを通してコンポジションの時刻に変換する。マーカーとキーフレームの行は Timeline のモデル（`mm-ui-wgpu` の `timeline_model`）が、プロジェクトのデータのパラメータから作る。
+
+K2 が決めた形: キーフレームの行の元は `mm-ui-wgpu` の `model/keyframes.rs` の `keyframe_rows` で、キーフレームのあるパラメータを `Layer::comp_time_param_paths`（`shiftLayer` が動かす一覧と同じもの。Inspector の区画の順）で並べ、その後に再フレーミングの行を置く。Timeline のモデル（`Item::keyframe_rows`）と、アプリが行の添字から操作を作る所（`apps/movie-maker/src/win/keyframe_edit.rs`）が同じ並びを見る。行の高さは 20 論理ピクセル（`KEYFRAME_ROW_H`）、ひし形の一辺は 11（`ROW_DIAMOND_PX`。帯のマーカーの 9 より大きくし、ドラッグで掴みやすくする）。開いたレイヤーの ID は `RowHeights::keyframe_rows_open` に持ち、`.mm/view.json` の `keyframeRowsOpen` に置く。`Rows::of` が開いた行を数えて上端を出すので、当たり判定、描画、文字、`verify_place.rs` が同じ位置を見る。`U` は選んだレイヤーの行を開閉し、選んでいなければキーフレームのあるレイヤーを全部開く（全部開いていれば全部閉じる）。先例から採ったのは、AE のプロパティの行と U（選んだレイヤー、無ければ全部のレイヤーのキーフレームのあるプロパティを出す）[98]、Resolve の Keyframe Editor の行と Option+クリック、`[` と `]` [102]、Premiere と AE の Delete でキーフレームを消すこと。先例が解消しない点は、次のように新しく決めた。
+
+- 再フレーミングのパラメータはカットごとにあり、時刻は素材の時刻なので、同じ名前のパラメータを全部のカットで 1 本の行（「Reframe › Position」）にまとめ、キーフレームはカットとレイヤーを通してコンポジションの時刻にし、カットの範囲に映るものだけを置く。ドラッグはそのカットの範囲（最後のフレームの始まりまで）に留める。タイムリマップのあるレイヤーは、カットの帯（速さだけで置く）とキーフレームの位置が食い違うので、再フレーミングの行を出さない。
+- Delete はカットの Lift（`clip.lift`）と Remove Keyframe（`timeline.remove_keyframe`）の 2 つに割り当て、`keys::command_now` が押せる最初のコマンドを実行する（VS Code のキーの割り当ての when 句と同じ考え [120]）。キーフレームを選ぶとカットの選択を外すので、2 つが同時に押せることはない。
+- 選んだキーフレームはレイヤーの ID、行の名前、時刻で持ち（`controller/keyframe_rows.rs` の `Picked`）、操作の後にモデルが変わると探し直す（行の添字は行の並びが変わるとずれるため）。選んだ行のパラメータのパスは `Shared::keyframes` に置き、`mm:layer-selected` の `param`（パスと通し番号）で Inspector に送る。Inspector は通し番号が変わったときだけパラメータを選び直し、同じ選択を送り直しても Inspector で選び直したパラメータを上書きしない。Graph は Inspector で選んだパラメータを描くので、同じパラメータになる。
+- ドラッグは Z2 のスナップの目標（再生位置、帯の端、帯のマーカー）に吸い付き、自分の行のキーフレームは目標から除く（動かしているキーフレーム自身に吸い付かないため）。離したとき半フレーム以上動いていれば 1 回の `moveKeyframe` にし、同じ行のキーフレームがある時刻へは動かさない。Esc で取りやめる。
+- Alt+クリックで打つキーフレームは、Inspector のキーフレームの追加と同じく、その時刻の評価値を持ち、補間は直前のキーフレームから引き継ぐ（無ければ数値、ベクトル、色は Linear、ほかは Hold）。
+- `[` と `]` は前後の帯の端（Z1）と同じ止まる所の計算（`stop_target`）にキーフレームの時刻を渡し、押し続けで繰り返す（`REPEATS`）。
+- コマンドの押せる・押せないの判断（`Ready`）は `commands/ready.rs` に置き、`commands.rs` を 500 行に収める。
 
 ### Inspector
 
@@ -335,7 +345,7 @@ Z2 で決めたこと（新しく設計したもの）:
 | ズーム | Zoom In (=) / Zoom Out (-) / Full Extent Zoom (Shift+Z) | Zoom In / Zoom Out [94] | Full Extent Zoom、Shift+Z [100] |
 | 行の高さ | Track Height: Small / Medium / Large | 見出しの境界のドラッグ [95] | Video track height [99] |
 | レイヤーの見出し | Enable Layer / Lock Layer / Mute / Solo / Shy | Toggle Track Output / Toggle Track Lock [96] | Enable Track / Lock Track / Mute / Solo [99] |
-| キーフレーム | Add/Remove Keyframe / Go to Previous Keyframe ([) / Go to Next Keyframe (]) / Show Keyframe Editor (U) / Show Only Keyframed Properties | Add/Remove Keyframe、Show Video Keyframes、Show Only Keyframed Properties [97] | Show Keyframe Editor、[ と ] [102][103] |
+| キーフレーム | Add/Remove Keyframe / Remove Keyframe (Delete) / Go to Previous Keyframe ([) / Go to Next Keyframe (]) / Show Keyframe Editor (U) / Show Only Keyframed Properties | Add/Remove Keyframe、Show Video Keyframes、Show Only Keyframed Properties [97] | Show Keyframe Editor、[ と ] [102][103] |
 | 取り消し | Undo (Ctrl+Z) / Redo (Ctrl+Y) | — | Undo / Redo [103] |
 | 割り付け | Reset UI Layout | Reset to Saved Layout [96] | Reset UI Layout [101] |
 | キーの一覧 | Keyboard Shortcuts (?) | Keyboard Shortcuts [94] | Keyboard Customization [101] |
