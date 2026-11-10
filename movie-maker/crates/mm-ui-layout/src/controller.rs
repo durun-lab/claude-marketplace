@@ -102,11 +102,8 @@ enum Drag {
         mods: Mods,
         from: f64,
     },
-    /// 見出しの縦のドラッグ。`grab_y` は押した縦の位置。
-    Header {
-        index: usize,
-        grab_y: f32,
-    },
+    /// 見出しの縦のドラッグ。
+    Header(header_drag::HeaderDrag),
     /// スクロールボックスのドラッグ。`grab_offset` は押した点の、スクロールボックスの上端からの距離。
     Thumb {
         grab_offset: f32,
@@ -140,8 +137,6 @@ pub struct TimelineController {
     pointer: (f32, f32),
     /// ドラッグで最後に返した編集。離したときの確定にそのまま使う。
     last_edit: Option<(EditKind, f64)>,
-    /// 見出しのドラッグで入る行の境目。動き始めてから離すまで。
-    drop_slot: Option<usize>,
     drag: Drag,
     /// 全体表示のコマンドで全体表示にしたときの、全体表示とその前の表示。
     full_extent: Option<FullExtent>,
@@ -163,7 +158,6 @@ impl TimelineController {
             snap_held: false,
             pointer: (0.0, 0.0),
             last_edit: None,
-            drop_slot: None,
             drag: Drag::None,
             full_extent: None,
         }
@@ -233,7 +227,7 @@ impl TimelineController {
             snap: self.snap,
             preview: self.last_edit,
             drag_tooltip: self.drag_tooltip(),
-            header_drop: self.drop_slot,
+            header_drop: self.header_drop(),
             palette: Palette::DEFAULT,
         }
     }
@@ -257,6 +251,7 @@ impl TimelineController {
                 shift,
             } => {
                 self.wheel((x, y), dy, (ctrl, shift), model.duration);
+                self.follow_scroll(model.items.len());
                 if self.drag == Drag::None {
                     self.hover = hit_test(model, &self.viewport(), x, y);
                 }
@@ -406,10 +401,7 @@ impl TimelineController {
                 Vec::new()
             }
             Drag::Scrub => vec![Action::Seek(self.seek_at(x, model))],
-            Drag::Header { grab_y, .. } => {
-                self.drag_header(grab_y, y, model.items.len());
-                Vec::new()
-            }
+            Drag::Header(drag) => self.drag_header(drag, y, model.items.len()),
             Drag::Thumb { grab_offset } => {
                 let content = self.rows.content_height();
                 self.scroll_y = scroll_for_thumb(self.layout.scrollbar, content, y - grab_offset);
@@ -448,13 +440,11 @@ impl TimelineController {
     }
 
     fn up(&mut self, model: &TimelineModel) -> Vec<Action> {
-        let (drag, last, slot) = (self.drag, self.last_edit, self.drop_slot);
+        let (drag, last) = (self.drag, self.last_edit);
         self.end_drag();
-        if let Drag::Header { index, .. } = drag {
-            return self.release_header(index, slot);
-        }
         let frame = frame_secs(model);
         match (drag, last) {
+            (Drag::Header(header), _) => header.release(),
             // 動かさずに離したクリックは編集にしない。
             (Drag::Edge { .. } | Drag::Body { .. }, Some((kind, by)))
                 if by.abs() >= frame / 2.0 =>
