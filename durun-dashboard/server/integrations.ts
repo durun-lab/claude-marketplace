@@ -674,7 +674,7 @@ export const jiraBase = (): string | undefined => JIRA_BASE && JIRA_AUTH && JIRA
 type Adf = {
   type?: string;
   text?: string;
-  attrs?: { text?: string; url?: string; shortName?: string; level?: number; state?: string };
+  attrs?: { id?: string; text?: string; url?: string; shortName?: string; level?: number; state?: string };
   marks?: { type?: string; attrs?: { href?: string } }[];
   content?: Adf[];
 };
@@ -718,6 +718,36 @@ export const adfText = (node: Adf | null | undefined): string => {
   if (node.type === 'codeBlock') return `\`\`\`\n${inner}\n\`\`\`\n\n`;
   return BLOCKS.has(node.type ?? '') ? `${inner}\n\n` : inner;
 };
+
+const mentions = (node: Adf | undefined, accountId: string): boolean => (node?.type === 'mention' && node.attrs?.id === accountId) || !!node?.content?.some((c) => mentions(c, accountId));
+
+export type JiraMention = { url: string; key: string; summary?: string; text: string };
+
+type CommentsBody = { comments?: { id: string; author?: { accountId?: string; displayName?: string }; body?: Adf }[] };
+
+const JIRA_MENTIONS_MAX_AGE = 60_000;
+// 直近 1 日に更新した課題のうち、コメントで自分にメンションした課題を、更新が新しい順にこの件数まで読む。
+const JIRA_MENTION_ISSUES = 20;
+// 課題ごとに、新しいコメントからこの件数まで見る。
+const JIRA_MENTION_COMMENTS = 20;
+
+/** コメントでの自分へのメンションを、課題の更新が新しい順に読む。自分で書いたコメントは除く。 */
+export const jiraMentions = (): Promise<JiraMention[]> =>
+  cached('jira-mentions-v1', { maxAge: JIRA_MENTIONS_MAX_AGE }, async () => {
+    const [{ accountId }, issues] = await Promise.all([
+      jiraFetch<{ accountId: string }>('myself'),
+      searchJira('comment ~ currentUser() AND updated >= -1d ORDER BY updated DESC', JIRA_MENTION_ISSUES, 'summary'),
+    ]);
+    const lists = await Promise.all(
+      issues.map(async (issue) => {
+        const { comments = [] } = await jiraFetch<CommentsBody>(`issue/${encodeURIComponent(issue.key)}/comment?orderBy=-created&maxResults=${JIRA_MENTION_COMMENTS}`);
+        return comments
+          .filter((c) => c.author?.accountId !== accountId && mentions(c.body, accountId))
+          .map((c) => ({ url: `${browseUrl(issue.key)}?focusedCommentId=${c.id}`, key: issue.key, summary: issue.summary, text: `${c.author?.displayName ?? ''}: ${adfText(c.body).trim()}` }));
+      }),
+    );
+    return lists.flat();
+  });
 
 type JiraIssueBody = {
   fields?: {

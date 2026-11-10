@@ -11,10 +11,10 @@ import { firstHeading } from '../shared/markdown.ts';
 import { GOOGLE_HOME_PATH, GOOGLE_SEARCH_PATH, RETRO_PATH, WIKIPEDIA_PATH, YAHOO_HOME_PATH, YAHOO_SEARCH_PATH, siteOfFrame } from '../shared/retro.ts';
 import { type Focus, askDolphin } from './assistant.ts';
 import { allowRequest } from './access.ts';
-import { answerAuth, loginClaude } from './auth.ts';
+import { answerAuth, authProvider, loginClaude, requestAuth } from './auth.ts';
 import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
-import { bump, saveCache } from './cache.ts';
+import { bump, forgetCached, saveCache } from './cache.ts';
 import { CLAUDE_DIR, borrowSkills, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readLiveSessions, forgetStat, readSubagents, saveLogSummaries, summarizeLog, trustWatchedDir } from './claude.ts';
 import { allowPermission, allowPermissions, answerCommand, runCommands, answerQuestion, archiveSession, compactSession, discardSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, retryRemovals, sendMessage, sendQueued, SessionStateError, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
@@ -32,7 +32,7 @@ import { consultWorkflow, runWorkflow, setWorkflowEnabled, startWorkflows, updat
 import { harness, setHarnessToggle } from './harness.ts';
 import { fileCandidates, listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
-import { channelIdOf, slackChannels, slackConversation, slackKeyOf, slackTargetOf } from './slack.ts';
+import { channelIdOf, onSlackAuthExpired, slackChannels, slackConversation, slackKeyOf, slackTargetOf } from './slack.ts';
 import { findTitle, pageTitleOf } from './pageTitle.ts';
 import { badgeOf, badgePr, cachedPr, gitDiff, githubAttachment, githubInbox, githubSearch, inRepo, jiraBase, jiraDetail, jiraList, jiraRefs, loadBadge, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, repoRefs, setPrViewed, transitionJira, treeOf } from './integrations.ts';
 import { answerOffline, checkLimits, onTranscriptChange, setAutoContinue } from './limitResume.ts';
@@ -513,8 +513,32 @@ const viaGh = async <T,>(what: string, call: () => Promise<T>): Promise<T> => {
 /** 人間が「更新」を押したか。外部の情報源から読む値を、覚えた値を使わずに読み直す。 */
 const wantsFresh = (url: URL): boolean => url.searchParams.has('fresh');
 
+// 人間が Slack の再接続を断ったら、「更新」を押すまで尋ね直さない。メンションのワークフローが毎分読むため。
+let slackReconnectDeclined = false;
+// 接続済みと答えたのに読めないときに、尋ねては読み直すのを繰り返さないよう、尋ねる間を空ける。
+const SLACK_RECONNECT_GAP_MS = 60_000;
+let slackReconnectAt = 0;
+
+onSlackAuthExpired((server) => {
+  if (slackReconnectDeclined || Date.now() - slackReconnectAt < SLACK_RECONNECT_GAP_MS) return;
+  const provider = authProvider('mcp', server, undefined);
+  if (!provider) return;
+  void requestAuth(provider).then(
+    ({ ok }) => {
+      slackReconnectAt = Date.now();
+      slackReconnectDeclined = !ok;
+      // 読めなかった値を忘れて、ウィジェットに読み直させる。
+      if (ok) forgetCached(/^slack-/);
+    },
+    () => {
+      slackReconnectAt = Date.now();
+    },
+  );
+});
+
 /** 「スレッド」のウィジェットが、登録した Slack のスレッドかチャンネルの URL から会話を読む。 */
 const slackRead = (url: URL): Promise<SlackConversation> => {
+  if (wantsFresh(url)) slackReconnectDeclined = false;
   const target = slackTargetOf(url.searchParams.get('url') ?? '');
   if (!target) throw new HttpError(400, SLACK_REF_HINT);
   return viaGh('Slack を読めません', () => slackConversation(target, wantsFresh(url)));
@@ -1342,7 +1366,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/assistant$/, async (_, b) => askDolphin(await logsReady.then(buildSnapshot), toMessages(b), await focusOf(b)), HAIKU_MS],
   [/^\/api\/learn$/, (_, b) => updateLearn({ scheduled: field<boolean>(b, 'scheduled', 'boolean') })],
   [/^\/api\/learn\/run$/, () => learnNow()],
-  [/^\/api\/workflows\/consult$/, (_, b) => consultWorkflow(optionalString(b, 'id'))],
+  [/^\/api\/workflows\/consult$/, (_, b) => consultWorkflow(optionalString(b, 'id')), CLAUDE_MS],
   [/^\/api\/workflows\/([\w-]+)\/run$/, ([, id = '']) => runWorkflow(id)],
   [/^\/api\/workflows\/([\w-]+)\/settings$/, ([, id = ''], b) => updateWorkflow(id, b)],
   [/^\/api\/workflows\/([\w-]+)\/enabled$/, ([, id = ''], b) => setWorkflowEnabled(id, field<boolean>(b, 'enabled', 'boolean'))],

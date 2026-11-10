@@ -6,7 +6,7 @@ import { tempDir } from './tmp.ts';
 
 // 実際の定義と状態に触れないよう、データの置き場所を一時ディレクトリに向けてから読み込む。
 process.env.DURUN_DASHBOARD_DATA_DIR = tempDir('durun-dashboard-workflow-');
-const { parseWorkflows, scheduleDue, updateWorkflow, WORKFLOWS_FILE } = await import('../server/workflow.ts');
+const { flushBursts, parseWorkflows, scheduleDue, updateWorkflow, WORKFLOWS_FILE } = await import('../server/workflow.ts');
 
 const cwd = path.resolve('work');
 const def = (extra: object = {}) => ({ id: 'daily', cwd, prompt: '朝の確認', triggers: [{ kind: 'schedule', at: '09:00' }], ...extra });
@@ -23,6 +23,22 @@ test('引き継ぐモードと同時数と、レビュー依頼とメンショ�
   assert.equal(workflows[0]?.maxSessions, 3);
   assert.equal(workflows[0]?.compact, true);
   assert.deepEqual(workflows[0]?.triggers, [{ kind: 'github-review' }, { kind: 'slack-mention' }, { kind: 'feedback' }, { kind: 'schedule', at: '18:30', days: [1, 5] }]);
+});
+
+test('メンションのトリガーは、正の整数のバースト時間だけを読む', () => {
+  const triggers = [{ kind: 'jira-mention', burstMinutes: 5 }, { kind: 'slack-mention', burstMinutes: 0 }];
+  assert.deepEqual(parseWorkflows(JSON.stringify({ workflows: [def({ triggers })] })).workflows[0]?.triggers, [{ kind: 'jira-mention', burstMinutes: 5 }, { kind: 'slack-mention' }]);
+});
+
+test('バーストは、最後のメンションからバースト時間が過ぎたら 1 つにまとめて渡す', () => {
+  const w = parseWorkflows(JSON.stringify({ workflows: [def({ triggers: [{ kind: 'slack-mention', burstMinutes: 5 }] })] })).workflows[0];
+  assert.ok(w);
+  const run = { queue: [], bursts: { 'slack-mention': { texts: ['a', 'b'], lastAt: 0 } } };
+  assert.deepEqual(flushBursts(w, run, 4 * 60_000), []);
+  const [text] = flushBursts(w, run, 5 * 60_000);
+  assert.ok(text?.startsWith('2 件のメンションをまとめて'));
+  assert.ok(text?.endsWith('a\n\n---\n\nb'));
+  assert.deepEqual(run.bursts, {});
 });
 
 test('compact は引き継ぐモードでだけ読む', () => {
