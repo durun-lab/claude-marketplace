@@ -1,5 +1,5 @@
 //! `--play-test` の見出しの通し。実際のウィンドウへのクリックとドラッグで、有効、ロック、Mute のボタン（取り消し 1 回で戻る）、
-//! 見出しのドラッグ（Esc での取りやめと、離したときの moveLayer）、Shy で行を隠すことを確かめ、段ごとにスクリーンショットを残す。
+//! 見出しのドラッグ（Esc での取りやめと、離したときの moveLayer）、Shy で行を隠すことを確かめ、手順ごとにスクリーンショットを残す。
 
 use mm_doc::Layer;
 use mm_ui_layout::{HeaderButton, TimelineModel};
@@ -65,7 +65,7 @@ fn button_step(
         Some((row, at))
     });
     let Some((row, at)) = found else {
-        log.step(name, false, json!("見出しのボタンの位置を引けない"));
+        log.step(name, false, json!("見出しのボタンの位置を求められない"));
         return;
     };
     let before = layer_of(shared, &row.id);
@@ -125,12 +125,12 @@ fn reorder(env: &Env<'_>) -> Option<Reorder> {
     })
 }
 
-/// 見出しを `from` からつかんで `to` まで引き、Esc で取りやめて並びが変わらないこと、
+/// 見出しを `from` で掴んで `to` までドラッグし、Esc で取りやめて並びが変わらないこと、
 /// 離すと 1 回の操作で前後が入れ替わり、取り消し 1 回で戻ることを確かめる。
 fn reorder_step(env: &Env<'_>, log: &mut Log) {
     let (shared, hwnd) = (env.shared, env.surface_hwnd);
     let Some(r) = reorder(env) else {
-        log.step("header_drag", false, json!("見出しの位置を引けない"));
+        log.step("header_drag", false, json!("見出しの位置を求められない"));
         return;
     };
     let before = order(shared);
@@ -168,12 +168,12 @@ fn reorder_step(env: &Env<'_>, log: &mut Log) {
     log.step("undo_header_drag", undone, json!({}));
 }
 
-/// 見出しを押してレイヤーを選び、View > Shy Selected Layers で印を付け（見出しに印が出る）、Hide Shy Layers で
+/// 見出しを押してレイヤーを選び、View > Shy Selected Layers で Shy のフラグを立て（見出しの名前の色が変わる）、Hide Shy Layers で
 /// 行を隠し、戻す。
 fn shy_step(env: &Env<'_>, log: &mut Log) {
     let (shared, hwnd) = (env.shared, env.surface_hwnd);
     let Some(r) = reorder(env) else {
-        log.step("shy_hide", false, json!("見出しの位置を引けない"));
+        log.step("shy_hide", false, json!("見出しの位置を求められない"));
         return;
     };
     // クリックが届いたことを選択の変化で見分けるため、先に選択を外す（届く前に隠すと、押した行が無くなる）。

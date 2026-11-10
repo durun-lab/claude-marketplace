@@ -80,8 +80,8 @@ pub enum Action {
     Edit { kind: EditKind, by: f64, done: bool },
     /// 見出しのボタンを押した。行の添字とボタン。受け取る側がレイヤーの今の状態から操作にする。
     HeaderButton { index: usize, button: HeaderButton },
-    /// 見出しのドラッグを離した。行 `from` を行の境目 `slot`（0 が先頭の行の上、行の数が最後の行の下）へ動かす。
-    MoveLayer { from: usize, slot: usize },
+    /// 見出しのドラッグを離した。行 `from` を行の境界 `boundary`（0 が先頭の行の上、行の数が最後の行の下）へ動かす。
+    MoveLayer { from: usize, boundary: usize },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

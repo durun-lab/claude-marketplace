@@ -461,8 +461,8 @@ fn snap_step(env: &Env<'_>, log: &mut Log) {
     }
 }
 
-/// Timeline 編集の通しを行って結果を返す。シーケンスのレイヤーが無いプロジェクトでは、シーケンスを編集する工程を
-/// 飛ばし、レイヤーだけで確かめられる見出しの工程を行う。
+/// Timeline 編集の通しを行って結果を返す。シーケンスのレイヤーが無いプロジェクトでは、シーケンスを編集する手順を
+/// スキップし、レイヤーだけで確かめられる見出しの手順を行う。
 pub fn run(env: &Env<'_>) -> Value {
     let mut log = Log::default();
     let has_sequence = env
@@ -476,12 +476,12 @@ pub fn run(env: &Env<'_>) -> Value {
     let mut out = log.into_json();
     if !has_sequence {
         out["skipped"] =
-            json!("シーケンスのレイヤーが無いので、シーケンスを編集する工程を飛ばした");
+            json!("シーケンスのレイヤーが無いので、シーケンスを編集する手順をスキップした");
     }
     out
 }
 
-/// シーケンスを編集する工程（Insert、カットのドラッグと分割、端のつまみ、スナップ）。
+/// シーケンスを編集する手順（Insert、カットのドラッグと分割、端のつまみ、スナップ）。
 fn sequence_steps(env: &Env<'_>, log: &mut Log) {
     if let Some(asset) = mark_source(env, log) {
         if let Some(id) = insert_step(env, log, &asset) {

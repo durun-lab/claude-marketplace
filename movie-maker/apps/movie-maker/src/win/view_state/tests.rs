@@ -146,7 +146,7 @@ fn 読めないファイルと知らないバージョンは既定に戻し_書�
 }
 
 #[test]
-fn shy_の印と隠すかどうかを書いて戻し_コンポジションごとに持つ() {
+fn shy_のフラグと隠すかどうかを書いて戻し_コンポジションごとに持つ() {
     let tmp = tempfile::tempdir().unwrap();
     let project = json_project(tmp.path());
     let shared = opened(&project, "main");
@@ -168,7 +168,7 @@ fn shy_の印と隠すかどうかを書いて戻し_コンポジションごと
 }
 
 #[test]
-fn 隠さない間は_shy_の印が付いた行も隠さない() {
+fn 隠さない間は_shy_のフラグを立てた行も隠さない() {
     let shy = Shy {
         layers: ["title".to_owned()].into(),
         hide: false,

@@ -95,8 +95,8 @@ impl DocSync {
         ui.select_cut(selected.and_then(|id| self.position_of_cut(&id)));
     }
 
-    /// Shy の印を行に付け（見出しに印を出す）、隠すレイヤーの行をモデルと ID の対応（同じ並び）から外して、
-    /// 外した数をモデルに持たせる。描画と書き出しはプロジェクトのデータを見るので変わらない。
+    /// Shy のフラグをモデルの行に持たせ（見出しが名前の色で示す）、隠すレイヤーの行をモデルと ID の対応（同じ並び）
+    /// から外して、外した数をモデルに持たせる。描画と書き出しはプロジェクトのデータを見るので変わらない。
     fn apply_shy(&mut self, shy: &Shy, model: &mut TimelineModel) {
         for (item, id) in model.items.iter_mut().zip(&self.layer_ids) {
             item.shy = shy.layers.contains(id);
@@ -161,7 +161,9 @@ pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
                 Action::HeaderButton { index, button } => {
                     apply_header_button(shared, doc, index, button);
                 }
-                Action::MoveLayer { from, slot } => apply_move_layer(shared, doc, from, slot),
+                Action::MoveLayer { from, boundary } => {
+                    apply_move_layer(shared, doc, from, boundary)
+                }
             }
         }
     }
@@ -207,7 +209,7 @@ fn apply_header_button(shared: &Arc<Shared>, doc: &DocSync, index: usize, button
 }
 
 /// 見出しのドラッグの確定を `moveLayer` にして適用する。
-fn apply_move_layer(shared: &Arc<Shared>, doc: &DocSync, from: usize, slot: usize) {
+fn apply_move_layer(shared: &Arc<Shared>, doc: &DocSync, from: usize, boundary: usize) {
     let Some(shown) = &doc.shown else { return };
     let Ok(comp) = shown.project.composition(&shown.comp) else {
         return;
@@ -216,7 +218,7 @@ fn apply_move_layer(shared: &Arc<Shared>, doc: &DocSync, from: usize, slot: usiz
         layers: &doc.layer_ids,
         cuts: &doc.cut_ids,
     };
-    if let Some(op) = move_layer_op(from, slot, &ids, comp) {
+    if let Some(op) = move_layer_op(from, boundary, &ids, comp) {
         queue_op(shared, shown.version, op);
     }
 }

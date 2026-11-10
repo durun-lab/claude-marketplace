@@ -411,7 +411,7 @@ fn 無効なレイヤーの見出しに斜線を引く_有効なら引かない(
 }
 
 #[test]
-fn 隠した行があれば角に隠した数を出す_無ければ出さない() {
+fn 隠した行があれば見出しの列の上の角に隠した数を出す_無ければ出さない() {
     let mut m = model(vec![Item::layer(0.0, 5.0, ItemKind::Text, true)]);
     assert!(!labels_of(&m, 0.0)
         .iter()
@@ -425,7 +425,7 @@ fn 隠した行があれば角に隠した数を出す_無ければ出さない(
 }
 
 #[test]
-fn shy_の印の付いた行は名前を_accent_の色にし_角に印の数を同じ色で出す() {
+fn shy_のフラグを立てた行は名前を_accent_の色にし_見出しの列の上の角にその数を同じ色で出す() {
     let text = |id: &str| Item::layer(0.0, 5.0, ItemKind::Text, true).with_id(id);
     let m = model(vec![
         Item {
@@ -438,7 +438,11 @@ fn shy_の印の付いた行は名前を_accent_の色にし_角に印の数を�
     let color = |t: &str| out.iter().find(|l| &*l.text == t).expect(t).color;
     let p = Palette::DEFAULT;
     assert_eq!((color("a"), color("b")), (p.accent, p.label));
-    assert_eq!(color("1 shy"), p.accent, "名前の色が何の印かを読めるように");
+    assert_eq!(
+        color("1 shy"),
+        p.accent,
+        "名前の色が Shy のフラグを示すと読めるように"
+    );
     let selected = PaintState {
         selected: Some(0),
         ..state(0.0)
@@ -452,11 +456,11 @@ fn shy_の印の付いた行は名前を_accent_の色にし_角に印の数を�
         &mut FakeMeasure::default(),
     );
     let a = out.iter().find(|l| &*l.text == "a").unwrap();
-    assert_eq!(a.color, p.accent, "選んだ行でも印の色");
+    assert_eq!(a.color, p.accent, "選んだ行でもフラグの色");
 }
 
 #[test]
-fn 隠しているときは角に隠した数だけを出す() {
+fn 隠しているときは見出しの列の上の角に隠した数だけを出す() {
     let mut m = model(vec![Item::layer(0.0, 5.0, ItemKind::Text, true)]);
     m.hidden = 2;
     let out = labels_of(&m, 0.0);

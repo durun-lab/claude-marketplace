@@ -41,15 +41,15 @@ fn ids(rows: &[&str]) -> Vec<String> {
     rows.iter().map(|s| (*s).to_owned()).collect()
 }
 
-/// Timeline の行 `rows`（上から）で、行 `from` を境目 `slot` に動かして適用した後の、下からの並び。
-fn moved(rows: &[&str], from: usize, slot: usize) -> Option<Vec<String>> {
+/// Timeline の行 `rows`（上から）で、行 `from` を境界 `boundary` に動かして適用した後の、下からの並び。
+fn moved(rows: &[&str], from: usize, boundary: usize) -> Option<Vec<String>> {
     let mut p = stacked();
     let rows = ids(rows);
     let ids = TimelineIds {
         layers: &rows,
         cuts: &[],
     };
-    let op = move_layer_op(from, slot, &ids, &p.compositions[0])?;
+    let op = move_layer_op(from, boundary, &ids, &p.compositions[0])?;
     apply(&mut p, op);
     Some(order(&p).into_iter().map(str::to_owned).collect())
 }
@@ -57,27 +57,27 @@ fn moved(rows: &[&str], from: usize, slot: usize) -> Option<Vec<String>> {
 const ALL_ROWS: [&str; 4] = ["l3", "l2", "l1", "l0"];
 
 #[test]
-fn 一番下の行を先頭の境目へ動かすと_一番前のレイヤーになる() {
+fn 一番下の行を先頭の境界へ動かすと_一番前のレイヤーになる() {
     let after = moved(&ALL_ROWS, 3, 0).unwrap();
     assert_eq!(after, ["l1", "l2", "l3", "l0"]);
 }
 
 #[test]
-fn 先頭の行を行の間の境目へ動かすと_その境目の上の行のすぐ後ろに入る() {
+fn 先頭の行を行の間の境界へ動かすと_その境界の上の行のすぐ後ろに入る() {
     let after = moved(&ALL_ROWS, 0, 3).unwrap();
     assert_eq!(after, ["l0", "l3", "l1", "l2"]);
     let end = moved(&ALL_ROWS, 0, 4).unwrap();
-    assert_eq!(end, ["l3", "l0", "l1", "l2"], "末尾の境目は一番後ろ");
+    assert_eq!(end, ["l3", "l0", "l1", "l2"], "末尾の境界は一番後ろ");
 }
 
 #[test]
-fn 自分の上か下の境目は並びが変わらないので操作にしない() {
+fn 自分の上か下の境界は並びが変わらないので操作にしない() {
     assert_eq!(moved(&ALL_ROWS, 1, 1), None);
     assert_eq!(moved(&ALL_ROWS, 1, 2), None);
 }
 
 #[test]
-fn 隠した行があっても_見えている行の境目を基準に入れる() {
+fn 隠した行があっても_見えている行の境界を基準に入れる() {
     // l2 を Shy で隠した Timeline。l3 を l1 と l0 の間へ動かす。
     let after = moved(&["l3", "l1", "l0"], 0, 2).unwrap();
     assert_eq!(after, ["l0", "l3", "l1", "l2"]);

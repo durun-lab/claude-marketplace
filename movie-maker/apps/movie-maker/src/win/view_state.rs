@@ -55,10 +55,10 @@ struct TimelineView {
     /// スナップの入/切。無ければ入（Premiere と Resolve の既定と同じ）。
     #[serde(default = "snapping_on")]
     snapping: bool,
-    /// Shy の印を付けたレイヤーの ID。
+    /// Shy のフラグを立てたレイヤーの ID。
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     shy: BTreeSet<String>,
-    /// 印の付いた行を Timeline から外す。
+    /// フラグを立てた行を Timeline から外す。
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     hide_shy: bool,
 }
@@ -160,7 +160,7 @@ struct Inner {
     /// `current` をまだ書いていない。
     dirty: bool,
     target: Option<Target>,
-    /// Shy の印と隠すかどうか。
+    /// Shy のフラグと、Shy の行を隠すかどうか。
     shy: Shy,
 }
 

@@ -1,22 +1,22 @@
-//! Shy のコマンド（After Effects の Shy）。印と隠すかどうかは表示の状態（`.mm/view.json`）に置くので、
-//! 操作にならず取り消しの列に入らない。描画スレッドは Shy の状態の通し番号を見て Timeline の行を作り直す。
+//! Shy のコマンド（After Effects の Shy）。Shy のフラグと Shy の行を隠すかどうかは表示の状態（`.mm/view.json`）に
+//! 置くので、操作にならず取り消しのスタックに入らない。描画スレッドは Shy の状態の通し番号を見て Timeline の行を作り直す。
 
 use crate::win::state::Shared;
 
 /// Shy のコマンドの中身。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ShyCommand {
-    /// 印の付いた行を Timeline から外す・戻す（Hide Shy Layers）。
+    /// フラグを立てた行を Timeline から外す・戻す（Hide Shy Layers）。
     HideShyLayers,
-    /// 選んだレイヤーの印を付ける・外す（Shy Selected Layers）。
+    /// 選んだレイヤーの Shy のフラグを立てる・外す（Shy Selected Layers）。
     ShySelectedLayers,
 }
 
 /// 押せるかとチェックの状態を決める今の Shy の状態。
 pub(super) struct ShyReady {
-    /// 選んだレイヤーに印が付いているか。レイヤーを選んでいなければ `None`。
+    /// 選んだレイヤーに Shy のフラグが立っているか。レイヤーを選んでいなければ `None`。
     selected: Option<bool>,
-    /// 印の付いた行を隠している。
+    /// フラグを立てた行を隠している。
     hide: bool,
 }
 

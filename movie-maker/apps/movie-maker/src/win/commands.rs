@@ -304,7 +304,7 @@ struct Ready {
     cut_selected: bool,
     /// スナップの入/切（描画スレッドが置いた表示の状態）。
     snapping: bool,
-    /// Shy の印と隠すかどうか（表示の状態）と、選んでいるレイヤーの印。
+    /// Shy の行を隠すかどうか（表示の状態）と、選んでいるレイヤーの Shy のフラグ。
     shy: shy::ShyReady,
 }
 

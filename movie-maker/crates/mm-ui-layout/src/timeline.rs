@@ -88,7 +88,7 @@ pub struct Item {
     pub enabled: bool,
     /// ロック（`lockLayer`）。Claude の操作経路から守る。
     pub locked: bool,
-    /// Shy の印（View > Shy Selected Layers）。表示の状態なのでプロジェクトのデータからは作らず、アプリが付ける。
+    /// Shy のフラグ（View > Shy Selected Layers）。表示の状態なのでプロジェクトのデータからは作らず、アプリが立てる。
     pub shy: bool,
     /// 音を持てるレイヤーの Mute と Solo。音を持てないレイヤーは `None`。
     pub audio: Option<AudioState>,

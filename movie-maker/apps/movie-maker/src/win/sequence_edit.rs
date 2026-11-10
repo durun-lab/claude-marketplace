@@ -313,13 +313,13 @@ pub fn header_button_op(button: HeaderButton, layer: &Layer) -> Op {
     }
 }
 
-/// 見出しのドラッグの確定。Timeline の行 `from`（Timeline の添字）を行の境目 `slot`（0 が先頭の行の上、行の数が最後の行の下）に入れる
-/// `moveLayer`。並びが変わらなければ `None`。
-/// Timeline の行は上が前のレイヤーで、`moveLayer` の位置は下から数えるので、行の境目の隣のレイヤーの位置から求める。
-/// 隠した行（Shy）や時間軸の壊れた行は Timeline に並ばないので、境目の隣に見えているレイヤーを基準にする。
+/// 見出しのドラッグの確定。Timeline の行 `from`（Timeline の添字）を行の境界 `boundary`（0 が先頭の行の上、行の数が
+/// 最後の行の下）に入れる `moveLayer`。並びが変わらなければ `None`。
+/// Timeline の行は上が前のレイヤーで、`moveLayer` の位置は下から数えるので、行の境界の隣のレイヤーの位置から求める。
+/// 隠した行（Shy）や時間軸の壊れた行は Timeline に並ばないので、境界の隣に見えているレイヤーを基準にする。
 pub fn move_layer_op(
     from: usize,
-    slot: usize,
+    boundary: usize,
     ids: &TimelineIds<'_>,
     comp: &Composition,
 ) -> Option<Op> {
@@ -328,8 +328,8 @@ pub fn move_layer_op(
     let current = order.iter().position(|id| id == layer)?;
     order.remove(current);
     let position = |id: &String| order.iter().position(|o| *o == id.as_str());
-    let index = match slot.checked_sub(1) {
-        // 境目の上の行のすぐ後ろ（下）。
+    let index = match boundary.checked_sub(1) {
+        // 境界の上の行のすぐ後ろ（下）。
         Some(above) => position(ids.layers.get(above)?)?,
         // 先頭の行の前（上）。
         None => position(ids.layers.first()?)? + 1,

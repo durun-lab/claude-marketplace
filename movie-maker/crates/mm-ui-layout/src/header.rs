@@ -1,6 +1,6 @@
 //! レイヤーの見出し。行ごとに、左から種類の色の帯、種類の略号、名前、有効、ロック、Mute、Solo のボタン、
 //! キーフレームの開閉（▸）を並べる。
-//! 名前はレイヤーの ID（レイヤーに名前の欄は無く、素材の名前は帯に出す）。Shy の印の付いたレイヤーは名前を accent の色で
+//! 名前はレイヤーの ID（レイヤーに名前の欄は無く、素材の名前は帯に出す）。Shy のフラグを立てたレイヤーは名前を accent の色で
 //! 描く。見出しの列の上の角には再生位置のタイムコードと、Shy の行の数を出す。座標は Timeline の矩形の左上を (0, 0) とする。
 //!
 //! 見出しの部品の矩形は [`cells`] 1 か所で決め、描く関数（`paint/header.rs`）と文字（[`labels`]）が同じ値を見る。
@@ -226,8 +226,8 @@ pub(crate) fn labels(
     out
 }
 
-/// 見出しの列の上の角の右に出す Shy の行の数。隠していれば隠した数、隠していなければ印の付いた行の数を、印の付いた
-/// 名前と同じ accent の色で出す（名前の色が何の印かを読めるように）。どちらも無ければ `None`。
+/// 見出しの列の上の角の右に出す Shy の行の数。隠していれば隠した数、隠していなければフラグを立てた行の数を、フラグを立てた
+/// 名前と同じ accent の色で出す（名前の色が Shy のフラグを示すと読めるように）。どちらも無ければ `None`。
 fn shy_count(model: &TimelineModel, p: &Palette) -> Option<(Arc<str>, Color)> {
     if model.hidden > 0 {
         return Some((format!("{} hidden", model.hidden).into(), p.label));
@@ -259,7 +259,7 @@ struct Placer<'a> {
 
 impl Placer<'_> {
     /// 行 1 本の略号、名前、Mute と Solo の字。無効なレイヤーの略号と名前は薄くする。
-    /// Shy の印の付いた名前は、選んだ行でも accent の色にして、印を付けた結果をすぐ見せる。
+    /// Shy のフラグを立てた名前は、選んだ行でも accent の色にして、フラグを立てた結果をすぐ見せる。
     fn row(&mut self, item: &Item, c: Cells, selected: bool) {
         let p = self.palette;
         let fade = |color: Color| {

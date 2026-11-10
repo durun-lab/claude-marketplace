@@ -1,4 +1,4 @@
-//! Shy の印と隠す行を Timeline のモデルに当てる所の試験。
+//! Shy のフラグと隠す行を Timeline のモデルに反映する所の試験。
 
 use mm_ui_layout::{Item, ItemKind};
 
@@ -22,27 +22,27 @@ fn rows() -> (DocSync, TimelineModel) {
 }
 
 #[test]
-fn 隠さない間は印を付けた行に印を出すだけで_行は外さない() {
+fn 隠さない間はフラグを立てた行にフラグを持たせるだけで_行は外さない() {
     let (mut doc, mut model) = rows();
     let shy = Shy {
         layers: ["b".to_owned()].into(),
         hide: false,
     };
     doc.apply_shy(&shy, &mut model);
-    let marks: Vec<bool> = model.items.iter().map(|i| i.shy).collect();
-    assert_eq!(marks, [false, true, false]);
+    let flags: Vec<bool> = model.items.iter().map(|i| i.shy).collect();
+    assert_eq!(flags, [false, true, false]);
     assert_eq!((model.hidden, doc.layer_ids.len()), (0, 3));
 }
 
 #[test]
-fn 隠すと印の行をモデルと_id_の対応から同じだけ外し_外した数を持つ() {
+fn 隠すとフラグの行をモデルと_id_の対応から同じだけ外し_外した数を持つ() {
     let (mut doc, mut model) = rows();
     let shy = Shy {
         layers: ["b".to_owned(), "gone".to_owned()].into(),
         hide: true,
     };
     doc.apply_shy(&shy, &mut model);
-    assert_eq!(model.hidden, 1, "無くなったレイヤーの印は数えない");
+    assert_eq!(model.hidden, 1, "無くなったレイヤーのフラグは数えない");
     assert_eq!(model.items.len(), 2);
     assert_eq!(doc.layer_ids, ["a", "c"]);
     assert_eq!(doc.cut_ids, [Vec::<String>::new(), Vec::new()]);

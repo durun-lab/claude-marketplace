@@ -1,17 +1,17 @@
-//! Shy（After Effects のレイヤーの Shy）。印を付けたレイヤーの ID と、印の付いた行を Timeline から外すかどうか。
-//! 表示だけの状態で、描画と書き出しは変わらない。操作ではないので取り消しの列に入らず、`.mm/view.json` に置く。
+//! Shy（After Effects のレイヤーの Shy）。Shy のフラグを立てたレイヤーの ID と、フラグを立てた行を Timeline から外すかどうか。
+//! 表示だけの状態で、描画と書き出しは変わらない。操作ではないので取り消しのスタックに入らず、`.mm/view.json` に置く。
 
 use std::collections::BTreeSet;
 use std::sync::atomic::Ordering;
 
 use super::ViewSlot;
 
-/// Shy の印と、隠すかどうか。コンポジションごと。
+/// Shy のフラグと、Shy の行を隠すかどうか。コンポジションごと。
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Shy {
-    /// 印を付けたレイヤーの ID。
+    /// Shy のフラグを立てたレイヤーの ID。
     pub layers: BTreeSet<String>,
-    /// 印の付いた行を Timeline から外す（View > Hide Shy Layers）。
+    /// フラグを立てた行を Timeline から外す（View > Hide Shy Layers）。
     pub hide: bool,
 }
 
@@ -33,7 +33,7 @@ impl ViewSlot {
         self.shy_serial.load(Ordering::SeqCst)
     }
 
-    /// レイヤー `id` の Shy の印を付ける・外す。
+    /// レイヤー `id` の Shy のフラグを立てる・外す。
     pub fn toggle_shy(&self, id: &str) {
         self.change_shy(|shy| {
             if !shy.layers.remove(id) {
@@ -42,7 +42,7 @@ impl ViewSlot {
         });
     }
 
-    /// 印の付いた行を隠す・見せる。
+    /// フラグを立てた行を隠す・見せる。
     pub fn toggle_hide_shy(&self) {
         self.change_shy(|shy| shy.hide = !shy.hide);
     }

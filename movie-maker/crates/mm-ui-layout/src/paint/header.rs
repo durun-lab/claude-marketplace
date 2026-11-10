@@ -113,16 +113,16 @@ fn hovered_button(s: &PaintInput, c: &mut Canvas, (i, item): (usize, &Item), row
     c.push_in(Depth::Back, r, color, s.vp.layout.headers);
 }
 
-/// 見出しのドラッグで入る位置の線。見出しの列と行の領域を横に貫く。
+/// 見出しのドラッグで入る位置の線。入る位置の行の境界に、見出しの列と行の領域を横に貫いて引く。
 fn drop_line(s: &PaintInput, c: &mut Canvas) {
-    let Some(slot) = s.state.header_drop else {
+    let Some(boundary) = s.state.header_drop else {
         return;
     };
     let Some(last) = s.model.items.len().checked_sub(1) else {
         return;
     };
-    let y = if slot <= last {
-        row_rect(s.vp, slot).y
+    let y = if boundary <= last {
+        row_rect(s.vp, boundary).y
     } else {
         row_rect(s.vp, last).bottom()
     };

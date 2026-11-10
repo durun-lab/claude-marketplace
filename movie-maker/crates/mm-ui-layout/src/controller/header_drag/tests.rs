@@ -58,29 +58,47 @@ fn drag_rows(
 }
 
 #[test]
-fn 縦に動かして離すと_行の境目を指す_move_layer_になる() {
+fn 縦に動かして離すと_行の境界を指す_move_layer_になる() {
     let m = model(4);
     let mut c = ctl(&m);
-    // 行 0 を行 2 の下半分へ。境目 3（行 2 と行 3 の間）に入る。
+    // 行 0 を行 2 の下半分へ。境界 3（行 2 と行 3 の間）に入る。
     let acts = drag_rows(&mut c, &m, 0, (2, 8.0));
-    assert_eq!(acts, vec![Action::MoveLayer { from: 0, slot: 3 }]);
-    // 行 3 を先頭の行の上半分へ。境目 0。
+    assert_eq!(
+        acts,
+        vec![Action::MoveLayer {
+            from: 0,
+            boundary: 3
+        }]
+    );
+    // 行 3 を先頭の行の上半分へ。境界 0。
     let acts = drag_rows(&mut c, &m, 3, (0, -8.0));
-    assert_eq!(acts, vec![Action::MoveLayer { from: 3, slot: 0 }]);
+    assert_eq!(
+        acts,
+        vec![Action::MoveLayer {
+            from: 3,
+            boundary: 0
+        }]
+    );
 }
 
 #[test]
-fn 最後の行より下へ離すと_末尾の境目() {
+fn 最後の行より下へ離すと_末尾の境界() {
     let m = model(3);
     let mut c = ctl(&m);
     let from = y_of(&c, (0, 0.0));
     let below = c.viewport().row(2).bottom() + 20.0;
     let acts = drag(&mut c, &m, from, below);
-    assert_eq!(acts, vec![Action::MoveLayer { from: 0, slot: 3 }]);
+    assert_eq!(
+        acts,
+        vec![Action::MoveLayer {
+            from: 0,
+            boundary: 3
+        }]
+    );
 }
 
 #[test]
-fn 自分の上か下の境目に離しても並びは変わらないので操作にしない() {
+fn 自分の上か下の境界に離しても並びは変わらないので操作にしない() {
     let m = model(3);
     let mut c = ctl(&m);
     assert!(drag_rows(&mut c, &m, 1, (1, 10.0)).is_empty());
@@ -100,7 +118,7 @@ fn 少ししか動かさないクリックは選ぶだけで_操作にしない(
 }
 
 #[test]
-fn ドラッグ中は入る位置を出し_取り消すと線も操作も捨てる() {
+fn ドラッグ中は入る位置を出し_取りやめると線も操作も捨てる() {
     let m = model(4);
     let mut c = ctl(&m);
     let (from, to) = (y_of(&c, (0, 0.0)), y_of(&c, (2, -8.0)));
@@ -114,33 +132,45 @@ fn ドラッグ中は入る位置を出し_取り消すと線も操作も捨て�
 }
 
 #[test]
-fn 縦にスクロールした後も_ポインターの下の行の境目に入る() {
+fn 縦にスクロールした後も_ポインターの下の行の境界に入る() {
     let m = model(30);
     let mut c = ctl(&m);
     c.scroll_to(10.0 * ROW_H);
-    // 行 12 を行 14 の下半分へ。境目 15（行の添字はスクロールで変わらない）。
+    // 行 12 を行 14 の下半分へ。境界 15（行の添字はスクロールで変わらない）。
     let acts = drag_rows(&mut c, &m, 12, (14, 8.0));
-    assert_eq!(acts, vec![Action::MoveLayer { from: 12, slot: 15 }]);
+    assert_eq!(
+        acts,
+        vec![Action::MoveLayer {
+            from: 12,
+            boundary: 15
+        }]
+    );
 }
 
 #[test]
-fn 行の領域の上や下へ出すと_見えている端の境目に寄せる() {
+fn 行の領域の上や下へ出すと_見えている端の境界に寄せる() {
     let m = model(30);
     let mut c = ctl(&m);
     c.scroll_to(10.0 * ROW_H);
     let from = y_of(&c, (12, 0.0));
     let area = c.layout().headers;
-    // 目盛りの帯まで上げても、見えていない行 0 から 9 の間には入れず、見えている先頭の行 10 の上の境目。
+    // 目盛りの帯まで上げても、見えていない行 0 から 9 の間には入れず、見えている先頭の行 10 の上の境界。
     let acts = drag(&mut c, &m, from, area.y - 20.0);
-    assert_eq!(acts, vec![Action::MoveLayer { from: 12, slot: 10 }]);
+    assert_eq!(
+        acts,
+        vec![Action::MoveLayer {
+            from: 12,
+            boundary: 10
+        }]
+    );
     let acts = drag(&mut c, &m, from, area.bottom() + 40.0);
-    let [Action::MoveLayer { slot, .. }] = acts[..] else {
+    let [Action::MoveLayer { boundary, .. }] = acts[..] else {
         panic!("{acts:?}");
     };
-    let line = c.viewport().row(slot).y;
+    let line = c.viewport().row(boundary).y;
     assert!(
-        slot > 13 && line <= area.bottom(),
-        "線の見える境目: {slot} {line}"
+        boundary > 13 && line <= area.bottom(),
+        "線の見える境界: {boundary} {line}"
     );
 }
 
@@ -163,11 +193,17 @@ fn ドラッグしたままホイールで縦にスクロールすると_入る�
     c.handle(wheel, &m, 0.0);
     assert_eq!(c.paint_state(0.0).header_drop, Some(8));
     let up = c.handle(PointerEvent::Up, &m, 0.0);
-    assert_eq!(up, vec![Action::MoveLayer { from: 0, slot: 8 }]);
+    assert_eq!(
+        up,
+        vec![Action::MoveLayer {
+            from: 0,
+            boundary: 8
+        }]
+    );
 }
 
 #[test]
-fn 高い_sequence_の行は_その行の縦の中央で上と下の境目が分かれる() {
+fn 高い_sequence_の行は_その行の縦の中央で上と下の境界が分かれる() {
     let mut m = model(3);
     m.items[1] = Item::layer(0.0, 10.0, ItemKind::Sequence, true);
     let mut c = ctl(&m);
@@ -176,7 +212,19 @@ fn 高い_sequence_の行は_その行の縦の中央で上と下の境目が分
     let middle = large.y + large.h / 2.0;
     let (top, bottom) = (y_of(&c, (0, 0.0)), y_of(&c, (2, 0.0)));
     let acts = drag(&mut c, &m, top, middle + 4.0);
-    assert_eq!(acts, vec![Action::MoveLayer { from: 0, slot: 2 }]);
+    assert_eq!(
+        acts,
+        vec![Action::MoveLayer {
+            from: 0,
+            boundary: 2
+        }]
+    );
     let acts = drag(&mut c, &m, bottom, middle - 4.0);
-    assert_eq!(acts, vec![Action::MoveLayer { from: 2, slot: 1 }]);
+    assert_eq!(
+        acts,
+        vec![Action::MoveLayer {
+            from: 2,
+            boundary: 1
+        }]
+    );
 }

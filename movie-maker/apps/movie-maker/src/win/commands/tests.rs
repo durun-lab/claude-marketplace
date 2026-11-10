@@ -172,7 +172,7 @@ fn snapping_はメニューからもキーからも描画スレッドへ入_切�
 }
 
 #[test]
-fn shy_は選んだレイヤーに印を付け_隠すコマンドと合わせて表示の状態を変える() {
+fn shy_は選んだレイヤーにフラグを立て_隠すコマンドと合わせて表示の状態を変える() {
     let shared = Arc::new(Shared::new());
     let state = |shared: &Shared, id: &str| row(&table(shared), id).state;
     assert!(
@@ -183,13 +183,13 @@ fn shy_は選んだレイヤーに印を付け_隠すコマンドと合わせて
     shared.select_layer(Some("title".to_owned()));
     let shy = state(&shared, "timeline.shy_selected_layers");
     assert_eq!((shy.enabled, shy.checked), (true, Some(false)));
-    run(&shared, "timeline.shy_selected_layers").expect("印を付ける");
+    run(&shared, "timeline.shy_selected_layers").expect("フラグを立てる");
     assert_eq!(
         state(&shared, "timeline.shy_selected_layers").checked,
         Some(true)
     );
     assert!(shared.view.shy().layers.contains("title"));
-    assert!(!shared.view.shy().hide, "印を付けただけでは隠さない");
+    assert!(!shared.view.shy().hide, "フラグを立てただけでは隠さない");
     assert_eq!(
         state(&shared, "timeline.hide_shy_layers").checked,
         Some(false)
