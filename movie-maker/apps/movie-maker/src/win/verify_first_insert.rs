@@ -1,8 +1,9 @@
 //! `--play-test` の、sequence のレイヤーが無いコンポジションへの最初の insert の通し（`mm new` の後に素材を取り込んだ形）。
 //! 実際のウィンドウへのキーで Source にイン点とアウト点を付けて `,` を押し、sequence と sequence のレイヤーとカットが入ることと、
-//! 取り消し 1 回で全部消えることを確かめ、工程ごとにスクリーンショットを残す。間に、入れたカットを Backspace で抜いて
+//! Program がすぐ描き直すことと、取り消し 1 回で全部消えることを確かめ、工程ごとにスクリーンショットを残す。間に、入れたカットを Backspace で抜いて
 //! 空の sequence を残し、取り消し、やり直し、空の sequence への insert を通す。
 
+use std::sync::atomic::Ordering;
 use std::time::Instant;
 
 use mm_doc::{Project, SEQUENCE_KIND};
@@ -66,11 +67,25 @@ fn comp_fits(before: (usize, f64), after: Option<f64>, fitted: f64) -> bool {
     }
 }
 
+/// `,` を押してから、Program の再生スレッドが insert の結果を描画に取り込んで今のフレームを描き直すまでの時間を残す。
+/// 再生スレッドが長い録画の素材を開き終わるのを待つと数十秒止まるので、上限（`WAIT`）までに描き直さなければ失敗にする。
+fn redraw_step(env: &Env<'_>, log: &mut Log, (pressed, adopted): (Instant, u64)) {
+    let shared = env.shared;
+    let redrawn = wait_until(WAIT, || shared.adopted.load(Ordering::SeqCst) > adopted);
+    let redraw_ms = redrawn.then(|| pressed.elapsed().as_millis());
+    log.step(
+        "redraw_after_first_insert",
+        redrawn,
+        json!({ "redraw_ms": redraw_ms }),
+    );
+}
+
 /// `,` で、Source の範囲のカット 1 つの sequence と、カットの長さの sequence のレイヤーができる。insert が入れば真。
 /// 行の多いプロジェクトでは入るまでに待つ上限（`WAIT`）を過ぎることがあるので、入るまでの時間も残す。
 fn insert_step(env: &Env<'_>, log: &mut Log, before: (usize, f64)) -> bool {
     let shared = env.shared;
     let started = Instant::now();
+    let adopted = shared.adopted.load(Ordering::SeqCst);
     surface::post_key(env.surface_hwnd, VK_COMMA);
     let made = wait_until(WAIT, || cuts(shared).len() == 1);
     let wait_ms = started.elapsed().as_millis();
@@ -92,6 +107,9 @@ fn insert_step(env: &Env<'_>, log: &mut Log, before: (usize, f64)) -> bool {
             "wait_ms": wait_ms,
         }),
     );
+    if made {
+        redraw_step(env, log, (started, adopted));
+    }
     shot(env, log, "2-first-insert");
     made
 }
