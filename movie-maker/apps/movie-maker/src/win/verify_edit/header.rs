@@ -51,6 +51,7 @@ fn pick(
 }
 
 /// ボタン `button` を押し、`changed` が真になるのを待って撮り、取り消し 1 回で元に戻ることを確かめる。
+/// ボタンを持つレイヤーが無いプロジェクト（音を持てるレイヤーの無いプロジェクトの Mute）では飛ばす。
 fn button_step(
     env: &Env<'_>,
     log: &mut Log,
@@ -58,7 +59,15 @@ fn button_step(
     changed: impl Fn(&Layer) -> bool,
 ) {
     let shared = env.shared;
-    let found = model_of(shared).and_then(|(model, ids)| {
+    let model = model_of(shared);
+    if model
+        .as_ref()
+        .is_some_and(|(m, _)| !m.items.iter().any(|it| button_exists(it, button)))
+    {
+        log.skip(name, "このボタンを持つレイヤーが無い");
+        return;
+    }
+    let found = model.and_then(|(model, ids)| {
         let place = placement(shared, env.surface_hwnd, &model)?;
         let row = pick(&place, &model, &ids, |it| button_exists(it, button))?;
         let at = place.header_button(&model.items[row.index], row.index, button)?;

@@ -20,8 +20,14 @@ impl Log {
         ok
     }
 
+    /// プロジェクトに当てはまらず確かめられなかった手順。合否には数えない（`verify_toolbar.rs` の `Log::skip` と同じ形）。
+    pub(crate) fn skip(&mut self, name: &str, reason: &str) {
+        self.steps
+            .push((name.to_owned(), json!({ "skipped": reason })));
+    }
+
     pub(crate) fn into_json(self) -> Value {
-        let all_ok = self.steps.iter().all(|(_, v)| v["ok"] == true);
+        let all_ok = self.steps.iter().all(|(_, v)| v["ok"] != false);
         let steps: serde_json::Map<String, Value> = self.steps.into_iter().collect();
         json!({ "all_ok": all_ok, "steps": steps, "screenshots": self.shots })
     }

@@ -57,10 +57,17 @@ fn diamond_point(env: &Env<'_>, t: &Target, time: f64, dx: f32) -> Option<(i32, 
 }
 
 /// 見えている行のうちキーフレームの行を持つ最初のレイヤーの、見出しのキーフレームの開閉を押して行を開く。
-/// 前の起動で開いたまま（`.mm/view.json`）なら、一度閉じてから開く。
+/// 再生テストは `.mm/view.json` を読まないので、行は閉じた状態から始まる。キーフレームのあるレイヤーが無いプロジェクトでは
+/// キーフレームの行の手順を飛ばす。
 fn open_step(env: &Env<'_>, log: &mut Log) -> Option<Target> {
     let (shared, hwnd) = (env.shared, env.surface_hwnd);
-    let found = model_of(shared).and_then(|(model, ids)| {
+    let model = model_of(shared);
+    let keyed = |m: &TimelineModel| m.items.iter().any(|it| !it.keyframe_rows.is_empty());
+    if model.as_ref().is_some_and(|(m, _)| !keyed(m)) {
+        log.skip("keyframe_rows_open", "キーフレームのあるレイヤーが無い");
+        return None;
+    }
+    let found = model.and_then(|(model, ids)| {
         let place = placement(shared, hwnd, &model)?;
         let index = place.first_visible(|i| !model.items[i].keyframe_rows.is_empty())?;
         let at = place.disclosure(&model.items[index], index);
@@ -74,10 +81,6 @@ fn open_step(env: &Env<'_>, log: &mut Log) -> Option<Target> {
         );
         return None;
     };
-    if is_open(shared, &id) {
-        surface::post_click(hwnd, at.0, at.1);
-        wait_until(WAIT, || !is_open(shared, &id));
-    }
     surface::post_click(hwnd, at.0, at.1);
     let opened = wait_until(WAIT, || is_open(shared, &id));
     log.step("keyframe_rows_open", opened, json!({ "layer": id }));
