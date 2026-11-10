@@ -10,9 +10,10 @@ use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
     clear_tooltip_area, drag_tooltip, fit_rect, split_viewers, timeline_labels, timeline_overlay,
-    timeline_quads_split, transport_labels, Action, DrawingShape, EmptyHints, EmptyKeys,
-    EmptyState, PaintState, PointerEvent, Quad, Rect, RowHeights, Scale, SurfaceLayout, TimeView,
-    TimelineController, TimelineModel, TransportController, TransportState, UiFont, ViewState,
+    transport_labels, Action, DrawingShape, EmptyHints, EmptyKeys, EmptyState, PaintInput,
+    PaintState, PointerEvent, Quad, Rect, RowHeights, Scale, SurfaceLayout, TimeView,
+    TimelineController, TimelineModel, TransportController, TransportState, UiFont, UnderText,
+    ViewState,
 };
 
 use crate::drawing::{DrawingFit, DrawingLayer};
@@ -316,9 +317,9 @@ impl Ui {
             self.program.draw(&mut pass);
             self.drawing.draw(&mut pass, counts.drawing);
             self.source.draw(&mut pass);
-            self.quads.draw(&mut pass, 0..counts.below);
+            self.quads.draw(&mut pass, 0..counts.bars);
             self.thumbs.draw(&mut pass, counts.thumbs);
-            self.quads.draw(&mut pass, counts.below..counts.under);
+            self.quads.draw(&mut pass, counts.bars..counts.under);
             if let Some(text) = &self.text {
                 text.draw(&mut pass);
             }
@@ -333,7 +334,7 @@ impl Ui {
         // 再生の操作のバーの文字と矩形が、同じ再生位置と長さを見る。
         self.sync_program();
         let tooltip = self.prepare_text(device, queue);
-        let (quads, under, below) = self.timeline_quads(tooltip);
+        let (quads, under, bars) = self.timeline_quads(tooltip);
         let count = self.quads.prepare(device, queue, &quads, (w, h));
         let layout = self.layout();
         let mut drawing = 0;
@@ -357,7 +358,7 @@ impl Ui {
         let thumbs = self.prepare_thumbs(device, queue);
         Counts {
             under,
-            below,
+            bars,
             thumbs,
             quads: count,
             drawing,
@@ -373,13 +374,18 @@ impl Ui {
     }
 
     /// Timeline の矩形を、サーフェスの座標（物理ピクセル）に置いた並びにする。文字の下に描く矩形が先で、
-    /// その数も返す（残りは文字の上に重ねる再生位置の線とスナップの表示）。`tooltip` はドラッグ中のツールチップの矩形で、
-    /// 文字の下に描く矩形のいちばん上に重ね、文字の上に重ねる矩形はその外だけに描く。
+    /// その数と、そのうち帯までの数も返す（残りは文字の上に重ねる再生位置の線とスナップの表示）。
+    /// `tooltip` はドラッグ中のツールチップの矩形で、文字の下に描く矩形のいちばん上に重ね、文字の上に重ねる矩形はその外だけに描く。
     fn timeline_quads(&self, tooltip: Vec<Quad>) -> (Vec<Quad>, u32, u32) {
         let t = self.layout.timeline;
         let state = self.paint_state();
         let vp = self.controller.viewport();
-        let (mut quads, below) = timeline_quads_split(&self.model, &vp, &state);
+        let input = PaintInput {
+            model: &self.model,
+            vp: &vp,
+            state: &state,
+        };
+        let UnderText { mut quads, bars } = input.under_text();
         let overlay = clear_tooltip_area(timeline_overlay(&self.model, &vp, &state), &tooltip);
         quads.extend(tooltip);
         let under = quads.len() as u32;
@@ -391,7 +397,7 @@ impl Ui {
         let mut under_quads = self.transport_quads();
         let front = under_quads.len() as u32;
         under_quads.extend(quads);
-        (under_quads, under + front, below as u32 + front)
+        (under_quads, under + front, bars as u32 + front)
     }
 
     /// Timeline の文字を置き、文字の描画に渡す。文字の描画は最初に描くときに作る（OS のフォントを読み込む）。
@@ -437,7 +443,8 @@ struct Counts {
     /// 文字の下に描く矩形の数。残りの矩形（`under..quads`）は文字の上に重ねる。
     under: u32,
     /// 帯までの矩形の数。サムネイルはその後ろに描く。
-    below: u32,
+    bars: u32,
+    /// 描くサムネイルの数。
     thumbs: u32,
     quads: u32,
     /// 描き込みの線分の数。

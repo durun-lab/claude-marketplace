@@ -2,7 +2,7 @@ use super::*;
 use crate::geom::Quad;
 use crate::labels::{timeline_labels, LABEL_PAD};
 use crate::paint::tests::state;
-use crate::paint::timeline_quads_split;
+use crate::paint::{timeline_quads, PaintInput, UnderText};
 use crate::rows::{RowHeight, RowHeights, Rows};
 use crate::text::tests::FakeMeasure;
 use crate::text::UiFont;
@@ -136,19 +136,25 @@ fn サムネイルは帯の矩形の後で帯に重ねる矩形の前に描く()
     let f = TestViewport::new(&m, SIZE);
     let mut st = state(0.0);
     st.selected = Some(0);
-    let (quads, split) = timeline_quads_split(&m, &f.vp(), &st);
-    let bar = f.vp().bar(0, 0.0, 5.0);
+    let vp = f.vp();
+    let input = PaintInput {
+        model: &m,
+        vp: &vp,
+        state: &st,
+    };
+    let UnderText { quads, bars } = input.under_text();
+    let bar = vp.bar(0, 0.0, 5.0);
     let covers =
         |q: &Quad| q.rect.x >= bar.x && q.rect.y >= bar.y && q.rect.bottom() <= bar.bottom();
     assert!(
-        quads[..split].iter().any(|q| q.rect == bar),
+        quads[..bars].iter().any(|q| q.rect == bar),
         "帯の矩形はサムネイルより前"
     );
     assert!(
-        quads[split..].iter().any(|q| covers(q) && q.rect.w == 1.0),
+        quads[bars..].iter().any(|q| covers(q) && q.rect.w == 1.0),
         "選んだ外枠はサムネイルより後ろ"
     );
-    assert_eq!(timeline_quads_split(&m, &f.vp(), &st).0.len(), quads.len());
+    assert_eq!(timeline_quads(&m, &vp, &st), quads);
 }
 
 #[test]

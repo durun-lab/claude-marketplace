@@ -1,5 +1,6 @@
 //! Timeline を矩形の並びにする。座標は Timeline の矩形の左上を (0, 0) とする。
 //! 文字（[`crate::timeline_labels`]）は [`timeline_quads`] の上、[`timeline_overlay`] の下に描く。
+//! 帯のサムネイル（[`crate::timeline_thumbs`]）は、文字の下の矩形のうち帯までの後に描く（[`UnderText::bars`]）。
 //!
 //! 領域ごとの描く関数は `paint/` の下のファイルに置き、ここから名前の順に呼ぶ。描く関数は自分の領域の矩形の外に描かず、
 //! 重ね順は呼ぶ順でなく [`Depth`] で決めるので、領域を足す PR はファイルを 1 つと、呼び出しを 1 行足せばよい。
@@ -43,11 +44,21 @@ pub struct PaintState {
     pub palette: Palette,
 }
 
-/// 領域の描く関数が見るもの。
-pub(crate) struct PaintInput<'a> {
+/// 領域の描く関数が見るもの。サーフェスの描画（`mm-ui-wgpu`）も作り、[`PaintInput::under_text`] で文字の下の矩形を受ける。
+/// 帯に描くものの入力は、入口の関数を増やさずにここへフィールドで足す。
+pub struct PaintInput<'a> {
     pub model: &'a TimelineModel,
     pub vp: &'a Viewport<'a>,
     pub state: &'a PaintState,
+}
+
+/// 文字の下に描く矩形と、その中の帯までの数。
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnderText {
+    /// 下から順の矩形。
+    pub quads: Vec<Quad>,
+    /// 先頭から帯（`Depth::Bar`）までの矩形の数。テクスチャで描くサムネイルは `quads[..bars]` の後、残りの前に描く。
+    pub bars: usize,
 }
 
 /// 重ね順。下から順に描く。帯の中に描く矩形（波形）は `Bar` と `OnBar` の間に足す。
@@ -103,38 +114,37 @@ impl Canvas {
         self.depths.into_iter().flatten().collect()
     }
 
-    /// 下から並べ、`Depth::Bar` までの矩形の数も返す（サムネイルはその後ろに差し込む）。
-    fn into_quads_split(self) -> (Vec<Quad>, usize) {
-        let split = self.depths[..=Depth::Bar as usize]
+    /// 下から並べ、帯（`Depth::Bar`）までの矩形の数も数える。
+    fn into_under_text(self) -> UnderText {
+        let bars = self.depths[..=Depth::Bar as usize]
             .iter()
             .map(Vec::len)
             .sum();
-        (self.into_quads(), split)
+        UnderText {
+            quads: self.into_quads(),
+            bars,
+        }
     }
 }
 
-/// 文字の下に描く矩形（背景、行の縞、帯、吸い付いた帯の端の強調、目盛りの帯、スクロールバー）。
-pub fn timeline_quads(model: &TimelineModel, vp: &Viewport, state: &PaintState) -> Vec<Quad> {
-    timeline_quads_split(model, vp, state).0
+impl PaintInput<'_> {
+    /// 文字の下に描く矩形（背景、行の縞、帯、吸い付いた帯の端の強調、目盛りの帯、スクロールバー）。
+    pub fn under_text(&self) -> UnderText {
+        let mut canvas = Canvas::default();
+        canvas.push(Depth::Back, self.vp.layout.bounds, self.state.palette.panel);
+        header::paint(self, &mut canvas);
+        keymarks::paint(self, &mut canvas);
+        rows::paint(self, &mut canvas);
+        ruler::paint(self, &mut canvas);
+        scrollbar::paint(self, &mut canvas);
+        snap::edge_highlight(self, &mut canvas);
+        canvas.into_under_text()
+    }
 }
 
-/// [`timeline_quads`] と、帯までの矩形の数。サムネイル（[`crate::timeline_thumbs`]）は先頭からその数の矩形の後、
-/// 残りの矩形（帯に重ねるもの）の前に描く。
-pub fn timeline_quads_split(
-    model: &TimelineModel,
-    vp: &Viewport,
-    state: &PaintState,
-) -> (Vec<Quad>, usize) {
-    let input = PaintInput { model, vp, state };
-    let mut canvas = Canvas::default();
-    canvas.push(Depth::Back, vp.layout.bounds, state.palette.panel);
-    header::paint(&input, &mut canvas);
-    keymarks::paint(&input, &mut canvas);
-    rows::paint(&input, &mut canvas);
-    ruler::paint(&input, &mut canvas);
-    scrollbar::paint(&input, &mut canvas);
-    snap::edge_highlight(&input, &mut canvas);
-    canvas.into_quads_split()
+/// 文字の下に描く矩形（[`PaintInput::under_text`] の矩形だけ）。
+pub fn timeline_quads(model: &TimelineModel, vp: &Viewport, state: &PaintState) -> Vec<Quad> {
+    PaintInput { model, vp, state }.under_text().quads
 }
 
 /// 文字の上に重ねる矩形（再生位置の線とスナップの表示）。目盛りの帯と行の領域を縦に貫く。
