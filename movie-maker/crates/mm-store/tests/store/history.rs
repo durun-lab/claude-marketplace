@@ -1,10 +1,12 @@
-//! 取り消しとやり直しが記録と競合の判定に見えること、壊れた DB から `import` で戻れること。
+//! 取り消しとやり直しが記録と競合の判定に見えること、最後のカットを抜いた空の sequence でも往復できること、
+//! 壊れた DB から `import` で戻れること。
 
 use std::fs;
 
-use mm_ops::{LockLayer, Op, OpContext, OpError, Transaction};
+use mm_doc::{Cut, Layer, Node, Project, Sequence, SEQUENCE_KIND, SEQUENCE_PARAM};
+use mm_ops::{Extract, Insert, LockLayer, Op, OpContext, OpError, Transaction};
 use mm_store::Store;
-use mm_types::LayerId;
+use mm_types::{Id, LayerId, ParamValue, Rational, RationalTime};
 
 use crate::common::{actor, project_with, NOW};
 
@@ -125,4 +127,83 @@ fn 壊れた_db_でも_import_の置き換えで戻れる() {
         kept.iter().any(|n| n.contains("broken")),
         "壊れたファイルは backups/ に残す: {kept:?}"
     );
+}
+
+/// 素材 a1 の 0 秒から 2 秒のカット k1 だけの sequence s1 と、それに追従している sequence のレイヤー ls を、
+/// 長さ 2 秒のコンポジション c に置いたプロジェクト。
+fn one_cut_project() -> Project {
+    let mut p = project_with(0);
+    let cut = Cut::new(
+        "k1",
+        Node::footage(&Id::new("a1")),
+        RationalTime::ZERO,
+        RationalTime::seconds(2),
+    );
+    p.sequences.push(Sequence {
+        id: Id::new("s1"),
+        cuts: vec![cut],
+        origin: None,
+    });
+    let node =
+        Node::new(SEQUENCE_KIND, 1).with_param(SEQUENCE_PARAM, ParamValue::Text("s1".into()));
+    let zero = RationalTime::ZERO;
+    let ls = Layer::new("ls", node, zero, zero, RationalTime::seconds(2));
+    let comp = &mut p.compositions[0];
+    comp.layers.push(ls);
+    comp.duration = RationalTime::seconds(2);
+    p
+}
+
+/// レイヤー ls とコンポジション c の長さ。
+fn lengths(s: &Store) -> (RationalTime, RationalTime) {
+    let (comp, layer) = s.project().layer(&Id::new("ls")).unwrap();
+    (layer.duration().unwrap(), comp.duration)
+}
+
+#[test]
+fn 最後のカットを抜いた空の_sequence_でも取り消しとやり直しを往復できる() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut s = Store::create(tmp.path(), &one_cut_project(), NOW).unwrap();
+    let ctx = OpContext::human();
+    let frame = RationalTime::from_frames(1, Rational::integer(30)).unwrap();
+    let two = RationalTime::seconds(2);
+    let extract = Extract { cut: Id::new("k1") };
+    apply(&mut s, "extract", vec![extract.into()], None).unwrap();
+    assert_eq!(
+        lengths(&s),
+        (frame, frame),
+        "Store が足す fitLayer で 1 フレーム"
+    );
+    s.undo_last(&ctx, actor(), NOW).unwrap().unwrap();
+    assert_eq!(lengths(&s), (two, two));
+    s.redo_last(&ctx, actor(), NOW).unwrap().unwrap();
+    assert!(s.project().sequences[0].cuts.is_empty());
+    assert_eq!(
+        lengths(&s),
+        (frame, frame),
+        "やり直しも空の sequence に戻す"
+    );
+
+    let three = RationalTime::seconds(3);
+    let cut = Cut::new(
+        "k2",
+        Node::footage(&Id::new("a1")),
+        RationalTime::ZERO,
+        three,
+    );
+    let insert = Insert {
+        sequence: Id::new("s1"),
+        index: 0,
+        cut,
+    };
+    apply(&mut s, "insert", vec![insert.into()], None).unwrap();
+    assert_eq!(
+        lengths(&s),
+        (three, three),
+        "空の sequence への insert に追従する"
+    );
+    s.undo_last(&ctx, actor(), NOW).unwrap().unwrap();
+    assert_eq!(lengths(&s), (frame, frame));
+    s.redo_last(&ctx, actor(), NOW).unwrap().unwrap();
+    assert_eq!(lengths(&s), (three, three));
 }
