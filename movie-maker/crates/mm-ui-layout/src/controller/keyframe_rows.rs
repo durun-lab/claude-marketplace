@@ -354,6 +354,44 @@ impl TimelineController {
         self.pick.as_ref().map(Picked::pick)
     }
 
+    /// 右クリックしたキーフレームの行（とひし形）を、押したときと同じく選ぶ。ドラッグは始めない。
+    /// キーフレームの行でなければ `None`。
+    pub(super) fn pick_for_menu(&mut self, hit: Hit, model: &TimelineModel) -> Option<Vec<Action>> {
+        match hit {
+            Hit::RowKeyframe(at) => {
+                let k = row_keyframe(model, at)?;
+                Some(self.pick_row(model, (at.item, at.row), Some((at.keyframe, k.time))))
+            }
+            Hit::KeyframeRow { item, row } | Hit::KeyframeRowHeader { item, row } => {
+                Some(self.pick_row(model, (item, row), None))
+            }
+            _ => None,
+        }
+    }
+
+    /// キーフレームの行の選択を外す。選んでいたら、外したことを知らせる操作。
+    pub(super) fn drop_pick(&mut self) -> Option<Action> {
+        self.pick
+            .take()
+            .map(|_| Action::Keyframe(KeyframeAction::Select(None)))
+    }
+
+    /// メニューキーで出す、キーフレームの行の選択の所と時刻。ひし形を選んでいればその時刻、行だけなら再生位置。
+    pub(super) fn picked_for_menu(
+        &self,
+        model: &TimelineModel,
+        playhead: f64,
+    ) -> Option<(Hit, f64)> {
+        let p = self.keyframe_pick()?;
+        Some(match p.keyframe_index() {
+            Some(at) => (Hit::RowKeyframe(at), row_keyframe(model, at)?.time),
+            None => {
+                let (item, row) = (p.item, p.row);
+                (Hit::KeyframeRow { item, row }, playhead)
+            }
+        })
+    }
+
     /// モデルが変わった。選択を引き直す。
     pub(super) fn repick(&mut self, model: &TimelineModel) {
         self.pick = self.pick.take().and_then(|p| p.resolved(model));

@@ -18,6 +18,7 @@ use super::tools;
 use super::transport::{self, Seeks, TransportSync};
 use super::waves::{WaveSync, WaveWanted};
 use super::View;
+use crate::win::context_menu;
 use crate::win::review::drawing::DrawingSync;
 use crate::win::sequence_edit::{gesture_op, header_button_op, move_layer_op, TimelineIds};
 use crate::win::state::{FrameImage, OpenDoc, Shared};
@@ -233,6 +234,9 @@ pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
                 }
                 Action::Keyframe(action) => keyframes::apply(shared, doc, action),
                 Action::Split { item, time } => tools::apply_split(shared, doc, item, time),
+                Action::ContextMenu { hit, time, at } => {
+                    context_menu::on_action(shared, hit, time, at);
+                }
             }
         }
     }

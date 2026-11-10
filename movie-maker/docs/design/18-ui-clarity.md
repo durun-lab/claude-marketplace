@@ -311,14 +311,28 @@ K2 が決めた形: キーフレームの行の元は `mm-ui-wgpu` の `model/ke
 
 ### 右クリックのメニュー
 
-サーフェスの右クリックで、当たった所に合わせたメニューをネイティブのポップアップで出す。Tauri の `Window::popup_menu_at`（muda が `TrackPopupMenu` を呼ぶ [125]）で出し、メニューバーと同じ `on_menu_event` で受ける〔推。D3 で確かめる〕。項目はコマンドの表から作り、キーを右に出す。当たり判定の結果は描画のスレッドの `TimelineController` が持つので、右クリックを受ける UI のスレッドから引ける形にする。
+サーフェスの右クリックで、当たった所の種類に合わせたメニューをネイティブのポップアップで出す。Tauri の `Window::popup_menu_at`（muda が `TrackPopupMenu` を呼ぶ [125]）で出し、メニューバーと同じ `on_menu_event` で受ける〔推。D3 で確かめた。下の「D3 が決めた形」〕。項目はコマンドの表から作り、キーを右に出す。当たり判定の結果は描画のスレッドの `TimelineController` が持つので、右クリックを受ける UI のスレッドから引ける形にする。
 
-| 当たった所 | 項目 |
+| 当たった所の種類 | 項目 |
 |---|---|
 | カット | Split Clip Here、Lift、Extract、Show Keyframe Editor |
-| レイヤーの帯とレイヤーの見出し | Enable Layer、Lock Layer、Shy、Bring Forward、Send Backward、Track Height、Show Keyframe Editor |
+| レイヤーの帯とレイヤーの見出し | Enable Layer、Lock Layer、Shy Selected Layers、Move Layer Up、Move Layer Down、Track Height、Show Keyframe Editor |
+| キーフレームの行（見出しと、ひし形の無い所） | Go to Previous Keyframe、Go to Next Keyframe、Show Keyframe Editor |
+| キーフレームの行のひし形 | Remove Keyframe、Go to Previous Keyframe、Go to Next Keyframe |
 | 目盛り | Full Extent Zoom（マーカーの追加は後） |
-| 空き | Full Extent Zoom、Snapping |
+| 行の無い所 | Full Extent Zoom、Snapping |
+
+D3 が決めた形（先例）: 右クリックで、ポインターの下のカット、レイヤー、キーフレームの行（とひし形）を先に選んでからメニューを出す。メニューの項目が選んだものに効く Premiere と Resolve の Timeline と同じ形で、右クリックしたものと項目の対象がずれない。目盛りと行の無い所では選択を変えない（今の選択に効くメニューを出す）。今の選択は 1 つだけなので、右クリックしたものに選び直す。複数を選べるようにするときは、選んでいるものの 1 つを右クリックしても選択を保つ（Premiere と Resolve と同じ）。重なりの順の項目は、Resolve の見出しの右クリックの Move Track Up と Move Track Down [134] を、Enable Track を Enable Layer にしたのと同じく Layer に読み替えた名前にする。入切のある項目（Enable Layer、Lock Layer、Shy Selected Layers、Snapping）は、名前を変えずにメニューバーと同じチェックで今の状態を出す。ネイティブのポップアップを `Window::popup_menu_at` で出し、選んだ項目を `on_menu_event` で受ける形は動いた。`--play-test` が本物のポップアップ（`TrackPopupMenu`）をカットの右クリックで出し、キーで Split Clip Here を選ぶと、カットが割れてポップアップが閉じる（2026-11-10）。メニューが出ている間も、ウィンドウのスレッドは止まらない。
+
+D3 が決めた形（新規設計。先例が解消しない所）:
+
+- 当たった所は当たり判定の結果 `Hit`（レイヤーとカットの添字を含む）で `Action::ContextMenu` と `Forward::ContextMenu` に載せ、メニューの種類は `mm-ui-layout` の `HitKind`（Cut、Layer、Header、KeyframeRow、Keyframe、Ruler、Empty）を `HitKind::of(&Hit)` で引く。右クリックの流れは、サーフェスの `WM_CONTEXTMENU`（右クリックとメニューキー）→ `context_menu::requested` が `PointerEvent::ContextMenu` か `ContextMenuKey` にしてポインターの入力のキューへ → 描画スレッドの `TimelineController` が当たり判定と選択を行い `Action::ContextMenu { hit, time, at }` を返す → `context_menu::on_action` がウィンドウのフック（`Forward::ContextMenu`）でメインスレッドに頼み、ポップアップを出す。`surface.rs` には振り分けの `WM_CONTEXTMENU` の 1 つの分岐だけを足した。
+- カーソル、ツールチップ、ステータスバー（Z5、#233）の `Pointee` と `Under::Timeline(Hit)` は、同じ `Hit` を持つ。当たった所からメニューの種類を引くのは `HitKind::of` の 1 か所にし、ホバーの手がかり（ステータスバーの「Right-click: Layer Menu」など）も `HitKind::of` から作る。右クリックは押した点で当たり判定をその場で行って選択と順序を決めるので、ホバーの値（`HintSlot::current()`）は読まず、押した点の `Hit` を `Action::ContextMenu` で運ぶ。後から main に入る方が、`Under::Timeline(hit)` から `HitKind::of` を引く形にそろえる。
+- Split Clip Here の割る時刻は、Blade と同じ規則で出す。ポインターの時刻をフレームにそろえ、Snapping が入なら再生位置に吸い付け、割れる所（隙間でも端でもないカットの中）でだけ持つ。吸い付いた再生位置が右クリックしたカットの端か外なら持たず、Split Clip Here を押せない（隣のカットを割らない）。`ContextSlot` は出したメニューの割る時刻を持ち、次のメニューで置き直す。項目の ID はコマンドの ID に `context:` を付けたもの（`context_menu::item_id`）でメニューバーと重ならず、項目を選んだときだけ `context_menu::run` が時刻を取り出して `commands::run_in_context` で実行する。メニューを出している間に再生位置が動いても、右クリックした時刻で割る。Split Clip Here は右クリックのメニューの中でだけ押せ、WebView の表、Tasks の項目、Keyboard Shortcuts のウィンドウからは押せない（選ばずに閉じたメニューの時刻をほかの呼び出し箇所が使わない）。割るのは選んだレイヤーのその時刻のカット（選んだカットは見ない）。
+- メニューキー（Shift+F10、アプリケーションキー）は、選んでいるキーフレームの行（ひし形を選んでいればそのひし形）、カット、レイヤーの順にその位置で出し、何も選んでいなければ再生位置の下の行の無い所に出す。カットの割る時刻は、再生位置で割れればそれ、割れなければカットの中央。点は行の領域に収め、スクロールで隠れたものを選んでいても Timeline の中に出す。OS が送る `WM_CONTEXTMENU`（lParam は -1）を受けるので、サーフェスはキーを既定のウィンドウプロシージャに渡したままにする。キーのメッセージを投げても OS は `WM_CONTEXTMENU` にしないので、`--play-test` は `WM_CONTEXTMENU` を直に投げる。実機のキーでの確かめは手で行う。
+- 並びは `menu.rs` の `context_groups`（当たった所の種類ごとのコマンドの ID のグループ。メニューバーの `BAR` と同じ形）で持ち、同じ `menu::lines` で作る。見出しと帯は同じ並び。コマンドの表に足したのは、`clip.split_here`（Split Clip Here）と、選んだレイヤーの `layer.toggle_enabled`（Enable Layer）、`layer.toggle_lock`（Lock Layer）、`layer.move_up`（Move Layer Up）、`layer.move_down`（Move Layer Down）。Move Layer Up は先頭、Move Layer Down は最後のレイヤーでは押せない。重なりの順は `moveLayer` の位置（下から数える）の ±1 で、Timeline では 1 行ずつ上下する。メニューバーの項目にはせず、Keyboard Shortcuts のウィンドウでは Other に並ぶ。Shy は既存の Shy Selected Layers。Track Height（L3）はコマンドが表に入るとメニューに出る（並びに置いてある）。
+- キーフレームの行（K2）の右クリックは、押したときと同じく行とひし形を選び、ドラッグは始めない。ひし形のメニューの Remove Keyframe は選んだひし形を外す（キーの Delete と同じ）。カット、レイヤーの帯、見出しの右クリックは、左クリックと同じくキーフレームの行の選択を外す。
+- ポップアップは項目の押せるかとチェックを、出す時点の表から作る（出すたびに作り直し、メニューバーのように後から反映しない）。
 
 ### 空の状態
 

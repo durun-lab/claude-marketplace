@@ -1,13 +1,15 @@
 //! `--play-test` のキーフレームの行の通し。実際のウィンドウへのクリック、ドラッグ、キーで、見出しのキーフレームの開閉で
 //! 行を開き、キーフレームを押して選び（Inspector と Graph のパラメータも選ぶ）、ドラッグを Esc で取りやめ、離して 1 回の
-//! `moveKeyframe` にして取り消し 1 回で戻し、Delete で外して戻し、Alt+クリックで打って戻し、レイヤーの帯を引いて行のひし形が
-//! 帯と一緒に動く所を撮って取りやめ、] と [ で前後のキーフレームへ動かし、U で閉じて開く。手順ごとにスクリーンショットを残す。
+//! `moveKeyframe` にして取り消し 1 回で戻し、Delete と右クリックのメニューの Remove Keyframe で外して戻し、Alt+クリックで打って
+//! 戻し、レイヤーの帯を引いて行のひし形が帯と一緒に動く所を撮って取りやめ、] と [ で前後のキーフレームへ動かし、U で閉じて
+//! 開く。手順ごとにスクリーンショットを残す。
 
-use mm_ui_layout::{Mods, PointerEvent, TimelineModel};
+use mm_ui_layout::{HitKind, Mods, PointerEvent, TimelineModel};
 use mm_ui_wgpu::timeline_layer_ids;
 use serde_json::json;
 
 use super::*;
+use crate::win::{context_menu, menu};
 
 /// キーフレームを動かす量（秒）。
 const MOVE_SECS: f64 = 0.5;
@@ -261,6 +263,43 @@ fn delete_step(env: &Env<'_>, log: &mut Log, layer: &OpenedLayer, time: f64) {
     log.step("undo_keyframe_delete", undone, json!({}));
 }
 
+/// ひし形を右クリックすると、そのひし形を選んだキーフレームのメニューが出て、Remove Keyframe で外れ、取り消し 1 回で戻る。
+/// ポップアップはモーダルで止まるので出さず、並びの記録を読み、選んだ項目の ID をメニューと同じ道に流す。
+fn context_step(env: &Env<'_>, log: &mut Log, layer: &OpenedLayer, time: f64) {
+    let (shared, hwnd) = (env.shared, env.surface_hwnd);
+    let before = row_times(shared, &layer.id);
+    let Some(at) = diamond_point(env, layer, time, 0.0) else {
+        let why = json!("ひし形の位置を求められない");
+        log.step("keyframe_context", false, why);
+        return;
+    };
+    shared.context.set_headless(true);
+    context_menu::post_at(hwnd, at);
+    let shown = super::context::wait_shown(shared, HitKind::Keyframe);
+    shared.context.set_headless(false);
+    let selected = wait_until(WAIT, || shared.keyframes.keyframe_selected());
+    let items = shown.map(|s| s.items);
+    let first = items.as_ref().and_then(|i| i.first());
+    let listed = first.is_some_and(|t| t.starts_with("Remove Keyframe"));
+    log.step(
+        "keyframe_context",
+        selected && listed,
+        json!({ "items": items }),
+    );
+    menu::run(shared, &context_menu::item_id("timeline.remove_keyframe"));
+    let removed = wait_until(WAIT, || {
+        row_times(shared, &layer.id).len() + 1 == before.len()
+    });
+    let after = row_times(shared, &layer.id);
+    let detail = json!({ "before": before, "after": after });
+    log.step("keyframe_context_remove", removed, detail);
+    if removed {
+        keys::dispatch(shared, "play-test", "Ctrl+KeyZ");
+        let undone = wait_until(WAIT, || row_times(shared, &layer.id) == before);
+        log.step("undo_keyframe_context_remove", undone, json!({}));
+    }
+}
+
 /// 最初の 2 つのキーフレームの間を Alt+クリックしてキーフレームを打ち、取り消し 1 回で戻す。修飾キーの状態はメッセージで
 /// 送れないので、サーフェスが積むのと同じポインターの入力を入力のキューに積む。
 fn add_step(env: &Env<'_>, log: &mut Log, layer: &OpenedLayer) {
@@ -392,6 +431,7 @@ pub(super) fn run(env: &Env<'_>, log: &mut Log) {
     if let Some(time) = select_step(env, log, &layer) {
         drag_step(env, log, &layer, time);
         delete_step(env, log, &layer, time);
+        context_step(env, log, &layer, time);
     }
     add_step(env, log, &layer);
     shift_layer_step(env, log, &layer);

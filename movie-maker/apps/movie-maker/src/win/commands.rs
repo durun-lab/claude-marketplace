@@ -33,6 +33,8 @@ pub enum Owner {
 pub enum Action {
     /// 名前のついた編集。編集のキューで計画して適用する。
     Edit(EditAction),
+    /// 選んだレイヤーのコマンド（有効、ロック、重なりの順）。操作にして編集のキューで適用する。
+    Layer(LayerCommand),
     /// 割り付けのコマンド（WebView の列の開け閉め、Reset UI Layout）。ユーザーの設定を変えるだけで、操作にならない。
     Layout(LayoutCommand),
     /// 再生のコマンド。Source を最後にクリックしていれば Source の、そうでなければ Program の再生に向く。
@@ -104,6 +106,10 @@ struct Ready {
     tool: Tool,
     /// Shy の行を隠すかどうか（表示の状態）と、選んでいるレイヤーの Shy のフラグ。
     shy: shy::ShyReady,
+    /// 選んでいるレイヤーの有効とロックと並び。
+    layer: layer::LayerReady,
+    /// 右クリックのメニューの表で、割れるカットを右クリックした。Split Clip Here はそのメニューの中でだけ押せる。
+    context: bool,
     /// 割り付け（WebView の列の開閉をチェックに出す）。
     workspace: Workspace,
 }
@@ -123,25 +129,40 @@ impl Ready {
             snapping: shared.view.snapping(),
             tool: *shared.tool.lock().expect("tool"),
             shy: shy::ShyReady::of(shared),
+            layer: layer::LayerReady::of(shared),
+            context: false,
             workspace: shared.workspace.get(),
         }
     }
 
+    /// 右クリックのメニューの状態。Split Clip Here の割る時刻 `time` があれば押せる。
+    fn in_context(shared: &Shared, time: Option<f64>) -> Self {
+        Self {
+            context: time.is_some(),
+            ..Self::of(shared)
+        }
+    }
+
     fn state(&self, spec: &Spec) -> State {
-        use EditAction::{ClearInOut, Extract, Insert, Lift, MarkIn, MarkOut, Overwrite, Split};
+        use EditAction::{
+            ClearInOut, Extract, Insert, Lift, MarkIn, MarkOut, Overwrite, Split, SplitHere,
+        };
         let enabled = match spec.owner {
             Owner::App(Action::Edit(ClearInOut | MarkIn | MarkOut)) => self.source_open,
             // シーケンスのレイヤーが無ければ作って入れるので、Source の範囲だけで押せる。
             Owner::App(Action::Edit(Insert | Overwrite)) => self.source_open,
             Owner::App(Action::Edit(Split)) => self.sequence,
+            Owner::App(Action::Edit(SplitHere)) => self.sequence && self.context,
             Owner::App(Action::Edit(Lift | Extract)) => self.cut_selected,
             Owner::App(Action::Shy(command)) => self.shy.enabled(command),
+            Owner::App(Action::Layer(command)) => self.layer.enabled(command),
             Owner::App(Action::Timeline(TimelineCommand::RemoveKeyframe)) => self.keyframe_selected,
             Owner::App(_) | Owner::Panel(_) => true,
         };
         let checked = match spec.owner {
             Owner::App(Action::Layout(command)) => layout::checked(&self.workspace, command),
             Owner::App(Action::Shy(command)) => self.shy.checked(command),
+            Owner::App(Action::Layer(command)) => self.layer.checked(command),
             Owner::App(Action::Timeline(TimelineCommand::ToggleSnapping)) => Some(self.snapping),
             Owner::App(Action::Timeline(command)) => tool_of(command).map(|tool| tool == self.tool),
             Owner::App(_) | Owner::Panel(_) => None,
@@ -208,6 +229,12 @@ pub fn table(shared: &Shared) -> Vec<CommandView> {
     TABLE.iter().map(|s| view(s, ready.state(s))).collect()
 }
 
+/// 右クリックのメニューの表。Split Clip Here は、メニューを出したときの割る時刻 `time` があるときだけ押せる。
+pub fn context_table(shared: &Shared, time: Option<f64>) -> Vec<CommandView> {
+    let ready = Ready::in_context(shared, time);
+    TABLE.iter().map(|s| view(s, ready.state(s))).collect()
+}
+
 /// 今は押せないコマンドの ID。サーフェスの再生の操作のバーがボタンを薄くするのに使う。
 pub fn disabled_ids(shared: &Shared) -> Vec<&'static str> {
     let ready = Ready::of(shared);
@@ -252,6 +279,22 @@ pub fn run(shared: &Arc<Shared>, id: &str) -> Result<(), String> {
     execute(shared, spec)
 }
 
+/// 右クリックのメニューの項目からコマンドを実行する。押せないコマンドは拒否し、Split Clip Here はメニューを出したときの
+/// 割る時刻 `time` で割る（メニューを出している間に再生位置が動いても、右クリックした所で割る）。
+pub fn run_in_context(shared: &Arc<Shared>, id: &str, time: Option<f64>) -> Result<(), String> {
+    let spec = spec_of(id)?;
+    if !Ready::in_context(shared, time).state(spec).enabled {
+        return Err(format!("{} isn't available now", spec.name));
+    }
+    match (spec.owner, time) {
+        (Owner::App(Action::Edit(EditAction::SplitHere)), Some(time)) => {
+            edit_actions::split_here(shared, time);
+            Ok(())
+        }
+        _ => execute(shared, spec),
+    }
+}
+
 /// キーからコマンドを実行する。押せるかは見ない。押せないときは編集が拒否した理由が画面に出て、何が足りないかが分かるため。
 pub fn run_from_key(shared: &Arc<Shared>, id: &str) -> Result<(), String> {
     execute(shared, spec_of(id)?)
@@ -278,6 +321,7 @@ fn execute(shared: &Arc<Shared>, spec: &'static Spec) -> Result<(), String> {
         Owner::App(Action::Playback(command)) => play(shared, command),
         Owner::App(Action::Layout(command)) => layout::run(shared, command),
         Owner::App(Action::Shy(command)) => shy::run(shared, command),
+        Owner::App(Action::Layer(command)) => layer::run(shared, command),
         Owner::App(Action::Timeline(command)) => {
             timeline_input(shared, PointerEvent::Command(command));
         }
@@ -301,11 +345,13 @@ fn play(shared: &Shared, command: Command) {
     }
 }
 
+mod layer;
 mod layout;
 mod shy;
 mod table;
 mod window_hook;
 
+pub use layer::LayerCommand;
 pub use layout::LayoutCommand;
 pub use shy::ShyCommand;
 pub use table::TABLE;

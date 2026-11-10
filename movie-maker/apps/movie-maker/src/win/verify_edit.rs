@@ -22,6 +22,7 @@ use crate::win::verify_first_insert;
 use crate::win::verify_place::{placement, Placement};
 use crate::win::verify_stage::wait_until;
 
+mod context;
 mod header;
 mod keyframes;
 mod log;
@@ -390,4 +391,5 @@ fn sequence_steps(env: &Env<'_>, log: &mut Log) {
     trim_step(env, log);
     snap_step(env, log);
     tools::run(env, log);
+    context::run(env, log);
 }

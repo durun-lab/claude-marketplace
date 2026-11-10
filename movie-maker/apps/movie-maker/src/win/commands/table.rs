@@ -2,7 +2,7 @@
 
 use mm_ui_layout::TimelineCommand;
 
-use super::{Action, LayoutCommand, Owner, ShyCommand, Spec, WindowAction};
+use super::{Action, LayerCommand, LayoutCommand, Owner, ShyCommand, Spec, WindowAction};
 use crate::win::edit_actions::EditAction;
 use crate::win::playback::Command;
 
@@ -65,6 +65,12 @@ pub static TABLE: &[Spec] = &[
         owner: Owner::App(Action::Edit(EditAction::Split)),
     },
     Spec {
+        id: "clip.split_here",
+        name: "Split Clip Here",
+        description: Some("Split the clip at the position you right-clicked"),
+        owner: Owner::App(Action::Edit(EditAction::SplitHere)),
+    },
+    Spec {
         id: "edit.redo",
         name: "Redo",
         description: None,
@@ -87,6 +93,30 @@ pub static TABLE: &[Spec] = &[
         name: "Export…",
         description: None,
         owner: Owner::Panel("deliver"),
+    },
+    Spec {
+        id: "layer.move_down",
+        name: "Move Layer Down",
+        description: Some("Move the selected layer one row down, behind the layer below it"),
+        owner: Owner::App(Action::Layer(LayerCommand::MoveDown)),
+    },
+    Spec {
+        id: "layer.move_up",
+        name: "Move Layer Up",
+        description: Some("Move the selected layer one row up, in front of the layer above it"),
+        owner: Owner::App(Action::Layer(LayerCommand::MoveUp)),
+    },
+    Spec {
+        id: "layer.toggle_enabled",
+        name: "Enable Layer",
+        description: Some("Turn the selected layer on or off in the preview and export"),
+        owner: Owner::App(Action::Layer(LayerCommand::ToggleEnabled)),
+    },
+    Spec {
+        id: "layer.toggle_lock",
+        name: "Lock Layer",
+        description: Some("Protect the selected layer from edits made through Claude"),
+        owner: Owner::App(Action::Layer(LayerCommand::ToggleLock)),
     },
     Spec {
         id: "media.import",
