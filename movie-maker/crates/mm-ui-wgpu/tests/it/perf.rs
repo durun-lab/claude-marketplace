@@ -5,7 +5,7 @@
 use std::time::{Duration, Instant};
 
 use mm_ui_layout::{CutBar, Item, ItemKind, Peaks, PointerEvent, TimelineModel, WaveSource};
-use mm_ui_wgpu::{TextStats, Ui};
+use mm_ui_wgpu::{slot_image_len, TextStats, Ui};
 
 use crate::support::{gpu, FORMAT};
 
@@ -20,6 +20,17 @@ const WAVE_SECS: usize = 600;
 /// 1920x1080 の論理ピクセルを表示の倍率 1.5 で描くサーフェス。
 const SCALE: f32 = 1.5;
 const SIZE: (u32, u32) = (2880, 1620);
+/// 帯のサムネイルの種類の数（素材の数）。`MM_PERF_THUMBS=0` でキーを付けず、サムネイルの無い描画と比べる。
+const THUMB_KEYS: usize = 300;
+
+fn thumbs_on() -> bool {
+    !std::env::var("MM_PERF_THUMBS").is_ok_and(|v| v == "0")
+}
+
+/// サムネイルのキー。素材ごとに 1 つ。
+fn thumb_key(i: usize) -> String {
+    format!("k{}", i % THUMB_KEYS)
+}
 
 /// 2 秒のカットを並べた sequence と、静止画のレイヤー。名前は全部ちがう。
 /// 静止画のレイヤーは始まりと終わりの 0.5 秒にフェードのキーフレームを持ち、上の `TRACKED` 本は毎フレームに持つ。
@@ -30,6 +41,7 @@ fn model() -> TimelineModel {
             start: i as f64 * 2.0,
             end: i as f64 * 2.0 + 2.0,
             label: format!("take-{i:04}.mp4").into(),
+            thumb: thumbs_on().then(|| thumb_key(i).into()),
             wave: Some(WaveSource {
                 content_hash: format!("take-{}", i % WAVE_ASSETS).into(),
                 comp_time: i as f64 * 2.0,
@@ -48,9 +60,14 @@ fn model() -> TimelineModel {
                 .with_keyframes(&tracked);
         }
         let start = (i % 500) as f64 * 12.0;
-        Item::layer(start, start + 8.0, ItemKind::Image, true)
+        let item = Item::layer(start, start + 8.0, ItemKind::Image, true)
             .with_label(&format!("overlay-{i}.png"))
-            .with_keyframes(&[start, start + 0.5, start + 7.5, start + 8.0])
+            .with_keyframes(&[start, start + 0.5, start + 7.5, start + 8.0]);
+        if thumbs_on() {
+            item.with_thumb(&thumb_key(i))
+        } else {
+            item
+        }
     }));
     TimelineModel {
         duration: CUTS as f64 * 2.0,
@@ -66,6 +83,8 @@ struct Phase {
     cpu: Vec<f64>,
     total: Vec<f64>,
     text: TextStats,
+    /// 1 フレームに描いたサムネイルの最大数。
+    thumbs: u32,
 }
 
 fn ms(d: Duration) -> f64 {
@@ -99,13 +118,25 @@ impl Bench {
         (cpu, ms(t0.elapsed()))
     }
 
+    /// 頼まれたサムネイルを、1 色のスロットの画像で全部埋める（アプリの読み込みは別のスレッドで、描画を待たせない）。
+    fn load_thumbs(&mut self) {
+        let image = [90, 120, 160, 255].repeat(slot_image_len() / 4);
+        for key in self.ui.take_thumb_requests() {
+            self.ui
+                .set_thumb(&self.device, &self.queue, &key, Some(&image));
+        }
+    }
+
     /// `frames` 回、`step` で表示を動かしてから描く。
     fn phase(&mut self, name: &'static str, frames: usize, step: impl Fn(&mut Ui, usize)) -> Phase {
         let before = self.ui.text_stats();
         let (mut cpu, mut total) = (Vec::new(), Vec::new());
+        let mut thumbs = 0;
         for i in 0..frames {
             step(&mut self.ui, i);
             let (c, t) = self.frame();
+            thumbs = thumbs.max(self.ui.thumb_stats().drawn);
+            self.load_thumbs();
             cpu.push(c);
             total.push(t);
         }
@@ -118,6 +149,7 @@ impl Bench {
                 shaped: after.shaped - before.shaped,
                 uploads: after.uploads - before.uploads,
             },
+            thumbs,
         }
     }
 }
@@ -160,6 +192,28 @@ fn bench() -> Option<Bench> {
     })
 }
 
+/// シナリオごとの結果を表にして出す。
+fn print_phases(phases: &[Phase]) {
+    println!(
+        "シナリオ | CPU p50 / p99 / 最大 | GPU の完了まで p50 / p99 / 最大 | シェーピングした数 | 頂点を作った数 | 描いたサムネイルの最大"
+    );
+    for p in phases {
+        println!(
+            "{} | {:.2} / {:.2} / {:.2} ms | {:.2} / {:.2} / {:.2} ms | {} | {} | {}",
+            p.name,
+            quantile(&p.cpu, 0.5),
+            quantile(&p.cpu, 0.99),
+            quantile(&p.cpu, 1.0),
+            quantile(&p.total, 0.5),
+            quantile(&p.total, 0.99),
+            quantile(&p.total, 1.0),
+            p.text.shaped,
+            p.text.uploads,
+            p.thumbs,
+        );
+    }
+}
+
 #[test]
 #[ignore = "測定用。リリースビルドで動かす"]
 fn 数千のカットの_timeline_を拡大と移動と再生で描く時間() {
@@ -188,23 +242,7 @@ fn 数千のカットの_timeline_を拡大と移動と再生で描く時間() {
         }),
         b.phase("再生", 120, |ui, i| ui.set_playhead(i as f64 / 60.0)),
     ];
-    println!(
-        "シナリオ | CPU p50 / p99 / 最大 | GPU の完了まで p50 / p99 / 最大 | シェーピングした数 | 頂点を作った数"
-    );
-    for p in &phases {
-        println!(
-            "{} | {:.2} / {:.2} / {:.2} ms | {:.2} / {:.2} / {:.2} ms | {} | {}",
-            p.name,
-            quantile(&p.cpu, 0.5),
-            quantile(&p.cpu, 0.99),
-            quantile(&p.cpu, 1.0),
-            quantile(&p.total, 0.5),
-            quantile(&p.total, 0.99),
-            quantile(&p.total, 1.0),
-            p.text.shaped,
-            p.text.uploads,
-        );
-    }
+    print_phases(&phases);
     let play = &phases[4];
     assert_eq!(
         play.text.shaped + play.text.uploads,
