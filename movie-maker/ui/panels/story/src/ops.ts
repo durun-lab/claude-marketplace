@@ -60,6 +60,12 @@ export const tagOp = (topic: Topic, tag: string, remove: boolean): Op => ({
   remove,
 });
 
+/** 並べる話題の ID と、話題ごとに作るカットの ID。カットの ID は呼び出し側が決め、取り消しとやり直しで同じ ID に戻す。 */
+export const arrangeIds = (topics: readonly Topic[]): { topics: string[]; cuts: string[] } => ({
+  topics: topics.map((t) => t.id),
+  cuts: topics.map(() => newId("k")),
+});
+
 /** 話題の列を、並べた順にカットにして sequence の末尾へ差し込む。 */
 export const insertTopicsOp = (
   sequence: string,
@@ -67,6 +73,5 @@ export const insertTopicsOp = (
 ): Extract<Op, { op: "insertTopics" }> => ({
   op: "insertTopics",
   sequence,
-  topics: topics.map((t) => t.id),
-  cuts: topics.map(() => newId("k")),
+  ...arrangeIds(topics),
 });

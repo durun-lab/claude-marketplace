@@ -394,7 +394,8 @@ fn import_one(
     Ok((id, true))
 }
 
-fn file_name(path: &str) -> String {
+/// 素材の表示名（パスのファイル名）。Media のパネルと Source の一覧が同じ名前を出す。
+pub(crate) fn file_name(path: &str) -> String {
     Path::new(path)
         .file_name()
         .map_or_else(|| path.to_owned(), |n| n.to_string_lossy().into_owned())

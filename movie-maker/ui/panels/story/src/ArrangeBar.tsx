@@ -4,10 +4,10 @@ import type { Tray } from "./useStory.ts";
 export interface ArrangeBarProps {
   tray: Tray;
   sequences: readonly StorySequence[];
-  /** 並べ先の sequence（`arrangeTarget` で決めたもの）。 */
+  /** 並べ先の sequence（`arrangeTarget` で決めたもの）。`null` は sequence が無く、Arrange が作る。 */
   target: string | null;
   onChoose: (sequence: string) => void;
-  onArrange: (sequence: string) => void;
+  onArrange: (sequence: string | null) => void;
 }
 
 /** 選んだ並べ先の sequence。選んでいないか無くなっていれば先頭。 */
@@ -50,16 +50,13 @@ export const ArrangeBar = ({ tray, sequences, target, onChoose, onArrange }: Arr
             </option>
           ))}
         </select>
-        <button
-          type="button"
-          class="mm-story-button mm-story-primary"
-          disabled={target === null}
-          onClick={() => target && onArrange(target)}
-        >
+        <button type="button" class="mm-story-button mm-story-primary" onClick={() => onArrange(target)}>
           Arrange
         </button>
       </div>
-      {sequences.length === 0 && <p class="mm-story-meta">No sequence in this project.</p>}
+      {sequences.length === 0 && (
+        <p class="mm-story-meta">No sequence yet. Arrange creates one in the open composition.</p>
+      )}
     </div>
   );
 };

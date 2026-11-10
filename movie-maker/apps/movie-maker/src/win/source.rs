@@ -11,6 +11,7 @@ use mm_doc::{Asset, ColorConfig, Composition, Layer, Node, Project};
 use mm_types::{AssetId, CompositionId, Id, Rational, RationalTime};
 use serde::Serialize;
 
+use crate::win::media;
 use crate::win::playback::{Command, Playback, PlayerOptions};
 use crate::win::state::Shared;
 
@@ -173,6 +174,8 @@ pub struct SourceState {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SourceAsset {
     pub id: String,
+    /// 一覧に出す名前。Media のパネルと同じファイル名（`media::file_name`）。
+    pub name: String,
     pub duration: f64,
 }
 
@@ -187,6 +190,7 @@ pub fn state_of(shared: &Shared) -> SourceState {
                 .iter()
                 .map(|a| SourceAsset {
                     id: a.id.to_string(),
+                    name: media::file_name(&a.path),
                     duration: a.duration.to_f64(),
                 })
                 .collect()
@@ -256,5 +260,19 @@ mod tests {
         assert_eq!(s.asset, None);
         shared.source.send(Command::Play);
         assert!(!shared.source.is_active());
+    }
+
+    #[test]
+    fn 開ける素材の一覧は_media_のパネルと同じファイル名を出す() {
+        let mut p = sample_project();
+        p.assets[0].path = "D:/clips/day1/take 3.mp4".into();
+        let shared = Shared::new();
+        shared.publish_doc(Arc::new(p), Id::new("main"));
+        let names: Vec<String> = state_of(&shared)
+            .assets
+            .into_iter()
+            .map(|a| a.name)
+            .collect();
+        assert_eq!(names, ["take 3.mp4"]);
     }
 }

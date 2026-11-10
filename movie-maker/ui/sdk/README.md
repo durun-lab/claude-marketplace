@@ -89,6 +89,7 @@ Story パネル（`ui/panels/story`）が使う Tauri のコマンド。ハン�
 
 | コマンド | 引数 | 成功 |
 |---|---|---|
+| `story_arrange` | `{ sequence, topics, cuts }` | `{ touched }`。Arrange。話題 `topics` を sequence `sequence` の末尾に並べる（カットの ID は `cuts`）。`sequence` が `null` なら先頭の sequence。プロジェクトに sequence が無ければ、開いているコンポジションに sequence とそのレイヤーを作り（ID と長さはアプリが決める）、`addSequence`、`addLayer`、`insertTopics`、`fitLayer` を 1 つのトランザクションで適用する |
 | `story_overview` | なし | `{ assets: [{ id, name, duration, has_transcript }], sequences: [{ id, cuts, duration }], open_sequence }`（`open_sequence` は開いているコンポジションの sequence。無ければ `null`） |
 | `story_transcript` | `{ asset }` | `{ asset, words, topics, selections }`。`words` は時刻順の `{ id, segment, start, end, text, fixed, deleted }`（`text` は取り込んだままの文字、`fixed` は直した文字、表示は `fixed ?? text`）。`topics` と `selections` はその素材のもの（`ops.ts` の `Topic`、`Selection`） |
 | `story_range` | `{ asset, first, last }` | `{ start, end }`。単語 `first` から `last`（先後はどちらでもよい）までの時刻。`addTopic` の `in`、`out` にそのまま使う |
@@ -100,7 +101,7 @@ Story パネル（`ui/panels/story`）が使う Tauri のコマンド。ハン�
 
 Story と Media は素材を選んだとき、DOM のイベント `mm:asset-selected`（`detail.asset`）を投げる（`announceAsset`）。`web/transport.js` が受けて Source で開く。
 
-編集は `apply_op` で送る。パネルが使う操作は `addTopic`、`removeTopic`、`cutWords`（Delete）、`deleteWords`（Hide と Restore）、`fixTranscript`、`rate`、`tag`、`insertTopics`。単語をクリックしたときの再生位置の移動は `transport`（`{ action: "seek", value: 秒 }`）で、`story_timeline_time` が返した位置に動かす。
+編集は `apply_op` で送る。パネルが使う操作は `addTopic`、`removeTopic`、`cutWords`（Delete）、`deleteWords`（Hide と Restore）、`fixTranscript`、`rate`、`tag`。Arrange（`insertTopics`）だけは `story_arrange` で送り、並べ先の決め方と sequence の自動作成をアプリが最新のデータで行う。単語をクリックしたときの再生位置の移動は `transport`（`{ action: "seek", value: 秒 }`）で、`story_timeline_time` が返した位置に動かす。
 
 ## コメントの型
 
