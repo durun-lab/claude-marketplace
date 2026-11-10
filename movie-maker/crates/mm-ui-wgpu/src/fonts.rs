@@ -1,5 +1,6 @@
 //! サーフェスの UI の字をシェーピングする（cosmic-text）。フォントはテーマの family で、そのフォントに無い日本語の字は
-//! フォールバックのフォント（Yu Gothic UI、Meiryo）でシェーピングする。シェーピングの結果は文字列と字の大きさごとに
+//! フォールバックのフォント（Yu Gothic UI、Meiryo）でシェーピングする。私用領域の字（ツールバーの字のアイコン）は
+//! Windows の記号のフォントを指してシェーピングする。シェーピングの結果は文字列と字の大きさごとに
 //! キャッシュし、描くたびにはシェーピングし直さない。
 
 use std::collections::HashMap;
@@ -31,6 +32,11 @@ const COMMON: &[&str] = &[
     "Yu Gothic UI",
     "Meiryo",
 ];
+/// Windows の記号のフォント。前から順に、入っているものを使う（Windows 11 は Segoe Fluent Icons、Windows 10 は
+/// Segoe MDL2 Assets。WinUI の `SymbolIcon` と同じ並び）。2 つは同じ符号位置に同じ意味の字を割り当てている。
+const SYMBOL_FONTS: &[&str] = &["Segoe Fluent Icons", "Segoe MDL2 Assets"];
+/// 記号のフォントの字の範囲（Unicode の私用領域）。符号位置の意味はフォントごとに違うので、フォールバックに任せない。
+const SYMBOL_RANGE: std::ops::RangeInclusive<char> = '\u{E000}'..='\u{F8FF}';
 /// キャッシュする文字列の数の目安（字の大きさごと）。超えたら、しばらく使っていないものを捨てる。
 const KEEP: usize = 2048;
 /// 数が目安を超えても残す、最後に使ってからのフレームの数（60 fps で 10 秒）。
@@ -94,6 +100,8 @@ impl ShapeCache {
 pub(crate) struct Shaper {
     fonts: FontSystem,
     family: String,
+    /// 記号のフォント（[`SYMBOL_FONTS`] のうち入っている最初のもの）。
+    symbols: Option<&'static str>,
     cache: ShapeCache,
 }
 
@@ -103,12 +111,27 @@ impl Shaper {
     pub(crate) fn new(family: &str) -> Self {
         let mut db = fontdb::Database::new();
         db.load_system_fonts();
+        Self::with_db(family, db)
+    }
+
+    /// フォントの一式 `db` から作る。
+    pub(crate) fn with_db(family: &str, db: fontdb::Database) -> Self {
+        let symbols = SYMBOL_FONTS.iter().copied().find(|name| {
+            db.faces()
+                .any(|f| f.families.iter().any(|(n, _)| n == name))
+        });
         let fallback = UiFallback(PlatformFallback);
         Self {
             fonts: FontSystem::new_with_locale_and_db_and_fallback(LOCALE.into(), db, fallback),
             family: family.to_owned(),
+            symbols,
             cache: ShapeCache::default(),
         }
+    }
+
+    /// 記号のフォントが入っているか。無ければツールバーは字のアイコンを標準のフォントの記号の字で描く。
+    pub(crate) fn has_symbol_font(&self) -> bool {
+        self.symbols.is_some()
     }
 
     /// フォントを替える。替わったらキャッシュを捨てる。
@@ -146,16 +169,22 @@ impl TextMeasure for Shaper {
         let cache = &mut self.cache;
         let map = cache.shaped.entry(size.to_bits()).or_default();
         if !map.contains_key(text) {
-            map.insert(
-                text.into(),
-                shape(&mut self.fonts, &self.family, text, size),
-            );
+            let family = match self.symbols {
+                Some(symbols) if is_symbol(text) => symbols,
+                _ => self.family.as_str(),
+            };
+            map.insert(text.into(), shape(&mut self.fonts, family, text, size));
             cache.count += 1;
         }
         let shaped = map.get_mut(text).expect("キャッシュしたばかり");
         shaped.used = cache.frame;
         &shaped.stops
     }
+}
+
+/// 字が全部、記号のフォントの字の範囲か。
+fn is_symbol(text: &str) -> bool {
+    !text.is_empty() && text.chars().all(|c| SYMBOL_RANGE.contains(&c))
 }
 
 /// `text` を大きさ `size` で 1 行にシェーピングする。
@@ -277,6 +306,39 @@ mod tests {
                 "{text} がどのフォントにも無い（.notdef）"
             );
         }
+    }
+
+    /// Windows のフォントのフォルダーの `files` だけを読み込んだ一式。どれかが無ければ `None`（試験をスキップする）。
+    fn db_of(files: &[&str]) -> Option<fontdb::Database> {
+        let dir = std::path::PathBuf::from(std::env::var_os("WINDIR")?).join("Fonts");
+        let mut db = fontdb::Database::new();
+        for file in files {
+            db.load_font_file(dir.join(file)).ok()?;
+        }
+        Some(db)
+    }
+
+    #[test]
+    fn 私用領域の字は記号のフォントを指してシェーピングし_segoe_fluent_icons_が無ければ_segoe_mdl2_assets(
+    ) {
+        let mut s = shaper();
+        if !installed(&s, "Segoe Fluent Icons") {
+            return;
+        }
+        assert!(s.has_symbol_font());
+        assert_eq!(face_of(&mut s, "\u{E7A7}"), "Segoe Fluent Icons");
+        assert_eq!(
+            face_of(&mut s, "Undo"),
+            "Tahoma",
+            "私用領域の外の字は今までどおり"
+        );
+        let Some(win10) = db_of(&["tahoma.ttf", "segmdl2.ttf"]) else {
+            return;
+        };
+        let mut s = Shaper::with_db("Tahoma", win10);
+        assert_eq!(face_of(&mut s, "\u{E7A7}"), "Segoe MDL2 Assets");
+        let plain = db_of(&["tahoma.ttf"]).expect("Tahoma");
+        assert!(!Shaper::with_db("Tahoma", plain).has_symbol_font());
     }
 
     #[test]

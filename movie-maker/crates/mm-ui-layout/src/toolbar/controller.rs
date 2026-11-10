@@ -60,11 +60,11 @@ impl ToolbarController {
     ) -> Vec<ToolbarAction> {
         match ev {
             PointerEvent::Down { x, y, .. } => {
-                self.hover = part_in(bar, x, y);
+                self.hover = part_in(bar, &state.names, x, y);
                 self.down(x, bar, state)
             }
             PointerEvent::Move { x, y } => {
-                self.hover = part_in(bar, x, y);
+                self.hover = part_in(bar, &state.names, x, y);
                 self.drag_to(x, bar, state).into_iter().collect()
             }
             PointerEvent::Up => {
@@ -114,7 +114,7 @@ impl ToolbarController {
         if !self.dragging {
             return None;
         }
-        let slider = cells(bar).slider?;
+        let slider = cells(bar, &state.names).slider?;
         Some(ToolbarAction::Zoom(zoom_px(
             slider.fraction_at(x),
             state.floor,

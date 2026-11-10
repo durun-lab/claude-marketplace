@@ -1,4 +1,4 @@
-//! ツールバーの矩形。背景と下端の線、グループの間の縦線、ボタンの背景、矩形で描くアイコン、ズームのスライダー
+//! ツールバーの矩形。背景と下端の線、まとまりの間の縦線、ボタンの背景、矩形で描くアイコン、ズームのスライダー
 //! （溝、下限からつまみまでの塗り、つまみ）。字のアイコンとボタンの名前は文字で描く（[`crate::toolbar_labels`]）。
 
 use super::{Canvas, Depth, PaintInput};
@@ -9,7 +9,7 @@ use crate::toolbar::{
     ToolbarState, THUMB_W,
 };
 
-/// 下端の線と、グループの間の縦線の濃さ。
+/// 下端の線と、まとまりの間の縦線の濃さ。
 const EDGE_ALPHA: f32 = 0.5;
 const SEPARATOR_ALPHA: f32 = 0.5;
 /// スライダーの溝の高さと濃さ、塗りの濃さ。
@@ -34,7 +34,7 @@ pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
         Rect::new(bar.x, bar.bottom() - 1.0, bar.w, 1.0),
         p.tick.with_alpha(EDGE_ALPHA),
     );
-    let layout = cells(bar);
+    let layout = cells(bar, &view.state.names);
     for sep in &layout.separators {
         c.push(depth, *sep, p.tick.with_alpha(SEPARATOR_ALPHA));
     }

@@ -1,6 +1,8 @@
 use super::*;
 use crate::controller::{Mods, PointerEvent};
+use crate::geom::{Quad, QuadShape};
 use crate::palette::Palette;
+use crate::text::tests::FakeMeasure;
 
 const COMMANDS: [&str; 9] = [
     "edit.undo",
@@ -18,17 +20,28 @@ fn bar(w: f32) -> Rect {
     Rect::new(0.0, 0.0, w, 30.0)
 }
 
+/// テスト用の測り方（英字 1 字が 6）で測った名前の幅を持つ状態。
 fn state() -> ToolbarState {
     ToolbarState {
         snapping: true,
         px_per_sec: 100.0,
         floor: 2.0,
+        names: ToolbarNames::measure(&UiFont::default(), &mut FakeMeasure::default()),
         ..ToolbarState::default()
     }
 }
 
 fn center(r: Rect) -> (f32, f32) {
     (r.x + r.w / 2.0, r.y + r.h / 2.0)
+}
+
+/// 名前 `name` のボタン。
+fn cell(b: Rect, s: &ToolbarState, name: &str) -> ButtonCell {
+    *cells(b, &s.names)
+        .buttons
+        .iter()
+        .find(|x| x.spec.name == name)
+        .unwrap()
 }
 
 fn down(c: &mut ToolbarController, bar: Rect, s: &ToolbarState, at: (f32, f32)) {
@@ -53,111 +66,17 @@ fn mv(
 }
 
 #[test]
-fn ボタンは左から_undo_からスナップの順に並び_右にズームのグループが続く() {
-    let b = bar(1000.0);
-    let c = cells(b);
-    let names: Vec<_> = c.buttons.iter().map(|b| b.spec.name).collect();
-    assert_eq!(
-        names,
-        [
-            "Undo",
-            "Redo",
-            "Selection",
-            "Trim",
-            "Blade",
-            "Split",
-            "Lift",
-            "Extract",
-            "Snapping",
-            "",
-            "",
-            "Fit"
-        ]
-    );
-    let mut right = 0.0;
-    for cell in &c.buttons {
-        assert!(
-            cell.rect.x >= right,
-            "{}: 重ならず左から右へ",
-            cell.spec.name
-        );
-        right = cell.rect.right();
-        assert!(cell.rect.y >= b.y && cell.rect.bottom() <= b.bottom());
-        assert_eq!(cell.rect.h, BUTTON_H);
-        assert_eq!(cell.rect.y + cell.rect.h / 2.0, b.h / 2.0, "縦は中央");
-    }
-    assert!(right <= b.right() - PAD + 0.01, "右端の余白の内側");
-    let slider = c.slider.expect("広ければスライダーを出す");
-    let out = toolbar_button(b, "timeline.zoom_out").expect("Zoom Out");
-    let zin = toolbar_button(b, "timeline.zoom_in").expect("Zoom In");
-    assert!(out.right() <= slider.rect.x && slider.rect.right() <= zin.x);
-    assert_eq!(slider.rect.w, SLIDER_W);
-}
-
-#[test]
-fn 広ければ名前を出し_狭ければアイコンだけにして_さらに狭ければスライダーを出さない() {
-    let named = cells(bar(1000.0));
-    assert!(named.buttons.iter().all(|b| b.named));
-    let narrow_w = left_width(true) + GROUP_GAP + zoom_buttons_width(true) + 40.0;
-    let narrow = cells(bar(narrow_w));
-    assert!(narrow
-        .buttons
-        .iter()
-        .all(|b| !b.named && b.rect.w == ICON_BUTTON_W));
-    assert!(narrow.buttons.iter().all(|b| b.name_box().is_none()));
-    assert!(
-        narrow.slider.is_some(),
-        "アイコンなら入る幅にスライダーも出す"
-    );
-    let tiny = cells(bar(left_width(false)
-        + GROUP_GAP
-        + zoom_buttons_width(false)
-        + 20.0));
-    assert!(tiny.slider.is_none());
-    assert_eq!(tiny.buttons.len(), 12, "ツールの 3 つを含む全部");
-}
-
-#[test]
-fn 幅が足りなければ右のズームのグループに掛かる左のボタンを出さない() {
-    let b = bar(300.0);
-    let c = cells(b);
-    let zoom = toolbar_button(b, "timeline.zoom_out").expect("ズームは残す");
-    let last_left = c
-        .buttons
-        .iter()
-        .filter(|x| {
-            !x.spec.command.is_some_and(|id| {
-                id.starts_with("timeline.zoom") || id.ends_with("full_extent_zoom")
-            })
-        })
-        .map(|x| x.rect.right())
-        .fold(0.0, f32::max);
-    assert!(last_left <= zoom.x, "{last_left} <= {}", zoom.x);
-    assert!(c.buttons.iter().all(|x| x.rect.right() <= b.right()));
-}
-
-#[test]
 fn コマンドのあるボタンは表の_id_で引け_ツールのボタンは場所だけで押せない() {
     let b = bar(1000.0);
-    for id in COMMANDS {
-        assert!(toolbar_button(b, id).is_some(), "{id}");
-    }
     let s = state();
-    let c = cells(b);
-    let look = |name: &str| {
-        let cell = c.buttons.iter().find(|x| x.spec.name == name).unwrap();
-        ButtonLook::of(cell, &s, &ToolbarController::default())
-    };
+    for id in COMMANDS {
+        assert!(toolbar_button(b, &s.names, id).is_some(), "{id}");
+    }
+    let look = |name: &str| ButtonLook::of(&cell(b, &s, name), &s, &ToolbarController::default());
     assert!(look("Selection").is_lit() && look("Selection").is_enabled());
     assert!(!look("Trim").is_enabled() && !look("Blade").is_enabled());
     let ctl = &mut ToolbarController::default();
-    let trim = c
-        .buttons
-        .iter()
-        .find(|x| x.spec.name == "Trim")
-        .unwrap()
-        .rect;
-    down(ctl, b, &s, center(trim));
+    down(ctl, b, &s, center(cell(b, &s, "Trim").rect));
     assert_eq!(ctl.pressed(), None, "コマンドの無いボタンは押せない");
     assert_eq!(ctl.hover(), None);
 }
@@ -167,22 +86,20 @@ fn 押せないコマンドは薄く_押せず_snapping_は入のとき押され
     let b = bar(1000.0);
     let mut s = state();
     s.disabled = vec!["clip.lift"];
-    let c = cells(b);
-    let find = |name: &str| *c.buttons.iter().find(|x| x.spec.name == name).unwrap();
     let ctl = ToolbarController::default();
-    let lift = ButtonLook::of(&find("Lift"), &s, &ctl);
+    let lift = ButtonLook::of(&cell(b, &s, "Lift"), &s, &ctl);
     assert!(!lift.is_enabled());
     let p = Palette::DEFAULT;
     assert!(lift.ink(&p).0[3] < p.label.0[3]);
     assert!(lift.back(&p).is_none());
-    let snap = ButtonLook::of(&find("Snapping"), &s, &ctl);
+    let snap = ButtonLook::of(&cell(b, &s, "Snapping"), &s, &ctl);
     assert!(snap.is_lit());
     assert_eq!(snap.back(&p), Some(p.accent));
     s.snapping = false;
-    let off = ButtonLook::of(&find("Snapping"), &s, &ctl);
+    let off = ButtonLook::of(&cell(b, &s, "Snapping"), &s, &ctl);
     assert!(!off.is_lit() && off.back(&p).is_none());
     let mut c2 = ToolbarController::default();
-    down(&mut c2, b, &s, center(find("Lift").rect));
+    down(&mut c2, b, &s, center(cell(b, &s, "Lift").rect));
     assert_eq!(c2.pressed(), None, "押せないボタンは押せない");
 }
 
@@ -191,47 +108,46 @@ fn ボタンは同じボタンの上で離したときに実行し_外で離せ�
 ) {
     let b = bar(1000.0);
     let s = state();
-    let undo = toolbar_button(b, "edit.undo").unwrap();
-    let redo = toolbar_button(b, "edit.redo").unwrap();
+    let undo = cell(b, &s, "Undo");
+    let redo = cell(b, &s, "Redo").rect;
     let p = Palette::DEFAULT;
     let mut ctl = ToolbarController::default();
-    mv(&mut ctl, b, &s, center(undo));
-    let cell = *cells(b).buttons.iter().find(|x| x.rect == undo).unwrap();
-    let hover = ButtonLook::of(&cell, &s, &ctl);
+    mv(&mut ctl, b, &s, center(undo.rect));
+    let hover = ButtonLook::of(&undo, &s, &ctl);
     assert!(
         hover.back(&p).is_some() && !hover.is_pressed(),
         "乗れば明るく"
     );
-    down(&mut ctl, b, &s, center(undo));
-    let held = ButtonLook::of(&cell, &s, &ctl);
+    down(&mut ctl, b, &s, center(undo.rect));
+    let held = ButtonLook::of(&undo, &s, &ctl);
     assert!(held.is_pressed());
     assert_eq!(
-        held.place(undo),
-        undo.translated(1.0, 1.0),
+        held.place(undo.rect),
+        undo.rect.translated(1.0, 1.0),
         "押した見た目は右下へずらす"
     );
     assert_eq!(
         ctl.handle(PointerEvent::Up, b, &s),
         [ToolbarAction::Command("edit.undo")]
     );
-    down(&mut ctl, b, &s, center(undo));
+    down(&mut ctl, b, &s, center(undo.rect));
     mv(&mut ctl, b, &s, center(redo));
     assert!(
-        !ButtonLook::of(&cell, &s, &ctl).is_pressed(),
+        !ButtonLook::of(&undo, &s, &ctl).is_pressed(),
         "外へずらせば押した見た目を外す"
     );
     assert!(
         ctl.handle(PointerEvent::Up, b, &s).is_empty(),
         "別のボタンの上で離しても実行しない"
     );
-    down(&mut ctl, b, &s, center(undo));
-    mv(&mut ctl, b, &s, center(undo));
+    down(&mut ctl, b, &s, center(undo.rect));
+    mv(&mut ctl, b, &s, center(undo.rect));
     assert_eq!(
         ctl.handle(PointerEvent::Up, b, &s).len(),
         1,
         "戻せば実行する"
     );
-    down(&mut ctl, b, &s, center(undo));
+    down(&mut ctl, b, &s, center(undo.rect));
     ctl.handle(PointerEvent::Cancel, b, &s);
     assert!(ctl.handle(PointerEvent::Up, b, &s).is_empty());
 }
@@ -240,11 +156,75 @@ fn ボタンは同じボタンの上で離したときに実行し_外で離せ�
 fn 押したあと押せなくなったボタンは離しても実行しない() {
     let b = bar(1000.0);
     let mut s = state();
-    let split = toolbar_button(b, "clip.split").unwrap();
+    let split = toolbar_button(b, &s.names, "clip.split").unwrap();
     let mut ctl = ToolbarController::default();
     down(&mut ctl, b, &s, center(split));
     s.disabled = vec!["clip.split"];
     assert!(ctl.handle(PointerEvent::Up, b, &s).is_empty());
+}
+
+#[test]
+fn 名前は測った幅のまま切らずに置き_字のアイコンは記号のフォントが無ければ標準の記号の字にする() {
+    let b = bar(1000.0);
+    let mut s = state();
+    s.symbols = true;
+    let font = UiFont::default();
+    let ctl = ToolbarController::default();
+    let p = Palette::DEFAULT;
+    let labels =
+        |s: &ToolbarState| toolbar_labels(b, s, &ctl, &p, &font, &mut FakeMeasure::default());
+    let with = labels(&s);
+    let texts: Vec<&str> = with.iter().map(|l| &*l.text).collect();
+    for name in ["Undo", "Selection", "Extract", "Snapping", "Fit"] {
+        let l = with.iter().find(|l| &*l.text == name).expect(name);
+        assert_eq!(l.cut, None, "{name} は切らない");
+    }
+    assert!(
+        texts.contains(&"\u{E7A7}") && texts.contains(&"\u{E8C6}"),
+        "Undo と Split は記号のフォントの字"
+    );
+    s.symbols = false;
+    let plain: Vec<String> = labels(&s).iter().map(|l| l.text.to_string()).collect();
+    assert!(plain
+        .iter()
+        .all(|t| !t.chars().any(|c| ('\u{E000}'..='\u{F8FF}').contains(&c))));
+    assert!(
+        plain.contains(&"\u{21B6}".to_owned()),
+        "Undo は標準の記号の字"
+    );
+}
+
+#[test]
+fn lift_は抜いた所に隙間を残し_extract_は両側が内向きに寄って隙間を詰める形() {
+    let color = Palette::DEFAULT.label;
+    let lift = icon_quads(Icon::Lift, (0.0, 0.0), color);
+    let extract = icon_quads(Icon::Extract, (0.0, 0.0), color);
+    for icon in [&lift, &extract] {
+        assert!(
+            icon.iter().any(|q| q.shape == QuadShape::TriUp),
+            "上向きの矢印"
+        );
+    }
+    let track = |q: &&Quad| q.shape == QuadShape::Rect && q.rect.y >= 4.0;
+    assert!(
+        lift.iter()
+            .filter(track)
+            .all(|q| q.rect.x >= 3.0 || q.rect.right() <= -3.0),
+        "中ほどは空く"
+    );
+    let right = extract
+        .iter()
+        .find(|q| q.shape == QuadShape::TriRight)
+        .expect("左から寄る");
+    let left = extract
+        .iter()
+        .find(|q| q.shape == QuadShape::TriLeft)
+        .expect("右から寄る");
+    assert_eq!(
+        (right.rect.right(), left.rect.x),
+        (0.0, 0.0),
+        "中ほどで突き合わせる"
+    );
 }
 
 #[test]
@@ -275,19 +255,15 @@ fn スライダーの位置は秒あたりのピクセルの対数に比例し_�
 fn スライダーのドラッグは押したときと動くたびに倍率を返し_溝の外は端に寄せ_離せば止まる() {
     let b = bar(1000.0);
     let s = state();
-    let slider = cells(b).slider.unwrap();
+    let slider = cells(b, &s.names).slider.unwrap();
     let y = slider.rect.y + slider.rect.h / 2.0;
     let mut ctl = ToolbarController::default();
-    let press = ctl.handle(
-        PointerEvent::Down {
-            x: slider.track.x,
-            y,
-            mods: Mods::default(),
-        },
-        b,
-        &s,
-    );
-    assert_eq!(press, [ToolbarAction::Zoom(s.floor)]);
+    let at = PointerEvent::Down {
+        x: slider.track.x,
+        y,
+        mods: Mods::default(),
+    };
+    assert_eq!(ctl.handle(at, b, &s), [ToolbarAction::Zoom(s.floor)]);
     assert!(ctl.dragging());
     let mid = mv(&mut ctl, b, &s, (slider.track.x + slider.track.w / 2.0, y));
     let [ToolbarAction::Zoom(px)] = mid[..] else {

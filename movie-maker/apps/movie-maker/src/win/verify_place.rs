@@ -1,10 +1,11 @@
 //! `--play-test` がクリックとドラッグを投げる位置。`Ui` と同じ `mm-ui-layout` の関数（`split_viewers`、
 //! `TimelineLayout`、`Rows`、`Viewport`、`zoombar`）で、サーフェスの割り付けと Timeline の行とズームバーの位置を求める。
-//! ズーム、スクロール、行の高さは、描画スレッドが置いた表示の状態（`ViewSlot::current`）を読む。
+//! ズーム、スクロール、行の高さは、描画スレッドが置いた表示の状態（`ViewSlot::current`）を読み、ツールバーの名前の幅は
+//! 描画スレッドが測って置いたもの（`Shared::toolbar_names`）を読む。
 
 use mm_ui_layout::{
     button_center, name_center, split_viewers, zoombar, HeaderButton, Item, Rect, Rows, Scale,
-    SurfaceLayout, TimelineLayout, TimelineModel, ViewState, Viewport,
+    SurfaceLayout, TimelineLayout, TimelineModel, ToolbarNames, ViewState, Viewport,
 };
 
 use crate::win::state::Shared;
@@ -19,6 +20,7 @@ pub(crate) struct Placement {
     state: ViewState,
     /// コンポジションの長さ（秒）。ズームバーが表す範囲に使う。
     duration: f64,
+    toolbar_names: ToolbarNames,
 }
 
 /// 今の割り付けと表示の状態。描画スレッドがまだ最初の表示を当てていなければ `None`。
@@ -42,6 +44,7 @@ pub(crate) fn placement(shared: &Shared, hwnd: isize, model: &TimelineModel) -> 
         rows,
         state,
         duration: model.duration,
+        toolbar_names: shared.toolbar_names.lock().expect("toolbar names").clone(),
     })
 }
 
@@ -142,7 +145,7 @@ impl Placement {
     /// Timeline のツールバーのボタン `command` の中央（クライアントの物理ピクセル）。ツールバーを出していないか、
     /// 幅が足りずにそのボタンを出していなければ `None`。
     pub(crate) fn toolbar_button(&self, command: &str) -> Option<(i32, i32)> {
-        let r = mm_ui_layout::toolbar_button(self.timeline.toolbar, command)?;
+        let r = mm_ui_layout::toolbar_button(self.timeline.toolbar, &self.toolbar_names, command)?;
         Some(self.client((r.x + r.w / 2.0, r.y + r.h / 2.0)))
     }
 

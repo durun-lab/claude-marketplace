@@ -1,5 +1,5 @@
-//! 描画スレッドの、Timeline のツールバーと共有状態の行き来。押せないコマンドを `Ui` に渡し、ボタンをキーと同じ
-//! コマンドの表で実行し、スライダーの倍率を描画の 1 周に 1 回だけ適用する。
+//! 描画スレッドの、Timeline のツールバーと共有状態の行き来。ボタンをキーと同じコマンドの表で実行し、スライダーの倍率を
+//! 描画の 1 周に 1 回だけ適用し、描いた名前の幅を `--play-test` のために置く。
 
 use std::sync::Arc;
 
@@ -30,5 +30,14 @@ impl Zoom {
         if let Some(px_per_sec) = self.0 {
             ui.zoom_to(px_per_sec);
         }
+    }
+}
+
+/// 最後に描いたツールバーの名前の幅を共有状態に置く。名前の幅は字で変わり、ボタンの位置を決めるので、`--play-test` は
+/// これでボタンの位置を引く（`Placement::toolbar_button`）。
+pub(super) fn publish_names(shared: &Shared, ui: &Ui) {
+    let mut slot = shared.toolbar_names.lock().expect("toolbar names");
+    if *slot != *ui.toolbar_names() {
+        *slot = ui.toolbar_names().clone();
     }
 }

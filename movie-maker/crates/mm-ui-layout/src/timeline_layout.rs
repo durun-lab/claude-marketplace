@@ -2,7 +2,7 @@
 //! ズームバー、ステータスバーの矩形に分ける。座標は Timeline の矩形の左上を (0, 0) とする。
 //!
 //! 領域を足す PR は、ここに自分の大きさの定数を置き、描く関数を `paint/` の下の自分のファイルに置く。
-//! まだ無い領域（ツールバー、ステータスバー）は大きさ 0 で、場所だけを決めてある。
+//! まだ無い領域（ステータスバー）は大きさ 0 で、場所だけを決めてある。
 
 use std::ops::Range;
 
@@ -62,10 +62,12 @@ impl TimelineLayout {
     pub fn new((w, h): (f32, f32), content_h: f32) -> Self {
         let (w, h) = (w.max(0.0), h.max(0.0));
         let status_h = STATUS_H.min(h);
-        // 高さが足りないときは、再生位置を動かす目盛りの帯、ズームバー、ツールバー（コマンドはキーとメニューにもある）の順に取る。
+        // 高さが足りないときは、再生位置を動かす目盛りの帯をズームバーより先に取る。
         let ruler_h = RULER_H.min(h - status_h);
         let zoombar_h = ZOOMBAR_H.min(h - status_h - ruler_h);
-        let toolbar_h = TOOLBAR_H.min(h - status_h - ruler_h - zoombar_h);
+        // ツールバーは潰さずに出すか出さないかで、下限の高さに足りなければ出さずに行へ回す（再生の操作のバーと同じく、
+        // ボタンのコマンドはキーとメニューにもあるため）。
+        let toolbar_h = if h >= MIN_TIMELINE_H { TOOLBAR_H } else { 0.0 };
         let area_y = toolbar_h + ruler_h;
         let area_h = (h - area_y - zoombar_h - status_h).max(0.0);
         let scrollbar_w = if content_h > area_h {
@@ -250,9 +252,8 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn ステータスバーはまだ無く_足りない高さではツールバーが最後に譲り_矩形は負にならない() {
+    fn ステータスバーはまだ無く_矩形は負にならない() {
         let l = TimelineLayout::new((800.0, 300.0), 1000.0);
-        assert_eq!(l.toolbar, Rect::new(0.0, 0.0, 800.0, TOOLBAR_H));
         assert!(l.status.w == 0.0 || l.status.h == 0.0, "{:?}", l.status);
         let tiny = TimelineLayout::new((5.0, 10.0), 1000.0);
         for r in [
@@ -266,7 +267,22 @@ pub(crate) mod tests {
         }
         assert_eq!(tiny.ruler.h, 10.0, "目盛りの帯も Timeline の高さを超えない");
         assert_eq!(tiny.zoombar.h, 0.0, "足りない高さは目盛りの帯が先に取る");
-        assert_eq!(tiny.toolbar.h, 0.0, "ツールバーはズームバーの後");
+    }
+
+    #[test]
+    fn ツールバーは下限の高さがあれば上端に出し_足りなければ潰さずに出さないで行に回す() {
+        let full = TimelineLayout::new((800.0, MIN_TIMELINE_H), 1000.0);
+        assert_eq!(full.toolbar, Rect::new(0.0, 0.0, 800.0, TOOLBAR_H));
+        assert_eq!(full.ruler.y, TOOLBAR_H);
+        assert_eq!(full.row_area.h, 2.0 * RowHeight::Medium.px(), "行は 2 本");
+        let low = TimelineLayout::new((800.0, MIN_TIMELINE_H - 1.0), 1000.0);
+        assert_eq!(low.toolbar.h, 0.0);
+        assert_eq!(low.ruler.y, 0.0);
+        assert_eq!(
+            low.row_area.h,
+            MIN_TIMELINE_H - 1.0 - RULER_H - ZOOMBAR_H,
+            "ツールバーの分も行に回す"
+        );
     }
 
     #[test]

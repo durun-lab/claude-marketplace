@@ -78,7 +78,7 @@ pub use timeline::{
 pub use timeline_layout::{TimelineLayout, Viewport, HEADER_W, RULER_H, SCROLLBAR_W};
 pub use toolbar::{
     toolbar_button, toolbar_labels, zoom_fraction, zoom_px, ToolbarAction, ToolbarController,
-    ToolbarPart, ToolbarState, ToolbarView,
+    ToolbarNames, ToolbarPart, ToolbarState, ToolbarView,
 };
 pub use transport::{
     jog_track, transport_button, transport_labels, transport_quads, TransportAction,
