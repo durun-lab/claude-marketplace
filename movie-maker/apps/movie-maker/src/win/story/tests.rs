@@ -156,25 +156,73 @@ fn saved_story(dir: &Path) -> (StoryState, Arc<mm_serve::Core>) {
     (story, core)
 }
 
+fn strings<const N: usize>(v: [&str; N]) -> [String; N] {
+    v.map(String::from)
+}
+
+fn cut_ids(project: &Project, sequence: &str) -> Vec<String> {
+    let seq = project.sequence(&Id::new(sequence)).unwrap();
+    seq.cuts.iter().map(|c| c.id.to_string()).collect()
+}
+
 #[test]
-fn 並べ先の_sequence_が無ければ_開いているコンポジションに_sequence_とレイヤーを作って並べ_取り消し_1_回で戻る(
+fn sequence_が無ければ_開いているコンポジションに_sequence_とレイヤーを作って並べ_取り消し_1_回で戻る(
 ) {
     let dir = tempfile::tempdir().unwrap();
     let (story, core) = saved_story(dir.path());
     let before = core.project().unwrap().project;
-    let ids = |v: [&str; 2]| v.map(String::from);
     story
-        .arrange_new(&ids(["t2", "t1"]), &ids(["k2", "k1"]))
+        .arrange(None, &strings(["t2", "t1"]), &strings(["k2", "k1"]))
         .expect("並べる");
     let after = core.project().unwrap().project;
-    let seq = after.sequence(&Id::new("main-seq")).unwrap();
-    let cuts: Vec<&str> = seq.cuts.iter().map(|c| c.id.as_str()).collect();
-    assert_eq!(cuts, ["k2", "k1"], "話題の順");
-    let (_, layer) = after.layer(&Id::new("main-seq-layer")).unwrap();
-    assert_eq!(layer.out_point, secs(3), "話題の長さの和");
+    assert_eq!(cut_ids(&after, "Sequence 1"), ["k2", "k1"], "話題の順");
+    let (comp, layer) = after.layer(&Id::new("Sequence 1 layer")).unwrap();
+    assert_eq!(
+        (layer.out_point, comp.duration),
+        (secs(3), secs(3)),
+        "話題の長さの和"
+    );
     let overview = story.overview().unwrap();
-    assert_eq!(overview.open_sequence.as_deref(), Some("main-seq"));
+    assert_eq!(overview.open_sequence.as_deref(), Some("Sequence 1"));
 
     core.undo(&mm_serve::Caller::webview()).expect("取り消す");
     assert_eq!(core.project().unwrap().project, before);
+}
+
+#[test]
+fn パネルの一覧が古く並べ先を選んでいなくても_sequence_を二重に作らず_先頭の_sequence_に並べる() {
+    let dir = tempfile::tempdir().unwrap();
+    let (story, core) = saved_story(dir.path());
+    story
+        .arrange(None, &strings(["t1"]), &strings(["k1"]))
+        .expect("作って並べる");
+    story
+        .arrange(None, &strings(["t2"]), &strings(["k2"]))
+        .expect("並べる");
+    let after = core.project().unwrap().project;
+    assert_eq!(after.sequences.len(), 1);
+    assert_eq!(cut_ids(&after, "Sequence 1"), ["k1", "k2"]);
+}
+
+#[test]
+fn 並べ先を渡せば_その_sequence_の末尾への_insert_topics_だけにする() {
+    let mut project = Project::new();
+    for id in ["s1", "s2"] {
+        project.sequences.push(Sequence {
+            id: Id::new(id),
+            cuts: Vec::new(),
+            origin: None,
+        });
+    }
+    let comp = Id::new("main");
+    let topics = vec![Id::new("t1")];
+    let ops = arrange_ops(&project, &comp, Some("s2"), topics, vec![Id::new("k1")]).unwrap();
+    let [Op::InsertTopics(insert)] = ops.as_slice() else {
+        panic!("insertTopics だけ: {ops:?}");
+    };
+    assert_eq!(
+        (insert.sequence.as_str(), insert.index),
+        ("s2", None),
+        "末尾"
+    );
 }

@@ -74,10 +74,10 @@ export interface StoryApi {
   /** 操作を送る（`apply_op`）。 */
   apply: (op: Op) => Promise<OpResult>;
   /**
-   * 話題を、開いているコンポジションに足す新しい sequence に並べる（`story_arrange_new`）。並べ先の sequence が無いときの
-   * Arrange。sequence とそのレイヤーの ID と長さはアプリが決める。
+   * 話題を sequence の末尾に並べる（`story_arrange`。カットの ID は `cuts`）。`sequence` が `null` なら先頭の sequence、
+   * プロジェクトに sequence が無ければ、開いているコンポジションに作って並べる（ID と長さはアプリが決める）。
    */
-  arrangeNew: (topics: string[], cuts: string[]) => Promise<OpResult>;
+  arrange: (sequence: string | null, topics: string[], cuts: string[]) => Promise<OpResult>;
   /** 再生位置を動かす（`transport` の `seek`）。 */
   seek: (seconds: number) => Promise<void>;
 }
@@ -100,9 +100,9 @@ export const createIpcStoryApi = (call: StoryInvoke = tauriInvoke): StoryApi => 
       (await call("story_timeline_time", { asset, at })) as number | null,
     cutTime: async (cut) => (await call("story_cut_time", { cut })) as number | null,
     apply: (op) => transport.send(op),
-    arrangeNew: async (topics, cuts) => {
+    arrange: async (sequence, topics, cuts) => {
       try {
-        return { ok: true, value: await call("story_arrange_new", { topics, cuts }) };
+        return { ok: true, value: await call("story_arrange", { sequence, topics, cuts }) };
       } catch (e) {
         return { ok: false, error: errorText(e) };
       }

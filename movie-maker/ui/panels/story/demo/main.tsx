@@ -75,7 +75,6 @@ const applyOp = (op: Op): void => {
     const rest = (target.tags ?? []).filter((x) => x !== op.tag);
     target.tags = (op.remove ? rest : [...rest, op.tag]).sort();
   }
-  if (op.op === "insertTopics") cuts += op.topics.length;
 };
 
 const api: StoryApi = {
@@ -98,7 +97,7 @@ const api: StoryApi = {
     applyOp(op);
     return { ok: true, value: {} };
   },
-  arrangeNew: async (topicIds) => {
+  arrange: async (_sequence, topicIds) => {
     cuts += topicIds.length;
     return { ok: true, value: {} };
   },

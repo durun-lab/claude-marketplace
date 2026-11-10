@@ -47,7 +47,7 @@ const fakeStory = (): StoryApi => ({
   timelineTime: vi.fn().mockResolvedValue(null),
   cutTime: vi.fn().mockResolvedValue(null),
   apply: vi.fn().mockResolvedValue({ ok: true, value: {} }),
-  arrangeNew: vi.fn().mockResolvedValue({ ok: true, value: {} }),
+  arrange: vi.fn().mockResolvedValue({ ok: true, value: {} }),
   seek: vi.fn(),
 });
 

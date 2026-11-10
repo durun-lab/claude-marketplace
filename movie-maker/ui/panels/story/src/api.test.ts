@@ -32,11 +32,12 @@ describe("createIpcStoryApi", () => {
     expect(call).toHaveBeenCalledWith("apply_op", { op });
   });
 
-  it("sequence を作って並べるのは story_arrange_new で送り、拒否された理由を返す", async () => {
-    const call = vi.fn().mockResolvedValueOnce({ touched: ["main-seq"] }).mockRejectedValueOnce("No project open");
+  it("並べるのは並べ先が無くても story_arrange で送り、拒否された理由を返す", async () => {
+    const call = vi.fn().mockResolvedValueOnce({ touched: ["Sequence 1"] }).mockRejectedValueOnce("No project open");
     const api = createIpcStoryApi(call);
-    expect(await api.arrangeNew(["t1"], ["k1"])).toEqual({ ok: true, value: { touched: ["main-seq"] } });
-    expect(call).toHaveBeenCalledWith("story_arrange_new", { topics: ["t1"], cuts: ["k1"] });
-    expect(await api.arrangeNew(["t1"], ["k1"])).toEqual({ ok: false, error: "No project open" });
+    expect(await api.arrange(null, ["t1"], ["k1"])).toEqual({ ok: true, value: { touched: ["Sequence 1"] } });
+    expect(call).toHaveBeenCalledWith("story_arrange", { sequence: null, topics: ["t1"], cuts: ["k1"] });
+    expect(await api.arrange("s1", ["t1"], ["k1"])).toEqual({ ok: false, error: "No project open" });
+    expect(call).toHaveBeenLastCalledWith("story_arrange", { sequence: "s1", topics: ["t1"], cuts: ["k1"] });
   });
 });
