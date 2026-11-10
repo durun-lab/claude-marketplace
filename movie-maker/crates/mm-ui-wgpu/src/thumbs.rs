@@ -8,26 +8,26 @@ use std::sync::Arc;
 
 use mm_ui_layout::{Rect, ThumbQuad};
 
-use cell::level_range;
-pub use cell::{cell_from_rgb, cell_len};
 use gpu::{Gpu, Instance};
+use slot_image::level_range;
+pub use slot_image::{slot_image_from_rgb, slot_image_len};
 
-mod cell;
 mod gpu;
+mod slot_image;
 
 /// アトラスの 1 スロットの大きさ（物理ピクセル）。`THUMB_ASPECT` と同じ 16:9。Large の帯（94x53 論理ピクセル）を
 /// 表示の倍率 2 で描いても引き伸ばさない大きさで、キャッシュの JPEG（幅 320）より小さい。
-pub const CELL_W: u32 = 192;
-pub const CELL_H: u32 = 108;
+pub const SLOT_W: u32 = 192;
+pub const SLOT_H: u32 = 108;
 pub(super) const COLS: u32 = 10;
 pub(super) const ROWS: u32 = 20;
 /// アトラスに入るサムネイルの数。1 フレームに見える数（行の数と、シーケンスの行のカットの数で 100 に満たない）より多くし、
 /// 見えなくなったサムネイルもしばらく残して、スクロールで戻ったときに読み直さない。
 const CAPACITY: u32 = COLS * ROWS;
-/// アトラスの縮小の段の数（ミップマップ）。Medium の帯を倍率 1 で描くとスロットを 4 分の 1 ほどに縮めるので、
-/// 縦横を 2 回半分にした段まで持ち、1 画素に入る画素を間引かずに平均する（スロットの大きさは 4 で割り切れる）。
+/// アトラスのミップレベルの数。Medium の帯を倍率 1 で描くとスロットを 4 分の 1 ほどに縮めるので、
+/// 縦横を 2 回半分にしたレベルまで持ち、1 画素に入る画素を間引かずに平均する（スロットの大きさは 4 で割り切れる）。
 pub(super) const MIPS: u32 = 3;
-/// スロットの縁から内側に取る幅（段 0 の画素）。いちばん縮めた段の半画素で、隣のスロットの色を混ぜない。
+/// スロットの縁から内側に取る幅（ミップレベル 0 の画素）。いちばん縮めたレベルの半画素で、隣のスロットの色を混ぜない。
 const EDGE: f32 = (1u32 << (MIPS - 1)) as f32 / 2.0;
 /// 入りきらなかったサムネイルを、次に頼むまでに待つフレームの数（毎フレーム読み直さない）。
 const DEFER_FRAMES: u64 = 60;
@@ -39,13 +39,13 @@ enum Entry {
     Ready { slot: u32, used: u64 },
     /// 読み込みを頼んで、結果を待っている。
     Pending,
-    /// 読めなかった（ファイルが無い、壊れている）。モデルが置き換わるまで頼み直さない。
+    /// 読めなかった（ファイルが無い、壊れている）。素材の取り込みを終えるまで頼み直さない。
     Missing,
     /// スロットが空かず入れられなかった。`retry` のフレームから頼み直す。
     Deferred { retry: u64 },
 }
 
-/// サムネイルの鍵とスロットの割り当て。GPU に触れないので、割り当てと捨て方を単体で試せる。
+/// サムネイルのキーとスロットの割り当て。GPU に触れないので、割り当てと捨て方を単体で試せる。
 pub(crate) struct Slots {
     entries: HashMap<Arc<str>, Entry>,
     free: Vec<u32>,
@@ -63,13 +63,14 @@ impl Slots {
         }
     }
 
-    /// 次のフレームの描画を始める。使った印はこの番号で付ける。
+    /// 次のフレームの描画を始める。最後に描いたフレームはこの番号で記録する。
     pub(crate) fn begin_frame(&mut self) {
         self.frame += 1;
     }
 
-    /// サムネイル `key` を描くなら、そのスロット。入っていれば使った印を付け、無ければ読み込みを頼む（頼み済みなら頼まない）。
-    pub(crate) fn look(&mut self, key: &Arc<str>) -> Option<u32> {
+    /// サムネイル `key` を描くなら、そのスロット。入っていれば最後に描いたフレームを記録し、無ければ読み込みを頼む
+    /// （頼み済みなら頼まない）。
+    pub(crate) fn slot_to_draw(&mut self, key: &Arc<str>) -> Option<u32> {
         if let Some(Entry::Ready { slot, used }) = self.entries.get_mut(&**key) {
             *used = self.frame;
             return Some(*slot);
@@ -127,12 +128,12 @@ impl Slots {
         Some(slot)
     }
 
-    /// 読めなかったサムネイルに印を付ける。
+    /// 読めなかったサムネイルとして記録する。
     pub(crate) fn missing(&mut self, key: &str) {
         self.entries.insert(key.into(), Entry::Missing);
     }
 
-    /// 読めなかった印を外す（取り込みでサムネイルができたかもしれない）。スロットに入っているものは残す。
+    /// 読めなかったという記録を消す（取り込みでサムネイルができたかもしれない）。スロットに入っているものは残す。
     pub(crate) fn retry_missing(&mut self) {
         self.entries.retain(|_, e| *e != Entry::Missing);
     }
@@ -199,15 +200,16 @@ impl ThumbRenderer {
         self.drawn
     }
 
-    /// 読み込んだサムネイル `cell`（`cell_from_rgb` の大きさ）をスロットに書く。`None` と大きさ違いは読めなかったサムネイルとして覚える。
+    /// 読み込んだスロットの画像 `image`（`slot_image_from_rgb` の大きさ）をスロットに書く。
+    /// `None` と大きさ違いは読めなかったサムネイルとして記録する。
     pub(crate) fn set(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         key: &str,
-        cell: Option<&[u8]>,
+        image: Option<&[u8]>,
     ) {
-        let Some(cell) = cell.filter(|c| c.len() == cell_len()) else {
+        let Some(image) = image.filter(|i| i.len() == slot_image_len()) else {
             self.slots.missing(key);
             return;
         };
@@ -217,7 +219,7 @@ impl ThumbRenderer {
         let format = self.format;
         let gpu = self.gpu.get_or_insert_with(|| Gpu::new(device, format));
         for mip in 0..MIPS {
-            write_level(queue, &gpu.texture, slot, mip, &cell[level_range(mip)]);
+            write_level(queue, &gpu.texture, slot, mip, &image[level_range(mip)]);
         }
     }
 
@@ -234,7 +236,7 @@ impl ThumbRenderer {
         let instances: Vec<Instance> = quads
             .iter()
             .filter_map(|q| {
-                let slot = self.slots.look(&q.key)?;
+                let slot = self.slots.slot_to_draw(&q.key)?;
                 Some(Instance {
                     rect: [q.rect.x, q.rect.y, q.rect.w, q.rect.h],
                     uv: atlas_uv(slot, q.uv),
@@ -264,14 +266,14 @@ impl ThumbRenderer {
 }
 
 /// スロット `slot` の左上（テクスチャの画素）。
-fn cell_origin(slot: u32) -> (u32, u32) {
-    ((slot % COLS) * CELL_W, (slot / COLS) * CELL_H)
+fn slot_origin(slot: u32) -> (u32, u32) {
+    ((slot % COLS) * SLOT_W, (slot / COLS) * SLOT_H)
 }
 
-/// スロット `slot` の縮小の段 `mip` に、その段の大きさの RGBA8 の画像 `rgba` を書く。
+/// スロット `slot` のミップレベル `mip` に、そのレベルの大きさの RGBA8 の画像 `rgba` を書く。
 fn write_level(queue: &wgpu::Queue, texture: &wgpu::Texture, slot: u32, mip: u32, rgba: &[u8]) {
-    let (x, y) = cell_origin(slot);
-    let (w, h) = (CELL_W >> mip, CELL_H >> mip);
+    let (x, y) = slot_origin(slot);
+    let (w, h) = (SLOT_W >> mip, SLOT_H >> mip);
     queue.write_texture(
         wgpu::TexelCopyTextureInfo {
             texture,
@@ -298,16 +300,16 @@ fn write_level(queue: &wgpu::Queue, texture: &wgpu::Texture, slot: u32, mip: u32
 }
 
 /// スロット `slot` の中の `part`（0..1）に当たる、アトラスの範囲の左上と右下（0..1）。
-/// スロットの縁を `EDGE` だけ内側に取り、どの縮小の段でも隣のスロットの色を混ぜない。
+/// スロットの縁を `EDGE` だけ内側に取り、どのミップレベルでも隣のスロットの色を混ぜない。
 fn atlas_uv(slot: u32, part: Rect) -> [f32; 4] {
-    let (ox, oy) = cell_origin(slot);
-    let (w, h) = ((COLS * CELL_W) as f32, (ROWS * CELL_H) as f32);
+    let (ox, oy) = slot_origin(slot);
+    let (w, h) = ((COLS * SLOT_W) as f32, (ROWS * SLOT_H) as f32);
     let inner = |o: u32, size: u32, t: f32| o as f32 + EDGE + t * (size as f32 - 2.0 * EDGE);
     [
-        inner(ox, CELL_W, part.x) / w,
-        inner(oy, CELL_H, part.y) / h,
-        inner(ox, CELL_W, part.right()) / w,
-        inner(oy, CELL_H, part.bottom()) / h,
+        inner(ox, SLOT_W, part.x) / w,
+        inner(oy, SLOT_H, part.y) / h,
+        inner(ox, SLOT_W, part.right()) / w,
+        inner(oy, SLOT_H, part.bottom()) / h,
     ]
 }
 

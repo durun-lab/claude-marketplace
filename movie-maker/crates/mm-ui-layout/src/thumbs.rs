@@ -1,6 +1,6 @@
 //! 帯の先頭のサムネイル。Medium と Large の行の帯（シーケンスはカットごと）の左に、素材の 1 コマを出す。
 //! サムネイルは矩形ではなくテクスチャで描くので、矩形の並び（[`crate::timeline_quads`]）とは別の並びにし、
-//! `mm-ui-wgpu` が帯の後、帯に重ねる矩形の前に描く。名前はサムネイルの右に寄せる（Premiere と同じ）。
+//! `mm-ui-wgpu` が帯の後、帯に重ねる矩形の前（[`crate::UnderText::bars`]）に描く。名前はサムネイルの右に寄せる（Premiere と同じ）。
 //! 座標は Timeline の矩形の左上を (0, 0) とする。
 
 use std::sync::Arc;
@@ -19,7 +19,7 @@ const DISABLED_ALPHA: f32 = 0.35;
 /// 描くサムネイル 1 枚。
 #[derive(Debug, Clone, PartialEq)]
 pub struct ThumbQuad {
-    /// サムネイルの鍵（素材のコンテンツハッシュ）。
+    /// サムネイルのキー（素材のコンテンツハッシュ）。
     pub key: Arc<str>,
     /// 置く矩形（行の領域で切った後）。
     pub rect: Rect,
@@ -33,7 +33,7 @@ fn thumb_width(bar_h: f32) -> f32 {
     (bar_h * THUMB_ASPECT).round()
 }
 
-/// 帯の範囲 `span`（Timeline の座標。帯の高さがサムネイルの高さ）に置くサムネイルの矩形。
+/// 帯の矩形 `span`（Timeline の座標。帯の高さがサムネイルの高さ）に置くサムネイルの矩形。
 /// 行の高さが Small、または見えている幅がサムネイルの幅に満たなければ `None`。
 /// 帯の左端が画面の外に出てもサムネイルが読めるよう、名前と同じく帯の見えている所の左に寄せる。
 fn thumb_box(vp: &Viewport, row: usize, span: Rect) -> Option<Rect> {
@@ -53,8 +53,8 @@ pub(crate) fn name_inset(vp: &Viewport, row: usize, key: Option<&Arc<str>>, span
         .map_or(0.0, |b| b.w)
 }
 
-/// シーケンスのカットの、レイヤーの帯 `bar` の内側に見えている範囲（Timeline の座標）。
-pub(crate) fn cut_range(vp: &Viewport, bar: Rect, cut: &CutBar) -> Rect {
+/// シーケンスのカットの、レイヤーの帯 `bar` の内側に見えている矩形（Timeline の座標）。
+pub(crate) fn cut_rect(vp: &Viewport, bar: Rect, cut: &CutBar) -> Rect {
     let (cx, cw) = cut_span(&vp.time, cut);
     let edge = vp.layout.row_area.x;
     let left = (edge + cx).max(bar.x);
@@ -78,7 +78,7 @@ pub fn timeline_thumbs(model: &TimelineModel, vp: &Viewport, state: &PaintState)
             continue;
         }
         for cut in item.cuts.iter().filter(|c| !c.gap) {
-            let r = cut_range(vp, bar, cut);
+            let r = cut_rect(vp, bar, cut);
             if r.right() >= area.x && r.x <= area.right() {
                 push(&mut out, vp, (i, cut.thumb.as_ref()), r, alpha);
             }

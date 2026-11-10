@@ -41,7 +41,7 @@ impl<'a> Namer<'a> {
         }
     }
 
-    /// 帯の先頭のサムネイルの鍵。撮影素材と静止画の素材のコンテンツハッシュ（キャッシュの `thumbs/` のフォルダー名）。
+    /// 帯の先頭のサムネイルのキー。撮影素材と静止画の素材のコンテンツハッシュ（キャッシュの `thumbs/` のフォルダー名）。
     /// 素材が引けないノードと、素材を持たない種類は `None`。
     pub(crate) fn thumb(&self, node: &Node) -> Option<Arc<str>> {
         if !matches!(node.kind.as_str(), FOOTAGE_KIND | IMAGE_KIND) {
@@ -139,7 +139,7 @@ mod tests {
     }
 
     #[test]
-    fn サムネイルの鍵は撮影素材と静止画の素材のコンテンツハッシュ() {
+    fn サムネイルのキーは撮影素材と静止画の素材のコンテンツハッシュ() {
         let p = project();
         let names = Namer::new(&p);
         let hash = p.assets[0].content_hash.as_str();

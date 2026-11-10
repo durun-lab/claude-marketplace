@@ -1,4 +1,4 @@
-//! `Ui` の帯のサムネイル。描く並びを作って GPU に渡し、サムネイルの読み込みの依頼と結果の受け渡しの口を持つ。
+//! `Ui` の帯のサムネイル。描く並びを作って GPU に渡し、読み込みを頼む関数と結果を受ける関数を持つ。
 //! 読めなかったサムネイル（音だけの素材、キャッシュの無い素材）のキーは帯から外し、名前をサムネイルの幅だけ右へずらさない。
 
 use std::sync::Arc;
@@ -62,16 +62,16 @@ impl Ui {
         self.thumbs.take_requests()
     }
 
-    /// 読み込んだサムネイルをスロットに書く。`cell` は [`crate::cell_from_rgb`] の大きさの RGBA8。
+    /// 読み込んだサムネイルをスロットに書く。`image` は [`crate::slot_image_from_rgb`] が作るスロットの画像。
     /// 読めなかったとき（`None`）はそのキーを帯から外し、[`Ui::retry_thumbs`] まで頼み直さない。
     pub fn set_thumb(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         key: &str,
-        cell: Option<&[u8]>,
+        image: Option<&[u8]>,
     ) {
-        self.thumbs.set(device, queue, key, cell);
+        self.thumbs.set(device, queue, key, image);
         if self.thumbs.is_missing(key) {
             self.dropped_thumbs
                 .drop_where(&mut self.model, |k| k == key);

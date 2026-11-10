@@ -1,13 +1,13 @@
 //! 帯の先頭のサムネイルを、オフスクリーンに描いて確かめる。サムネイルは 1 色のスロットなので、画素の色で置き場所と重なりが分かる。
 
 use mm_ui_layout::{Item, ItemKind, RowHeight, RowHeights, TimelineModel, ViewState};
-use mm_ui_wgpu::{cell_from_rgb, cell_len, ThumbStats, Ui, CELL_H, CELL_W};
+use mm_ui_wgpu::{slot_image_from_rgb, slot_image_len, ThumbStats, Ui, SLOT_H, SLOT_W};
 
 use crate::support::{bar_rect, close, gpu, px_in, render_sized, FORMAT, H, W};
 
 const RED: [u8; 3] = [255, 0, 0];
 
-/// 長さ 10 秒の撮影素材のレイヤーが 1 本。素材の鍵は `k`。
+/// 長さ 10 秒の撮影素材のレイヤーが 1 本。素材のキーは `k`。
 fn model(thumb: bool) -> TimelineModel {
     let item = Item::layer(0.0, 10.0, ItemKind::Footage, true).with_label("clip.mp4");
     TimelineModel {
@@ -33,8 +33,8 @@ fn ui(device: &wgpu::Device, m: &TimelineModel, height: Option<RowHeight>) -> Ui
     ui
 }
 
-fn red_cell() -> Vec<u8> {
-    [255, 0, 0, 255].repeat(cell_len() / 4)
+fn red_image() -> Vec<u8> {
+    [255, 0, 0, 255].repeat(slot_image_len() / 4)
 }
 
 #[test]
@@ -53,7 +53,7 @@ fn サムネイルは読み込みを頼み_届いたら帯の左に描き_帯の
         "頼み済みは頼み直さない"
     );
     assert_eq!(ui.thumb_stats().drawn, 0, "届くまではサムネイルなしで描く");
-    ui.set_thumb(&device, &queue, "k", Some(&red_cell()));
+    ui.set_thumb(&device, &queue, "k", Some(&red_image()));
     let after = render_sized(&device, &queue, &mut ui, (W, H));
     assert_eq!(ui.thumb_stats().drawn, 1);
     let bar = bar_rect(&ui, &m, 1.0, 0, (0.0, 10.0));
@@ -68,23 +68,23 @@ fn サムネイルは読み込みを頼み_届いたら帯の左に描き_帯の
 }
 
 #[test]
-fn 縮めて描くサムネイルは縮小の段から引き_細い縞は灰色になる() {
+fn 縮めて描くサムネイルはミップレベルから引き_細い縞は灰色になる() {
     let Some((device, queue)) = gpu() else { return };
     let m = model(true);
     let mut ui = ui(&device, &m, None);
     render_sized(&device, &queue, &mut ui, (W, H));
     ui.take_thumb_requests();
     // スロットと同じ大きさの、1 画素ごとの白黒の縦縞。倍率 1 の Medium の帯（44x25）ではスロットを 4 分の 1 ほどに縮める。
-    let rgb: Vec<u8> = (0..CELL_W * CELL_H)
+    let rgb: Vec<u8> = (0..SLOT_W * SLOT_H)
         .flat_map(|i| {
-            [if (i % CELL_W).is_multiple_of(2) {
+            [if (i % SLOT_W).is_multiple_of(2) {
                 255
             } else {
                 0
             }; 3]
         })
         .collect();
-    let stripes = cell_from_rgb(CELL_W, CELL_H, &rgb).unwrap();
+    let stripes = slot_image_from_rgb(SLOT_W, SLOT_H, &rgb).unwrap();
     ui.set_thumb(&device, &queue, "k", Some(&stripes));
     let after = render_sized(&device, &queue, &mut ui, (W, H));
     let bar = bar_rect(&ui, &m, 1.0, 0, (0.0, 10.0));
@@ -96,7 +96,7 @@ fn 縮めて描くサムネイルは縮小の段から引き_細い縞は灰色�
 }
 
 #[test]
-fn small_の行と鍵の無い帯には出さない() {
+fn small_の行とキーの無い帯には出さない() {
     let Some((device, queue)) = gpu() else { return };
     let mut small = ui(&device, &model(true), Some(RowHeight::Small));
     render_sized(&device, &queue, &mut small, (W, H));
@@ -142,7 +142,7 @@ fn 取り込みを終えたら読めなかったサムネイルを帯に戻し�
     render_sized(&device, &queue, &mut ui, (W, H));
     assert_eq!(ui.take_thumb_requests().len(), 1);
     assert_eq!(ui.thumb_stats(), ThumbStats::default());
-    ui.set_thumb(&device, &queue, "k", Some(&red_cell()));
+    ui.set_thumb(&device, &queue, "k", Some(&red_image()));
     render_sized(&device, &queue, &mut ui, (W, H));
     assert_eq!(ui.thumb_stats().drawn, 1);
 }

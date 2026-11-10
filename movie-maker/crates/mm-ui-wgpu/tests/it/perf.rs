@@ -5,7 +5,7 @@
 use std::time::{Duration, Instant};
 
 use mm_ui_layout::{CutBar, Item, ItemKind, PointerEvent, TimelineModel};
-use mm_ui_wgpu::{cell_len, TextStats, Ui};
+use mm_ui_wgpu::{slot_image_len, TextStats, Ui};
 
 use crate::support::{gpu, FORMAT};
 
@@ -17,14 +17,14 @@ const TRACKED: usize = 3;
 /// 1920x1080 の論理ピクセルを表示の倍率 1.5 で描くサーフェス。
 const SCALE: f32 = 1.5;
 const SIZE: (u32, u32) = (2880, 1620);
-/// 帯のサムネイルの種類の数（素材の数）。`MM_PERF_THUMBS=0` で鍵を付けず、サムネイルの無い描画と比べる。
+/// 帯のサムネイルの種類の数（素材の数）。`MM_PERF_THUMBS=0` でキーを付けず、サムネイルの無い描画と比べる。
 const THUMB_KEYS: usize = 300;
 
 fn thumbs_on() -> bool {
     !std::env::var("MM_PERF_THUMBS").is_ok_and(|v| v == "0")
 }
 
-/// サムネイルの鍵。素材ごとに 1 つ。
+/// サムネイルのキー。素材ごとに 1 つ。
 fn thumb_key(i: usize) -> String {
     format!("k{}", i % THUMB_KEYS)
 }
@@ -111,10 +111,10 @@ impl Bench {
 
     /// 頼まれた画を、1 色の区画で全部埋める（読み込みは別のスレッドで、描画を待たせない）。
     fn load_thumbs(&mut self) {
-        let cell = [90, 120, 160, 255].repeat(cell_len() / 4);
+        let image = [90, 120, 160, 255].repeat(slot_image_len() / 4);
         for key in self.ui.take_thumb_requests() {
             self.ui
-                .set_thumb(&self.device, &self.queue, &key, Some(&cell));
+                .set_thumb(&self.device, &self.queue, &key, Some(&image));
         }
     }
 

@@ -39,7 +39,7 @@ pub struct CutBar {
     pub disabled_before: bool,
     /// シーケンスのカット列で、すぐ後ろのカットが無効。
     pub disabled_after: bool,
-    /// 帯の先頭に出すサムネイルの鍵（素材のコンテンツハッシュ）。素材の無いカットは `None`。
+    /// 帯の先頭に出すサムネイルのキー（素材のコンテンツハッシュ）。素材の無いカットは `None`。
     pub thumb: Option<Arc<str>>,
 }
 
@@ -97,7 +97,7 @@ pub struct Item {
     pub keyframes: Arc<[f64]>,
     /// シーケンスのレイヤーのカット。先頭から順。シーケンス以外は空。
     pub cuts: Vec<CutBar>,
-    /// 帯の先頭に出すサムネイルの鍵（素材のコンテンツハッシュ）。撮影素材と静止画のレイヤーだけ。
+    /// 帯の先頭に出すサムネイルのキー（素材のコンテンツハッシュ）。撮影素材と静止画のレイヤーだけ。
     pub thumb: Option<Arc<str>>,
     /// 端のつまみで動かせる範囲。
     pub trim: TrimBounds,
@@ -139,7 +139,7 @@ impl Item {
         !self.keyframes.is_empty()
     }
 
-    /// サムネイルの鍵を付ける。
+    /// サムネイルのキーを付ける。
     pub fn with_thumb(mut self, key: &str) -> Self {
         self.thumb = Some(key.into());
         self

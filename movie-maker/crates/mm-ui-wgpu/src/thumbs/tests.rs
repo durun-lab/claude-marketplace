@@ -1,4 +1,4 @@
-use super::cell::halve;
+use super::slot_image::halve;
 use super::*;
 
 fn key(s: &str) -> Arc<str> {
@@ -9,13 +9,13 @@ fn key(s: &str) -> Arc<str> {
 fn スロットに無いサムネイルは一度だけ頼み_届くまでは描かない() {
     let mut s = Slots::new(4);
     s.begin_frame();
-    assert_eq!(s.look(&key("a")), None);
+    assert_eq!(s.slot_to_draw(&key("a")), None);
     s.begin_frame();
-    assert_eq!(s.look(&key("a")), None, "頼み済みは頼み直さない");
+    assert_eq!(s.slot_to_draw(&key("a")), None, "頼み済みは頼み直さない");
     assert_eq!(s.take_requests(), [key("a")]);
     let slot = s.insert("a").unwrap();
     s.begin_frame();
-    assert_eq!(s.look(&key("a")), Some(slot));
+    assert_eq!(s.slot_to_draw(&key("a")), Some(slot));
     assert!(s.take_requests().is_empty());
 }
 
@@ -24,26 +24,26 @@ fn スロットが埋まったら見えていないサムネイルのうち_い�
     let mut s = Slots::new(3);
     for name in ["a", "b", "c"] {
         s.begin_frame();
-        s.look(&key(name));
+        s.slot_to_draw(&key(name));
         s.insert(name).unwrap();
     }
     // a と c だけを見せ続け、b は前のフレームに使ったきり。
     s.begin_frame();
-    let slot_a = s.look(&key("a")).unwrap();
-    let slot_b = s.look(&key("b")).unwrap();
+    let slot_a = s.slot_to_draw(&key("a")).unwrap();
+    let slot_b = s.slot_to_draw(&key("b")).unwrap();
     s.begin_frame();
-    s.look(&key("a")).unwrap();
-    s.look(&key("c")).unwrap();
+    s.slot_to_draw(&key("a")).unwrap();
+    s.slot_to_draw(&key("c")).unwrap();
     let got = s.insert("d").unwrap();
     assert_eq!(got, slot_b, "見えていない b のスロット");
     assert_ne!(got, slot_a);
     s.begin_frame();
     assert_eq!(
-        s.look(&key("b")),
+        s.slot_to_draw(&key("b")),
         None,
         "捨てたサムネイルは無い（見えたら頼み直す）"
     );
-    assert_eq!(s.look(&key("d")), Some(got));
+    assert_eq!(s.slot_to_draw(&key("d")), Some(got));
     assert_eq!(s.resident(), 3);
 }
 
@@ -51,19 +51,19 @@ fn スロットが埋まったら見えていないサムネイルのうち_い�
 fn 全部が見えていれば捨てず_少し待ってから頼み直す() {
     let mut s = Slots::new(1);
     s.begin_frame();
-    s.look(&key("a"));
+    s.slot_to_draw(&key("a"));
     s.insert("a").unwrap();
-    s.look(&key("a"));
-    s.look(&key("b"));
+    s.slot_to_draw(&key("a"));
+    s.slot_to_draw(&key("b"));
     assert_eq!(s.insert("b"), None, "a は今のフレームで見えている");
     s.take_requests();
     for _ in 0..DEFER_FRAMES - 1 {
         s.begin_frame();
-        s.look(&key("b"));
+        s.slot_to_draw(&key("b"));
     }
     assert!(s.take_requests().is_empty(), "待つ間は頼まない");
     s.begin_frame();
-    s.look(&key("b"));
+    s.slot_to_draw(&key("b"));
     assert_eq!(s.take_requests(), [key("b")]);
 }
 
@@ -71,67 +71,70 @@ fn 全部が見えていれば捨てず_少し待ってから頼み直す() {
 fn 読めなかったサムネイルは頼み直さず_取り込みを終えたら頼み直す() {
     let mut s = Slots::new(2);
     s.begin_frame();
-    s.look(&key("a"));
+    s.slot_to_draw(&key("a"));
     s.take_requests();
     s.missing("a");
     assert!(s.is_missing("a") && s.has_missing());
     s.begin_frame();
-    assert_eq!(s.look(&key("a")), None);
+    assert_eq!(s.slot_to_draw(&key("a")), None);
     assert!(s.take_requests().is_empty());
     s.retry_missing();
     assert!(!s.has_missing());
     s.begin_frame();
-    s.look(&key("a"));
+    s.slot_to_draw(&key("a"));
     assert_eq!(s.take_requests(), [key("a")]);
 }
 
 #[test]
 fn スロットは並びの順に左から右へ_上から下へ置く() {
-    assert_eq!(cell_origin(0), (0, 0));
-    assert_eq!(cell_origin(COLS), (0, CELL_H));
-    assert_eq!(cell_origin(COLS + 2), (2 * CELL_W, CELL_H));
-    assert_eq!(cell_origin(CAPACITY - 1).1 + CELL_H, ROWS * CELL_H);
+    assert_eq!(slot_origin(0), (0, 0));
+    assert_eq!(slot_origin(COLS), (0, SLOT_H));
+    assert_eq!(slot_origin(COLS + 2), (2 * SLOT_W, SLOT_H));
+    assert_eq!(slot_origin(CAPACITY - 1).1 + SLOT_H, ROWS * SLOT_H);
 }
 
 #[test]
-fn スロットの縁はいちばん縮めた段の半画素だけ内側に取り_全体の範囲がスロットに収まる() {
+fn スロットの縁はいちばん縮めたミップレベルの半画素だけ内側に取り_全体の範囲がスロットに収まる() {
     let uv = atlas_uv(0, Rect::new(0.0, 0.0, 1.0, 1.0));
-    let (w, h) = ((COLS * CELL_W) as f32, (ROWS * CELL_H) as f32);
-    assert_eq!(EDGE, 2.0, "2 回半分にした段の半画素は、段 0 の 2 画素");
+    let (w, h) = ((COLS * SLOT_W) as f32, (ROWS * SLOT_H) as f32);
+    assert_eq!(
+        EDGE, 2.0,
+        "2 回半分にしたレベルの半画素は、レベル 0 の 2 画素"
+    );
     assert_eq!(uv[0], EDGE / w);
-    assert_eq!(uv[2], (CELL_W as f32 - EDGE) / w);
-    assert_eq!(uv[3], (CELL_H as f32 - EDGE) / h);
+    assert_eq!(uv[2], (SLOT_W as f32 - EDGE) / w);
+    assert_eq!(uv[3], (SLOT_H as f32 - EDGE) / h);
     let lower = atlas_uv(0, Rect::new(0.0, 0.5, 1.0, 0.5));
     assert!(lower[1] > uv[1] && lower[3] == uv[3], "下半分だけ");
 }
 
 #[test]
-fn 縮小の段は_2x2_の画素の平均で縦横半分にし_スロットの画像の後ろに段の順に並べる() {
+fn ミップレベルは_2x2_の画素の平均で縦横半分にし_スロットの画像の後ろにレベルの順に並べる() {
     // 左上だけ白、ほかは黒の 2x2 を 2 つ横に並べた 4x2。半分にすると 2x1 で、どちらも白の 4 分の 1。
     let px = |v: u8| [v, v, v, 255];
     let row0: Vec<u8> = [px(255), px(0), px(255), px(0)].concat();
     let row1: Vec<u8> = [px(0); 4].concat();
     let half = halve(&[row0, row1].concat(), 4, 2);
     assert_eq!(half, [[64, 64, 64, 255], [64, 64, 64, 255]].concat());
-    assert!(CELL_W.is_multiple_of(1 << (MIPS - 1)));
-    assert!(CELL_H.is_multiple_of(1 << (MIPS - 1)));
-    // スロットと同じ大きさの縦縞は、段 0 では縞のまま、段 1 から灰色。
-    let rgb: Vec<u8> = (0..CELL_W * CELL_H)
+    assert!(SLOT_W.is_multiple_of(1 << (MIPS - 1)));
+    assert!(SLOT_H.is_multiple_of(1 << (MIPS - 1)));
+    // スロットと同じ大きさの縦縞は、ミップレベル 0 では縞のまま、レベル 1 から灰色。
+    let rgb: Vec<u8> = (0..SLOT_W * SLOT_H)
         .flat_map(|i| {
-            [if (i % CELL_W).is_multiple_of(2) {
+            [if (i % SLOT_W).is_multiple_of(2) {
                 255
             } else {
                 0
             }; 3]
         })
         .collect();
-    let cell = cell_from_rgb(CELL_W, CELL_H, &rgb).unwrap();
-    assert_eq!(level_range(MIPS - 1).end, cell.len());
+    let image = slot_image_from_rgb(SLOT_W, SLOT_H, &rgb).unwrap();
+    assert_eq!(level_range(MIPS - 1).end, image.len());
     assert_eq!(
-        &cell[level_range(0)][..8],
+        &image[level_range(0)][..8],
         [255, 255, 255, 255, 0, 0, 0, 255]
     );
-    assert!(cell[level_range(1)].iter().all(|v| *v == 128 || *v == 255));
+    assert!(image[level_range(1)].iter().all(|v| *v == 128 || *v == 255));
 }
 
 #[test]
@@ -147,14 +150,14 @@ fn 横長の画像は中央を_16_対_9_に切り出してスロットの大き�
             })
         })
         .collect();
-    let cell = cell_from_rgb(w, h, &rgb).unwrap();
-    assert_eq!(cell.len(), cell_len());
+    let image = slot_image_from_rgb(w, h, &rgb).unwrap();
+    assert_eq!(image.len(), slot_image_len());
     let px = |x: u32, y: u32| {
-        let i = ((y * CELL_W + x) * 4) as usize;
-        [cell[i], cell[i + 1], cell[i + 2], cell[i + 3]]
+        let i = ((y * SLOT_W + x) * 4) as usize;
+        [image[i], image[i + 1], image[i + 2], image[i + 3]]
     };
     assert_eq!(px(0, 0), [0, 255, 0, 255]);
-    assert_eq!(px(CELL_W - 1, CELL_H - 1), [0, 255, 0, 255]);
+    assert_eq!(px(SLOT_W - 1, SLOT_H - 1), [0, 255, 0, 255]);
 }
 
 #[test]
@@ -164,13 +167,13 @@ fn 縮めるときは範囲を平均する() {
     let rgb: Vec<u8> = (0..h)
         .flat_map(|_| (0..w).flat_map(|x| if x % 2 == 0 { [255; 3] } else { [0; 3] }))
         .collect();
-    let cell = cell_from_rgb(w, h, &rgb).unwrap();
-    let v = i32::from(cell[(10 * CELL_W + 10) as usize * 4]);
+    let image = slot_image_from_rgb(w, h, &rgb).unwrap();
+    let v = i32::from(image[(10 * SLOT_W + 10) as usize * 4]);
     assert!((v - 128).abs() <= 2, "{v}");
 }
 
 #[test]
 fn 大きさの合わない画素の並びは受けない() {
-    assert!(cell_from_rgb(4, 4, &[0; 10]).is_none());
-    assert!(cell_from_rgb(0, 4, &[]).is_none());
+    assert!(slot_image_from_rgb(4, 4, &[0; 10]).is_none());
+    assert!(slot_image_from_rgb(0, 4, &[]).is_none());
 }

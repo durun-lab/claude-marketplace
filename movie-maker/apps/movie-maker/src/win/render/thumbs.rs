@@ -10,7 +10,7 @@ use std::sync::Arc;
 
 use image::ImageFormat;
 use mm_ingest::CacheLayout;
-use mm_ui_wgpu::{cell_from_rgb, Ui};
+use mm_ui_wgpu::{slot_image_from_rgb, Ui};
 
 use super::Gpu;
 use crate::win::state::Shared;
@@ -18,10 +18,10 @@ use crate::win::state::Shared;
 /// 1 フレームにスロットへ書くサムネイルの数の上限。一度に大量に届いても、フレームを延ばさない。
 const UPLOADS_PER_FRAME: usize = 16;
 
-/// 読み込み 1 件の結果。キーと、スロットの大きさの RGBA8（読めなければ `None`）。
+/// 読み込み 1 件の結果。キーと、スロットの画像（読めなければ `None`）。
 type Loaded = (Arc<str>, Option<Vec<u8>>);
 
-/// `Ui` が頼んだサムネイルを読むスレッドと、その結果を受ける口。落とすとスレッドが止まる。
+/// `Ui` が頼んだサムネイルを読むスレッドへの送り手と、その結果の受け手。落とすとスレッドが止まる。
 pub(super) struct ThumbSync {
     requests: Sender<Arc<str>>,
     loaded: Receiver<Loaded>,
@@ -38,8 +38,8 @@ impl ThumbSync {
             .name("thumbs".into())
             .spawn(move || {
                 for key in wanted {
-                    let cell = load_cell(&cache.thumbnail(&key));
-                    if done.send((key, cell)).is_err() {
+                    let image = load_slot_image(&cache.thumbnail(&key));
+                    if done.send((key, image)).is_err() {
                         return;
                     }
                 }
@@ -63,20 +63,20 @@ impl ThumbSync {
         for key in ui.take_thumb_requests() {
             let _ = self.requests.send(key);
         }
-        for (key, cell) in self.loaded.try_iter().take(UPLOADS_PER_FRAME) {
-            ui.set_thumb(&gpu.device, &gpu.queue, &key, cell.as_deref());
+        for (key, image) in self.loaded.try_iter().take(UPLOADS_PER_FRAME) {
+            ui.set_thumb(&gpu.device, &gpu.queue, &key, image.as_deref());
         }
     }
 }
 
-/// JPEG のファイルを、スロットの大きさ（16:9 の中央を切り出して縮めた RGBA8）にして読む。
+/// JPEG のファイルを読み、スロットの画像（16:9 の中央を切り出して縮めた RGBA8 とミップレベル）にする。
 /// グレースケールの JPEG も RGB にそろえる。ファイルが無いか壊れているときは `None`。
-fn load_cell(path: &Path) -> Option<Vec<u8>> {
+fn load_slot_image(path: &Path) -> Option<Vec<u8>> {
     let bytes = std::fs::read(path).ok()?;
     let rgb = image::load_from_memory_with_format(&bytes, ImageFormat::Jpeg)
         .ok()?
         .into_rgb8();
-    cell_from_rgb(rgb.width(), rgb.height(), rgb.as_raw())
+    slot_image_from_rgb(rgb.width(), rgb.height(), rgb.as_raw())
 }
 
 #[cfg(test)]

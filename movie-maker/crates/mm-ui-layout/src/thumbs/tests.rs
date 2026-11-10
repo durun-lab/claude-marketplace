@@ -75,7 +75,7 @@ fn 帯の幅がサムネイルに足りなければ出さない() {
 }
 
 #[test]
-fn 鍵の無い帯と空きのカットには出さない() {
+fn キーの無い帯と空きのカットには出さない() {
     let mut seq = Item::layer(0.0, 6.0, ItemKind::Sequence, true);
     let cut = |start, end, gap, key: Option<&str>| CutBar {
         start,

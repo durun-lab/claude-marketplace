@@ -2,7 +2,7 @@
 
 use bytemuck::{Pod, Zeroable};
 
-use super::{CELL_H, CELL_W, COLS, MIPS, ROWS};
+use super::{COLS, MIPS, ROWS, SLOT_H, SLOT_W};
 
 const SHADER: &str = r#"
 struct U { res: vec2<f32>, pad: vec2<f32> };
@@ -117,8 +117,8 @@ fn atlas_texture(device: &wgpu::Device) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
         label: Some("ui thumbs atlas"),
         size: wgpu::Extent3d {
-            width: COLS * CELL_W,
-            height: ROWS * CELL_H,
+            width: COLS * SLOT_W,
+            height: ROWS * SLOT_H,
             depth_or_array_layers: 1,
         },
         mip_level_count: MIPS,

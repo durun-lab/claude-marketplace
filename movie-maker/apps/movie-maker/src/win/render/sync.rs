@@ -17,7 +17,7 @@ use crate::win::review::drawing::DrawingSync;
 use crate::win::sequence_edit::{gesture_op, TimelineIds};
 use crate::win::state::{FrameImage, OpenDoc, Shared};
 
-/// 描画スレッドが共有状態から `Ui` へ渡したものの控え。`Ui` を作り直したら一緒に作り直す。
+/// 描画スレッドが共有状態から `Ui` へ渡すものごとの、最後に渡した状態。`Ui` を作り直したら一緒に作り直す。
 pub(super) struct Syncs {
     pub(super) doc: DocSync,
     source: SourceSync,

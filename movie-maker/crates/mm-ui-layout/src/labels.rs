@@ -13,7 +13,7 @@ use crate::palette;
 use crate::rows::RowHeight;
 use crate::ruler::{label, major_step, ticks};
 use crate::text::{place, Align, Label, TextMeasure, TextStyle, UiFont};
-use crate::thumbs::{cut_range, name_inset};
+use crate::thumbs::{cut_rect, name_inset};
 use crate::timeline::{Item, TimelineModel};
 use crate::timeline_layout::Viewport;
 
@@ -104,15 +104,15 @@ impl Placer<'_> {
             };
             for cut in item.cuts.iter().filter(|c| !c.gap) {
                 // カットはレイヤーの帯の内側だけを描くので、名前もその中に収める。
-                let span = cut_range(self.vp, full, cut);
+                let span = cut_rect(self.vp, full, cut);
                 let rect = self.after_thumb((i, cut.thumb.as_ref()), span, named);
                 self.name(&cut.label, rect, style);
             }
         }
     }
 
-    /// 帯の範囲 `span` の名前の矩形。画を出す帯は画の右から始める（画は見えている所の左に寄る）。
-    /// `named` は帯の名前の部分（縦の位置と高さ）。
+    /// 帯の矩形 `span` の名前の矩形。サムネイルを出す帯はサムネイルの右から始める（サムネイルは見えている所の左に寄る）。
+    /// `named` は帯の名前を置く所（縦の位置と高さ）。
     fn after_thumb(&self, thumb: (usize, Option<&Arc<str>>), span: Rect, named: Rect) -> Rect {
         let left = span.x.max(self.vp.layout.row_area.x);
         let left = left + name_inset(self.vp, thumb.0, thumb.1, span);

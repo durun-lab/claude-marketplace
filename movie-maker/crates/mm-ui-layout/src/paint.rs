@@ -46,7 +46,7 @@ pub struct PaintState {
 }
 
 /// 領域の描く関数が見るもの。サーフェスの描画（`mm-ui-wgpu`）も作り、[`PaintInput::under_text`] で文字の下の矩形を受ける。
-/// 帯に描くものの入力は、入口の関数を増やさずにここへフィールドで足す。
+/// 帯に描くものの入力は、関数を増やさずにここへフィールドで足す。
 pub struct PaintInput<'a> {
     pub model: &'a TimelineModel,
     pub vp: &'a Viewport<'a>,
