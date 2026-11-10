@@ -129,9 +129,7 @@ fn 押せるかが変わると表を送り直す() {
 fn シーケンスのレイヤーが無くても_source_を開いていれば_insert_と_overwrite_は押せる() {
     let ready = Ready {
         source_open: true,
-        sequence: false,
-        cut_selected: false,
-        snapping: true,
+        ..Ready::default()
     };
     let enabled = |id: &str| ready.state(find(id).expect(id)).enabled;
     assert!(enabled("clip.insert"), "最初の insert がシーケンスを作る");

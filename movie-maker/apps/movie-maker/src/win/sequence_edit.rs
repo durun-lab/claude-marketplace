@@ -102,7 +102,7 @@ pub struct SourceRange {
 /// 計画した操作と、適用の後に選ぶカット。
 #[derive(Debug, Clone, PartialEq)]
 pub struct Planned {
-    /// 1 つのトランザクションで適用する操作の列。取り消し 1 回で全部戻る。
+    /// 1 つのトランザクションで適用する操作の並び。取り消し 1 回で全部戻る。
     pub ops: Vec<Op>,
     pub select: Option<CutId>,
 }
@@ -242,7 +242,7 @@ pub fn plan_overwrite(ctx: &Ctx<'_>, range: &SourceRange, id: CutId) -> Result<P
 fn plan_new_sequence(ctx: &Ctx<'_>, range: &SourceRange, id: CutId) -> Result<Planned, String> {
     let cut = footage_cut(id.clone(), range);
     let length = cut.duration().map_err(|e| e.to_string())?;
-    let new = NewSequence::ids(ctx.project, ctx.comp);
+    let new = NewSequence::ids(ctx.project);
     let insert = Insert {
         sequence: new.sequence.clone(),
         index: 0,

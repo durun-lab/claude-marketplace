@@ -279,6 +279,7 @@ pub struct State {
 }
 
 /// 押せるかを決める今の状態。表を作るたびに 1 度だけ読む。
+#[derive(Default)]
 struct Ready {
     /// Source に素材を開いている。イン点・アウト点と insert、overwrite は Source の範囲を使う。
     source_open: bool,
