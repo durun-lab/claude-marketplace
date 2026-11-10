@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 mod acquire;
 mod sync;
 mod thumbs;
+mod toolbar;
 mod transport;
 mod waves;
 
@@ -316,6 +317,7 @@ fn run(
         if let Some(state) = view.ui.view_state() {
             shared.view.publish(state);
         }
+        toolbar::publish_names(shared, &view.ui);
         match frame(shared, &view.gpu, &mut view.ui, &mut seen) {
             Ok(()) => failed_frames = 0,
             Err(recovery) => {

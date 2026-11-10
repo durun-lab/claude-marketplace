@@ -138,7 +138,7 @@ impl Geometry {
 }
 
 /// カット `id` の Timeline の上の範囲（秒）。
-fn cut_span_secs(shared: &Shared, id: &str) -> Option<(f64, f64)> {
+pub(super) fn cut_span_secs(shared: &Shared, id: &str) -> Option<(f64, f64)> {
     let doc = shared.doc()?;
     let comp = doc.project.composition(&doc.comp).ok()?;
     let ids = mm_ui_wgpu::timeline_cut_ids(&doc.project, comp);
