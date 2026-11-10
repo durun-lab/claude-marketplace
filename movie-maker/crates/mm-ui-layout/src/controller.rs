@@ -16,7 +16,6 @@ use crate::gesture::{body_edit, frame_secs, EditKind};
 use crate::paint::PaintState;
 use crate::palette::Palette;
 use crate::rows::Rows;
-use crate::screen::VIEW_MARGIN;
 use crate::scroll::{clamp_scroll, reveal, scroll_for_thumb};
 use crate::snap::{quantize, SnapTarget};
 use crate::time_view::TimeView;
@@ -25,10 +24,6 @@ use crate::timeline_layout::{TimelineLayout, Viewport};
 use crate::zoombar::ZoomBarDrag;
 use zoom::FullExtent;
 
-/// ホイール 1 目盛りあたりの拡大率。
-const ZOOM_STEP: f64 = 1.15;
-/// ホイールで横に動かす量（px）。
-const PAN_STEP_PX: f32 = 60.0;
 /// Shift+ホイールで縦にスクロールする量（px）。横と同じ量にする。
 const SCROLL_STEP_PX: f32 = 60.0;
 
@@ -471,24 +466,6 @@ impl TimelineController {
                 }]
             }
             _ => Vec::new(),
-        }
-    }
-
-    /// ホイール。Ctrl でポインターの下（見出しの列の上なら行の領域の左端）を中心に拡大（縮小は長さ `duration` の全体が収まるまで）、
-    /// Shift か、スクロールバーか見出しの列の上なら縦にスクロール、それ以外は横に動かす。
-    fn wheel(&mut self, (x, y): (f32, f32), dy: f32, (ctrl, shift): (bool, bool), duration: f64) {
-        if ctrl {
-            let anchor = (x - self.layout.row_area.x).max(0.0);
-            let floor = TimeView::zoom_floor(duration, self.layout.row_area.w, VIEW_MARGIN);
-            let factor = ZOOM_STEP.powf(f64::from(dy));
-            self.view = self.view.zoom_at(anchor, factor, floor);
-        } else if shift
-            || self.layout.scrollbar.contains(x, y)
-            || self.layout.headers.contains(x, y)
-        {
-            self.scroll_to(self.scroll_y - dy * SCROLL_STEP_PX);
-        } else {
-            self.view = self.view.pan_px(-dy * PAN_STEP_PX);
         }
     }
 }

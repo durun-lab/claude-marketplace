@@ -1,7 +1,7 @@
 //! UI のコマンドの表。呼び出し箇所（キー、メニュー、Tasks の項目）は、この表の ID でコマンドを指す。
 //! 表は人が呼ぶコマンドだけを持ち、データの変更は実行した先の編集が操作（`Op`）で出す。
 
-use std::sync::{Arc, OnceLock};
+use std::sync::Arc;
 
 use mm_doc::SEQUENCE_KIND;
 use mm_ui_layout::{PointerEvent, TimelineCommand};
@@ -459,41 +459,6 @@ fn execute(shared: &Arc<Shared>, spec: &'static Spec) -> Result<(), String> {
     Ok(())
 }
 
-/// ウィンドウのフックへ渡すもの。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Forward {
-    /// パネルが持ち主のコマンドの ID。WebView の Shell が持ち主のパネルのタブを開き、パネルの `requests` を進める。
-    Panel(&'static str),
-    Window(WindowAction),
-    /// WebView で押した、キーの表に無い Alt+英字の字（小文字）。ウィンドウがその字をアクセスキーとしてメニューを開く。
-    MenuKey(char),
-}
-
-/// ウィンドウのフックの中身。
-type ForwardFn = Box<dyn Fn(Forward) + Send + Sync>;
-
-/// パネルとウィンドウのコマンドを、Tauri の `AppHandle` と `Window` で実行するフック。メニューバーと同じく、
-/// ウィンドウを作るときに設定する。
-#[derive(Default)]
-pub struct WindowHook(OnceLock<ForwardFn>);
-
-impl WindowHook {
-    /// 渡す先を設定する。2 回目からは無視する。
-    pub fn set(&self, forward: impl Fn(Forward) + Send + Sync + 'static) {
-        let _ = self.0.set(Box::new(forward));
-    }
-
-    /// 設定した先へ渡す。ウィンドウを作る前は渡す先が無いので拒否する。
-    pub fn send(&self, forward: Forward) -> Result<(), String> {
-        let f = self
-            .0
-            .get()
-            .ok_or_else(|| "The window isn't ready yet".to_owned())?;
-        f(forward);
-        Ok(())
-    }
-}
-
 /// Source を最後にクリックしていて素材を開いていれば Source の、そうでなければ Program の再生へ送る。
 fn play(shared: &Shared, command: Command) {
     if shared.source.is_active() && shared.source.handle().is_some() {
@@ -504,8 +469,10 @@ fn play(shared: &Shared, command: Command) {
 }
 
 mod shy;
+mod window_hook;
 
 pub use shy::ShyCommand;
+pub use window_hook::{Forward, WindowHook};
 
 #[cfg(test)]
 mod tests;
