@@ -244,7 +244,7 @@ pub struct State {
 struct Ready {
     /// Source に素材を開いている。イン点・アウト点と insert、overwrite は Source の範囲を使う。
     source_open: bool,
-    /// 開いているコンポジションにシーケンスのレイヤーがある。split、insert、overwrite はそのカットを編集する。
+    /// 開いているコンポジションにシーケンスのレイヤーがある。split はそのカットを割る。
     sequence: bool,
     /// Timeline でカットを選んでいる。lift と extract は選んだカットを抜く。
     cut_selected: bool,
@@ -271,7 +271,8 @@ impl Ready {
         use EditAction::{ClearInOut, Extract, Insert, Lift, MarkIn, MarkOut, Overwrite, Split};
         let enabled = match spec.owner {
             Owner::App(Action::Edit(ClearInOut | MarkIn | MarkOut)) => self.source_open,
-            Owner::App(Action::Edit(Insert | Overwrite)) => self.source_open && self.sequence,
+            // シーケンスのレイヤーが無ければ作って入れるので、Source の範囲だけで押せる。
+            Owner::App(Action::Edit(Insert | Overwrite)) => self.source_open,
             Owner::App(Action::Edit(Split)) => self.sequence,
             Owner::App(Action::Edit(Lift | Extract)) => self.cut_selected,
             Owner::App(_) | Owner::Panel(_) => true,

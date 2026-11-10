@@ -296,14 +296,19 @@ Z2 で決めたこと（新しく設計したもの）:
 | 場所 | 出すもの |
 |---|---|
 | Program（コンポジションに中身が無く、素材も無い） | 「Import video and audio to start」と「File > Import Media… (Ctrl+I)」 |
-| Timeline（コンポジションに中身が無く、sequence のレイヤーがある） | 「Open a clip in Media, mark In (I) and Out (O), then press Insert (,)」。Media から Timeline へのドラッグは後 |
+| Timeline（コンポジションに中身が無い） | 「Open a clip in Media, mark In (I) and Out (O), then press Insert (,)」。sequence のレイヤーが無ければ最初の Insert が作る（下の箇条）。Media から Timeline へのドラッグは後 |
 | Inspector（何も選んでいない） | コンポジションの要約（名前、大きさ、fps、長さ、レイヤーの数）と「Select a layer in the Timeline to see its properties.」。名前はコンポジションの ID、長さは見出しの列の上の角と同じタイムコード |
 | Story（文字起こしが無い） | 「No transcript yet. Transcription runs outside the app for now: run tools/transcribe on a clip, then reopen this tab.」。アプリの中の Transcribe のコマンドができたら、ボタンに替える |
 | Tasks | 実装の無い項目を薄くする（[UI のコマンドの表](#ui-のコマンドの表)） |
 
 - 中身が無いのは、レイヤーが無いか、どのレイヤーもカットの無いシーケンスを置いた sequence のレイヤーのとき。無効のレイヤーとカットは中身に数え、案内を出さない。判定はコンポジションの中身で決め、Timeline の行の見え方では決めない。Shy で全部の行を隠しても案内は出さない（隠した数は見出しの列の上の角に出る。T3）。判定は `mm-ui-wgpu` の `empty_state`。
 - 素材を取り込んだ後は、取り込みはもう次にすることではないので、Program の案内を出さない。
-- Timeline の手順は、Insert の入る先（sequence のレイヤー）があるときだけ出す。sequence のレイヤーが無いと Insert は効かない（`sequence_edit.rs` の `target_layer` が「No sequence layer」で拒否し、メニューの Insert も押せない）。`mm new` の直後に足す `main` もレイヤーが無いので、今は Program の案内だけが出る。最初の Insert で sequence のレイヤーを作れば（Premiere の空の Timeline の「Drop media here to create sequence」[96] と同じく、最初の素材から sequence を作る）、この条件を外せる。後の PR。
+- Timeline の手順は、sequence のレイヤーが無いときも出す。`mm new` の直後に足す `main` のようにレイヤーが無いコンポジションでも、手順のとおりに押せば最初の Insert が sequence を作る。
+- 最初の編集: sequence のレイヤーが無いコンポジションへの Insert と Overwrite は、空の sequence と、それを置く sequence のレイヤーを足してからカットを入れる。1 つのトランザクションなので、取り消し 1 回で全部戻る（`sequence_edit/new_sequence.rs` の `NewSequence`）。メニューの Insert と Overwrite も、Source に素材を開いていれば押せる。
+  - 先行事例: Premiere の空の Timeline は「Drop media here to create sequence」と出し、最初のクリップから sequence を作る [96]。Resolve と CapCut も、空の Timeline に最初のクリップを置くと主のトラックを作る〔推〕。FCP はプロジェクトに最初から主のストーリーラインがあり、最初のクリップで形式が決まる〔推〕。
+  - 新規設計: 新しい操作は足さず、既存の操作の列（`addSequence`、`addLayer`、`insert`、`fitLayer`）で作る。sequence の ID は `<コンポジションの ID>-seq`、sequence のレイヤーの ID は `<sequence の ID>-layer`（OTIO の取り込みが作るレイヤーと同じ付け方）。重なれば `-2` から番号を付ける。レイヤーはコンポジションの先頭から一番上に置き、長さは入れたカットの長さにする。レイヤーの長さが sequence の長さと同じなので、後の編集にも追従する。コンポジションの長さは追従の決まりのまま（カットが長ければ伸ばし、短ければ変えない）。新しいレイヤーは操作の前のデータに無く、`with_fitted_layers` が `fitLayer` を足さないので、列に入れる。
+  - Overwrite も、置き換えるカットが無いので Insert と同じ列にする。Split、Lift、Extract は編集するカットが無いので、今のまま断る。
+  - Story の Arrange も、並べ先の sequence がプロジェクトに無ければ、開いているコンポジションに同じ形で作る（`story_arrange_new`。ID と長さはアプリが決める）。並べ先の欄の下には「No sequence yet. Arrange creates one in the open composition.」と出す。Story の Delete とトランジションは、切るカットも掛けるカットも無いので作らない。モバイル版の Arrange は、`addSequence` と `addLayer` が即時に適用できる操作の表（[モバイル版の権限](12-mobile.md#権限)）に無いので、今は作らない。
 - 要約は選択のイベント（`mm:layer-selected`）に載せる。購読より前に Rust が送ったイベントは WebView に届かないので、Shell は選択のイベントを聞き始めたら頼み（`mm:layer-selection-request`）を投げ、`transport.js` は選択の Tauri イベントを購読し終えてから `layer_selection` で今の選択を読んで答える。時間では待たない。購読してから読む形は UI のコマンドの表（Shell の `useCommandTable`）と同じ。
 
 ## 文言

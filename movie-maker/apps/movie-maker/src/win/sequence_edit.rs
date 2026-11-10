@@ -16,6 +16,10 @@ use mm_ui_layout::{EditKind, Side};
 
 use crate::win::timebase;
 
+pub mod new_sequence;
+
+use new_sequence::NewSequence;
+
 /// 編集の対象にするカットの選択と、カットの ID の採番。
 #[derive(Default)]
 pub struct EditState {
@@ -98,7 +102,8 @@ pub struct SourceRange {
 /// 計画した操作と、適用の後に選ぶカット。
 #[derive(Debug, Clone, PartialEq)]
 pub struct Planned {
-    pub op: Op,
+    /// 1 つのトランザクションで適用する操作の列。取り消し 1 回で全部戻る。
+    pub ops: Vec<Op>,
     pub select: Option<CutId>,
 }
 
@@ -194,21 +199,29 @@ fn footage_cut(id: CutId, range: &SourceRange) -> Cut {
 }
 
 /// Source の範囲を、再生位置に一番近いカットの編集点へ差し込む（`insert`）。後ろのカットはずれる。
+/// sequence のレイヤーが無いコンポジションでは、このカットだけの sequence と sequence のレイヤーを作る。
 pub fn plan_insert(ctx: &Ctx<'_>, range: &SourceRange, id: CutId) -> Result<Planned, String> {
+    if target_layer(ctx).is_none() {
+        return plan_new_sequence(ctx, range, id);
+    }
     let t = target(ctx)?;
     Ok(Planned {
-        op: Insert {
+        ops: vec![Insert {
             sequence: t.seq.id.clone(),
             index: t.boundary_index(),
             cut: footage_cut(id.clone(), range),
         }
-        .into(),
+        .into()],
         select: Some(id),
     })
 }
 
 /// Source の範囲で、選んだカット（なければ再生位置のカット）を置き換える（`overwrite`）。
+/// sequence のレイヤーが無いコンポジションでは、置き換えるカットが無いので Insert と同じく sequence から作る。
 pub fn plan_overwrite(ctx: &Ctx<'_>, range: &SourceRange, id: CutId) -> Result<Planned, String> {
+    if target_layer(ctx).is_none() {
+        return plan_new_sequence(ctx, range, id);
+    }
     let t = target(ctx)?;
     let old = t
         .working_cut(ctx.cut)
@@ -216,11 +229,27 @@ pub fn plan_overwrite(ctx: &Ctx<'_>, range: &SourceRange, id: CutId) -> Result<P
         .id
         .clone();
     Ok(Planned {
-        op: Overwrite {
+        ops: vec![Overwrite {
             cut: old,
             replacement: footage_cut(id.clone(), range),
         }
-        .into(),
+        .into()],
+        select: Some(id),
+    })
+}
+
+/// Source の範囲のカット 1 つを入れた sequence と、それを置く sequence のレイヤーを、1 つのトランザクションで作る。
+fn plan_new_sequence(ctx: &Ctx<'_>, range: &SourceRange, id: CutId) -> Result<Planned, String> {
+    let cut = footage_cut(id.clone(), range);
+    let length = cut.duration().map_err(|e| e.to_string())?;
+    let new = NewSequence::ids(ctx.project, ctx.comp);
+    let insert = Insert {
+        sequence: new.sequence.clone(),
+        index: 0,
+        cut,
+    };
+    Ok(Planned {
+        ops: new.ops(ctx.comp, length, vec![insert.into()]),
         select: Some(id),
     })
 }
@@ -234,12 +263,12 @@ pub fn plan_split(ctx: &Ctx<'_>, id: CutId) -> Result<Planned, String> {
         return Err("Can't split at the start of a clip".into());
     }
     Ok(Planned {
-        op: Split {
+        ops: vec![Split {
             cut: p.id.clone(),
             at,
             new_cut: id.clone(),
         }
-        .into(),
+        .into()],
         select: Some(id),
     })
 }
@@ -248,7 +277,7 @@ pub fn plan_split(ctx: &Ctx<'_>, id: CutId) -> Result<Planned, String> {
 pub fn plan_lift(ctx: &Ctx<'_>) -> Result<Planned, String> {
     let cut = selected_cut_id(ctx)?;
     Ok(Planned {
-        op: Lift { cut: cut.clone() }.into(),
+        ops: vec![Lift { cut: cut.clone() }.into()],
         select: Some(cut),
     })
 }
@@ -257,7 +286,7 @@ pub fn plan_lift(ctx: &Ctx<'_>) -> Result<Planned, String> {
 pub fn plan_extract(ctx: &Ctx<'_>) -> Result<Planned, String> {
     let cut = selected_cut_id(ctx)?;
     Ok(Planned {
-        op: mm_ops::Extract { cut }.into(),
+        ops: vec![mm_ops::Extract { cut }.into()],
         select: None,
     })
 }
