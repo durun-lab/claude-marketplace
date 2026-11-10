@@ -1,14 +1,18 @@
-//! `--play-test` を同じデスクトップで 1 つずつ動かす PC 全体のロック。
+//! `--play-test` を同じデスクトップで 1 つずつ動かす、再生テストのロック。
 //!
-//! 試験は実際のウィンドウへマウスとキーを送り、前面とマウスのキャプチャを取る。別の movie-maker が同じデスクトップで前面やキャプチャを
-//! 取ると、ドラッグが離す前に取り消され、工程が実行ごとに通ったり落ちたりする。そこで試験は始める前に名前付きのミューテックスを取り、
-//! 終わるまで持つ。持ち主のプロセスがクラッシュしても OS が放す（abandoned も取れたものとして進める）。ふだんの起動は取らない。
+//! 再生テストは実際のウィンドウへマウスとキーを送り、前面とマウスのキャプチャーを取る。同じデスクトップの別の再生テストが
+//! 前面やキャプチャーを取ると、ドラッグが離す前に取り消され、工程が実行ごとに通ったり失敗したりする。そこで再生テストは
+//! ウィンドウとプロジェクトを開く前に名前付きのミューテックスを取り、工程が終わったら放す。持っていたプロセスがクラッシュ
+//! しても OS が放す（放棄されたミューテックスも取れたものとして進める）。ふだんの起動は取らない。
 //!
-//! ミューテックスは取ったスレッドしか放せない。取ったあとで待つ専用のスレッドが持ち、`Lock` の破棄で放す。
+//! ミューテックスは持ったスレッドしか放せないので、待って取り、持ち、放すのは専用のスレッドにする。待ちは 1 回の
+//! `WaitForSingleObject` にする（待ち直すと待っているスレッドの並びの後ろに回り、先に待ち始めたテストが後になる）。
+
+mod desktop;
 
 use std::path::Path;
-use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::Mutex;
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -17,43 +21,54 @@ use windows::core::HSTRING;
 use windows::Win32::Foundation::{
     CloseHandle, HANDLE, WAIT_ABANDONED_0, WAIT_OBJECT_0, WAIT_TIMEOUT,
 };
-use windows::Win32::System::Diagnostics::ToolHelp::{
-    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
-};
-use windows::Win32::System::RemoteDesktop::ProcessIdToSessionId;
-use windows::Win32::System::Threading::{
-    CreateMutexW, GetCurrentProcessId, ReleaseMutex, WaitForSingleObject,
-};
+use windows::Win32::System::Threading::{CreateMutexW, ReleaseMutex, WaitForSingleObject};
 
-/// ログオンのセッション（= 同じデスクトップ）の中で 1 つだけ。
+/// 同じログオンのセッション（同じデスクトップ）の中で 1 つだけ。
 const MUTEX_NAME: &str = "Local\\movie-maker-play-test";
-const IMAGE_NAME: &str = "movie-maker.exe";
 
-/// 待ちの上限と、待っていることを知らせる間隔。
+/// 待ちの上限と、待っていることを標準エラーと結果の JSON に書く間隔。
 #[derive(Clone, Copy)]
 struct Timing {
     limit: Duration,
     notice: Duration,
 }
 
-/// 15 分。通しは 1 回に数分かかるので、数本の順番待ちを許す。
+/// 上限は工程の上限の合計（verify.rs。約 10 分と再生の秒数）より長くし、前の 1 本が上限いっぱいまでかかっても待ちきる。
 const TIMING: Timing = Timing {
     limit: Duration::from_secs(15 * 60),
     notice: Duration::from_secs(10),
 };
 
+/// 専用のスレッドから待つ側へ送るイベント。
 enum Event {
-    Waiting(Duration),
-    Acquired { abandoned: bool },
+    /// すぐには取れず、待ち始めた。
+    Busy,
+    /// 取れた。`abandoned` は、前に持っていたスレッドが放さずに終わっていたか。
+    Acquired {
+        abandoned: bool,
+    },
     TimedOut,
+    /// ミューテックスを作れないか、待ちが失敗した。
     Failed(String),
 }
 
-/// 取ったロック。破棄すると放す。ミューテックスを作れなかったときは何も持たず、待たせずに進める。
+/// 取ったロック。破棄すると放す。ロックなしで進めるときは何も持たない。
 struct Lock {
     held: Option<(Sender<()>, JoinHandle<()>)>,
     waited: Duration,
     abandoned: bool,
+}
+
+impl Lock {
+    /// ミューテックスを作れないときは、再生テストを止めずにロックなしで進める。
+    fn unavailable(waited: Duration, why: &str) -> Self {
+        tracing::warn!("--play-test のロックを取れない（ロックなしで進める）: {why}");
+        Self {
+            held: None,
+            waited,
+            abandoned: false,
+        }
+    }
 }
 
 impl Drop for Lock {
@@ -65,19 +80,21 @@ impl Drop for Lock {
     }
 }
 
-/// 取れるまで待つ専用のスレッドの本体。取れたら `release` の送り手が落ちるまで持つ。
-fn hold(name: &str, timing: Timing, events: &Sender<Event>, release: &Receiver<()>) {
+/// 専用のスレッドの本体。取れたら `release` の送り手が破棄されるまで持ち、持ったこのスレッドから放す。
+fn hold(name: &str, limit: Duration, events: &Sender<Event>, release: &Receiver<()>) {
     let name = HSTRING::from(name);
     // SAFETY: 名前は呼ぶ間だけ生きていればよく、返ったハンドルはこの関数の出口で必ず閉じる。
     let handle = match unsafe { CreateMutexW(None, false, &name) } {
         Ok(h) => h,
         Err(e) => {
-            let _ = events.send(Event::Failed(e.to_string()));
+            let _ = events.send(Event::Failed(format!("ミューテックスを作れない: {e}")));
             return;
         }
     };
-    if let Some(abandoned) = wait(handle, timing, events) {
-        let _ = events.send(Event::Acquired { abandoned });
+    let event = wait(handle, limit, events);
+    let held = matches!(event, Event::Acquired { .. });
+    let _ = events.send(event);
+    if held {
         let _ = release.recv();
         // SAFETY: `wait` で持ったミューテックスを、持ったスレッドから 1 回だけ放す。
         let _ = unsafe { ReleaseMutex(handle) };
@@ -86,33 +103,44 @@ fn hold(name: &str, timing: Timing, events: &Sender<Event>, release: &Receiver<(
     let _ = unsafe { CloseHandle(handle) };
 }
 
-/// 持てたら `Some(前の持ち主が落ちて放されたか)`。上限か失敗なら結果を送って `None`。
-fn wait(handle: HANDLE, timing: Timing, events: &Sender<Event>) -> Option<bool> {
-    let start = Instant::now();
+/// 待たずに 1 回試し、取れなければ `Busy` を送ってから上限まで 1 回で待つ。
+fn wait(handle: HANDLE, limit: Duration, events: &Sender<Event>) -> Event {
+    // SAFETY: ハンドルは `hold` が作った生きているミューテックス。
+    let mut result = unsafe { WaitForSingleObject(handle, 0) };
+    if result == WAIT_TIMEOUT {
+        let _ = events.send(Event::Busy);
+        // u32::MAX は INFINITE なので、その 1 つ手前で止める。
+        let ms = limit.as_millis().min(u128::from(u32::MAX - 1)) as u32;
+        // SAFETY: 同じハンドル。
+        result = unsafe { WaitForSingleObject(handle, ms) };
+    }
+    match result {
+        WAIT_OBJECT_0 => Event::Acquired { abandoned: false },
+        WAIT_ABANDONED_0 => Event::Acquired { abandoned: true },
+        WAIT_TIMEOUT => Event::TimedOut,
+        other => Event::Failed(format!("待ちが失敗した: {other:?}")),
+    }
+}
+
+/// 専用のスレッドの次のイベントを待つ。`notice` の間に届かなければ、`on_wait`（待った時間）を呼んで待ち続ける。
+fn next_event(
+    events: &Receiver<Event>,
+    notice: Duration,
+    start: Instant,
+    on_wait: &mut impl FnMut(Duration),
+) -> Event {
     loop {
-        let left = timing.limit.saturating_sub(start.elapsed());
-        if left.is_zero() {
-            let _ = events.send(Event::TimedOut);
-            return None;
-        }
-        let slice = left.min(timing.notice).as_millis() as u32;
-        // SAFETY: ハンドルは `hold` が作った生きているミューテックス。
-        let result = unsafe { WaitForSingleObject(handle, slice) };
-        match result {
-            WAIT_OBJECT_0 => return Some(false),
-            WAIT_ABANDONED_0 => return Some(true),
-            WAIT_TIMEOUT => {
-                let _ = events.send(Event::Waiting(start.elapsed()));
-            }
-            other => {
-                let _ = events.send(Event::Failed(format!("待ちが失敗した: {other:?}")));
-                return None;
+        match events.recv_timeout(notice) {
+            Ok(event) => return event,
+            Err(RecvTimeoutError::Timeout) => on_wait(start.elapsed()),
+            Err(RecvTimeoutError::Disconnected) => {
+                return Event::Failed("スレッドが結果を返さずに終わった".into())
             }
         }
     }
 }
 
-/// 名前 `name` のロックを、取れるまで待って取る。待つ間は `notice` ごとに `on_wait`（待った時間）を呼ぶ。
+/// 名前 `name` のロックを取れるまで待つ。すぐに取れなければ、待ち始めと `notice` ごとに `on_wait`（待った時間）を呼ぶ。
 /// 上限を超えたら `Err(待った時間)`。
 fn acquire_named(
     name: &str,
@@ -122,22 +150,26 @@ fn acquire_named(
     let start = Instant::now();
     let (events_tx, events) = mpsc::channel();
     let (release, release_rx) = mpsc::channel();
-    let name = name.to_owned();
-    let thread = std::thread::Builder::new()
+    let owned = name.to_owned();
+    let spawned = std::thread::Builder::new()
         .name("play-test-lock".into())
-        .spawn(move || hold(&name, timing, &events_tx, &release_rx))
-        .expect("play-test-lock thread");
+        .spawn(move || hold(&owned, timing.limit, &events_tx, &release_rx));
+    let thread = match spawned {
+        Ok(thread) => thread,
+        Err(e) => {
+            let why = format!("スレッドを作れない: {e}");
+            return Ok(Lock::unavailable(start.elapsed(), &why));
+        }
+    };
     loop {
-        let event = events
-            .recv()
-            .unwrap_or_else(|_| Event::Failed("スレッドが落ちた".into()));
-        match event {
-            Event::Waiting(waited) => on_wait(waited),
+        match next_event(&events, timing.notice, start, &mut on_wait) {
+            Event::Busy => on_wait(start.elapsed()),
             Event::Acquired { abandoned } => {
                 let held = Some((release, thread));
+                let waited = start.elapsed();
                 return Ok(Lock {
                     held,
-                    waited: start.elapsed(),
+                    waited,
                     abandoned,
                 });
             }
@@ -147,77 +179,58 @@ fn acquire_named(
             }
             Event::Failed(why) => {
                 let _ = thread.join();
-                tracing::warn!("--play-test のロックを作れない（絞らずに進める）: {why}");
-                return Ok(Lock {
-                    held: None,
-                    waited: start.elapsed(),
-                    abandoned: false,
-                });
+                return Ok(Lock::unavailable(start.elapsed(), &why));
             }
         }
     }
 }
 
-/// 同じセッションで動いている、自分以外の movie-maker.exe の数。数えられなければ `None`。
-fn other_instances() -> Option<usize> {
-    // SAFETY: スナップショットはこの関数の出口で閉じ、エントリーは `dwSize` を入れてから渡す。
-    unsafe {
-        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).ok()?;
-        let me = GetCurrentProcessId();
-        let mut my_session = 0;
-        if ProcessIdToSessionId(me, &mut my_session).is_err() {
-            let _ = CloseHandle(snap);
-            return None;
-        }
-        let mut entry = PROCESSENTRY32W {
-            dwSize: size_of::<PROCESSENTRY32W>() as u32,
-            ..Default::default()
-        };
-        let mut count = 0;
-        let mut more = Process32FirstW(snap, &mut entry).is_ok();
-        while more {
-            let len = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(0);
-            let image = String::from_utf16_lossy(&entry.szExeFile[..len]);
-            let mut session = u32::MAX;
-            let same = ProcessIdToSessionId(entry.th32ProcessID, &mut session).is_ok()
-                && session == my_session;
-            if entry.th32ProcessID != me && same && image.eq_ignore_ascii_case(IMAGE_NAME) {
-                count += 1;
-            }
-            more = Process32NextW(snap, &mut entry).is_ok();
-        }
-        let _ = CloseHandle(snap);
-        Some(count)
-    }
-}
-
-/// 取ったあとの状態。報告の JSON に書く値の元。
-struct Entered {
+/// 結果の JSON に書く値と、工程が終わるまで持つロック。
+struct LockState {
     lock: Option<Lock>,
+    /// ロックを持って始めたか。偽ならロックなしで進めた。
+    held: bool,
     waited: Duration,
     abandoned: bool,
     others_at_start: Option<usize>,
 }
 
-static ENTERED: Mutex<Option<Entered>> = Mutex::new(None);
+static STATE: Mutex<Option<LockState>> = Mutex::new(None);
 
-/// ロックの状態の JSON。終わりの時点の台数も測り直す（待っている間や試験の間に始まったものも見分けるため）。
-pub fn report() -> Value {
-    let guard = ENTERED.lock().expect("play-test lock state");
-    let Some(e) = guard.as_ref() else {
-        return Value::Null;
-    };
+/// 放すのはパニックの後にも呼ぶので、ほかのスレッドがパニックして毒になった Mutex もそのまま使う。
+fn state() -> MutexGuard<'static, Option<LockState>> {
+    STATE.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// ロックを取ったときに決まる値。
+fn taken_json(s: &LockState) -> Value {
     json!({
-        "waited_secs": e.waited.as_secs_f64(),
-        "abandoned": e.abandoned,
-        "other_movie_makers": { "at_start": e.others_at_start, "at_end": other_instances() },
+        "state": if s.held { "held" } else { "unavailable" },
+        "waited_secs": s.waited.as_secs_f64(),
+        "abandoned": s.abandoned,
+        "other_movie_makers": { "at_start": s.others_at_start },
     })
 }
 
-/// 試験の工程が終わったら放す（次の試験がウィンドウを閉じる間を待たずに始められる）。
+/// 結果の JSON の `lock`。`--play-test` でなければ null。ほかの movie-maker のウィンドウの数を工程の後に測り直し（テストの間に
+/// 開いたウィンドウを見分ける）、前面のウィンドウを持つプロセスも工程の後に測る（前面を取ったウィンドウを見分ける）。
+pub fn report() -> Value {
+    let guard = state();
+    let Some(s) = guard.as_ref() else {
+        return Value::Null;
+    };
+    let mut value = taken_json(s);
+    value["other_movie_makers"]["at_end"] = json!(desktop::other_movie_maker_windows());
+    value["foreground_at_end"] = desktop::foreground_owner();
+    value
+}
+
+/// 工程が終わり、ウィンドウに入力を送らなくなったら放す。ウィンドウが閉じるのは待たない（次のテストはウィンドウを作って
+/// 前面に出すまでに数秒かかり、その間に閉じ終わる）。開く前に失敗して終わるときにも呼ぶ（放さずに終わると、次のテストが
+/// 放棄されたミューテックスと読む）。
 pub fn release() {
-    if let Some(e) = ENTERED.lock().expect("play-test lock state").as_mut() {
-        e.lock = None;
+    if let Some(s) = state().as_mut() {
+        s.lock = None;
     }
 }
 
@@ -228,40 +241,59 @@ fn write_report(path: &Path, value: &Value) {
     }
 }
 
-/// `--play-test` の始めに呼ぶ。取れるまで待つ（待っている間は標準エラーと報告に書く）。上限を超えたら報告に理由を書いて `Err`。
-pub fn enter(report_path: &Path) -> Result<(), String> {
-    eprintln!("[play-test] ほかの --play-test の終わりを待つ（ロック {MUTEX_NAME}）");
-    let lock = acquire_named(MUTEX_NAME, TIMING, |waited| {
-        let secs = waited.as_secs();
-        eprintln!("[play-test] 待っている: {secs} 秒");
-        let state = json!({ "lock": { "state": "waiting", "waited_secs": secs } });
-        write_report(report_path, &state);
-    });
-    match lock {
-        Ok(lock) => {
-            let (waited, abandoned) = (lock.waited, lock.abandoned);
-            if waited >= Duration::from_secs(1) {
-                eprintln!("[play-test] {} 秒待って始める", waited.as_secs());
-            }
-            *ENTERED.lock().expect("play-test lock state") = Some(Entered {
-                lock: Some(lock),
-                waited,
-                abandoned,
-                others_at_start: other_instances(),
-            });
-            Ok(())
-        }
-        Err(waited) => {
-            let why = format!(
-                "ほかの --play-test が {} 秒たっても終わらず、始められない（上限 {} 秒）",
-                waited.as_secs(),
-                TIMING.limit.as_secs()
-            );
-            let lock = json!({ "state": "timed_out", "waited_secs": waited.as_secs_f64() });
-            write_report(report_path, &json!({ "failed": why, "lock": lock }));
-            Err(why)
-        }
+/// 上限まで待っても取れなかった。結果の JSON に理由を書き、標準エラーに出す文を返す。
+fn give_up(report_path: &Path, waited: Duration) -> String {
+    let why = format!(
+        "ほかの --play-test が上限の {} 分を過ぎても終わらないので、始めずに終わる",
+        TIMING.limit.as_secs() / 60
+    );
+    let lock = json!({ "state": "timed_out", "waited_secs": waited.as_secs_f64() });
+    write_report(report_path, &json!({ "failed": why, "lock": lock }));
+    why
+}
+
+/// ふだんの起動は待たないので、同じデスクトップにほかの movie-maker のウィンドウがあれば、工程が失敗しうることを出す。
+fn warn_other_windows(count: Option<usize>) {
+    if let Some(n @ 1..) = count {
+        eprintln!(
+            "[play-test] 同じデスクトップにほかの movie-maker のウィンドウが {n} 個ある。\
+             前面やマウスのキャプチャーを取られると、工程が失敗することがある"
+        );
     }
+}
+
+/// `--play-test` の始めに、ウィンドウとプロジェクトを開く前に呼ぶ。ほかの再生テストが持っていれば終わるまで待ち、待つ間は
+/// 標準エラーと結果の JSON に書く。上限を超えたら、結果の JSON に理由を書いて `Err`。
+pub fn enter(report_path: &Path) -> Result<(), String> {
+    let mut waited = false;
+    let acquired = acquire_named(MUTEX_NAME, TIMING, |elapsed| {
+        if std::mem::replace(&mut waited, true) {
+            let secs = elapsed.as_secs();
+            eprintln!("[play-test] ほかの --play-test の終わりを待っている: {secs} 秒");
+        } else {
+            let limit = TIMING.limit.as_secs() / 60;
+            eprintln!("[play-test] ほかの --play-test が動いているので、終わるまで待つ（上限 {limit} 分）");
+        }
+        let lock = json!({ "state": "waiting", "waited_secs": elapsed.as_secs_f64() });
+        write_report(report_path, &json!({ "lock": lock }));
+    });
+    let lock = acquired.map_err(|elapsed| give_up(report_path, elapsed))?;
+    let others = desktop::other_movie_maker_windows();
+    let s = LockState {
+        held: lock.held.is_some(),
+        waited: lock.waited,
+        abandoned: lock.abandoned,
+        others_at_start: others,
+        lock: Some(lock),
+    };
+    if waited {
+        eprintln!("[play-test] {} 秒待って始める", s.waited.as_secs());
+        // 待つ間に書いた waiting を書き換え、テストが結果を書く前に止まっても待っていたようには残さない。
+        write_report(report_path, &json!({ "lock": taken_json(&s) }));
+    }
+    warn_other_windows(others);
+    *state() = Some(s);
+    Ok(())
 }
 
 #[cfg(test)]
@@ -274,7 +306,13 @@ mod tests {
         notice: Duration::from_millis(100),
     };
 
-    /// テストごとに別の名前（並べて回しても、本物の試験のロックとも干渉しない）。
+    /// 放す側のスレッドが遅れても上限に届かない長さ。
+    const PATIENT: Timing = Timing {
+        limit: Duration::from_secs(10),
+        notice: Duration::from_millis(100),
+    };
+
+    /// テストごとに別の名前（並べて回しても、実際の再生テストのロックとも干渉しない）。
     fn unique_name() -> String {
         static N: AtomicU32 = AtomicU32::new(0);
         let n = N.fetch_add(1, Ordering::SeqCst);
@@ -295,7 +333,7 @@ mod tests {
         let mut notices = 0;
         let second = acquire_named(&name, FAST, |_| notices += 1);
         assert!(matches!(second, Err(w) if w >= FAST.limit));
-        assert!(notices >= 2, "待っている間に知らせる: {notices}");
+        assert!(notices >= 1, "待ち始めに on_wait を呼ぶ: {notices}");
         drop(first);
         assert!(acquire_named(&name, FAST, |_| {}).is_ok());
     }
@@ -303,23 +341,24 @@ mod tests {
     #[test]
     fn 放されるまで待ってから取る() {
         let name = unique_name();
-        let first = acquire_named(&name, FAST, |_| {}).unwrap();
+        let first = acquire_named(&name, PATIENT, |_| {}).unwrap();
         let releaser = std::thread::spawn(move || {
             std::thread::sleep(Duration::from_millis(150));
             drop(first);
         });
-        let second = acquire_named(&name, FAST, |_| {}).unwrap();
+        let second = acquire_named(&name, PATIENT, |_| {}).unwrap();
         releaser.join().unwrap();
+        assert!(second.held.is_some());
         assert!(second.waited >= Duration::from_millis(100));
     }
 
     #[test]
-    fn 持ち主が放さずに落ちても取れる() {
+    fn 持っていたスレッドが放さずに終わっても取れる() {
         let name = unique_name();
         let hname = HSTRING::from(name.as_str());
-        // 取ったスレッドが放さずに終わると、ミューテックスは abandoned になる（ハンドルは開いたまま）。
+        // 持ったスレッドが放さずに終わると、ミューテックスは放棄される（ハンドルは開いたままにして、名前を残す）。
         std::thread::spawn(move || {
-            // SAFETY: 名前は呼ぶ間だけ生きていればよく、ハンドルは abandoned を作るためにわざと放さず閉じない。
+            // SAFETY: 名前は呼ぶ間だけ生きていればよく、放棄されたミューテックスを作るため、わざと放さず閉じない。
             unsafe {
                 let h = CreateMutexW(None, false, &hname).unwrap();
                 assert_eq!(WaitForSingleObject(h, 1000), WAIT_OBJECT_0);
@@ -332,7 +371,9 @@ mod tests {
     }
 
     #[test]
-    fn 自分以外の台数を数えられる() {
-        assert!(other_instances().is_some());
+    fn ミューテックスを作れなければロックなしで進める() {
+        // 名前空間（Local\ など）でない「\」を含む名前は作れない。
+        let lock = acquire_named("mm-no-such-namespace\\lock", FAST, |_| {}).unwrap();
+        assert!(lock.held.is_none());
     }
 }

@@ -19,6 +19,8 @@ pub struct PlayTest {
 /// 起動の引数。
 #[derive(Debug, Clone, PartialEq)]
 pub struct Args {
+    /// JSON のプロジェクト（`project.json`）か、`project.mmdb` のあるフォルダー（`project.mmdb` の直指しも可）。
+    /// `project.mmdb` の無いフォルダーは開けない。
     pub project: PathBuf,
     pub composition: Option<String>,
     pub no_audio: bool,
@@ -26,7 +28,8 @@ pub struct Args {
 }
 
 const USAGE: &str = "使い方: movie-maker [PROJECT] [--composition ID] [--no-audio]\n  \
-     [--play-test SECS --report OUT.json [--screenshot OUT.png]]";
+     [--play-test SECS --report OUT.json [--screenshot OUT.png]]\n  \
+     PROJECT は project.json か、project.mmdb のあるフォルダー";
 
 fn value<'a>(it: &mut impl Iterator<Item = &'a String>, flag: &str) -> Result<&'a String, String> {
     it.next()

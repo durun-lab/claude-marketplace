@@ -163,7 +163,7 @@ fn forward_changes(app: &tauri::AppHandle, shared: &Arc<Shared>) {
     review_ipc::forward_comments(app, shared);
 }
 
-/// `--play-test` は同じデスクトップで 1 つずつ動かす。ユーザーがふだん起動するアプリは待たせない。
+/// `--play-test` は同じデスクトップで 1 つずつ動かす。ふだんの起動はロックを取らず、ユーザーのアプリを待たせない。
 fn enter_play_test_lock(args: &Args) {
     let Some(test) = &args.play_test else {
         return;
@@ -174,8 +174,11 @@ fn enter_play_test_lock(args: &Args) {
     }
 }
 
+/// 起動の途中の失敗を出して終わる。再生テストは取ったロックを放してから終わる（放さずに終わると、次のテストが放棄された
+/// ミューテックスと読む）。
 fn fail(message: &str) -> ! {
     eprintln!("{message}");
+    play_test_lock::release();
     std::process::exit(2);
 }
 
