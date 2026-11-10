@@ -13,6 +13,8 @@ const MOVE_TOLERANCE: f64 = 0.5;
 const BODY_DRAG_PX: f32 = 40.0;
 /// 割るカットに求める長さ（秒）。中央をクリックしても端に掛からない長さ。
 const MIN_CUT_SECS: f64 = 0.5;
+/// 再生位置に吸い付いた線を撮るときに、再生位置から右へずらして指す量（論理ピクセル）。吸い付く距離（8）の中。
+const SNAP_NUDGE_PX: f32 = 3.0;
 
 /// ツールのキーを押し、描画スレッドが今のツールを共有状態に置くまで待つ。
 pub(super) fn select(env: &Env<'_>, tool: Tool) -> bool {
@@ -72,6 +74,11 @@ fn blade_steps(env: &Env<'_>, log: &mut Log) {
     let chosen = select(env, Tool::Blade);
     surface::post_move(hwnd, at);
     shot(env, log, "19-blade-hover");
+    // 再生位置を割る時刻に置いて近くを指すと、線は再生位置に吸い付き、ガイド線の色で再生位置の線の上に出る。
+    seek_main(shared, mid);
+    std::thread::sleep(SETTLE);
+    surface::post_move(hwnd, g.at(g.row, mid, SNAP_NUDGE_PX));
+    shot(env, log, "19b-blade-snapped");
     let before = cuts(shared).len();
     surface::post_click(hwnd, at.0, at.1);
     let split = wait_until(WAIT, || cuts(shared).len() == before + 1);
