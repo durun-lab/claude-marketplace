@@ -339,7 +339,7 @@ fn メニューバーの中の位置はメニューとグループをまたい�
 }
 
 #[test]
-fn メニューの画面の名前はアクセスキーの印を除いた名前() {
+fn メニューの画面の名前はアクセスキーを示す記号を除いた名前() {
     let names: Vec<String> = BAR.iter().map(|(m, _)| m.name()).collect();
     assert_eq!(
         names,

@@ -50,7 +50,7 @@ pub enum WindowAction {
     Exit,
     /// アプリの名前とバージョンを出す。
     About,
-    /// Keyboard Shortcuts のウィンドウを出す。開いていれば前に出す。
+    /// Keyboard Shortcuts のウィンドウを出す。開いていれば前面に出す。
     ShowKeyboardShortcuts,
 }
 

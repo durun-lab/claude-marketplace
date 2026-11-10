@@ -24,7 +24,7 @@ const useTable = (commands: CommandsApi): UiCommand[] => {
   return table;
 };
 
-/** ウィンドウが前に出るたびに、絞り込みの入力へキーを戻す。 */
+/** ウィンドウが前面に出るたびに、絞り込みの入力欄にフォーカスを戻す。 */
 const useFocusOnShow = (input: { current: HTMLInputElement | null }): void => {
   useEffect(() => {
     const focus = () => input.current?.focus();
@@ -34,7 +34,7 @@ const useFocusOnShow = (input: { current: HTMLInputElement | null }): void => {
   }, [input]);
 };
 
-/** 選んだ行。選びが無い（絞り込みで消えた）ときは先頭。上下の移動は両端で止める。 */
+/** 選んだ行。選んだ行が無い（絞り込みで消えた）ときは先頭。上下の移動は両端で止める。 */
 const useSelection = (flat: readonly UiCommand[]) => {
   const [selectedId, select] = useState<string | null>(null);
   const index = Math.max(0, flat.findIndex((c) => c.id === selectedId));
@@ -128,7 +128,7 @@ const Rows = ({ list, selectedId, onRun }: { list: Section[]; selectedId: string
   </>
 );
 
-/** コマンドの表を、メニューの組ごとに名前とキーで並べて絞り込み、選んで実行する。キーの割り当ての変更はまだ無い。 */
+/** コマンドの表を、メニューごとの区画に名前とキーで並べて絞り込み、選んで実行する。キーの割り当ての変更はまだ無い。 */
 export const Shortcuts = ({ commands, close }: ShortcutsProps) => {
   const table = useTable(commands);
   const [query, setQuery] = useState("");

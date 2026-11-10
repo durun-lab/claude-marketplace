@@ -39,7 +39,7 @@ impl Menu {
         }
     }
 
-    /// 画面の名前（`title` からアクセスキーの印 `&` を除いたもの）。
+    /// 画面の名前（`title` からアクセスキーを示す `&` を除いたもの）。
     pub fn name(self) -> String {
         self.title().replace('&', "")
     }

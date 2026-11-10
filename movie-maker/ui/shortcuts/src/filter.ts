@@ -1,7 +1,7 @@
 import type { UiCommand } from "@mm/sdk";
 
 /** メニューに入っていないコマンド（Stop など、キーだけで呼ぶもの）の区画の見出し。Shotcut の Actions and Shortcuts も、
- * メニューから読んだ操作をメニューの名前で組にし、残りを Other に入れる。 */
+ * メニューから読んだ操作にはメニューの名前を、残りの操作には Other を付ける。 */
 export const OTHER = "Other";
 
 /** メニューの名前か Other を見出しにした、コマンドの行のまとまり。 */

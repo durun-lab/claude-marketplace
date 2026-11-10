@@ -129,7 +129,7 @@ describe("Shortcuts の表示", () => {
 });
 
 describe("Shortcuts の実行", () => {
-  it("押せないコマンドは薄い印を付け、Enter ではアプリが拒否した理由を出して閉じない", async () => {
+  it("押せないコマンドは薄く出し、Enter ではアプリが拒否した理由を出して閉じない", async () => {
     const { api, close, push } = await setup(TABLE, async (id) => (id === "clip.lift" ? "Lift isn't available now" : null));
     await type("lift");
     expect(rows()[0]?.getAttribute("aria-disabled")).toBe("true");

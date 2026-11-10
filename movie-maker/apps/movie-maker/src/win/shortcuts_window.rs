@@ -17,12 +17,12 @@ use crate::win::surface;
 const LABEL: &str = "shortcuts";
 /// ページ（`ui/dist/`）。
 const ENTRY: &str = "shortcuts.html";
-/// ウィンドウの中の大きさと、その下限（論理ピクセル）。
+/// クライアント領域の大きさと、その下限（論理ピクセル）。
 const SIZE: (f64, f64) = (560.0, 640.0);
 const MIN_SIZE: (f64, f64) = (360.0, 320.0);
 
 /// 開く前にメインウィンドウでフォーカスを持っていた子 HWND（サーフェスか WebView）。閉じると Windows はオーナーの
-/// メインウィンドウを前面に出してフレームにフォーカスを置くので、戻さないとキーがサーフェスにも WebView にも届かない。
+/// メインウィンドウを前面に出してメインウィンドウ自身にフォーカスを置くので、戻さないとキーがサーフェスにも WebView にも届かない。
 static FOCUS_BEFORE: AtomicIsize = AtomicIsize::new(0);
 
 /// 矩形（x、y、幅、高さ。物理ピクセル）。
@@ -44,7 +44,7 @@ pub fn place(main: Rect, size: (u32, u32), area: Option<Rect>) -> (i32, i32) {
     (fit(x, ax, aw, size.0), fit(y, ay, ah, size.1))
 }
 
-/// Keyboard Shortcuts のウィンドウを出す。開いていれば前面に出すだけ。ウィンドウの生成はメインスレッドの返りを待つので、
+/// Keyboard Shortcuts のウィンドウを出す。開いていれば前面に出すだけ。ウィンドウの生成はメインスレッドの応答を待つので、
 /// メニューのイベントと IPC のスレッドを止めないよう別のスレッドで作る。
 pub fn open(app: &AppHandle, main: &Window) {
     remember_focus(main);
@@ -66,8 +66,8 @@ pub fn open(app: &AppHandle, main: &Window) {
     }
 }
 
-/// メインウィンドウをオーナーにして、メインウィンドウの前に出し続ける（メインウィンドウを閉じると一緒に閉じる）。
-/// メインウィンドウの中心で隠したまま作り、そのモニターの倍率で大きさを決めてから、外形の大きさで中央に置いて出す。
+/// メインウィンドウをオーナーにして、メインウィンドウより手前に置き続ける（メインウィンドウを閉じると一緒に閉じる）。
+/// メインウィンドウの中心で隠したまま作り、そのモニターの倍率で大きさを決めてから、外側の大きさで中央に置いて出す。
 fn build(app: &AppHandle, main: &Window) -> tauri::Result<()> {
     let scale = main.scale_factor()?;
     let (pos, outer) = (main.outer_position()?, main.outer_size()?);
@@ -110,13 +110,13 @@ fn restore_focus_on_close(window: &WebviewWindow, main: &Window) {
     });
 }
 
-/// Tauri の `Window` の HWND を、このクレートの `windows` の版の HWND にする（Tauri は別の版の型を返す）。
+/// Tauri の `Window` の HWND を、このクレートが使う `windows` のバージョンの HWND にする（Tauri は別のバージョンの型を返す）。
 fn hwnd_of(window: &Window) -> Option<HWND> {
     window.hwnd().ok().map(|h| HWND(h.0 as isize as *mut _))
 }
 
 /// メインウィンドウでフォーカスを持っている子 HWND を覚える。呼んだスレッド（メニュー、キー、IPC のどれか）によらず、
-/// メインウィンドウのスレッドの入力の状態から引く。フレームにフォーカスがあれば覚えない（閉じたらサーフェスに戻す）。
+/// メインウィンドウのスレッドの入力の状態から引く。メインウィンドウ自身にフォーカスがあれば覚えない（閉じたらサーフェスに戻す）。
 fn remember_focus(main: &Window) {
     let Some(main) = hwnd_of(main) else { return };
     let mut info = GUITHREADINFO {
@@ -165,8 +165,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn 外形の中心をメインウィンドウの中心に合わせる() {
-        // 外形は 125% の倍率の 560x640 論理ピクセルに、タイトルバーと縁を足した大きさ。
+    fn ウィンドウの中心をメインウィンドウの中心に合わせる() {
+        // 外側の大きさは 125% の倍率の 560x640 論理ピクセルに、タイトルバーと縁を足した大きさ。
         assert_eq!(place((100, 50, 1600, 900), (718, 847), None), (541, 76));
         // 作業領域に収まっていれば寄せない。
         let area = Some((0, 0, 2560, 1528));
