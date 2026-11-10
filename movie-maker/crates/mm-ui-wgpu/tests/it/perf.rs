@@ -174,6 +174,28 @@ fn bench() -> Option<Bench> {
     })
 }
 
+/// シナリオごとの結果を表にして出す。
+fn print_phases(phases: &[Phase]) {
+    println!(
+        "シナリオ | CPU p50 / p99 / 最大 | GPU の完了まで p50 / p99 / 最大 | シェーピングした数 | 頂点を作った数 | 描いたサムネイルの最大"
+    );
+    for p in phases {
+        println!(
+            "{} | {:.2} / {:.2} / {:.2} ms | {:.2} / {:.2} / {:.2} ms | {} | {} | {}",
+            p.name,
+            quantile(&p.cpu, 0.5),
+            quantile(&p.cpu, 0.99),
+            quantile(&p.cpu, 1.0),
+            quantile(&p.total, 0.5),
+            quantile(&p.total, 0.99),
+            quantile(&p.total, 1.0),
+            p.text.shaped,
+            p.text.uploads,
+            p.thumbs,
+        );
+    }
+}
+
 #[test]
 #[ignore = "測定用。リリースビルドで動かす"]
 fn 数千のカットの_timeline_を拡大と移動と再生で描く時間() {
@@ -202,24 +224,7 @@ fn 数千のカットの_timeline_を拡大と移動と再生で描く時間() {
         }),
         b.phase("再生", 120, |ui, i| ui.set_playhead(i as f64 / 60.0)),
     ];
-    println!(
-        "シナリオ | CPU p50 / p99 / 最大 | GPU の完了まで p50 / p99 / 最大 | シェーピングした数 | 頂点を作った数 | 描いたサムネイルの最大"
-    );
-    for p in &phases {
-        println!(
-            "{} | {:.2} / {:.2} / {:.2} ms | {:.2} / {:.2} / {:.2} ms | {} | {} | {}",
-            p.name,
-            quantile(&p.cpu, 0.5),
-            quantile(&p.cpu, 0.99),
-            quantile(&p.cpu, 1.0),
-            quantile(&p.total, 0.5),
-            quantile(&p.total, 0.99),
-            quantile(&p.total, 1.0),
-            p.text.shaped,
-            p.text.uploads,
-            p.thumbs,
-        );
-    }
+    print_phases(&phases);
     let play = &phases[4];
     assert_eq!(
         play.text.shaped + play.text.uploads,
