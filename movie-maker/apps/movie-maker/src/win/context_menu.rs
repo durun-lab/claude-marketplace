@@ -109,11 +109,14 @@ pub fn post_menu_key(hwnd: isize) {
     }
 }
 
-/// 出ているポップアップのメニュー（ウィンドウクラス `#32768`）。自動試験が出たことを待つのに使う。
+/// このアプリが出しているポップアップのメニュー（ウィンドウクラス `#32768`）。自動試験が出たことを待つのに使う。
+/// 同じクラスのメニューはどのアプリのものも見つかるので、このプロセスのものだけを返し、ほかのアプリにキーを送らない。
 pub fn open_popup() -> Option<isize> {
-    use windows::Win32::UI::WindowsAndMessaging::FindWindowW;
-    let found = unsafe { FindWindowW(w!("#32768"), None) };
-    found.ok().map(|h| h.0 as isize)
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, GetWindowThreadProcessId};
+    let menu = unsafe { FindWindowW(w!("#32768"), None) }.ok()?;
+    let mut pid = 0u32;
+    unsafe { GetWindowThreadProcessId(menu, Some(&mut pid)) };
+    (pid == std::process::id()).then_some(menu.0 as isize)
 }
 
 /// 出ているポップアップのメニューにキーを送る（自動試験用）。メニューはモーダルのループでキーを読むので、キーボードの
