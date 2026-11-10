@@ -7,6 +7,7 @@
 //! 依存の規則では「共通実装」で、API クレート（`mm-*-api`）はこれに依存せず、GPU を触る実装だけが依存する。
 
 mod context;
+mod device_slot;
 mod frame;
 mod helper;
 mod select;
