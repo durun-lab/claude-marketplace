@@ -180,3 +180,9 @@ pub(crate) fn run(env: &Env<'_>, log: &mut Log) {
     move_steps(env, log);
     split_clip_step(env, log);
 }
+
+/// ツールの通しで押す帯（カットのある行と、シーケンスでないレイヤーの行）が、どちらも行の領域に見えているか。
+pub(crate) fn targets_visible(env: &Env<'_>) -> bool {
+    let shared = env.shared;
+    geometry(shared, env.surface_hwnd).is_some_and(|g| trim_target(shared, &g.place).is_some())
+}
