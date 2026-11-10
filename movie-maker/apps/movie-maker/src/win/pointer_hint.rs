@@ -1,7 +1,8 @@
 //! ポインターの下にあるものを、描画のスレッドから UI のスレッドへ渡す 1 つの入口。描画のスレッドの `Ui` が作った
 //! [`Hint`]（`Pointee`、ツールチップの中身、ポインターの位置）を [`HintSlot`] に置き、UI のスレッドの `WM_SETCURSOR`、
 //! ツールチップ、右クリックのメニューは [`HintSlot::current`] で引く。置いたら `WM_MM_HINT` を投げ、UI のスレッドが
-//! ツールチップとカーソルを差し替える。
+//! ツールチップとカーソルを差し替える。サーフェスのカーソルはここの振り分け 1 つで決め、仕切りの上と仕切りをつかんでいる間は
+//! 仕切りの形にする（`cursor::apply`）。
 
 use std::sync::Mutex;
 
@@ -11,7 +12,8 @@ use windows::Win32::Graphics::Gdi::ScreenToClient;
 use windows::Win32::UI::Input::KeyboardAndMouse::{VK_MENU, VK_SHIFT};
 use windows::Win32::UI::WindowsAndMessaging::{
     GetClientRect, GetCursorPos, PostMessageW, WM_APP, WM_KEYDOWN, WM_KEYUP, WM_LBUTTONDOWN,
-    WM_MOUSEWHEEL, WM_SETCURSOR, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_TIMER,
+    WM_MBUTTONDOWN, WM_MOUSEWHEEL, WM_RBUTTONDOWN, WM_SETCURSOR, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    WM_TIMER,
 };
 
 use crate::win::state::Shared;
@@ -122,7 +124,8 @@ pub fn on_message(
             refresh_cursor(hint, hwnd);
             None
         }
-        WM_LBUTTONDOWN | WM_MOUSEWHEEL | WM_KEYDOWN | WM_SYSKEYDOWN => {
+        WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN | WM_MOUSEWHEEL | WM_KEYDOWN
+        | WM_SYSKEYDOWN => {
             tooltip::dismiss(hwnd, hint);
             None
         }

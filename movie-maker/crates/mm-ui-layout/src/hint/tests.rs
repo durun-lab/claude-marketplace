@@ -53,6 +53,23 @@ fn trim_のカットの中は_slip_で_shift_では_slide() {
     let p = over(cut(Part::Body), Tool::Trim);
     assert_eq!(cursor_for(&p, NONE), CursorKind::Slip);
     assert_eq!(cursor_for(&p, SHIFT), CursorKind::Slide);
+    let gap = Pointee { gap: true, ..p };
+    assert_eq!(
+        cursor_for(&gap, NONE),
+        CursorKind::Arrow,
+        "隙間は slip しない"
+    );
+    assert_eq!(
+        cursor_for(&gap, SHIFT),
+        CursorKind::Slide,
+        "隙間も slide する"
+    );
+}
+
+#[test]
+fn 仕切りは縦が左右_横が上下の矢印() {
+    assert_eq!(splitter_cursor(Splitter::Vertical), CursorKind::SizeWE);
+    assert_eq!(splitter_cursor(Splitter::Horizontal), CursorKind::SizeNS);
 }
 
 #[test]
@@ -106,6 +123,10 @@ fn ドラッグ中は押したときの種類のままで_修飾キーの変化�
     assert_eq!(cursor_for(&drag(EditDrag::Ripple), ALT), CursorKind::SizeWE);
     assert_eq!(cursor_for(&drag(EditDrag::Roll), NONE), CursorKind::Roll);
     assert_eq!(cursor_for(&drag(EditDrag::Slide), NONE), CursorKind::Slide);
+    assert_eq!(
+        cursor_for(&drag(EditDrag::MoveKeyframe), ALT),
+        CursorKind::Arrow
+    );
 }
 
 #[test]

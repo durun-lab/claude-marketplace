@@ -51,7 +51,7 @@ impl Ui {
 
     /// ポインターの下にあるもの。ツールバーと再生の操作のバーの部品は、それぞれの当たり判定が持つ。
     pub fn pointee(&self) -> Pointee {
-        let base = self.controller.pointee(&self.model);
+        let base = self.controller.pointee(&self.model, self.playhead);
         let Some((x, y)) = self.hint.at else {
             return Pointee {
                 under: Under::Outside,

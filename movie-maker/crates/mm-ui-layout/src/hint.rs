@@ -13,6 +13,7 @@ pub use status::{status_left, status_right, HintText};
 pub use tooltip::{bar_tooltip, tooltip_of, TooltipContent};
 
 use crate::controller::Mods;
+use crate::screen::Splitter;
 use crate::timeline::{Hit, Part};
 use crate::tool::Tool;
 use crate::toolbar::ToolbarPart;
@@ -39,6 +40,8 @@ pub enum EditDrag {
     Slip,
     Slide,
     MoveInTime,
+    /// キーフレームの行のキーフレームのドラッグ。
+    MoveKeyframe,
 }
 
 impl EditDrag {
@@ -51,6 +54,7 @@ impl EditDrag {
             Self::Slip => "Slip",
             Self::Slide => "Slide",
             Self::MoveInTime => "Move in Time",
+            Self::MoveKeyframe => "Move Keyframe",
         }
     }
 }
@@ -78,16 +82,26 @@ pub struct Pointee {
     pub blade_ready: bool,
 }
 
-/// カーソルの形。左右の矢印と禁止は Windows の標準、roll、slip、slide、刃は自前の絵（`win/cursor.rs`）。
+/// カーソルの形。左右と上下の矢印と禁止は Windows の標準、roll、slip、slide、刃は自前の絵（`win/cursor.rs`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CursorKind {
     Arrow,
     SizeWE,
+    /// 上下の矢印。Program と Timeline の間の横の仕切りの上だけで出す。
+    SizeNS,
     No,
     Roll,
     Slip,
     Slide,
     Blade,
+}
+
+/// 仕切りの上のカーソル。サーフェスと WebView の間の縦の仕切りは左右、Program と Timeline の間の横の仕切りは上下の矢印。
+pub fn splitter_cursor(which: Splitter) -> CursorKind {
+    match which {
+        Splitter::Vertical => CursorKind::SizeWE,
+        Splitter::Horizontal => CursorKind::SizeNS,
+    }
 }
 
 /// 帯の端のカーソル。カットの端は Alt で roll、ほかは左右の矢印。
@@ -107,7 +121,7 @@ pub fn cursor_for(p: &Pointee, mods: Mods) -> CursorKind {
             EditDrag::Roll => CursorKind::Roll,
             EditDrag::Slip => CursorKind::Slip,
             EditDrag::Slide => CursorKind::Slide,
-            EditDrag::MoveInTime => CursorKind::Arrow,
+            EditDrag::MoveInTime | EditDrag::MoveKeyframe => CursorKind::Arrow,
         };
     }
     let Under::Timeline(hit) = p.under else {
@@ -119,7 +133,8 @@ pub fn cursor_for(p: &Pointee, mods: Mods) -> CursorKind {
         (Hit::Cut { .. }, Tool::Blade) => CursorKind::Blade,
         (Hit::Layer { part, .. }, _) if part != Part::Body => edge_cursor(false, mods),
         (Hit::Cut { part, .. }, _) if part != Part::Body => edge_cursor(true, mods),
-        (Hit::Cut { .. }, Tool::Trim) if !p.gap && mods.shift => CursorKind::Slide,
+        // 隙間は slip できないが、Shift で slide できる（`gesture::body_edit`）。
+        (Hit::Cut { .. }, Tool::Trim) if mods.shift => CursorKind::Slide,
         (Hit::Cut { .. }, Tool::Trim) if !p.gap => CursorKind::Slip,
         (
             Hit::ZoomBar {

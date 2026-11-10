@@ -25,10 +25,11 @@ pub fn status_labels(
         size: font.base,
         color,
     };
+    // 右の文も左の文と同じく、バーの端から余白を空ける。
     let right_w = if right.is_empty() {
         0.0
     } else {
-        measure.width(right, font.base).ceil() + PAD
+        measure.width(right, font.base).ceil() + 2.0 * PAD
     };
     let right_area = Rect::new(bar.right() - right_w, bar.y, right_w, bar.h);
     let left_w = (bar.w - right_w - GAP).max(0.0);
@@ -38,7 +39,7 @@ pub fn status_labels(
     let ink = style(palette.selection);
     out.extend(place(&left, left_area, PAD, Align::Left, ink, measure));
     let ink = style(palette.label);
-    out.extend(place(&right, right_area, 0.0, Align::Right, ink, measure));
+    out.extend(place(&right, right_area, PAD, Align::Right, ink, measure));
     out
 }
 
@@ -62,6 +63,8 @@ mod tests {
         assert_eq!(l[0].x, PAD);
         assert_eq!(&*l[1].text, "Snapping On");
         assert!(l[1].x > l[0].x);
+        let right_end = l[1].x + FakeMeasure::default().width("Snapping On", l[1].size);
+        assert_eq!(right_end, bar.right() - PAD, "右の文も端から余白を空ける");
         assert!(l
             .iter()
             .all(|l| l.clip.y >= bar.y && l.clip.bottom() <= bar.bottom()));

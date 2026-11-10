@@ -83,7 +83,7 @@ fn shapes(kind: CursorKind) -> Vec<Poly> {
                 (0.36, 0.62),
             ]);
         }
-        CursorKind::Arrow | CursorKind::SizeWE | CursorKind::No => {}
+        CursorKind::Arrow | CursorKind::SizeWE | CursorKind::SizeNS | CursorKind::No => {}
     }
     out
 }
@@ -241,7 +241,12 @@ mod tests {
 
     #[test]
     fn 標準のカーソルの形は描かない() {
-        for kind in [CursorKind::Arrow, CursorKind::SizeWE, CursorKind::No] {
+        for kind in [
+            CursorKind::Arrow,
+            CursorKind::SizeWE,
+            CursorKind::SizeNS,
+            CursorKind::No,
+        ] {
             assert_eq!(opaque(&render(kind, 32)), 0);
         }
     }

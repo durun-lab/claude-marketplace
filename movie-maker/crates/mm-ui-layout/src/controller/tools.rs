@@ -37,7 +37,7 @@ impl TimelineController {
     }
 
     /// カット `(item, cut)` を x で割るときの線。隙間と、割る時刻がカットの端に丸まる所では `None`（割るものが無い）。
-    fn blade_at(
+    pub(super) fn blade_at(
         &self,
         (item, cut): (usize, usize),
         x: f32,
@@ -78,6 +78,10 @@ impl TimelineController {
         mods: Mods,
         (model, playhead): (&TimelineModel, f64),
     ) -> Vec<Action> {
+        // ステータスバーは文を出すだけで、押しても選択を変えない。
+        if self.layout.status.contains(x, y) {
+            return Vec::new();
+        }
         self.blade_line = None;
         if self.tool == Tool::Blade {
             let hit = hit_test(model, &self.viewport(), x, y);

@@ -321,11 +321,15 @@ pub fn shared() -> Option<&'static Arc<Shared>> {
     SHARED.get()
 }
 
+/// Timeline の操作より先に受けるメッセージ。カーソルとツールチップ（`pointer_hint.rs`）、仕切りの操作（`splitter.rs`）。
+fn intercept(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> Option<LRESULT> {
+    let shared = SHARED.get()?;
+    pointer_hint::on_message(&shared.hint, hwnd, (msg, wparam, lparam))
+        .or_else(|| splitter::message(hwnd, msg, lparam))
+}
+
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    let hinted = SHARED
-        .get()
-        .and_then(|s| pointer_hint::on_message(&s.hint, hwnd, (msg, wparam, lparam)));
-    if let Some(done) = hinted.or_else(|| splitter::message(hwnd, msg, lparam)) {
+    if let Some(done) = intercept(hwnd, msg, wparam, lparam) {
         return done;
     }
     match msg {

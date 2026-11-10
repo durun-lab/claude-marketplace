@@ -7,4 +7,4 @@
 | ステータスバー | Timeline の下端の 1 行。左にポインターの下でできること（ドラッグ中は動かした量と吸い付いた先）、右に Snapping の入/切と今のツールを出す。WebView の下端のステータスの行とは別 | `TimelineLayout::status`、`STATUS_H`、`status_left`、`status_right` |
 | ツールチップの中身 | サーフェスの部品のツールチップに出すもの。コマンドの表の行（名前、キー、説明）か、表に無い部品の文（帯の種類、名前、範囲、長さ）。同じ値の間は同じ対象とみなし、変わったら文と位置を差し替える | `TooltipContent`、`tooltip_of`、`bar_tooltip` |
 | ツールチップを出す時機 | 部品の上で止まって出し、出ている間に別の部品へ移れば短い待ちで差し替え、一定の時間で消す。待ち時間は Windows の標準のツールチップの値 | `Dwell`、`Delays` |
-| カーソルの形 | ポインターの下と修飾キーで決めるカーソル。左右の矢印と禁止は Windows の標準、roll、slip、slide、刃は自前の絵 | `CursorKind`、`cursor_for` |
+| カーソルの形 | ポインターの下と修飾キーで決めるカーソル。仕切りの上と仕切りをつかんでいる間は仕切りの形を先にする。左右と上下の矢印と禁止は Windows の標準、roll、slip、slide、刃は自前の絵 | `CursorKind`、`cursor_for`、`splitter_cursor` |

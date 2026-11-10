@@ -1,13 +1,14 @@
-//! サーフェスのカーソル。形はポインターの下のもの（`Pointee`）と今の修飾キーから決め（`mm_ui_layout::cursor_for`）、
-//! ここで Windows のカーソルにする。左右の矢印と禁止は標準のカーソル（`IDC_SIZEWE`、`IDC_NO`）、roll、slip、slide、刃は
-//! `art.rs` で描いた絵から表示の倍率ごとに作る（カーソルの大きさは `GetSystemMetricsForDpi` で、倍率 100% で 32、125% で 40、150% で 48）。
+//! サーフェスのカーソル。仕切りの上では仕切りの形（`mm_ui_layout::splitter_cursor`）、ほかではポインターの下のもの
+//! （`Pointee`）と今の修飾キーから決め（`mm_ui_layout::cursor_for`）、ここで Windows のカーソルにする。左右と上下の矢印と禁止は
+//! 標準のカーソル（`IDC_SIZEWE`、`IDC_SIZENS`、`IDC_NO`）、roll、slip、slide、刃は `art.rs` で描いた絵から表示の倍率ごとに作る
+//! （カーソルの大きさは `GetSystemMetricsForDpi` で、倍率 100% で 32、125% で 40、150% で 48）。
 
 mod art;
 
 use std::collections::HashMap;
 use std::sync::Mutex;
 
-use mm_ui_layout::{cursor_for, CursorKind, Mods};
+use mm_ui_layout::{cursor_for, splitter_cursor, CursorKind, Mods};
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Gdi::{
@@ -16,11 +17,12 @@ use windows::Win32::Graphics::Gdi::{
 };
 use windows::Win32::UI::HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi};
 use windows::Win32::UI::WindowsAndMessaging::{
-    CreateIconIndirect, LoadCursorW, SetCursor, HCURSOR, ICONINFO, IDC_ARROW, IDC_NO, IDC_SIZEWE,
-    SM_CXCURSOR,
+    CreateIconIndirect, LoadCursorW, SetCursor, HCURSOR, ICONINFO, IDC_ARROW, IDC_NO, IDC_SIZENS,
+    IDC_SIZEWE, SM_CXCURSOR,
 };
 
 use crate::win::pointer_hint::HintSlot;
+use crate::win::splitter;
 
 /// 作ったカーソル（形と大きさごと）。プロセスの終わりまで持つ。
 static CACHE: Mutex<Option<HashMap<(u8, u32), isize>>> = Mutex::new(None);
@@ -82,6 +84,7 @@ fn handle(kind: CursorKind, dpi: u32) -> Option<HCURSOR> {
     match kind {
         CursorKind::Arrow => stock(IDC_ARROW),
         CursorKind::SizeWE => stock(IDC_SIZEWE),
+        CursorKind::SizeNS => stock(IDC_SIZENS),
         CursorKind::No => stock(IDC_NO),
         CursorKind::Roll | CursorKind::Slip | CursorKind::Slide | CursorKind::Blade => {
             let size = cursor_size(dpi);
@@ -97,9 +100,13 @@ fn handle(kind: CursorKind, dpi: u32) -> Option<HCURSOR> {
     }
 }
 
-/// いまのポインターの下と修飾キー `mods` のカーソルを `hwnd` の上に出す。標準でも自前でも作れなければ false（既定に任せる）。
+/// いまのポインターの下と修飾キー `mods` のカーソルを `hwnd` の上に出す。仕切りの上か、仕切りをつかんでいる間は仕切りの形。
+/// 標準でも自前でも作れなければ false（既定に任せる）。
 pub fn apply(hint: &HintSlot, hwnd: HWND, mods: Mods) -> bool {
-    let kind = cursor_for(&hint.current().pointee, mods);
+    let kind = splitter::cursor_target(hwnd).map_or_else(
+        || cursor_for(&hint.current().pointee, mods),
+        splitter_cursor,
+    );
     let dpi = unsafe { GetDpiForWindow(hwnd) };
     match handle(kind, dpi) {
         Some(h) => {
@@ -133,8 +140,46 @@ mod tests {
 
     #[test]
     fn 標準のカーソルは_windows_のものを返す() {
-        for kind in [CursorKind::Arrow, CursorKind::SizeWE, CursorKind::No] {
+        for kind in [
+            CursorKind::Arrow,
+            CursorKind::SizeWE,
+            CursorKind::SizeNS,
+            CursorKind::No,
+        ] {
             assert!(handle(kind, 96).is_some(), "{kind:?}");
+        }
+    }
+
+    /// Windows のカーソルの色の画像の大きさと、ホットスポット。
+    fn bitmap_and_hotspot(h: HCURSOR) -> ((i32, i32), (u32, u32)) {
+        use windows::Win32::Graphics::Gdi::{GetObjectW, BITMAP};
+        use windows::Win32::UI::WindowsAndMessaging::{GetIconInfo, HICON};
+        let mut info = ICONINFO::default();
+        unsafe { GetIconInfo(HICON(h.0), &mut info) }.expect("カーソルの情報");
+        let mut bm = BITMAP::default();
+        let len = std::mem::size_of::<BITMAP>() as i32;
+        let ptr = (&mut bm as *mut BITMAP).cast();
+        let got = unsafe { GetObjectW(HGDIOBJ(info.hbmColor.0), len, Some(ptr)) };
+        // GetIconInfo が作った画像は呼んだ側が捨てる。
+        unsafe {
+            let _ = DeleteObject(HGDIOBJ(info.hbmColor.0));
+            let _ = DeleteObject(HGDIOBJ(info.hbmMask.0));
+        }
+        assert!(got > 0, "色の画像");
+        ((bm.bmWidth, bm.bmHeight), (info.xHotspot, info.yHotspot))
+    }
+
+    #[test]
+    fn 自前のカーソルは倍率のカーソルの大きさで_ホットスポットは中央() {
+        for dpi in [96, 120, 144] {
+            let size = cursor_size(dpi);
+            for kind in [CursorKind::Roll, CursorKind::Blade] {
+                let h = handle(kind, dpi).expect("カーソルを作れる");
+                let (wh, hot) = bitmap_and_hotspot(h);
+                let side = size as i32;
+                assert_eq!(wh, (side, side), "{kind:?} {dpi}");
+                assert_eq!(hot, (size / 2, size / 2), "{kind:?} {dpi}");
+            }
         }
     }
 }

@@ -2,6 +2,7 @@
 //! 先例は Premiere のツールのツールチップ（名前とキー）と、Resolve と Premiere のクリップのツールチップ。
 
 use super::Under;
+use crate::header::timecode;
 use crate::timeline::{HeaderButton, Hit, ItemKind, TimelineModel};
 use crate::toolbar::ToolbarPart;
 use crate::transport::TransportPart;
@@ -54,15 +55,6 @@ fn kind_name(kind: ItemKind) -> &'static str {
         ItemKind::Sequence => "Sequence",
         ItemKind::Other => "Layer",
     }
-}
-
-/// 時刻（秒）の時:分:秒:フレーム。
-fn timecode(t: f64, fps: f64) -> String {
-    let base = fps.round().max(1.0) as u64;
-    let frames = (t.max(0.0) * fps.max(0.0)).round() as u64;
-    let secs = frames / base;
-    let (h, m, s, f) = (secs / 3600, secs / 60 % 60, secs % 60, frames % base);
-    format!("{h:02}:{m:02}:{s:02}:{f:02}")
 }
 
 /// 長さ（秒）の「秒:フレーム」（秒は 59 を超えてもそのまま）。

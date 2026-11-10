@@ -67,8 +67,8 @@ pub use geom::{fit_rect, Color, Quad, QuadShape, Rect};
 pub use gesture::{body_edit, edge_edit, EditKind, Side};
 pub use header::{button_center, disclosure_center, name_center};
 pub use hint::{
-    bar_tooltip, cursor_for, status_labels, status_left, status_right, tooltip_of, CursorKind,
-    Dragging, EditDrag, HintText, Pointee, TooltipContent, Under,
+    bar_tooltip, cursor_for, splitter_cursor, status_labels, status_left, status_right, tooltip_of,
+    CursorKind, Dragging, EditDrag, HintText, Pointee, TooltipContent, Under,
 };
 pub use keyframe_rows::{
     keyframe_center, toggle_open, KeyframeAction, KeyframeIndex, KeyframeRow, KeyframeRowState,

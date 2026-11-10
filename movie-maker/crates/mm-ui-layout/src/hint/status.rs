@@ -87,11 +87,13 @@ fn timeline(hit: Hit, p: &Pointee) -> String {
     let s = match (hit, p.tool) {
         (Hit::Layer { .. }, Tool::Blade) => "Blade Tool: Layers Can't Be Split",
         (Hit::Cut { .. }, Tool::Blade) if p.gap => "Nothing to Split in a Gap",
+        // 割る時刻がカットの端に丸まる所は割らない（カーソルも禁止の形）。
+        (Hit::Cut { .. }, Tool::Blade) if !p.blade_ready => "Nothing to Split at a Clip Edge",
         (Hit::Cut { .. }, Tool::Blade) => "Click: Split at Pointer",
         (Hit::Cut { part, .. }, _) if part != Part::Body => {
             "Drag: Ripple Trim \u{B7} Alt+Drag: Roll"
         }
-        (Hit::Cut { .. }, Tool::Trim) if p.gap => "Gap",
+        (Hit::Cut { .. }, Tool::Trim) if p.gap => "Shift+Drag: Slide",
         (Hit::Cut { .. }, Tool::Trim) => "Drag: Slip \u{B7} Shift+Drag: Slide",
         (Hit::Cut { .. }, Tool::Selection) => "Click: Select",
         (Hit::Layer { part, .. }, _) if part != Part::Body => "Drag: Trim Layer",
@@ -214,17 +216,62 @@ mod tests {
     }
 
     #[test]
-    fn blade_のカットは割る_レイヤーと隙間は割れない() {
-        let blade = Tool::Blade;
+    fn blade_のカットは割る_レイヤーと隙間とカットの端は割れない() {
+        let ready = Pointee {
+            blade_ready: true,
+            ..under(cut(Part::Body), Tool::Blade)
+        };
+        assert_eq!(left(&ready), "Click: Split at Pointer");
+        let gap = Pointee { gap: true, ..ready };
+        assert_eq!(left(&gap), "Nothing to Split in a Gap");
+        let edge = Pointee {
+            blade_ready: false,
+            ..ready
+        };
         assert_eq!(
-            left(&under(cut(Part::Body), blade)),
-            "Click: Split at Pointer"
+            left(&edge),
+            "Nothing to Split at a Clip Edge",
+            "カーソルが禁止の形の所で割ると出さない"
         );
+    }
+
+    #[test]
+    fn trim_の隙間は_slide_だけ() {
         let gap = Pointee {
             gap: true,
-            ..under(cut(Part::Body), blade)
+            ..under(cut(Part::Body), Tool::Trim)
         };
-        assert_eq!(left(&gap), "Nothing to Split in a Gap");
+        assert_eq!(left(&gap), "Shift+Drag: Slide");
+    }
+
+    #[test]
+    fn キーフレームの行は選ぶ_打つ_動かす() {
+        let sel = Tool::Selection;
+        let at = crate::keyframe_rows::KeyframeIndex {
+            item: 0,
+            row: 0,
+            keyframe: 0,
+        };
+        assert_eq!(
+            left(&under(Hit::RowKeyframe(at), sel)),
+            "Drag: Move Keyframe \u{B7} Alt+Click: Add Keyframe \u{B7} Delete: Remove"
+        );
+        assert_eq!(
+            left(&under(Hit::KeyframeRow { item: 0, row: 0 }, sel)),
+            "Click: Select Property \u{B7} Alt+Click: Add Keyframe"
+        );
+        let drag = Pointee {
+            dragging: Some(Dragging {
+                kind: EditDrag::MoveKeyframe,
+                by: Some(-0.5),
+                snap: None,
+            }),
+            ..under(Hit::RowKeyframe(at), sel)
+        };
+        assert_eq!(
+            left(&drag),
+            "Move Keyframe \u{2212}15f \u{B7} N: Toggle Snapping \u{B7} Esc: Cancel"
+        );
     }
 
     #[test]
