@@ -1,13 +1,12 @@
-// 再生の操作列と時計の表示、Source のビューアーと編集のボタン。ui/dist の shell の中央の列に入れる（アプリが initialization_script で読み込む）。
-// Timeline の選択（Rust の Tauri イベント）は、shell の Inspector が受ける DOM のイベントにつなぐ。
-// 再生位置は Rust の時計が持つ。ここでは受けた位置を、送られてから経った時間だけ進めて表示する。
+// WebView とアプリの間の中継スクリプト。画面は持たない。ui/dist の shell に入れる（アプリが initialization_script で読み込む）。
+// WebView にフォーカスがあるときのキーをアプリのキーの表に送り、再生位置と Timeline の選択（Rust の Tauri イベント）を
+// shell のパネルが受ける DOM のイベントにつなぐ。パネルが投げる素材の選択とシークの頼みはアプリに送る。
+// 再生位置は Rust の時計が持つ。ここでは受けた位置を、送られてから経った時間だけ進めて知らせる。
 (() => {
   const { invoke, Channel } = window.__TAURI__.core;
-  const ADAPTER_WAIT_MS = 1500;
   const LAYER_SELECTED_EVENT = "mm:layer-selected";
   // shell が選択の DOM のイベントを聞き始めたときに投げる頼み。今の選択を読んで LAYER_SELECTED_EVENT で答える。
   const LAYER_SELECTION_REQUEST_EVENT = "mm:layer-selection-request";
-  const SOURCE_EVENT = "mm:source";
   // Media パネルが素材を選んだときに投げる DOM のイベント（detail.asset が素材の ID）。Source で開く。
   const ASSET_SELECTED_EVENT = "mm:asset-selected";
   // 再生位置を shell の Inspector と Graph に知らせる DOM のイベントと、前後のキーフレームへのシークの頼み（detail.time は秒）。
@@ -19,57 +18,15 @@
   const FOCUSABLE = "button, a[href], summary, [role=button], [role=tab], [role=option], [tabindex]";
   // keys.rs の BINDINGS のうち編集（clip.*、edit.*、source.*）のキーと同じ。WebView の部品にフォーカスがあるときの Delete などが Timeline の編集にならないよう、送る前に選ぶ。
   const EDIT_KEYS = new Set([
-    "KeyI", "KeyO", ",", ".", "KeyB", "Delete", "Backspace", "Ctrl+KeyZ", "Ctrl+KeyY", "Ctrl+Shift+KeyZ",
+    "KeyI", "KeyO", ",", ".", "KeyB", "Delete", "Backspace", "Ctrl+KeyZ", "Ctrl+KeyY", "Ctrl+Shift+KeyZ", "Alt+KeyX",
   ]);
   // code の名前のキーのうち、Shift を名前に付けるもの（英字、数字、矢印）。keys.rs の with_modifiers と同じ。
   const SHIFT_NAMED = /^(Key[A-Z]|Digit[0-9]|Arrow(Up|Down|Left|Right))$/;
-  // Program と Source の -1 と +1 で共通の title。矢印のキーは、Source をクリックした後は Source の再生に向く（keys.rs の dispatch）。
-  const STEP_BACK = "Step One Frame Back (←)";
-  const STEP_FORWARD = "Step One Frame Forward (→)";
   const nowUs = () => Math.round((performance.timeOrigin + performance.now()) * 1000);
 
-  const CSS = `
-    #mm-transport { height: 100%; box-sizing: border-box; padding: var(--mm-space-md, 10px); overflow: auto;
-      background: var(--mm-color-bg); color: var(--mm-color-text);
-      font-family: var(--mm-font-family); font-size: var(--mm-font-size-base); }
-    #mm-transport h2 { margin: 0 0 var(--mm-space-sm, 6px); font-size: var(--mm-font-size-lg); }
-    #mm-transport .tc { font: 26px var(--mm-font-mono, monospace); }
-    #mm-transport .dim { color: var(--mm-color-text-muted); font-size: var(--mm-font-size-base); }
-    #mm-transport .bar { height: 14px; margin: var(--mm-space-sm, 6px) 0; cursor: pointer;
-      background: var(--mm-color-surface); border: 1px solid var(--mm-color-border-strong);
-      border-radius: var(--mm-radius-md, 4px); overflow: hidden; }
-    #mm-transport .fill { height: 100%; width: 0; background: var(--mm-color-accent); }
-    #mm-transport .buttons { display: flex; gap: var(--mm-space-xs, 4px); margin-bottom: var(--mm-space-md, 10px); }
-    #mm-transport button { flex: 1; padding: 4px 6px; cursor: pointer; font: inherit;
-      color: var(--mm-color-text); background: var(--mm-gradient-button, var(--mm-color-surface));
-      border: 1px solid var(--mm-color-border-strong); border-radius: var(--mm-radius-md, 4px); }
-    #mm-transport button.primary { background: var(--mm-color-accent); color: var(--mm-color-accent-text); }
-    #mm-transport dl { display: grid; grid-template-columns: max-content 1fr; gap: 2px 10px; margin: 0 0 var(--mm-space-md, 10px); }
-    #mm-transport dt { color: var(--mm-color-text-muted); }
-    #mm-transport dd { margin: 0; word-break: break-all; }
-    #mm-transport ul { margin: 0; padding: 0; list-style: none; font-family: var(--mm-font-mono, monospace); }
-    #mm-transport li { padding: 1px 0; overflow-wrap: anywhere; }
-    #mm-transport select { width: 100%; margin-bottom: var(--mm-space-sm, 6px); font: inherit; }
-    #mm-transport .msg { color: var(--mm-color-danger, #b00020); min-height: 1.2em; }
-  `;
-
-  const el = (tag, attrs = {}, children = []) => {
-    const n = document.createElement(tag);
-    Object.assign(n, attrs);
-    n.append(...children);
-    return n;
-  };
-
-  const fmt = (secs) => {
-    const s = Math.max(0, secs);
-    const m = Math.floor(s / 60);
-    return `${m}:${(s - m * 60).toFixed(3).padStart(6, "0")}`;
-  };
-
-  const ui = {};
+  // 開いているコンポジションの fps と長さ（始めは project_info、後は選択の中身）。再生位置を進める上限と、再生位置のイベントの fps に使う。
   let info = null;
   let last = null;
-  let source = null;
 
   const shown = () => {
     if (!last) return 0;
@@ -78,18 +35,7 @@
     return info ? Math.min(t, info.duration) : t;
   };
 
-  const draw = (t) => {
-    if (!info) return;
-    ui.tc.textContent = fmt(t);
-    ui.fr.textContent = String(Math.floor(t * info.fps + 1e-6));
-    ui.fill.style.width = `${Math.min(100, (t / info.duration) * 100)}%`;
-    ui.play.textContent = last && last.playing ? "Stop" : "Play";
-    ui.lag.textContent = last ? `${last.lagMs.toFixed(1)} ms` : "-";
-  };
-
   const act = (action, value) => invoke("transport", { action, value: value ?? null });
-  const srcAct = (action, value) => invoke("source_transport", { action, value: value ?? null });
-  const edit = (action) => invoke("edit_action", { action });
   const openSource = (asset) => invoke("source_open", { asset });
   // キーの表（keys.rs）の名前。英字、数字、矢印、Space などは code の名前（KeyZ）、記号は押された文字（key の 1 字）を名前にし、
   // JIS と US のキー配列で記号のキーの位置が違っても同じ名前にする。Shift は英字、数字、矢印に付け、記号には付けない
@@ -101,132 +47,28 @@
     return mods + (symbol ? e.key : e.code);
   };
 
-  const build = () => {
-    const style = el("style", { textContent: CSS });
-    ui.tc = el("span", { textContent: fmt(0) });
-    ui.dur = el("span", { textContent: fmt(0) });
-    ui.fr = el("span", { textContent: "0" });
-    ui.frTotal = el("span", { textContent: "0" });
-    ui.fill = el("div", { className: "fill" });
-    ui.bar = el("div", { className: "bar" }, [ui.fill]);
-    ui.play = el("button", { className: "primary", textContent: "Play", title: "Play / Stop (Space)" });
-    ui.play.onclick = () => act("toggle");
-    // WebView の中央の列は狭いので、ボタンの文字は短くし、コマンドの名前とキーは title に出す。
-    const btn = (label, fn, title = "") => el("button", { textContent: label, onclick: fn, title });
-    const buttons = el("div", { className: "buttons" }, [
-      btn("Start", () => act("home"), "Go to Start (Home)"),
-      btn("-1", () => act("step", -1), STEP_BACK),
-      ui.play,
-      btn("+1", () => act("step", 1), STEP_FORWARD),
-      btn("End", () => act("end"), "Go to End (End)"),
-    ]);
-    ui.bar.onclick = (e) => {
-      const r = ui.bar.getBoundingClientRect();
-      act("seek", ((e.clientX - r.left) / r.width) * (info ? info.duration : 0));
-    };
-    ui.lag = el("dd", { textContent: "-" });
-    const sourceSection = buildSource(btn);
-    ui.info = el("dl");
-    ui.layers = el("ul");
-    const root = el("section", { id: "mm-transport" }, [
-      el("h2", { textContent: "Program" }),
-      el("div", { className: "tc" }, [ui.tc, el("span", { className: "dim" }, [" / ", ui.dur])]),
-      el("div", { className: "dim" }, ["Frame ", ui.fr, " / ", ui.frTotal]),
-      ui.bar,
-      buttons,
-      ui.info,
-      sourceSection,
-      el("h2", { textContent: "Layers" }),
-      ui.layers,
-    ]);
-    document.head.append(style);
-    (document.querySelector(".mm-shell-center") ?? document.body).append(root);
-  };
-
-  // Source: 素材を選んで開き、再生・シーク・イン点とアウト点・Timeline への insert / overwrite をする。
-  const buildSource = (btn) => {
-    ui.srcSelect = el("select", { ariaLabel: "Source clip" });
-    ui.srcSelect.onchange = () => ui.srcSelect.value && openSource(ui.srcSelect.value);
-    ui.srcTc = el("span", { textContent: fmt(0) });
-    ui.srcMarks = el("div", { className: "dim", textContent: "In - / Out -" });
-    ui.srcMsg = el("div", { className: "msg" });
-    return el("div", {}, [
-      el("h2", { textContent: "Source" }),
-      ui.srcSelect,
-      el("div", { className: "tc" }, [ui.srcTc]),
-      ui.srcMarks,
-      el("div", { className: "buttons" }, [
-        btn("J", () => srcAct("reverse")),
-        btn("K", () => srcAct("pause")),
-        btn("L", () => srcAct("play")),
-        btn("-1", () => srcAct("step", -1), STEP_BACK),
-        btn("+1", () => srcAct("step", 1), STEP_FORWARD),
-      ]),
-      el("div", { className: "buttons" }, [
-        btn("In (I)", () => edit("mark_in")),
-        btn("Out (O)", () => edit("mark_out")),
-        btn("Insert (,)", () => edit("insert")),
-        btn("Overwrite (.)", () => edit("overwrite")),
-      ]),
-      el("div", { className: "buttons" }, [
-        btn("Split (B)", () => edit("split")),
-        btn("Lift (Del)", () => edit("lift")),
-        btn("Extract (BS)", () => edit("extract")),
-        btn("Undo", () => edit("undo")),
-        btn("Redo", () => edit("redo")),
-      ]),
-      ui.srcMsg,
-    ]);
-  };
-
-  const showSource = (s) => {
-    source = s;
-    const options = s.assets.map((a) => el("option", { value: a.id, textContent: `${a.name} (${fmt(a.duration)})` }));
-    ui.srcSelect.replaceChildren(el("option", { value: "", textContent: "Choose a clip…" }), ...options);
-    ui.srcSelect.value = s.asset ?? "";
-    ui.srcTc.textContent = fmt(s.t);
-    const mark = (v) => (v == null ? "-" : fmt(v));
-    ui.srcMarks.textContent = `In ${mark(s.mark_in)} / Out ${mark(s.mark_out)}`;
-    ui.srcMsg.textContent = s.message;
-  };
-
-  const row = (k, v) => [el("dt", { textContent: k }), el("dd", { textContent: v })];
-
-  const showInfo = () => {
-    ui.dur.textContent = fmt(info.duration);
-    ui.frTotal.textContent = String(Math.round(info.duration * info.fps));
-    const backends = info.backends.map(([k, v]) => `${k}=${v}`).join(" ");
-    ui.info.replaceChildren(
-      ...row("Project", info.name),
-      ...row("Composition", `${info.composition} ${info.width}x${info.height} ${info.fps} fps`),
-      ...row("Clock", info.clock === "audio" ? "Audio Output" : "System clock (no audio output)"),
-      ...row("Audio Output", info.audio_device ?? "None"),
-      ...row("GPU", info.adapter || "-"),
-      ...row("Backends", backends),
-      el("dt", { textContent: "Sync Lag" }),
-      ui.lag,
-    );
-    ui.layers.replaceChildren(
-      ...info.layers.map((l) =>
-        el("li", { textContent: `${l.kind.padEnd(11)} ${l.id}  ${l.start.toFixed(3)}-${l.end.toFixed(3)}s` }),
-      ),
-    );
-  };
-
+  // 画面に出した時刻を ack で返し、アプリが通知の遅れと WebView の時計の誤差を測る。
   const onTick = (msg) => {
     const recv = nowUs();
-    last = { t: msg.t, sentUs: msg.sent_us, playing: msg.playing, lagMs: msg.lag_ms };
+    last = { t: msg.t, sentUs: msg.sent_us, playing: msg.playing };
     requestAnimationFrame(() => {
       const t = shown();
-      draw(t);
       if (info) window.dispatchEvent(new CustomEvent(PLAYHEAD_EVENT, { detail: { time: t, fps: info.fps } }));
       invoke("sync_ack", { seq: msg.seq, recvUs: recv, rafUs: nowUs(), shownT: t });
     });
   };
 
+  // 選択の中身のコンポジションの要約から fps と長さを取り直す。project_info はレイヤーの一覧まで運ぶので、選択と編集のたびには読まない。
+  const takeFpsAndDuration = (selection) => {
+    const comp = selection?.composition;
+    if (comp) info = { fps: comp.fps, duration: comp.duration };
+  };
+
   const readSelection = async () => {
     const detail = await invoke("layer_selection");
-    if (detail) window.dispatchEvent(new CustomEvent(LAYER_SELECTED_EVENT, { detail }));
+    if (!detail) return;
+    takeFpsAndDuration(detail);
+    window.dispatchEvent(new CustomEvent(LAYER_SELECTED_EVENT, { detail }));
   };
 
   // 選択の Tauri イベントを購読し終えたら解ける。購読より前に Rust が送った選択（起動時の 1 回目）は届かないので、
@@ -238,9 +80,7 @@
   window.addEventListener(LAYER_SELECTION_REQUEST_EVENT, () => subscribed.then(readSelection));
 
   const start = async () => {
-    build();
     info = await invoke("project_info");
-    showInfo();
     const channel = new Channel();
     channel.onmessage = onTick;
     await invoke("subscribe", { onTick: channel });
@@ -254,21 +94,13 @@
       if (e.code === "Space") e.preventDefault();
       invoke("key_event", { source: "webview", key, repeat: e.repeat });
     });
-    // 選択かプロジェクトのデータが変わったら、Inspector に中身を渡し、レイヤーの一覧を取り直す。
-    window.__TAURI__.event.listen(LAYER_SELECTED_EVENT, async (e) => {
+    // 選択かプロジェクトのデータが変わったら、Inspector に中身を渡し、fps と長さを取り直す。
+    window.__TAURI__.event.listen(LAYER_SELECTED_EVENT, (e) => {
       window.dispatchEvent(new CustomEvent(LAYER_SELECTED_EVENT, { detail: e.payload }));
-      info = await invoke("project_info");
-      showInfo();
+      takeFpsAndDuration(e.payload);
     }).then(markSubscribed);
-    window.__TAURI__.event.listen(SOURCE_EVENT, (e) => showSource(e.payload));
     window.addEventListener(ASSET_SELECTED_EVENT, (e) => e.detail?.asset && openSource(e.detail.asset));
     window.addEventListener(SEEK_EVENT, (e) => Number.isFinite(e.detail?.time) && act("seek", e.detail.time));
-    showSource(await invoke("source_state"));
-    // 描画スレッドが GPU を選び終えた後に情報を取り直す。
-    setTimeout(async () => {
-      info = await invoke("project_info");
-      showInfo();
-    }, ADAPTER_WAIT_MS);
   };
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", start);

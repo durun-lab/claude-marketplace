@@ -51,6 +51,7 @@ mod verify_restore;
 mod verify_stage;
 mod verify_toolbar;
 mod verify_transport;
+mod verify_webview;
 mod verify_zoom;
 mod view_state;
 

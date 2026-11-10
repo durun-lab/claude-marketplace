@@ -35,4 +35,4 @@ export {
   type PanelDescriptor,
 } from "./panel.ts";
 export { DOC_CHANGED_EVENT, onDocChanged, type DocChanged } from "./docChanged.ts";
-export { ASSET_SELECTED_EVENT, announceAsset } from "./events.ts";
+export { ASSET_SELECTED_EVENT, announceAsset, EDIT_MESSAGE_EVENT, type EditMessage, onEditMessage } from "./events.ts";

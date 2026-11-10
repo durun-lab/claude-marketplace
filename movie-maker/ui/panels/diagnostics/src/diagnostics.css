@@ -1,0 +1,83 @@
+/* 色と間隔は theme の変数から取り、ここでは色を持たない。影は使わず border と角丸で区切る。 */
+.mm-diag {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mm-space-sm);
+  min-height: 0;
+  font-family: var(--mm-font-family);
+  font-size: var(--mm-font-size-base);
+  color: var(--mm-color-text);
+}
+
+.mm-diag-heading {
+  margin: var(--mm-space-sm) 0 0;
+  font-size: var(--mm-font-size-base);
+}
+
+.mm-diag-list {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: var(--mm-space-xs) var(--mm-space-md);
+  margin: 0;
+  padding: var(--mm-space-sm) var(--mm-space-md);
+  border: var(--mm-border-width) solid var(--mm-color-border);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-color-surface);
+}
+
+.mm-diag-list dt {
+  color: var(--mm-color-text-muted);
+}
+
+.mm-diag-list dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.mm-diag-layers {
+  margin: 0;
+  padding: var(--mm-space-sm) var(--mm-space-md);
+  border: var(--mm-border-width) solid var(--mm-color-border);
+  border-radius: var(--mm-radius-md);
+  background: var(--mm-color-surface);
+  list-style: none;
+  font-family: var(--mm-font-mono);
+  font-size: var(--mm-font-size-sm);
+}
+
+/*
+ * 種類の列は最も長い種類（composition）の 11 字に決め、行ごとに測らなくても列がそろう。
+ * レイヤーが数千あるプロジェクトでも開くたびに全部の行を並べないよう、見えていない行は描かない。
+ */
+.mm-diag-layer {
+  display: grid;
+  grid-template-columns: 11ch minmax(0, 1fr) max-content;
+  gap: 0 var(--mm-space-sm);
+  content-visibility: auto;
+  contain-intrinsic-block-size: auto 1lh;
+}
+
+.mm-diag-kind {
+  color: var(--mm-color-text-muted);
+}
+
+.mm-diag-id {
+  overflow-wrap: anywhere;
+}
+
+.mm-diag-range {
+  text-align: right;
+}
+
+.mm-diag-hint {
+  margin: 0;
+  color: var(--mm-color-text-muted);
+  font-size: var(--mm-font-size-sm);
+}
+
+.mm-diag-error {
+  margin: 0;
+  color: var(--mm-color-danger);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
