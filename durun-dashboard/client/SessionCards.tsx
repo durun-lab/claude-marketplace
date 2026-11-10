@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { BgTask, ObservedTask, Session, SessionSummary, Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
+import { hasDraft } from './drafts.ts';
 import { useCollapsed } from './hooks.ts';
 import { ARROW_STEP, arrangeSessions, gatherAfter, moveTo } from './order.ts';
 import { href } from './router.ts';
@@ -108,34 +109,38 @@ const toggleWhileSelecting = (e: MouseEvent, s: Session, sel: Selection): void =
   sel.toggle([s.id], !sel.selected.has(s.id));
 };
 
-const SessionCard = ({ s, sel, dragging, drag }: { s: Session; sel: Selection; dragging: boolean; drag: DragHandlers }) => (
-  <article class={`card session-card is-${s.status}${dragging ? ' is-dragging' : ''}`} draggable {...drag}>
-    <header class="card-head">
-      <SelectBox ids={[s.id]} sel={sel} label={`${s.name} を選ぶ`} />
-      <StatusBadge status={s.status} waitingFor={s.waitingFor} />
-      <h3 class="card-title"><a class="stretched" href={href.session(s.id)} onClick={(e) => toggleWhileSelecting(e, s, sel)}>{s.name}</a></h3>
-      <span class="muted nowrap"><Time at={s.updatedAt} /></span>
-      <PinButton s={s} />
-    </header>
-    <div class="card-mid">
-      <div class="card-mid-main">
-        <p class="card-sub mono">{s.repo}{s.branch && <> · {s.branch}</>}</p>
-        {/* 前に開いていたときのデータには、PR の一覧が無いことがある。 */}
-        {(s.prs?.length || s.jira.length > 0 || !!s.issues?.length || !!s.workflow) && (
-          <div class="chips">
-            {s.workflow && <Chip tone="info" title="このセッションを起動したワークフロー">{s.workflow}</Chip>}
-            {/* 一覧のまま PR や課題を見られるよう、session を渡さず、セッションの画面へ移らずにウィンドウに浮かべて開く。 */}
-            {s.prs?.map((pr) => <PrChips key={pr.url} pr={pr} />)}
-            <JiraChips issues={s.jira} />
-            {s.issues?.map((i) => <IssueChip key={i.url} issue={i} />)}
-          </div>
-        )}
+const SessionCard = ({ s, sel, dragging, drag }: { s: Session; sel: Selection; dragging: boolean; drag: DragHandlers }) => {
+  const drafting = hasDraft(s.id);
+  return (
+    <article class={`card session-card is-${s.status}${drafting ? ' has-draft' : ''}${dragging ? ' is-dragging' : ''}`} draggable {...drag}>
+      <header class="card-head">
+        <SelectBox ids={[s.id]} sel={sel} label={`${s.name} を選ぶ`} />
+        <StatusBadge status={s.status} waitingFor={s.waitingFor} />
+        {drafting && <Chip tone="info" title="チャットに送っていない書きかけのメッセージがある">✎ 入力中</Chip>}
+        <h3 class="card-title"><a class="stretched" href={href.session(s.id)} onClick={(e) => toggleWhileSelecting(e, s, sel)}>{s.name}</a></h3>
+        <span class="muted nowrap"><Time at={s.updatedAt} /></span>
+        <PinButton s={s} />
+      </header>
+      <div class="card-mid">
+        <div class="card-mid-main">
+          <p class="card-sub mono">{s.repo}{s.branch && <> · {s.branch}</>}</p>
+          {/* 前に開いていたときのデータには、PR の一覧が無いことがある。 */}
+          {(s.prs?.length || s.jira.length > 0 || !!s.issues?.length || !!s.workflow) && (
+            <div class="chips">
+              {s.workflow && <Chip tone="info" title="このセッションを起動したワークフロー">{s.workflow}</Chip>}
+              {/* 一覧のまま PR や課題を見られるよう、session を渡さず、セッションの画面へ移らずにウィンドウに浮かべて開く。 */}
+              {s.prs?.map((pr) => <PrChips key={pr.url} pr={pr} />)}
+              <JiraChips issues={s.jira} />
+              {s.issues?.map((i) => <IssueChip key={i.url} issue={i} />)}
+            </div>
+          )}
+        </div>
+        {s.summary && <CardSummary summary={s.summary} />}
       </div>
-      {s.summary && <CardSummary summary={s.summary} />}
-    </div>
-    <Activity s={s} />
-  </article>
-);
+      <Activity s={s} />
+    </article>
+  );
+};
 
 /** カードに付ける、並べ替えの操作。 */
 type DragHandlers = {
