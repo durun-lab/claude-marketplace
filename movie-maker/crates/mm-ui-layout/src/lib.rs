@@ -9,7 +9,8 @@
 //! （[`TimelineCommand`]）は [`TimelineController`] が受け持つ。
 //! Timeline の中の矩形（ツールバー、目盛りの帯、見出しの列、行の領域、縦のスクロールバー、ズームバー、ステータスバー）は
 //! [`TimelineLayout`]、レイヤーの行の高さと上端は [`Rows`]、それにズームとスクロールを合わせた見えている所は [`Viewport`]。
-//! [`timeline_quads`] と [`timeline_overlay`] は Timeline を [`Quad`] の並びに、[`timeline_labels`] は目盛りの時刻と帯の名前を
+//! [`timeline_quads`] と [`timeline_overlay`] は描く関数の入力 [`PaintInput`]（帯の波形のピーク [`Waves`] を含む）から
+//! Timeline を [`Quad`] の並びに、[`timeline_labels`] は目盛りの時刻と帯の名前を
 //! [`Label`] の並びにし、描画は `mm-ui-wgpu` が行う。文字の幅は [`TextMeasure`] で `mm-ui-wgpu` に測らせ、
 //! 矩形の中に文字を置くのは [`place`]（揃え方、余白、切り詰め）。ドラッグ中のツールチップは矩形の幅を文字から決めるので、
 //! 矩形と文字を [`drag_tooltip`] が一緒に置き、文字の上に重ねる線は [`clear_tooltip_area`] でツールチップを避ける。
@@ -39,6 +40,7 @@ mod timeline;
 mod timeline_layout;
 mod transport;
 mod view_state;
+mod wave;
 pub mod zoombar;
 
 pub use controller::{
@@ -55,7 +57,7 @@ pub use gesture::{body_edit, edge_edit, EditKind, Side};
 pub use header::{button_center, name_center};
 pub use keymarks::MARK_PX;
 pub use labels::{timeline_labels, LABEL_PAD};
-pub use paint::{timeline_overlay, timeline_quads, PaintState};
+pub use paint::{timeline_overlay, timeline_quads, PaintInput, PaintState};
 pub use rows::{RowHeight, RowHeights, Rows};
 pub use ruler::{label, major_step, ticks, Tick};
 pub use scale::{Scale, TextPlacement};
@@ -75,3 +77,4 @@ pub use transport::{
     TransportController, TransportPart, TransportState, Viewer, ViewerState, TRANSPORT_H,
 };
 pub use view_state::ViewState;
+pub use wave::{Peaks, WaveSource, Waves};

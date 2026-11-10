@@ -36,7 +36,7 @@ pub(crate) fn state(playhead: f64) -> PaintState {
 /// 行の領域と目盛りの帯の矩形（見出しの列の矩形は除く。背景は含む）。
 fn quads(m: &TimelineModel, st: &PaintState) -> Vec<Quad> {
     let f = TestViewport::new(m, SIZE);
-    timeline_quads(m, &f.vp(), st)
+    timeline_quads(&PaintInput::new(m, &f.vp(), st))
         .into_iter()
         .filter(|q| q.rect.x >= HEADER_W || q.rect.w >= SIZE.0)
         .collect()
@@ -74,14 +74,14 @@ fn テーマの色で_surface_と帯の段を塗る() {
 fn 再生位置の線は時刻の_x_に立ち_文字の上に重ねる側に入る() {
     let m = model();
     let f = TestViewport::new(&m, SIZE);
-    let over = timeline_overlay(&m, &f.vp(), &state(2.0));
+    let over = timeline_overlay(&PaintInput::new(&m, &f.vp(), &state(2.0)));
     let column = f.layout.time_column();
     let line = over
         .iter()
         .find(|q| q.color == palette::PLAYHEAD && q.rect.h == column.h)
         .expect("再生位置の線");
     assert!((line.rect.x + line.rect.w / 2.0 - (HEADER_W + 200.0)).abs() < 1e-3);
-    let under = timeline_quads(&m, &f.vp(), &state(2.0));
+    let under = timeline_quads(&PaintInput::new(&m, &f.vp(), &state(2.0)));
     let in_column = |q: &&Quad| q.rect.y < column.bottom();
     assert!(!under
         .iter()
@@ -101,7 +101,7 @@ fn ズームバーは見えている範囲のスクロールボックスと再�
     let bar = f.layout.zoombar;
     let at = |fraction: f32| bar.x + bar.w * fraction;
     let in_bar = |q: &&Quad| q.rect.y >= bar.y;
-    let all = timeline_quads(&m, &f.vp(), &state(4.0));
+    let all = timeline_quads(&PaintInput::new(&m, &f.vp(), &state(4.0)));
     let thumb = all
         .iter()
         .filter(in_bar)
@@ -121,7 +121,7 @@ fn ズームバーは見えている範囲のスクロールボックスと再�
         },
         ..state(4.0)
     };
-    let quads = timeline_quads(&m, &f.vp(), &hovered);
+    let quads = timeline_quads(&PaintInput::new(&m, &f.vp(), &hovered));
     let bright = quads.iter().filter(in_bar);
     assert_eq!(
         bright
@@ -135,9 +135,9 @@ fn ズームバーは見えている範囲のスクロールボックスと再�
 fn 時刻の列の外にある再生位置は描かない() {
     let m = model();
     let f = TestViewport::new(&m, SIZE);
-    let over = timeline_overlay(&m, &f.vp(), &state(-1.0));
+    let over = timeline_overlay(&PaintInput::new(&m, &f.vp(), &state(-1.0)));
     assert!(over.iter().all(|q| q.rect.x >= HEADER_W), "{over:?}");
-    let far = timeline_overlay(&m, &f.vp(), &state(100.0));
+    let far = timeline_overlay(&PaintInput::new(&m, &f.vp(), &state(100.0)));
     assert!(far.is_empty(), "{far:?}");
 }
 
@@ -296,7 +296,7 @@ fn スクロールで目盛りの帯の下に隠れた行は行の領域の上�
     let m = many(50);
     let mut f = TestViewport::new(&m, SIZE);
     f.scroll_y = 14.0;
-    let all = timeline_quads(&m, &f.vp(), &state(0.0));
+    let all = timeline_quads(&PaintInput::new(&m, &f.vp(), &state(0.0)));
     let area = f.layout.row_area;
     let outside_rows = [palette::RULER, palette::TICK, palette::LABEL];
     let in_rows = |q: &&Quad| !outside_rows.contains(&q.color);

@@ -4,6 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, TryLockError};
 
 use mm_doc::Asset;
@@ -310,7 +311,14 @@ impl MediaState {
         };
         let known = || self.assets().into_iter().map(|a| a.content_hash).collect();
         let apply = |op: Op| crate::win::edit::submit(&self.shared, vec![op]).map(|_| ());
-        run_import(&opts, paths, &known, &apply, emit);
+        // プロジェクトにすでにある素材は操作を適用せずキャッシュだけを作り直すので、素材の一覧とは別に知らせる。
+        let emit = |event: ImportEvent| {
+            if matches!(event, ImportEvent::Done { .. }) {
+                self.shared.ingest_serial.fetch_add(1, Ordering::SeqCst);
+            }
+            emit(event);
+        };
+        run_import(&opts, paths, &known, &apply, &emit);
         Ok(())
     }
 }

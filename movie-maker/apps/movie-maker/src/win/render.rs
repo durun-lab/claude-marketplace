@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 mod acquire;
 mod sync;
 mod transport;
+mod waves;
 
 use mm_runtime::{select_adapter, GpuContext, GpuSelector};
 use mm_ui_layout::{EmptyKeys, TimelineModel};
@@ -27,6 +28,7 @@ use crate::win::theme;
 use acquire::Recovery;
 use sync::{handle_input, DocSync, SourceSync};
 use transport::TransportSync;
+use waves::WaveSync;
 
 /// サーフェスを取れなかったときの待ち。再試行で CPU を回さないための間隔。
 const RETRY_WAIT: Duration = Duration::from_millis(8);
@@ -300,6 +302,7 @@ fn run(
     let mut source = SourceSync::default();
     let mut drawing = DrawingSync::default();
     let mut transport = TransportSync::default();
+    let mut waves = WaveSync::new();
     let mut failed_frames = 0u32;
     // HWND が破棄された後に present し続けないよう、毎周で生死を確かめる。
     while !quit.load(Ordering::SeqCst) && surface::is_alive(hwnd) {
@@ -315,9 +318,11 @@ fn run(
             source = SourceSync::default();
             drawing = DrawingSync::default();
             transport = TransportSync::default();
+            waves.forget();
         }
         view.configure(hwnd, size);
         doc.refresh(shared, &mut view.ui);
+        waves.refresh(shared, &mut view.ui, doc.wave_wanted());
         source.refresh(shared, &mut view);
         drawing.refresh(shared, &mut view.ui);
         transport.refresh(shared, &mut view.ui);
