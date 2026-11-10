@@ -1,4 +1,5 @@
-//! 編集のキーと WebView のボタンが呼ぶ、名前のついた編集（イン点・アウト点、insert、overwrite、split、lift、extract、取り消し）。
+//! コマンドの表（キー、メニュー、再生の操作のバーのボタン）が呼ぶ、名前のついた編集（イン点・アウト点、insert、overwrite、
+//! split、lift、extract、取り消し）。
 //! 操作を計画して再生スレッドに適用させる。適用は再生スレッドの返事を待つので、呼び出し側を止めないよう別のスレッドで行う。
 
 use std::sync::Arc;
@@ -30,25 +31,6 @@ pub enum EditAction {
     Extract,
     Undo,
     Redo,
-}
-
-impl EditAction {
-    /// WebView のボタンの名前から。
-    pub fn parse(name: &str) -> Option<Self> {
-        Some(match name {
-            "clear_in_out" => Self::ClearInOut,
-            "mark_in" => Self::MarkIn,
-            "mark_out" => Self::MarkOut,
-            "insert" => Self::Insert,
-            "overwrite" => Self::Overwrite,
-            "split" => Self::Split,
-            "lift" => Self::Lift,
-            "extract" => Self::Extract,
-            "undo" => Self::Undo,
-            "redo" => Self::Redo,
-            _ => return None,
-        })
-    }
 }
 
 /// 編集を実行する。計画と適用は編集のキュー（`edit::queue`）で順に行い、呼び出し側を止めない。

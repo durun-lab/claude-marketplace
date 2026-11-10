@@ -105,15 +105,30 @@ export const parseSlackMessages = (text: string): SlackMessage[] =>
 
 type Credential = { serverUrl: string; accessToken: string; expiresAt?: number };
 
-const credential = async (): Promise<Credential> => {
+type Entry = Credential & { server: string };
+
+// トークンが切れたときに、接続し直すよう人間に尋ねる。auth.ts は import した時点で本物のデータに触れるので、main.ts から渡す。
+let askReconnect: (server: string) => void = () => {};
+export const onSlackAuthExpired = (fn: (server: string) => void): void => {
+  askReconnect = fn;
+};
+
+/** server は claude mcp login に渡す、MCP サーバーの名前。 */
+const expired = (server: string): Error => {
+  askReconnect(server);
+  return new Error('Slack の MCP のトークンが期限切れです。ダイアログから接続し直してください');
+};
+
+const credential = async (): Promise<Entry> => {
   const raw = await platform.claudeCredentials();
   if (!raw) throw new Error('Claude Code の認証情報を読めません');
   // キーは「<サーバー名>|<ハッシュ>」の形。サーバー名は環境で揺れるので、slack を含むものを使う。
   const entries = Object.entries((JSON.parse(raw) as { mcpOAuth?: Record<string, Credential> }).mcpOAuth ?? {});
-  const entry = entries.find(([key]) => key.split('|')[0]?.toLowerCase().includes('slack'))?.[1];
+  const [key = '', entry] = entries.find(([k]) => k.split('|')[0]?.toLowerCase().includes('slack')) ?? [];
   if (!entry?.accessToken) throw new Error('Slack の MCP に接続していません。Claude Code の /mcp から Slack に接続してください');
-  if (entry.expiresAt && entry.expiresAt < Date.now()) throw new Error('Slack の MCP のトークンが期限切れです。Claude Code の /mcp から接続し直してください');
-  return entry;
+  const server = key.split('|')[0] ?? '';
+  if (entry.expiresAt && entry.expiresAt < Date.now()) throw expired(server);
+  return { ...entry, server };
 };
 
 /** Streamable HTTP の応答は JSON か SSE で届く。SSE なら data 行から結果のメッセージを探す。 */
@@ -128,7 +143,7 @@ const rpcResult = (type: string, body: string): { result?: unknown; error?: unkn
 
 /** MCP のセッションを開き、ツールを 1 回呼んで、返った文字を JSON として読む。 */
 const callSlack = async (tool: string, args: Record<string, unknown>): Promise<Record<string, unknown>> => {
-  const { serverUrl, accessToken } = await credential();
+  const { serverUrl, accessToken, server } = await credential();
   let session: string | null = null;
   const send = async (payload: object): Promise<unknown> => {
     const res = await fetch(serverUrl, {
@@ -138,6 +153,8 @@ const callSlack = async (tool: string, args: Record<string, unknown>): Promise<R
       signal: AbortSignal.timeout(30_000),
     });
     session ??= res.headers.get('mcp-session-id');
+    // 期限の前でも、取り消されたトークンは 401 で断られる。
+    if (res.status === 401) throw expired(server);
     if (!res.ok) throw new Error(`Slack の MCP が ${res.status} を返しました`);
     if (!('id' in payload)) return undefined;
     const msg = rpcResult(res.headers.get('content-type') ?? '', await res.text());

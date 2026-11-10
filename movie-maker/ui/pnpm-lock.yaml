@@ -79,6 +79,18 @@ importers:
         specifier: ^10.27.0
         version: 10.29.8
 
+  panels/diagnostics:
+    dependencies:
+      '@mm/sdk':
+        specifier: workspace:*
+        version: link:../../sdk
+      '@tauri-apps/api':
+        specifier: ^2.12.4
+        version: 2.12.4
+      preact:
+        specifier: ^10.27.0
+        version: 10.29.8
+
   panels/feedback:
     dependencies:
       '@mm/sdk':
@@ -201,6 +213,15 @@ importers:
       '@mm/theme':
         specifier: workspace:*
         version: link:../theme
+      preact:
+        specifier: ^10.27.0
+        version: 10.29.8
+
+  shortcuts:
+    dependencies:
+      '@mm/sdk':
+        specifier: workspace:*
+        version: link:../sdk
       preact:
         specifier: ^10.27.0
         version: 10.29.8

@@ -33,6 +33,7 @@ mod render;
 mod review;
 mod review_ipc;
 mod sequence_edit;
+mod shortcuts_window;
 mod source;
 mod source_ipc;
 mod state;
@@ -51,6 +52,7 @@ mod verify_restore;
 mod verify_stage;
 mod verify_toolbar;
 mod verify_transport;
+mod verify_webview;
 mod verify_zoom;
 mod view_state;
 

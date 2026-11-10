@@ -1,6 +1,7 @@
 // パネルの登録の列。パネルを足すときは、名前の順の位置に 1 行だけ足す。
 export { panel as deliver } from "../../panels/deliver/src/index.ts";
 export { panel as devices } from "../../panels/devices/src/index.ts";
+export { panel as diagnostics } from "../../panels/diagnostics/src/index.ts";
 export { panel as feedback } from "../../panels/feedback/src/index.ts";
 export { panel as inspector } from "../../panels/inspector/src/index.ts";
 export { panel as media } from "../../panels/media/src/index.ts";

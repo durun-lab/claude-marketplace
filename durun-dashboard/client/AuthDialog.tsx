@@ -31,7 +31,8 @@ export const AuthDialog = ({ snapshot }: { snapshot: Snapshot | null }) => {
       <p class="xp-confirm-text">
         <i class="xp-info-icon" aria-hidden="true" />
         <span>
-          次のセッションが、{request.title}を求めています。<br />
+          {sessions.length ? <>次のセッションが、{request.title}を求めています。</> : <>ダッシュボードが、{request.title}を求めています。</>}
+          <br />
           {lastLoginAt && <>前回のログインは {dateTime(lastLoginAt)}（{fmtSpan(snapshot.now - lastLoginAt)}前）です。<br /></>}
           {url ? (
             <>「進む」を押すと、ブラウザで <code>{url}</code> を開きます。ログインを終えたら、「認証した」を押してください。</>

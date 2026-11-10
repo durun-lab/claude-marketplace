@@ -31,6 +31,7 @@ pub fn handler(invoke: tauri::ipc::Invoke) -> bool {
         key_event,
         layer_selection,
         command_table,
+        crate::win::shortcuts_window::close_shortcuts,
         run_command,
         crate::win::edit::apply_op,
         crate::win::edit::apply_ops,
@@ -56,11 +57,9 @@ pub struct Tick {
     /// 送った時刻（UNIX 時刻のマイクロ秒）。WebView は受けた時刻との差だけ位置を進める。
     pub sent_us: u64,
     pub playing: bool,
-    /// 直近の「送ってから WebView の rAF まで」の中央値（ミリ秒）。
-    pub lag_ms: f64,
 }
 
-/// レイヤー 1 本の情報（一覧に出す）。
+/// レイヤー 1 本の情報（Diagnostics のレイヤーの生の一覧に出す）。
 #[derive(Clone, Serialize)]
 pub struct LayerInfo {
     pub id: String,
@@ -108,6 +107,8 @@ impl CompositionSummary {
 
 /// WebView へ選択を送る Tauri のイベント名。`web/transport.js` が同じ名前の DOM のイベントにつなぐ。
 const LAYER_SELECTED_EVENT: &str = "mm:layer-selected";
+/// WebView へ直近の編集の結果の文言（`EditMessage`）を送る Tauri のイベント名。Shell がステータスの行に出す。
+const EDIT_MESSAGE_EVENT: &str = "mm:edit-message";
 
 /// レイヤーの一覧（上のレイヤーが先頭。時間軸が壊れたレイヤーはスキップする）。
 pub fn layer_infos(comp: &Composition) -> Vec<LayerInfo> {
@@ -150,7 +151,8 @@ fn selection_now(shared: &Shared, doc: &OpenDoc) -> LayerSelection {
     selection_of(doc, selected.as_deref(), param)
 }
 
-/// 開いたプロジェクトの情報。
+/// 開いたプロジェクトの情報。WebView の中継スクリプトが始めに fps と長さを、Diagnostics が全部を読む（`ui/panels/diagnostics` の
+/// `DiagnosticsInfo`）。
 #[derive(Clone, Serialize)]
 pub struct ProjectInfo {
     pub name: String,
@@ -164,6 +166,8 @@ pub struct ProjectInfo {
     pub backends: Vec<(String, String)>,
     pub layers: Vec<LayerInfo>,
     pub adapter: String,
+    /// 再生位置を送ってから WebView が画面に出すまでの直近の中央値（ミリ秒）。Diagnostics の Sync Lag。
+    pub lag_ms: f64,
 }
 
 struct Pending {
@@ -199,6 +203,7 @@ impl SyncState {
     }
 
     /// 開いたプロジェクトの情報。レイヤーの一覧と fps、長さ、大きさは、いまのプロジェクトのデータから作る。
+    /// GPU と通知の遅れは、描画スレッドと ack が後から変えるので、そのときの値を入れる。
     fn current_info(&self) -> Option<ProjectInfo> {
         let mut info = self.info.lock().expect("info").clone()?;
         if let Some(doc) = self.shared.doc() {
@@ -210,6 +215,7 @@ impl SyncState {
             }
         }
         info.adapter = self.shared.adapter.lock().expect("adapter").clone();
+        info.lag_ms = self.lag_median();
         Some(info)
     }
 
@@ -238,7 +244,7 @@ pub fn spawn(app: AppHandle, state: Arc<SyncState>) {
             let mut deadline = Instant::now();
             let mut last: (f64, bool, Instant) = (f64::NAN, false, Instant::now());
             let mut sent_selection = (0, 0);
-            let mut sent_source = None;
+            let mut sent_edit_message = 0;
             let mut sent_commands = None;
             let mut meters_playing = false;
             while !state.shared.quit.load(Ordering::SeqCst) {
@@ -250,7 +256,7 @@ pub fn spawn(app: AppHandle, state: Arc<SyncState>) {
                     deadline = now;
                 }
                 emit_selection_if_changed(&app, &state.shared, &mut sent_selection);
-                crate::win::source_ipc::emit_if_changed(&app, &state.shared, &mut sent_source);
+                emit_edit_message_if_changed(&app, &state.shared, &mut sent_edit_message);
                 if let Some(table) = commands::changed(&state.shared, &mut sent_commands) {
                     crate::win::menu::reflect(&app, &table);
                     let _ = app.emit(COMMANDS_CHANGED_EVENT, table);
@@ -285,6 +291,16 @@ fn emit_selection_if_changed(app: &AppHandle, shared: &Shared, sent: &mut (u64, 
     let _ = app.emit(LAYER_SELECTED_EVENT, payload);
 }
 
+/// 編集の結果の文言を置き直していたら WebView に送る。同じ文言でも送り、Shell が出し直す。
+fn emit_edit_message_if_changed(app: &AppHandle, shared: &Shared, sent: &mut u64) {
+    let message = shared.edit.last_message();
+    if message.serial == *sent {
+        return;
+    }
+    *sent = message.serial;
+    let _ = app.emit(EDIT_MESSAGE_EVENT, message);
+}
+
 fn send_tick(state: &SyncState, seq: u64, t: f64, playing: bool) {
     let sent_us = wall_us();
     let tick = Tick {
@@ -292,7 +308,6 @@ fn send_tick(state: &SyncState, seq: u64, t: f64, playing: bool) {
         t,
         sent_us,
         playing,
-        lag_ms: state.lag_median(),
     };
     // span は ack が戻って pending から外れたときに閉じる。
     let mut pending = state.pending.lock().expect("pending");
