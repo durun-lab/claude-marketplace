@@ -10,7 +10,7 @@ import type { TransitionApi } from "../../panels/transition/src/api.ts";
 import type { ReviewApi } from "../../panels/review/src/api.ts";
 import type { StoryApi } from "../../panels/story/src/api.ts";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LAYER_SELECTED_EVENT, Shell } from "./Shell.tsx";
+import { LAYER_SELECTED_EVENT, LAYER_SELECTION_REQUEST_EVENT, Shell } from "./Shell.tsx";
 
 const host = document.createElement("div");
 document.body.append(host);
@@ -387,7 +387,7 @@ describe("Shell", () => {
   it("右の列の Inspector は選択のイベントでレイヤーを出し、値の変更を sendOp に渡す", () => {
     const sendOp = vi.fn();
     act(() => render(<Shell sendOp={sendOp} />, host));
-    expect(host.querySelector(".mm-shell-right")?.textContent).toContain("No layer selected");
+    expect(host.querySelector(".mm-shell-right")?.textContent).toContain("Select a layer in the Timeline");
     act(() => {
       window.dispatchEvent(new CustomEvent(LAYER_SELECTED_EVENT, { detail: { layer } }));
     });
@@ -401,5 +401,14 @@ describe("Shell", () => {
       target: { layer: "l1", path: "opacity" },
       value: { type: "number", value: 0.5 },
     });
+  });
+
+  it("選択のイベントを聞き始めてから今の選択を頼み、その答えでレイヤーを出す", () => {
+    // 頼みを受けたその場で答える。Shell が聞き始める前に頼むと、この答えは届かない。
+    const answer = () => window.dispatchEvent(new CustomEvent(LAYER_SELECTED_EVENT, { detail: { layer } }));
+    window.addEventListener(LAYER_SELECTION_REQUEST_EVENT, answer);
+    act(() => render(<Shell sendOp={vi.fn()} />, host));
+    window.removeEventListener(LAYER_SELECTION_REQUEST_EVENT, answer);
+    expect(host.querySelector('.mm-shell-right [aria-label="opacity"]')).not.toBeNull();
   });
 });

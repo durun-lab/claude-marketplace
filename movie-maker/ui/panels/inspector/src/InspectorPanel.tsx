@@ -1,6 +1,7 @@
 import { useMemo, useState } from "preact/hooks";
-import { type Asset, type Layer, type Op, type ParamRef, type ParamValue, evalParam } from "@mm/sdk";
+import { type Asset, type CompositionSummary, type Layer, type Op, type ParamRef, type ParamValue, evalParam } from "@mm/sdk";
 import { Editor } from "./editors.tsx";
+import { EmptyInspector } from "./EmptyInspector.tsx";
 import { AddMaskButton, FadeRows, RemoveMaskButton } from "./Extras.tsx";
 import { fieldSpecFor } from "./fields.ts";
 import { KeyframeNav } from "./KeyframeNav.tsx";
@@ -26,6 +27,8 @@ export interface InspectorPanelProps {
   layer: Layer | null;
   /** `asset_ref` の選択肢。 */
   assets?: readonly Asset[];
+  /** 何も選んでいないときに出す、コンポジションの要約。 */
+  composition?: CompositionSummary;
   hints?: ParamHints;
   /** ソースとエフェクトのパラメータの定義。渡すと、プロジェクトに値の無いパラメータも既定値で出す。 */
   kinds?: LayerKinds;
@@ -191,7 +194,7 @@ const AddMaskSection = ({ layer, onOp }: { layer: Layer; onOp: (op: Op) => void 
  * 再生位置を渡すと、各パラメータにキーフレームナビゲーター（前へ・足す外す・次へ・補間）とキーフレームの欄を出す。
  */
 export const InspectorPanel = (props: InspectorPanelProps) => {
-  const { layer, assets = [], hints = DEFAULT_HINTS, kinds, onOp, time, onSeek, selectedPath, onSelectParam } = props;
+  const { layer, assets = [], composition, hints = DEFAULT_HINTS, kinds, onOp, time, onSeek, selectedPath, onSelectParam } = props;
   const [keyedOnly, setKeyedOnly] = useState(false);
   // 再生中は再生位置が届くたびに描き直す。レイヤーから決まる範囲と区画はレイヤーが変わるまで同じものを渡し、ひし形を描き直さない。
   const span = useMemo(() => layer && layerSpan(layer), [layer]);
@@ -200,7 +203,7 @@ export const InspectorPanel = (props: InspectorPanelProps) => {
     return keyedOnly ? keyframedOnly(all) : all;
   }, [layer, hints, kinds, keyedOnly]);
   if (!layer || !span) {
-    return <div class="mm-insp mm-insp-empty">No layer selected</div>;
+    return <EmptyInspector composition={composition} />;
   }
   const at: Playhead | null = time === undefined ? null : { sec: time, fps: props.fps ?? DEFAULT_FPS };
   return (

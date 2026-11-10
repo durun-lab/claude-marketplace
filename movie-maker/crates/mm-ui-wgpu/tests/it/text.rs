@@ -1,8 +1,9 @@
-//! Timeline の文字（目盛りの時刻、帯の名前）を描いて、字の画素の位置と大きさを確かめる。
+//! Timeline の文字（目盛りの時刻、帯の名前）と空の状態の案内を描いて、字の画素の位置と大きさを確かめる。
 //! 字の画素は、背景の色から離れて字の色に寄った画素で見分ける。
 
 use mm_ui_layout::{
-    Item, ItemKind, PointerEvent, TimelineModel, LABEL_PAD, MARK_PX, RULER_H, VIEW_MARGIN,
+    EmptyState, Item, ItemKind, PointerEvent, TimelineModel, HEADER_W, LABEL_PAD, MARK_PX, RULER_H,
+    VIEW_MARGIN,
 };
 use mm_ui_wgpu::Ui;
 
@@ -192,6 +193,49 @@ fn 目盛りの時刻と日本語の名前を描く() {
     let b = ink_box(&out, size.0, bar, dark_ink).expect("名前の字");
     // 全角 6 字は、字の大きさ 12 の 1.5 倍で 1 字 18 画素（字の左右の空きを除いて 5 字分より広い）。
     assert!(b.2 - b.0 > 5 * 18, "幅 {}", b.2 - b.0);
+}
+
+#[test]
+fn 空の状態の案内は表示の倍率を変えても_program_の中央と行の領域の帯の下に出る() {
+    let Some((device, queue)) = gpu() else { return };
+    let mut base: Option<InkBox> = None;
+    for scale in [1.0_f32, 1.5, 2.0] {
+        let m = model(vec![Item::layer(0.0, DURATION, ItemKind::Sequence, true)]);
+        let (mut ui, size) = ui_at(&device, scale, m.clone());
+        ui.set_empty_state(EmptyState {
+            program: true,
+            timeline: true,
+        });
+        let out = render_sized(&device, &queue, &mut ui, size);
+        let (p, t) = (ui.layout().program, ui.layout().timeline);
+        let program = (p.x as u32, p.y as u32, p.right() as u32, p.bottom() as u32);
+        let b = ink_box(&out, size.0, program, light_ink).expect("Program の案内の字");
+        let centre = ((b.0 + b.2) as f32 / 2.0, (b.1 + b.3) as f32 / 2.0);
+        assert!(
+            (centre.0 - (p.x + p.w / 2.0)).abs() <= 2.0 * scale
+                && (centre.1 - (p.y + p.h / 2.0)).abs() <= 3.0 * scale,
+            "表示の倍率 {scale}: 字の中央 {centre:?} と Program の中央"
+        );
+        // Timeline の案内は sequence の行の帯の下で、行の領域（見出しの列の右。行が収まるのでスクロールバーは無い）の中央に置く。
+        let bar = bar_box(&ui, &m, scale, 0, (0.0, DURATION as f32));
+        let below = (t.x as u32, bar.3 + 1, t.right() as u32, t.bottom() as u32);
+        let hint = ink_box(&out, size.0, below, light_ink).expect("Timeline の案内の字");
+        let rows = (t.x + HEADER_W * scale, t.right());
+        assert!(
+            hint.0 as f32 >= rows.0
+                && ((hint.0 + hint.2) as f32 / 2.0 - (rows.0 + rows.1) / 2.0).abs() <= 2.0 * scale,
+            "表示の倍率 {scale}: 字の左右 {hint:?} と行の領域の左右 {rows:?}"
+        );
+        let Some(one) = base else {
+            base = Some(b);
+            continue;
+        };
+        let (got, at_one) = (b.3 - b.1, one.3 - one.1);
+        assert!(
+            (got as f32 - at_one as f32 * scale).abs() <= 2.0 + scale,
+            "表示の倍率 {scale}: Program の案内の高さ {got}（等倍の {at_one} の {scale} 倍）"
+        );
+    }
 }
 
 #[test]

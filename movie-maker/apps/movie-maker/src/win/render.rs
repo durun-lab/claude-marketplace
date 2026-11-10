@@ -12,11 +12,13 @@ use std::time::{Duration, Instant};
 
 mod acquire;
 mod sync;
+mod transport;
 
 use mm_runtime::{select_adapter, GpuContext, GpuSelector};
-use mm_ui_layout::TimelineModel;
+use mm_ui_layout::{EmptyKeys, TimelineModel};
 use mm_ui_wgpu::Ui;
 
+use crate::win::keys;
 use crate::win::playback::Command;
 use crate::win::review::drawing::DrawingSync;
 use crate::win::state::{FrameImage, PreviewFrame, Shared};
@@ -24,6 +26,7 @@ use crate::win::surface;
 use crate::win::theme;
 use acquire::Recovery;
 use sync::{handle_input, DocSync, SourceSync};
+use transport::TransportSync;
 
 /// サーフェスを取れなかったときの待ち。再試行で CPU を回さないための間隔。
 const RETRY_WAIT: Duration = Duration::from_millis(8);
@@ -226,6 +229,17 @@ fn surface_config(
     })
 }
 
+/// 空の状態の案内に出すキー。キーの表から引き、割り当てを変えても案内がずれないようにする。
+fn empty_keys() -> EmptyKeys {
+    let key = |id: &str| keys::key_label_of(id).into();
+    EmptyKeys {
+        import_media: key("media.import"),
+        mark_in: key("source.mark_in"),
+        mark_out: key("source.mark_out"),
+        insert: key("clip.insert"),
+    }
+}
+
 /// サーフェスと、その上の UI。デバイスを持ち替えるときは丸ごと作り直す。
 struct View {
     gpu: Gpu,
@@ -249,6 +263,7 @@ impl View {
         }
         ui.set_palette(theme::surface_palette());
         ui.set_font(theme::surface_font());
+        ui.set_empty_keys(empty_keys());
         Ok(Self {
             gpu,
             ui,
@@ -284,6 +299,7 @@ fn run(
     let mut doc = DocSync::default();
     let mut source = SourceSync::default();
     let mut drawing = DrawingSync::default();
+    let mut transport = TransportSync::default();
     let mut failed_frames = 0u32;
     // HWND が破棄された後に present し続けないよう、毎周で生死を確かめる。
     while !quit.load(Ordering::SeqCst) && surface::is_alive(hwnd) {
@@ -298,11 +314,13 @@ fn run(
             doc = DocSync::default();
             source = SourceSync::default();
             drawing = DrawingSync::default();
+            transport = TransportSync::default();
         }
         view.configure(hwnd, size);
         doc.refresh(shared, &mut view.ui);
         source.refresh(shared, &mut view);
         drawing.refresh(shared, &mut view.ui);
+        transport.refresh(shared, &mut view.ui);
         handle_input(shared, &mut view.ui, &doc);
         if let Some(state) = view.ui.view_state() {
             shared.view.publish(state);

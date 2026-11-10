@@ -295,11 +295,16 @@ Z2 で決めたこと（新しく設計したもの）:
 
 | 場所 | 出すもの |
 |---|---|
-| Program（レイヤーが無い） | 「Import video and audio to start」と「File > Import Media… (Ctrl+I)」 |
-| Timeline（レイヤーが無い） | 「Open a clip in Media, mark In (I) and Out (O), then press Insert (,)」。Media から Timeline へのドラッグは後 |
-| Inspector（何も選んでいない） | コンポジションの要約（名前、大きさ、fps、長さ、レイヤーの数）と「Select a layer in the Timeline to see its properties.」 |
+| Program（コンポジションに中身が無く、素材も無い） | 「Import video and audio to start」と「File > Import Media… (Ctrl+I)」 |
+| Timeline（コンポジションに中身が無く、sequence のレイヤーがある） | 「Open a clip in Media, mark In (I) and Out (O), then press Insert (,)」。Media から Timeline へのドラッグは後 |
+| Inspector（何も選んでいない） | コンポジションの要約（名前、大きさ、fps、長さ、レイヤーの数）と「Select a layer in the Timeline to see its properties.」。名前はコンポジションの ID、長さは見出しの列の上の角と同じタイムコード |
 | Story（文字起こしが無い） | 「No transcript yet. Transcription runs outside the app for now: run tools/transcribe on a clip, then reopen this tab.」。アプリの中の Transcribe のコマンドができたら、ボタンに替える |
 | Tasks | 実装の無い項目を薄くする（[UI のコマンドの表](#ui-のコマンドの表)） |
+
+- 中身が無いのは、レイヤーが無いか、どのレイヤーもカットの無いシーケンスを置いた sequence のレイヤーのとき。無効のレイヤーとカットは中身に数え、案内を出さない。判定はコンポジションの中身で決め、Timeline の行の見え方では決めない。Shy で全部の行を隠しても案内は出さない（隠した数は見出しの列の上の角に出る。T3）。判定は `mm-ui-wgpu` の `empty_state`。
+- 素材を取り込んだ後は、取り込みはもう次にすることではないので、Program の案内を出さない。
+- Timeline の手順は、Insert の入る先（sequence のレイヤー）があるときだけ出す。sequence のレイヤーが無いと Insert は効かない（`sequence_edit.rs` の `target_layer` が「No sequence layer」で拒否し、メニューの Insert も押せない）。`mm new` の直後に足す `main` もレイヤーが無いので、今は Program の案内だけが出る。最初の Insert で sequence のレイヤーを作れば（Premiere の空の Timeline の「Drop media here to create sequence」[96] と同じく、最初の素材から sequence を作る）、この条件を外せる。後の PR。
+- 要約は選択のイベント（`mm:layer-selected`）に載せる。購読より前に Rust が送ったイベントは WebView に届かないので、Shell は選択のイベントを聞き始めたら頼み（`mm:layer-selection-request`）を投げ、`transport.js` は選択の Tauri イベントを購読し終えてから `layer_selection` で今の選択を読んで答える。時間では待たない。購読してから読む形は UI のコマンドの表（Shell の `useCommandTable`）と同じ。
 
 ## 文言
 
@@ -405,6 +410,8 @@ flowchart TB
 
 T1 が決めた形: 矩形の型は `TimelineLayout`（`mm-ui-layout/src/timeline_layout.rs`）。まだ無い領域は大きさ 0 の定数で場所だけを決めてあり、足す PR が自分の定数を変える。Timeline の高さの下限（`MIN_TIMELINE_H`）はその定数から求める。行の高さと上端は `Rows`、それにズームと縦のスクロールを合わせた見えている所は `Viewport` で、当たり判定、描画、文字、`--play-test` のクリックの位置（`verify_place.rs`）が同じ値を見る。描く関数は `paint/<領域>.rs` に置き、`paint.rs` の `timeline_quads`（文字の下）か `timeline_overlay`（文字の上）の呼び出しに名前の順で 1 行足す。重ね順は呼ぶ順でなく `Depth` で決める（帯の中に描く矩形〔T4 の波形〕は、帯〔`Bar`〕と、帯に重ねるもの〔`OnBar`。端のつまみ、外枠〕の間に区分を 1 つ足す）。テクスチャで描くサムネイルとフィルムストリップ（T5、T6）は矩形の並びの外なので、`Bar` までの矩形の後、残りの矩形の前に描く（文字と同じく、境目の数を `Canvas` の区分から出す）。行の領域からはみ出す矩形は `Canvas::push_in` で切る。ひし形と三角（`QuadShape`）は切ると形が変わるので、切らずに描く。K1 が決めた扱い: 外接する正方形が行の領域に全部収まるひし形だけを `Canvas::push_quad` で描き、領域の端や行の途中で隠れる位置の帯のマーカーは、切っても形が変わらない縦線（矩形）に替えて `push_in` で切る（`keymarks::is_line`）。マーカーの位置は変えず、形だけが変わる。先例は Premiere と AE が時間軸の端でキーフレームを切ること。先例が解消しない点（切ると半分のひし形が残る）に、縦線への切り替えを足した。Medium と Large の帯は名前を上の部分（`labels::name_area`。Medium は帯の高さ 25 からマーカーの 9 を除いた 16）に置き、下端の `MARK_PX`（9 論理ピクセル）にマーカーを並べて、字とひし形を重ねない（Premiere と Resolve もクリップの名前を上に置く）。Small の帯は名前が帯の全体を使うので、マーカーを下端から 4 論理ピクセルの縦線にし、字の下の方にだけ掛ける。キーフレームの時刻は `Item::keyframes`（コンポジションの秒）で、`mm-doc` の `Layer::keyframe_times` が作る。`shiftLayer` が動かすパラメータと同じ一覧（`Layer::comp_time_params` と `comp_time_params_mut`）を読み、端のつまみの `Layer::trim_room` と同じく、操作と Timeline が `mm-doc` の同じ所を見る。再フレーミングの素材の時刻のキーフレームは含めない（K2 でカットを通して足す）。マーカーのまとめ方は先頭のキーフレームから数えるので、横に動かしても位置は変わらない。マーカーを押すと `Hit::BarMark` で、レイヤーを選んで再生位置を動かす。マーカーは端のつまみより上に描くので、重なる所ではマーカーが勝つ（つまみはマーカーの上で掴める）。ホバーしたマーカーは、Inspector のキーフレームの欄で選んだひし形と同じ accent で中を塗り、縁を明るくする（accent に近い青の帯でも紛れない）。レイヤーの見出しは右端にキーフレームの開閉（`Cells::disclosure`、幅 12 論理ピクセル）を空け、キーフレームのあるレイヤー（`Item::has_keyframes`）だけに ▸ を描く。キーフレームの無いレイヤーも空けるので、ボタンの列は行ごとにずれない。▸ を押したときにキーフレームの行を開くのは K2。全体表示は長いコンポジションでも全体を収め（`MIN_PX_PER_SEC` より細かく、下限は `MIN_FIT_PX_PER_SEC`）、Ctrl+ホイールの縮小も全体が収まる所まで（`TimeView::zoom_floor`）。
 
+L1 が決めた形: 再生の操作のバーは `mm-ui-layout/src/transport.rs`（高さ `TRANSPORT_H` の 56 論理ピクセル）。上からタイムコードの行（左に再生位置、右に Program は全体の長さ、Source はイン点とアウト点）、ジョグバー、ボタンの行を重ねる（Premiere の Program モニターの下端と同じ並び。タイムコードをボタンの行の左右に置くと、Source を開いた幅 400 論理ピクセルのバーでボタンの幅が縮み、アイコンが重なる）。`SurfaceLayout` の `program_transport` と `source_transport` が映像の領域の真下のバーの矩形で、映像の領域（`program`、`source`）はバーの分だけ低い（映像の矩形とレターボックスと Review の描き込みは映像の領域から求めるので、ずれない）。ビューアーの領域がバーの高さの 2 倍に足りなければ、バーを出さずに映像に回す（映像の見えないビューアーは使えず、再生の操作はキーとメニューにもあるため）。Program のボタンは Resolve の Viewer の並び（Go to Start、Play Reverse、Stop、Play Forward、Go to End）に Premiere の Step One Frame Back / Forward を足したもので、同じ形のボタンを置かない。再生中は Play Forward を入の色で塗る。Source の In、Out、Clear、Insert、Overwrite は、ボタンの行に全部の名前が入れば名前のボタン、入らなければアイコンのボタン。ボタンはコマンドの表の ID を持ち、押せるかはアプリがコマンドの表から渡す（`ViewerState::disabled`）。押して同じボタンの上で離したときに実行する（Windows のボタンと同じく、押したまま外へずらして離せば取りやめ）。ジョグバーのシークは描画の 1 周でビューアーごとに最後の 1 つだけ送り、再生中なら止める（Timeline の目盛りのスクラブと同じ）。三角は `QuadShape`、縦線と括弧は細い矩形で描き、切らない。`--play-test` はボタンとジョグバーの位置を `transport_button` と `jog_track` で引いて押す（`verify_transport.rs`）。
+
 ### 前提と文言
 
 | PR | 中身 | 依存 | 触る範囲 | 終わりの条件 |
@@ -460,7 +467,7 @@ T1 が決めた形: 矩形の型は `TimelineLayout`（`mm-ui-layout/src/timelin
 | D1 `feature/movie-maker-menu-bar` | メニューバー（コマンドの表から）。キーの見た目は項目の文字の `\t` の後ろ（アクセラレーターは登録しない）。チェックと押せるかの状態。Ctrl+I の Import Media。キーでメニューを開く手段 | B3 | `apps/movie-maker/src/win/menu.rs`（新）、`layout.rs`（新。`app.rs` からウィンドウを作る所と割り付けの関数を移す）、`commands.rs`、`keys.rs`、`surface.rs`（F10）、`ui/sdk/src/commands.ts`、`ui/shell/src/Shell.tsx` | ウィンドウの上端に File、Edit、Playback、Timeline、Help（View は Z1 が Zoom を表に足すと出る） |
 | D2 `feature/movie-maker-shortcuts-window` | Keyboard Shortcuts のウィンドウ（`?`、絞り込み、Enter で実行） | B3、D1、Z1（記号のキーの名前） | `ui/shortcuts/`（新）、`ui/tools/build.ts`（ページの入口を足す）、`apps/movie-maker/src/win/layout.rs` か `menu.rs`（ウィンドウを開く。ウィンドウはコードで作り、`capabilities/default.json` は全部のウィンドウに当たる） | 「zoom」で絞ったウィンドウに Zoom In (=)、Zoom Out (-)、Full Extent Zoom (Shift+Z) |
 | D3 `feature/movie-maker-context-menus` | 右クリックのメニュー（`Window::popup_menu_at`） | B3、T3、Z4 | `apps/movie-maker/src/win/surface.rs`、`context_menu.rs`（新） | 項目の並びはテスト（ポップアップは PrintWindow に写らない） |
-| D4 `feature/movie-maker-empty-states` | 空の状態の案内（Program、Timeline、Inspector、Story） | 文字の PR、B3、T1（`paint.rs` を分けた後に足す） | `crates/mm-ui-layout/src/paint.rs`（空の Timeline）、`crates/mm-ui-wgpu/src/program.rs`、`ui/panels/inspector/src/InspectorPanel.tsx`、`ui/panels/story/src/StoryPanel.tsx` | 空のプロジェクトで Program と Timeline に案内、Inspector にコンポジションの要約 |
+| D4 `feature/movie-maker-empty-states` | 空の状態の案内（Program、Timeline、Inspector、Story） | 文字の PR、B3、T1 | `crates/mm-ui-layout/src/empty.rs`（新）、`crates/mm-ui-wgpu/src/empty.rs`（新）、`ui.rs`、`apps/movie-maker/src/win/ipc.rs`、`web/transport.js`、`ui/shell/src/Shell.tsx`、`ui/panels/inspector/src/EmptyInspector.tsx`（新）、`ui/panels/story/src/StoryPanel.tsx` | 空のプロジェクトで Program に案内、カットの無い sequence のレイヤーだけのコンポジションで Timeline に案内、Inspector にコンポジションの要約 |
 
 ### 衝突しやすい共有ファイル
 
