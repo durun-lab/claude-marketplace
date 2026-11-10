@@ -127,7 +127,7 @@ export type FeedbackWave = { items: string[]; sessionId?: string; stalled?: 'unm
  * ワークフローの動き。queue はまだセッションに渡していないイベントの本文。sessionId は continue で引き継いでいるセッション。
  * seenPrs は、既に動いたレビュー依頼の PR の URL。無ければまだ一度も読んでおらず、そのとき届いている依頼では動かない。
  * seenMentions と seenJira は、既に動いた Slack と JIRA のメンションのリンク。seenPrs と同じく、初めて読んだときに届いていたものでは動かない。
- * bursts は、まとめて渡すために待たせているメンションの本文と、最後に届いた時刻。トリガーの種類ごとに持つ。
+ * bursts は、まとめて渡すために待たせているメンションの URL と、最後に届いた時刻。トリガーの種類ごとに持つ。
  * feedback は、改善要望のトリガーで最後に渡したウェーブ。
  */
 export type WorkflowRun = { queue: string[]; sessionId?: string; lastRunAt?: number; seenPrs?: string[]; seenMentions?: string[]; seenJira?: string[]; bursts?: Partial<Record<MentionTrigger['kind'], { texts: string[]; lastAt: number }>>; feedback?: FeedbackWave; error?: string };
