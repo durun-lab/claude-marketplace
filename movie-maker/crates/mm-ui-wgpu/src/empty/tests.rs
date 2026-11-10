@@ -99,12 +99,24 @@ fn カットか_sequence_でないレイヤーがあれば中身があるので�
 }
 
 #[test]
-fn 無効のレイヤーと無効のカットも中身に数える() {
+fn 無効のレイヤーは中身に数え_有効なカットの無い_sequence_は空として案内を出す() {
     let mut off = solid("bg");
     off.enabled = false;
     assert_eq!(empty_state(&Project::new(), &comp(vec![off])), NONE);
     let mut cut = footage_cut("k1");
     cut.enabled = false;
-    let p = project_with(vec![cut]);
-    assert_eq!(empty_state(&p, &comp(vec![sequence_layer()])), NONE);
+    let p = with_asset(project_with(vec![cut]));
+    assert_eq!(
+        empty_state(&p, &comp(vec![sequence_layer()])),
+        TIMELINE_ONLY,
+        "唯一のカットを無効にしたら、カットの無い sequence と同じ"
+    );
+    let mut cut = footage_cut("k1");
+    cut.enabled = false;
+    let p = project_with(vec![cut, footage_cut("k2")]);
+    assert_eq!(
+        empty_state(&p, &comp(vec![sequence_layer()])),
+        NONE,
+        "有効なカットが 1 つでもあれば中身がある"
+    );
 }

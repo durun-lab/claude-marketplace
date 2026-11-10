@@ -4,8 +4,10 @@
 //! 空の sequence を残し、取り消し、やり直し、空の sequence への insert を通す。
 
 use mm_doc::{Project, SEQUENCE_KIND};
+use mm_ops::Disable;
 use serde_json::json;
 
+use crate::win::edit;
 use crate::win::keys;
 use crate::win::state::Shared;
 use crate::win::surface;
@@ -76,7 +78,13 @@ fn insert_step(env: &Env<'_>, log: &mut Log, before: (usize, f64)) -> bool {
     log.step(
         "first_insert",
         made && ranged && same(layer, Some(length)) && comp_fits(before, comp, length),
-        json!({ "cut": cut.map(|c| c.id.to_string()), "layer_secs": layer, "comp_secs": comp }),
+        json!({
+            "cut": cut.as_ref().map(|c| c.id.to_string()),
+            "in_out": cut.map(|c| [c.in_point.to_f64(), c.out_point.to_f64()]),
+            "layer_secs": layer,
+            "comp_secs": comp,
+            "message": shared.edit.message(),
+        }),
     );
     shot(env, log, "2-first-insert");
     made
@@ -154,6 +162,38 @@ fn reinsert_step(env: &Env<'_>, log: &mut Log, before: (usize, f64)) -> bool {
     restored
 }
 
+/// 唯一のカットを無効にすると、有効なカットが無いので sequence のレイヤーは 1 フレームに縮む。取り消しで元に戻す。
+/// 無効にして縮み、取り消しでカットが有効に戻り長さも戻れば真。
+fn disable_step(env: &Env<'_>, log: &mut Log) -> bool {
+    let shared = env.shared;
+    let Some(cut) = cuts(shared).into_iter().next() else {
+        return false;
+    };
+    let length = MARK_OUT - MARK_IN;
+    let op = Disable {
+        cut: cut.id.clone(),
+        disabled: true,
+    };
+    let applied = edit::submit(shared, vec![op.into()]).is_ok();
+    let off = wait_until(WAIT, || cuts(shared).iter().all(|c| !c.enabled));
+    let [layer, _, frame] = lengths(shared);
+    log.step(
+        "disable_only_cut",
+        applied && off && same(layer, frame),
+        json!({ "layer_secs": layer }),
+    );
+    shot(env, log, "2d-disable-only-cut");
+    keys::dispatch(shared, "play-test", "Ctrl+KeyZ");
+    let back = wait_until(WAIT, || cuts(shared).iter().all(|c| c.enabled));
+    let [layer, ..] = lengths(shared);
+    log.step(
+        "undo_disable_only_cut",
+        back && same(layer, Some(length)),
+        json!({ "layer_secs": layer }),
+    );
+    back
+}
+
 /// 取り消し 1 回で、sequence も sequence のレイヤーも消え、コンポジションの長さも戻る。
 fn undo_step(env: &Env<'_>, log: &mut Log, sequences: usize, before: (usize, f64)) {
     let shared = env.shared;
@@ -183,7 +223,11 @@ fn insert_and_undo(env: &Env<'_>, log: &mut Log, project: &Project) -> Option<&'
         log.step("undo_first_insert", false, why);
         return None;
     }
-    if !(extract_step(env, log, before) && redo_step(env, log) && reinsert_step(env, log, before)) {
+    if !(extract_step(env, log, before)
+        && redo_step(env, log)
+        && reinsert_step(env, log, before)
+        && disable_step(env, log))
+    {
         return None;
     }
     let visible = tools::tool_rows_visible(env);

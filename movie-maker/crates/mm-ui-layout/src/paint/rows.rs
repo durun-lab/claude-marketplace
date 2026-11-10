@@ -5,8 +5,12 @@ use super::{Canvas, Depth, PaintInput};
 use crate::geom::{Color, Rect};
 use crate::gesture::{EditKind, Side};
 use crate::palette::{self, Palette};
-use crate::timeline::{cut_span, Hit, Item, Part, HANDLE_PX};
+use crate::timeline::{cut_span, Hit, Item, ItemKind, Part, HANDLE_PX};
 
+/// 空の sequence のレイヤーの塗りの不透明度。再生位置の線の隣でも箱と分かるよう、カットを並べた帯の薄い塗り（0.25）より濃くする。
+pub(crate) const EMPTY_FILL_ALPHA: f32 = 0.6;
+/// 空の sequence のレイヤーの枠を、種類の色から明るくする量。
+pub(crate) const EMPTY_EDGE_LIGHTEN: f32 = 0.6;
 /// 無効なレイヤーの帯の不透明度。
 const DISABLED_BAR_ALPHA: f32 = 0.35;
 
@@ -22,7 +26,9 @@ pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
         c.push_in(Depth::Back, band, stripe(&s.state.palette, i), clip);
         let (start, end) = trimmed(item, i, s.state.preview);
         let bar = s.vp.bar(i, start, end);
-        if item.cuts.is_empty() {
+        if item.cuts.is_empty() && item.kind == ItemKind::Sequence {
+            empty_sequence_bar(s, c, item, bar);
+        } else if item.cuts.is_empty() {
             layer_bar(s, c, (i, item), bar);
         } else {
             c.push_in(Depth::Bar, bar, bar_color(item).with_alpha(0.25), clip);
@@ -33,6 +39,14 @@ pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
         }
     }
     outside(s, c);
+}
+
+/// カットの無い sequence のレイヤーの帯。中身が無いので、薄い塗りに種類の色の枠だけを引いた空の箱にする。
+fn empty_sequence_bar(s: &PaintInput, c: &mut Canvas, item: &Item, bar: Rect) {
+    let clip = s.vp.layout.row_area;
+    let color = bar_color(item);
+    c.push_in(Depth::Bar, bar, color.with_alpha(EMPTY_FILL_ALPHA), clip);
+    outline(c, bar, palette::lighten(color, EMPTY_EDGE_LIGHTEN), clip);
 }
 
 /// カットを持たないレイヤーの帯とつまみ。

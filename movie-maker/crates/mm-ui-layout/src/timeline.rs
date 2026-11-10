@@ -11,8 +11,9 @@ use crate::zoombar::{self, ZoomBarPart};
 
 /// 端のつまみの幅の上限。
 pub const HANDLE_PX: f32 = 7.0;
-/// 帯の最小の幅。短いレイヤーも掴めるようにする。
-const MIN_BAR_PX: f32 = 3.0;
+/// 帯の最小の幅。短いレイヤーも掴めるようにし、描く幅と当たり判定の幅を同じにする。再生位置の線（2 px）が帯の左端に重なっても
+/// 線の外に帯が残る幅で、両端のつまみ（幅の 1/3 ずつ）も取れる。
+pub(crate) const MIN_BAR_PX: f32 = 8.0;
 
 /// レイヤーの種類（色分けに使う）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

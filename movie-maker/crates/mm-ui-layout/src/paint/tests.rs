@@ -407,3 +407,34 @@ fn スクロールボックスは溝と見分けられ_乗ると選んだ外枠�
         .count();
     assert_eq!(lit, 1);
 }
+
+#[test]
+fn 長さ_1_フレームの帯は最小の幅で描き_再生位置の線の外に残す() {
+    let mut m = model();
+    m.items = vec![Item::layer(0.0, 1.0 / 30.0, ItemKind::Sequence, true)];
+    let f = TestViewport::new(&m, SIZE);
+    let bar = f.vp().bar(0, 0.0, 1.0 / 30.0);
+    assert_eq!(
+        bar.w,
+        crate::timeline::MIN_BAR_PX,
+        "描く幅は当たり判定と同じ"
+    );
+    let at = |x: f32| crate::timeline::hit_test(&m, &f.vp(), x, bar.y + 5.0);
+    assert!(matches!(at(bar.right() - 1.0), Hit::Layer { .. }));
+    assert!(!matches!(at(bar.right() + 1.0), Hit::Layer { .. }));
+    let playhead_half = 1.0;
+    assert!(bar.w >= playhead_half * 2.0 + 2.0, "線の右に 2 px 以上残る");
+}
+
+#[test]
+fn カットの無い_sequence_のレイヤーは薄い塗りに種類の色の枠を引いた空の箱で描く() {
+    let mut m = model();
+    m.items = vec![Item::layer(0.0, 1.0 / 30.0, ItemKind::Sequence, true)];
+    let color = palette::item_color(ItemKind::Sequence);
+    let q = quads(&m, &state(2.0));
+    let fill = color.with_alpha(rows::EMPTY_FILL_ALPHA);
+    let edge = palette::lighten(color, rows::EMPTY_EDGE_LIGHTEN);
+    assert!(q.iter().any(|q| q.color == fill), "薄い塗り");
+    assert!(q.iter().any(|q| q.color == edge), "明るい枠");
+    assert!(q.iter().all(|q| q.color != color), "べた塗りの帯は無い");
+}

@@ -21,8 +21,8 @@ pub const SCROLLBAR_W: f32 = 12.0;
 /// ツールバーの高さ。
 pub(crate) const TOOLBAR_H: f32 = 30.0;
 
-/// 見出しの列の幅（論理ピクセル）。
-pub const HEADER_W: f32 = 180.0;
+/// 見出しの列の幅（論理ピクセル）。Mute と Solo を省いた行に、Sequence 1 layer（16 文字）が切れずに入る幅。
+pub const HEADER_W: f32 = 200.0;
 
 /// ズームバーの高さ。スクロールボックスの両端を狙って掴めるよう、縦のスクロールバーの幅より少し太くする。
 const ZOOMBAR_H: f32 = 14.0;
