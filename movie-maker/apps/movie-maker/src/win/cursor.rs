@@ -1,6 +1,6 @@
 //! サーフェスのカーソル。仕切りの上では仕切りの形（`mm_ui_layout::splitter_cursor`）、ほかではポインターの下のもの
 //! （`Pointee`）と今の修飾キーから決め（`mm_ui_layout::cursor_for`）、ここで Windows のカーソルにする。左右と上下の矢印と禁止は
-//! 標準のカーソル（`IDC_SIZEWE`、`IDC_SIZENS`、`IDC_NO`）、roll、slip、slide、刃は `art.rs` で描いた絵から表示の倍率ごとに作る
+//! 標準のカーソル（`IDC_SIZEWE`、`IDC_SIZENS`、`IDC_NO`）、roll、slip、slide、刃は `art.rs` で描いた画像から表示の倍率ごとに作る
 //! （カーソルの大きさは `GetSystemMetricsForDpi` で、倍率 100% で 32、125% で 40、150% で 48）。
 
 mod art;
@@ -39,7 +39,7 @@ fn stock(id: PCWSTR) -> Option<HCURSOR> {
     unsafe { LoadCursorW(None, id) }.ok()
 }
 
-/// 絵から Windows のカーソルを作る。色は上から並べた BGRA の 32 ビット、マスクは使わない（全部 0）。
+/// 画像から Windows のカーソルを作る。色は上から並べた BGRA の 32 ビット、マスクは使わない（全部 0）。
 fn create(kind: CursorKind, size: u32) -> Option<HCURSOR> {
     let art = art::render(kind, size);
     let info = BITMAPINFO {
@@ -79,7 +79,7 @@ fn create(kind: CursorKind, size: u32) -> Option<HCURSOR> {
     }
 }
 
-/// 形 `kind` のカーソル。自前の絵は倍率ごとに 1 度だけ作る。
+/// 形 `kind` のカーソル。自前の画像は倍率ごとに 1 度だけ作る。
 fn handle(kind: CursorKind, dpi: u32) -> Option<HCURSOR> {
     match kind {
         CursorKind::Arrow => stock(IDC_ARROW),

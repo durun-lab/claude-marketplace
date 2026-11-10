@@ -1,4 +1,4 @@
-//! 自前のカーソル（roll、slip、slide、刃）の絵。0..1 の座標の多角形を、白の塗りと黒の縁で 4x4 のスーパーサンプリングで描く。
+//! 自前のカーソル（roll、slip、slide、刃）の画像。0..1 の座標の多角形を、白の塗りと黒の縁で 4x4 のスーパーサンプリングで描く。
 //! 表示の倍率ごとの大きさ（32、40、48 など）で作り直すので、どの倍率でもぼやけない。
 //! 手本は Premiere と Resolve のカーソル（roll は編集点の両側へ向く矢印、slip は枠の中身が動く矢印、slide は枠ごと動く矢印、
 //! 刃は縦の刃物）で、画像のファイルを持たずコードで描く。
@@ -6,14 +6,14 @@
 use mm_ui_layout::CursorKind;
 
 /// 1 画素の縦横のサンプル数。
-const SS: usize = 4;
+const SUPERSAMPLE: usize = 4;
 /// 縁の太さ（カーソルの大きさ 32 のときの画素数。大きさに比例して太くする）。
 const OUTLINE_PX: f32 = 1.0;
 
 /// 多角形（0..1 の座標）。
 type Poly = Vec<(f32, f32)>;
 
-/// 描いた絵。`bgra` は乗算済みアルファの 32 ビット、行は上から。
+/// 描いた画像。`bgra` は乗算済みアルファの 32 ビット、行は上から。
 #[derive(Debug, Clone, PartialEq)]
 pub struct Art {
     pub size: u32,
@@ -55,7 +55,7 @@ fn shapes(kind: CursorKind) -> Vec<Poly> {
             out.extend(arrow_left(0.08, 0.28, 0.44));
             out.extend(arrow_right(0.08, 0.28, 0.44));
         }
-        // 枠（カットの窓）の外へ向く矢印。窓は中身が動くので枠だけにする。
+        // カットの枠と、外へ向く矢印。slip はカットの中身が動くので、枠の中は塗らない。
         CursorKind::Slip => {
             out.push(rect(0.36, 0.30, 0.64, 0.34));
             out.push(rect(0.36, 0.66, 0.64, 0.70));
@@ -101,9 +101,9 @@ fn inside(poly: &Poly, (px, py): (f32, f32)) -> bool {
     hit
 }
 
-/// 一辺 `n * SS` のサンプルの、塗りの範囲。
+/// 一辺 `n * SUPERSAMPLE` のサンプルの、塗りの範囲。
 fn fill_mask(polys: &[Poly], n: usize) -> Vec<bool> {
-    let side = n * SS;
+    let side = n * SUPERSAMPLE;
     let mut mask = vec![false; side * side];
     for (i, m) in mask.iter_mut().enumerate() {
         let p = (
@@ -135,29 +135,29 @@ fn dilate(mask: &[bool], side: usize, r: f32) -> Vec<bool> {
         .collect()
 }
 
-/// 形 `kind` を一辺 `size` 画素で描く。矢印と禁止は標準のカーソルなので描かない（空の絵）。
+/// 形 `kind` を一辺 `size` 画素で描く。矢印と禁止は標準のカーソルなので描かない（空の画像）。
 pub fn render(kind: CursorKind, size: u32) -> Art {
     let n = size as usize;
     let polys = shapes(kind);
     let fill = fill_mask(&polys, n);
-    let side = n * SS;
-    let r = OUTLINE_PX * size as f32 / 32.0 * SS as f32;
+    let side = n * SUPERSAMPLE;
+    let r = OUTLINE_PX * size as f32 / 32.0 * SUPERSAMPLE as f32;
     let edge = dilate(&fill, side, r);
     let mut bgra = vec![0u8; n * n * 4];
-    let samples = (SS * SS) as f32;
+    let samples = (SUPERSAMPLE * SUPERSAMPLE) as f32;
     for py in 0..n {
         for px in 0..n {
             let (mut f, mut e) = (0u32, 0u32);
-            for sy in 0..SS {
-                for sx in 0..SS {
-                    let i = (py * SS + sy) * side + px * SS + sx;
+            for sy in 0..SUPERSAMPLE {
+                for sx in 0..SUPERSAMPLE {
+                    let i = (py * SUPERSAMPLE + sy) * side + px * SUPERSAMPLE + sx;
                     f += u32::from(fill[i]);
                     e += u32::from(edge[i]);
                 }
             }
             let (f, e) = (f as f32 / samples, e as f32 / samples);
             let o = (py * n + px) * 4;
-            // 乗算済みアルファ。白の塗りは明るさ f、縁の黒は 0 で、alpha は縁を含めた被り。
+            // 乗算済みアルファ。白の塗りは明るさ f、縁の黒は 0 で、alpha は縁を含めて形が覆う割合。
             let v = (f * 255.0).round() as u8;
             bgra[o..o + 4].copy_from_slice(&[v, v, v, (e * 255.0).round() as u8]);
         }
@@ -189,7 +189,7 @@ mod tests {
     }
 
     #[test]
-    fn 表示の倍率_100_125_150_の大きさで描き_形の外の角は透明で_ホットスポットは絵の中() {
+    fn 表示の倍率_100_125_150_の大きさで描き_形の外の角は透明で_ホットスポットは画像の中() {
         for size in [32, 40, 48] {
             for kind in KINDS {
                 let a = render(kind, size);

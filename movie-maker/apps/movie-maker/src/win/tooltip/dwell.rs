@@ -18,7 +18,7 @@ pub struct Delays {
 
 /// UI のスレッドがすること。
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Cmd {
+pub enum TooltipAction {
     /// ツールチップを出す（文と位置の差し替えを含む）。
     Show(TooltipContent),
     /// ツールチップを隠す。
@@ -37,53 +37,56 @@ pub struct Dwell {
     target: Option<TooltipContent>,
     visible: bool,
     /// 押下やホイール、autopop で消した。ポインターが別の部品へ移るまで出し直さない。
-    quiet: bool,
+    dismissed: bool,
 }
 
 impl Dwell {
     /// ポインターの下の部品のツールチップが `tip` になった（部品が無ければ `None`）。同じ部品なら何もしない。
-    pub fn target(&mut self, tip: Option<TooltipContent>, delays: Delays) -> Vec<Cmd> {
+    pub fn target(&mut self, tip: Option<TooltipContent>, delays: Delays) -> Vec<TooltipAction> {
         if tip == self.target {
             return Vec::new();
         }
         let was_visible = std::mem::take(&mut self.visible);
-        self.quiet = false;
+        self.dismissed = false;
         self.target = tip;
         let mut out = Vec::new();
         if was_visible {
-            out.push(Cmd::Hide);
+            out.push(TooltipAction::Hide);
         }
         match (&self.target, was_visible) {
-            (Some(_), true) => out.push(Cmd::ArmShow(delays.reshow)),
-            (Some(_), false) => out.push(Cmd::ArmShow(delays.initial)),
-            (None, _) => out.push(Cmd::Disarm),
+            (Some(_), true) => out.push(TooltipAction::ArmShow(delays.reshow)),
+            (Some(_), false) => out.push(TooltipAction::ArmShow(delays.initial)),
+            (None, _) => out.push(TooltipAction::Disarm),
         }
         out
     }
 
-    /// 出すまでのタイマーが鳴った。
-    pub fn show_timer(&mut self, delays: Delays) -> Vec<Cmd> {
-        match (&self.target, self.visible, self.quiet) {
+    /// 出すまでのタイマーの時間が来た。
+    pub fn show_timer(&mut self, delays: Delays) -> Vec<TooltipAction> {
+        match (&self.target, self.visible, self.dismissed) {
             (Some(tip), false, false) => {
                 self.visible = true;
-                vec![Cmd::Show(tip.clone()), Cmd::ArmPop(delays.autopop)]
+                vec![
+                    TooltipAction::Show(tip.clone()),
+                    TooltipAction::ArmPop(delays.autopop),
+                ]
             }
-            _ => vec![Cmd::Disarm],
+            _ => vec![TooltipAction::Disarm],
         }
     }
 
-    /// 消すまでのタイマーが鳴った（autopop）。同じ部品の上では出し直さない。
-    pub fn pop_timer(&mut self) -> Vec<Cmd> {
+    /// 消すまでのタイマーの時間が来た（autopop）。同じ部品の上では出し直さない。
+    pub fn pop_timer(&mut self) -> Vec<TooltipAction> {
         self.dismiss()
     }
 
     /// 押した、ホイールを回した、キーを押した。出ていれば隠し、同じ部品の上では出し直さない。
-    pub fn dismiss(&mut self) -> Vec<Cmd> {
-        self.quiet = true;
+    pub fn dismiss(&mut self) -> Vec<TooltipAction> {
+        self.dismissed = true;
         let was_visible = std::mem::take(&mut self.visible);
-        let mut out = vec![Cmd::Disarm];
+        let mut out = vec![TooltipAction::Disarm];
         if was_visible {
-            out.push(Cmd::Hide);
+            out.push(TooltipAction::Hide);
         }
         out
     }
@@ -106,18 +109,21 @@ mod tests {
     #[test]
     fn 部品の上で止まって_initial_待つと出し_autopop_で消す() {
         let mut d = Dwell::default();
-        assert_eq!(d.target(tip("a"), D), [Cmd::ArmShow(500)]);
+        assert_eq!(d.target(tip("a"), D), [TooltipAction::ArmShow(500)]);
         assert_eq!(
             d.show_timer(D),
-            [Cmd::Show(TooltipContent::Command("a")), Cmd::ArmPop(5000)]
+            [
+                TooltipAction::Show(TooltipContent::Command("a")),
+                TooltipAction::ArmPop(5000)
+            ]
         );
-        assert_eq!(d.pop_timer(), [Cmd::Disarm, Cmd::Hide]);
+        assert_eq!(d.pop_timer(), [TooltipAction::Disarm, TooltipAction::Hide]);
         assert_eq!(
             d.target(tip("a"), D),
-            Vec::<Cmd>::new(),
+            Vec::<TooltipAction>::new(),
             "同じ部品の上では出し直さない"
         );
-        assert_eq!(d.show_timer(D), [Cmd::Disarm]);
+        assert_eq!(d.show_timer(D), [TooltipAction::Disarm]);
     }
 
     #[test]
@@ -125,10 +131,16 @@ mod tests {
         let mut d = Dwell::default();
         d.target(tip("a"), D);
         d.show_timer(D);
-        assert_eq!(d.target(tip("b"), D), [Cmd::Hide, Cmd::ArmShow(100)]);
+        assert_eq!(
+            d.target(tip("b"), D),
+            [TooltipAction::Hide, TooltipAction::ArmShow(100)]
+        );
         assert_eq!(
             d.show_timer(D),
-            [Cmd::Show(TooltipContent::Command("b")), Cmd::ArmPop(5000)]
+            [
+                TooltipAction::Show(TooltipContent::Command("b")),
+                TooltipAction::ArmPop(5000)
+            ]
         );
     }
 
@@ -136,9 +148,13 @@ mod tests {
     fn 出る前に別の部品へ移れば_initial_から数え直し_部品の外へ出れば止める() {
         let mut d = Dwell::default();
         d.target(tip("a"), D);
-        assert_eq!(d.target(tip("b"), D), [Cmd::ArmShow(500)]);
-        assert_eq!(d.target(None, D), [Cmd::Disarm]);
-        assert_eq!(d.show_timer(D), [Cmd::Disarm], "対象が無ければ出さない");
+        assert_eq!(d.target(tip("b"), D), [TooltipAction::ArmShow(500)]);
+        assert_eq!(d.target(None, D), [TooltipAction::Disarm]);
+        assert_eq!(
+            d.show_timer(D),
+            [TooltipAction::Disarm],
+            "対象が無ければ出さない"
+        );
     }
 
     #[test]
@@ -146,9 +162,9 @@ mod tests {
         let mut d = Dwell::default();
         d.target(tip("a"), D);
         d.show_timer(D);
-        assert_eq!(d.dismiss(), [Cmd::Disarm, Cmd::Hide]);
-        assert_eq!(d.show_timer(D), [Cmd::Disarm]);
-        assert_eq!(d.target(tip("b"), D), [Cmd::ArmShow(500)]);
+        assert_eq!(d.dismiss(), [TooltipAction::Disarm, TooltipAction::Hide]);
+        assert_eq!(d.show_timer(D), [TooltipAction::Disarm]);
+        assert_eq!(d.target(tip("b"), D), [TooltipAction::ArmShow(500)]);
         assert_eq!(d.show_timer(D).len(), 2, "別の部品では出す");
     }
 }

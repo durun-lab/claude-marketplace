@@ -20,7 +20,7 @@ fn 位置はポインターの下で_右に掛かれば左へ寄せ_下に入ら
     assert_eq!(
         place((10, 2), (50, 20), (0, 0, 100, 30), 1.0).1,
         0,
-        "上へ逃がしても画面の外に出ない"
+        "上に出しても画面の外に出ない"
     );
 }
 
@@ -56,7 +56,7 @@ fn 最前面のツールチップを作り_出した文と位置を記録し_隠
             None,
         )
     }
-    .expect("試験の親");
+    .expect("テストの親");
     let surface = unsafe {
         CreateWindowExW(
             WINDOW_EX_STYLE::default(),
@@ -73,7 +73,7 @@ fn 最前面のツールチップを作り_出した文と位置を記録し_隠
             None,
         )
     }
-    .expect("試験の子");
+    .expect("テストの子");
     let hint = HintSlot::default();
     hint.set(mm_ui_wgpu::Hint {
         tooltip: Some(TooltipContent::Command("timeline.blade_tool")),

@@ -82,7 +82,7 @@ pub struct Pointee {
     pub blade_ready: bool,
 }
 
-/// カーソルの形。左右と上下の矢印と禁止は Windows の標準、roll、slip、slide、刃は自前の絵（`win/cursor.rs`）。
+/// カーソルの形。左右と上下の矢印と禁止は Windows の標準、roll、slip、slide、刃は自前の画像（`win/cursor.rs`）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CursorKind {
     Arrow,

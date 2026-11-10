@@ -183,7 +183,7 @@ pub struct Shared {
     pub workspace: crate::win::workspace::WorkspaceSlot,
     /// 描画スレッドが最後に描いた Timeline のツールバーの名前の幅。`--play-test` がボタンの位置を引く。
     pub toolbar_names: Mutex<ToolbarNames>,
-    /// ポインターの下の手がかり（カーソル、ツールチップ、右クリックのメニューが UI のスレッドから引く入口）と、確かめるための記録。
+    /// ポインターの下の手がかり（カーソル、ツールチップ、右クリックのメニューが UI のスレッドから `HintSlot::current` で引く）と、確かめるための記録。
     pub hint: crate::win::pointer_hint::HintSlot,
     /// Timeline の今のツール。描画スレッドが置く。コマンドの表のチェックの状態に出す。履歴にも `.mm/view.json` にも残さない。
     pub tool: Mutex<Tool>,

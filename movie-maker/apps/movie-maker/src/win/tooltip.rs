@@ -27,7 +27,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     SWP_NOMOVE, SWP_NOSIZE, WINDOW_STYLE, WS_EX_TOPMOST, WS_POPUP,
 };
 
-use self::dwell::{Cmd, Delays, Dwell};
+use self::dwell::{Delays, Dwell, TooltipAction};
 pub use self::text::{hint_text, text_of};
 use crate::win::pointer_hint::HintSlot;
 
@@ -36,7 +36,7 @@ const TIMER_SHOW: usize = 0x4D31;
 const TIMER_POP: usize = 0x4D32;
 /// ツールチップの最大の幅（論理ピクセル）。説明が長ければ折り返す。
 const MAX_WIDTH: i32 = 360;
-/// ポインターの下からツールチップの上端までの距離と、上へ逃がしたときのポインターとの間隔（論理ピクセル）。
+/// ポインターの下からツールチップの上端までの距離と、上に出したときのポインターとの間隔（論理ピクセル）。
 const GAP_BELOW: i32 = 22;
 const GAP_ABOVE: i32 = 6;
 /// 基準の DPI。
@@ -229,17 +229,17 @@ fn hide(window: HWND, owner: HWND) {
 }
 
 /// タイマーを掛ける・止める・ツールチップを出す・隠す。
-fn run(cmds: Vec<Cmd>, window: HWND, owner: HWND, hint: &HintSlot) {
-    for cmd in cmds {
-        match cmd {
-            Cmd::Show(tip) => {
+fn run(actions: Vec<TooltipAction>, window: HWND, owner: HWND, hint: &HintSlot) {
+    for action in actions {
+        match action {
+            TooltipAction::Show(tip) => {
                 let anchor = hint.current().at.unwrap_or_default();
                 show(window, owner, &tip, anchor, hint);
             }
-            Cmd::Hide => hide(window, owner),
-            Cmd::ArmShow(ms) => arm(owner, TIMER_SHOW, ms),
-            Cmd::ArmPop(ms) => arm(owner, TIMER_POP, ms),
-            Cmd::Disarm => unsafe {
+            TooltipAction::Hide => hide(window, owner),
+            TooltipAction::ArmShow(ms) => arm(owner, TIMER_SHOW, ms),
+            TooltipAction::ArmPop(ms) => arm(owner, TIMER_POP, ms),
+            TooltipAction::Disarm => unsafe {
                 // タイマーが無ければ失敗するだけなので、結果は破棄する。
                 let _ = KillTimer(Some(owner), TIMER_SHOW);
                 let _ = KillTimer(Some(owner), TIMER_POP);
@@ -267,42 +267,42 @@ fn with_window<R>(owner: HWND, f: impl FnOnce(&mut Dwell, HWND) -> R) -> Option<
 /// ポインターの下の部品の、ツールチップの中身が変わった（`WM_MM_HINT`）。
 pub fn target(owner: HWND, hint: &HintSlot) {
     let tip = hint.current().tooltip;
-    let cmds = with_window(owner, |dwell, window| {
+    let actions = with_window(owner, |dwell, window| {
         (dwell.target(tip, delays(window)), window)
     });
-    if let Some((cmds, window)) = cmds {
-        run(cmds, window, owner, hint);
+    if let Some((actions, window)) = actions {
+        run(actions, window, owner, hint);
     }
 }
 
-/// タイマーが鳴った。`id` が出すタイマーか消すタイマーかで進める。
+/// タイマーの時間が来た。`id` が出すタイマーか消すタイマーかで進める。
 pub fn timer(owner: HWND, id: usize, hint: &HintSlot) -> bool {
     if id != TIMER_SHOW && id != TIMER_POP {
         return false;
     }
-    let cmds = with_window(owner, |dwell, window| {
-        let cmds = if id == TIMER_SHOW {
+    let actions = with_window(owner, |dwell, window| {
+        let actions = if id == TIMER_SHOW {
             dwell.show_timer(delays(window))
         } else {
             dwell.pop_timer()
         };
-        (cmds, window)
+        (actions, window)
     });
-    if let Some((cmds, window)) = cmds {
-        run(cmds, window, owner, hint);
+    if let Some((actions, window)) = actions {
+        run(actions, window, owner, hint);
     }
     true
 }
 
 /// 押した、ホイールを回した、キーを押した、ポインターが出た。出ていれば隠す。
 pub fn dismiss(owner: HWND, hint: &HintSlot) {
-    let cmds = STATE.with(|s| {
+    let actions = STATE.with(|s| {
         let mut s = s.borrow_mut();
         let window = s.window?;
         Some((s.dwell.dismiss(), window))
     });
-    if let Some((cmds, window)) = cmds {
-        run(cmds, window, owner, hint);
+    if let Some((actions, window)) = actions {
+        run(actions, window, owner, hint);
     }
 }
 

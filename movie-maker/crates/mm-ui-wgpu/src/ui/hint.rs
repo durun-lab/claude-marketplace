@@ -1,6 +1,6 @@
 //! `Ui` の、ポインターの下にあるものと、そこから決まる手がかり（ステータスバー、ツールチップ、カーソル）。
 //! UI のスレッド（`WM_SETCURSOR`、ツールチップ、右クリックのメニュー）は、描画のスレッドが [`Ui::hint`] で作った [`Hint`] を
-//! 1 つの入口から引く。
+//! 1 つの関数（アプリの `HintSlot::current`）で引く。
 
 use mm_ui_layout::{
     status_left, status_right, tooltip_of, HintText, Pointee, PointerEvent, TooltipContent, Under,
@@ -38,7 +38,7 @@ impl Ui {
         self.hint.text = text;
     }
 
-    /// ポインターの位置を覚える（`pointer` が全部の入力で呼ぶ）。
+    /// 最後のポインターの位置を置き直す（`pointer` が全部の入力で呼ぶ）。
     pub(super) fn note_pointer(&mut self, ev: &PointerEvent) {
         match ev {
             PointerEvent::Move { x, y } | PointerEvent::Down { x, y, .. } => {

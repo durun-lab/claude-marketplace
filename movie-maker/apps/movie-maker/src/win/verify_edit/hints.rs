@@ -1,6 +1,7 @@
 //! `--play-test` の手がかりの通し。カットの端にポインターを乗せたとき、ステータスバーに「Drag: Ripple Trim」が出る画面を撮る。
-//! カーソルとツールチップは PrintWindow に写らないので、カーソルは決める関数（`cursor_for`）の結果、ツールチップは出した文と
-//! 位置の記録と窓が見えているかで確かめる。Blade と Trim のカーソルとステータスバー、ドラッグ中の文、右の文の追従、
+//! カーソルとツールチップは PrintWindow のスクリーンショットに出ないので、カーソルは決める関数（`cursor_for`）の結果、
+//! ツールチップは出した文と位置の記録と、ツールチップのウィンドウが見えているかで確かめる。Blade と Trim のカーソルと
+//! ステータスバー、ドラッグ中の文、右の文の追従、
 //! Alt を押して離してもメニューのモードに入らないことも確かめる。
 
 use mm_ui_layout::{cursor_for, CursorKind, Mods, Tool};
@@ -21,7 +22,8 @@ use crate::win::tooltip::Shown;
 const POS_TOLERANCE: i32 = 2;
 /// キーの表に無いキー（F24）。押してもコマンドにならず、ツールチップを隠すだけ。
 const VK_F24: u32 = 0x87;
-/// Alt だけを押したときと離したときの lParam（スキャンコード 0x38。押下は Alt を押している印、離すときは前の状態と離した印）。
+/// Alt だけを押したときと離したときの lParam（スキャンコード 0x38。押下は Alt を押しているビット、離すときは直前の状態と
+/// 離したことのビットを立てる）。
 const ALT_DOWN: LPARAM = LPARAM(0x2038_0001);
 const ALT_UP: LPARAM = LPARAM(0xC038_0001);
 const ALT: Mods = Mods {
@@ -164,14 +166,14 @@ fn tooltip_dismiss_step(env: &Env<'_>, log: &mut Log) {
     );
 }
 
-/// サーフェスと同じスレッドのツールチップの窓が見えているか。
+/// サーフェスと同じスレッドのツールチップのウィンドウが見えているか。
 fn tooltip_visible(hwnd: isize) -> bool {
     unsafe extern "system" fn visit(window: HWND, found: LPARAM) -> BOOL {
         let mut class = [0u16; 32];
         let n = unsafe { GetClassNameW(window, &mut class) } as usize;
         let tooltip = String::from_utf16_lossy(&class[..n]) == "tooltips_class32";
         if tooltip && unsafe { IsWindowVisible(window) }.as_bool() {
-            // 見つけた印を立てて列挙を止める。
+            // 見つけたらフラグを立てて列挙を止める。
             unsafe { *(found.0 as *mut bool) = true };
             return false.into();
         }
