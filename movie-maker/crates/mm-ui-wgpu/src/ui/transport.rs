@@ -39,6 +39,7 @@ impl Ui {
         for q in &mut quads {
             q.rect = self.scale.rect_to_physical(q.rect);
         }
+        quads.extend(self.splitter_quads());
         quads
     }
 }

@@ -2,7 +2,7 @@
 
 use mm_ui_layout::TimelineCommand;
 
-use super::{Action, Owner, ShyCommand, Spec, WindowAction};
+use super::{Action, LayoutCommand, Owner, ShyCommand, Spec, WindowAction};
 use crate::win::edit_actions::EditAction;
 use crate::win::playback::Command;
 
@@ -274,6 +274,12 @@ pub static TABLE: &[Spec] = &[
         description: Some("Zoom out around the playhead"),
         owner: Owner::App(Action::Timeline(TimelineCommand::ZoomOut)),
     },
+    Spec {
+        id: "view.reset_ui_layout",
+        name: "Reset UI Layout",
+        description: Some("Put the splitters and both panel columns back to the default layout"),
+        owner: Owner::App(Action::Layout(LayoutCommand::ResetUiLayout)),
+    },
     show_panel!("deliver", "Deliver", None),
     show_panel!("devices", "Devices", None),
     show_panel!(
@@ -289,4 +295,16 @@ pub static TABLE: &[Spec] = &[
     show_panel!("story", "Story", None),
     show_panel!("tasks", "Tasks", None),
     show_panel!("transition", "Transitions", None),
+    Spec {
+        id: "view.toggle_left_column",
+        name: "Left Panels",
+        description: Some("Show or hide the column with Tasks, Media, Story, and the other panels"),
+        owner: Owner::App(Action::Layout(LayoutCommand::ToggleLeftColumn)),
+    },
+    Spec {
+        id: "view.toggle_right_column",
+        name: "Right Panels",
+        description: Some("Show or hide the column with Inspector, Review, and the other panels"),
+        owner: Owner::App(Action::Layout(LayoutCommand::ToggleRightColumn)),
+    },
 ];

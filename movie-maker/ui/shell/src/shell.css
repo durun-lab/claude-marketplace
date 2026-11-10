@@ -9,14 +9,25 @@ body {
 }
 
 /*
- * アプリは WebView の幅を 2 列の幅の和にするので、右の列は残りを全部取り、物理ピクセルへの丸めの差も埋める。
- * ステータスの行は 2 つの列の下にまたがり、文言のある間だけ高さを持つ。
+ * 右の列の幅はアプリが `--mm-right-w` で渡し（仕切りで WebView の幅が変わると左の列が伸び縮みし、右の列は左の列が下限を
+ * 割るときだけ縮む）、左の列は残りを全部取って物理ピクセルへの丸めの差も埋める。列の開け閉めはアプリが `data-mm-left` と
+ * `data-mm-right` で渡し、閉じた列は出さない。ステータスの行は 2 つの列の下にまたがり、文言のある間だけ高さを持つ。
  */
 #root {
   display: grid;
-  grid-template-columns: var(--mm-size-left-column) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) var(--mm-right-w, var(--mm-size-right-column));
   grid-template-rows: minmax(0, 1fr) auto;
   height: 100%;
+}
+
+html[data-mm-left="closed"] #root,
+html[data-mm-right="closed"] #root {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+html[data-mm-left="closed"] .mm-shell-left,
+html[data-mm-right="closed"] .mm-shell-right {
+  display: none;
 }
 
 .mm-shell-left,
