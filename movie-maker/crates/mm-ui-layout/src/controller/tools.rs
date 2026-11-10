@@ -1,14 +1,15 @@
 //! ツールごとの押下とホバー。Selection はレイヤーの帯を動かし、Trim はカットの中をずらし、Blade はカットを割る。
 //! 割る時刻はポインターの時刻を再生位置（Snapping が入のとき）とフレームに合わせたもので、ホバー中の縦線も同じ時刻を指す。
 
+use super::snapping::LANDED_EPS;
 use super::{Action, Drag, Mods, TimelineController};
 use crate::gesture::{layer_move, EditKind};
 use crate::snap::{quantize, snap, targets, Moving, SnapKind, SnapTarget, SNAP_PX};
 use crate::timeline::{Hit, Part, TimelineModel};
 use crate::tool::{BladeLine, Tool};
 
-/// 吸い付いた帯の端が目標に届いたとみなす差（秒）。
-const LANDED_EPS: f64 = 1e-9;
+/// 割る時刻がカットの端に重なったとみなす差（秒）。フレームに丸めた時刻と、有理数の時刻から求めた端の誤差を吸収する。
+const EDGE_EPS: f64 = 1e-6;
 
 impl TimelineController {
     /// ツールを選ぶ。ドラッグの途中は変えない（つかんだ編集を途中で別の種類にしない）。
@@ -24,42 +25,53 @@ impl TimelineController {
         self.blade
     }
 
-    /// ポインターの下のカットに合わせて割る時刻の縦線を置き直す。Blade でなければ、隙間の上とカットの外では出さない。
+    /// ポインターの下のカットに割る時刻の縦線を置き直す。Blade でないとき、ドラッグ中、割れない所（カットの外、隙間、
+    /// 割る時刻がカットの端に丸まる所）では出さない。
     pub(super) fn update_blade(&mut self, model: &TimelineModel, playhead: f64) {
-        self.blade = None;
-        if self.tool != Tool::Blade || self.drag != Drag::None {
-            return;
-        }
-        let Hit::Cut { item, cut, .. } = self.hover else {
-            return;
+        self.blade = match self.hover {
+            Hit::Cut { item, cut, .. } if self.tool == Tool::Blade && self.drag == Drag::None => {
+                self.blade_at((item, cut), self.pointer.0, model, playhead)
+            }
+            _ => None,
         };
-        let splittable = model
-            .items
-            .get(item)
-            .and_then(|it| it.cuts.get(cut))
-            .is_some_and(|bar| !bar.gap);
-        if splittable {
-            let time = self.blade_time(self.pointer.0, model, playhead);
-            self.blade = Some(BladeLine { item, time });
-        }
     }
 
-    /// x の下の時刻を、Snapping が入なら再生位置に吸い付け、いちばん近いフレームの先頭にそろえた割る時刻。
-    fn blade_time(&self, x: f32, model: &TimelineModel, playhead: f64) -> f64 {
+    /// カット `(item, cut)` を x で割るときの線。隙間と、割る時刻がカットの端に丸まる所では `None`（割るものが無い）。
+    fn blade_at(
+        &self,
+        (item, cut): (usize, usize),
+        x: f32,
+        model: &TimelineModel,
+        playhead: f64,
+    ) -> Option<BladeLine> {
+        let bar = model.items.get(item)?.cuts.get(cut)?;
+        let (time, snapped) = self.blade_time(x, model, playhead);
+        let inside = time - bar.start > EDGE_EPS && bar.end - time > EDGE_EPS;
+        (!bar.gap && inside).then_some(BladeLine {
+            item,
+            time,
+            snapped,
+        })
+    }
+
+    /// x の下の時刻を、Snapping が入なら再生位置に吸い付け、いちばん近いフレームの先頭にそろえた割る時刻と、
+    /// 再生位置に吸い付いたか。
+    fn blade_time(&self, x: f32, model: &TimelineModel, playhead: f64) -> (f64, bool) {
         let t = self.viewport().t_of(x);
         let near = std::iter::once(SnapTarget {
             time: playhead,
             kind: SnapKind::Playhead,
         });
-        let time = if self.snapping {
-            snap(t, near, self.view.px_per_sec, SNAP_PX).time
-        } else {
-            t
-        };
-        quantize(time, model.fps)
+        let snapped = self
+            .snapping
+            .then(|| snap(t, near, self.view.px_per_sec, SNAP_PX).target)
+            .flatten();
+        let time = snapped.map_or(t, |target| target.time);
+        (quantize(time, model.fps), snapped.is_some())
     }
 
-    /// Blade での押下。カットの上なら割る操作を返し、レイヤーの上では何もしない。それ以外の所は通常の押下に任せる（`None`）。
+    /// Blade での押下。割れるカットの上なら割る操作を返し、ほかのカットとレイヤーの上では何もしない。
+    /// それ以外の所は通常の押下に任せる（`None`）。
     pub(super) fn press_blade(
         &self,
         hit: Hit,
@@ -69,13 +81,12 @@ impl TimelineController {
     ) -> Option<Vec<Action>> {
         match hit {
             Hit::Cut { item, cut, .. } => {
-                let gap = model.items.get(item)?.cuts.get(cut)?.gap;
-                let time = self.blade_time(x, model, playhead);
-                Some(if gap {
-                    Vec::new()
-                } else {
-                    vec![Action::Split { item, time }]
-                })
+                let line = self.blade_at((item, cut), x, model, playhead);
+                Some(
+                    line.map(|l| Action::Split { item, time: l.time })
+                        .into_iter()
+                        .collect(),
+                )
             }
             Hit::Layer { .. } => Some(Vec::new()),
             _ => None,

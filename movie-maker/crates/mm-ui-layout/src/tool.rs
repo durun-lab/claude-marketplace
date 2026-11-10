@@ -32,4 +32,6 @@ pub struct BladeLine {
     pub item: usize,
     /// 割る時刻（秒。スナップとフレームへの丸めの後）。
     pub time: f64,
+    /// 再生位置に吸い付いた。線をガイド線の色にする（FCP の skimmer も吸い付いたときだけ黄色になる）。
+    pub snapped: bool,
 }

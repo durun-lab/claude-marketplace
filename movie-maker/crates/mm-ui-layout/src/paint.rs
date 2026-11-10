@@ -106,12 +106,14 @@ pub(crate) enum Depth {
     BarMark,
     /// 行に重ねる暗がり（コンポジションの終わりより右）。
     Shade,
-    /// 行の領域を囲む部品（目盛りの帯、スクロールバー）と、それを貫く時刻の線。いちばん上。
+    /// 行の領域を囲む部品（目盛りの帯、スクロールバー）と、それを貫く時刻の線。
     Surround,
+    /// ポインターの下に出す手がかり（Blade の割る時刻の線）。再生位置の線と同じ x に立っても隠れないよう、いちばん上。
+    Pointer,
 }
 
 /// 重ね順の数。
-const DEPTHS: usize = Depth::Surround as usize + 1;
+const DEPTHS: usize = Depth::Pointer as usize + 1;
 
 /// 重ね順ごとに矩形を貯め、最後に下から並べる。
 #[derive(Debug, Default)]

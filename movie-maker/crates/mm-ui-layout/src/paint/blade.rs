@@ -1,5 +1,6 @@
 //! Blade のときの、割る時刻の縦線。ポインターの下のカットの帯の高さに、カーソルの形（Z5）が無くても割る位置が分かる線を引く
-//! （Final Cut Pro の Blade の skimmer の線と同じ考え）。
+//! （Final Cut Pro の Blade の skimmer の線と同じ考え）。色は FCP の skimmer と同じく、再生位置の線と見分けられる色
+//! （テーマの `text`）にし、再生位置に吸い付いたときだけスナップのガイド線の色にする。
 
 use super::{Canvas, Depth, PaintInput};
 use crate::geom::Rect;
@@ -9,6 +10,7 @@ const LINE_W: f32 = 2.0;
 /// 帯の上下に出す長さ。帯の外枠より少し長くし、帯の色に紛れさせない。
 const OVERSHOOT: f32 = 3.0;
 
+/// 吸い付いた線は再生位置の線と同じ x に立つので、再生位置の線より上（`Depth::Pointer`）に描く。
 pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
     let Some(line) = s.blade else {
         return;
@@ -22,10 +24,11 @@ pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
     let bar = s.vp.bar(line.item, it.start, it.end);
     let x = s.vp.x_of(line.time) - LINE_W / 2.0;
     let rect = Rect::new(x, bar.y - OVERSHOOT, LINE_W, bar.h + 2.0 * OVERSHOOT);
-    c.push_in(
-        Depth::Surround,
-        rect,
-        s.state.palette.guide,
-        s.vp.layout.row_area,
-    );
+    let palette = &s.state.palette;
+    let color = if line.snapped {
+        palette.guide
+    } else {
+        palette.selection
+    };
+    c.push_in(Depth::Pointer, rect, color, s.vp.layout.row_area);
 }

@@ -148,6 +148,34 @@ fn 始まりが_0_より前のレイヤーは今の位置より前へ動かさ�
 }
 
 #[test]
+fn 始まりがちょうど_0_のレイヤーは前へ動かさない() {
+    let mut m = model();
+    m.items[1] = Item::layer(0.0, 3.0, ItemKind::Footage, true);
+    let mut c = ctl(&m);
+    press_row(&mut c, &m, 100.0, 1);
+    let (_, by, _) = edit_of(&move_row(&mut c, &m, 50.0, 1));
+    assert_eq!(by, 0.0);
+    let (_, by, _) = edit_of(&move_row(&mut c, &m, 150.0, 1));
+    assert!((by - 0.5).abs() < 1e-9, "後ろへは動かせる: {by}");
+}
+
+#[test]
+fn 吸い付く先が始まりを_0_より前に出すときは_0_で止め_吸い付いた表示は出さない() {
+    // 1-3 秒のレイヤーの終わりを、文字のレイヤーの終わり（1.5 秒）へ寄せると始まりが -0.5 秒になる。
+    let mut m = model();
+    m.items[0].cuts.clear();
+    m.items[1] = Item::layer(1.0, 3.0, ItemKind::Footage, true);
+    m.items[2] = Item::layer(0.0, 1.5, ItemKind::Text, true);
+    let mut c = ctl(&m);
+    press_row(&mut c, &m, 200.0, 1);
+    let (_, by, _) = edit_of(&move_row(&mut c, &m, 52.0, 1));
+    assert!((by + 1.0).abs() < 1e-9, "始まりの 1 秒まで: {by}");
+    assert_eq!(snap_kind(&c), None);
+    let shown = c.paint_state(PLAYHEAD).drag_tooltip.map(|d| d.by);
+    assert_eq!(shown, Some(by), "ツールチップは止めた後の量");
+}
+
+#[test]
 fn レイヤーを動かすと始まりが再生位置に吸い付き_ガイドを出す() {
     let m = model();
     let mut c = ctl(&m);
@@ -332,6 +360,35 @@ fn blade_のホバーはカットの上に割る時刻の線を出す() {
     move_row(&mut c, &m, 100.0, 0);
     run(&mut c, &m, PointerEvent::Leave);
     assert_eq!(c.blade_line(), None);
+}
+
+#[test]
+fn blade_の割る時刻がカットの端に丸まる所では線を出さず_押しても割らない() {
+    let m = model();
+    let mut c = ctl(&m);
+    command(&mut c, &m, TimelineCommand::BladeTool);
+    // 4.01 秒は後ろのカット（4-7 秒）の始まり、6.99 秒は終わりに丸まる。
+    for x in [401.0, 699.0] {
+        move_row(&mut c, &m, x, 0);
+        assert_eq!(c.blade_line(), None, "{x}");
+        assert!(press_row(&mut c, &m, x, 0).is_empty(), "{x}");
+        run(&mut c, &m, PointerEvent::Up);
+    }
+    move_row(&mut c, &m, 402.0, 0);
+    assert!(c.blade_line().is_some(), "1 フレーム内側なら割れる");
+}
+
+#[test]
+fn blade_の線は再生位置に吸い付いたときだけ吸い付いたフラグを持つ() {
+    let m = model();
+    let mut c = ctl(&m);
+    command(&mut c, &m, TimelineCommand::BladeTool);
+    let y = in_bar(&c, 0);
+    c.handle(move_to(203.0, y), &m, 2.0);
+    let line = c.blade_line().unwrap();
+    assert!(line.snapped && line.time == 2.0, "{line:?}");
+    c.handle(move_to(150.0, y), &m, 2.0);
+    assert!(!c.blade_line().unwrap().snapped);
 }
 
 #[test]

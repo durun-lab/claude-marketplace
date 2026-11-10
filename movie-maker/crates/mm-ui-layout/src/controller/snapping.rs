@@ -10,7 +10,7 @@ use crate::snap::{quantize, snap, targets, Moving, SNAP_PX};
 use crate::timeline::{Part, TimelineModel};
 
 /// 端が目標に届いたとみなす差（秒）。量はスナップした時刻と端の差なので、止まらなければ浮動小数の誤差しか残らない。
-const LANDED_EPS: f64 = 1e-9;
+pub(super) const LANDED_EPS: f64 = 1e-9;
 
 impl TimelineController {
     /// 今のドラッグで吸い付くか。入/切を、押している間の反転と合わせる。
