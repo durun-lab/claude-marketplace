@@ -388,4 +388,25 @@ mod tests {
             marks()
         );
     }
+
+    #[test]
+    fn コンポジションが止めた再生位置より短くなると_再生位置は最後のフレームの始まりへ寄る() {
+        let (shared, _playback) = start();
+        shared.send(Command::Seek(15.0));
+        assert!(wait_playhead(&shared, 15.0));
+        // 20 秒の l-seq を sequence の 7 秒に合わせると、20 秒のコンポジションも 7 秒に縮む。
+        let fit: Op = mm_ops::FitLayer {
+            layer: Id::new("l-seq"),
+            out_point: None,
+            duration: None,
+        }
+        .into();
+        edit::submit(&shared, vec![fit]).expect("適用できる");
+        let last = 7.0 - 1.0 / 30.0;
+        assert!(
+            wait_playhead(&shared, last),
+            "再生位置 {} が {last} に寄る",
+            shared.playhead()
+        );
+    }
 }
