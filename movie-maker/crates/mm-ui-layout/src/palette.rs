@@ -50,7 +50,8 @@ pub struct Palette {
     pub selection: Color,
     /// Program に重ねるコメントの描き込みの色。
     pub drawing: Color,
-    /// ポインターが指している操作の対象の色（テーマの `accent`）。Inspector で選んだキーフレームと同じ色。
+    /// テーマの `accent`。ポインターが指している操作の対象（Inspector で選んだキーフレームと同じ色）、
+    /// 再生の操作のバーのジョグバーの塗りと入のボタン。
     pub accent: Color,
 }
 

@@ -56,6 +56,7 @@ fn 項目は並びの順にコマンドの表の名前とキーの見た目で�
             "-",
             "Mark In\tI",
             "Mark Out\tO",
+            "Clear In and Out\tAlt+X",
             "-",
             "Insert\t,",
             "Overwrite\t.",

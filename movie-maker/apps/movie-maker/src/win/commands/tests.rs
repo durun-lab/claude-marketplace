@@ -239,3 +239,21 @@ fn 押せないコマンドは_run_が拒否し_キーからは編集が拒否�
         "編集のキューが拒否した理由を文言に置く"
     );
 }
+
+#[test]
+fn 再生の操作のバーは_source_が無ければ範囲のボタンを押せないとして受け取る() {
+    let shared = Shared::new();
+    let disabled = disabled_ids(&shared);
+    for id in [
+        "source.mark_in",
+        "source.mark_out",
+        "source.clear_in_out",
+        "clip.insert",
+        "clip.overwrite",
+    ] {
+        assert!(disabled.contains(&id), "{id}");
+    }
+    for id in ["playback.toggle", "playback.stop", "playback.go_to_start"] {
+        assert!(!disabled.contains(&id), "{id}");
+    }
+}
