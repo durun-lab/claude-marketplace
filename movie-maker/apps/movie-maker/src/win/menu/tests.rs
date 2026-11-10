@@ -93,7 +93,10 @@ fn 項目は並びの順にコマンドの表の名前とキーの見た目で�
             "Zoom Out\t-",
             "Full Extent Zoom\tShift+Z",
             "-",
-            "Snapping\tN"
+            "Snapping\tN",
+            "-",
+            "Shy Selected Layers",
+            "Hide Shy Layers"
         ]
     );
 }

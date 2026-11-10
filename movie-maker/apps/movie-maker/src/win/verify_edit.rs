@@ -20,6 +20,8 @@ use crate::win::surface;
 use crate::win::verify_place::{placement, Placement};
 use crate::win::verify_stage::{checkpoint, wait_until};
 
+mod header;
+
 /// 仮想キーコード。
 const VK_I: u32 = 0x49;
 const VK_O: u32 = 0x4F;
@@ -459,23 +461,34 @@ fn snap_step(env: &Env<'_>, log: &mut Log) {
     }
 }
 
-/// Timeline 編集の通しを行って結果を返す。シーケンスのレイヤーが無いプロジェクトではスキップする。
+/// Timeline 編集の通しを行って結果を返す。シーケンスのレイヤーが無いプロジェクトでは、シーケンスを編集する手順を
+/// スキップし、レイヤーだけで確かめられる見出しの手順を行う。
 pub fn run(env: &Env<'_>) -> Value {
     let mut log = Log::default();
     let has_sequence = env
         .shared
         .doc()
         .is_some_and(|d| sequence_of(&d.project).is_some());
-    if !has_sequence {
-        return json!({ "skipped": "シーケンスのレイヤーが無い" });
+    if has_sequence {
+        sequence_steps(env, &mut log);
     }
-    if let Some(asset) = mark_source(env, &mut log) {
-        if let Some(id) = insert_step(env, &mut log, &asset) {
-            drag_steps(env, &mut log, &id);
-            cut_steps(env, &mut log, &id);
+    header::run(env, &mut log);
+    let mut out = log.into_json();
+    if !has_sequence {
+        out["skipped"] =
+            json!("シーケンスのレイヤーが無いので、シーケンスを編集する手順をスキップした");
+    }
+    out
+}
+
+/// シーケンスを編集する手順（Insert、カットのドラッグと分割、端のつまみ、スナップ）。
+fn sequence_steps(env: &Env<'_>, log: &mut Log) {
+    if let Some(asset) = mark_source(env, log) {
+        if let Some(id) = insert_step(env, log, &asset) {
+            drag_steps(env, log, &id);
+            cut_steps(env, log, &id);
         }
     }
-    trim_step(env, &mut log);
-    snap_step(env, &mut log);
-    log.into_json()
+    trim_step(env, log);
+    snap_step(env, log);
 }

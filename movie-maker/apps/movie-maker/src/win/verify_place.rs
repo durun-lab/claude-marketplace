@@ -3,8 +3,8 @@
 //! ズーム、スクロール、行の高さは、描画スレッドが置いた表示の状態（`ViewSlot::current`）を読む。
 
 use mm_ui_layout::{
-    split_viewers, zoombar, Rect, Rows, Scale, SurfaceLayout, TimelineLayout, TimelineModel,
-    ViewState, Viewport,
+    button_center, name_center, split_viewers, zoombar, HeaderButton, Item, Rect, Rows, Scale,
+    SurfaceLayout, TimelineLayout, TimelineModel, ViewState, Viewport,
 };
 
 use crate::win::state::Shared;
@@ -79,6 +79,22 @@ impl Placement {
         let area = self.timeline.row_area;
         let (left, right) = (bar.x.max(area.x), bar.right().min(area.right()));
         (right - left >= min_w).then(|| self.client(((left + right) / 2.0, bar.y + bar.h / 2.0)))
+    }
+
+    /// 行 `row` の見出しのボタンの中心（クライアントの物理ピクセル）。音を持てないレイヤーの Mute と Solo は `None`。
+    pub(crate) fn header_button(
+        &self,
+        item: &Item,
+        row: usize,
+        button: HeaderButton,
+    ) -> Option<(i32, i32)> {
+        button_center(&self.viewport(), item, row, button).map(|p| self.client(p))
+    }
+
+    /// 行 `row` の見出しの名前の中央から縦に `dy` ずらした点（クライアントの物理ピクセル）。見出しをつかむ位置。
+    pub(crate) fn header_name(&self, item: &Item, row: usize, dy: f32) -> (i32, i32) {
+        let (x, y) = name_center(&self.viewport(), item, row);
+        self.client((x, y + dy))
     }
 
     /// 目盛りの帯の縦の中央の、時刻 `t` の点（クライアントの物理ピクセル）。

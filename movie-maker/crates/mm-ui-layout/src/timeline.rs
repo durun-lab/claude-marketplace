@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use crate::header;
 use crate::keymarks;
 use crate::time_view::TimeView;
 use crate::timeline_layout::Viewport;
@@ -90,6 +91,8 @@ pub struct Item {
     pub enabled: bool,
     /// ロック（`lockLayer`）。Claude の操作経路から守る。
     pub locked: bool,
+    /// Shy のフラグ（View > Shy Selected Layers）。表示の状態なのでプロジェクトのデータからは作らず、アプリが立てる。
+    pub shy: bool,
     /// 音を持てるレイヤーの Mute と Solo。音を持てないレイヤーは `None`。
     pub audio: Option<AudioState>,
     /// 帯に出す名前。空なら出さない。シーケンスのレイヤーはカットの名前を出す。
@@ -114,6 +117,7 @@ impl Item {
             kind,
             enabled,
             locked: false,
+            shy: false,
             audio: None,
             label: Arc::default(),
             keyframes: Arc::default(),
@@ -167,6 +171,21 @@ pub struct TimelineModel {
     pub items: Vec<Item>,
     /// コンポジションのマーカーの時刻（秒）。スナップの目標にする。
     pub markers: Vec<f64>,
+    /// Shy で Timeline から外した行の数。見出しの列の上の角に出す。
+    pub hidden: usize,
+}
+
+/// レイヤーの見出しの、押せるボタン。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeaderButton {
+    /// 有効（`setLayerEnabled`）。
+    Enabled,
+    /// ロック（`lockLayer`）。
+    Lock,
+    /// Mute（`setLayerAudio`）。
+    Mute,
+    /// Solo（`setLayerAudio`）。
+    Solo,
 }
 
 impl TimelineModel {
@@ -202,6 +221,11 @@ pub enum Hit {
     /// レイヤーの見出し。`index` は行の添字。
     Header {
         index: usize,
+    },
+    /// レイヤーの見出しのボタン。`index` は行の添字。
+    HeaderButton {
+        index: usize,
+        button: HeaderButton,
     },
     Ruler,
     Layer {
@@ -308,8 +332,10 @@ fn region_hit(model: &TimelineModel, vp: &Viewport, x: f32, y: f32) -> Option<Hi
     }
     if l.headers.contains(x, y) {
         let row = vp.rows.at(y - l.headers.y + vp.scroll_y);
-        let index = row.filter(|i| *i < model.items.len());
-        return Some(index.map_or(Hit::Empty, |index| Hit::Header { index }));
+        let item = row.and_then(|index| Some((index, model.items.get(index)?)));
+        return Some(item.map_or(Hit::Empty, |(index, item)| {
+            header::hit(vp, (index, item), (x, y))
+        }));
     }
     if l.scrollbar.contains(x, y) {
         let thumb = vp.thumb().contains(x, y);

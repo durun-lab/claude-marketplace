@@ -103,6 +103,7 @@ pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
             kind: kind_of(layer),
             enabled: layer.enabled,
             locked: layer.lock,
+            shy: false,
             audio: audio_state(layer),
             label: names.label(&layer.source),
             keyframes: keyframe_secs(layer),
@@ -116,6 +117,7 @@ pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
         fps: comp.fps.to_f64(),
         items,
         markers: comp.markers.iter().map(|m| m.time.to_f64()).collect(),
+        ..TimelineModel::default()
     }
 }
 

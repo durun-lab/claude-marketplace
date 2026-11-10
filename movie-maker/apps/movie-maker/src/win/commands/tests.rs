@@ -172,6 +172,45 @@ fn snapping_はメニューからもキーからも描画スレッドへ入_切�
 }
 
 #[test]
+fn shy_は選んだレイヤーにフラグを立て_隠すコマンドと合わせて表示の状態を変える() {
+    let shared = Arc::new(Shared::new());
+    let state = |shared: &Shared, id: &str| row(&table(shared), id).state;
+    assert!(
+        !state(&shared, "timeline.shy_selected_layers").enabled,
+        "選んでいない"
+    );
+    assert!(run(&shared, "timeline.shy_selected_layers").is_err());
+    shared.select_layer(Some("title".to_owned()));
+    let shy = state(&shared, "timeline.shy_selected_layers");
+    assert_eq!((shy.enabled, shy.checked), (true, Some(false)));
+    run(&shared, "timeline.shy_selected_layers").expect("フラグを立てる");
+    assert_eq!(
+        state(&shared, "timeline.shy_selected_layers").checked,
+        Some(true)
+    );
+    assert!(shared.view.shy().layers.contains("title"));
+    assert!(!shared.view.shy().hide, "フラグを立てただけでは隠さない");
+    assert_eq!(
+        state(&shared, "timeline.hide_shy_layers").checked,
+        Some(false)
+    );
+    run(&shared, "timeline.hide_shy_layers").expect("隠す");
+    assert_eq!(
+        state(&shared, "timeline.hide_shy_layers").checked,
+        Some(true)
+    );
+    assert!(shared.view.shy().hides("title"));
+    assert_eq!(
+        crate::win::menu::menu_of("timeline.hide_shy_layers"),
+        Some(Menu::View)
+    );
+    assert_eq!(
+        crate::win::menu::menu_of("timeline.shy_selected_layers"),
+        Some(Menu::View)
+    );
+}
+
+#[test]
 fn 再生のコマンドを_program_に送り_表に無い_id_は拒否する() {
     let shared = Arc::new(Shared::new());
     let (tx, rx) = channel();
