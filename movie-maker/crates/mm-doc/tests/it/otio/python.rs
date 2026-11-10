@@ -54,7 +54,6 @@ fn rust_の書いたファイルを_opentimelineio_が読み_書き直したも�
         .tempdir()
         .unwrap();
     let dir = guard.path().to_path_buf();
-    std::fs::create_dir_all(&dir).unwrap();
     let (written, rewritten) = (dir.join("main.otio"), dir.join("main-py.otio"));
     let timeline = export_sequence(&original, &SequenceId::new("main")).unwrap();
     std::fs::write(&written, serde_json::to_string_pretty(&timeline).unwrap()).unwrap();

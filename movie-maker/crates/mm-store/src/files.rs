@@ -96,7 +96,6 @@ mod tests {
             .tempdir()
             .unwrap();
         let dir = guard.path().to_path_buf();
-        std::fs::create_dir_all(&dir).unwrap();
         let result = load_project(&dir);
         assert!(matches!(result, Err(MmError::Io(_))), "{result:?}");
     }

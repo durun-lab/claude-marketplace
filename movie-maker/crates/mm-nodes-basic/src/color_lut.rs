@@ -432,7 +432,6 @@ mod tests {
             .tempdir()
             .unwrap();
         let dir = guard.path().to_path_buf();
-        std::fs::create_dir_all(&dir).expect("一時フォルダー");
         let path = dir.join("a.cube");
         let mut params = Params::new();
         params.set(LUT_PARAM, ParamValue::AssetRef(AssetId::new("lut")));
@@ -453,7 +452,6 @@ mod tests {
             .tempdir()
             .unwrap();
         let dir = guard.path().to_path_buf();
-        std::fs::create_dir_all(&dir).expect("一時フォルダー");
         let path = dir.join("same-time.cube");
         // 2 回の書き込みが同じ刻みに入った形。更新の直後なので、中身のハッシュは読み直して作る。
         let at = std::time::SystemTime::now();

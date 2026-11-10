@@ -46,14 +46,20 @@ if [ -n "$raw_spawn" ]; then
   status=1
 fi
 
-# 試験の一時フォルダーは tempfile で作る。temp_dir() にプロセスの ID だけを足した名前は、Windows が ID を使い回すため前の実行の残りと重なる。
-# 例外は、ホストのプロセスが自分の作業フォルダーを決める 3 か所（本番のコードで、試験の一時フォルダーではない）。
-temp_pid="$(grep -rnE 'temp_dir\(\).*process::id\(\)' crates apps --include='*.rs' \
-  | grep -vE '^(crates/mm-host-cef/src/host/(mod|bench)\.rs|crates/mm-host-pipe/src/pipe\.rs):' \
-  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)"
+# テストの一時フォルダーは tempfile で作る。temp_dir() にプロセスの ID だけを足した名前は、Windows が ID を使い回すため前の実行が残したフォルダーと同じ名前になる。
+# rustfmt が分けた文も拾うよう、temp_dir() の行から 3 行先か文の終わり（;）までを見る。例外は開く前に同じ名前の残りを消す host/mod.rs だけ。コメントの行は除く。
+temp_pid="$(grep -rlE 'process::id\(\)' crates apps --include='*.rs' \
+  | grep -v '^crates/mm-host-cef/src/host/mod\.rs$' \
+  | xargs -r awk '
+      FNR == 1 { from = 0 }
+      /^[ \t]*\/\// { next }
+      /temp_dir\(\)/ { from = FNR }
+      from && FNR - from <= 3 && /process::id\(\)/ { print FILENAME ":" FNR ":" $0; from = 0 }
+      /;/ { from = 0 }
+    ' || true)"
 if [ -n "$temp_pid" ]; then
   printf '%s\n' "$temp_pid" >&2
-  echo "試験の一時フォルダーは temp_dir() とプロセスの ID でなく tempfile::tempdir()（か Builder の prefix）で作る" >&2
+  echo "テストの一時フォルダーは temp_dir() とプロセスの ID でなく tempfile::tempdir()（か Builder の prefix）で作る" >&2
   status=1
 fi
 

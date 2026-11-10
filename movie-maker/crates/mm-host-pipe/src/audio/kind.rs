@@ -298,7 +298,6 @@ mod tests {
             .tempdir()
             .unwrap();
         let tmp = guard.path().to_path_buf();
-        std::fs::create_dir_all(&tmp).unwrap();
         let outside = tmp.join("evil.test");
         std::fs::write(&outside, b"").unwrap();
         let kind = PluginEffectKind::<TestStandard>::new(Some("ホストは起こさない.exe".into()))

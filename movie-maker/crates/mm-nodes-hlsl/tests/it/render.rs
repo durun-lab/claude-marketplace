@@ -209,7 +209,6 @@ fn 素材の_hlsl_を書き換えると指紋が変わり_読めなければキ�
         .tempdir()
         .unwrap();
     let dir = guard.path().to_path_buf();
-    std::fs::create_dir_all(&dir).expect("一時フォルダー");
     let path = dir.join("a.hlsl");
     std::fs::write(&path, fixture("invert.hlsl")).expect("書ける");
     let kind = ShaderHlslKind::with_dxc(None);

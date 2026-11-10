@@ -160,7 +160,6 @@ fn ホストの実行ファイルを差し替えると指紋が変わり_モッ�
         .tempdir()
         .unwrap();
     let dir = guard.path().to_path_buf();
-    std::fs::create_dir_all(&dir).expect("一時フォルダー");
     let exe = dir.join("mm-host-cef.exe");
     std::fs::write(&exe, "a").expect("書ける");
     let kind = WebCefKind::with_host(Arc::new(SampleLauncher), exe.clone());
@@ -183,7 +182,6 @@ fn 組み立てたホストは同じフォルダーの本体の_dll_と_libcef_�
         .tempdir()
         .unwrap();
     let dir = guard.path().to_path_buf();
-    std::fs::create_dir_all(&dir).expect("一時フォルダー");
     let exe = dir.join("mm-host-cef.exe");
     std::fs::write(&exe, "boot").expect("書ける");
     let kind = WebCefKind::with_host(Arc::new(SampleLauncher), exe.clone());

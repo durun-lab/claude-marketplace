@@ -179,7 +179,6 @@ mod tests {
     fn 指紋は中身で決まりパスに依らない() {
         let guard = tempfile::Builder::new().prefix("mm-fp-").tempdir().unwrap();
         let dir = guard.path().to_path_buf();
-        std::fs::create_dir_all(&dir).unwrap();
         let (a, b, c) = (dir.join("a.bin"), dir.join("b.bin"), dir.join("c.bin"));
         let body: Vec<u8> = (0..400_000u32).map(|i| (i % 251) as u8).collect();
         std::fs::write(&a, &body).unwrap();

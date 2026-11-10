@@ -324,6 +324,11 @@ fn kill_したホストの一時フォルダーを消す() {
         std::fs::read_dir(&dir).is_ok_and(|mut d| d.next().is_some()),
         "キャッシュとページを置いている"
     );
+    assert!(
+        crate::locate::work_dirs().contains(&dir),
+        "{} を名前で見つけられる",
+        dir.display()
+    );
     host.kill().expect("kill");
     assert!(!dir.exists(), "{} が残っている", dir.display());
     assert!(!crate::locate::work_dirs().contains(&dir));

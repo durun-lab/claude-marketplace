@@ -76,9 +76,9 @@ fn marker_seq(rgba: &[u8], width: u32) -> u64 {
     u64::from(rgba[at]) | u64::from(rgba[at + 1]) << 8 | u64::from(rgba[at + 2]) << 16
 }
 
-/// 測るページをファイルに書き、そのパスを返す。
+/// 測るページをホストの一時フォルダーの `pages`（serve と同じ置き場所）に書き、そのパスを返す。
 fn write_page(opts: &BenchOptions) -> Result<std::path::PathBuf, String> {
-    let dir = std::env::temp_dir().join(format!("mm-host-cef-page-{}", std::process::id()));
+    let dir = super::work_dir().0.join("pages");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     // `--page-css` は原因の切り分け用。ページの先頭に CSS を足す。
     let page = PAGE.replace("<style>", &format!("<style>{}", opts.page_css));
