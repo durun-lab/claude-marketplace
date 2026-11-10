@@ -98,6 +98,7 @@ pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
             kind: kind_of(layer),
             enabled: layer.enabled,
             locked: layer.lock,
+            shy: false,
             audio: audio_state(layer),
             label: names.label(&layer.source),
             keyframes: keyframe_secs(layer),

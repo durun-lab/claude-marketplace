@@ -425,6 +425,46 @@ fn 隠した行があれば角に隠した数を出す_無ければ出さない(
 }
 
 #[test]
+fn shy_の印の付いた行は名前を_accent_の色にし_角に印の数を同じ色で出す() {
+    let text = |id: &str| Item::layer(0.0, 5.0, ItemKind::Text, true).with_id(id);
+    let m = model(vec![
+        Item {
+            shy: true,
+            ..text("a")
+        },
+        text("b"),
+    ]);
+    let out = labels_of(&m, 0.0);
+    let color = |t: &str| out.iter().find(|l| &*l.text == t).expect(t).color;
+    let p = Palette::DEFAULT;
+    assert_eq!((color("a"), color("b")), (p.accent, p.label));
+    assert_eq!(color("1 shy"), p.accent, "名前の色が何の印かを読めるように");
+    let selected = PaintState {
+        selected: Some(0),
+        ..state(0.0)
+    };
+    let f = TestViewport::new(&m, SIZE);
+    let out = labels(
+        &m,
+        &f.vp(),
+        &selected,
+        &UiFont::default(),
+        &mut FakeMeasure::default(),
+    );
+    let a = out.iter().find(|l| &*l.text == "a").unwrap();
+    assert_eq!(a.color, p.accent, "選んだ行でも印の色");
+}
+
+#[test]
+fn 隠しているときは角に隠した数だけを出す() {
+    let mut m = model(vec![Item::layer(0.0, 5.0, ItemKind::Text, true)]);
+    m.hidden = 2;
+    let out = labels_of(&m, 0.0);
+    assert!(out.iter().any(|l| &*l.text == "2 hidden"));
+    assert!(!out.iter().any(|l| l.text.ends_with("shy")));
+}
+
+#[test]
 fn 見出しのドラッグで入る位置に線を出す() {
     let m = many(3);
     let f = TestViewport::new(&m, SIZE);

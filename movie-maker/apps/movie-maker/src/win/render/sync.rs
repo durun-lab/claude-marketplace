@@ -82,7 +82,7 @@ impl DocSync {
             ui.set_hdr_peak(tone_map_peak(&doc.project));
             self.layer_ids = timeline_layer_ids(comp);
             self.cut_ids = timeline_cut_ids(&doc.project, comp);
-            self.drop_shy(&shared.view.shy(), &mut model);
+            self.apply_shy(&shared.view.shy(), &mut model);
             ui.update_model(model);
             self.shown = Some(doc.clone());
             let selected = shared.selected_layer();
@@ -95,9 +95,12 @@ impl DocSync {
         ui.select_cut(selected.and_then(|id| self.position_of_cut(&id)));
     }
 
-    /// Shy で隠すレイヤーの行を、モデルと ID の対応（同じ並び）から外し、外した数をモデルに持たせる。
-    /// 描画と書き出しはプロジェクトのデータを見るので変わらない。
-    fn drop_shy(&mut self, shy: &Shy, model: &mut TimelineModel) {
+    /// Shy の印を行に付け（見出しに印を出す）、隠すレイヤーの行をモデルと ID の対応（同じ並び）から外して、
+    /// 外した数をモデルに持たせる。描画と書き出しはプロジェクトのデータを見るので変わらない。
+    fn apply_shy(&mut self, shy: &Shy, model: &mut TimelineModel) {
+        for (item, id) in model.items.iter_mut().zip(&self.layer_ids) {
+            item.shy = shy.layers.contains(id);
+        }
         let keep: Vec<bool> = self.layer_ids.iter().map(|id| !shy.hides(id)).collect();
         model.hidden = keep.iter().filter(|k| !**k).count();
         keep_rows(&mut model.items, &keep);
@@ -226,3 +229,6 @@ fn queue_op(shared: &Arc<Shared>, base: Option<i64>, op: Op) {
         s.edit.set_message(result.err().unwrap_or_default());
     });
 }
+
+#[cfg(test)]
+mod tests;

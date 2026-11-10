@@ -88,6 +88,8 @@ pub struct Item {
     pub enabled: bool,
     /// ロック（`lockLayer`）。Claude の操作経路から守る。
     pub locked: bool,
+    /// Shy の印（View > Shy Selected Layers）。表示の状態なのでプロジェクトのデータからは作らず、アプリが付ける。
+    pub shy: bool,
     /// 音を持てるレイヤーの Mute と Solo。音を持てないレイヤーは `None`。
     pub audio: Option<AudioState>,
     /// 帯に出す名前。空なら出さない。シーケンスのレイヤーはカットの名前を出す。
@@ -110,6 +112,7 @@ impl Item {
             kind,
             enabled,
             locked: false,
+            shy: false,
             audio: None,
             label: Arc::default(),
             keyframes: Arc::default(),

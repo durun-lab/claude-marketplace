@@ -1,7 +1,7 @@
 //! レイヤーの見出し。行ごとに、左から種類の色の帯、種類の略号、名前、有効、ロック、Mute、Solo のボタン、
 //! キーフレームの開閉（▸）を並べる。
-//! 名前はレイヤーの ID（レイヤーに名前の欄は無く、素材の名前は帯に出す）。見出しの列の上の角には再生位置のタイムコードを出す。
-//! 座標は Timeline の矩形の左上を (0, 0) とする。
+//! 名前はレイヤーの ID（レイヤーに名前の欄は無く、素材の名前は帯に出す）。Shy の印の付いたレイヤーは名前を accent の色で
+//! 描く。見出しの列の上の角には再生位置のタイムコードと、Shy の行の数を出す。座標は Timeline の矩形の左上を (0, 0) とする。
 //!
 //! 見出しの部品の矩形は [`cells`] 1 か所で決め、描く関数（`paint/header.rs`）と文字（[`labels`]）が同じ値を見る。
 //! ボタンを押すと操作になり（レイヤーは選ばない）、ボタンの外を押すとレイヤーを選ぶ。
@@ -173,7 +173,7 @@ pub(crate) fn inside(cell: Rect, area: Rect) -> Option<Rect> {
     (x1 > x0 && y1 > y0).then(|| Rect::new(x0, y0, x1 - x0, y1 - y0))
 }
 
-/// 見出しの文字。見えている行の略号、名前、Mute と Solo の字と、見出しの列の上の角のタイムコード。
+/// 見出しの文字。見えている行の略号、名前、Mute と Solo の字と、見出しの列の上の角のタイムコードと Shy の行の数。
 pub(crate) fn labels(
     model: &TimelineModel,
     vp: &Viewport,
@@ -216,25 +216,33 @@ pub(crate) fn labels(
         label.clip = corner;
         out.push(label);
     }
-    if model.hidden > 0 {
-        let text: Arc<str> = format!("{} hidden", model.hidden).into();
-        out.extend(hidden_label(&text, corner, font, state, placer.measure));
+    if let Some((text, color)) = shy_count(model, &state.palette) {
+        let style = TextStyle {
+            size: font.small,
+            color,
+        };
+        out.extend(corner_label(&text, corner, style, placer.measure));
     }
     out
 }
 
-/// 見出しの列の上の角の右に出す、隠した行の数の文字。
-fn hidden_label(
+/// 見出しの列の上の角の右に出す Shy の行の数。隠していれば隠した数、隠していなければ印の付いた行の数を、印の付いた
+/// 名前と同じ accent の色で出す（名前の色が何の印かを読めるように）。どちらも無ければ `None`。
+fn shy_count(model: &TimelineModel, p: &Palette) -> Option<(Arc<str>, Color)> {
+    if model.hidden > 0 {
+        return Some((format!("{} hidden", model.hidden).into(), p.label));
+    }
+    let marked = model.items.iter().filter(|i| i.shy).count();
+    (marked > 0).then(|| (format!("{marked} shy").into(), p.accent))
+}
+
+/// 見出しの列の上の角の右に寄せた文字。
+fn corner_label(
     text: &Arc<str>,
     corner: Rect,
-    font: &UiFont,
-    state: &PaintState,
+    style: TextStyle,
     measure: &mut dyn TextMeasure,
 ) -> Option<Label> {
-    let style = TextStyle {
-        size: font.small,
-        color: state.palette.label,
-    };
     let mut label = place(text, corner, CORNER_PAD, Align::Right, style, measure)?;
     label.clip = corner;
     Some(label)
@@ -251,6 +259,7 @@ struct Placer<'a> {
 
 impl Placer<'_> {
     /// 行 1 本の略号、名前、Mute と Solo の字。無効なレイヤーの略号と名前は薄くする。
+    /// Shy の印の付いた名前は、選んだ行でも accent の色にして、印を付けた結果をすぐ見せる。
     fn row(&mut self, item: &Item, c: Cells, selected: bool) {
         let p = self.palette;
         let fade = |color: Color| {
@@ -268,7 +277,13 @@ impl Placer<'_> {
                 self.small(fade(p.label)),
             );
         }
-        let name = if selected { p.selection } else { p.label };
+        let name = if item.shy {
+            p.accent
+        } else if selected {
+            p.selection
+        } else {
+            p.label
+        };
         let base = TextStyle {
             size: self.font.base,
             color: fade(name),
