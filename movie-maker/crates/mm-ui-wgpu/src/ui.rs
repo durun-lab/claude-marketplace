@@ -346,8 +346,10 @@ impl Ui {
         self.sync_program();
         self.sync_toolbar();
         let tooltip = self.prepare_text(device, queue);
+        let quads_span = tracing::info_span!("ui.quads").entered();
         let (quads, under, bars) = self.timeline_quads(tooltip);
         let count = self.quads.prepare(device, queue, &quads, (w, h));
+        drop(quads_span);
         let layout = self.layout();
         let mut drawing = 0;
         if let Some((iw, ih)) = self.program.image_size() {
@@ -367,7 +369,8 @@ impl Ui {
             let rect = fit_rect(iw as f32, ih as f32, area);
             self.source.prepare(queue, rect, (w, h));
         }
-        let thumbs = self.prepare_thumbs(device, queue);
+        let thumbs =
+            tracing::info_span!("ui.thumbs").in_scope(|| self.prepare_thumbs(device, queue));
         Counts {
             under,
             bars,

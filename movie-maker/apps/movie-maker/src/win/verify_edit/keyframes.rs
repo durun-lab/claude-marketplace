@@ -239,12 +239,15 @@ fn drag_step(env: &Env<'_>, log: &mut Log, layer: &OpenedLayer, time: f64) {
     let kept = row_times(shared, &layer.id) == before;
     log.step("keyframe_drag_cancel", kept, json!({ "times": before }));
     surface::post_drag(hwnd, from, to);
+    let started = std::time::Instant::now();
     let moved = wait_until(WAIT, || row_times(shared, &layer.id) != before);
+    let wait_ms = started.elapsed().as_millis();
     let after = row_times(shared, &layer.id);
+    let message = shared.edit.message();
     log.step(
         "keyframe_drag",
         moved,
-        json!({ "before": before, "after": after }),
+        json!({ "before": before, "after": after, "wait_ms": wait_ms, "message": message }),
     );
     shot(env, log, "27-keyframe-moved");
     if !moved {

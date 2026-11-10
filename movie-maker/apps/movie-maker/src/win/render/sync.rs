@@ -125,6 +125,7 @@ impl DocSync {
         let cut_serial = shared.edit.cut_serial.load(Ordering::SeqCst);
         let shy_serial = shared.view.shy_serial();
         if serial != self.seen || shy_serial != self.seen_shy {
+            let _span = tracing::info_span!("window.doc_sync").entered();
             (self.seen, self.seen_shy) = (serial, shy_serial);
             let Some(doc) = shared.doc() else { return };
             let Ok(comp) = doc.project.composition(&doc.comp) else {
@@ -301,7 +302,10 @@ fn apply_move_layer(shared: &Arc<Shared>, doc: &DocSync, from: usize, boundary: 
 /// 操作を、Timeline に出しているデータのバージョンを付けて編集のキューで適用する。
 fn queue_op(shared: &Arc<Shared>, base: Option<i64>, op: Op) {
     let s = shared.clone();
+    let queued = std::time::Instant::now();
     crate::win::edit::queue(shared, move || {
+        // 積んでから編集のスレッドが取り出すまで。ドラッグの編集が遅れて入るとき、前の仕事を待ったかを trace で分ける。
+        mm_trace::record_span("edit.queue_wait", queued.elapsed());
         let result = crate::win::edit::submit_based(&s, vec![op], base);
         s.edit.set_message(result.err().unwrap_or_default());
     });

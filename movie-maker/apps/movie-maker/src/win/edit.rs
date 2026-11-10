@@ -165,6 +165,7 @@ fn apply_saved(
     ops: Vec<Op>,
     base: Option<i64>,
 ) -> Result<EditOutcome, String> {
+    let _span = tracing::info_span!("edit.apply_saved").entered();
     let mut txn = mm_ops::Transaction::new(WEBVIEW_TXN, ops);
     if let Some(version) = base {
         txn = txn.based_on(version.max(0) as u64);
@@ -181,6 +182,7 @@ fn apply_saved(
 
 /// 保存した最新のプロジェクトのデータを `Shared::doc` に置く。置いてあるものより新しいときだけ置き直す。
 pub fn refresh_saved(shared: &Shared, core: &mm_serve::Core) -> Result<(), String> {
+    let _span = tracing::info_span!("edit.refresh_saved").entered();
     let Some(comp) = shared.doc().map(|d| d.comp) else {
         return Ok(());
     };
@@ -192,6 +194,7 @@ pub fn refresh_saved(shared: &Shared, core: &mm_serve::Core) -> Result<(), Strin
 /// `project.mmdb` の直前のトランザクションを取り消す（`undo` が偽ならやり直す）。発行元を問わず戻し、
 /// 何を戻したか（人でない発行元ならその名前も）を編集の文言に出す。
 pub fn step_saved(shared: &Shared, core: &mm_serve::Core, undo: bool) {
+    let _span = tracing::info_span!("edit.step_saved").entered();
     let before = shared.history.next(undo);
     let caller = mm_serve::Caller::webview();
     let done = if undo {

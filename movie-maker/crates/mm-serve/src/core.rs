@@ -263,6 +263,8 @@ impl Core {
         responds_to: Option<String>,
     ) -> Result<Change, ServeError> {
         let change = self.with_store(|s| {
+            // ストアのロックを取った後の、適用と書き込み。呼び出し側のスパンとの差がロックを待った長さ。
+            let _span = tracing::info_span!("serve.apply_txn").entered();
             let ctx = OpContext::new(caller.entry);
             let stored = s.apply_txn(
                 txn,
@@ -280,6 +282,7 @@ impl Core {
     /// 直前のトランザクションを取り消す。無ければ `None`。
     pub fn undo(&self, caller: &Caller) -> Result<Option<Change>, ServeError> {
         self.with_store(|s| {
+            let _span = tracing::info_span!("serve.undo").entered();
             let ctx = OpContext::new(caller.entry);
             let target = s.undo_plan()?.map(ChangeOf::from);
             let stored = s.undo_last(&ctx, caller.actor.clone(), now_ms())?;
@@ -290,6 +293,7 @@ impl Core {
     /// 取り消したトランザクションをやり直す。無ければ `None`。
     pub fn redo(&self, caller: &Caller) -> Result<Option<Change>, ServeError> {
         self.with_store(|s| {
+            let _span = tracing::info_span!("serve.redo").entered();
             let ctx = OpContext::new(caller.entry);
             let target = s.redo_plan()?.map(ChangeOf::from);
             let stored = s.redo_last(&ctx, caller.actor.clone(), now_ms())?;
