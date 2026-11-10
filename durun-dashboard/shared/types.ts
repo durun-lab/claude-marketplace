@@ -436,12 +436,14 @@ export type WorkflowTrigger = { kind: 'schedule'; at: string; days?: number[] } 
 export type BurstKind = 'github-review' | 'slack-mention' | 'jira-mention';
 
 /**
- * ワークフローの定義。人間とエージェントが workflows.json に書く。
+ * ワークフローの定義。人間とエージェントがワークフローのフォルダーに書く。
  * mode が new ならイベントごとにセッションを起動し、動いているものを maxSessions（既定 1）までに抑える。
  * continue なら 1 つのセッションを引き継いでイベントを送り、セッションが無いかアーカイブされていたら起動する。compact なら、送る前に毎回前回までの会話を compact する。
  */
 export type WorkflowDef = {
   id: string;
+  /** ワークフローのフォルダー。指示は <id>.md の agent、ほかの設定は workflow.json にある。 */
+  dir: string;
   name: string;
   enabled: boolean;
   cwd: string;
@@ -459,7 +461,7 @@ export type WorkflowDef = {
 };
 
 /** 画面の「設定」で直す項目。 */
-export type WorkflowSettings = Omit<WorkflowDef, 'id' | 'enabled'>;
+export type WorkflowSettings = Omit<WorkflowDef, 'id' | 'dir' | 'enabled'>;
 
 export type WorkflowInfo = WorkflowDef & {
   /** 動いているセッションの数 */
@@ -472,8 +474,8 @@ export type WorkflowInfo = WorkflowDef & {
   error?: string;
 };
 
-/** file は定義を書いた workflows.json の場所。error は定義を読めなかった理由。 */
-export type WorkflowState = { file: string; workflows: WorkflowInfo[]; error?: string };
+/** dir はワークフローのフォルダーを置く場所。error は定義を読めなかった理由。 */
+export type WorkflowState = { dir: string; workflows: WorkflowInfo[]; error?: string };
 
 /** 学習アプリの設定。scheduled なら、人間が作業を止めてしばらくたったら 1 日 1 回まで学習する。 */
 export type LearnSettings = { scheduled: boolean };

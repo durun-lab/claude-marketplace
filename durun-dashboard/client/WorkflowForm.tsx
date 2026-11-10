@@ -1,4 +1,4 @@
-// ワークフローの「設定」。workflows.json の 1 つの定義を、画面で直して書き込む。
+// ワークフローの「設定」。1 つのワークフローのフォルダーの workflow.json と agent を、画面で直して書き込む。
 import { useState } from 'preact/hooks';
 import { EFFORT_LEVELS, MODELS, type WorkflowInfo, type WorkflowSettings, type WorkflowTrigger } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
@@ -19,7 +19,7 @@ const DEFAULT_BURST_MINUTES = 5;
 
 const settingsOf = ({ name, cwd, theme, prompt, triggers, burstMinutes, mode, compact, maxSessions, model, effort }: WorkflowInfo): WorkflowSettings => ({ name, cwd, theme, prompt, triggers, burstMinutes, mode, compact, maxSessions, model, effort });
 
-/** モードに関わらない項目は落として送る。workflows.json に読まれない項目を残さないため。 */
+/** モードに関わらない項目は落として送る。定義に読まれない項目を残さないため。 */
 const cleaned = (s: WorkflowSettings): WorkflowSettings => ({
   ...s,
   burstMinutes: s.burstMinutes || undefined,
@@ -107,7 +107,7 @@ const ActionField = ({ s, set }: { s: WorkflowSettings; set: (patch: Partial<Wor
   </fieldset>
 );
 
-/** 1 つのワークフローの設定。保存すると workflows.json に書き込み、閉じる。開いた後に定義が書き換わっても、直している値は保つ。 */
+/** 1 つのワークフローの設定。保存するとワークフローのフォルダーに書き込み、閉じる。開いた後に定義が書き換わっても、直している値は保つ。 */
 export const WorkflowForm = ({ w, themes, onClose }: { w: WorkflowInfo; themes: string[]; onClose: () => void }) => {
   const [s, setS] = useState(() => settingsOf(w));
   const set = (patch: Partial<WorkflowSettings>) => setS((prev) => ({ ...prev, ...patch }));

@@ -9,8 +9,9 @@ import { tempDir } from './tmp.ts';
 // 実際の状態や要望、ワークフローの定義に触れないよう、データの置き場所を一時ディレクトリに向けてから読み込む。
 const dataDir = tempDir('durun-dashboard-improve-');
 process.env.DURUN_DASHBOARD_DATA_DIR = dataDir;
+process.env.CLAUDE_CONFIG_DIR = tempDir('durun-dashboard-improve-claude-');
 const { saveFeedback } = await import('../server/improve.ts');
-const { WORKFLOWS_FILE, endFeedbackWave, improveState, runWorkflow, startWorkflows } = await import('../server/workflow.ts');
+const { WORKFLOWS_DIR, endFeedbackWave, improveState, runWorkflow, setWorkflowEnabled, startWorkflows } = await import('../server/workflow.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 
 const feedbackDir = path.join(dataDir, 'feedback');
@@ -23,15 +24,7 @@ const callsFile = path.join(bin, 'calls');
 useFakeClaude(bin, `fs.appendFileSync(${js(callsFile)}, lines(args) + '\\n---\\n'); console.error('fake failure'); process.exitCode = 1;`);
 const calls = (): string[] => (fs.existsSync(callsFile) ? fs.readFileSync(callsFile, 'utf8').split('\n---\n').filter(Boolean) : []);
 
-let edits = 0;
-/** 定義を書き換える。続けて書いても読み直されるよう、更新時刻を毎回ずらす。 */
-const writeDef = (enabled: boolean): void => {
-  const def = JSON.parse(fs.readFileSync(WORKFLOWS_FILE, 'utf8')) as { workflows: { enabled: boolean }[] };
-  for (const w of def.workflows) w.enabled = enabled;
-  fs.writeFileSync(WORKFLOWS_FILE, JSON.stringify(def));
-  const at = new Date(Date.now() + ++edits * 1000);
-  fs.utimesSync(WORKFLOWS_FILE, at, at);
-};
+const writeDef = (enabled: boolean): void => setWorkflowEnabled('improve', enabled);
 
 const launchFailed = (): Promise<void> => {
   const before = calls().length;
@@ -41,9 +34,11 @@ const launchFailed = (): Promise<void> => {
 test('自動実装の設定を、改善要望のトリガーを持つワークフローの定義へ移す', () => {
   state.improve = { enabled: true, model: 'opus' };
   startWorkflows();
-  const [def] = JSON.parse(fs.readFileSync(WORKFLOWS_FILE, 'utf8')).workflows;
-  assert.deepEqual([def.id, def.enabled, def.model, def.mode, def.compact, def.triggers], ['improve', true, 'opus', 'continue', true, [{ kind: 'feedback' }]]);
-  assert.match(def.prompt, /worktree/);
+  const dir = path.join(WORKFLOWS_DIR, 'improve');
+  const def = JSON.parse(fs.readFileSync(path.join(dir, 'workflow.json'), 'utf8'));
+  assert.deepEqual([def.enabled, def.mode, def.compact, def.triggers], [true, 'continue', true, [{ kind: 'feedback' }]]);
+  const agent = fs.readFileSync(path.join(dir, 'improve.md'), 'utf8');
+  assert.match(agent, /^---\nname: improve\n[\s\S]*\nmodel: opus\n---\n[\s\S]*worktree/);
   assert.equal(state.improve, undefined);
 });
 

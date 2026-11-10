@@ -39,7 +39,7 @@ const IMPROVE_PROMPT = `全体を見て作業計画を立て、1 つのウェー
 - 判断に迷う点は ask_human で人間に聞いてください。
 - 終えたら、まとまりごとに何をどう変えたかを 2、3 行で書いてください。`;
 
-/** 自動実装の設定から、同じ動きをするワークフローの定義を作る。workflows.json にそのまま書く。 */
+/** 自動実装の設定から、同じ動きをするワークフローの定義を作る。ワークフローのフォルダーにそのまま書く。 */
 export const improveWorkflow = (id: string, legacy: LegacyImprove) => ({
   id,
   name: '改善要望の対応',

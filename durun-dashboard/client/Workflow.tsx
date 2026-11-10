@@ -1,11 +1,12 @@
 // トリガーでセッションを動かす「ワークフロー」アプリ。一覧で ON と OFF を切り替え、「設定」で項目を直す。作るときと大きく変えるときはエージェントと相談する。
-// 定義は workflows.json にあり、メモ帳でも直せる。
+// 定義はワークフローごとのフォルダーにあり、エクスプローラーやメモ帳でも直せる。
 import { useState } from 'preact/hooks';
 import type { Snapshot, WorkflowInfo, WorkflowState, WorkflowTrigger } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { AppIcon, DesktopIcon } from './apps.tsx';
 import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
 import { shortDateTime } from './format.ts';
+import { openExplorer } from './Explorer.tsx';
 import { openNotepadFile } from './Notepad.tsx';
 import { href } from './router.ts';
 import { WorkflowForm } from './WorkflowForm.tsx';
@@ -15,7 +16,7 @@ export const WORKFLOW_KEY = 'workflow';
 export const WORKFLOW_TITLE = 'ワークフロー';
 export const WORKFLOW_ICON = '/workflow.svg';
 const SIZE = { w: 900, h: 460 };
-const EMPTY: WorkflowState = { file: '', workflows: [] };
+const EMPTY: WorkflowState = { dir: '', workflows: [] };
 const DAYS = ['日', '月', '火', '水', '木', '金', '土'];
 
 export const openWorkflow = (): void => floatUp(WORKFLOW_KEY, '', { id: WORKFLOW_KEY }, SIZE);
@@ -52,6 +53,7 @@ const Row = ({ w, now, onEdit }: { w: WorkflowInfo; now: number; onEdit: () => v
     <td class="workflow-actions">
       <button class="xp-task-link" onClick={() => void attempt('ワークフローの実行', () => api.workflowRun(w.id))}>実行</button>
       <button class="xp-task-link" onClick={onEdit}>設定</button>
+      <button class="xp-task-link" title={`${w.dir}/${w.id}.md`} onClick={() => openNotepadFile(`${w.dir}/${w.id}.md`)}>指示</button>
       <button class="xp-task-link" onClick={() => consult(w.id)}>相談</button>
       {w.sessionId && <a href={href.session(w.sessionId)}>セッション</a>}
     </td>
@@ -71,7 +73,7 @@ export const WorkflowFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot })
               <h3 class="xp-task-title">ワークフローのタスク</h3>
               <div class="xp-task-body">
                 <button class="xp-task-link" onClick={() => consult()}><AppIcon icon={WORKFLOW_ICON} />相談して新しく作る</button>
-                {state.file && <button class="xp-task-link" onClick={() => openNotepadFile(state.file)}>定義をメモ帳で開く</button>}
+                {state.dir && <button class="xp-task-link" onClick={() => openExplorer(state.dir)}>フォルダーを開く</button>}
               </div>
             </section>
             <section class="xp-task">
