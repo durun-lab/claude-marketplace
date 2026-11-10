@@ -2,7 +2,7 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
 import type { MediaInvoke, MediaListen } from "./ipc.ts";
 
-/** UI のコマンド 1 つ。アプリの UI のコマンドの表（`apps/movie-maker/src/win/commands.rs`）の 1 行と、今押せるか。 */
+/** UI のコマンド 1 つ。アプリの UI のコマンドの表（`apps/movie-maker/src/win/commands/table.rs`）の 1 行と、今押せるか。 */
 export interface UiCommand {
   /** `<分類>.<動詞>`（`clip.split`）。Tasks の項目の `command` が指す。 */
   id: string;
@@ -12,10 +12,14 @@ export interface UiCommand {
   keys: string[];
   /** 先頭のキーの見た目（`Ctrl+Z`）。キーが無ければ null。 */
   key_label: string | null;
+  /** 全部のキーの見た目。並びは `keys` と同じ。 */
+  key_labels: string[];
   /** ツールチップの 2 行目。名前だけで分かるコマンドは null。 */
   description: string | null;
-  /** メニューバーでの場所。 */
+  /** 入っているメニューバーのメニューの名前（`Edit`）。メニューに無いコマンドは null。 */
   menu: string | null;
+  /** メニューバーの中の位置（メニューとグループをまたいだ通し番号）。メニューに無いコマンドは null。 */
+  menu_order: number | null;
   /** 持ち主の WebView のパネルの id。アプリが実行するコマンドは null。 */
   panel: string | null;
   enabled: boolean;
@@ -66,4 +70,12 @@ export const commandTitle = (command: UiCommand | undefined): string => {
   if (!command) return NOT_AVAILABLE;
   const head = command.key_label ? `${command.name} (${command.key_label})` : command.name;
   return command.description ? `${head}\n${command.description}` : head;
+};
+
+/** Keyboard Shortcuts のウィンドウを閉じる Tauri のコマンドの名前。 */
+export const IPC_CLOSE_SHORTCUTS = "close_shortcuts";
+
+/** Keyboard Shortcuts のウィンドウを閉じる。ウィンドウの権限は付けず、アプリのコマンドに任せる。 */
+export const closeShortcutsWindow = async (call: MediaInvoke = tauriInvoke): Promise<void> => {
+  await call(IPC_CLOSE_SHORTCUTS);
 };

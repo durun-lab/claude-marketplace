@@ -10,6 +10,7 @@ use crate::win::state::Shared;
 
 /// コマンドの ID とキーの名前の組。ID の名前の順に並べ、同じ ID の中は画面に出すキーを先に置く。
 const BINDINGS: &[(&str, &str)] = &[
+    ("app.show_keyboard_shortcuts", "?"),
     ("clip.extract", "Backspace"),
     ("clip.insert", ","),
     ("clip.lift", "Delete"),

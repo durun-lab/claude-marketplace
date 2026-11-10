@@ -5,6 +5,7 @@ import { generateCss } from "../theme/src/index.ts";
 
 const DIST = fileURLToPath(new URL("../dist/", import.meta.url));
 const ENTRY = fileURLToPath(new URL("../shell/src/main.tsx", import.meta.url));
+const SHORTCUTS_ENTRY = fileURLToPath(new URL("../shortcuts/src/main.tsx", import.meta.url));
 const PANELS = fileURLToPath(new URL("../panels/", import.meta.url));
 const MOBILE_DIST = fileURLToPath(new URL("../mobile/dist/", import.meta.url));
 const MOBILE_DEST = `${DIST}m/`;
@@ -54,7 +55,7 @@ const page = (title: string, name: string): string => `<!doctype html>
 const demos = await findDemos();
 await mkdir(DIST, { recursive: true });
 await build({
-  entryPoints: { shell: ENTRY, ...Object.fromEntries(demos.map((d) => [d.name, d.entry])) },
+  entryPoints: { shell: ENTRY, shortcuts: SHORTCUTS_ENTRY, ...Object.fromEntries(demos.map((d) => [d.name, d.entry])) },
   outdir: DIST,
   bundle: true,
   format: "iife",
@@ -66,6 +67,7 @@ await build({
 });
 await writeFile(`${DIST}theme.css`, generateCss());
 await writeFile(`${DIST}index.html`, page("Movie Maker", "shell"));
+await writeFile(`${DIST}shortcuts.html`, page("Keyboard Shortcuts", "shortcuts"));
 for (const d of demos) await writeFile(`${DIST}${d.name}.html`, page(d.title, d.name));
 
 // モバイル版の PWA を `dist/m/` に置く。アプリ（Tauri）は dist/ を実行ファイルに埋め込み、`mm-serve` の
