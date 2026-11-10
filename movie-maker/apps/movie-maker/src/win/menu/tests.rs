@@ -119,8 +119,13 @@ fn 項目は並びの順にコマンドの表の名前とキーの見た目で�
             "Feedback",
             "-",
             "Diagnostics",
+            "-",
+            "Left Panels\tCtrl+B",
+            "Right Panels\tCtrl+Alt+B",
+            "-",
+            "Reset UI Layout",
         ],
-        "パネルは左の列と右の列の順に並べ、開発の情報は分ける"
+        "パネルは左の列と右の列の順に並べ、開発の情報は分け、列の開け閉めと Reset UI Layout は最後に置く"
     );
 }
 

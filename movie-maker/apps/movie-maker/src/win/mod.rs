@@ -35,6 +35,7 @@ mod sequence_edit;
 mod shortcuts_window;
 mod source;
 mod source_ipc;
+mod splitter;
 mod state;
 mod story;
 mod story_ipc;
@@ -54,5 +55,6 @@ mod verify_transport;
 mod verify_webview;
 mod verify_zoom;
 mod view_state;
+mod workspace;
 
 pub use app::run;

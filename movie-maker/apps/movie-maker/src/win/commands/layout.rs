@@ -89,6 +89,36 @@ mod tests {
     }
 
     #[test]
+    fn 列の開け閉めは設定を変え_reset_ui_layout_は仕切りと列を既定に戻す() {
+        let shared = Shared::new();
+        run(&shared, LayoutCommand::ToggleLeftColumn);
+        assert!(!shared.workspace.get().left_open);
+        run(&shared, LayoutCommand::ToggleLeftColumn);
+        assert!(shared.workspace.get().left_open);
+        shared.workspace.update(|w| {
+            w.right_open = false;
+            w.drag_web(900.0, 1600.0);
+            w.drag_timeline(500.0, 800.0);
+        });
+        assert_ne!(shared.workspace.get(), Workspace::default());
+        run(&shared, LayoutCommand::ResetUiLayout);
+        assert_eq!(shared.workspace.get(), Workspace::default());
+    }
+
+    #[test]
+    fn パネルを選ぶ前に閉じた列を開け_開いた列には触れない() {
+        let shared = Shared::new();
+        shared.workspace.update(|w| w.left_open = false);
+        reveal(&shared, "inspector");
+        assert!(!shared.workspace.get().left_open, "右の列のパネルは左の列を開けない");
+        reveal(&shared, "media");
+        assert!(shared.workspace.get().left_open);
+        shared.workspace.update(|w| w.right_open = false);
+        reveal(&shared, "diagnostics");
+        assert!(shared.workspace.get().right_open);
+    }
+
+    #[test]
     fn 列のコマンドは今の開閉をチェックに出し_リセットには出さない() {
         let mut w = Workspace::default();
         w.right_open = false;

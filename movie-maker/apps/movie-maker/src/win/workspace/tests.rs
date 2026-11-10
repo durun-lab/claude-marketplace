@@ -141,13 +141,10 @@ fn 設定の場所は環境変数が先で_次にローカルのアプリデー�
 }
 
 #[test]
-fn 置き場所は変わったときだけ_serial_を進め_開いていなければ書かない() {
+fn 置き場所は更新を反映し_開いていなければ書かない() {
     let slot = WorkspaceSlot::default();
-    let first = slot.serial();
-    slot.set(slot.get());
-    assert_eq!(slot.serial(), first);
     slot.update(|w| w.left_open = false);
-    assert_eq!(slot.serial(), first + 1);
+    assert!(!slot.get().left_open);
     // 設定のファイルを決めていない（`--play-test`）ので書かない。
     slot.save();
 }

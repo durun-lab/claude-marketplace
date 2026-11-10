@@ -176,8 +176,8 @@ mod tests {
     #[test]
     fn 高さの比を渡すと_timeline_の高さがその比になる() {
         assert_eq!(
-            split_viewers_with(1000.0, 800.0, false, 0.6).timeline.h,
-            480.0
+            split_viewers_with(1000.0, 800.0, false, 0.5).timeline.h,
+            400.0
         );
         assert_eq!(
             split_viewers_with(1000.0, 800.0, false, TIMELINE_RATIO),

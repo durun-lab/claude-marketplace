@@ -4,7 +4,6 @@
 //! ウィンドウの大きさが変わっても割り付けは崩れない。ドラッグを離したときと、列の開け閉めと Reset UI Layout のときに書く。
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use mm_ui_layout::{timeline_ratio, SPLITTER_W, TIMELINE_RATIO};
@@ -210,8 +209,6 @@ pub fn write(path: &Path, workspace: &Workspace) -> std::io::Result<()> {
 #[derive(Default)]
 pub struct WorkspaceSlot {
     inner: Mutex<Workspace>,
-    /// 値が変わるたびに進む。読む側の更新の判定に使う。
-    serial: AtomicU64,
     /// 設定のファイル。`open` で決める。決めなければ（`--play-test`）読みも書きもしない。
     path: OnceLock<PathBuf>,
 }
@@ -221,17 +218,9 @@ impl WorkspaceSlot {
         *self.inner.lock().expect("workspace")
     }
 
-    pub fn serial(&self) -> u64 {
-        self.serial.load(Ordering::SeqCst)
-    }
-
-    /// 値を置く。変わらなければ何もしない。
+    /// 値を置く。
     pub fn set(&self, next: Workspace) {
-        let mut inner = self.inner.lock().expect("workspace");
-        if *inner != next {
-            *inner = next;
-            self.serial.fetch_add(1, Ordering::SeqCst);
-        }
+        *self.inner.lock().expect("workspace") = next;
     }
 
     /// 今の値から作った値を置く。

@@ -38,6 +38,7 @@ use crate::win::story::StoryState;
 use crate::win::story_ipc;
 use crate::win::transition_ipc;
 use crate::win::verify::{self, Telemetry};
+use crate::win::workspace;
 
 /// OS のタイマーの分解能（ms）。待ちの粒度が既定の 15.6 ms だと、フレームの間隔を守れない。
 const TIMER_RESOLUTION_MS: u32 = 1;
@@ -176,6 +177,17 @@ fn open_view_state(shared: &Arc<Shared>, args: &Args, comp: &CompositionId, writ
     crate::win::view_state::open(shared, &args.project, comp, read_only);
 }
 
+/// ユーザーの割り付け（仕切りの位置、列の開け閉め）を設定のファイルから戻し、変えたら書く。再生テストはユーザーの
+/// 本物の設定に左右されず、書き換えもしないよう、既定の割り付けから始めて読みも書きもしない。
+fn open_workspace(shared: &Arc<Shared>, args: &Args) {
+    if args.play_test.is_some() {
+        return;
+    }
+    if let Some(path) = workspace::default_path() {
+        shared.workspace.open(path);
+    }
+}
+
 /// 再生スレッドの設定。Source の再生スレッドも Program と同じ設定（音の有無、実装の組み合わせ）を使う。
 fn player_options(args: &Args) -> PlayerOptions {
     PlayerOptions {
@@ -199,6 +211,7 @@ pub fn run() {
 
     let shared = Arc::new(Shared::new());
     open_view_state(&shared, &args, &comp_id, opened.store.is_some());
+    open_workspace(&shared, &args);
     let cache_dir = media::project_cache_dir(&args.project);
     let mobile_cache = cache_dir.join("mobile");
     let _ = shared.cache_dir.set(cache_dir);
@@ -389,10 +402,8 @@ fn watch_window(
     surface_hwnd: isize,
     workers: Arc<Workers>,
 ) {
-    let l = layout::Layout {
-        shared: shared.clone(),
-        surface_hwnd,
-    };
+    let l = Arc::new(layout::Layout::new(shared.clone(), surface_hwnd));
+    layout::install_refresh(window.clone(), webview.clone(), l.clone());
     let w = window.clone();
     window.on_window_event(move |e| match e {
         WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. } => {

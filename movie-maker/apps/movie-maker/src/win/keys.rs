@@ -42,6 +42,8 @@ const BINDINGS: &[(&str, &str)] = &[
     ("timeline.zoom_in", "Ctrl+="),
     ("timeline.zoom_out", "-"),
     ("timeline.zoom_out", "Ctrl+-"),
+    ("view.toggle_left_column", "Ctrl+KeyB"),
+    ("view.toggle_right_column", "Ctrl+Alt+KeyB"),
 ];
 
 /// キーを押し続けたときに、OS のキーの繰り返しのたびに実行するコマンドの ID（ズームと、フレーム、秒、帯の端の移動）。
