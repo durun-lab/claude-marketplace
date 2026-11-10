@@ -1,10 +1,11 @@
-//! `--play-test` がクリックとドラッグを投げる位置。`Ui` と同じ `mm-ui-layout` の関数（`split_viewers`、
+//! `--play-test` がクリックとドラッグを投げる位置。`Ui` と同じ `mm-ui-layout` の関数（`surface_layout`、
 //! `TimelineLayout`、`Rows`、`Viewport`、`zoombar`）で、サーフェスの割り付けと Timeline の行とズームバーの位置を求める。
+//! 仕切りの位置（縦の仕切りの有無、Timeline の高さの割合）は、描画スレッドと同じ割り付けの設定（`Shared::workspace`）を読む。
 //! ズーム、スクロール、行の高さは、描画スレッドが置いた表示の状態（`ViewSlot::current`）を読み、ツールバーの名前の幅は
 //! 描画スレッドが測って置いたもの（`Shared::toolbar_names`）を読む。
 
 use mm_ui_layout::{
-    button_center, name_center, split_viewers, zoombar, HeaderButton, Item, Rect, Rows, Scale,
+    button_center, name_center, surface_layout, zoombar, HeaderButton, Item, Rect, Rows, Scale,
     SurfaceLayout, TimelineLayout, TimelineModel, ToolbarNames, ViewState, Viewport,
 };
 
@@ -29,10 +30,13 @@ pub(crate) fn placement(shared: &Shared, hwnd: isize, model: &TimelineModel) -> 
     let state = shared.view.current()?;
     let scale = Scale::new(surface::scale_factor(hwnd));
     let (w, h) = shared.surface_size();
-    let surface = split_viewers(
+    let ws = shared.workspace.get();
+    let surface = surface_layout(
         scale.to_logical(w as f32),
         scale.to_logical(h as f32),
         shared.source.is_shown(),
+        ws.timeline_ratio,
+        ws.has_web(),
     );
     let rows = Rows::of(&model.items, &state.heights);
     let t = surface.timeline;

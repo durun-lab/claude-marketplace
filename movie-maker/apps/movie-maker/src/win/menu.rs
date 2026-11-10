@@ -100,6 +100,7 @@ pub static BAR: &[(Menu, Groups)] = &[
                 "view.show_feedback",
             ],
             &["view.show_diagnostics"],
+            &["view.toggle_left_column", "view.toggle_right_column"],
             &["view.reset_ui_layout"],
         ],
     ),

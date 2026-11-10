@@ -26,6 +26,7 @@ use crate::win::context_menu;
 use crate::win::hotpatch;
 use crate::win::keyboard;
 use crate::win::keys;
+use crate::win::splitter;
 use crate::win::state::Shared;
 
 /// 1 ノッチあたりのホイールの値。
@@ -315,7 +316,15 @@ fn key_released(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     unsafe { DefWindowProcW(hwnd, WM_KEYUP, wparam, lparam) }
 }
 
+/// 共有状態。仕切りのポインター操作（`splitter.rs`）が割り付けを読み書きするのに使う。
+pub fn shared() -> Option<&'static Arc<Shared>> {
+    SHARED.get()
+}
+
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if let Some(handled) = splitter::message(hwnd, msg, lparam) {
+        return handled;
+    }
     match msg {
         // 子 HWND は自動ではフォーカスを取らないので、クリックで自分に移す。ドラッグ中は外に出ても追う。
         WM_LBUTTONDOWN => {

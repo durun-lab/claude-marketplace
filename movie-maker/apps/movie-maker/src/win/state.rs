@@ -177,6 +177,8 @@ pub struct Shared {
     pub meters: Mutex<crate::win::mixer::MeterLane>,
     /// Timeline の表示の状態（ズーム、スクロール、行の高さ）。描画スレッドが置き、`.mm/view.json` に書く。
     pub view: crate::win::view_state::ViewSlot,
+    /// ユーザーの割り付け（仕切りの位置、WebView の列の開け閉め）。UI のスレッドが変え、描画スレッドが毎フレーム読む。
+    pub workspace: crate::win::workspace::WorkspaceSlot,
     /// 描画スレッドが最後に描いた Timeline のツールバーの名前の幅。`--play-test` がボタンの位置を引く。
     pub toolbar_names: Mutex<ToolbarNames>,
     /// Timeline の今のツール。描画スレッドが置く。コマンドの表のチェックの状態に出す。履歴にも `.mm/view.json` にも残さない。
@@ -223,6 +225,7 @@ impl Shared {
             series: Mutex::new(BTreeMap::new()),
             meters: Mutex::new(crate::win::mixer::MeterLane::default()),
             view: crate::win::view_state::ViewSlot::default(),
+            workspace: crate::win::workspace::WorkspaceSlot::default(),
             toolbar_names: Mutex::new(ToolbarNames::default()),
             tool: Mutex::new(Tool::default()),
             context: crate::win::context_menu::ContextSlot::default(),
