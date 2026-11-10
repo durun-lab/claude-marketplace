@@ -9,5 +9,6 @@ mod snap;
 mod support;
 mod text;
 mod thumbs;
+mod timecode;
 mod transport;
 mod zoom;

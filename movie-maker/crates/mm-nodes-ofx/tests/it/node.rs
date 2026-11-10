@@ -136,7 +136,11 @@ fn 置き場所の外のバンドルは描かない() {
     let Some(exe) = host() else { return };
     let k = kind(&exe);
     let src = source(Size::new(4, 3));
-    let outside = std::env::temp_dir().join(format!("mm-nodes-ofx-out-{}", std::process::id()));
+    let guard = tempfile::Builder::new()
+        .prefix("mm-nodes-ofx-out-")
+        .tempdir()
+        .unwrap();
+    let outside = guard.path();
     let fake = outside.join(GAIN);
     std::fs::create_dir_all(&fake).unwrap();
     let cases = [
@@ -151,7 +155,6 @@ fn 置き場所の外のバンドルは描かない() {
             "{bundle}: {err:?}"
         );
     }
-    std::fs::remove_dir_all(&outside).unwrap();
 }
 
 #[test]

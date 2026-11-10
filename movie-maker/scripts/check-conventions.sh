@@ -46,6 +46,23 @@ if [ -n "$raw_spawn" ]; then
   status=1
 fi
 
+# テストの一時フォルダーは tempfile で作る。temp_dir() にプロセスの ID だけを足した名前は、Windows が ID を使い回すため前の実行が残したフォルダーと同じ名前になる。
+# rustfmt が分けた文も拾うよう、temp_dir() の行から 3 行先か文の終わり（;）までを見る。例外は、開く前に前の実行が残したフォルダーを消す host/mod.rs だけ。コメントの行は除く。
+temp_pid="$(grep -rlE 'process::id\(\)' crates apps --include='*.rs' \
+  | grep -v '^crates/mm-host-cef/src/host/mod\.rs$' \
+  | xargs -r awk '
+      FNR == 1 { from = 0 }
+      /^[ \t]*\/\// { next }
+      /temp_dir\(\)/ { from = FNR }
+      from && FNR - from <= 3 && /process::id\(\)/ { print FILENAME ":" FNR ":" $0; from = 0 }
+      /;/ { from = 0 }
+    ' || true)"
+if [ -n "$temp_pid" ]; then
+  printf '%s\n' "$temp_pid" >&2
+  echo "テストの一時フォルダーは temp_dir() とプロセスの ID でなく tempfile::tempdir()（か Builder の prefix）で作る" >&2
+  status=1
+fi
+
 # RFC の番号は PR の番号。作業中は docs/rfcs/<題>.md で書き、PR を作ったら <PR の番号 4 桁>-<題>.md に改める。
 if [ -n "${PR_NUMBER:-}" ] && [ -n "${BASE:-}" ]; then
   want="$(printf '%04d' "$PR_NUMBER")"

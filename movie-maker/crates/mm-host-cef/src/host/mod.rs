@@ -121,6 +121,10 @@ fn start(args: &Args, mode: Mode, sandbox: *mut std::ffi::c_void) -> Result<(), 
     };
     let gpu = gpu::open(wanted)?;
     let (work, owned) = work_dir();
+    if owned {
+        // pid は生きているプロセスの間でだけ重複しないので、同じ名前のフォルダーは前に同じ pid だったプロセスが残したもの。
+        let _ = std::fs::remove_dir_all(&work);
+    }
     let cache = work.join("cache");
     let mut app = handlers::HostApp::new(luid_switch(&gpu));
     if initialize(

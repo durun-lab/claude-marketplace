@@ -252,8 +252,11 @@ fn プラグインを差し替えたらキャッシュの前の画素を返さ�
     let (Some(ctx), Some(exe)) = (gpu(), host()) else {
         return;
     };
-    let root = std::env::temp_dir().join(format!("mm-nodes-ofx-swap-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&root);
+    let guard = tempfile::Builder::new()
+        .prefix("mm-nodes-ofx-swap-")
+        .tempdir()
+        .unwrap();
+    let root = guard.path().to_path_buf();
     let binary = copy_gain(&root);
     let nodes = registry(Arc::new(kind_in(&exe, root.clone())));
     // 入れ子の画像はフレームのキャッシュに入るので、中の効果の差し替えがキーに出ないと前の画素を返す。
@@ -272,5 +275,4 @@ fn プラグインを差し替えたらキャッシュの前の画素を返さ�
     assert_near(after.pixel(3, 3), Rgba::new(1.0, 1.0, 1.0, 1.0));
     assert!(r.take_errors().is_empty());
     drop((r, nodes));
-    let _ = std::fs::remove_dir_all(&root);
 }

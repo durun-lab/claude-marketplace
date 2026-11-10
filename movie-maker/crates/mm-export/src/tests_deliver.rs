@@ -6,12 +6,18 @@ use mm_runtime::{assemble, RuntimeConfig};
 use mm_testkit::decode::SampleMedia;
 use mm_testkit::fixtures::vertical_project;
 
-fn temp(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("mm_export_deliver_{name}_{}", std::process::id()))
+fn temp(name: &str) -> tempfile::TempDir {
+    tempfile::Builder::new()
+        .prefix(&format!("mm_export_deliver_{name}_"))
+        .tempdir()
+        .unwrap()
 }
 
 fn project_with(out: &Path, edit: impl FnOnce(&mut mm_doc::RenderTarget)) -> Project {
-    let (mut project, _, _) = vertical_project(&SampleMedia::default(), &temp("unused.json"));
+    let (mut project, _, _) = vertical_project(
+        &SampleMedia::default(),
+        &temp("unused").path().join("unused.json"),
+    );
     project.render_targets[0].output_path = out.to_string_lossy().into_owned();
     edit(&mut project.render_targets[0]);
     project
@@ -20,7 +26,8 @@ fn project_with(out: &Path, edit: impl FnOnce(&mut mm_doc::RenderTarget)) -> Pro
 /// 作業の明るさが sdr のまま HDR の素材を HDR の信号で書き出すときだけ、切り替え方を警告に出す。
 #[test]
 fn sdr_の作業の明るさで_hdr_の素材を_hdr_の信号で書き出すと警告する() {
-    let out = temp("hdrwarn").join("out.mp4");
+    let tmp = temp("hdrwarn");
+    let out = tmp.path().join("out.mp4");
     let mut project = project_with(&out, |t| t.codec = "hevc_pq".into());
     let warned = |p: &Project| deliver::hdr_signal_warning(p, &p.render_targets[0]);
     assert_eq!(warned(&project), None, "HDR の素材が無ければ出さない");
@@ -32,18 +39,19 @@ fn sdr_の作業の明るさで_hdr_の素材を_hdr_の信号で書き出すと
 
 #[test]
 fn 正規化を持たない音の実装でラウドネスの目標があると拒否する() {
-    let out = temp("loud").join("out.json");
+    let tmp = temp("loud");
+    let out = tmp.path().join("out.json");
     let project = project_with(&out, |t| t.loudness_lufs = Some(-14.0));
     let mut engine = assemble(&RuntimeConfig::sample()).unwrap();
     let err = export_project(&mut engine, &project, &ExportOptions::default()).unwrap_err();
     assert!(matches!(err, MmError::Unsupported(_)), "{err}");
     assert!(!out.exists(), "失敗したら出力を残さない");
-    let _ = std::fs::remove_dir_all(temp("loud"));
 }
 
 #[test]
 fn 字幕を出す設定で文字起こしが無いと拒否する() {
-    let out = temp("nosub").join("out.json");
+    let tmp = temp("nosub");
+    let out = tmp.path().join("out.json");
     let project = project_with(&out, |t| {
         t.delivery = Delivery {
             subtitles: SubtitleOutput::Sidecar,
@@ -53,12 +61,12 @@ fn 字幕を出す設定で文字起こしが無いと拒否する() {
     let mut engine = assemble(&RuntimeConfig::sample()).unwrap();
     let err = export_project(&mut engine, &project, &ExportOptions::default()).unwrap_err();
     assert!(matches!(err, MmError::InvalidArgument(_)), "{err}");
-    let _ = std::fs::remove_dir_all(temp("nosub"));
 }
 
 #[test]
 fn 出さなくなった字幕とチャプターの前回のファイルを消し_警告に出す() {
-    let dir = temp("stale");
+    let tmp = temp("stale");
+    let dir = tmp.path().join("out");
     let out = dir.join("out.json");
     std::fs::create_dir_all(&dir).unwrap();
     let stale = ["out.srt", "out.vtt", "out.chapters.txt"].map(|n| dir.join(n));
@@ -84,12 +92,12 @@ fn 出さなくなった字幕とチャプターの前回のファイルを消�
         "{:?}",
         summary.delivery.warnings
     );
-    let _ = std::fs::remove_dir_all(dir);
 }
 
 #[test]
 fn チャプターの決まりを満たさなくても書き出しは成功し_理由を警告に出す() {
-    let out = temp("chap").join("out.json");
+    let tmp = temp("chap");
+    let out = tmp.path().join("out.json");
     let project = project_with(&out, |t| {
         t.delivery = Delivery {
             chapters: true,
@@ -108,5 +116,4 @@ fn チャプターの決まりを満たさなくても書き出しは成功し_�
         "{:?}",
         summary.delivery.warnings
     );
-    let _ = std::fs::remove_dir_all(temp("chap"));
 }
