@@ -144,6 +144,12 @@ impl Placement {
         self.client((x, z.y + z.h / 2.0))
     }
 
+    /// 行の領域の中央（クライアントの物理ピクセル）。ホイールを送る位置。
+    pub(crate) fn row_area_center(&self) -> (i32, i32) {
+        let a = self.timeline.row_area;
+        self.client((a.x + a.w / 2.0, a.y + a.h / 2.0))
+    }
+
     /// 行の領域に全部が見えている行のうち、`want` に合う最初の行。
     pub(crate) fn first_visible(&self, want: impl Fn(usize) -> bool) -> Option<usize> {
         let vp = self.viewport();
