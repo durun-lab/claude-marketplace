@@ -16,8 +16,8 @@ pub fn empty_state(project: &Project, comp: &Composition) -> EmptyState {
     EmptyState {
         // 素材を取り込んだ後は、取り込みはもう次にすることではない。
         program: blank && project.assets.is_empty(),
-        // Insert はカットを sequence のレイヤーに入れるので、手順はその入る先があるときだけ出す。
-        timeline: blank && !comp.layers.is_empty(),
+        // sequence のレイヤーが無くても、最初の Insert が sequence とそのレイヤーを作るので、手順は同じ。
+        timeline: blank,
     }
 }
 

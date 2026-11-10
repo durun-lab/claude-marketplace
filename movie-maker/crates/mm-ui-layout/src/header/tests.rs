@@ -1,6 +1,6 @@
 use super::*;
 use crate::controller::{Action, Mods, PointerEvent, TimelineController};
-use crate::geom::QuadShape;
+use crate::geom::{Quad, QuadShape};
 use crate::paint::bar_color;
 use crate::paint::tests::state;
 use crate::paint::{timeline_quads, PaintInput};
@@ -88,6 +88,7 @@ fn キーフレームの開閉は見出しの右端に置き_キーフレーム�
     let f = TestViewport::new(&m, SIZE);
     let vp = f.vp();
     let tris: Vec<Rect> = timeline_quads(&PaintInput::new(&m, &vp, &state(0.0)))
+        .quads
         .into_iter()
         .filter(|q| q.shape == QuadShape::TriRight)
         .map(|q| q.rect)
@@ -315,4 +316,175 @@ fn 見出しの列の上の角のクリックは選択を変えない() {
     c.handle(PointerEvent::Up, &m, 0.0);
     assert!(c.handle(click(20.0, TOOLBAR_H + 5.0), &m, 0.0).is_empty());
     assert_eq!(c.paint_state(0.0).selected, Some(1));
+}
+
+/// 行 `i` の見出しのボタンの中心を押す。
+fn press_button(
+    c: &mut TimelineController,
+    m: &TimelineModel,
+    (i, button): (usize, HeaderButton),
+) -> Vec<Action> {
+    let (x, y) = button_center(&c.viewport(), &m.items[i], i, button).expect("ボタンがある");
+    let mods = Mods::default();
+    c.handle(PointerEvent::Down { x, y, mods }, m, 0.0)
+}
+
+#[test]
+fn ボタンを押すと見出しのボタンの操作になり_レイヤーの選択は変わらない() {
+    let m = model(vec![
+        Item::layer(0.0, 5.0, ItemKind::Footage, true).with_audio(false, false),
+        Item::layer(0.0, 5.0, ItemKind::Image, true),
+    ]);
+    let mut c = controller(&m);
+    for (index, button) in [
+        (0, HeaderButton::Enabled),
+        (0, HeaderButton::Lock),
+        (0, HeaderButton::Mute),
+        (0, HeaderButton::Solo),
+        (1, HeaderButton::Enabled),
+        (1, HeaderButton::Lock),
+    ] {
+        let acts = press_button(&mut c, &m, (index, button));
+        assert_eq!(acts, vec![Action::HeaderButton { index, button }]);
+        assert_eq!(c.selected, None, "選ばない");
+    }
+}
+
+#[test]
+fn 音を持てないレイヤーに_mute_と_solo_のボタンは無い() {
+    let m = model(vec![Item::layer(0.0, 5.0, ItemKind::Image, true)]);
+    let f = TestViewport::new(&m, SIZE);
+    for b in [HeaderButton::Mute, HeaderButton::Solo] {
+        assert_eq!(button_center(&f.vp(), &m.items[0], 0, b), None);
+    }
+}
+
+#[test]
+fn ボタンの上のホバーは_header_button_で_名前の上は_header() {
+    let m = model(vec![Item::layer(0.0, 5.0, ItemKind::Image, true)]);
+    let f = TestViewport::new(&m, SIZE);
+    let vp = f.vp();
+    let (x, y) = button_center(&vp, &m.items[0], 0, HeaderButton::Lock).unwrap();
+    let lock = Hit::HeaderButton {
+        index: 0,
+        button: HeaderButton::Lock,
+    };
+    assert_eq!(hit_test(&m, &vp, x, y), lock);
+    let (nx, ny) = name_center(&vp, &m.items[0], 0);
+    assert_eq!(hit_test(&m, &vp, nx, ny), Hit::Header { index: 0 });
+}
+
+#[test]
+fn ポインターが乗ったボタンは背景を明るくする() {
+    let m = model(vec![Item::layer(0.0, 5.0, ItemKind::Image, true)]);
+    let f = TestViewport::new(&m, SIZE);
+    let (x, y) = button_center(&f.vp(), &m.items[0], 0, HeaderButton::Lock).unwrap();
+    let hover = Hit::HeaderButton {
+        index: 0,
+        button: HeaderButton::Lock,
+    };
+    let plain = timeline_quads(&PaintInput::new(&m, &f.vp(), &state(0.0))).quads;
+    let hot = PaintState {
+        hover,
+        ..state(0.0)
+    };
+    let hot = timeline_quads(&PaintInput::new(&m, &f.vp(), &hot)).quads;
+    let behind = |quads: &[Quad]| {
+        quads
+            .iter()
+            .filter(|q| q.rect.contains(x, y) && q.rect.w <= BUTTON_W + 0.5)
+            .count()
+    };
+    assert!(behind(&hot) > behind(&plain));
+}
+
+#[test]
+fn 無効なレイヤーの見出しに斜線を引く_有効なら引かない() {
+    let on = model(vec![Item::layer(0.0, 5.0, ItemKind::Image, true)]);
+    let off = model(vec![Item::layer(0.0, 5.0, ItemKind::Image, false)]);
+    let count = |m: &TimelineModel| {
+        let f = TestViewport::new(m, SIZE);
+        let quads = timeline_quads(&PaintInput::new(m, &f.vp(), &state(0.0))).quads;
+        let dot = |q: &&Quad| q.rect.right() <= HEADER_W && q.rect.w <= 3.0 && q.rect.h <= 3.0;
+        quads.iter().filter(dot).count()
+    };
+    assert!(count(&off) > count(&on) + 20, "斜線の点が並ぶ");
+}
+
+#[test]
+fn 隠した行があれば見出しの列の上の角に隠した数を出す_無ければ出さない() {
+    let mut m = model(vec![Item::layer(0.0, 5.0, ItemKind::Text, true)]);
+    assert!(!labels_of(&m, 0.0)
+        .iter()
+        .any(|l| l.text.ends_with("hidden")));
+    m.hidden = 4;
+    let out = labels_of(&m, 0.0);
+    let hidden = out.iter().find(|l| &*l.text == "4 hidden").expect("数");
+    assert_eq!(hidden.clip, Rect::new(0.0, TOOLBAR_H, HEADER_W, RULER_H));
+    let time = out.iter().find(|l| &*l.text == "00:00:00:00").unwrap();
+    assert!(hidden.x > time.x, "タイムコードの右");
+}
+
+#[test]
+fn shy_のフラグを立てた行は名前を_accent_の色にし_見出しの列の上の角にその数を同じ色で出す() {
+    let text = |id: &str| Item::layer(0.0, 5.0, ItemKind::Text, true).with_id(id);
+    let m = model(vec![
+        Item {
+            shy: true,
+            ..text("a")
+        },
+        text("b"),
+    ]);
+    let out = labels_of(&m, 0.0);
+    let color = |t: &str| out.iter().find(|l| &*l.text == t).expect(t).color;
+    let p = Palette::DEFAULT;
+    assert_eq!((color("a"), color("b")), (p.accent, p.label));
+    assert_eq!(
+        color("1 shy"),
+        p.accent,
+        "名前の色が Shy のフラグを示すと読めるように"
+    );
+    let selected = PaintState {
+        selected: Some(0),
+        ..state(0.0)
+    };
+    let f = TestViewport::new(&m, SIZE);
+    let out = labels(
+        &m,
+        &f.vp(),
+        &selected,
+        &UiFont::default(),
+        &mut FakeMeasure::default(),
+    );
+    let a = out.iter().find(|l| &*l.text == "a").unwrap();
+    assert_eq!(a.color, p.accent, "選んだ行でもフラグの色");
+}
+
+#[test]
+fn 隠しているときは見出しの列の上の角に隠した数だけを出す() {
+    let mut m = model(vec![Item::layer(0.0, 5.0, ItemKind::Text, true)]);
+    m.hidden = 2;
+    let out = labels_of(&m, 0.0);
+    assert!(out.iter().any(|l| &*l.text == "2 hidden"));
+    assert!(!out.iter().any(|l| l.text.ends_with("shy")));
+}
+
+#[test]
+fn 見出しのドラッグで入る位置に線を出す() {
+    let m = many(3);
+    let f = TestViewport::new(&m, SIZE);
+    let plain = timeline_quads(&PaintInput::new(&m, &f.vp(), &state(0.0)))
+        .quads
+        .len();
+    let st = PaintState {
+        header_drop: Some(1),
+        ..state(0.0)
+    };
+    let quads = timeline_quads(&PaintInput::new(&m, &f.vp(), &st)).quads;
+    assert_eq!(quads.len(), plain + 2, "見出しの列と行の領域に 1 本ずつ");
+    let y = f.vp().row(1).y;
+    let on_edge = |q: &Quad| (q.rect.y + q.rect.h / 2.0 - y).abs() < 0.01;
+    assert!(quads
+        .iter()
+        .any(|q| q.rect.x == 0.0 && q.rect.w == HEADER_W && on_edge(q)));
 }

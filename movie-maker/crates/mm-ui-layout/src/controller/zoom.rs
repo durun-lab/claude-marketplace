@@ -1,11 +1,16 @@
 //! Timeline の表示の範囲を変える操作。キーとメニューの拡大縮小と全体表示（Shift+Z で元の表示と行き来する）、
-//! ズームバーのドラッグ、再生中のページ送り。
+//! ズームバーのドラッグ、再生中のページ送り、ホイール（拡大縮小、横の移動、縦のスクロール）。
 
-use super::{Drag, TimelineController};
+use super::{Drag, TimelineController, SCROLL_STEP_PX};
 use crate::screen::VIEW_MARGIN;
 use crate::time_view::TimeView;
 use crate::timeline::Hit;
 use crate::zoombar::{self, ZoomBarDrag, ZoomBarPart};
+
+/// ホイール 1 目盛りあたりの拡大率。
+const ZOOM_STEP: f64 = 1.15;
+/// ホイールで横に動かす量（px）。
+const PAN_STEP_PX: f32 = 60.0;
 
 /// キーとメニューの拡大縮小の 1 回の倍率。2 回で 2 倍になり、ホイールの 1 目盛り（1.15 倍）より大きく動くので、
 /// 1 回押した分が見て分かる。
@@ -100,6 +105,30 @@ impl TimelineController {
         } else if from >= start && to < start {
             let back = self.view.origin - ((start - to) / page).ceil() * page;
             self.view.origin = back.max(0.0);
+        }
+    }
+
+    /// ホイール。Ctrl でポインターの下（見出しの列の上なら行の領域の左端）を中心に拡大（縮小は長さ `duration` の全体が収まるまで）、
+    /// Shift か、スクロールバーか見出しの列の上なら縦にスクロール、それ以外は横に動かす。
+    pub(super) fn wheel(
+        &mut self,
+        (x, y): (f32, f32),
+        dy: f32,
+        (ctrl, shift): (bool, bool),
+        duration: f64,
+    ) {
+        if ctrl {
+            let anchor = (x - self.layout.row_area.x).max(0.0);
+            let floor = TimeView::zoom_floor(duration, self.layout.row_area.w, VIEW_MARGIN);
+            let factor = ZOOM_STEP.powf(f64::from(dy));
+            self.view = self.view.zoom_at(anchor, factor, floor);
+        } else if shift
+            || self.layout.scrollbar.contains(x, y)
+            || self.layout.headers.contains(x, y)
+        {
+            self.scroll_to(self.scroll_y - dy * SCROLL_STEP_PX);
+        } else {
+            self.view = self.view.pan_px(-dy * PAN_STEP_PX);
         }
     }
 }

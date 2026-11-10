@@ -175,7 +175,7 @@ mod tests {
         assert!(guide_quads(&overlay(&state(0.0))).is_empty());
         let m = model();
         let vp = TestViewport::new(&m, SIZE);
-        let under = timeline_quads(&PaintInput::new(&m, &vp.vp(), &state(0.0)));
+        let under = timeline_quads(&PaintInput::new(&m, &vp.vp(), &state(0.0))).quads;
         let highlight = palette::GUIDE.with_alpha(super::EDGE_ALPHA);
         assert!(!under.iter().any(|q| q.color == highlight));
     }
@@ -195,6 +195,7 @@ mod tests {
         let f = TestViewport::new(&m, SIZE);
         let highlight = palette::GUIDE.with_alpha(super::EDGE_ALPHA);
         timeline_quads(&PaintInput::new(&m, &f.vp(), &snapped(time, kind)))
+            .quads
             .into_iter()
             .find(|q| q.color == highlight)
     }

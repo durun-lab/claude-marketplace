@@ -109,9 +109,10 @@ Timeline の 1 行がレイヤー 1 本（今と同じく、上が前のレイ�
 - レイヤーの見出しは幅 180 論理ピクセル。左から、種類の色の帯と種類の略号（V: Footage、I: Image、T: Text、S: Solid、C: Composition、Seq: Sequence。Other は無し）、名前（レイヤーの ID）、有効のボタン（目の形）、ロックのボタン（鍵の形。`lockLayer`。Claude の操作経路から守る）、音を持てるレイヤー（撮影素材、入れ子、sequence。Mixer のトラックと同じ）だけ Mute と Solo のボタン（M、S。`setLayerAudio`。Mixer と同じ値で、入の色も Mixer と同じテーマの `danger` と `accent`）、キーフレームがあれば ▸。ボタンは入を明るく、切を薄く描く。
 - 幅 180 は、今の割り付け（サーフェスが 800 論理ピクセル）で行の領域に 78%、[割り付け](#割り付け)の後（940）で 81% を残す。Premiere と Resolve も見出しの幅はウィンドウの幅で変わらない〔推〕。
 - 名前は ID にする。ID は Claude と CLI がレイヤーを指す名前で、コンポジションの中で重ならない。素材の名前は帯に出す（[帯](#帯)）。AE はレイヤーの名前の列に名前（無ければ素材の名前）を出すが、AE の帯には名前が無い。ここは帯が素材の名前を持つので、見出しは行を見分けられる ID を出す。取り込みで振った ID（ep03 の `lyrics-3430` は元のトラックの名前とクリップの番号）も、素材の名前（`f_1351.png`）より中身が分かる。
-- 見出しをクリックするとレイヤーを選ぶ（帯のクリックと同じ）。T3 までは、ボタンの上を押してもレイヤーを選ぶ。縦にドラッグすると重なりの順を変える（`moveLayer`、AE と同じ）。
-- 見出しの列の上の角（目盛りの帯の左）に、再生位置のタイムコード（`HH:MM:SS:FF`）と隠した行の数を出す〔推。Premiere と Resolve は Timeline の左上に時刻を出す〕。フレームは WebView の Frame の数と同じく、再生位置を含むフレーム（切り捨て）。
-- Shy（AE [98]）: View > Shy Selected Layers（D3 の後は見出しの右クリックからも）でレイヤーに Shy のフラグを立て、View > Hide Shy Layers でフラグの立った行を Timeline から外す。描画と書き出しは変わらない。隠した数は見出しの列の上に出す（「4 hidden」）。
+- 見出しをクリックするとレイヤーを選ぶ（帯のクリックと同じ）。ボタンを押すと操作になり、レイヤーは選ばない。縦にドラッグすると重なりの順を変える（`moveLayer`、AE と同じ）。ドラッグ中は入る位置に線を出し、離したとき 1 回の操作にする（Esc で取りやめ）。入る位置は見えている行の境界だけで、見えていない行の間へはドラッグしたままホイールで縦にスクロールして動かす（ドラッグ中の自動スクロールは後で）。無効なレイヤーの見出しは薄くして斜線を引く（Resolve の dimmed。帯は[帯](#帯)）。
+- ロックしたレイヤーでも、見出しのボタンとドラッグは通す。ロックは Claude の操作経路から守るもので（[ロック](05-ops.md#ロック)）、人の Timeline の編集（帯の端のドラッグ）も拒否しないため。先例は分かれ、AE はロックしたレイヤーを選べないが目のスイッチは切り替えられ [128]、Premiere はロックしたトラックの Mute を拒否する [129]。どちらも人の誤操作を防ぐロックで、守る相手が違う。
+- 見出しの列の上の角（目盛りの帯の左）に、再生位置のタイムコード（`HH:MM:SS:FF`）と Shy の行の数を出す〔推。Premiere と Resolve は Timeline の左上に時刻を出す〕。フレームは WebView の Frame の数と同じく、再生位置を含むフレーム（切り捨て）。
+- Shy（AE [98]）: View > Shy Selected Layers（D3 の後は見出しの右クリックからも）でレイヤーに Shy のフラグを立て、View > Hide Shy Layers でフラグの立った行を Timeline から外す。描画と書き出しは変わらない。隠した数は見出しの列の上に出す（「4 hidden」）。隠す前も、フラグを立てた行は名前を accent の色で描き、見出しの列の上に数を同じ色で出す（「2 shy」）。AE は Shy のスイッチの列にアイコンを出すが、ここの見出しは幅 180 に固定で、アイコンの列を足すと ID が切れる（ep03 の `voice-10` が `voi…` になる）ので、幅を取らない名前の色と、見出しの列の上の角の数にする〔新規〕。
 
 表示の状態（ズーム、スクロール、行の高さ、Shy、スナップの入/切）はプロジェクトのデータに入れず、`.mm/view.json` に置く。操作ではないので、取り消しの列と `versions/` に入らない。`.mm/` は [保存の形](09-ingest-storage.md#保存の形) では動作中を示すファイル（`lock`、`lock.info`）の置き場所で「消してよい」ので、T1 が 09 の木の説明に表示の状態を足す。消しても表示が既定に戻るだけで、バックアップ（`backups/`）と `mm import` の復旧には関わらない。
 
@@ -121,6 +122,10 @@ Timeline の 1 行がレイヤー 1 本（今と同じく、上が前のレイ�
 - ツールチップは種類、名前、範囲、長さ（「Text · Opening Title · 00:00:05:00–00:00:08:00 (3:00)」）。
 - 無効のレイヤーは色を薄くして斜線を引く（Resolve の dimmed [103]）。無効のカットは配置から外れて長さを持たない（`disable`、[操作](05-ops.md#操作)）ので、帯には出ない（Timeline のモデルも有効なカットだけを並べる）。
 - 先頭のサムネイルはキャッシュの `thumbs/` の 1 枚（Media パネルと同じ）。フィルムストリップは素材ごとに間隔を置いた縮小画像をキャッシュに作り、テクスチャのアトラスで描く（T6）。
+- T5 が決めた形（先例）。Medium と Large の帯（シーケンスはカットごと）の左に、帯の高さの 16:9 のサムネイルを出す（Medium は 44、Large は 94 論理ピクセルの幅）。帯の見えている幅がサムネイルの幅に満たなければ、Small の行と同じく出さない。帯の左端が画面の外に出たときは、名前と同じく見えている所の左に寄せる。サムネイルは素材のコンテンツハッシュをキーにし（`Item::thumb`、`CutBar::thumb`）、撮影素材と静止画のレイヤーとカットだけが持つ。名前はサムネイルの右から始める（Premiere はサムネイルの右に名前、Resolve は上に名前。帯の高さが 25 の Medium は上に置くと名前の行が無いので Premiere に倣う）。キーフレームのマーカーは下端でサムネイルに重ねる（サムネイルを矩形の並びの `OnBar` の前に描くので、つまみ、外枠、マーカーはサムネイルの上）。無効なレイヤーのサムネイルは帯と同じく薄くする。先例は Premiere と Resolve のクリップの先頭のサムネイル。
+- T5 の描き方（新規設計。先例が解消しない、数千のカットで 60 fps を守る点）。キャッシュの JPEG（幅 320）を 16:9 の中央で切り出して 192x108 のスロットの大きさに縮め（元の画素の範囲を平均）、縦横を半分にしたミップレベルを 2 つ足して、1920x2160 のアトラス（200 スロット）にまとめ、見えている全部を 1 回の描画呼び出しで描く。スロットは Large の帯を表示の倍率 2 で描いても引き伸ばさない大きさで、Medium の帯を倍率 1 で描く（スロットを 4 分の 1 ほどに縮める）ときはミップレベルから引き、間引いた画素がスクロールでちらつかないようにする。文字の下の矩形のうち、帯と帯の中の波形までの数（`timeline_quads` が返す `UnderText::bars`）の後ろに描く。波形のある帯では、サムネイルの下の波形は隠れ、名前と同じくサムネイルの右から見える（波形をサムネイルの上に重ねると、素材を見分ける手がかりの下半分が隠れる）。アトラスがいっぱいになったら、直近のフレームで描かなかったものからいちばん前に使った順に捨てる。全部が見えていて空かなければ、60 フレーム後に頼み直す。アトラスはデバイスの資源なので、サーフェスの作り直し（`Lost`）では捨てず、レンダラーの GPU が変わったときに `Ui` ごと作り直す。
+- T5 の読み込み。アプリの描画スレッドが `Ui::take_thumb_requests` でキーを受け、別のスレッドが JPEG を読んでスロットの画像（ミップレベルを含む）を作り、描画スレッドが 1 フレームに 16 枚までを `Ui::set_thumb` で書く。読み終わるまでは、名前の左にサムネイルの幅を空けて描く。読めなかったキー（音だけの素材、キャッシュの無い素材）は帯から外して名前を左に戻し、編集でモデルが置き換わっても外したままにする。取り込みが素材の出力を作り終えたら（`Shared::ingest_serial`。T4 の波形と同じ合図）、`Ui::retry_thumbs` で読み直し、読めたキーだけを帯に戻す（読めないままのキーの帯の名前は動かない）。キャッシュのフォルダーは波形と同じく `Shared::cache_dir` から引く。
+- サムネイルは素材の 1 コマ（`mm ingest` が素材の 1/3 の位置で撮ったもの）で、レイヤーとカットのイン点のコマではない。同じ素材から切り出したレイヤーとカットは同じサムネイルになり、見分ける手がかりにならない（ep03 では、動画の撮影素材のレイヤー 367 本が 14 本の動画から切り出されている）。キャッシュの `thumbs/` は素材ごとに 1 枚なので、T6 が縮小画像（素材ごとに間隔を置いたコマ）を作ったら、帯の先頭のサムネイルをイン点にいちばん近いコマに替える（Premiere と Resolve はクリップの先頭のコマを出す）。
 - 波形はキャッシュの波形（`MediaState::waveform` と同じ区間のピーク）をカットとレイヤーの素材の範囲で切り出し、縦の矩形の並びで描く。
   T4 が決めた形: 波形の元（`WaveSource`）はモデルのレイヤーとカットが持ち、ピーク（`Peaks`）は素材のコンテンツハッシュで `Ui::set_wave` に渡す。波形の時刻は、素材の時刻に音と映像の先頭のずれ（`timebase_offset`）を足したもの（キャッシュの波形は音の最初のサンプルから数え、再生の音は映像の先頭を素材の時刻 0 に置く）。カットの波形はカットの速さにレイヤーの速さを掛けて進め、タイムリマップのあるレイヤーには出さない。Medium は帯の下端のマーカーの高さ、Large は下半分に、`Depth::Wave`（帯の上、つまみと外枠の下）で描く。名前は上の部分、マーカーは波形の上に重なる。1 列（2 論理ピクセル）が受け持つ時間のピークの最大を、2 個ずつの最大を重ねた階層から引く。列の境は時刻に固定する（横に動かしても同じ列が同じ時間を受け持ち、縮小した波形がちらつかない）。ピークは見た目の振幅（平方根）を 1 バイトで持ち、全部の階層で元のピーク 1 個に約 2 バイト（ep03 の音のある 34 素材、約 20 時間で 15 MB）。矩形は倍率と見えている範囲が変わったときだけ作り直す。描く関数の入力は `PaintInput` の 1 つで、`timeline_quads` と `timeline_overlay` はそれだけを受ける（描くものを足す PR は公開する関数を増やさずにフィールドを足す）。読み込みはアプリの描画スレッドの脇のスレッドで、キャッシュに無い素材は、素材の一覧が変わったときと、取り込みが素材の出力を作り終えたとき（`Shared::ingest_serial`）に探し直す。geneva から読み込んだ素材はコンテンツハッシュが大きさと更新の時刻（`size…-mtime…`）で、取り込みが作るキャッシュの名前と合わないので、波形は出ない。
 - トランジションの箱（カットの境）とマーカーは後で足す。
@@ -298,14 +303,17 @@ Z2 で決めたこと（新しく設計したもの）:
 | 場所 | 出すもの |
 |---|---|
 | Program（コンポジションに中身が無く、素材も無い） | 「Import video and audio to start」と「File > Import Media… (Ctrl+I)」 |
-| Timeline（コンポジションに中身が無く、sequence のレイヤーがある） | 「Open a clip in Media, mark In (I) and Out (O), then press Insert (,)」。Media から Timeline へのドラッグは後 |
+| Timeline（コンポジションに中身が無い） | 「Open a clip in Media, mark In (I) and Out (O), then press Insert (,)」。sequence のレイヤーが無ければ最初の Insert が作る（下の箇条）。Media から Timeline へのドラッグは後 |
 | Inspector（何も選んでいない） | コンポジションの要約（名前、大きさ、fps、長さ、レイヤーの数）と「Select a layer in the Timeline to see its properties.」。名前はコンポジションの ID、長さは見出しの列の上の角と同じタイムコード |
 | Story（文字起こしが無い） | 「No transcript yet. Transcription runs outside the app for now: run tools/transcribe on a clip, then reopen this tab.」。アプリの中の Transcribe のコマンドができたら、ボタンに替える |
 | Tasks | 実装の無い項目を薄くする（[UI のコマンドの表](#ui-のコマンドの表)） |
 
 - 中身が無いのは、レイヤーが無いか、どのレイヤーもカットの無いシーケンスを置いた sequence のレイヤーのとき。無効のレイヤーとカットは中身に数え、案内を出さない。判定はコンポジションの中身で決め、Timeline の行の見え方では決めない。Shy で全部の行を隠しても案内は出さない（隠した数は見出しの列の上の角に出る。T3）。判定は `mm-ui-wgpu` の `empty_state`。
 - 素材を取り込んだ後は、取り込みはもう次にすることではないので、Program の案内を出さない。
-- Timeline の手順は、Insert の入る先（sequence のレイヤー）があるときだけ出す。sequence のレイヤーが無いと Insert は効かない（`sequence_edit.rs` の `target_layer` が「No sequence layer」で拒否し、メニューの Insert も押せない）。`mm new` の直後に足す `main` もレイヤーが無いので、今は Program の案内だけが出る。最初の Insert で sequence のレイヤーを作れば（Premiere の空の Timeline の「Drop media here to create sequence」[96] と同じく、最初の素材から sequence を作る）、この条件を外せる。後の PR。
+- sequence の自動作成: sequence のレイヤーが無いコンポジションへの Insert と Overwrite（置き換えるカットが無いので Insert と同じ）は、空の sequence と、それを置く sequence のレイヤーを足してからカットを入れる（`sequence_edit/new_sequence.rs` の `NewSequence`）。1 つのトランザクションなので、途中の操作が拒否されれば全部戻り、取り消しも 1 回で全部戻る。メニューの Insert と Overwrite も、Source に素材を開いていれば押せる。Timeline の手順も、`mm new` の直後に足す `main` のようにレイヤーが無いコンポジションに出す（手順のとおりに押せば最初の Insert が sequence を作る）。Split、Lift、Extract は編集するカットが無いので、今のまま拒否する。
+  - 先行事例: Premiere の空の Timeline は「Drop media here to create sequence」と出し、最初のクリップから sequence を作る [96]。Premiere の sequence は長さを持たず、最後のクリップの終わりで再生も書き出しも終わる。新しい sequence の名前は Sequence 01 から番号で付き、クリップを落として作った sequence にはクリップの名前が付く〔推〕。Resolve は最初のクリップで Timeline 1 を作り、CapCut はメイントラックを作る〔推〕。FCP はプロジェクトに最初から基本ストーリーラインがあり、最初のクリップでビデオのプロパティ（大きさとフレームレート）が決まる〔推〕。
+  - 新規設計: 新しい操作は足さず、既存の操作の並び（`addSequence`、`addLayer`、`insert`、`fitLayer`）で作る。新しいレイヤーは操作の前のデータに無く、`with_fitted_layers` が `fitLayer` を足さないので、並びに入れる。レイヤーはコンポジションの先頭から一番上に置き、長さを入れたカットの長さにするので、後の編集にも追従する。ID は Timeline の見出し、Story の並べ先、Mixer に名前として出るので、Premiere と Resolve の新しい sequence に合わせて、sequence を `Sequence <番号>`、sequence のレイヤーを `Sequence <番号> layer` にする。番号は 1 から数え、種類を問わずプロジェクトのほかの ID と重複しない最初のものにする（触る所の `Touches` は ID の種類を区別しない）。クリップの名前は付けない。Story の Arrange では話題が複数の素材にまたがり、帯に出る素材のファイル名とも見分けにくいため。コンポジションの長さは、レイヤーの無いコンポジションなら入れたカットの長さにする（`fitLayer` の `duration`）。その長さは中身から決めたものでなく（`mm new` の直後に足す `main` の長さは仮のもの）、短いカットの後ろの黒い画面まで再生し書き出すより、Premiere の sequence と同じく中身の終わりで終える方が自然なため。ほかのレイヤーがあるコンポジションは、その置き場所が長さに依るので、追従の決まり（伸ばすだけ）のままにする。大きさと fps はカットに合わせない（Premiere は最初のクリップで決めるが、コンポジションは作った時点で決まっている）。
+  - Story の Arrange は `story_arrange` 1 つで送り、並べ先の決め方（選んだ sequence、無ければ先頭）と、プロジェクトに sequence が無いときの自動作成を、アプリが送る直前の最新のデータで行う。パネルの一覧が古くても sequence を二重に作らない。並べ先の欄の下には「No sequence yet. Arrange creates one in the open composition.」と出す。Story の Delete とトランジションは、切るカットも掛けるカットも無いので作らない。モバイル版の Arrange は、`addSequence` と `addLayer` が即時に適用できる操作の表（[モバイル版の権限](12-mobile.md#権限)）に無いので作らず、「No sequence yet. Press Insert or Arrange on the PC to create one.」と PC で作る操作を案内する。
 - 要約は選択のイベント（`mm:layer-selected`）に載せる。購読より前に Rust が送ったイベントは WebView に届かないので、Shell は選択のイベントを聞き始めたら頼み（`mm:layer-selection-request`）を投げ、`transport.js` は選択の Tauri イベントを購読し終えてから `layer_selection` で今の選択を読んで答える。時間では待たない。購読してから読む形は UI のコマンドの表（Shell の `useCommandTable`）と同じ。
 
 ## 文言
@@ -438,7 +446,7 @@ L1 が決めた形: 再生の操作のバーは `mm-ui-layout/src/transport.rs`�
 | T3 `feature/movie-maker-header-toggles` | 見出しのボタンで `setLayerEnabled`、`lockLayer`、`setLayerAudio`。見出しのドラッグで `moveLayer`。Shy（View > Shy Selected Layers）と Hide Shy Layers | T2、B1、D1 | `header.rs`、`controller.rs`、`apps/movie-maker/src/win/sequence_edit.rs`（操作を作る所）、`view_state.rs`、`commands.rs` | 有効を切ったレイヤーの行が薄くなり、Program からそのレイヤーが消える。Hide Shy Layers で Shy の行が消え、左上の角に隠した数が出る |
 | T4 `feature/movie-maker-timeline-waveform` | 音のあるレイヤーとカットの波形 | T1 | `crates/mm-ui-layout/src/wave.rs`（新）、`crates/mm-ui-wgpu/src/model.rs`、`apps/movie-maker/src/win/render.rs`（波形を読む） | sequence の行のカットに波形が出る |
 | T5 `feature/movie-maker-timeline-thumb` | 帯の先頭のサムネイル（キャッシュの `thumbs/`）。テクスチャの Quad の描き方 | T1、B2（`quads.rs` が重なる） | `crates/mm-ui-wgpu/src/thumbs.rs`（新）、`quads.rs`、`render.rs` | Medium と Large の行の帯の左にサムネイルが出る |
-| T6 `feature/movie-maker-timeline-filmstrip` | フィルムストリップ（素材ごとの縮小画像をキャッシュに作り、アトラスで描く）。2 日を超えそうなら、縮小画像を作る所と描く所に分ける | T5 | `crates/mm-ingest/`（縮小画像）、`apps/movie-maker/src/win/media.rs`、`thumbs.rs` | Large の行の帯に縮小画像が並ぶ |
+| T6 `feature/movie-maker-timeline-filmstrip` | フィルムストリップ（素材ごとの縮小画像をキャッシュに作り、アトラスで描く）。帯の先頭のサムネイルを、縮小画像のうちイン点にいちばん近いコマに替える。2 日を超えそうなら、縮小画像を作る所と描く所に分ける | T5 | `crates/mm-ingest/`（縮小画像）、`apps/movie-maker/src/win/media.rs`、`thumbs.rs` | Large の行の帯に縮小画像が並ぶ。同じ素材から切り出したレイヤーとカットの先頭のサムネイルが、イン点ごとに違う |
 
 ### 時間の操作
 

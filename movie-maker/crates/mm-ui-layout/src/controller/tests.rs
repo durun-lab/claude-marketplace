@@ -4,6 +4,7 @@
 use super::*;
 use crate::gesture::Side;
 use crate::rows::{RowHeights, Rows};
+use crate::screen::VIEW_MARGIN;
 use crate::time_view::MIN_PX_PER_SEC;
 use crate::timeline::{Item, ItemKind};
 use crate::timeline_layout::{HEADER_W, TOOLBAR_H};

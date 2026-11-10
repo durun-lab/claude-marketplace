@@ -12,23 +12,18 @@ mod zoom;
 
 pub use command::{edit_target, TimelineCommand};
 
-use crate::gesture::{body_edit, EditKind};
+use crate::gesture::{body_edit, frame_secs, EditKind};
 use crate::paint::PaintState;
 use crate::palette::Palette;
 use crate::rows::Rows;
-use crate::screen::VIEW_MARGIN;
 use crate::scroll::{clamp_scroll, reveal, scroll_for_thumb};
 use crate::snap::{quantize, SnapTarget};
 use crate::time_view::TimeView;
-use crate::timeline::{hit_test, Hit, Part, TimelineModel};
+use crate::timeline::{hit_test, HeaderButton, Hit, Part, TimelineModel};
 use crate::timeline_layout::{TimelineLayout, Viewport};
 use crate::zoombar::ZoomBarDrag;
 use zoom::FullExtent;
 
-/// ホイール 1 目盛りあたりの拡大率。
-const ZOOM_STEP: f64 = 1.15;
-/// ホイールで横に動かす量（px）。
-const PAN_STEP_PX: f32 = 60.0;
 /// Shift+ホイールで縦にスクロールする量（px）。横と同じ量にする。
 const SCROLL_STEP_PX: f32 = 60.0;
 
@@ -83,6 +78,10 @@ pub enum Action {
     /// 端のつまみや中のドラッグが表す編集。`by` はコンポジションの時間軸の秒（スナップ後。フレームへの丸めは受け取る側）。
     /// 確定するのは `done` のときだけで、それまではドラッグ中の表示（スナップのガイド線）に使う。
     Edit { kind: EditKind, by: f64, done: bool },
+    /// 見出しのボタンを押した。行の添字とボタン。受け取る側がレイヤーの今の状態から操作にする。
+    HeaderButton { index: usize, button: HeaderButton },
+    /// 見出しのドラッグを離した。行 `from` を行の境界 `boundary`（0 が先頭の行の上、行の数が最後の行の下）へ動かす。
+    MoveLayer { from: usize, boundary: usize },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -103,6 +102,8 @@ enum Drag {
         mods: Mods,
         from: f64,
     },
+    /// 見出しの縦のドラッグ。
+    Header(header_drag::HeaderDrag),
     /// スクロールボックスのドラッグ。`grab_offset` は押した点の、スクロールボックスの上端からの距離。
     Thumb {
         grab_offset: f32,
@@ -226,6 +227,7 @@ impl TimelineController {
             snap: self.snap,
             preview: self.last_edit,
             drag_tooltip: self.drag_tooltip(),
+            header_drop: self.header_drop(),
             palette: Palette::DEFAULT,
         }
     }
@@ -249,6 +251,7 @@ impl TimelineController {
                 shift,
             } => {
                 self.wheel((x, y), dy, (ctrl, shift), model.duration);
+                self.follow_scroll(model.items.len());
                 if self.drag == Drag::None {
                     self.hover = hit_test(model, &self.viewport(), x, y);
                 }
@@ -273,11 +276,7 @@ impl TimelineController {
 
     /// 時刻 `t` に再生位置を動かすときの時刻。いちばん近いフレームの先頭にそろえ、コンポジションの中に収める。
     fn seek_time(t: f64, model: &TimelineModel) -> f64 {
-        let frame = if model.fps > 0.0 {
-            1.0 / model.fps
-        } else {
-            0.0
-        };
+        let frame = frame_secs(model);
         let t = quantize(t, model.fps);
         t.clamp(0.0, (model.duration - frame).max(0.0))
     }
@@ -299,6 +298,10 @@ impl TimelineController {
             }
             // 見出しの列の上の角はタイムコードを出すだけで、選択もカットの選択も変えない。
             Hit::Corner => return Vec::new(),
+            // ボタンは操作にするだけで、レイヤーの選択は変えない（Premiere と Resolve の見出しのボタンと同じ）。
+            Hit::HeaderButton { index, button } => {
+                return vec![Action::HeaderButton { index, button }];
+            }
             _ => {}
         }
         let had_cut = self.selected_cut.take();
@@ -320,7 +323,7 @@ impl TimelineController {
                 self.press_bar_mark((item, keyframe), had_cut, model)
             }
             Hit::Header { index } => {
-                self.selected = Some(index);
+                self.press_header(index, y);
                 deselect_cut(Action::Select(Some(index)), had_cut)
             }
             _ => {
@@ -398,6 +401,7 @@ impl TimelineController {
                 Vec::new()
             }
             Drag::Scrub => vec![Action::Seek(self.seek_at(x, model))],
+            Drag::Header(drag) => self.drag_header(drag, y, model.items.len()),
             Drag::Thumb { grab_offset } => {
                 let content = self.rows.content_height();
                 self.scroll_y = scroll_for_thumb(self.layout.scrollbar, content, y - grab_offset);
@@ -438,12 +442,9 @@ impl TimelineController {
     fn up(&mut self, model: &TimelineModel) -> Vec<Action> {
         let (drag, last) = (self.drag, self.last_edit);
         self.end_drag();
-        let frame = if model.fps > 0.0 {
-            1.0 / model.fps
-        } else {
-            0.0
-        };
+        let frame = frame_secs(model);
         match (drag, last) {
+            (Drag::Header(header), _) => header.release(),
             // 動かさずに離したクリックは編集にしない。
             (Drag::Edge { .. } | Drag::Body { .. }, Some((kind, by)))
                 if by.abs() >= frame / 2.0 =>
@@ -457,24 +458,6 @@ impl TimelineController {
             _ => Vec::new(),
         }
     }
-
-    /// ホイール。Ctrl でポインターの下（見出しの列の上なら行の領域の左端）を中心に拡大（縮小は長さ `duration` の全体が収まるまで）、
-    /// Shift か、スクロールバーか見出しの列の上なら縦にスクロール、それ以外は横に動かす。
-    fn wheel(&mut self, (x, y): (f32, f32), dy: f32, (ctrl, shift): (bool, bool), duration: f64) {
-        if ctrl {
-            let anchor = (x - self.layout.row_area.x).max(0.0);
-            let floor = TimeView::zoom_floor(duration, self.layout.row_area.w, VIEW_MARGIN);
-            let factor = ZOOM_STEP.powf(f64::from(dy));
-            self.view = self.view.zoom_at(anchor, factor, floor);
-        } else if shift
-            || self.layout.scrollbar.contains(x, y)
-            || self.layout.headers.contains(x, y)
-        {
-            self.scroll_to(self.scroll_y - dy * SCROLL_STEP_PX);
-        } else {
-            self.view = self.view.pan_px(-dy * PAN_STEP_PX);
-        }
-    }
 }
 
 /// レイヤーの選択の操作に、カットの選択が外れたことを添える。
@@ -486,6 +469,7 @@ fn deselect_cut(select: Action, had_cut: Option<(usize, usize)>) -> Vec<Action> 
     out
 }
 
+mod header_drag;
 mod snapping;
 
 #[cfg(test)]

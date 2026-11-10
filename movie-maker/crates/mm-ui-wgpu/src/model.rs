@@ -100,9 +100,11 @@ pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
             id: layer.id.as_str().into(),
             start: range.start.to_f64(),
             end: range.end.to_f64(),
+            thumb: names.thumb(&layer.source),
             kind: kind_of(layer),
             enabled: layer.enabled,
             locked: layer.lock,
+            shy: false,
             audio: audio_state(layer),
             label: names.label(&layer.source),
             keyframes: keyframe_secs(layer),
@@ -116,6 +118,7 @@ pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
         fps: comp.fps.to_f64(),
         items,
         markers: comp.markers.iter().map(|m| m.time.to_f64()).collect(),
+        ..TimelineModel::default()
     }
 }
 
@@ -163,6 +166,7 @@ fn cut_bars(
             start: comp_secs(layer, p.range.start.to_f64()),
             end: comp_secs(layer, p.range.end.to_f64()),
             label: names.label(&seq.cuts[p.index].source),
+            thumb: names.thumb(&seq.cuts[p.index].source),
             gap: seq.cuts[p.index].source.is_gap(),
             disabled_before: p.index.checked_sub(1).is_some_and(|i| !seq.cuts[i].enabled),
             disabled_after: seq.cuts.get(p.index + 1).is_some_and(|c| !c.enabled),

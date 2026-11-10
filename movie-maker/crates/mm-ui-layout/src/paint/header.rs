@@ -3,7 +3,7 @@
 
 use super::{Canvas, Depth, PaintInput};
 use crate::geom::{Color, Quad, QuadShape, Rect};
-use crate::header::{cells, mark_color, row_rect, BUTTON_W};
+use crate::header::{button_center, cells, mark_color, row_rect, BUTTON_W};
 use crate::palette::Palette;
 use crate::timeline::{Hit, Item};
 
@@ -30,6 +30,14 @@ const AUDIO_BUTTON: (f32, f32) = (14.0, 13.0);
 const DISCLOSURE: (f32, f32) = (6.0, 8.0);
 /// アイコンと枠の線の太さ。
 const LINE: f32 = 1.0;
+/// ポインターが乗ったボタンの背景に重ねる色の濃さ。
+const BUTTON_HOVER_ALPHA: f32 = 0.22;
+/// 無効なレイヤーの行の斜線の、点の大きさと線の間隔（横）と濃さ。
+const HATCH_DOT: f32 = 3.0;
+const HATCH_PERIOD: f32 = 10.0;
+const HATCH_ALPHA: f32 = 0.2;
+/// 見出しのドラッグで入る位置の線の太さ。
+const DROP_LINE: f32 = 2.0;
 
 pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
     let p = &s.state.palette;
@@ -45,7 +53,10 @@ pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
         for (on, alpha) in [
             (s.state.selected == Some(i), SELECTED_ALPHA),
             (
-                matches!(s.state.hover, Hit::Header { index } if index == i),
+                matches!(
+                    s.state.hover,
+                    Hit::Header { index } | Hit::HeaderButton { index, .. } if index == i
+                ),
                 HOVER_ALPHA,
             ),
         ] {
@@ -53,10 +64,73 @@ pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
                 c.push_in(Depth::Back, back, p.selection.with_alpha(alpha), area);
             }
         }
+        if !item.enabled {
+            hatch(c, back, p.label.with_alpha(HATCH_ALPHA), area);
+        }
+        hovered_button(s, c, (i, item), row);
         buttons(c, row, item, p, area);
     }
+    drop_line(s, c);
     let edge = Rect::new(area.right() - LINE, area.y, LINE, area.h);
     c.push_in(Depth::Surround, edge, p.tick.with_alpha(EDGE_ALPHA), area);
+}
+
+/// 無効なレイヤーの行の斜線（右上がり）。小さな正方形を斜めに並べ、行の矩形と見出しの列の両方に収める。
+fn hatch(c: &mut Canvas, row: Rect, color: Color, area: Rect) {
+    let Some(clip) = crate::header::inside(row, area) else {
+        return;
+    };
+    let steps = (row.h / HATCH_DOT).ceil() as usize;
+    let mut x = row.x - row.h;
+    while x < row.right() {
+        for k in 0..steps {
+            let k = k as f32;
+            let dot = Rect::new(
+                x + k * HATCH_DOT,
+                row.bottom() - (k + 1.0) * HATCH_DOT,
+                HATCH_DOT,
+                HATCH_DOT,
+            );
+            c.push_in(Depth::OnBar, dot, color, clip);
+        }
+        x += HATCH_PERIOD;
+    }
+}
+
+/// ポインターが乗っているボタンの背景を明るくする（押せることが分かるように）。
+fn hovered_button(s: &PaintInput, c: &mut Canvas, (i, item): (usize, &Item), row: Rect) {
+    let Hit::HeaderButton { index, button } = s.state.hover else {
+        return;
+    };
+    if index != i {
+        return;
+    }
+    let Some((cx, _)) = button_center(s.vp, item, i, button) else {
+        return;
+    };
+    let r = Rect::new(cx - BUTTON_W / 2.0, row.y + LINE, BUTTON_W, row.h - LINE);
+    let color = s.state.palette.selection.with_alpha(BUTTON_HOVER_ALPHA);
+    c.push_in(Depth::Back, r, color, s.vp.layout.headers);
+}
+
+/// 見出しのドラッグで入る位置の線。入る位置の行の境界に、見出しの列と行の領域を横に貫いて引く。
+fn drop_line(s: &PaintInput, c: &mut Canvas) {
+    let Some(boundary) = s.state.header_drop else {
+        return;
+    };
+    let Some(last) = s.model.items.len().checked_sub(1) else {
+        return;
+    };
+    let y = if boundary <= last {
+        row_rect(s.vp, boundary).y
+    } else {
+        row_rect(s.vp, last).bottom()
+    };
+    let l = s.vp.layout;
+    for area in [l.headers, l.row_area] {
+        let line = Rect::new(area.x, y - DROP_LINE / 2.0, area.w, DROP_LINE);
+        c.push_in(Depth::Surround, line, s.state.palette.selection, area);
+    }
 }
 
 /// 見出しの列の上の角の背景。目盛りの帯と同じ色。
