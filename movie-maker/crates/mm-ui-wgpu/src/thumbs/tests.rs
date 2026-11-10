@@ -68,7 +68,7 @@ fn 全部が見えていれば捨てず_少し待ってから頼み直す() {
 }
 
 #[test]
-fn 読めなかったサムネイルは頼み直さず_取り込みを終えたら頼み直す() {
+fn 読めなかったサムネイルは合図で頼み直し_読めるまでは読めなかったものとして扱う() {
     let mut s = Slots::new(2);
     s.begin_frame();
     s.slot_to_draw(&key("a"));
@@ -77,12 +77,18 @@ fn 読めなかったサムネイルは頼み直さず_取り込みを終えた�
     assert!(s.is_missing("a") && s.has_missing());
     s.begin_frame();
     assert_eq!(s.slot_to_draw(&key("a")), None);
-    assert!(s.take_requests().is_empty());
+    assert!(s.take_requests().is_empty(), "合図までは頼み直さない");
     s.retry_missing();
-    assert!(!s.has_missing());
-    s.begin_frame();
-    s.slot_to_draw(&key("a"));
     assert_eq!(s.take_requests(), [key("a")]);
+    assert!(s.is_missing("a"), "読み直している途中も読めなかったもの");
+    s.retry_missing();
+    assert_eq!(s.take_requests(), [key("a")], "途中でも次の合図で頼み直す");
+    assert!(s.insert("a").is_some());
+    s.missing("a");
+    assert!(
+        !s.has_missing(),
+        "前の読み込みで読めていたら、後の読めなかった結果で捨てない"
+    );
 }
 
 #[test]

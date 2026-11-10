@@ -1,7 +1,7 @@
 //! 帯の先頭のサムネイルを、オフスクリーンに描いて確かめる。サムネイルは 1 色のスロットなので、画素の色で置き場所と重なりが分かる。
 
 use mm_ui_layout::{Item, ItemKind, RowHeight, RowHeights, TimelineModel, ViewState};
-use mm_ui_wgpu::{slot_image_from_rgb, slot_image_len, ThumbStats, Ui, SLOT_H, SLOT_W};
+use mm_ui_wgpu::{slot_image_from_rgb, slot_image_len, Ui, SLOT_H, SLOT_W};
 
 use crate::support::{bar_rect, close, gpu, px_in, render_sized, FORMAT, H, W};
 
@@ -130,19 +130,28 @@ fn 読めなかったサムネイルは帯から外して名前を左に戻し_�
 }
 
 #[test]
-fn 取り込みを終えたら読めなかったサムネイルを帯に戻して頼み直し_届いたら描く() {
+fn 読めなかったサムネイルは読み直して_読めたときだけ帯に戻して描く() {
     let Some((device, queue)) = gpu() else { return };
     let m = model(true);
     let mut ui = ui(&device, &m, None);
     render_sized(&device, &queue, &mut ui, (W, H));
     ui.take_thumb_requests();
     ui.set_thumb(&device, &queue, "k", None);
-    render_sized(&device, &queue, &mut ui, (W, H));
+    let missing = render_sized(&device, &queue, &mut ui, (W, H));
     ui.retry_thumbs();
-    render_sized(&device, &queue, &mut ui, (W, H));
     assert_eq!(ui.take_thumb_requests().len(), 1);
-    assert_eq!(ui.thumb_stats(), ThumbStats::default());
+    let retrying = render_sized(&device, &queue, &mut ui, (W, H));
+    ui.set_thumb(&device, &queue, "k", None);
+    let still = render_sized(&device, &queue, &mut ui, (W, H));
+    assert!(
+        retrying == missing && still == missing,
+        "読めないままなら名前は動かない"
+    );
+    assert_eq!(ui.thumb_stats().dropped, 1);
+    ui.retry_thumbs();
+    ui.take_thumb_requests();
     ui.set_thumb(&device, &queue, "k", Some(&red_image()));
     render_sized(&device, &queue, &mut ui, (W, H));
-    assert_eq!(ui.thumb_stats().drawn, 1);
+    let stats = ui.thumb_stats();
+    assert_eq!((stats.dropped, stats.drawn), (0, 1));
 }

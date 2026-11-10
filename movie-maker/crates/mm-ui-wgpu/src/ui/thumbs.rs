@@ -18,7 +18,7 @@ pub struct ThumbStats {
     pub dropped: usize,
 }
 
-/// 読めなかったので帯から外したキー（行、カット、キー）。モデルを置き換えるたびに作り直し、取り込みを終えたら帯に戻す。
+/// 読めなかったので帯から外したキー（行、カット、キー）。モデルを置き換えるたびに作り直し、読み直して読めたら帯に戻す。
 #[derive(Debug, Default)]
 pub(super) struct DroppedThumbs(Vec<(usize, Option<usize>, Arc<str>)>);
 
@@ -37,21 +37,30 @@ impl DroppedThumbs {
         }
     }
 
-    /// 外したキーを `model` の帯に戻す。
-    fn restore(&mut self, model: &mut TimelineModel) {
-        for (i, cut, key) in self.0.drain(..) {
-            let Some(item) = model.items.get_mut(i) else {
-                continue;
-            };
-            let thumb = match cut {
-                None => &mut item.thumb,
-                Some(c) => match item.cuts.get_mut(c) {
-                    Some(cut) => &mut cut.thumb,
-                    None => continue,
-                },
-            };
-            *thumb = Some(key);
-        }
+    /// 外したキーのうち `key` を、`model` の元の帯に戻す。
+    fn restore_key(&mut self, model: &mut TimelineModel, key: &str) {
+        self.0.retain(|(i, cut, k)| {
+            if &**k != key {
+                return true;
+            }
+            if let Some(thumb) = thumb_of(model, *i, *cut) {
+                *thumb = Some(k.clone());
+            }
+            false
+        });
+    }
+}
+
+/// 行 `i` の帯（`cut` があればそのカット）のサムネイルのキー。
+fn thumb_of(
+    model: &mut TimelineModel,
+    i: usize,
+    cut: Option<usize>,
+) -> Option<&mut Option<Arc<str>>> {
+    let item = model.items.get_mut(i)?;
+    match cut {
+        None => Some(&mut item.thumb),
+        Some(c) => item.cuts.get_mut(c).map(|cut| &mut cut.thumb),
     }
 }
 
@@ -64,6 +73,7 @@ impl Ui {
 
     /// 読み込んだサムネイルをスロットに書く。`image` は [`crate::slot_image_from_rgb`] が作るスロットの画像。
     /// 読めなかったとき（`None`）はそのキーを帯から外し、[`Ui::retry_thumbs`] まで頼み直さない。
+    /// 外したキーが読み直しで読めたら、帯に戻す。
     pub fn set_thumb(
         &mut self,
         device: &wgpu::Device,
@@ -75,14 +85,15 @@ impl Ui {
         if self.thumbs.is_missing(key) {
             self.dropped_thumbs
                 .drop_where(&mut self.model, |k| k == key);
+        } else {
+            self.dropped_thumbs.restore_key(&mut self.model, key);
         }
     }
 
-    /// 読めなかったキーを帯に戻し、見えているものから読み直す。素材の取り込みを終えたとき（キャッシュにサムネイルが
-    /// できたかもしれない）に呼ぶ。
+    /// 読めなかったサムネイルを読み直す。読めたキーだけを帯に戻すので、読めないままのキーの帯の名前は動かない。
+    /// 取り込みが素材の出力を作り終えたとき（キャッシュにサムネイルができたかもしれない）に呼ぶ。
     pub fn retry_thumbs(&mut self) {
         self.thumbs.retry_missing();
-        self.dropped_thumbs.restore(&mut self.model);
     }
 
     /// サムネイルの状態の数。

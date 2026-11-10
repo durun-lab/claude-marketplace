@@ -29,13 +29,13 @@ fn keys(m: &TimelineModel) -> Vec<Option<&str>> {
 }
 
 #[test]
-fn 読めなかったキーはレイヤーとカットの帯から外し_戻すと元の帯に付く() {
+fn 読めなかったキーはレイヤーとカットの帯から外し_読めたキーだけを元の帯に戻す() {
     let mut m = model();
     let mut dropped = DroppedThumbs::default();
-    dropped.drop_where(&mut m, |k| k == "a");
-    assert_eq!(keys(&m), [None, None, None, Some("b")]);
-    assert_eq!(dropped.0.len(), 2, "レイヤーとカットで 2 つ");
-    dropped.restore(&mut m);
-    assert_eq!(keys(&m), keys(&model()));
-    assert!(dropped.0.is_empty());
+    dropped.drop_where(&mut m, |k| k == "a" || k == "b");
+    assert_eq!(keys(&m), [None, None, None, None]);
+    assert_eq!(dropped.0.len(), 3, "レイヤーとカットで 3 つ");
+    dropped.restore_key(&mut m, "a");
+    assert_eq!(keys(&m), [Some("a"), None, Some("a"), None]);
+    assert_eq!(dropped.0.len(), 1, "読めていない b は外したまま");
 }

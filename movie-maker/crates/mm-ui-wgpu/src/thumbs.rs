@@ -39,8 +39,10 @@ enum Entry {
     Ready { slot: u32, used: u64 },
     /// 読み込みを頼んで、結果を待っている。
     Pending,
-    /// 読めなかった（ファイルが無い、壊れている）。素材の取り込みを終えるまで頼み直さない。
+    /// 読めなかった（ファイルが無い、壊れている）。取り込みが素材の出力を作り終えるまで頼み直さない。
     Missing,
+    /// 読めなかったものを読み直している。読めるまでは読めなかったものとして扱う（帯から外したままにする）。
+    Retrying,
     /// スロットが空かず入れられなかった。`retry` のフレームから頼み直す。
     Deferred { retry: u64 },
 }
@@ -128,24 +130,37 @@ impl Slots {
         Some(slot)
     }
 
-    /// 読めなかったサムネイルとして記録する。
+    /// 読めなかったサムネイルとして記録する。同じキーを 2 回読んで前の方が読めていたら、スロットのものを残す。
     pub(crate) fn missing(&mut self, key: &str) {
-        self.entries.insert(key.into(), Entry::Missing);
+        if !matches!(self.entries.get(key), Some(Entry::Ready { .. })) {
+            self.entries.insert(key.into(), Entry::Missing);
+        }
     }
 
-    /// 読めなかったという記録を消す（取り込みでサムネイルができたかもしれない）。スロットに入っているものは残す。
+    /// 読めなかったサムネイルの読み込みを頼み直す（取り込みでサムネイルができたかもしれない）。
+    /// 読み直している途中のものも頼み直し、前の読み込みがファイルのできる前だったときに取りこぼさない。
     pub(crate) fn retry_missing(&mut self) {
-        self.entries.retain(|_, e| *e != Entry::Missing);
+        for (key, entry) in &mut self.entries {
+            if matches!(entry, Entry::Missing | Entry::Retrying) {
+                *entry = Entry::Retrying;
+                self.requests.push(key.clone());
+            }
+        }
     }
 
-    /// `key` が読めなかったサムネイルか。
+    /// `key` が読めなかったサムネイル（読み直している途中を含む）か。
     pub(crate) fn is_missing(&self, key: &str) -> bool {
-        self.entries.get(key) == Some(&Entry::Missing)
+        matches!(
+            self.entries.get(key),
+            Some(Entry::Missing | Entry::Retrying)
+        )
     }
 
     /// 読めなかったサムネイルが 1 つでもあるか。
     pub(crate) fn has_missing(&self) -> bool {
-        self.entries.values().any(|e| *e == Entry::Missing)
+        self.entries
+            .values()
+            .any(|e| matches!(e, Entry::Missing | Entry::Retrying))
     }
 
     /// スロットに入っているサムネイルの数。
