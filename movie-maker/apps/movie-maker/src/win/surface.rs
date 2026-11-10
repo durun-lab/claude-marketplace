@@ -9,6 +9,7 @@ use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
 use windows::Win32::Graphics::Gdi::ScreenToClient;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
+use windows::Win32::UI::Input::Ime::{ImmAssociateContextEx, HIMC};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetCapture, GetKeyState, ReleaseCapture, SetCapture, SetFocus, TrackMouseEvent, TME_LEAVE,
     TRACKMOUSEEVENT, VK_CONTROL, VK_ESCAPE, VK_F10, VK_F4, VK_MENU, VK_SHIFT,
@@ -22,6 +23,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::win::hotpatch;
+use crate::win::keyboard;
 use crate::win::keys;
 use crate::win::state::Shared;
 
@@ -79,8 +81,16 @@ pub fn create(parent: isize, shared: Arc<Shared>, rect: PixelRect) -> windows::c
             Some(hinstance.into()),
             None,
         )?;
+        detach_ime(hwnd);
         Ok(hwnd.0 as isize)
     }
+}
+
+/// HWND から IME を外す。日本語の IME が付いていると英字のキーが `VK_PROCESSKEY` で届いてキーの表に無い名前になるので、
+/// 文字を打たないサーフェスでは IME を使わない。
+fn detach_ime(hwnd: HWND) {
+    // IME の無い環境では失敗するが、そのときはキーがそのまま届くので、結果は破棄する。
+    let _ = unsafe { ImmAssociateContextEx(hwnd, HIMC::default(), 0) };
 }
 
 /// 子 HWND の位置と大きさを変える（親のクライアント座標、物理ピクセル）。
@@ -160,14 +170,14 @@ fn pointer_mods() -> Mods {
     }
 }
 
-/// 修飾キーを前に付けたキー名。
+/// いま押している修飾キーを前に付けたキーの名前。記号のキーはこのスレッドの今のキー配列で文字にする。
 fn key_name(vk: u32) -> String {
-    keys::with_modifiers(
-        &keys::vk_name(vk),
+    let mods = (
         key_down(VK_CONTROL.0),
         key_down(VK_SHIFT.0),
         key_down(VK_MENU.0),
-    )
+    );
+    keyboard::key_name(vk, mods)
 }
 
 /// サーフェスの HWND に、左ボタンを押して `from` から `to` まで動かして離すメッセージを投げる（自動試験用）。
@@ -206,7 +216,8 @@ fn post_mouse(hwnd: isize, msg: u32, (x, y): (i32, i32)) {
     }
 }
 
-/// 押し続けの繰り返しか。Space の押し続けで再生と停止を繰り返さないよう、最初の押下だけをキー操作にする。
+/// 押し続けの繰り返しか。Space の押し続けで再生と停止を繰り返さないよう、繰り返しはズームと移動のキー
+/// （`keys::repeats`）だけをキー操作にする。
 fn is_key_repeat(lparam: LPARAM) -> bool {
     lparam.0 & KEY_REPEAT_BIT != 0
 }
@@ -271,10 +282,10 @@ fn is_escape(wparam: WPARAM) -> bool {
     wparam.0 as u32 == u32::from(VK_ESCAPE.0)
 }
 
-/// キーの押下を、押し続けの繰り返しを除いてキーの表に渡す。キーの表にあるキーなら（繰り返しでも）true を返す。
+/// キーの押下をキーの表に渡す（押し続けの繰り返しは、繰り返すキーだけ）。キーの表にあるキーなら（繰り返しでも）true を返す。
 fn key_pressed(wparam: WPARAM, lparam: LPARAM) -> bool {
     let name = key_name(wparam.0 as u32);
-    if !is_key_repeat(lparam) {
+    if !is_key_repeat(lparam) || keys::repeats(&name) {
         if let Some(shared) = SHARED.get() {
             keys::dispatch(shared, "surface", &name);
         }
@@ -285,7 +296,10 @@ fn key_pressed(wparam: WPARAM, lparam: LPARAM) -> bool {
 /// キーを離したことをキーの表に渡し（ドラッグ中のスナップの反転を戻す）、既定のウィンドウプロシージャにもそのまま渡す。
 fn key_released(hwnd: HWND, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if let Some(shared) = SHARED.get() {
-        keys::release(shared, &keys::vk_name(wparam.0 as u32));
+        keys::release(
+            shared,
+            &keyboard::key_name(wparam.0 as u32, keyboard::NO_MODS),
+        );
     }
     unsafe { DefWindowProcW(hwnd, WM_KEYUP, wparam, lparam) }
 }
@@ -385,6 +399,50 @@ mod tests {
             "Alt を離してもメニューモードに入らない"
         );
         assert!(!passes_to_system(0x4B), "Alt+K はキーの表へ");
+    }
+
+    #[test]
+    fn ime_を外すのはその_hwnd_だけで_親と隣の窓の入力のコンテキストは変えない() {
+        use windows::Win32::UI::Input::Ime::{ImmGetContext, ImmReleaseContext};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            DestroyWindow, WINDOW_EX_STYLE, WINDOW_STYLE,
+        };
+        let window = |parent: Option<HWND>| {
+            let style = parent.map_or(WINDOW_STYLE::default(), |_| WS_CHILD);
+            let class = w!("STATIC");
+            unsafe {
+                CreateWindowExW(
+                    WINDOW_EX_STYLE::default(),
+                    class,
+                    w!("ime"),
+                    style,
+                    0,
+                    0,
+                    10,
+                    10,
+                    parent,
+                    None,
+                    None,
+                    None,
+                )
+            }
+            .expect("試験の HWND")
+        };
+        let has_context = |hwnd: HWND| unsafe {
+            let context = ImmGetContext(hwnd);
+            let _ = ImmReleaseContext(hwnd, context);
+            !context.is_invalid()
+        };
+        // サーフェスと WebView の HWND は同じ親の子どうし。
+        let parent = window(None);
+        let (surface, sibling) = (window(Some(parent)), window(Some(parent)));
+        let before = (has_context(parent), has_context(sibling));
+        detach_ime(surface);
+        let after = (has_context(parent), has_context(sibling));
+        let detached = !has_context(surface);
+        let _ = unsafe { DestroyWindow(parent) };
+        assert!(detached, "IME のコンテキストが残っている");
+        assert_eq!(after, before, "親と隣の窓の IME は変えない");
     }
 
     #[test]

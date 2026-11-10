@@ -1,10 +1,16 @@
 //! Timeline のポインター操作。目盛りのスクラブ、レイヤーとカットの選択、端のつまみと中のドラッグ（スナップ）、
-//! 拡大縮小と横の移動、縦のスクロール（Shift+ホイール、スクロールバー）。
+//! 拡大縮小と横の移動（ホイール、ズームバー）、縦のスクロール（Shift+ホイール、スクロールバー）。
+//! キーとメニューのコマンド（[`TimelineCommand`]）と再生中のページ送りも受ける。
 //!
 //! 入力は Timeline の矩形の左上を (0, 0) とする座標で受け、操作の結果は [`Action`] で返す。
 //! ドラッグから編集の操作と量を決める所は [`crate::gesture`]。操作の適用（`mm-ops`）はここの外で行う。
 //! 当たり判定と描画が同じ値を見るよう、割り付けと行の並びもここが持つ（[`TimelineController::viewport`]）。
 //! スナップの入/切とドラッグ中の反転、ドラッグ中のツールチップは `controller/snapping.rs`。
+
+mod command;
+mod zoom;
+
+pub use command::{edit_target, TimelineCommand};
 
 use crate::gesture::{body_edit, EditKind};
 use crate::paint::PaintState;
@@ -16,6 +22,8 @@ use crate::snap::{quantize, SnapTarget};
 use crate::time_view::TimeView;
 use crate::timeline::{hit_test, Hit, Part, TimelineModel};
 use crate::timeline_layout::{TimelineLayout, Viewport};
+use crate::zoombar::ZoomBarDrag;
+use zoom::FullExtent;
 
 /// ホイール 1 目盛りあたりの拡大率。
 const ZOOM_STEP: f64 = 1.15;
@@ -56,9 +64,9 @@ pub enum PointerEvent {
     Leave,
     /// 離す前にドラッグが終わった（Esc、ほかのウィンドウがキャプチャーを取った）。編集を確定せずに捨てる。
     Cancel,
-    /// スナップの入/切（N、View > Snapping）。ドラッグ中は入/切を変えず、[`PointerEvent::SnapKeyUp`] まで反転する。
-    /// ドラッグとの前後を保つため、ポインターの入力のキューで届く。
-    ToggleSnapping,
+    /// キーとメニューの Timeline のコマンド（拡大縮小、全体表示、前後の帯の端、スナップの入/切）。ドラッグとの前後を
+    /// 保つため、ポインターの入力のキューで届く。
+    Command(TimelineCommand),
     /// ドラッグ中に押したスナップの入/切のキーを離した。
     SnapKeyUp,
 }
@@ -99,6 +107,8 @@ enum Drag {
     Thumb {
         grab_offset: f32,
     },
+    /// ズームバーのスクロールボックスか、その端のドラッグ。
+    ZoomBar(ZoomBarDrag),
 }
 
 /// Timeline の表示と操作の状態。
@@ -127,6 +137,8 @@ pub struct TimelineController {
     /// ドラッグで最後に返した編集。離したときの確定にそのまま使う。
     last_edit: Option<(EditKind, f64)>,
     drag: Drag,
+    /// 全体表示のコマンドで全体表示にしたときの、全体表示とその前の表示。
+    full_extent: Option<FullExtent>,
 }
 
 impl TimelineController {
@@ -146,6 +158,7 @@ impl TimelineController {
             pointer: (0.0, 0.0),
             last_edit: None,
             drag: Drag::None,
+            full_extent: None,
         }
     }
 
@@ -249,7 +262,7 @@ impl TimelineController {
                 self.end_drag();
                 Vec::new()
             }
-            PointerEvent::ToggleSnapping => self.toggle_snapping(model, playhead),
+            PointerEvent::Command(command) => self.command(command, model, playhead),
             PointerEvent::SnapKeyUp => self.release_snap_key(model, playhead),
         }
     }
@@ -278,6 +291,10 @@ impl TimelineController {
             }
             Hit::Scrollbar { thumb } => {
                 self.press_scrollbar(thumb, y);
+                return Vec::new();
+            }
+            Hit::ZoomBar { part } => {
+                self.press_zoombar(part, x, model.duration);
                 return Vec::new();
             }
             // 見出しの列の上の角はタイムコードを出すだけで、選択もカットの選択も変えない。
@@ -385,6 +402,10 @@ impl TimelineController {
                 let content = self.rows.content_height();
                 self.scroll_y = scroll_for_thumb(self.layout.scrollbar, content, y - grab_offset);
                 self.hover = Hit::Scrollbar { thumb: true };
+                Vec::new()
+            }
+            Drag::ZoomBar(drag) => {
+                self.drag_zoombar(&drag, x, model.duration);
                 Vec::new()
             }
             Drag::Edge { .. } => {

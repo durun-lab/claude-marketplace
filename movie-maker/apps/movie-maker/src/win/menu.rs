@@ -79,7 +79,12 @@ pub static BAR: &[(Menu, Groups)] = &[
                 "playback.play_reverse",
                 "playback.play_forward",
             ],
-            &["playback.step_back", "playback.step_forward"],
+            &[
+                "playback.step_back",
+                "playback.step_forward",
+                "playback.step_back_second",
+                "playback.step_forward_second",
+            ],
             &[
                 "playback.go_to_start",
                 "playback.go_to_end",
