@@ -1,3 +1,4 @@
+use super::cell::halve;
 use super::*;
 
 fn key(s: &str) -> Arc<str> {
@@ -93,14 +94,44 @@ fn スロットは並びの順に左から右へ_上から下へ置く() {
 }
 
 #[test]
-fn スロットの縁は半画素内側に取り_全体の範囲がスロットに収まる() {
+fn スロットの縁はいちばん縮めた段の半画素だけ内側に取り_全体の範囲がスロットに収まる() {
     let uv = atlas_uv(0, Rect::new(0.0, 0.0, 1.0, 1.0));
     let (w, h) = ((COLS * CELL_W) as f32, (ROWS * CELL_H) as f32);
-    assert_eq!(uv[0], 0.5 / w);
-    assert_eq!(uv[2], (CELL_W as f32 - 0.5) / w);
-    assert_eq!(uv[3], (CELL_H as f32 - 0.5) / h);
+    assert_eq!(EDGE, 2.0, "2 回半分にした段の半画素は、段 0 の 2 画素");
+    assert_eq!(uv[0], EDGE / w);
+    assert_eq!(uv[2], (CELL_W as f32 - EDGE) / w);
+    assert_eq!(uv[3], (CELL_H as f32 - EDGE) / h);
     let lower = atlas_uv(0, Rect::new(0.0, 0.5, 1.0, 0.5));
     assert!(lower[1] > uv[1] && lower[3] == uv[3], "下半分だけ");
+}
+
+#[test]
+fn 縮小の段は_2x2_の画素の平均で縦横半分にし_スロットの画像の後ろに段の順に並べる() {
+    // 左上だけ白、ほかは黒の 2x2 を 2 つ横に並べた 4x2。半分にすると 2x1 で、どちらも白の 4 分の 1。
+    let px = |v: u8| [v, v, v, 255];
+    let row0: Vec<u8> = [px(255), px(0), px(255), px(0)].concat();
+    let row1: Vec<u8> = [px(0); 4].concat();
+    let half = halve(&[row0, row1].concat(), 4, 2);
+    assert_eq!(half, [[64, 64, 64, 255], [64, 64, 64, 255]].concat());
+    assert!(CELL_W.is_multiple_of(1 << (MIPS - 1)));
+    assert!(CELL_H.is_multiple_of(1 << (MIPS - 1)));
+    // スロットと同じ大きさの縦縞は、段 0 では縞のまま、段 1 から灰色。
+    let rgb: Vec<u8> = (0..CELL_W * CELL_H)
+        .flat_map(|i| {
+            [if (i % CELL_W).is_multiple_of(2) {
+                255
+            } else {
+                0
+            }; 3]
+        })
+        .collect();
+    let cell = cell_from_rgb(CELL_W, CELL_H, &rgb).unwrap();
+    assert_eq!(level_range(MIPS - 1).end, cell.len());
+    assert_eq!(
+        &cell[level_range(0)][..8],
+        [255, 255, 255, 255, 0, 0, 0, 255]
+    );
+    assert!(cell[level_range(1)].iter().all(|v| *v == 128 || *v == 255));
 }
 
 #[test]

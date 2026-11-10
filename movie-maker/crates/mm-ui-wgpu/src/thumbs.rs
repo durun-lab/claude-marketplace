@@ -8,69 +8,29 @@ use std::sync::Arc;
 
 use mm_ui_layout::{Rect, ThumbQuad};
 
+use cell::level_range;
+pub use cell::{cell_from_rgb, cell_len};
 use gpu::{Gpu, Instance};
 
+mod cell;
 mod gpu;
 
-/// アトラスの 1 スロットの大きさ（物理ピクセル）。`THUMB_ASPECT` と同じ 16:9。Large の帯（高さ 53 論理ピクセル）を
-/// 表示の倍率 1.5 で描いても足りる大きさ。
-pub const CELL_W: u32 = 128;
-pub const CELL_H: u32 = 72;
-pub(super) const COLS: u32 = 16;
-pub(super) const ROWS: u32 = 28;
-/// アトラスに入るサムネイルの数。
+/// アトラスの 1 スロットの大きさ（物理ピクセル）。`THUMB_ASPECT` と同じ 16:9。Large の帯（94x53 論理ピクセル）を
+/// 表示の倍率 2 で描いても引き伸ばさない大きさで、キャッシュの JPEG（幅 320）より小さい。
+pub const CELL_W: u32 = 192;
+pub const CELL_H: u32 = 108;
+pub(super) const COLS: u32 = 10;
+pub(super) const ROWS: u32 = 20;
+/// アトラスに入るサムネイルの数。1 フレームに見える数（行の数と、シーケンスの行のカットの数で 100 に満たない）より多くし、
+/// 見えなくなったサムネイルもしばらく残して、スクロールで戻ったときに読み直さない。
 const CAPACITY: u32 = COLS * ROWS;
+/// アトラスの縮小の段の数（ミップマップ）。Medium の帯を倍率 1 で描くとスロットを 4 分の 1 ほどに縮めるので、
+/// 縦横を 2 回半分にした段まで持ち、1 画素に入る画素を間引かずに平均する（スロットの大きさは 4 で割り切れる）。
+pub(super) const MIPS: u32 = 3;
+/// スロットの縁から内側に取る幅（段 0 の画素）。いちばん縮めた段の半画素で、隣のスロットの色を混ぜない。
+const EDGE: f32 = (1u32 << (MIPS - 1)) as f32 / 2.0;
 /// 入りきらなかったサムネイルを、次に頼むまでに待つフレームの数（毎フレーム読み直さない）。
 const DEFER_FRAMES: u64 = 60;
-
-/// アトラスに入れるサムネイル。`cell_from_rgb` が作る、スロットちょうどの大きさの RGBA8。
-pub fn cell_len() -> usize {
-    (CELL_W * CELL_H * 4) as usize
-}
-
-/// 幅 `w`、高さ `h` の RGB8 の画像を、16:9 の中央に切り出してスロットの大きさに縮めた RGBA8 にする。
-/// 縮めるときは元の画素の範囲を平均する（そのまま間引くと細い線がちらつく）。大きさが合わなければ `None`。
-pub fn cell_from_rgb(w: u32, h: u32, rgb: &[u8]) -> Option<Vec<u8>> {
-    if w == 0 || h == 0 || rgb.len() != (w * h * 3) as usize {
-        return None;
-    }
-    let (w_f, h_f) = (w as f32, h as f32);
-    let aspect = CELL_W as f32 / CELL_H as f32;
-    let (cw, ch) = if w_f / h_f > aspect {
-        (h_f * aspect, h_f)
-    } else {
-        (w_f, w_f / aspect)
-    };
-    let (x0, y0) = ((w_f - cw) / 2.0, (h_f - ch) / 2.0);
-    let mut out = Vec::with_capacity(cell_len());
-    for dy in 0..CELL_H {
-        let (ys, ye) = span(y0, ch, dy, CELL_H, h);
-        for dx in 0..CELL_W {
-            let (xs, xe) = span(x0, cw, dx, CELL_W, w);
-            let mut sum = [0u32; 3];
-            for y in ys..ye {
-                for x in xs..xe {
-                    let i = ((y * w + x) * 3) as usize;
-                    sum.iter_mut()
-                        .zip(&rgb[i..i + 3])
-                        .for_each(|(s, v)| *s += u32::from(*v));
-                }
-            }
-            let n = (ye - ys) * (xe - xs);
-            out.extend(sum.iter().map(|s| (s / n) as u8));
-            out.push(255);
-        }
-    }
-    Some(out)
-}
-
-/// 切り出した範囲（始まり `start`、長さ `len`）を `cells` 個に分けた `i` 番目に当たる、元の画素の範囲。1 画素は必ず含む。
-fn span(start: f32, len: f32, i: u32, cells: u32, max: u32) -> (u32, u32) {
-    let step = len / cells as f32;
-    let a = ((start + i as f32 * step).floor() as u32).min(max - 1);
-    let b = ((start + (i + 1) as f32 * step).ceil() as u32).clamp(a + 1, max);
-    (a, b)
-}
 
 /// サムネイル 1 枚の状態。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -256,26 +216,9 @@ impl ThumbRenderer {
         };
         let format = self.format;
         let gpu = self.gpu.get_or_insert_with(|| Gpu::new(device, format));
-        let (x, y) = cell_origin(slot);
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &gpu.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d { x, y, z: 0 },
-                aspect: wgpu::TextureAspect::All,
-            },
-            cell,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(CELL_W * 4),
-                rows_per_image: Some(CELL_H),
-            },
-            wgpu::Extent3d {
-                width: CELL_W,
-                height: CELL_H,
-                depth_or_array_layers: 1,
-            },
-        );
+        for mip in 0..MIPS {
+            write_level(queue, &gpu.texture, slot, mip, &cell[level_range(mip)]);
+        }
     }
 
     /// 描くサムネイル（物理ピクセルの矩形）を転送し、描く数を返す。スロットに入っていないサムネイルは読み込みを頼み、今は描かない。
@@ -325,12 +268,41 @@ fn cell_origin(slot: u32) -> (u32, u32) {
     ((slot % COLS) * CELL_W, (slot / COLS) * CELL_H)
 }
 
+/// スロット `slot` の縮小の段 `mip` に、その段の大きさの RGBA8 の画像 `rgba` を書く。
+fn write_level(queue: &wgpu::Queue, texture: &wgpu::Texture, slot: u32, mip: u32, rgba: &[u8]) {
+    let (x, y) = cell_origin(slot);
+    let (w, h) = (CELL_W >> mip, CELL_H >> mip);
+    queue.write_texture(
+        wgpu::TexelCopyTextureInfo {
+            texture,
+            mip_level: mip,
+            origin: wgpu::Origin3d {
+                x: x >> mip,
+                y: y >> mip,
+                z: 0,
+            },
+            aspect: wgpu::TextureAspect::All,
+        },
+        rgba,
+        wgpu::TexelCopyBufferLayout {
+            offset: 0,
+            bytes_per_row: Some(w * 4),
+            rows_per_image: Some(h),
+        },
+        wgpu::Extent3d {
+            width: w,
+            height: h,
+            depth_or_array_layers: 1,
+        },
+    );
+}
+
 /// スロット `slot` の中の `part`（0..1）に当たる、アトラスの範囲の左上と右下（0..1）。
-/// スロットの縁の画素を半画素ずつ内側に取り、隣のスロットの色を混ぜない。
+/// スロットの縁を `EDGE` だけ内側に取り、どの縮小の段でも隣のスロットの色を混ぜない。
 fn atlas_uv(slot: u32, part: Rect) -> [f32; 4] {
     let (ox, oy) = cell_origin(slot);
     let (w, h) = ((COLS * CELL_W) as f32, (ROWS * CELL_H) as f32);
-    let inner = |o: u32, size: u32, t: f32| o as f32 + 0.5 + t * (size as f32 - 1.0);
+    let inner = |o: u32, size: u32, t: f32| o as f32 + EDGE + t * (size as f32 - 2.0 * EDGE);
     [
         inner(ox, CELL_W, part.x) / w,
         inner(oy, CELL_H, part.y) / h,

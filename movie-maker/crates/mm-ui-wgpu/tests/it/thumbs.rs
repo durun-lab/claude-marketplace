@@ -1,7 +1,7 @@
 //! 帯の先頭のサムネイルを、オフスクリーンに描いて確かめる。サムネイルは 1 色のスロットなので、画素の色で置き場所と重なりが分かる。
 
 use mm_ui_layout::{Item, ItemKind, RowHeight, RowHeights, TimelineModel, ViewState};
-use mm_ui_wgpu::{cell_len, ThumbStats, Ui};
+use mm_ui_wgpu::{cell_from_rgb, cell_len, ThumbStats, Ui, CELL_H, CELL_W};
 
 use crate::support::{bar_rect, close, gpu, px_in, render_sized, FORMAT, H, W};
 
@@ -65,6 +65,34 @@ fn サムネイルは読み込みを頼み_届いたら帯の左に描き_帯の
         px_in(&before, W, body, y),
         "サムネイルの右は帯の色のまま"
     );
+}
+
+#[test]
+fn 縮めて描くサムネイルは縮小の段から引き_細い縞は灰色になる() {
+    let Some((device, queue)) = gpu() else { return };
+    let m = model(true);
+    let mut ui = ui(&device, &m, None);
+    render_sized(&device, &queue, &mut ui, (W, H));
+    ui.take_thumb_requests();
+    // スロットと同じ大きさの、1 画素ごとの白黒の縦縞。倍率 1 の Medium の帯（44x25）ではスロットを 4 分の 1 ほどに縮める。
+    let rgb: Vec<u8> = (0..CELL_W * CELL_H)
+        .flat_map(|i| {
+            [if (i % CELL_W).is_multiple_of(2) {
+                255
+            } else {
+                0
+            }; 3]
+        })
+        .collect();
+    let stripes = cell_from_rgb(CELL_W, CELL_H, &rgb).unwrap();
+    ui.set_thumb(&device, &queue, "k", Some(&stripes));
+    let after = render_sized(&device, &queue, &mut ui, (W, H));
+    let bar = bar_rect(&ui, &m, 1.0, 0, (0.0, 10.0));
+    let y = (bar.y + bar.h / 2.0) as u32;
+    for x in (bar.x + 4.0) as u32..(bar.x + 40.0) as u32 {
+        let [r, ..] = px_in(&after, W, x, y);
+        assert!((96..=160).contains(&r), "x={x}: {r}");
+    }
 }
 
 #[test]

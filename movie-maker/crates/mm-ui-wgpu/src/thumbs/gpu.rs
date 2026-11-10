@@ -2,7 +2,7 @@
 
 use bytemuck::{Pod, Zeroable};
 
-use super::{CELL_H, CELL_W, COLS, ROWS};
+use super::{CELL_H, CELL_W, COLS, MIPS, ROWS};
 
 const SHADER: &str = r#"
 struct U { res: vec2<f32>, pad: vec2<f32> };
@@ -64,52 +64,15 @@ pub(super) struct Gpu {
 
 impl Gpu {
     pub(super) fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
-        let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("ui thumbs atlas"),
-            size: wgpu::Extent3d {
-                width: COLS * CELL_W,
-                height: ROWS * CELL_H,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            // JPEG の値は表示の値のまま（UI の色と同じく、sRGB の変換を掛けない）。
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
+        let texture = atlas_texture(device);
         let uniform = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("ui thumbs uniform"),
             size: 16,
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            ..Default::default()
-        });
         let bgl = bind_layout(device);
-        let view = texture.create_view(&Default::default());
-        let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("ui thumbs"),
-            layout: &bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: uniform.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
-        });
+        let bind = bind_group(device, &bgl, &uniform, &texture);
         Self {
             texture,
             pipeline: pipeline(device, format, &bgl),
@@ -146,6 +109,58 @@ fn instance_buffer(device: &wgpu::Device, capacity: u64) -> wgpu::Buffer {
         size: capacity * INSTANCE_SIZE,
         usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
+    })
+}
+
+/// スロットを `COLS` x `ROWS` に並べたアトラスのテクスチャ。
+fn atlas_texture(device: &wgpu::Device) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("ui thumbs atlas"),
+        size: wgpu::Extent3d {
+            width: COLS * CELL_W,
+            height: ROWS * CELL_H,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: MIPS,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        // JPEG の値は表示の値のまま（UI の色と同じく、sRGB の変換を掛けない）。
+        format: wgpu::TextureFormat::Rgba8Unorm,
+        usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+        view_formats: &[],
+    })
+}
+
+fn bind_group(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    uniform: &wgpu::Buffer,
+    texture: &wgpu::Texture,
+) -> wgpu::BindGroup {
+    let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+        mag_filter: wgpu::FilterMode::Linear,
+        min_filter: wgpu::FilterMode::Linear,
+        mipmap_filter: wgpu::MipmapFilterMode::Linear,
+        ..Default::default()
+    });
+    let view = texture.create_view(&Default::default());
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("ui thumbs"),
+        layout,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: uniform.as_entire_binding(),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::TextureView(&view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 2,
+                resource: wgpu::BindingResource::Sampler(&sampler),
+            },
+        ],
     })
 }
 
