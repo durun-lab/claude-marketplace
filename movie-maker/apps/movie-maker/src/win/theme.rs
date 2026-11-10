@@ -11,24 +11,29 @@ use serde_json::Value;
 const THEME_JSON: &str = include_str!("../../../../ui/theme/theme.json");
 /// サーフェスに使うモード。
 const MODE: &str = "dark";
-/// theme.json を読めないときの WebView の 2 列の幅の和（論理ピクセル）。
-const DEFAULT_WEBVIEW_W: f64 = 660.0;
+/// theme.json を読めないときの WebView の左の列と右の列の既定の幅（論理ピクセル）。
+const DEFAULT_COLUMNS: (f64, f64) = (260.0, 400.0);
 
-/// WebView の 2 列の幅の和（論理ピクセル）。theme.json の `left-column` と `right-column`。大きさが変わるたびに引くので、
-/// 最初の 1 回だけ読む。
-static WEBVIEW_W: LazyLock<f64> = LazyLock::new(|| {
+/// WebView の左の列と右の列の既定の幅（論理ピクセル）。theme.json の `left-column` と `right-column`。大きさが変わる
+/// たびに引くので、最初の 1 回だけ読む。
+static COLUMNS: LazyLock<(f64, f64)> = LazyLock::new(|| {
     columns_from(THEME_JSON).unwrap_or_else(|e| {
         tracing::warn!(error = %e, "theme.json の列の幅を読めないので既定の幅にする");
-        DEFAULT_WEBVIEW_W
+        DEFAULT_COLUMNS
     })
 });
 
-/// WebView の 2 列（Tasks などの左の列と、Inspector などの右の列）の幅の和（論理ピクセル）。
+/// WebView の 2 列（Tasks などの左の列と、Inspector などの右の列）の既定の幅の和（論理ピクセル）。
 pub fn webview_width() -> f64 {
-    *WEBVIEW_W
+    COLUMNS.0 + COLUMNS.1
 }
 
-fn columns_from(json: &str) -> Result<f64, String> {
+/// WebView の左の列と右の列の既定の幅（論理ピクセル）。右の列は広げられる上限でもある（キーフレームの欄が要る幅）。
+pub fn columns() -> (f64, f64) {
+    *COLUMNS
+}
+
+fn columns_from(json: &str) -> Result<(f64, f64), String> {
     let theme: Value = serde_json::from_str(json).map_err(|e| e.to_string())?;
     let size = |name: &str| {
         theme
@@ -36,7 +41,7 @@ fn columns_from(json: &str) -> Result<f64, String> {
             .and_then(Value::as_f64)
             .ok_or_else(|| format!("shape.size.{name} が無い"))
     };
-    Ok(size("left-column")? + size("right-column")?)
+    Ok((size("left-column")?, size("right-column")?))
 }
 
 /// theme.json のダークのモードから作った Timeline の色。読めなければ既定の色。
@@ -129,7 +134,8 @@ mod tests {
             "右の列はキーフレームの欄が行の右に出る幅"
         );
         assert_eq!(webview_width(), size("left-column") + size("right-column"));
-        assert_eq!(webview_width(), DEFAULT_WEBVIEW_W);
+        assert_eq!(webview_width(), DEFAULT_COLUMNS.0 + DEFAULT_COLUMNS.1);
+        assert_eq!(columns(), (size("left-column"), size("right-column")));
         assert!(columns_from("{}").is_err());
     }
 }

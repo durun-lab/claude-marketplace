@@ -64,7 +64,11 @@ pub use paint::{timeline_overlay, timeline_quads, PaintInput, PaintState, UnderT
 pub use rows::{RowHeight, RowHeights, Rows};
 pub use ruler::{label, major_step, ticks, Tick};
 pub use scale::{Scale, TextPlacement};
-pub use screen::{split_viewers, SurfaceLayout, TIMELINE_RATIO, VIEW_MARGIN};
+pub use screen::{
+    content_width, split_viewers, split_viewers_with, splitter_at, splitter_rect, timeline_height,
+    timeline_ratio, vertical_splitter_rect, Splitter, SurfaceLayout, MIN_PROGRAM_H, SPLITTER_W,
+    TIMELINE_RATIO, VIEW_MARGIN,
+};
 pub use snap::{quantize, snap, SnapKind, SnapTarget, Snapped, SNAP_PX};
 pub use text::{
     fit, line_height, place, Align, Fit, Label, TextMeasure, TextStyle, UiFont, ELLIPSIS,
