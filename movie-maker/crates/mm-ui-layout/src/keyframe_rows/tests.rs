@@ -132,6 +132,14 @@ fn 開閉は_1_つのレイヤーか_キーフレームの行のある全部の�
         "無い行は何もしない"
     );
     assert!(
+        !toggle_open(&mut open, &m.items, Some(1)),
+        "キーフレームの行の無いレイヤーは開かない"
+    );
+    assert!(open.is_empty());
+    open.insert("bg".into());
+    assert!(!toggle_open(&mut open, &m.items, Some(1)));
+    assert!(open.is_empty(), "行の無いレイヤーの古い項目は外す");
+    assert!(
         toggle_open(&mut open, &m.items, None),
         "閉じたものがあれば全部を開く"
     );

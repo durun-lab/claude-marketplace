@@ -167,7 +167,8 @@ pub(crate) fn hit(vp: &Viewport, (index, item): (usize, &Item), (x, y): (f32, f3
     )
 }
 
-/// キーフレームの行を開閉する。`target` が `Some(i)` ならレイヤー i、`None` ならキーフレームの行のある全部のレイヤー
+/// キーフレームの行を開閉する。`target` が `Some(i)` ならレイヤー i（キーフレームの行が無ければ開かず、閉じるだけ。
+/// AE の U もキーフレームのあるプロパティだけを出す）、`None` ならキーフレームの行のある全部のレイヤー
 /// （どれかが閉じていれば全部を開き、全部開いていれば全部を閉じる。AE の U でレイヤーを選んでいないときと同じ）。開いたら真。
 pub fn toggle_open(open: &mut BTreeSet<String>, items: &[Item], target: Option<usize>) -> bool {
     let Some(i) = target else {
@@ -188,7 +189,7 @@ pub fn toggle_open(open: &mut BTreeSet<String>, items: &[Item], target: Option<u
     let Some(item) = items.get(i) else {
         return false;
     };
-    let opened = !open.remove(&*item.id);
+    let opened = !open.remove(&*item.id) && !item.keyframe_rows.is_empty();
     if opened {
         open.insert(item.id.to_string());
     }
