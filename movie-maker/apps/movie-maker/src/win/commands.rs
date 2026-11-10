@@ -218,6 +218,12 @@ pub static TABLE: &[Spec] = &[
         owner: Owner::App(Action::Playback(Command::Toggle)),
     },
     Spec {
+        id: "source.clear_in_out",
+        name: "Clear In and Out",
+        description: Some("Remove the In and Out points of the clip open in Source"),
+        owner: Owner::App(Action::Edit(EditAction::ClearInOut)),
+    },
+    Spec {
         id: "source.mark_in",
         name: "Mark In",
         description: Some("Mark the In point of the clip open in Source"),
@@ -300,9 +306,9 @@ impl Ready {
     }
 
     fn state(&self, spec: &Spec) -> State {
-        use EditAction::{Extract, Insert, Lift, MarkIn, MarkOut, Overwrite, Split};
+        use EditAction::{ClearInOut, Extract, Insert, Lift, MarkIn, MarkOut, Overwrite, Split};
         let enabled = match spec.owner {
-            Owner::App(Action::Edit(MarkIn | MarkOut)) => self.source_open,
+            Owner::App(Action::Edit(ClearInOut | MarkIn | MarkOut)) => self.source_open,
             Owner::App(Action::Edit(Insert | Overwrite)) => self.source_open && self.sequence,
             Owner::App(Action::Edit(Split)) => self.sequence,
             Owner::App(Action::Edit(Lift | Extract)) => self.cut_selected,
@@ -355,6 +361,16 @@ fn view(spec: &'static Spec, state: State) -> CommandView {
 pub fn table(shared: &Shared) -> Vec<CommandView> {
     let ready = Ready::of(shared);
     TABLE.iter().map(|s| view(s, ready.state(s))).collect()
+}
+
+/// 今は押せないコマンドの ID。サーフェスの再生の操作のバーがボタンを薄くするのに使う。
+pub fn disabled_ids(shared: &Shared) -> Vec<&'static str> {
+    let ready = Ready::of(shared);
+    TABLE
+        .iter()
+        .filter(|s| !ready.state(s).enabled)
+        .map(|s| s.id)
+        .collect()
 }
 
 /// 押せるかが前に送った表から変わっていれば、新しい表を返す。同期のスレッドが周期ごとに呼び、イベントで送る。

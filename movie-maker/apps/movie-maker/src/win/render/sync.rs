@@ -5,11 +5,11 @@ use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use mm_render_api::tone_map_peak;
-use mm_ui_layout::{Action, EditKind, PointerEvent};
+use mm_ui_layout::{Action, EditKind, PointerEvent, TransportAction, Viewer};
 use mm_ui_wgpu::{timeline_cut_ids, timeline_layer_ids, timeline_model, Region, Ui};
 
+use super::transport::{self, Seeks};
 use super::View;
-use crate::win::playback::Command;
 use crate::win::sequence_edit::{gesture_op, TimelineIds};
 use crate::win::state::{FrameImage, OpenDoc, Shared};
 
@@ -94,24 +94,27 @@ impl DocSync {
 }
 
 /// ポインターの入力を UI に渡し、起きた操作を送る。選択は共有状態へ、シークは再生スレッドへ、
-/// 端のつまみと中のドラッグの確定は編集の操作として適用する。
-/// 1 周に溜まったシークは最後の 1 つだけ送る（途中の位置を描いても次に上書きされる）。キーとメニューの Timeline の
-/// コマンドのシーク（前後の帯の端）は、Home と End と同じく再生を止めずにすぐ送る。
+/// 再生の操作のバーのボタンはコマンドの表へ、端のつまみと中のドラッグの確定は編集の操作として適用する。
+/// 1 周に溜まったシークはビューアーごとに最後の 1 つだけ送る（`Seeks`）。キーとメニューの Timeline のコマンドの
+/// シーク（前後の帯の端）は、Home と End と同じく再生を止めずにすぐ送る（`Seeks::jump`）。
 pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
     let events = std::mem::take(&mut *shared.input.lock().expect("input"));
-    let mut seek = None;
+    let mut seeks = Seeks::default();
     for ev in events {
         if let PointerEvent::Down { x, y, .. } = ev {
             focus_viewer(shared, ui.region_at(x, y));
         }
+        for action in ui.transport_pointer(ev) {
+            match action {
+                TransportAction::Seek { viewer, t } => seeks.set(viewer, t),
+                TransportAction::Command(id) => transport::run_command(shared, id),
+            }
+        }
         let command = matches!(ev, PointerEvent::Command(_));
         for action in ui.pointer(ev) {
             match action {
-                Action::Seek(t) if command => {
-                    seek = None;
-                    shared.send(Command::Seek(t));
-                }
-                Action::Seek(t) => seek = Some(t),
+                Action::Seek(t) if command => seeks.jump(shared, t),
+                Action::Seek(t) => seeks.set(Viewer::Program, t),
                 Action::Select(index) => {
                     shared.select_layer(index.and_then(|i| doc.layer_ids.get(i).cloned()));
                 }
@@ -128,13 +131,7 @@ pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
             }
         }
     }
-    if let Some(t) = seek {
-        // スクラブは再生を止めて位置を追う。
-        if shared.playing.load(Ordering::SeqCst) {
-            shared.send(Command::Pause);
-        }
-        shared.send(Command::Seek(t));
-    }
+    seeks.send(shared);
 }
 
 /// クリックした領域に、再生のキーの向き先を合わせる。Source の領域なら Source、それ以外は Program。
