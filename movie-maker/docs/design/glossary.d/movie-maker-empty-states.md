@@ -4,7 +4,7 @@
 |---|---|---|
 | 空の状態 | 画面の場所に出すものが無いときの状態。Program と Timeline はコンポジションに中身が無いとき、Inspector は何も選んでいないとき、Story は文字起こしが無いとき | `EmptyState`、`empty_state`、`EmptyInspector.tsx` |
 | 空の状態の案内 | 空の状態の場所に出す、次にすることとキーの文。Program の取り込みの案内と Timeline の行の領域の 3 点編集の手順はサーフェスに描き、キーはコマンドの表から引く | `EmptyHints`、`EmptyKeys`、`mm-insp-empty-hint`、`mm-story-empty` |
-| 中身（コンポジションの） | 空の状態の判定で数えるもの。sequence でないレイヤーと、シーケンスのカット（無効のレイヤーとカットを含む）。Shy で隠した行も数える | `empty_state` |
+| 中身（コンポジションの） | 空の状態の判定で数えるもの。sequence でないレイヤーと、シーケンスの有効なカット（無効のレイヤーは数え、無効のカットは数えない）。Shy で隠した行も数える | `empty_state` |
 | コンポジションの要約 | 何も選んでいない Inspector に出す、名前（コンポジションの ID）、大きさ、fps、長さ（タイムコード）、レイヤーの数 | `CompositionSummary`、`LayerSelection::composition` |
 | 選択の頼み | Shell が選択のイベントを聞き始めたときに投げる DOM のイベント。`transport.js` が選択の Tauri イベントを購読し終えてから、今の選択を読んで選択のイベントで答える | `mm:layer-selection-request`、`layer_selection` |
 

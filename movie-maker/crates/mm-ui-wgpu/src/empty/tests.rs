@@ -99,7 +99,7 @@ fn カットか_sequence_でないレイヤーがあれば中身があるので�
 }
 
 #[test]
-fn 無効のレイヤーは中身に数え_有効なカットの無い_sequence_は空として案内を出す() {
+fn 無効のレイヤーは中身に数え_全部のカットを無効にした_sequence_は空の_sequence_として案内を出す() {
     let mut off = solid("bg");
     off.enabled = false;
     assert_eq!(empty_state(&Project::new(), &comp(vec![off])), NONE);
