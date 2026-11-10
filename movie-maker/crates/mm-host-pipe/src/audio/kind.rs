@@ -293,7 +293,11 @@ mod tests {
 
     #[test]
     fn 置き場所の外のプラグインはホストを起こさずに拒否する() {
-        let tmp = std::env::temp_dir().join(format!("mm-audio-kind-{}", std::process::id()));
+        let guard = tempfile::Builder::new()
+            .prefix("mm-audio-kind-")
+            .tempdir()
+            .unwrap();
+        let tmp = guard.path().to_path_buf();
         std::fs::create_dir_all(&tmp).unwrap();
         let outside = tmp.join("evil.test");
         std::fs::write(&outside, b"").unwrap();
@@ -319,6 +323,5 @@ mod tests {
             "{err:?}"
         );
         assert_eq!(kind.instance_count(), 0);
-        std::fs::remove_dir_all(&tmp).unwrap();
     }
 }

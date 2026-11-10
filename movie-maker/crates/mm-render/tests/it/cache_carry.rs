@@ -2,7 +2,7 @@
 //! デコーダーの画素の作り方のバージョンの上がりを、同じ退避先を持つ別々のレンダラーの実際の描画で確かめる。
 //! GPU が無い環境ではスキップし、`MM_REQUIRE_GPU` があれば失敗にする。
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::Arc;
 
 use mm_audio_api::AudioBlock;
@@ -90,10 +90,11 @@ fn diff(a: &RgbaImage, b: &RgbaImage) -> f32 {
     a.max_diff(b).expect("同じ大きさ")
 }
 
-fn temp_dir(name: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("mm-render-{name}-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("一時フォルダー");
-    dir
+fn temp_dir(name: &str) -> tempfile::TempDir {
+    tempfile::Builder::new()
+        .prefix(&format!("mm-render-{name}-"))
+        .tempdir()
+        .expect("一時フォルダー")
 }
 
 /// 単色に `look` の LUT を掛けた入れ子。LUT の素材のパスは `lut`。
@@ -113,7 +114,8 @@ fn lut_project(lut: &Path) -> Project {
 #[test]
 fn 効果の素材のファイルを書き換えたら前の起動の入れ子の画像を引かない() {
     let Some(ctx) = gpu() else { return };
-    let lut = temp_dir("lut-carry").join("look.cube");
+    let tmp = temp_dir("lut-carry");
+    let lut = tmp.path().join("look.cube");
     std::fs::copy(invert_lut_asset().path, &lut).expect("コピーできる");
     let p = lut_project(&lut);
     let store: Arc<dyn CacheStore> = Arc::new(MemoryCache::new(None));

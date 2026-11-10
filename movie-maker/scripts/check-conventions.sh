@@ -46,6 +46,17 @@ if [ -n "$raw_spawn" ]; then
   status=1
 fi
 
+# 試験の一時フォルダーは tempfile で作る。temp_dir() にプロセスの ID だけを足した名前は、Windows が ID を使い回すため前の実行の残りと重なる。
+# 例外は、ホストのプロセスが自分の作業フォルダーを決める 3 か所（本番のコードで、試験の一時フォルダーではない）。
+temp_pid="$(grep -rnE 'temp_dir\(\).*process::id\(\)' crates apps --include='*.rs' \
+  | grep -vE '^(crates/mm-host-cef/src/host/(mod|bench)\.rs|crates/mm-host-pipe/src/pipe\.rs):' \
+  | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' || true)"
+if [ -n "$temp_pid" ]; then
+  printf '%s\n' "$temp_pid" >&2
+  echo "試験の一時フォルダーは temp_dir() とプロセスの ID でなく tempfile::tempdir()（か Builder の prefix）で作る" >&2
+  status=1
+fi
+
 # RFC の番号は PR の番号。作業中は docs/rfcs/<題>.md で書き、PR を作ったら <PR の番号 4 桁>-<題>.md に改める。
 if [ -n "${PR_NUMBER:-}" ] && [ -n "${BASE:-}" ]; then
   want="$(printf '%04d' "$PR_NUMBER")"

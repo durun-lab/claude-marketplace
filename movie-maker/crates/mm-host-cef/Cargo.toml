@@ -52,6 +52,7 @@ windows = { workspace = true, features = [
 [dev-dependencies]
 mm-testkit = { workspace = true }
 mm-gpu = { workspace = true }
+tempfile = { workspace = true }
 wgpu = { workspace = true }
 
 # テストが受け取った共有ハンドルの権限を読む。

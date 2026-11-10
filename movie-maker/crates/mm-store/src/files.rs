@@ -91,10 +91,13 @@ mod tests {
 
     #[test]
     fn 読めないファイルは_not_found_にまとめず_io_で返す() {
-        let dir = std::env::temp_dir().join(format!("mm_store_files_dir_{}", std::process::id()));
+        let guard = tempfile::Builder::new()
+            .prefix("mm_store_files_dir-")
+            .tempdir()
+            .unwrap();
+        let dir = guard.path().to_path_buf();
         std::fs::create_dir_all(&dir).unwrap();
         let result = load_project(&dir);
-        let _ = std::fs::remove_dir_all(&dir);
         assert!(matches!(result, Err(MmError::Io(_))), "{result:?}");
     }
 

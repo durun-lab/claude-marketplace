@@ -22,11 +22,14 @@ fn project_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/projects/stage0/project.json")
 }
 
-/// 素材を用意してから `mm render` を呼び、出力先を返す。
-fn render_stage0(name: &str) -> PathBuf {
+/// 素材を用意してから `mm render` を呼び、出力先と、それを守る一時フォルダーを返す。
+fn render_stage0(name: &str) -> (tempfile::TempDir, PathBuf) {
     common::fixtures();
-    let dir = std::env::temp_dir().join(format!("mm_cli_render_{}", std::process::id()));
-    let out = dir.join(name);
+    let dir = tempfile::Builder::new()
+        .prefix("mm_cli_render_")
+        .tempdir()
+        .unwrap();
+    let out = dir.path().join(name);
     let output = mm_types::process::command(env!("CARGO_BIN_EXE_mm"))
         .arg("render")
         .arg(project_path())
@@ -40,7 +43,7 @@ fn render_stage0(name: &str) -> PathBuf {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    out
+    (dir, out)
 }
 
 /// ffprobe の `key=value` 出力を引く。
@@ -60,7 +63,7 @@ fn probe(path: &Path, select: &str, entries: &str) -> HashMap<String, String> {
 
 #[test]
 fn 書き出した_mp4_のフレーム数と長さとコーデックが合う() {
-    let path = render_stage0("probe.mp4");
+    let (_dir, path) = render_stage0("probe.mp4");
     let v = probe(
         &path,
         "v:0",
@@ -89,7 +92,7 @@ fn 書き出した_mp4_のフレーム数と長さとコーデックが合う() 
 
 #[test]
 fn 切った区間のフレーム番号と音が読み戻せる() {
-    let path = render_stage0("readback.mp4");
+    let (_dir, path) = render_stage0("readback.mp4");
     let mut decoder = FfmpegDecoderFactory.open(&path, None).expect("開ける");
     let info = decoder.info().clone();
     assert_eq!(info.frame_count(), FRAMES);

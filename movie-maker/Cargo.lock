@@ -3349,6 +3349,7 @@ dependencies = [
  "mm-decode-api",
  "mm-trace",
  "mm-types",
+ "tempfile",
  "tracing",
 ]
 
@@ -3377,6 +3378,7 @@ dependencies = [
  "schemars 1.2.3",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -3483,6 +3485,7 @@ dependencies = [
  "pollster",
  "serde",
  "serde_json",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
  "ttf-parser",
@@ -3517,6 +3520,7 @@ dependencies = [
  "mm-types",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -3531,6 +3535,7 @@ dependencies = [
  "mm-types",
  "serde",
  "serde_json",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
  "windows",
@@ -3600,6 +3605,7 @@ dependencies = [
  "mm-types",
  "serde",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]
@@ -3616,6 +3622,7 @@ dependencies = [
  "mm-types",
  "pollster",
  "serde_json",
+ "tempfile",
  "wgpu",
 ]
 
@@ -3634,6 +3641,7 @@ dependencies = [
  "mm-types",
  "png",
  "serde_json",
+ "tempfile",
  "tracing",
  "wgpu",
  "windows",
@@ -3691,6 +3699,7 @@ dependencies = [
  "mm-testkit",
  "mm-types",
  "serde_json",
+ "tempfile",
  "velato",
  "vello_cpu",
 ]
@@ -3710,6 +3719,7 @@ dependencies = [
  "mm-testkit",
  "mm-types",
  "serde_json",
+ "tempfile",
  "tracing",
 ]
 
@@ -3773,6 +3783,7 @@ dependencies = [
  "mm-types",
  "png",
  "serde_json",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
  "wgpu",
@@ -3832,6 +3843,7 @@ dependencies = [
  "mm-types",
  "serde",
  "serde_json",
+ "tempfile",
  "tracing",
  "tracing-subscriber",
  "wgpu",
@@ -3932,6 +3944,7 @@ dependencies = [
  "mm-types",
  "png",
  "serde_json",
+ "tempfile",
 ]
 
 [[package]]

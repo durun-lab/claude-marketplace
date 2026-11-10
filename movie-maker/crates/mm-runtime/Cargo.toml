@@ -58,6 +58,7 @@ cuvid = ["dep:mm-decode-cuvid", "mm-decode-cuvid/cuvid"]
 [dev-dependencies]
 tracing-subscriber = { workspace = true }
 serde_json = { workspace = true }
+tempfile = { workspace = true }
 
 [lints]
 workspace = true

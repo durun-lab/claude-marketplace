@@ -49,7 +49,11 @@ fn rust_の書いたファイルを_opentimelineio_が読み_書き直したも�
         return;
     }
     let original = sample_project();
-    let dir = std::env::temp_dir().join(format!("mm-otio-{}", std::process::id()));
+    let guard = tempfile::Builder::new()
+        .prefix("mm-otio-")
+        .tempdir()
+        .unwrap();
+    let dir = guard.path().to_path_buf();
     std::fs::create_dir_all(&dir).unwrap();
     let (written, rewritten) = (dir.join("main.otio"), dir.join("main-py.otio"));
     let timeline = export_sequence(&original, &SequenceId::new("main")).unwrap();
@@ -95,5 +99,4 @@ fn rust_の書いたファイルを_opentimelineio_が読み_書き直したも�
     project.normalize();
     project.validate().unwrap();
     assert_eq!(project, original);
-    std::fs::remove_dir_all(&dir).ok();
 }

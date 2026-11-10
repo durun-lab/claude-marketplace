@@ -102,10 +102,13 @@ mod tests {
     use super::*;
 
     /// 試験ごとに別のファイル。並行の試験が同じパスを書かない。
-    fn temp_file(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("mm-node-api-fp-{}", std::process::id()));
-        std::fs::create_dir_all(&dir).expect("一時フォルダー");
-        dir.join(name)
+    fn temp_file(name: &str) -> (tempfile::TempDir, PathBuf) {
+        let guard = tempfile::Builder::new()
+            .prefix("mm-node-api-fp-")
+            .tempdir()
+            .unwrap();
+        let dir = guard.path().to_path_buf();
+        (guard, dir.join(name))
     }
 
     /// 更新時刻を `RACY_WINDOW` より前にずらす。
@@ -120,7 +123,7 @@ mod tests {
 
     #[test]
     fn 中身を書き換えると大きさが同じでもハッシュが変わる() {
-        let path = temp_file("rewrite.hlsl");
+        let (_dir, path) = temp_file("rewrite.hlsl");
         std::fs::write(&path, "float4 a;").expect("書ける");
         settle(&path);
         let first = file_digest(&path).expect("読める");
@@ -136,7 +139,7 @@ mod tests {
 
     #[test]
     fn 中身が同じなら場所と更新時刻が違っても同じハッシュ() {
-        let (a, b) = (temp_file("same-a.json"), temp_file("same-b.json"));
+        let ((_da, a), (_db, b)) = (temp_file("same-a.json"), temp_file("same-b.json"));
         std::fs::write(&a, "{}").expect("書ける");
         std::fs::write(&b, "{}").expect("書ける");
         settle(&a);
@@ -145,7 +148,7 @@ mod tests {
 
     #[test]
     fn 新しすぎるファイルのハッシュはキャッシュしない() {
-        let path = temp_file("racy.cube");
+        let (_dir, path) = temp_file("racy.cube");
         std::fs::write(&path, "1").expect("書ける");
         file_digest(&path).expect("読める");
         assert!(
@@ -159,14 +162,14 @@ mod tests {
 
     #[test]
     fn 無いファイルはハッシュが無く_スタンプは_absent() {
-        let path = temp_file("none.json");
+        let (_dir, path) = temp_file("none.json");
         assert_eq!(file_digest(&path), None);
         assert_eq!(file_stamp(&path), ABSENT);
     }
 
     #[test]
     fn スタンプは大きさか更新時刻が変われば変わる() {
-        let path = temp_file("host.exe");
+        let (_dir, path) = temp_file("host.exe");
         std::fs::write(&path, "ab").expect("書ける");
         settle(&path);
         let first = file_stamp(&path);

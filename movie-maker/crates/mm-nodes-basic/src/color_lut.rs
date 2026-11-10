@@ -427,7 +427,11 @@ mod tests {
 
     #[test]
     fn lut_のファイルを書き換えると指紋が変わり_読めなければキャッシュしない() {
-        let dir = std::env::temp_dir().join(format!("mm-color-lut-fp-{}", std::process::id()));
+        let guard = tempfile::Builder::new()
+            .prefix("mm-color-lut-fp-")
+            .tempdir()
+            .unwrap();
+        let dir = guard.path().to_path_buf();
         std::fs::create_dir_all(&dir).expect("一時フォルダー");
         let path = dir.join("a.cube");
         let mut params = Params::new();
@@ -444,7 +448,11 @@ mod tests {
 
     #[test]
     fn 更新時刻の刻みの中で書き換えた_lut_も読み直す() {
-        let dir = std::env::temp_dir().join(format!("mm-color-lut-load-{}", std::process::id()));
+        let guard = tempfile::Builder::new()
+            .prefix("mm-color-lut-load-")
+            .tempdir()
+            .unwrap();
+        let dir = guard.path().to_path_buf();
         std::fs::create_dir_all(&dir).expect("一時フォルダー");
         let path = dir.join("same-time.cube");
         // 2 回の書き込みが同じ刻みに入った形。更新の直後なので、中身のハッシュは読み直して作る。
