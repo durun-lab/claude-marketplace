@@ -205,19 +205,20 @@ pub fn state_of(shared: &Shared) -> SourceState {
     state.playing = h.shared.playing.load(Ordering::SeqCst);
     state.duration = h.duration;
     state.fps = h.fps.to_f64();
-    let marks = doc.and_then(|d| {
-        d.project
-            .bins
-            .marks
-            .iter()
-            .find(|m| m.asset == h.asset)
-            .cloned()
-    });
-    state.mark_in = marks
-        .as_ref()
-        .and_then(|m| m.in_point.map(RationalTime::to_f64));
-    state.mark_out = marks.and_then(|m| m.out_point.map(RationalTime::to_f64));
+    (state.mark_in, state.mark_out) = marks_of(shared, &h.asset);
     state
+}
+
+/// 素材 `asset` のイン点とアウト点（素材の秒）。開いているプロジェクトのデータ（`bins.marks`）から読む。
+pub fn marks_of(shared: &Shared, asset: &AssetId) -> (Option<f64>, Option<f64>) {
+    let Some(doc) = shared.doc() else {
+        return (None, None);
+    };
+    let marks = doc.project.bins.marks.iter().find(|m| &m.asset == asset);
+    (
+        marks.and_then(|m| m.in_point.map(RationalTime::to_f64)),
+        marks.and_then(|m| m.out_point.map(RationalTime::to_f64)),
+    )
 }
 
 #[cfg(test)]

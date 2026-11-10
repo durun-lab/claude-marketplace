@@ -100,4 +100,26 @@ impl Placement {
         let p = |v: f32| (v * self.scale.get()).round() as i32;
         (p(t.x + x), p(t.y + y))
     }
+
+    /// 再生の操作のバーのボタン `command` の中央（クライアントの物理ピクセル）。バーを出していないか、
+    /// そのバーにボタンが無ければ `None`。
+    pub(crate) fn transport_button(
+        &self,
+        viewer: mm_ui_layout::Viewer,
+        command: &str,
+    ) -> Option<(i32, i32)> {
+        let r = mm_ui_layout::transport_button(&self.surface, viewer, command)?;
+        Some(self.surface_point((r.x + r.w / 2.0, r.y + r.h / 2.0)))
+    }
+
+    /// 再生の操作のバーのジョグバーの全体の線（サーフェスの論理ピクセル）。
+    pub(crate) fn jog_track(&self, viewer: mm_ui_layout::Viewer) -> Option<mm_ui_layout::Rect> {
+        mm_ui_layout::jog_track(&self.surface, viewer)
+    }
+
+    /// サーフェスの座標の論理ピクセルの点を、クライアントの物理ピクセルにする（近い画素に丸める）。
+    pub(crate) fn surface_point(&self, (x, y): (f32, f32)) -> (i32, i32) {
+        let p = |v: f32| (v * self.scale.get()).round() as i32;
+        (p(x), p(y))
+    }
 }
