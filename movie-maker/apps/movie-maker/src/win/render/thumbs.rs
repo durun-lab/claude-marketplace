@@ -6,9 +6,9 @@ use std::path::Path;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
 
+use image::ImageFormat;
 use mm_ingest::CacheLayout;
 use mm_ui_wgpu::{cell_from_rgb, Ui};
-use zune_jpeg::JpegDecoder;
 
 use super::Gpu;
 
@@ -55,13 +55,13 @@ impl ThumbSync {
 }
 
 /// JPEG のファイルを、スロットの大きさ（16:9 の中央を切り出して縮めた RGBA8）にして読む。
-/// ファイルが無い、壊れている、JPEG が持つ色の数が RGB でないときは `None`。
+/// グレースケールの JPEG も RGB にそろえる。ファイルが無いか壊れているときは `None`。
 fn load_cell(path: &Path) -> Option<Vec<u8>> {
     let bytes = std::fs::read(path).ok()?;
-    let mut decoder = JpegDecoder::new(bytes.as_slice());
-    let rgb = decoder.decode().ok()?;
-    let (w, h) = decoder.dimensions()?;
-    cell_from_rgb(u32::try_from(w).ok()?, u32::try_from(h).ok()?, &rgb)
+    let rgb = image::load_from_memory_with_format(&bytes, ImageFormat::Jpeg)
+        .ok()?
+        .into_rgb8();
+    cell_from_rgb(rgb.width(), rgb.height(), rgb.as_raw())
 }
 
 #[cfg(test)]
