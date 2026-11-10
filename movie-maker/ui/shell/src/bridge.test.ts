@@ -106,7 +106,7 @@ describe("WebView の橋のキー", () => {
 describe("WebView の橋のイベント", () => {
   it("再生位置の通知を fps 付きの再生位置のイベントにして、画面に出した時刻を返す", () => {
     const seen = record(PLAYHEAD_EVENT);
-    channel?.onmessage?.({ seq: 7, t: 2.5, sent_us: nowUs(), playing: false, lag_ms: 1 });
+    channel?.onmessage?.({ seq: 7, t: 2.5, sent_us: nowUs(), playing: false });
     expect(seen).toEqual([{ time: 2.5, fps: INFO.fps }]);
     expect(argsOf("sync_ack")).toEqual([
       { seq: 7, recvUs: expect.any(Number), rafUs: expect.any(Number), shownT: 2.5 },
@@ -114,16 +114,25 @@ describe("WebView の橋のイベント", () => {
   });
 
   it("再生中は送られてから経った分だけ進め、コンポジションの長さで止める", () => {
-    channel?.onmessage?.({ seq: 8, t: INFO.duration - 0.01, sent_us: nowUs() - 1_000_000, playing: true, lag_ms: 1 });
+    channel?.onmessage?.({ seq: 8, t: INFO.duration - 0.01, sent_us: nowUs() - 1_000_000, playing: true });
     expect(argsOf("sync_ack")[0]?.["shownT"]).toBe(INFO.duration);
   });
 
-  it("Timeline の選択を shell の DOM のイベントにつなぎ、fps と長さを取り直す", async () => {
+  it("Timeline の選択を shell の DOM のイベントにつなぎ、fps と長さは選択の中身から取り直す", async () => {
     const seen = record(LAYER_SELECTED_EVENT);
-    tauriEvents.get(LAYER_SELECTED_EVENT)?.({ payload: { layer: null, assets: [] } });
+    const playhead = record(PLAYHEAD_EVENT);
+    const select = (fps: number, duration: number) => {
+      const payload = { layer: null, assets: [], composition: { name: "main", width: 64, height: 36, fps, duration, layer_count: 0 } };
+      tauriEvents.get(LAYER_SELECTED_EVENT)?.({ payload });
+      return payload;
+    };
+    const payload = select(25, 4);
     await flush();
-    expect(seen).toEqual([{ layer: null, assets: [] }]);
-    expect(argsOf("project_info")).toHaveLength(1);
+    expect(seen).toEqual([payload]);
+    expect(argsOf("project_info")).toHaveLength(0);
+    channel?.onmessage?.({ seq: 9, t: 5, sent_us: nowUs(), playing: false });
+    expect(playhead).toEqual([{ time: 4, fps: 25 }]);
+    select(INFO.fps, INFO.duration);
   });
 
   it("shell の頼みには、今の選択を読んで選択の DOM のイベントで答える", async () => {

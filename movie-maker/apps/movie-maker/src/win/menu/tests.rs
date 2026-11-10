@@ -95,8 +95,21 @@ fn 項目は並びの順にコマンドの表の名前とキーの見た目で�
             "-",
             "Snapping\tN",
             "-",
+            "Tasks",
+            "Media",
+            "Story",
+            "Transitions",
+            "Mixer",
+            "Deliver",
+            "-",
+            "Inspector",
+            "Review",
+            "Devices",
+            "Feedback",
+            "-",
             "Diagnostics",
-        ]
+        ],
+        "パネルは左の列と右の列の順に並べ、開発の情報は分ける"
     );
 }
 
@@ -281,6 +294,7 @@ fn メニューのイベントは表のコマンドを実行し_パネルとウ�
     for id in [
         "media.import",
         "export.start",
+        "view.show_media",
         "view.show_diagnostics",
         "app.exit",
         "app.show_about",
@@ -292,6 +306,7 @@ fn メニューのイベントは表のコマンドを実行し_パネルとウ�
         [
             Forward::Panel("media.import"),
             Forward::Panel("export.start"),
+            Forward::Panel("view.show_media"),
             Forward::Panel("view.show_diagnostics"),
             Forward::Window(WindowAction::Exit),
             Forward::Window(WindowAction::About),

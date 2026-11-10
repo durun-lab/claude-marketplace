@@ -40,7 +40,7 @@ Rust の側は `#[tauri::command] fn apply_op(op: mm_ops::Op, ...) -> Result<_, 
 | コマンド | 引数 | 成功 |
 |---|---|---|
 | `command_table` | なし | `UiCommand[]`（ID の名前の順） |
-| `run_command` | `{ id }` | すぐ `()`（編集は編集のキューに積む）。編集の失敗は Source の状態の `message`（`mm:source`）に出て、Shell が右の列の上に出す（`onEditMessage`）。今押せるコマンドだけを受け、表に無い ID と今押せないコマンドは `Err`。パネルが持ち主のコマンドは `mm:panel-command` で Shell に渡す。キー（`key_event`）は押せるかを見ずに実行し、拒否した理由は編集の `message` に出る |
+| `run_command` | `{ id }` | すぐ `()`（編集は編集のキューに積む）。編集の失敗は編集の結果の文言（`mm:edit-message`）に出て、Shell がステータスの行に出す（`onEditMessage`）。今押せるコマンドだけを受け、表に無い ID と今押せないコマンドは `Err`。パネルが持ち主のコマンドは `mm:panel-command` で Shell に渡す。キー（`key_event`）は押せるかを見ずに実行し、拒否した理由は編集の `message` に出る |
 
 | `UiCommand` の項目 | 中身 |
 |---|---|
@@ -56,7 +56,9 @@ Rust の側は `#[tauri::command] fn apply_op(op: mm_ops::Op, ...) -> Result<_, 
 
 押せるかが変わると、Tauri のイベント `mm:commands-changed`（`COMMANDS_CHANGED_EVENT`）が同じ形の表を丸ごと届ける。Shell は表を `PanelContext.commands` でパネルに渡し、`runCommand` は持ち主がパネルならそのタブを開き、アプリなら `run_command` を呼ぶ。ボタンの `title` は `commandTitle` で作る（1 行目が「名前 (キー)」、2 行目が説明。表に無いコマンドは `Not available yet`）。
 
-パネルが持ち主のコマンドをアプリのメニューやキー（Ctrl+I の Import Media…）から呼ぶと、Tauri のイベント `mm:panel-command`（`PANEL_COMMAND_EVENT`）がコマンドの ID を届ける。Shell は `CommandsApi.onPanelCommand` で受け、`runCommand` と同じくタブを開き、パネルの `PanelContext.requests` を進める。
+パネルが持ち主のコマンドをアプリのメニューやキー（Ctrl+I の Import Media…）から呼ぶと、Tauri のイベント `mm:panel-command`（`PANEL_COMMAND_EVENT`）がコマンドの ID を届ける。Shell は `CommandsApi.onPanelCommand` で受け、`runCommand` と同じくタブを開き、パネルの `PanelContext.requests` を進める。パネルを選ぶコマンド（View のパネルの項目。`view.show_<パネルの id>`）はタブを押したのと同じで、`requests` は進めない（View > Media で取り込みを始めない）。
+
+編集の結果の文言は、Tauri のイベント `mm:edit-message`（`EDIT_MESSAGE_EVENT`）が `EditMessage`（`text`、`failed`、`serial`）で届ける（`onEditMessage`）。アプリが文言を置くたびに届き、同じ文言でも `serial` が進む。`text` が空なら伝えることが無く、`failed` は編集を断った理由のとき真。
 
 ## Media のコマンド
 

@@ -129,7 +129,7 @@ fn close(a: f64, b: f64) -> bool {
     (a - b).abs() <= EPS * a.abs().max(b.abs()).max(1.0)
 }
 
-/// 全体表示から始める。開いたときに `.mm/view.json` の拡大した表示を戻していても、倍率の比べ方をそろえる。
+/// 全体表示から始める。前の工程が表示を変えていても、倍率の比べ方をそろえる。
 fn start_from_fit(shared: &Arc<Shared>, hwnd: isize, duration: f64) {
     let Some(width) = row_width(shared, hwnd) else {
         return;

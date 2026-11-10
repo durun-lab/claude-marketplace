@@ -8,16 +8,21 @@ body {
   font-size: var(--mm-font-size-base);
 }
 
+/*
+ * アプリは WebView の幅を 2 列の幅の和にするので、右の列は残りを全部取り、物理ピクセルへの丸めの差も埋める。
+ * ステータスの行は 2 つの列の下にまたがり、文言のある間だけ高さを持つ。
+ */
 #root {
-  display: flex;
+  display: grid;
+  grid-template-columns: var(--mm-size-left-column) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto;
   height: 100%;
 }
 
 .mm-shell-left,
 .mm-shell-right {
   box-sizing: border-box;
-  flex: none;
-  height: 100%;
+  min-height: 0;
   padding: var(--mm-space-md);
   overflow-y: auto;
 }
@@ -26,7 +31,6 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--mm-space-md);
-  width: var(--mm-size-left-column);
   border-right: var(--mm-border-width) solid var(--mm-color-border);
 }
 
@@ -76,20 +80,15 @@ body {
   outline-offset: var(--mm-size-focus-offset);
 }
 
-/*
- * アプリは WebView の幅を 2 列の幅の和にするので、右の列は残りを全部取り、物理ピクセルへの丸めの差も埋める。
- * 左の列と同じくタブを上に残して本体だけをスクロールし、縦のスクロールバーの分でタブの行が狭まって折り返さないようにする。
- */
+/* 左の列と同じくタブを上に残して本体だけをスクロールし、縦のスクロールバーの分でタブの行が狭まって折り返さないようにする。 */
 .mm-shell-right {
   display: flex;
-  flex: 1 1 var(--mm-size-right-column);
   flex-direction: column;
   min-width: 0;
   border-left: var(--mm-border-width) solid var(--mm-color-border);
 }
 
-.mm-shell-error,
-.mm-shell-status {
+.mm-shell-error {
   margin: 0;
   padding: var(--mm-space-sm);
   border-bottom: var(--mm-border-width) solid var(--mm-color-danger);
@@ -98,10 +97,39 @@ body {
   overflow-wrap: anywhere;
 }
 
-/* 編集の結果の文言は失敗の理由と取り消したものの両方なので、エラーの色にしない。 */
 .mm-shell-status {
-  border-bottom-color: var(--mm-color-border);
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.mm-shell-message {
+  margin: 0;
+  padding: var(--mm-space-sm) var(--mm-space-md);
+  border-top: var(--mm-border-width) solid var(--mm-color-border-strong);
+  background: var(--mm-color-surface);
   color: var(--mm-color-text);
+  overflow-wrap: anywhere;
+  animation: mm-shell-message-in 600ms ease-out;
+}
+
+/* 断った理由は拒否の文と同じ色にし、取り消しの知らせと見分ける。 */
+.mm-shell-message[data-failed="true"] {
+  border-top-color: var(--mm-color-danger);
+  color: var(--mm-color-danger);
+  font-weight: 700;
+}
+
+/* 置き直すたびに背景を一度だけ光らせ、同じ文言が続いても押したことが分かるようにする。 */
+@keyframes mm-shell-message-in {
+  from {
+    background: var(--mm-color-border-strong);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mm-shell-message {
+    animation: none;
+  }
 }
 
 .mm-shell-right-tabs {

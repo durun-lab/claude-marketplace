@@ -166,6 +166,25 @@ fn fail(message: &str) -> ! {
     std::process::exit(2);
 }
 
+/// Timeline の表示の状態を `.mm/view.json` から戻し、変わったら書く。書き手として開けなかった project.mmdb（別のプロセスが
+/// 書き手）は戻すだけにする。再生テストは前の実行の表示に左右されず既定の表示から始めるよう、読みも書きもしない。
+fn open_view_state(shared: &Arc<Shared>, args: &Args, comp: &CompositionId, writer: bool) {
+    if args.play_test.is_some() {
+        return;
+    }
+    let read_only = !writer && mm_store::store_dir(&args.project).is_some();
+    crate::win::view_state::open(shared, &args.project, comp, read_only);
+}
+
+/// 再生スレッドの設定。Source の再生スレッドも Program と同じ設定（音の有無、実装の組み合わせ）を使う。
+fn player_options(args: &Args) -> PlayerOptions {
+    PlayerOptions {
+        no_audio: args.no_audio,
+        config: None,
+        store_dir: mm_store::store_dir(&args.project),
+    }
+}
+
 pub fn run() {
     unsafe {
         timeBeginPeriod(TIMER_RESOLUTION_MS);
@@ -179,9 +198,7 @@ pub fn run() {
         .unwrap_or_else(|e| fail(&e.to_string()));
 
     let shared = Arc::new(Shared::new());
-    // 書き手として開けなかった project.mmdb（別のプロセスが書き手）は、表示の状態も書かない。
-    let read_only = opened.store.is_none() && mm_store::store_dir(&args.project).is_some();
-    crate::win::view_state::open(&shared, &args.project, &comp_id, read_only);
+    open_view_state(&shared, &args, &comp_id, opened.store.is_some());
     let cache_dir = media::project_cache_dir(&args.project);
     let mobile_cache = cache_dir.join("mobile");
     let _ = shared.cache_dir.set(cache_dir);
@@ -190,11 +207,7 @@ pub fn run() {
         shared.collect_series();
     }
     let project = Arc::new(opened.project.clone());
-    let options = PlayerOptions {
-        no_audio: args.no_audio,
-        config: None,
-        store_dir: mm_store::store_dir(&args.project),
-    };
+    let options = player_options(&args);
     shared.source.configure(options.clone());
     let (playback, pinfo) =
         Playback::spawn(shared.clone(), project.clone(), comp_id.clone(), options)
@@ -277,10 +290,9 @@ enum Panel {
     Transition,
 }
 
-/// コマンド名の前置きで受け持つ処理を決める。前置きが合わないものは、所属を明示した名前だけが例外。
+/// コマンド名の前置きで受け持つ処理を決める。
 fn route(command: &str) -> Panel {
     match command {
-        "edit_action" => Panel::Source,
         c if c.starts_with("devices_") => Panel::Devices,
         c if c.starts_with("export_") => Panel::Deliver,
         c if c.starts_with("feedback_") => Panel::Feedback,
@@ -414,7 +426,6 @@ mod tests {
             ("review_comments", Panel::Review),
             ("review_undo", Panel::Review),
             ("source_open", Panel::Source),
-            ("edit_action", Panel::Source),
             ("story_search", Panel::Story),
             ("transition_cuts", Panel::Transition),
             ("unknown_command", Panel::Common),

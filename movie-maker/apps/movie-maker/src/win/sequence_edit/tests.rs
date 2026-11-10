@@ -335,3 +335,24 @@ fn 編集用のフィクスチャは隙間を含む_3_カットのシーケン�
     let range = source_range(&p, &Id::new("take2")).unwrap();
     assert!(plan_overwrite(&ctx, &range, Id::new("n")).is_ok());
 }
+
+#[test]
+fn 編集の結果の文言は断った理由と知らせを見分け_置くたびに番号が進む() {
+    let edit = EditState::default();
+    assert_eq!(edit.last_message(), EditMessage::default());
+    edit.set_message("No clip at the playhead".into());
+    let failed = edit.last_message();
+    assert!(failed.failed);
+    assert_eq!(failed.serial, 1);
+    edit.set_message("No clip at the playhead".into());
+    assert_eq!(
+        edit.last_message().serial,
+        2,
+        "同じ文言でも置き直したと分かる"
+    );
+    edit.notify("Undo: Split Clip (webview)".into());
+    assert!(!edit.last_message().failed);
+    edit.set_message(String::new());
+    let cleared = edit.last_message();
+    assert_eq!((cleared.text.as_str(), cleared.failed), ("", false));
+}

@@ -4,6 +4,7 @@ import {
   onEditMessage,
   type AnyPanel,
   type CommandsApi,
+  type EditMessage,
   type LayerSelection,
   type MediaListen,
   type Op,
@@ -100,11 +101,25 @@ const useDocChanges = (listen: MediaListen | undefined): number => {
 };
 
 /** 直近の編集の結果の文言（失敗の理由、取り消したもの）。次の編集が成功すると空になる。 */
-const useEditMessage = (listen: MediaListen | undefined): string => {
-  const [message, setMessage] = useState("");
+const useEditMessage = (listen: MediaListen | undefined): EditMessage | null => {
+  const [message, setMessage] = useState<EditMessage | null>(null);
   useEffect(() => subscribe(() => onEditMessage(setMessage, listen)), [listen]);
   return message;
 };
+
+/**
+ * ステータスの行。編集のキーとサーフェスの操作の結果は Timeline の近くの下端に出し、タブの位置を動かさない。
+ * 置き直すたびに要素を作り直して目立たせ、同じ拒否の理由が続いても押したことが分かるようにする。
+ */
+const StatusLine = ({ message }: { message: EditMessage | null }) => (
+  <footer class="mm-shell-status" role="status">
+    {message?.text && (
+      <p key={message.serial} class="mm-shell-message" data-failed={message.failed ? "true" : "false"}>
+        {message.text}
+      </p>
+    )}
+  </footer>
+);
 
 /** アプリから読んだ UI のコマンドの表。押せるかが変わるたびに届く表に置き換える。読めない間は null。 */
 const useCommandTable = (api: CommandsApi | undefined): UiCommand[] | null => {
@@ -226,11 +241,13 @@ export const Shell = ({ sendOp, apis = {}, listen, panels = PANELS, commands: co
   };
   const state = { left: useColumn(columns.left), right: useColumn(columns.right) };
   // 持ち主がパネルならそのタブを開き、アプリならアプリで実行する。押せないコマンドと表に無いコマンドは何もしない。
+  // パネルを選ぶコマンド（View のパネルの項目）はタブを押したのと同じにし、パネルの頼み（Media の取り込みなど）は進めない。
   const runCommand = (id: string) => {
     const command = commands?.find((c) => c.id === id);
     if (!command?.enabled) return;
     const owner = shown.find((p) => p.id === command.panel);
-    if (owner) state[owner.column].open(owner.id);
+    if (owner && id === `view.show_${owner.id}`) state[owner.column].select(owner.id);
+    else if (owner) state[owner.column].open(owner.id);
     else if (command.panel === null && commandsApi) {
       void commandsApi.run(id).then((error) => error && setOpError(error));
     }
@@ -248,13 +265,9 @@ export const Shell = ({ sendOp, apis = {}, listen, panels = PANELS, commands: co
             {opError}
           </p>
         )}
-        {editMessage && (
-          <p class="mm-shell-status" role="status">
-            {editMessage}
-          </p>
-        )}
         <Column name="right" panels={columns.right} state={state.right} apis={apis} shared={shared} />
       </aside>
+      <StatusLine message={editMessage} />
     </>
   );
 };

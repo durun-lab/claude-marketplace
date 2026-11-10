@@ -24,7 +24,7 @@
   const SHIFT_NAMED = /^(Key[A-Z]|Digit[0-9]|Arrow(Up|Down|Left|Right))$/;
   const nowUs = () => Math.round((performance.timeOrigin + performance.now()) * 1000);
 
-  // 開いているコンポジションの fps と長さ（project_info）。再生位置を進める上限と、再生位置のイベントの fps に使う。
+  // 開いているコンポジションの fps と長さ（始めは project_info、後は選択の中身）。再生位置を進める上限と、再生位置のイベントの fps に使う。
   let info = null;
   let last = null;
 
@@ -58,9 +58,17 @@
     });
   };
 
+  // 選択の中身のコンポジションの要約から fps と長さを取り直す。project_info はレイヤーの一覧まで運ぶので、選択と編集のたびには読まない。
+  const takeTiming = (selection) => {
+    const comp = selection?.composition;
+    if (comp) info = { fps: comp.fps, duration: comp.duration };
+  };
+
   const readSelection = async () => {
     const detail = await invoke("layer_selection");
-    if (detail) window.dispatchEvent(new CustomEvent(LAYER_SELECTED_EVENT, { detail }));
+    if (!detail) return;
+    takeTiming(detail);
+    window.dispatchEvent(new CustomEvent(LAYER_SELECTED_EVENT, { detail }));
   };
 
   // 選択の Tauri イベントを購読し終えたら解ける。購読より前に Rust が送った選択（起動時の 1 回目）は届かないので、
@@ -87,9 +95,9 @@
       invoke("key_event", { source: "webview", key, repeat: e.repeat });
     });
     // 選択かプロジェクトのデータが変わったら、Inspector に中身を渡し、fps と長さを取り直す。
-    window.__TAURI__.event.listen(LAYER_SELECTED_EVENT, async (e) => {
+    window.__TAURI__.event.listen(LAYER_SELECTED_EVENT, (e) => {
       window.dispatchEvent(new CustomEvent(LAYER_SELECTED_EVENT, { detail: e.payload }));
-      info = await invoke("project_info");
+      takeTiming(e.payload);
     }).then(markSubscribed);
     window.addEventListener(ASSET_SELECTED_EVENT, (e) => e.detail?.asset && openSource(e.detail.asset));
     window.addEventListener(SEEK_EVENT, (e) => Number.isFinite(e.detail?.time) && act("seek", e.detail.time));

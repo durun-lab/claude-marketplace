@@ -9,7 +9,6 @@ use std::sync::{Arc, Mutex};
 
 use mm_doc::{Asset, ColorConfig, Composition, Layer, Node, Project};
 use mm_types::{AssetId, CompositionId, Id, Rational, RationalTime};
-use serde::Serialize;
 
 use crate::win::playback::{Command, Playback, PlayerOptions};
 use crate::win::state::Shared;
@@ -34,7 +33,7 @@ pub struct SourceHandle {
 #[derive(Default)]
 pub struct SourceSlot {
     handle: Mutex<Option<Arc<SourceHandle>>>,
-    /// 開く・閉じるたびに進む。描画スレッドがフレームの番号を数え直す判定に使う。
+    /// 開くたびに進む。描画スレッドがフレームの番号を数え直す判定に使う。
     pub serial: AtomicU64,
     /// キー（再生、シーク）が Source に向くか。Source の領域をクリックすると真、Program か Timeline で偽。
     active: AtomicBool,
@@ -105,14 +104,6 @@ impl SourceSlot {
         Ok(())
     }
 
-    /// Source を閉じる。
-    pub fn close(&self) {
-        let old = self.handle.lock().expect("source handle").take();
-        self.serial.fetch_add(1, Ordering::SeqCst);
-        self.set_active(false);
-        drop(old);
-    }
-
     /// Source の再生スレッドへコマンドを送る。素材が開いていなければ捨てる。
     pub fn send(&self, command: Command) {
         if let Some(h) = self.handle() {
@@ -150,63 +141,6 @@ fn source_project(
     );
     project.validate().map_err(|e| e.to_string())?;
     Ok((project, fps))
-}
-
-/// WebView に出す Source の状態。
-#[derive(Debug, Clone, Default, PartialEq, Serialize)]
-pub struct SourceState {
-    /// 開いている素材。
-    pub asset: Option<String>,
-    pub t: f64,
-    pub playing: bool,
-    pub duration: f64,
-    pub fps: f64,
-    pub mark_in: Option<f64>,
-    pub mark_out: Option<f64>,
-    /// 取り込み済みの素材（開く素材を選ぶ一覧）。
-    pub assets: Vec<SourceAsset>,
-    /// 直近の編集の失敗など。
-    pub message: String,
-}
-
-/// 開ける素材。
-#[derive(Debug, Clone, PartialEq, Serialize)]
-pub struct SourceAsset {
-    pub id: String,
-    pub duration: f64,
-}
-
-/// いまの Source の状態。イン点・アウト点は開いているプロジェクトのデータ（`bins.marks`）から読む。
-pub fn state_of(shared: &Shared) -> SourceState {
-    let doc = shared.doc();
-    let assets = doc
-        .as_ref()
-        .map(|d| {
-            d.project
-                .assets
-                .iter()
-                .map(|a| SourceAsset {
-                    id: a.id.to_string(),
-                    duration: a.duration.to_f64(),
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    let mut state = SourceState {
-        assets,
-        message: shared.edit.message(),
-        ..SourceState::default()
-    };
-    let Some(h) = shared.source.handle() else {
-        return state;
-    };
-    state.asset = Some(h.asset.to_string());
-    state.t = h.shared.playhead();
-    state.playing = h.shared.playing.load(Ordering::SeqCst);
-    state.duration = h.duration;
-    state.fps = h.fps.to_f64();
-    (state.mark_in, state.mark_out) = marks_of(shared, &h.asset);
-    state
 }
 
 /// 素材 `asset` のイン点とアウト点（素材の秒）。開いているプロジェクトのデータ（`bins.marks`）から読む。
@@ -250,10 +184,9 @@ mod tests {
     }
 
     #[test]
-    fn 開いていない_source_は空の状態を返しコマンドを捨てる() {
+    fn 開いていない_source_はコマンドを捨てる() {
         let shared = Shared::new();
-        let s = state_of(&shared);
-        assert_eq!(s.asset, None);
+        assert!(shared.source.handle().is_none());
         shared.source.send(Command::Play);
         assert!(!shared.source.is_active());
     }

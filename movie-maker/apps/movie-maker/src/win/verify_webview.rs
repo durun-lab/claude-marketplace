@@ -3,7 +3,7 @@
 //! - 橋（`web/transport.js`）: WebView で押した Space が再生を始めて止め、シークの頼みが再生位置を動かす。
 //! - 割り付け: 中央の列が無く、WebView の幅が 2 列の幅の和。View > Diagnostics で開いたタブに GPU が出る。
 //! - キーフレームの欄: キーフレームのあるレイヤーを選ぶと、Inspector のキーフレームの欄が行の右（3 列目）に出る。
-//! - 編集の結果の文言: 失敗した編集の理由が、Shell の右の列の上に出る。
+//! - 編集の結果の文言: 失敗した編集の理由が、Shell のステータスの行に断った理由として出る。
 
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::channel;
@@ -63,9 +63,18 @@ const STRIP_JS: &str = r#"(() => {
   };
 })()"#;
 
-/// Shell の右の列の上に出ている編集の結果の文言。
-const MESSAGE_JS: &str =
-    r#"document.querySelector(".mm-shell-right > [role=status]")?.textContent ?? null"#;
+/// Shell のステータスの行に出ている編集の結果の文言、断った理由として出しているか、WebView の下端にあるか、
+/// 左右の列のタブの行の高さがそろったままか。
+const MESSAGE_JS: &str = r#"(() => {
+  const m = document.querySelector(".mm-shell-status > .mm-shell-message");
+  const top = (s) => document.querySelector(s)?.getBoundingClientRect().top ?? NaN;
+  return m ? {
+    text: m.textContent,
+    failed: m.dataset.failed === "true",
+    at_bottom: Math.abs(m.getBoundingClientRect().bottom - window.innerHeight) < 1,
+    tabs_aligned: Math.abs(top(".mm-shell-left [role=tablist]") - top(".mm-shell-right [role=tablist]")) < 1,
+  } : null;
+})()"#;
 
 /// 工程に要るもの。
 struct Env<'a> {
@@ -194,8 +203,8 @@ fn keyframe_strip(env: &Env, webview: &Webview) -> Value {
     })
 }
 
-/// Source に素材が無いときの Mark In（データを変えずに失敗する編集）の理由が、Shell の右の列の上に出るか。
-/// 撮った後は文言を消す。
+/// Source に素材が無いときの Mark In（データを変えずに失敗する編集）の理由が、Shell のステータスの行に断った理由として
+/// 出るか。撮った後は文言を消す。
 fn edit_message(env: &Env, webview: &Webview) -> Value {
     let shared = env.shared;
     if shared.source.handle().is_some() {
@@ -207,12 +216,13 @@ fn edit_message(env: &Env, webview: &Webview) -> Value {
     let mut shown = Value::Null;
     let ok = wait_until(WAIT, || {
         shown = eval_json(webview, MESSAGE_JS);
-        !expected.is_empty() && shown == expected.as_str()
+        !expected.is_empty() && shown["text"] == expected.as_str() && shown["failed"] == true
     });
+    let placed = shown["at_bottom"] == true && shown["tabs_aligned"] == true;
     std::thread::sleep(PAINT_WAIT);
     let shot = shoot(env.window_hwnd, env.test, "edit-message");
     shared.edit.notify(String::new());
-    json!({ "ok": ok, "message": expected, "shown": shown, "screenshot": shot })
+    json!({ "ok": ok && placed, "message": expected, "shown": shown, "screenshot": shot })
 }
 
 /// 開いているコンポジションの、キーフレームのある一番上のレイヤー。
