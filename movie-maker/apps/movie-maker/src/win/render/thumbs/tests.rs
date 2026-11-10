@@ -43,10 +43,8 @@ fn 無いファイルと壊れたファイルは_none() {
 fn 読み込みは別のスレッドで行い_キーごとに結果を返す() {
     let dir = tempfile::tempdir().unwrap();
     write_thumb(dir.path(), "good", RED_BLUE);
-    let sync = ThumbSync::new(&Shared::new(), CacheLayout::new(dir.path()));
-    for key in ["good", "gone"] {
-        sync.requests.send(key.into()).unwrap();
-    }
+    let sync = ThumbSync::new(&Shared::new());
+    sync.send(dir.path(), vec!["good".into(), "gone".into()]);
     let timeout = std::time::Duration::from_secs(10);
     let first = sync.loaded.recv_timeout(timeout).unwrap();
     let second = sync.loaded.recv_timeout(timeout).unwrap();

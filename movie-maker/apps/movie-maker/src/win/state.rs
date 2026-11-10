@@ -138,6 +138,12 @@ pub struct Shared {
     pub edits: Mutex<Vec<PendingEdit>>,
     /// キーとドラッグの編集を順に計画して適用するキュー。最初の編集で作る。
     pub edit_lane: Mutex<Option<Sender<EditJob>>>,
+    /// プロジェクトの `cache/`。帯の波形とサムネイルの読み込みが探す。開いたときに置く。
+    pub cache_dir: OnceLock<std::path::PathBuf>,
+    /// 取り込みが素材 1 つの出力（プレビュー動画、サムネイル、波形）をキャッシュに作り終えるたびに進む。
+    /// 帯の波形は、これと素材の一覧の変化を合図に、まだ読めていない素材のキャッシュを探し直す。
+    /// 帯のサムネイルは、これを合図に読めなかったキーを帯に戻して読み直す。
+    pub ingest_serial: AtomicU64,
     /// 書き手として開いた `project.mmdb` の中心。操作はここで保存してから描き直す。JSON のプロジェクトでは空。
     pub core: OnceLock<Arc<mm_serve::Core>>,
     /// JSON のプロジェクトで操作を適用したとき、WebView へ `mm:doc-changed` を送る関数。`core` があるときは使わない。
@@ -156,9 +162,6 @@ pub struct Shared {
     doc: Mutex<Option<OpenDoc>>,
     /// `doc` を置き直すたびに進む。読む側が作り直すかどうかの判定に使う。
     pub doc_serial: AtomicU64,
-    /// 素材の取り込みを終えるたびに進む。キャッシュ（帯のサムネイルなど）ができたかもしれないことを描画スレッドに知らせる。
-    /// 取り込み済みの素材をもう一度取り込んだときはプロジェクトのデータが変わらないので、`doc_serial` とは別に持つ。
-    pub ingest_serial: AtomicU64,
     /// Timeline で選んだレイヤーの ID。
     selected_layer: Mutex<Option<String>>,
     /// 選択を置き直すたびに進む。
@@ -195,6 +198,8 @@ impl Shared {
             cpu_frames: AtomicBool::new(false),
             edits: Mutex::new(Vec::new()),
             edit_lane: Mutex::new(None),
+            cache_dir: OnceLock::new(),
+            ingest_serial: AtomicU64::new(0),
             core: OnceLock::new(),
             json_notify: OnceLock::new(),
             window_hook: crate::win::commands::WindowHook::default(),
@@ -204,7 +209,6 @@ impl Shared {
             history: HistoryMirror::default(),
             doc: Mutex::new(None),
             doc_serial: AtomicU64::new(0),
-            ingest_serial: AtomicU64::new(0),
             selected_layer: Mutex::new(None),
             selection_serial: AtomicU64::new(0),
             edit: EditState::default(),

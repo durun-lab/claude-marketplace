@@ -9,6 +9,7 @@ use crate::text::UiFont;
 use crate::timeline::{Item, ItemKind};
 use crate::timeline_layout::tests::TestViewport;
 use crate::timeline_layout::{TimelineLayout, HEADER_W, RULER_H};
+use crate::wave::{Peaks, WaveSource, Waves};
 
 const SIZE: (f32, f32) = (800.0, 200.0);
 
@@ -131,30 +132,43 @@ fn 無効なレイヤーのサムネイルは薄くする() {
 }
 
 #[test]
-fn サムネイルは帯の矩形の後で帯に重ねる矩形の前に描く() {
-    let m = model(vec![footage(0.0, 5.0)]);
+fn サムネイルは帯と波形の後で帯に重ねる矩形の前に描く() {
+    let mut item = footage(0.0, 5.0);
+    item.wave = Some(WaveSource {
+        content_hash: "hash-a".into(),
+        comp_time: 0.0,
+        wave_time: 0.0,
+        speed: 1.0,
+    });
+    let m = model(vec![item]);
+    let mut waves = Waves::default();
+    waves.insert("hash-a".into(), Peaks::new(100.0, 1, &[0.5; 1000]));
     let f = TestViewport::new(&m, SIZE);
     let mut st = state(0.0);
     st.selected = Some(0);
     let vp = f.vp();
-    let input = PaintInput {
-        model: &m,
-        vp: &vp,
-        state: &st,
-    };
-    let UnderText { quads, bars } = input.under_text();
+    let without = timeline_quads(&PaintInput::new(&m, &vp, &st)).quads;
+    let UnderText { quads, bars } = timeline_quads(&PaintInput {
+        waves: Some(&waves),
+        ..PaintInput::new(&m, &vp, &st)
+    });
     let bar = vp.bar(0, 0.0, 5.0);
     let covers =
         |q: &Quad| q.rect.x >= bar.x && q.rect.y >= bar.y && q.rect.bottom() <= bar.bottom();
+    let wave = |q: &Quad| !without.contains(q);
     assert!(
         quads[..bars].iter().any(|q| q.rect == bar),
         "帯の矩形はサムネイルより前"
+    );
+    assert!(quads[..bars].iter().any(&wave), "波形を描いた");
+    assert!(
+        !quads[bars..].iter().any(&wave),
+        "波形はサムネイルより前（サムネイルの下の波形は隠れる）"
     );
     assert!(
         quads[bars..].iter().any(|q| covers(q) && q.rect.w == 1.0),
         "選んだ外枠はサムネイルより後ろ"
     );
-    assert_eq!(timeline_quads(&m, &vp, &st), quads);
 }
 
 #[test]

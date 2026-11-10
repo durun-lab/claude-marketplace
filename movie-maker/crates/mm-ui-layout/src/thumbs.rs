@@ -1,6 +1,7 @@
 //! 帯の先頭のサムネイル。Medium と Large の行の帯（シーケンスはカットごと）の左に、素材の 1 コマを出す。
 //! サムネイルは矩形ではなくテクスチャで描くので、矩形の並び（[`crate::timeline_quads`]）とは別の並びにし、
-//! `mm-ui-wgpu` が帯の後、帯に重ねる矩形の前（[`crate::UnderText::bars`]）に描く。名前はサムネイルの右に寄せる（Premiere と同じ）。
+//! `mm-ui-wgpu` が帯と帯の中の波形の後、帯に重ねる矩形の前（[`crate::UnderText::bars`]）に描く。
+//! 名前はサムネイルの右に寄せる（Premiere と同じ）。
 //! 座標は Timeline の矩形の左上を (0, 0) とする。
 
 use std::sync::Arc;

@@ -13,7 +13,7 @@
 | 縦のスクロールバー | 行の領域の右の、縦のスクロールの位置を示すバー。中身が行の領域に入らないときだけ出す | `TimelineLayout::scrollbar` |
 | スクロールボックス / 溝（スクロールバーの） | 縦のスクロールバーの中の、掴んで動かす矩形（Win32 の scroll box。thumb とも呼ぶ）。長さは見えている割合で、下限は 24 論理ピクセル / スクロールボックスの外の所。押すと押した側へ 1 画面ぶん送る | `scroll::thumb`、`scroll::scroll_for_thumb`、`Hit::Scrollbar` |
 | 重ね順（Timeline の矩形の） | 矩形を描く順の区分（背景と縞、帯、帯に重ねるもの、帯のマーカー、暗がり、行の領域を囲む部品）。領域の描く関数は、呼ぶ順に関わらずこの区分に矩形を入れる | `Depth`（`Back`、`Bar`、`OnBar`、`BarMark`、`Shade`、`Surround`）、`Canvas` |
-| 描く関数の入力（Timeline の） | 領域の描く関数が見るもの。Timeline のモデル、見えている所、描く時点の状態 | `PaintInput` |
+| 描く関数の入力（Timeline の） | 領域の描く関数と、公開する `timeline_quads`、`timeline_overlay` が受けるもの。Timeline のモデル、見えている所、描く時点の状態、帯の波形のピーク。描くものを足す PR は公開する関数を増やさずにフィールドを足す | `PaintInput`、`PaintInput::new` |
 | 名前を置く所（帯の） | 帯の、名前を置く部分。Medium は上の 16 論理ピクセル（下端の 9 は帯のマーカー）、Large は上の 20 論理ピクセル（下は帯のマーカー、波形、フィルムストリップ）、Small は帯の全体 | `NAME_AREA_H`、`name_area` |
 | 縮小の下限（Timeline の） | Ctrl+ホイールとズームのスライダーで縮められる下限の、秒あたりの論理ピクセル。全体表示の倍率と `MIN_PX_PER_SEC` の小さい方で、長いコンポジションも全体が収まるまで縮められる。全体表示そのものは `MIN_FIT_PX_PER_SEC`（目盛りの 1 時間の間隔でも時刻が重ならない）まで縮める | `TimeView::zoom_floor`、`MIN_FIT_PX_PER_SEC` |
 | 開いたときの表示 | 表示の状態が無いときの Timeline の最初の表示。全体表示にし、sequence の行（無ければいちばん下の行）が見える所までスクロールする。表示の状態があればそれを戻す | `open_view`、`Ui::restore_view` |

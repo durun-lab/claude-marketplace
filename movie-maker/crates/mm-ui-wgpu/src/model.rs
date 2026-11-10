@@ -12,6 +12,10 @@ use mm_ui_layout::{AudioState, CutBar, Item, ItemKind, TimelineModel, TrimBounds
 
 use crate::names::Namer;
 
+mod wave;
+
+use wave::WaveResolver;
+
 /// 音を持てるレイヤーの種類。Mixer のトラック（`apps/movie-maker` の `mixer.rs`）と同じで、見出しに Mute と Solo を出す。
 const AUDIO_KINDS: [&str; 3] = [FOOTAGE_KIND, NESTED_KIND, SEQUENCE_KIND];
 
@@ -90,6 +94,7 @@ pub fn timeline_cut_ids(project: &Project, comp: &Composition) -> Vec<Vec<String
 /// シーケンスのレイヤーには、有効なカットを先頭から並べる（隙間は空きとして区別する）。
 pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
     let names = Namer::new(project);
+    let mut waves = WaveResolver::new(project);
     let items = visible_layers(comp)
         .map(|(layer, range)| Item {
             id: layer.id.as_str().into(),
@@ -102,8 +107,9 @@ pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
             audio: audio_state(layer),
             label: names.label(&layer.source),
             keyframes: keyframe_secs(layer),
-            cuts: cut_bars(project, layer, &names),
+            cuts: cut_bars(project, layer, &names, &mut waves),
             trim: trim_bounds(project, layer, range),
+            wave: waves.layer(layer),
         })
         .collect();
     TimelineModel {
@@ -143,7 +149,12 @@ fn trim_bounds(project: &Project, layer: &Layer, range: mm_types::TimeRange) -> 
     }
 }
 
-fn cut_bars(project: &Project, layer: &Layer, names: &Namer) -> Vec<CutBar> {
+fn cut_bars(
+    project: &Project,
+    layer: &Layer,
+    names: &Namer,
+    waves: &mut WaveResolver<'_>,
+) -> Vec<CutBar> {
     let Some((seq, placed)) = layer_cuts(project, layer) else {
         return Vec::new();
     };
@@ -157,6 +168,7 @@ fn cut_bars(project: &Project, layer: &Layer, names: &Namer) -> Vec<CutBar> {
             gap: seq.cuts[p.index].source.is_gap(),
             disabled_before: p.index.checked_sub(1).is_some_and(|i| !seq.cuts[i].enabled),
             disabled_after: seq.cuts.get(p.index + 1).is_some_and(|c| !c.enabled),
+            wave: waves.cut(layer, &seq.cuts[p.index], p.range.start.to_f64()),
         })
         .collect()
 }

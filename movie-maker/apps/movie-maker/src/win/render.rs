@@ -5,7 +5,6 @@
 //! サーフェスは再生スレッドのレンダラーと同じ `GpuContext` のデバイスで作り、描いたテクスチャをリードバックせずに描く。
 //! レンダラーがデバイスを作り直したら、新しいデバイスでサーフェスと UI を作り直す。
 
-use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::JoinHandle;
@@ -15,6 +14,7 @@ mod acquire;
 mod sync;
 mod thumbs;
 mod transport;
+mod waves;
 
 use mm_runtime::{select_adapter, GpuContext, GpuSelector};
 use mm_ui_layout::{EmptyKeys, TimelineModel};
@@ -43,14 +43,13 @@ pub struct Renderer {
 
 impl Renderer {
     /// 子 HWND にサーフェスを張って描画スレッドを始める。
-    /// `cache` は `<project>/cache`（帯のサムネイルを読む）。
-    pub fn spawn(shared: Arc<Shared>, hwnd: isize, model: TimelineModel, cache: PathBuf) -> Self {
+    pub fn spawn(shared: Arc<Shared>, hwnd: isize, model: TimelineModel) -> Self {
         let quit = Arc::new(AtomicBool::new(false));
         let q = quit.clone();
         let join = std::thread::Builder::new()
             .name("render".into())
             .spawn(move || {
-                supervise(&q, RESTART_WAIT, || run(&shared, hwnd, &q, &model, &cache));
+                supervise(&q, RESTART_WAIT, || run(&shared, hwnd, &q, &model));
             })
             .expect("render thread");
         Self {
@@ -293,12 +292,11 @@ fn run(
     hwnd: isize,
     quit: &AtomicBool,
     model: &TimelineModel,
-    cache: &Path,
 ) -> Result<(), String> {
     let start = shared.gpu.lock().expect("gpu").clone();
     let mut view = View::new(shared, hwnd, start, model)?;
     let mut seen = 0u64;
-    let mut syncs = Syncs::new(shared, cache);
+    let mut syncs = Syncs::new(shared);
     let mut failed_frames = 0u32;
     // HWND が破棄された後に present し続けないよう、毎周で生死を確かめる。
     while !quit.load(Ordering::SeqCst) && surface::is_alive(hwnd) {
@@ -310,7 +308,7 @@ fn run(
         if let Some(context) = moved_context(shared, &view.gpu, seen) {
             tracing::warn!("レンダラーの GPU が変わったので、サーフェスを作り直す");
             view = View::new(shared, hwnd, Some(context), model)?;
-            syncs = Syncs::new(shared, cache);
+            syncs.forget();
         }
         view.configure(hwnd, size);
         syncs.refresh(shared, &mut view);

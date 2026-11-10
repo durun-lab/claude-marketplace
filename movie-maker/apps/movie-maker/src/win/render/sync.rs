@@ -1,46 +1,58 @@
 //! 描画スレッドの、共有状態と UI の行き来。Timeline に出すプロジェクトのデータ、Source のフレーム、
 //! ポインターの入力から選択とシークとドラッグの編集へ。
 
-use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
-use mm_ingest::CacheLayout;
 use mm_render_api::tone_map_peak;
 use mm_ui_layout::{Action, EditKind, PointerEvent, TransportAction, Viewer};
 use mm_ui_wgpu::{timeline_cut_ids, timeline_layer_ids, timeline_model, Region, Ui};
 
 use super::thumbs::ThumbSync;
 use super::transport::{self, Seeks, TransportSync};
+use super::waves::{WaveSync, WaveWanted};
 use super::View;
 use crate::win::review::drawing::DrawingSync;
 use crate::win::sequence_edit::{gesture_op, TimelineIds};
 use crate::win::state::{FrameImage, OpenDoc, Shared};
 
-/// 描画スレッドが共有状態から `Ui` へ渡すものごとの、最後に渡した状態。`Ui` を作り直したら一緒に作り直す。
+/// 描画スレッドが共有状態から `Ui` へ渡すものごとの、最後に渡した状態。
 pub(super) struct Syncs {
     pub(super) doc: DocSync,
     source: SourceSync,
     drawing: DrawingSync,
     thumbs: ThumbSync,
     transport: TransportSync,
+    waves: WaveSync,
 }
 
 impl Syncs {
-    /// `cache` は `<project>/cache`（帯のサムネイルを読む）。
-    pub(super) fn new(shared: &Shared, cache: &Path) -> Self {
+    pub(super) fn new(shared: &Shared) -> Self {
         Self {
             doc: DocSync::default(),
             source: SourceSync::default(),
             drawing: DrawingSync::default(),
-            thumbs: ThumbSync::new(shared, CacheLayout::new(cache)),
+            thumbs: ThumbSync::new(shared),
             transport: TransportSync::default(),
+            waves: WaveSync::new(),
         }
+    }
+
+    /// `Ui` を作り直したときに、渡した状態を捨てて次の周で渡し直す。読み込みのスレッドは残す
+    /// （サムネイルは、新しい `Ui` が見えている分を頼み直す）。
+    pub(super) fn forget(&mut self) {
+        self.doc = DocSync::default();
+        self.source = SourceSync::default();
+        self.drawing = DrawingSync::default();
+        self.transport = TransportSync::default();
+        self.waves.forget();
     }
 
     /// 共有状態の変わった所を `view` の `Ui` に渡す。
     pub(super) fn refresh(&mut self, shared: &Shared, view: &mut View) {
         self.doc.refresh(shared, &mut view.ui);
+        self.waves
+            .refresh(shared, &mut view.ui, self.doc.wave_wanted());
         self.source.refresh(shared, view);
         self.drawing.refresh(shared, &mut view.ui);
         self.thumbs.refresh(shared, &view.gpu, &mut view.ui);
@@ -59,6 +71,9 @@ pub(super) struct DocSync {
     layer_ids: Vec<String>,
     /// レイヤーごとのカットの ID（シーケンスでないレイヤーは空）。
     cut_ids: Vec<Vec<String>>,
+    /// 帯の波形を出す素材のコンテンツハッシュ（Timeline のモデルから引く）と、一覧を作り直すたびに進む通し番号。
+    wave_hashes: Vec<Arc<str>>,
+    wave_serial: u64,
 }
 
 /// Source のフレームを Program と同じサーフェスの Source の領域に出す。
@@ -103,7 +118,10 @@ impl DocSync {
             let Ok(comp) = doc.project.composition(&doc.comp) else {
                 return;
             };
-            ui.update_model(timeline_model(&doc.project, comp));
+            let model = timeline_model(&doc.project, comp);
+            self.wave_hashes = model.wave_hashes();
+            self.wave_serial += 1;
+            ui.update_model(model);
             ui.set_empty_state(mm_ui_wgpu::empty_state(&doc.project, comp));
             // SDR の書き出しと同じ素材の上限の明るさでトーンマップし、プレビューと書き出しの映像を揃える。
             ui.set_hdr_peak(tone_map_peak(&doc.project));
@@ -118,6 +136,14 @@ impl DocSync {
         self.seen_cut = cut_serial;
         let selected = shared.edit.selected_cut();
         ui.select_cut(selected.and_then(|id| self.position_of_cut(&id)));
+    }
+
+    /// 帯の波形を読みたい素材。
+    pub(super) fn wave_wanted(&self) -> WaveWanted<'_> {
+        WaveWanted {
+            hashes: &self.wave_hashes,
+            serial: self.wave_serial,
+        }
     }
 
     /// カットの ID の Timeline での位置（レイヤーの添字、カットの添字）。

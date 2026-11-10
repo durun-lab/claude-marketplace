@@ -3,7 +3,7 @@ use crate::controller::{Action, Mods, PointerEvent, TimelineController};
 use crate::geom::QuadShape;
 use crate::paint::bar_color;
 use crate::paint::tests::state;
-use crate::paint::timeline_quads;
+use crate::paint::{timeline_quads, PaintInput};
 use crate::palette::{item_color, tests::KINDS};
 use crate::rows::{RowHeights, Rows};
 use crate::text::tests::FakeMeasure;
@@ -87,7 +87,8 @@ fn キーフレームの開閉は見出しの右端に置き_キーフレーム�
     ]);
     let f = TestViewport::new(&m, SIZE);
     let vp = f.vp();
-    let tris: Vec<Rect> = timeline_quads(&m, &vp, &state(0.0))
+    let tris: Vec<Rect> = timeline_quads(&PaintInput::new(&m, &vp, &state(0.0)))
+        .quads
         .into_iter()
         .filter(|q| q.shape == QuadShape::TriRight)
         .map(|q| q.rect)

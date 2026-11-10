@@ -11,10 +11,10 @@ use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
     clear_tooltip_area, drag_tooltip, fit_rect, split_viewers, timeline_labels, timeline_overlay,
-    transport_labels, Action, DrawingShape, EmptyHints, EmptyKeys, EmptyState, PaintInput,
-    PaintState, PointerEvent, Quad, Rect, RowHeights, Scale, SurfaceLayout, TimeView,
-    TimelineController, TimelineModel, TransportController, TransportState, UiFont, UnderText,
-    ViewState,
+    timeline_quads, transport_labels, Action, DrawingShape, EmptyHints, EmptyKeys, EmptyState,
+    PaintInput, PaintState, Peaks, PointerEvent, Quad, Rect, RowHeights, Scale, SurfaceLayout,
+    TimeView, TimelineController, TimelineModel, TransportController, TransportState, UiFont,
+    UnderText, ViewState, Waves,
 };
 
 use crate::drawing::{DrawingFit, DrawingLayer};
@@ -76,6 +76,8 @@ pub struct Ui {
     palette: Palette,
     /// 空の状態の案内（どれを出すかと、案内に出すキー）。
     empty: EmptyHints,
+    /// 帯の波形のピーク（読み込みが終わった素材から）。
+    waves: Waves,
 }
 
 impl Ui {
@@ -113,6 +115,7 @@ impl Ui {
             opened: false,
             palette: Palette::DEFAULT,
             empty: EmptyHints::default(),
+            waves: Waves::default(),
         }
     }
 
@@ -175,6 +178,11 @@ impl Ui {
         self.model = model;
         self.drop_missing_thumbs();
         self.relayout_rows();
+    }
+
+    /// コンテンツハッシュ `content_hash` の素材のピークを置く。置くと、その素材の帯に波形が出る。
+    pub fn set_wave(&mut self, content_hash: std::sync::Arc<str>, peaks: Peaks) {
+        self.waves.insert(content_hash, peaks);
     }
 
     /// 選択を置く（`None` で外す）。添字は `TimelineModel::items` のもの。
@@ -384,12 +392,11 @@ impl Ui {
         let state = self.paint_state();
         let vp = self.controller.viewport();
         let input = PaintInput {
-            model: &self.model,
-            vp: &vp,
-            state: &state,
+            waves: Some(&self.waves),
+            ..PaintInput::new(&self.model, &vp, &state)
         };
-        let UnderText { mut quads, bars } = input.under_text();
-        let overlay = clear_tooltip_area(timeline_overlay(&self.model, &vp, &state), &tooltip);
+        let UnderText { mut quads, bars } = timeline_quads(&input);
+        let overlay = clear_tooltip_area(timeline_overlay(&input), &tooltip);
         quads.extend(tooltip);
         let under = quads.len() as u32;
         quads.extend(overlay);

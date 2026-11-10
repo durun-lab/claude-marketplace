@@ -5,6 +5,7 @@ use std::sync::Arc;
 use crate::keymarks;
 use crate::time_view::TimeView;
 use crate::timeline_layout::Viewport;
+use crate::wave::WaveSource;
 use crate::zoombar::{self, ZoomBarPart};
 
 /// 端のつまみの幅の上限。
@@ -41,6 +42,8 @@ pub struct CutBar {
     pub disabled_after: bool,
     /// 帯の先頭に出すサムネイルのキー（素材のコンテンツハッシュ）。素材の無いカットは `None`。
     pub thumb: Option<Arc<str>>,
+    /// 帯に波形を出す元（音のある撮影素材のカット）。
+    pub wave: Option<WaveSource>,
 }
 
 /// レイヤーの端のつまみで動かせる範囲（コンポジションの秒）。`trimLayer` が拒否しない範囲に合わせ、
@@ -101,6 +104,8 @@ pub struct Item {
     pub thumb: Option<Arc<str>>,
     /// 端のつまみで動かせる範囲。
     pub trim: TrimBounds,
+    /// 帯に波形を出す元（音のある撮影素材のレイヤー）。シーケンスはカットが持つ。
+    pub wave: Option<WaveSource>,
 }
 
 impl Item {
@@ -119,6 +124,7 @@ impl Item {
             thumb: None,
             cuts: Vec::new(),
             trim: TrimBounds::FREE,
+            wave: None,
         }
     }
 
@@ -172,6 +178,23 @@ pub struct TimelineModel {
     pub items: Vec<Item>,
     /// コンポジションのマーカーの時刻（秒）。スナップの目標にする。
     pub markers: Vec<f64>,
+}
+
+impl TimelineModel {
+    /// 波形の元の素材のコンテンツハッシュ（重複なし、初めに出てきた順）。波形の読み込みが、読むキャッシュを知るのに使う。
+    pub fn wave_hashes(&self) -> Vec<Arc<str>> {
+        let mut seen = std::collections::HashSet::new();
+        let mut out = Vec::new();
+        for item in &self.items {
+            let cuts = item.cuts.iter().filter_map(|c| c.wave.as_ref());
+            for w in item.wave.iter().chain(cuts) {
+                if seen.insert(w.content_hash.clone()) {
+                    out.push(w.content_hash.clone());
+                }
+            }
+        }
+        out
+    }
 }
 
 /// 帯の上の位置。

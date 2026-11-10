@@ -4,7 +4,7 @@
 
 use std::time::{Duration, Instant};
 
-use mm_ui_layout::{CutBar, Item, ItemKind, PointerEvent, TimelineModel};
+use mm_ui_layout::{CutBar, Item, ItemKind, Peaks, PointerEvent, TimelineModel, WaveSource};
 use mm_ui_wgpu::{slot_image_len, TextStats, Ui};
 
 use crate::support::{gpu, FORMAT};
@@ -14,6 +14,9 @@ const CUTS: usize = 3000;
 const LAYERS: usize = 7500;
 /// 毎フレームにキーフレームを持つレイヤー（10 分のトラッキングの結果、30 fps で 18001 個）の数。開いたときに見える上の行に置く。
 const TRACKED: usize = 3;
+/// 帯の波形に使う素材の数と、1 つの素材の長さ（秒）。カットは素材を順に使い、素材の途中から切り出す。
+const WAVE_ASSETS: usize = 20;
+const WAVE_SECS: usize = 600;
 /// 1920x1080 の論理ピクセルを表示の倍率 1.5 で描くサーフェス。
 const SCALE: f32 = 1.5;
 const SIZE: (u32, u32) = (2880, 1620);
@@ -39,6 +42,12 @@ fn model() -> TimelineModel {
             end: i as f64 * 2.0 + 2.0,
             label: format!("take-{i:04}.mp4").into(),
             thumb: thumbs_on().then(|| thumb_key(i).into()),
+            wave: Some(WaveSource {
+                content_hash: format!("take-{}", i % WAVE_ASSETS).into(),
+                comp_time: i as f64 * 2.0,
+                wave_time: (i / WAVE_ASSETS % (WAVE_SECS / 2)) as f64 * 2.0,
+                speed: 1.0,
+            }),
             ..CutBar::default()
         })
         .collect();
@@ -109,7 +118,7 @@ impl Bench {
         (cpu, ms(t0.elapsed()))
     }
 
-    /// 頼まれた画を、1 色の区画で全部埋める（読み込みは別のスレッドで、描画を待たせない）。
+    /// 頼まれたサムネイルを、1 色のスロットの画像で全部埋める（アプリの読み込みは別のスレッドで、描画を待たせない）。
     fn load_thumbs(&mut self) {
         let image = [90, 120, 160, 255].repeat(slot_image_len() / 4);
         for key in self.ui.take_thumb_requests() {
@@ -164,6 +173,15 @@ fn bench() -> Option<Bench> {
     let mut ui = Ui::new(&device, FORMAT);
     ui.set_scale_factor(SCALE);
     ui.set_model(model());
+    // MM_PERF_WAVES=0 でピークを置かず、波形を出さない場合（波形を足す前と同じ描画）を測る。
+    if std::env::var("MM_PERF_WAVES").as_deref() != Ok("0") {
+        for a in 0..WAVE_ASSETS {
+            let peaks: Vec<f32> = (0..WAVE_SECS * 100)
+                .map(|i| ((i * 7 + a * 13) % 100) as f32 / 100.0)
+                .collect();
+            ui.set_wave(format!("take-{a}").into(), Peaks::new(100.0, 1, &peaks));
+        }
+    }
     ui.resize(SIZE.0, SIZE.1);
     let target = texture.create_view(&Default::default());
     Some(Bench {
