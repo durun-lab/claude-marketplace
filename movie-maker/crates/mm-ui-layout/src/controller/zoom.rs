@@ -42,6 +42,13 @@ impl TimelineController {
         };
     }
 
+    /// ツールバーのスライダーが指す倍率 `px_per_sec`（1 秒の論理ピクセル）にする。拡大の中心はキーと同じ再生位置。
+    pub fn zoom_to(&mut self, px_per_sec: f64, playhead: f64, duration: f64) {
+        if self.view.px_per_sec > 0.0 {
+            self.zoom_at_playhead(px_per_sec / self.view.px_per_sec, playhead, duration);
+        }
+    }
+
     /// 全体表示にする。全体表示にした後に表示が変わっていなければ、全体表示の前の表示に戻す。
     pub(super) fn toggle_full_extent(&mut self, duration: f64) {
         if let Some(FullExtent { fit, before }) = self.full_extent.take() {

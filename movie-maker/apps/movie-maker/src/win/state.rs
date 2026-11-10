@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use mm_doc::Project;
 use mm_runtime::{GpuContext, GpuFrame};
 use mm_types::{CompositionId, RgbaImage};
-use mm_ui_layout::PointerEvent;
+use mm_ui_layout::{PointerEvent, ToolbarNames};
 use serde::Serialize;
 
 use crate::win::clock::PlayClock;
@@ -177,6 +177,8 @@ pub struct Shared {
     pub meters: Mutex<crate::win::mixer::MeterLane>,
     /// Timeline の表示の状態（ズーム、スクロール、行の高さ）。描画スレッドが置き、`.mm/view.json` に書く。
     pub view: crate::win::view_state::ViewSlot,
+    /// 描画スレッドが最後に描いた Timeline のツールバーの名前の幅。`--play-test` がボタンの位置を引く。
+    pub toolbar_names: Mutex<ToolbarNames>,
 }
 
 impl Shared {
@@ -217,6 +219,7 @@ impl Shared {
             series: Mutex::new(BTreeMap::new()),
             meters: Mutex::new(crate::win::mixer::MeterLane::default()),
             view: crate::win::view_state::ViewSlot::default(),
+            toolbar_names: Mutex::new(ToolbarNames::default()),
         }
     }
 
