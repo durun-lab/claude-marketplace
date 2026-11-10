@@ -1,4 +1,4 @@
-//! ユーザーの割り付け。仕切りの位置（WebView の列の幅、Timeline の高さの比）と、WebView の列の開け閉め。
+//! ユーザーの割り付け。仕切りの位置（WebView の列の幅、Timeline の高さの割合）と、WebView の列の開け閉め。
 //! プロジェクトのデータではなく、ユーザーの設定として `%LOCALAPPDATA%/movie-maker/workspace.json` に置く（Resolve と
 //! Premiere のワークスペースも、プロジェクトではなくアプリの設定）。幅は論理ピクセル、高さは割合で持つので、表示の倍率や
 //! ウィンドウの大きさが変わっても割り付けは崩れない。ドラッグを離したときと、列の開け閉めと Reset UI Layout のときに書く。
@@ -15,14 +15,14 @@ use crate::win::theme;
 pub const LEFT_MIN: f64 = 200.0;
 /// 右の列の幅の下限（論理ピクセル）。Inspector のパラメータの欄が読める幅。上限は theme.json の `right-column`。
 pub const RIGHT_MIN: f64 = 300.0;
-/// サーフェスの幅の下限（論理ピクセル）。縦の仕切りの帯を除いた Program と Timeline の幅で、Program の再生の操作の
+/// サーフェスの幅の下限（論理ピクセル）。縦の仕切りを除いた Program と Timeline の幅で、Program の再生の操作の
 /// バーのタイムコードとボタンが 1 行に入る幅。
 pub const MIN_SURFACE_W: f64 = 400.0;
-/// 設定のファイルの形式の版。
+/// 設定のファイルの形式のバージョン。
 const VERSION: u32 = 1;
 /// 設定のファイルの名前。
 const FILE: &str = "workspace.json";
-/// 設定のファイルの場所を替える環境変数。試験とスクリーンショットで、本物の設定に触れないために使う。
+/// 設定のファイルの場所を替える環境変数。テストとスクリーンショットで、本物の設定に触れないために使う。
 pub const FILE_ENV: &str = "MM_WORKSPACE_FILE";
 
 /// 割り付け。既定は `Default`（View > Reset UI Layout で戻る形）。
@@ -69,7 +69,7 @@ impl Columns {
     }
 }
 
-/// `v` を `lo` から `hi` に丸める。`hi` が `lo` を下回る狭いウィンドウでは `lo`。
+/// `v` を `lo` から `hi` の間に収める。`hi` が `lo` を下回る狭いウィンドウでは `lo`。
 fn clamp_to(v: f64, lo: f64, hi: f64) -> f64 {
     v.min(hi.max(lo)).max(lo)
 }
@@ -135,7 +135,7 @@ impl Workspace {
         self.left_open || self.right_open
     }
 
-    /// 読んだ値の足りないところ（壊れた数、負の数）を既定で埋める。
+    /// 読んだ値のうち、有限でない数と 0 以下の数を既定に直す。
     fn sanitized(mut self) -> Self {
         let d = Self::default();
         let ok = |v: f64| v.is_finite() && v > 0.0;
@@ -155,7 +155,7 @@ impl Workspace {
     }
 }
 
-/// ファイルの中身。版を先頭に置く。
+/// ファイルの中身。バージョンを先頭に置く。
 #[derive(Serialize, Deserialize)]
 struct Stored {
     version: u32,
@@ -175,7 +175,7 @@ fn path_from(file: Option<PathBuf>, local: Option<PathBuf>) -> Option<PathBuf> {
     file.or_else(|| local.map(|d| d.join("movie-maker").join(FILE)))
 }
 
-/// `path` の設定を読む。無い、壊れている、知らない版なら `None`（既定で始める）。
+/// `path` の設定を読む。無い、壊れている、知らないバージョンなら `None`（既定で始める）。
 pub fn read(path: &Path) -> Option<Workspace> {
     let text = std::fs::read_to_string(path).ok()?;
     match serde_json::from_str::<Stored>(&text) {

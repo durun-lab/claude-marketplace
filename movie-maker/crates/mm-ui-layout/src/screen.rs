@@ -45,7 +45,7 @@ pub fn vertical_splitter_rect(w: f32, h: f32) -> Rect {
 }
 
 /// サーフェスの点 `(x, y)`（論理ピクセル）にある仕切り。つかめる範囲は見た目の線より Program と Timeline の側へ
-/// [`GRAB_PAD`] 広い。角は縦の仕切りが勝つ。`vertical` は縦の仕切りを出しているか。
+/// [`GRAB_PAD`] 広い。角では縦の仕切りを優先する。`vertical` は縦の仕切りを出しているか。
 pub fn splitter_at(w: f32, h: f32, ratio: f32, vertical: bool, x: f32, y: f32) -> Option<Splitter> {
     if vertical && x >= w - SPLITTER_W - GRAB_PAD && x < w {
         return Some(Splitter::Vertical);
@@ -69,7 +69,7 @@ pub struct SurfaceLayout {
     pub source_transport: Option<Rect>,
 }
 
-/// 高さ `h` のサーフェスで、Timeline が高さの比 `ratio` から取る高さ。下限は目盛りとレイヤー 2 本、上限は Program の下限
+/// 高さ `h` のサーフェスで、Timeline が高さの割合 `ratio` から取る高さ。下限は目盛りとレイヤー 2 本、上限は Program の下限
 /// （[`MIN_PROGRAM_H`]）を残す高さ。サーフェスが低くて両立しないときは Timeline の下限を取る。
 pub fn timeline_height(h: f32, ratio: f32) -> f32 {
     let h = h.max(0.0);
@@ -77,8 +77,8 @@ pub fn timeline_height(h: f32, ratio: f32) -> f32 {
     (h * ratio).min(room).max(MIN_TIMELINE_H).min(h)
 }
 
-/// Timeline の高さ `th` を、サーフェスの高さ `h` に対する比にする。仕切りのドラッグが保存する値。下限と上限は
-/// [`timeline_height`] と同じで、窓の高さが変わっても Timeline の割合を保つ。
+/// Timeline の高さ `th` を、サーフェスの高さ `h` に対する割合にする。仕切りのドラッグが保存する値。下限と上限は
+/// [`timeline_height`] と同じで、ウィンドウの高さが変わっても Timeline の割合を保つ。
 pub fn timeline_ratio(h: f32, th: f32) -> f32 {
     if h <= 0.0 {
         return TIMELINE_RATIO;
@@ -92,14 +92,14 @@ pub fn splitter_rect(w: f32, h: f32, ratio: f32) -> Rect {
     Rect::new(0.0, h - timeline_height(h, ratio) - GAP, w, GAP)
 }
 
-/// 既定の高さの比（[`TIMELINE_RATIO`]）で割る。
+/// 既定の Timeline の高さの割合（[`TIMELINE_RATIO`]）でサーフェスを分ける。
 pub fn split_viewers(w: f32, h: f32, with_source: bool) -> SurfaceLayout {
     split_viewers_with(w, h, with_source, TIMELINE_RATIO)
 }
 
-/// 幅 `w`、高さ `h` のサーフェスを割る。Timeline の高さはサーフェスの `timeline_ratio` 倍（[`timeline_height`]）。
+/// 幅 `w`、高さ `h` のサーフェスを分ける。Timeline の高さはサーフェスの `timeline_ratio` 倍（[`timeline_height`]）。
 /// ビューアーの領域は映像の領域の下に再生の操作のバー（[`TRANSPORT_H`]。領域が低ければ高さ 0）を取り、`with_source` なら
-/// 左の Source と右の Program に半分ずつ割る。
+/// 左の Source と右の Program に半分ずつ分ける。
 pub fn split_viewers_with(w: f32, h: f32, with_source: bool, timeline_ratio: f32) -> SurfaceLayout {
     let h = h.max(0.0);
     let th = timeline_height(h, timeline_ratio);
@@ -174,7 +174,7 @@ mod tests {
     }
 
     #[test]
-    fn 高さの比を渡すと_timeline_の高さがその比になる() {
+    fn 高さの割合を渡すと_timeline_の高さがその割合になる() {
         assert_eq!(
             split_viewers_with(1000.0, 800.0, false, 0.5).timeline.h,
             400.0
@@ -195,7 +195,7 @@ mod tests {
     }
 
     #[test]
-    fn 比は下限と上限に丸めて保存し_窓の高さが変わっても割合を保つ() {
+    fn 割合は下限と上限の間に収めて保存し_ウィンドウの高さが変わっても保つ() {
         assert_eq!(timeline_ratio(800.0, 0.0), MIN_TIMELINE_H / 800.0);
         assert_eq!(
             timeline_ratio(800.0, 5000.0),
@@ -208,7 +208,7 @@ mod tests {
     }
 
     #[test]
-    fn 仕切りは_program_と_timeline_の隙間() {
+    fn 横の仕切りは_program_と_timeline_の間隔() {
         let (w, h, r) = (1000.0, 800.0, 0.5);
         let gap = splitter_rect(w, h, r);
         let l = split_viewers_with(w, h, false, r);

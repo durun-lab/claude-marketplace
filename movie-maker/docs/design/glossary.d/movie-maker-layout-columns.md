@@ -5,7 +5,7 @@
 | 中継スクリプト（WebView の） | アプリが WebView に入れる、画面を持たないスクリプト。WebView にフォーカスがあるときのキーをキーの表へ送り、Rust の再生位置の通知と Timeline の選択を shell の DOM のイベントにつなぎ、パネルが投げる素材の選択とシークの頼みをアプリに送る | `apps/movie-maker/web/transport.js`、`TRANSPORT_JS`、`ui/shell/src/relay.test.ts` |
 | 編集の結果の文言 | 直近の編集を拒否した理由か、取り消したもの。Shell がステータスの行に出し、次の編集が成功すると消える。拒否の理由は拒否の文と同じ色で出す | `EditMessage`、`EditState::set_message`、`EditState::notify`、`mm:edit-message`、`onEditMessage` |
 | ステータスの行（WebView の） | WebView の下端の、2 つの列にまたがる 1 行。編集の結果の文言を、文言のある間だけ出す。サーフェスの下端のステータスバー（Z5）とは別 | `StatusLine`、`.mm-shell-status`、`.mm-shell-message` |
-| サーフェスの幅の下限 | 縦の仕切りで WebView を広げても、ウィンドウが狭くても、Program と Timeline に残す幅（400 論理ピクセル。縦の仕切りの帯は別）。ウィンドウの幅の下限は、これと 2 列の既定の幅と縦の仕切りの帯の和 | `MIN_SURFACE_W` |
+| サーフェスの幅の下限 | 縦の仕切りで WebView を広げても、ウィンドウが狭くても、Program と Timeline に残す幅（400 論理ピクセル。縦の仕切りの幅は別）。ウィンドウの幅の下限は、これと 2 列の既定の幅と縦の仕切りの幅の和 | `MIN_SURFACE_W` |
 | パネルを選ぶコマンド | View のパネルの項目。タブを押したのと同じにパネルのタブを選び、パネルの `requests` は進めない。ID は `view.show_<パネルの id>`、持ち主はそのパネル | `view.show_media`、`show_panel!` |
 | WebView の工程 | `--play-test` の、WebView の中でイベントを投げて結果を `eval_with_callback` で読む工程。中継スクリプト、2 列の割り付け、Diagnostics、Inspector のキーフレームの欄、編集の結果の文言を確かめる | `verify_webview.rs` |
 

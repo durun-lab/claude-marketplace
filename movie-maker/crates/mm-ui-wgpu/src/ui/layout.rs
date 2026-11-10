@@ -1,4 +1,4 @@
-//! `Ui` の割り付け。サーフェスの大きさと表示の倍率、2 つの仕切り（Timeline の高さの比、縦の仕切りの有無）から領域を決め、
+//! `Ui` の割り付け。サーフェスの大きさと表示の倍率、2 つの仕切り（Timeline の高さの割合、縦の仕切りの有無）から領域を決め、
 //! 点がどの領域かを答え、仕切りの矩形を描く。
 
 use mm_ui_layout::palette;
@@ -12,7 +12,7 @@ use super::{Region, Ui};
 /// 仕切りの状態。アプリが毎フレーム渡す。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SplitterState {
-    /// Timeline の高さの、サーフェスの高さに対する比。
+    /// Timeline の高さの、サーフェスの高さに対する割合。
     pub timeline_ratio: f32,
     /// サーフェスと WebView の仕切りを出すか（WebView の列を開けているとき）。
     pub vertical: bool,
@@ -47,7 +47,7 @@ impl Ui {
         }
     }
 
-    /// 仕切りの状態。Timeline の高さの比と縦の仕切りの有無が変わったときだけ割り付けを計算し直し、色だけの変化は描くときに反映する。
+    /// 仕切りの状態。Timeline の高さの割合と縦の仕切りの有無が変わったときだけ割り付けを計算し直し、色だけの変化は描くときに反映する。
     pub fn set_splitters(&mut self, state: SplitterState) {
         let relayout = (self.splitter.timeline_ratio, self.splitter.vertical)
             != (state.timeline_ratio, state.vertical);

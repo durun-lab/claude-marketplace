@@ -1,4 +1,4 @@
-//! サーフェスの上の 2 つの仕切りのポインター操作。サーフェスと WebView の境界（縦。サーフェスの右端の帯）と、Program と
+//! サーフェスの上の 2 つの仕切りのポインター操作。サーフェスと WebView の境界（縦。サーフェスの右端）と、Program と
 //! Timeline の境界（横）。どちらも押した所を `mm-ui-layout` の `splitter_at` で当たり判定し、ドラッグ中はキャプチャーして
 //! 割り付け（`workspace.rs`）を動かす。離したときに設定に書き、キャプチャーを失ったとき（Esc）は押す前に戻す。
 //! 仕切りの色は描画スレッドが [`hot`] を読んで変える。カーソルは仕切りの上で左右・上下の矢印にする。
@@ -42,7 +42,7 @@ struct Drag {
 
 /// サーフェスと親のウィンドウの大きさ（論理ピクセル）。
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct Geo {
+struct Geometry {
     w: f32,
     h: f32,
     window_w: f64,
@@ -89,13 +89,13 @@ fn client_size(hwnd: HWND) -> Option<(f64, f64)> {
     Some((f64::from(r.right - r.left), f64::from(r.bottom - r.top)))
 }
 
-/// サーフェスと親のウィンドウの大きさ。親が無い（試験の HWND）か、大きさが 0 なら `None`。
-fn geometry(hwnd: HWND) -> Option<(Geo, f32)> {
+/// サーフェスと親のウィンドウの大きさ。親が無い（テストの HWND）か、大きさが 0 なら `None`。
+fn geometry(hwnd: HWND) -> Option<(Geometry, f32)> {
     let scale = surface::scale_factor(hwnd.0 as isize);
     let (w, h) = client_size(hwnd)?;
     let (window_w, _) = client_size(unsafe { GetParent(hwnd) }.ok()?)?;
     let s = f64::from(scale);
-    let geo = Geo {
+    let geo = Geometry {
         w: (w / s) as f32,
         h: (h / s) as f32,
         window_w: window_w / s,
@@ -109,12 +109,12 @@ fn xy(lparam: LPARAM, scale: f32) -> (f32, f32) {
     (f32::from(x) / scale, f32::from(y) / scale)
 }
 
-fn hit(ws: &Workspace, geo: Geo, (x, y): (f32, f32)) -> Option<Splitter> {
+fn hit(ws: &Workspace, geo: Geometry, (x, y): (f32, f32)) -> Option<Splitter> {
     splitter_at(geo.w, geo.h, ws.timeline_ratio, ws.has_web(), x, y)
 }
 
 /// つかんだ位置 `grab` を保ったまま、ポインターが `(x, y)` にあるときの割り付けにする。
-fn dragged(drag: &Drag, ws: &Workspace, geo: Geo, (x, y): (f32, f32)) -> Workspace {
+fn dragged(drag: &Drag, ws: &Workspace, geo: Geometry, (x, y): (f32, f32)) -> Workspace {
     let mut next = *ws;
     match drag.which {
         Splitter::Vertical => {
@@ -123,7 +123,7 @@ fn dragged(drag: &Drag, ws: &Workspace, geo: Geo, (x, y): (f32, f32)) -> Workspa
             next.drag_web(geo.window_w - web_start, geo.window_w);
         }
         Splitter::Horizontal => {
-            // 仕切りの上端が `y - grab`。Timeline はその下の隙間の後ろから下端まで。
+            // 仕切りの上端が `y - grab`。Timeline は仕切り（高さ `gap`）の下から下端まで。
             let gap = splitter_rect(content_width(geo.w, ws.has_web()), geo.h, 0.0).h;
             next.drag_timeline(geo.h - (y - drag.grab + gap), geo.h);
         }
@@ -132,7 +132,7 @@ fn dragged(drag: &Drag, ws: &Workspace, geo: Geo, (x, y): (f32, f32)) -> Workspa
 }
 
 /// 仕切りの見た目の線の上端か左端から、押した位置までのずれ。
-fn grab_offset(ws: &Workspace, geo: Geo, which: Splitter, (x, y): (f32, f32)) -> f32 {
+fn grab_offset(ws: &Workspace, geo: Geometry, which: Splitter, (x, y): (f32, f32)) -> f32 {
     match which {
         Splitter::Vertical => x - (geo.w - SPLITTER_W),
         Splitter::Horizontal => {

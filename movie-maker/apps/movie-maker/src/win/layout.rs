@@ -1,5 +1,5 @@
 //! ウィンドウの割り付け。メニューバーつきの Tauri のウィンドウを作り、その下の左に wgpu のサーフェス（子 HWND。
-//! Program と Timeline。右端に WebView との仕切りの帯を含む）、右に子 WebView（`ui/dist/` の shell の 2 列と、キーと
+//! Program と Timeline。右端に WebView との縦の仕切りを含む）、右に子 WebView（`ui/dist/` の shell の 2 列と、キーと
 //! 再生位置の中継スクリプト）を並べる。WebView の幅と列の開け閉めはユーザーの割り付け（`workspace.rs`）が決める。
 
 use std::sync::{Arc, Mutex, OnceLock};
@@ -29,7 +29,7 @@ const TRANSPORT_JS: &str = include_str!("../../web/transport.js");
 pub struct Layout {
     pub shared: Arc<Shared>,
     pub surface_hwnd: isize,
-    /// WebView に最後に送った列の見た目。変わったときだけ送り直す。
+    /// WebView に最後に送った、列の幅と開閉のスクリプト。変わったときだけ送り直す。
     sent: Mutex<String>,
 }
 
@@ -60,7 +60,7 @@ pub fn split_rects(
     ((0, 0, left, h), (left, 0, web, h))
 }
 
-/// ウィンドウの幅の下限。サーフェスが潰れないよう、WebView の 2 列の既定の幅に、サーフェスの幅の下限と縦の仕切りの帯を足す。
+/// ウィンドウの幅の下限。サーフェスが潰れないよう、WebView の 2 列の既定の幅に、サーフェスの幅の下限と縦の仕切りの幅を足す。
 fn size_constraints() -> WindowSizeConstraints {
     WindowSizeConstraints {
         min_width: Some(PixelUnit::from(LogicalUnit::new(
@@ -70,8 +70,8 @@ fn size_constraints() -> WindowSizeConstraints {
     }
 }
 
-/// WebView の 2 列に渡す見た目。右の列の幅（左の列は残り）と、列の開け閉め。CSS の変数と属性で渡し、シェルの CSS が
-/// 読む。ページを読み込む前は `documentElement` が無いので、読み込み後にも当てる。
+/// WebView の 2 列に渡す、右の列の幅（左の列は残り）と列の開け閉め。CSS の変数と属性で渡し、シェルの CSS が読む。
+/// ページを読み込む前は `documentElement` が無いので、読み込み後にも適用する。
 fn shell_script(workspace: &Workspace, window_w: f64) -> String {
     let columns = workspace.columns(window_w);
     let state = |open: bool| if open { "open" } else { "closed" };
@@ -132,7 +132,7 @@ pub fn refresh() {
     }
 }
 
-/// WebView がページを読み終えたら、列の見た目を送り直す。初期化のスクリプトはウィンドウを作ったときの割り付けを
+/// WebView がページを読み終えたら、列の幅と開閉を送り直す。初期化のスクリプトはウィンドウを作ったときの割り付けを
 /// 持ったままなので、読み直し（F5 など）の後は今の割り付けに戻す。
 fn on_page_load(_: Webview, payload: PageLoadPayload<'_>) {
     if payload.event() != PageLoadEvent::Finished {

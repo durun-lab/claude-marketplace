@@ -99,7 +99,7 @@ fn 横の仕切りは_timeline_の高さを割合で保つ() {
 }
 
 #[test]
-fn 保存した割り付けを読み直すと同じになり_ファイルは版を持つ() {
+fn 保存した割り付けを読み直すと同じになり_ファイルはバージョンを持つ() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join("movie-maker").join(FILE);
     let mut w = Workspace::default();
@@ -113,7 +113,7 @@ fn 保存した割り付けを読み直すと同じになり_ファイルは版�
 }
 
 #[test]
-fn 無い_壊れた_知らない版の設定は既定で始める() {
+fn 無い_壊れた_知らないバージョンの設定は既定で始める() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join(FILE);
     assert_eq!(read(&path), None);
@@ -124,7 +124,7 @@ fn 無い_壊れた_知らない版の設定は既定で始める() {
 }
 
 #[test]
-fn 足りない項目は既定で埋め_壊れた数は既定に直す() {
+fn 足りない項目は既定で埋め_負の幅は既定に直す() {
     let tmp = tempfile::tempdir().unwrap();
     let path = tmp.path().join(FILE);
     std::fs::write(&path, r#"{"version": 1, "left_open": false, "both_w": -5}"#).unwrap();

@@ -82,7 +82,7 @@ fn ウィンドウが_2_列より狭くても矩形は負にならない() {
 }
 
 #[test]
-fn ウィンドウの幅の下限は_2_列とサーフェスの下限と仕切りの帯の和で_高さは決めない() {
+fn ウィンドウの幅の下限は_2_列とサーフェスの下限と縦の仕切りの幅の和で_高さは決めない() {
     let c = size_constraints();
     assert_eq!(
         c.min_width,
@@ -95,7 +95,7 @@ fn ウィンドウの幅の下限は_2_列とサーフェスの下限と仕切�
 }
 
 #[test]
-fn シェルに渡す見た目は右の列の幅と列の開け閉め() {
+fn シェルに渡すのは右の列の幅と列の開け閉め() {
     let mut ws = Workspace::default();
     let s = shell_script(&ws, 1600.0);
     assert!(s.contains("--mm-right-w','400px'"), "{s}");
@@ -118,7 +118,7 @@ fn 中継スクリプトがボタンから送らない編集のキーはキー�
         .expect("中継スクリプトに EDIT_KEYS がある");
     let body = &TRANSPORT_JS[start..];
     let list = &body[..body.find("]);").expect("EDIT_KEYS の終わり")];
-    let mut bridge: Vec<&str> = list.split('"').skip(1).step_by(2).collect();
+    let mut relay: Vec<&str> = list.split('"').skip(1).step_by(2).collect();
     let mut table: Vec<&str> = commands::TABLE
         .iter()
         .filter(|s| {
@@ -128,7 +128,7 @@ fn 中継スクリプトがボタンから送らない編集のキーはキー�
         })
         .flat_map(|s| crate::win::keys::keys_of(s.id))
         .collect();
-    bridge.sort_unstable();
+    relay.sort_unstable();
     table.sort_unstable();
-    assert_eq!(bridge, table);
+    assert_eq!(relay, table);
 }

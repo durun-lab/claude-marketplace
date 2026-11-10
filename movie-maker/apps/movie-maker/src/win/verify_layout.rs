@@ -1,9 +1,9 @@
 //! `--play-test` の割り付けの通し。実際のウィンドウへのマウスのメッセージで、縦の仕切り（WebView の幅）と横の仕切り
 //! （Timeline の高さ）をドラッグし、割り付けと WebView の列が期待どおり変わったかと、つかんだまま Esc で押す前に戻るかを
-//! 確かめて撮る。続けて割り付けを設定のファイルに書いて Reset UI Layout で既定に戻し、書いた設定を読み直して（開き直し）
-//! 同じ割り付けに戻るか、列を閉じたときサーフェスが広がり View のチェックが外れるか、閉じた列のパネルを選ぶコマンドが
-//! その列を開けるか、列を閉じたまま WebView を読み直しても閉じたままかも確かめる。`--play-test` はユーザーの本物の設定を
-//! 読み書きしないので、設定のファイルは結果の隣に書く。
+//! 確かめて撮る。続けて割り付けを設定のファイルに書いて Reset UI Layout で既定に戻し、書いた設定を読み直して（再起動と
+//! 同じ経路）同じ割り付けに戻るか、列を閉じたときサーフェスが広がり View のチェックが外れるか、閉じた列のパネルを選ぶ
+//! コマンドがその列を開けるか、列を閉じたまま WebView を読み直しても閉じたままかも確かめる。`--play-test` はユーザーの
+//! 本物の設定を読み書きしないので、設定のファイルは結果の隣に書く。
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -31,11 +31,11 @@ const PAINT_WAIT: Duration = Duration::from_millis(400);
 const DRAG_WEB: f64 = 200.0;
 /// 横の仕切りを上へ動かす量（論理ピクセル。Timeline がこの分高くなる）。
 const DRAG_TIMELINE: f32 = 120.0;
-/// 論理ピクセルの幅の比べの誤差。物理ピクセルへの丸めの分。
+/// 論理ピクセルの幅を比べるときの誤差。物理ピクセルへの丸めの分。
 const TOL: f64 = 1.5;
-/// 高さの比の誤差。
+/// Timeline の高さの割合の誤差。
 const RATIO_TOL: f32 = 0.003;
-/// WebView の 2 つの列の見た目。幅は CSS ピクセル。閉じた列は出ていない。
+/// WebView の 2 つの列の表示と幅（CSS ピクセル）。閉じた列は出ていない。
 const DOM_JS: &str = r#"(() => {
   const info = (s) => {
     const el = document.querySelector(s);
@@ -45,7 +45,7 @@ const DOM_JS: &str = r#"(() => {
   return { inner: window.innerWidth, left: info(".mm-shell-left"), right: info(".mm-shell-right") };
 })()"#;
 
-/// 試験の対象。
+/// テストの対象。
 struct Env<'a> {
     shared: &'a Arc<Shared>,
     window: &'a Window,
@@ -132,7 +132,7 @@ fn columns_match(env: &Env<'_>, left: f64, right: f64) -> (bool, Value) {
     (ok, dom)
 }
 
-/// 縦の仕切りの、サーフェスの右端の帯の真ん中の点（物理ピクセル）。
+/// 縦の仕切り（サーフェスの右端の幅 `SPLITTER_W`）の真ん中の点（物理ピクセル）。
 fn vertical_grip(env: &Env<'_>) -> (i32, i32) {
     let s = env.scale();
     let half = (f64::from(SPLITTER_W) / 2.0 * s) as i32;
@@ -149,7 +149,7 @@ fn vertical_step(env: &Env<'_>, log: &mut Log) {
     let from = vertical_grip(env);
     let to = (from.0 - (DRAG_WEB * s) as i32, from.1);
     // つかんでいる間（仕切りがアクセントの色）を撮る。サーフェスが縮むと Windows が本物のカーソルの位置で
-    // `WM_MOUSEMOVE` を足すので、つかんだままの位置は本物のカーソルに引かれる。撮ったら Esc で取り消す。
+    // `WM_MOUSEMOVE` を合成するので、つかんだままの位置は本物のカーソルの位置に動く。撮ったら Esc で取り消す。
     surface::post_press(env.surface_hwnd, from, to);
     let grabbed = wait_until(WAIT, || env.web_w() > before + TOL);
     let hot = splitter::hot() == Some(mm_ui_layout::Splitter::Vertical);
@@ -159,7 +159,7 @@ fn vertical_step(env: &Env<'_>, log: &mut Log) {
         env.shared.workspace.get() == start && close(env.web_w(), before)
     });
     surface::post_release(env.surface_hwnd, to);
-    // 押す、動かす、離すを続けて投げる。足された `WM_MOUSEMOVE` は離した後に届き、ホバーになるだけ。
+    // 押す、動かす、離すを続けて投げる。合成された `WM_MOUSEMOVE` は離した後に届き、ホバーになるだけ。
     let from = vertical_grip(env);
     let to = (from.0 - (DRAG_WEB * s) as i32, from.1);
     surface::post_drag(env.surface_hwnd, from, to);
@@ -212,7 +212,7 @@ fn persist_step(env: &Env<'_>, log: &mut Log) {
         && wait_until(WAIT, || env.shared.workspace.get() == Workspace::default());
     let (reset_dom, _) = columns_match(env, 260.0, 400.0);
     env.shoot(log, "5-reset-ui-layout");
-    // 開き直しは、アプリが起動で設定を読んで置くのと同じ道（読む、置く、配置を直す）を通す。
+    // 再起動の代わりに、アプリが起動で設定を読んで置くのと同じ経路（読む、置く、配置を直す）を通す。
     let saved = workspace::read(&path);
     if let Some(saved) = saved {
         env.shared.workspace.set(saved);
@@ -273,11 +273,11 @@ fn columns_step(env: &Env<'_>, log: &mut Log) {
     );
 }
 
-/// 左の列を閉じたまま WebView を読み直しても、閉じたままか（ページを読み終えたら列の見た目を送り直す）。
+/// 左の列を閉じたまま WebView を読み直しても、閉じたままか（ページを読み終えたら列の幅と開閉を送り直す）。
 fn reload_step(env: &Env<'_>, log: &mut Log) {
     let closed = commands::run(env.shared, "view.toggle_left_column").is_ok();
     let (closed_dom, _) = columns_match(env, 0.0, 400.0);
-    // 読み直す前のページで列が合って見えないよう、印を付けたページが新しいページに替わるのを待つ。
+    // 読み直す前のページで列が合って見えないよう、フラグを立てたページが新しいページに替わるのを待つ。
     eval_json(env.webview, "window.__mmBeforeReload = true");
     let fresh_page = "window.__mmBeforeReload !== true && document.readyState === 'complete'";
     let reloaded = env.webview.reload().is_ok()
