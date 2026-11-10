@@ -21,7 +21,7 @@ import { ARROW_STEP } from './order.ts';
 import { href } from './router.ts';
 import { SESSION_KEY } from './SessionPage.tsx';
 import { toast } from './toast.tsx';
-import { Chip, Empty, Ext, Loading, StatusBadge, onSubmitKey } from './ui.tsx';
+import { Chip, Empty, Ext, Loading, StatusBadge, copyText, onSubmitKey } from './ui.tsx';
 import { Translatable } from './TranslateTray.tsx';
 import { useTypewriter } from './typewriter.ts';
 import { XpContextMenu } from './XpMenu.tsx';
@@ -462,6 +462,21 @@ const BookmarkButton = ({ sessionId, mark, on }: { sessionId: string; mark: Pick
   </button>
 );
 
+/** 発言の本文を Markdown のままコピーする。 */
+const ChatCopyButton = ({ text }: { text: string }) => (
+  <button
+    class="chat-copy"
+    aria-label="コピー"
+    title="この発言をコピー"
+    onClick={async () => {
+      if (await copyText(text)) toast('コピーしました');
+      else toast('クリップボードにコピーできませんでした', 'error');
+    }}
+  >
+    ⧉
+  </button>
+);
+
 /**
  * ブックマークから移れるのはセッションのチャットの発言だけなので、bookmarked を渡さないサブエージェントの会話には、ブックマークのボタンを出さない。
  * streaming は、開いている間に届いた Claude の返答の印。一文字ずつ書き出し、明かす量が増えるたびに onStep を呼ぶ。
@@ -489,13 +504,14 @@ const ChatBubble = memo(({ sessionId, badges, e, codeLink, markText, focused, bo
     <div class="chat-row is-human">
       {e.rewindTo && <button class="chat-rewind" title="書き直して、ここまで巻き戻して送る" aria-label="依頼を書き直す" onClick={() => setEditing(true)}>✎</button>}
       {star}
+      <ChatCopyButton text={e.text} />
       {/* チャットは会話ログから作るので、並んでいる依頼はどれも Claude が受け取って読んだもの。 */}
       <span class="chat-meta">既読{time}</span>
       <p class={`chat-human plain${focused ? ' is-focused' : ''}`}><Translatable text={e.text}>{(t) => (markText ? markText(t) : t)}</Translatable></p>
     </div>
   ) : (
     <div class="chat-row">
-      <span class="chat-meta">{star}{time}</span>
+      <span class="chat-meta">{star}<ChatCopyButton text={e.text} />{time}</span>
       <div class={`card chat-claude${focused ? ' is-focused' : ''}`}>
         {/* 書き出している途中の文は翻訳しても途中で切れるので、書き終えてから翻訳できるようにする。 */}
         {text === e.text ? <Translatable text={e.text}>{(t) => <Markdown text={t} codeLink={codeLink} markText={markText} />}</Translatable> : <Markdown text={text} codeLink={codeLink} markText={markText} />}
