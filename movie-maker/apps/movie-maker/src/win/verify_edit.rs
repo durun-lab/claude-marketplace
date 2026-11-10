@@ -6,7 +6,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use mm_doc::{Cut, Project, Sequence, SEQUENCE_KIND, SEQUENCE_PARAM};
+use mm_doc::{Asset, Cut, Project, Sequence, SEQUENCE_KIND, SEQUENCE_PARAM};
 use mm_types::{Id, ParamValue};
 use mm_ui_layout::Tool;
 use mm_ui_wgpu::timeline_model;
@@ -128,12 +128,24 @@ fn seek_main(shared: &Shared, t: f64) -> bool {
     wait_until(WAIT, || (shared.playhead() - t).abs() < 0.05)
 }
 
+/// Source に開く素材。アウト点（[`MARK_OUT`]）まで届く素材のうち最後のもの（無ければ最後の素材）。
+/// 短い素材ではカットが素材の終わりで切られ、範囲と長さの確かめが外れる。
+fn source_asset(project: &Project) -> Option<&Asset> {
+    let reaches_out = |a: &&Asset| a.duration.to_f64() >= MARK_OUT;
+    project
+        .assets
+        .iter()
+        .rev()
+        .find(reaches_out)
+        .or(project.assets.last())
+}
+
 /// Source を開いてイン点・アウト点を付ける。
 pub(super) fn mark_source(env: &Env<'_>, log: &mut Log) -> Option<String> {
     let shared = env.shared;
     let doc = shared.doc()?;
     let comp = doc.project.composition(&doc.comp).ok()?;
-    let asset = doc.project.assets.last()?.id.to_string();
+    let asset = source_asset(&doc.project)?.id.to_string();
     let opened = shared.source.open(&doc.project, comp, &asset);
     let source = shared.source.handle();
     // 後の割り付けが Source の領域を含むよう、フレームの到着に加えて `Ui` が領域を出すまで待つ。

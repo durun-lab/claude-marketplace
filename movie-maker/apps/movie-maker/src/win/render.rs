@@ -406,6 +406,7 @@ fn upload_frame(shared: &Shared, gpu: &Gpu, ui: &mut Ui, seen: &mut u64) -> Opti
         FrameImage::Cpu(image) => ui.set_frame(&gpu.device, &gpu.queue, image),
         FrameImage::Gpu(f) => ui.set_frame_texture(&gpu.device, &f.texture),
     }
+    ui.set_program_pending(frame.pending > 0);
     shared.record("upload_ms", started.elapsed().as_secs_f64() * 1000.0);
     Some(frame.time)
 }

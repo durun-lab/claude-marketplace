@@ -66,6 +66,7 @@ pub struct VideoScan {
 /// MP4 の edit list の外のパケット（`AV_PKT_FLAG_DISCARD`）はデコードしても画像が出ないので、
 /// 索引に入れない。入れるとフレームの番号が出るフレームからずれる。
 pub fn scan_video(path: &std::path::Path, stream_index: usize) -> Result<VideoScan> {
+    let _span = tracing::info_span!("decode.scan_index").entered();
     let mut input = ff::format::input(&path)
         .map_err(|e| MmError::Corrupt(format!("{}: {e}", path.display())))?;
     let mut pts = Vec::new();

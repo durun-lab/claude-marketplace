@@ -178,13 +178,10 @@ impl WgpuRenderer {
         range: TimeRange,
         source_range: TimeRange,
     ) -> Result<AudioBlock> {
-        let footage = self.sources.footage_for(
-            self.decoders.as_ref(),
-            self.gpu.context().as_ref(),
-            req.project,
-            params,
-            source_range.start,
-        )?;
+        let opener = self.opener();
+        let footage = self
+            .sources
+            .footage_for(&opener, req.project, params, source_range.start)?;
         let mut cx = AudioCx {
             range,
             source_range,

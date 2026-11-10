@@ -74,12 +74,14 @@ impl Workers {
     }
 }
 
-fn init_tracing() -> Telemetry {
+/// 全部のスパンを Chrome の trace に溜める詳しい記録（`detailed`）は再生テストだけで取る。ふだんの起動で溜め続けると、
+/// レイヤーごとのスパンのフィールドの分だけメモリが増え続ける。
+fn init_tracing(detailed: bool) -> Telemetry {
     let (metrics_layer, metrics) = MetricsLayer::new();
     let (chrome_layer, chrome) = ChromeTraceLayer::new();
     tracing_subscriber::registry()
         .with(metrics_layer)
-        .with(chrome_layer)
+        .with(detailed.then_some(chrome_layer))
         .with(feedback::watch_layer())
         .init();
     Telemetry { metrics, chrome }
@@ -216,9 +218,9 @@ pub fn run() {
     unsafe {
         timeBeginPeriod(TIMER_RESOLUTION_MS);
     }
-    let telemetry = init_tracing();
     let args =
         cli::parse(&std::env::args().skip(1).collect::<Vec<_>>()).unwrap_or_else(|e| fail(&e));
+    let telemetry = init_tracing(args.play_test.is_some());
     enter_play_test_lock(&args);
     feedback::start(&args.project);
     let mut opened = project::open(&args.project).unwrap_or_else(|e| fail(&e.to_string()));

@@ -1,5 +1,8 @@
+use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use mm_decode_api::{DecodedFrame, Decoder, DecoderFactory, GpuContextRef, MediaInfo};
 use mm_testkit::decode::{SampleDecoderFactory, SampleMedia};
@@ -13,6 +16,8 @@ use super::*;
 struct Counts {
     opens: AtomicUsize,
     seeks: AtomicUsize,
+    /// 開き始めた数（`Gated` が止める前に数える）。
+    started: AtomicUsize,
 }
 
 struct Counting {
@@ -70,17 +75,43 @@ impl GpuContextRef for NoGpu {
     }
 }
 
+/// 試験が `release` を送るまで開くのを止めるデコーダー。長い録画の素材の、索引を作る間の代わり。
+struct Gated {
+    inner: Counting,
+    gate: Mutex<Receiver<()>>,
+}
+
+impl DecoderFactory for Gated {
+    fn id(&self) -> &'static str {
+        "gated"
+    }
+
+    fn open(&self, path: &Path, gpu: Option<&dyn GpuContextRef>) -> Result<Box<dyn Decoder>> {
+        self.inner.counts.started.fetch_add(1, Ordering::SeqCst);
+        let _ = self.gate.lock().expect("gate").recv();
+        self.inner.open(path, gpu)
+    }
+}
+
 struct Rig {
     pool: SourcePool,
-    factory: Counting,
+    opener: Opener,
     counts: Arc<Counts>,
     project: Project,
     params: Params,
-    gpu: NoGpu,
     media: SampleMedia,
 }
 
-fn rig() -> Rig {
+fn counting(media: &SampleMedia, counts: &Arc<Counts>) -> Counting {
+    Counting {
+        inner: SampleDecoderFactory {
+            media: media.clone(),
+        },
+        counts: counts.clone(),
+    }
+}
+
+fn rig_with(factory: impl FnOnce(Counting) -> Arc<dyn DecoderFactory>) -> Rig {
     let media = SampleMedia::default();
     let path = std::env::temp_dir().join("mm_render_source_pool.json");
     let (project, _, _) = vertical_project(&media, &path);
@@ -88,43 +119,87 @@ fn rig() -> Rig {
     let mut params = Params::default();
     params.0.insert("asset".into(), ParamValue::AssetRef(asset));
     let counts = Arc::new(Counts::default());
+    let gpu = NoGpu(GpuAdapterId {
+        vendor: 0,
+        device: 0,
+        name: "なし".into(),
+        luid: None,
+    });
     Rig {
         pool: SourcePool::default(),
-        factory: Counting {
-            inner: SampleDecoderFactory {
-                media: media.clone(),
-            },
-            counts: counts.clone(),
+        opener: Opener {
+            decoders: factory(counting(&media, &counts)),
+            gpu: Arc::new(gpu),
         },
         counts,
         project,
         params,
-        gpu: NoGpu(GpuAdapterId {
-            vendor: 0,
-            device: 0,
-            name: "なし".into(),
-            luid: None,
-        }),
         media,
     }
 }
 
+fn rig() -> Rig {
+    rig_with(|c| Arc::new(c))
+}
+
+/// 開くのを止めるデコーダーの試験台と、開くのを許す送り手。
+fn gated_rig(wait: Duration) -> (Rig, Sender<()>) {
+    let (release, gate) = mpsc::channel();
+    let mut r = rig_with(|inner| {
+        Arc::new(Gated {
+            inner,
+            gate: Mutex::new(gate),
+        })
+    });
+    r.pool.set_open_wait(Some(wait));
+    (r, release)
+}
+
 impl Rig {
+    fn at(&self, i: i64) -> RationalTime {
+        RationalTime::from_frames(i, self.media.fps).expect("表せる")
+    }
+
     /// 1 フレームの中で、素材の番号 `indices` を順に読む。
     fn frame(&mut self, indices: &[i64]) -> Vec<i64> {
         self.pool.begin_frame();
         indices
             .iter()
             .map(|&i| {
-                let t = RationalTime::from_frames(i, self.media.fps).expect("表せる");
+                let t = self.at(i);
                 let source = self
                     .pool
-                    .footage_for(&self.factory, &self.gpu, &self.project, &self.params, t)
+                    .footage_for(&self.opener, &self.project, &self.params, t)
                     .expect("開ける")
                     .expect("素材がある");
                 source.frame_at(t).expect("読める").index
             })
             .collect()
+    }
+
+    /// 新しいフレームで素材を 1 回求め、開いている途中か（`true`）と、かかった時間を返す。
+    fn ask(&mut self) -> (bool, Duration) {
+        self.pool.begin_frame();
+        let started = Instant::now();
+        let t = self.at(0);
+        let footage = self
+            .pool
+            .footage_with_backend(&self.opener, &self.project, &self.params, t)
+            .expect("開ける");
+        (matches!(footage, Footage::Pending), started.elapsed())
+    }
+
+    /// バックグラウンドのスレッドで開き終わった数が `n` になるまで待つ。
+    fn wait_opened(&self, n: u64) {
+        let pending = self.pool.pending();
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while pending.opened() < n {
+            assert!(
+                Instant::now() < deadline,
+                "バックグラウンドのスレッドが開き終わらない"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
     }
 
     fn seeks(&self) -> usize {
@@ -200,4 +275,83 @@ fn 使い続けるデコーダーは閉じない() {
         r.frame(&[i % 30]);
     }
     assert_eq!(r.opens(), 1);
+}
+
+#[test]
+fn 待つ上限までに開き終わらない素材は待たずに返し_開き終わったら次のフレームで受け取る() {
+    let wait = Duration::from_millis(20);
+    let (mut r, release) = gated_rig(wait);
+    let (pending, took) = r.ask();
+    assert!(pending, "開いている途中を返す");
+    assert!(
+        took < Duration::from_secs(2),
+        "開き終わるのを待たない: {took:?}"
+    );
+    assert_eq!(r.pool.pending_layers(), 1, "描かなかったレイヤーを数える");
+
+    release.send(()).expect("開くのを許す");
+    r.wait_opened(1);
+    let (pending, _) = r.ask();
+    assert!(!pending, "開き終わったデコーダーを受け取る");
+    assert_eq!(r.pool.pending_layers(), 0, "フレームの始めに数え直す");
+    assert_eq!(
+        r.opens(),
+        1,
+        "バックグラウンドのスレッドで開いたものを使い、開き直さない"
+    );
+}
+
+#[test]
+fn 待つのは開き始めたフレームだけで_後のフレームは開き終わったかを見るだけ() {
+    let wait = Duration::from_millis(300);
+    let (mut r, release) = gated_rig(wait);
+    let (pending, first) = r.ask();
+    assert!(
+        pending && first >= wait,
+        "開き始めたフレームは上限まで待つ: {first:?}"
+    );
+    let (pending, later) = r.ask();
+    assert!(pending, "まだ開いている途中");
+    assert!(later < wait / 2, "後のフレームは待たない: {later:?}");
+    release.send(()).expect("開くのを許す");
+    r.wait_opened(1);
+}
+
+#[test]
+fn 開いている途中の素材を次のフレームで求めても_もう一度は開かない() {
+    let (mut r, release) = gated_rig(Duration::from_millis(5));
+    assert!(r.ask().0);
+    assert!(r.ask().0, "まだ開いている途中");
+    std::thread::sleep(Duration::from_millis(50));
+    assert_eq!(
+        r.counts.started.load(Ordering::SeqCst),
+        1,
+        "開き始めたのは 1 回"
+    );
+    release.send(()).expect("開くのを許す");
+    r.wait_opened(1);
+    assert!(!r.ask().0);
+    assert_eq!(r.opens(), 1);
+}
+
+#[test]
+fn 待つ上限の中で開き終わる素材はそのフレームで受け取る() {
+    let mut r = rig();
+    r.pool.set_open_wait(Some(Duration::from_secs(5)));
+    assert!(!r.ask().0, "上限の中で開き終わる");
+    assert_eq!((r.opens(), r.pool.pending_layers()), (1, 0));
+}
+
+#[test]
+fn 素材を忘れたら開いている途中のものも捨て_次に求めたら開き直す() {
+    let (mut r, release) = gated_rig(Duration::from_millis(5));
+    assert!(r.ask().0);
+    r.pool.forget(&["clip".to_owned()]);
+    release.send(()).expect("1 回目を許す");
+    r.wait_opened(1);
+    assert!(r.ask().0, "捨てた結果は使わず、開き直す");
+    release.send(()).expect("2 回目を許す");
+    r.wait_opened(2);
+    assert!(!r.ask().0);
+    assert_eq!(r.opens(), 2);
 }
