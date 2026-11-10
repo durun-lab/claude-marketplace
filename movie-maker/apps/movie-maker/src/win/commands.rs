@@ -12,6 +12,7 @@ use crate::win::keys;
 use crate::win::menu::{self, Menu};
 use crate::win::playback::Command;
 use crate::win::state::Shared;
+use crate::win::workspace::Workspace;
 
 /// 押せるかが変わったことを WebView に知らせる Tauri のイベント名。中身は新しい表（`Vec<CommandView>`）。
 pub const COMMANDS_CHANGED_EVENT: &str = "mm:commands-changed";
@@ -32,6 +33,8 @@ pub enum Owner {
 pub enum Action {
     /// 名前のついた編集。編集のキューで計画して適用する。
     Edit(EditAction),
+    /// 割り付けのコマンド（WebView の列の開け閉め、Reset UI Layout）。ユーザーの設定を変えるだけで、操作にならない。
+    Layout(LayoutCommand),
     /// 再生のコマンド。Source を最後にクリックしていれば Source の、そうでなければ Program の再生に向く。
     Playback(Command),
     /// Shy のコマンド。表示の状態を変えるだけで、操作にならない。
@@ -99,6 +102,8 @@ struct Ready {
     tool: Tool,
     /// Shy の行を隠すかどうか（表示の状態）と、選んでいるレイヤーの Shy のフラグ。
     shy: shy::ShyReady,
+    /// 割り付け（WebView の列の開閉をチェックに出す）。
+    workspace: Workspace,
 }
 
 impl Ready {
@@ -115,6 +120,7 @@ impl Ready {
             snapping: shared.view.snapping(),
             tool: *shared.tool.lock().expect("tool"),
             shy: shy::ShyReady::of(shared),
+            workspace: shared.workspace.get(),
         }
     }
 
@@ -130,6 +136,7 @@ impl Ready {
             Owner::App(_) | Owner::Panel(_) => true,
         };
         let checked = match spec.owner {
+            Owner::App(Action::Layout(command)) => layout::checked(&self.workspace, command),
             Owner::App(Action::Shy(command)) => self.shy.checked(command),
             Owner::App(Action::Timeline(TimelineCommand::ToggleSnapping)) => Some(self.snapping),
             Owner::App(Action::Timeline(command)) => tool_of(command).map(|tool| tool == self.tool),
@@ -260,6 +267,7 @@ fn execute(shared: &Arc<Shared>, spec: &'static Spec) -> Result<(), String> {
     match spec.owner {
         Owner::App(Action::Edit(action)) => edit_actions::run(shared, action),
         Owner::App(Action::Playback(command)) => play(shared, command),
+        Owner::App(Action::Layout(command)) => layout::run(shared, command),
         Owner::App(Action::Shy(command)) => shy::run(shared, command),
         Owner::App(Action::Timeline(command)) => {
             timeline_input(shared, PointerEvent::Command(command));
@@ -267,7 +275,10 @@ fn execute(shared: &Arc<Shared>, spec: &'static Spec) -> Result<(), String> {
         Owner::App(Action::Window(action)) => {
             return shared.window_hook.send(Forward::Window(action))
         }
-        Owner::Panel(_) => return shared.window_hook.send(Forward::Panel(spec.id)),
+        Owner::Panel(panel) => {
+            layout::reveal(shared, panel);
+            return shared.window_hook.send(Forward::Panel(spec.id));
+        }
     }
     Ok(())
 }
@@ -281,10 +292,12 @@ fn play(shared: &Shared, command: Command) {
     }
 }
 
+mod layout;
 mod shy;
 mod table;
 mod window_hook;
 
+pub use layout::LayoutCommand;
 pub use shy::ShyCommand;
 pub use table::TABLE;
 pub use window_hook::{Forward, WindowHook};
