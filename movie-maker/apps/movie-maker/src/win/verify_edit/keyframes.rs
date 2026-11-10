@@ -1,7 +1,7 @@
 //! `--play-test` のキーフレームの行の通し。実際のウィンドウへのクリック、ドラッグ、キーで、見出しのキーフレームの開閉で
 //! 行を開き、キーフレームを押して選び（Inspector と Graph のパラメータも選ぶ）、ドラッグを Esc で取りやめ、離して 1 回の
-//! `moveKeyframe` にして取り消し 1 回で戻し、Delete で外して戻し、Alt+クリックで打って戻し、] と [ で前後のキーフレームへ
-//! 動かし、U で閉じて開く。手順ごとにスクリーンショットを残す。
+//! `moveKeyframe` にして取り消し 1 回で戻し、Delete で外して戻し、Alt+クリックで打って戻し、レイヤーの帯を引いて行のひし形が
+//! 帯と一緒に動く所を撮って取りやめ、] と [ で前後のキーフレームへ動かし、U で閉じて開く。手順ごとにスクリーンショットを残す。
 
 use mm_ui_layout::{Mods, PointerEvent, TimelineModel};
 use mm_ui_wgpu::timeline_layer_ids;
@@ -15,6 +15,10 @@ const MOVE_SECS: f64 = 0.5;
 const WEBVIEW_SETTLE: Duration = Duration::from_millis(700);
 /// 再生位置がキーフレームの時刻に着いたとみなす差（秒）。
 const AT_EPS: f64 = 1e-3;
+/// 行を開いたままレイヤーの帯を引く量（秒）。
+const SHIFT_SECS: f64 = 1.0;
+/// 帯を掴むのに求める、見えている帯の幅（論理ピクセル）。中央が端のつまみに掛からない幅。
+const GRAB_W: f32 = 60.0;
 
 /// 行を開いたレイヤー（Timeline の行の添字と ID）。
 struct OpenedLayer {
@@ -118,18 +122,16 @@ fn open_step(env: &Env<'_>, log: &mut Log) -> Option<OpenedLayer> {
         let at = place.disclosure(&model.items[index], index);
         Some((index, ids.get(index)?.clone(), at))
     });
+    // スクロールしても行の領域に見えなければ、ツールの手順と同じく行わずにスキップする。
     let Some((index, id, at)) = found else {
-        log.step(
-            "keyframe_rows_open",
-            false,
-            json!("キーフレームの行のあるレイヤーが見えていない"),
-        );
+        let why = "キーフレームの行のあるレイヤーが行の領域に見えない";
+        log.skip("keyframe_rows_open", why);
         return None;
     };
     surface::post_click(hwnd, at.0, at.1);
     let opened = wait_until(WAIT, || is_open(shared, &id));
     log.step("keyframe_rows_open", opened, json!({ "layer": id }));
-    shot(env, log, "19-keyframe-rows-open");
+    shot(env, log, "24-keyframe-rows-open");
     opened.then_some(OpenedLayer { index, id })
 }
 
@@ -156,7 +158,7 @@ fn select_step(env: &Env<'_>, log: &mut Log, layer: &OpenedLayer) -> Option<f64>
         json!({ "layer": chosen, "param": param, "time": time }),
     );
     std::thread::sleep(WEBVIEW_SETTLE);
-    shot(env, log, "20-keyframe-selected");
+    shot(env, log, "25-keyframe-selected");
     ok.then_some(time)
 }
 
@@ -172,7 +174,7 @@ fn drag_step(env: &Env<'_>, log: &mut Log, layer: &OpenedLayer, time: f64) {
         return;
     };
     surface::post_press(hwnd, from, to);
-    shot(env, log, "21-keyframe-dragging");
+    shot(env, log, "26-keyframe-dragging");
     cancel_drag(hwnd, from);
     let kept = row_times(shared, &layer.id) == before;
     log.step("keyframe_drag_cancel", kept, json!({ "times": before }));
@@ -184,7 +186,7 @@ fn drag_step(env: &Env<'_>, log: &mut Log, layer: &OpenedLayer, time: f64) {
         moved,
         json!({ "before": before, "after": after }),
     );
-    shot(env, log, "22-keyframe-moved");
+    shot(env, log, "27-keyframe-moved");
     if !moved {
         return;
     }
@@ -216,7 +218,7 @@ fn delete_step(env: &Env<'_>, log: &mut Log, layer: &OpenedLayer, time: f64) {
         removed,
         json!({ "before": before, "after": row_times(shared, &layer.id) }),
     );
-    shot(env, log, "23-keyframe-deleted");
+    shot(env, log, "28-keyframe-deleted");
     if !removed {
         return;
     }
@@ -258,13 +260,48 @@ fn add_step(env: &Env<'_>, log: &mut Log, layer: &OpenedLayer) {
         added,
         json!({ "before": before, "after": row_times(shared, &layer.id) }),
     );
-    shot(env, log, "24-keyframe-added");
+    shot(env, log, "29-keyframe-added");
     if !added {
         return;
     }
     keys::dispatch(shared, "play-test", "Ctrl+KeyZ");
     let undone = wait_until(WAIT, || row_times(shared, &layer.id) == before);
     log.step("undo_keyframe_add", undone, json!({}));
+}
+
+/// 行を開いたレイヤーの始まり（秒）。
+fn layer_start(shared: &Shared, layer: &OpenedLayer) -> Option<f64> {
+    let (model, _) = model_of(shared)?;
+    model.items.get(layer.index).map(|it| it.start)
+}
+
+/// 行を開いたまま Selection でレイヤーの帯の中を引き、帯と帯のマーカーと行のひし形が一緒に動く所を撮って、Esc で取りやめる。
+/// シーケンスのレイヤー（帯の中はカット）と、掴める幅の帯が見えていないときはスキップする。
+fn shift_layer_step(env: &Env<'_>, log: &mut Log, layer: &OpenedLayer) {
+    let (shared, hwnd) = (env.shared, env.surface_hwnd);
+    let found = model_of(shared).and_then(|(model, _)| {
+        let item = model
+            .items
+            .get(layer.index)
+            .filter(|it| it.cuts.is_empty())?;
+        let place = placement(shared, hwnd, &model)?;
+        let from = place.bar_center(layer.index, (item.start, item.end), GRAB_W)?;
+        let dx = (SHIFT_SECS * place.px_per_sec()) as f32 * place.scale.get();
+        Some((from, (from.0 + dx.round() as i32, from.1), item.start))
+    });
+    let Some((from, to, start)) = found else {
+        log.skip(
+            "keyframe_rows_shift_layer",
+            "引いて動かせる帯が見えていない",
+        );
+        return;
+    };
+    tools::select_tool(env, Tool::Selection);
+    surface::post_press(hwnd, from, to);
+    shot(env, log, "30-keyframe-rows-shift-layer");
+    cancel_drag(hwnd, from);
+    let kept = layer_start(shared, layer) == Some(start);
+    log.step("keyframe_rows_shift_layer", kept, json!({ "start": start }));
 }
 
 /// 先頭から ] を 2 回と [ を 1 回押し、選んだレイヤーの 1 つ目、2 つ目、1 つ目のキーフレームへ動くことを確かめる。
@@ -322,7 +359,8 @@ pub(super) fn run(env: &Env<'_>, log: &mut Log) {
         delete_step(env, log, &layer, time);
     }
     add_step(env, log, &layer);
+    shift_layer_step(env, log, &layer);
     navigate_step(env, log, &layer);
     toggle_key_step(env, log, &layer);
-    shot(env, log, "25-keyframe-rows");
+    shot(env, log, "31-keyframe-rows");
 }

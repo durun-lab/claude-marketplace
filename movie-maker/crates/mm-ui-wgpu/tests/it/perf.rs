@@ -48,9 +48,38 @@ fn keyframe_row(name: &str, times: &[f64]) -> KeyframeRow {
     }
 }
 
-/// 2 秒のカットを並べた sequence と、静止画のレイヤー。名前は全部ちがう。
-/// 静止画のレイヤーは始まりと終わりの 0.5 秒にフェードのキーフレーム（Opacity の行）を持ち、上の `TRACKED` 本は
-/// 毎フレームに持つ（Position、Scale、Rotation の 3 行。トラッキングの結果を貼った形）。
+/// 10 分のトラッキングの結果を貼った静止画のレイヤー。Position、Scale、Rotation の 3 行とも毎フレーム（30 fps）にキーフレーム。
+fn tracked_layer(i: usize, times: &[f64]) -> Item {
+    let rows = [
+        "Transform › Position",
+        "Transform › Scale",
+        "Transform › Rotation",
+    ];
+    Item::layer(0.0, 600.0, ItemKind::Image, true)
+        .with_id(&format!("tracked-{i}"))
+        .with_label(&format!("tracked-{i}.png"))
+        .with_keyframes(times)
+        .with_keyframe_rows(rows.map(|r| keyframe_row(r, times)).into())
+}
+
+/// 8 秒の静止画のレイヤー。始まりと終わりの 0.5 秒にフェードのキーフレーム（Opacity の行）。
+fn overlay_layer(i: usize) -> Item {
+    let start = (i % 500) as f64 * 12.0;
+    let fade = [start, start + 0.5, start + 7.5, start + 8.0];
+    let item = Item::layer(start, start + 8.0, ItemKind::Image, true)
+        .with_id(&format!("overlay-{i}"))
+        .with_label(&format!("overlay-{i}.png"))
+        .with_keyframes(&fade)
+        .with_keyframe_rows(vec![keyframe_row("Opacity", &fade)]);
+    if thumbs_on() {
+        item.with_thumb(&thumb_key(i))
+    } else {
+        item
+    }
+}
+
+/// 2 秒のカットを並べた sequence と、静止画のレイヤー。名前は全部ちがう。上の `TRACKED` 本はトラッキングの結果を貼った
+/// レイヤー（`tracked_layer`）、ほかはフェードのあるレイヤー（`overlay_layer`）。
 fn model() -> TimelineModel {
     let mut seq = Item::layer(0.0, CUTS as f64 * 2.0, ItemKind::Sequence, true).with_label("main");
     seq.cuts = (0..CUTS)
@@ -72,28 +101,9 @@ fn model() -> TimelineModel {
     let mut items = vec![seq];
     items.extend((1..LAYERS).map(|i| {
         if i <= TRACKED {
-            let rows = [
-                "Transform › Position",
-                "Transform › Scale",
-                "Transform › Rotation",
-            ];
-            return Item::layer(0.0, 600.0, ItemKind::Image, true)
-                .with_id(&format!("tracked-{i}"))
-                .with_label(&format!("tracked-{i}.png"))
-                .with_keyframes(&tracked)
-                .with_keyframe_rows(rows.map(|r| keyframe_row(r, &tracked)).into());
-        }
-        let start = (i % 500) as f64 * 12.0;
-        let fade = [start, start + 0.5, start + 7.5, start + 8.0];
-        let item = Item::layer(start, start + 8.0, ItemKind::Image, true)
-            .with_id(&format!("overlay-{i}"))
-            .with_label(&format!("overlay-{i}.png"))
-            .with_keyframes(&fade)
-            .with_keyframe_rows(vec![keyframe_row("Opacity", &fade)]);
-        if thumbs_on() {
-            item.with_thumb(&thumb_key(i))
+            tracked_layer(i, &tracked)
         } else {
-            item
+            overlay_layer(i)
         }
     }));
     TimelineModel {
