@@ -3,6 +3,8 @@
 //! 取り消し 1 回で全部消えることを確かめ、工程ごとにスクリーンショットを残す。間に、入れたカットを Backspace で抜いて
 //! 空の sequence を残し、取り消し、やり直し、空の sequence への insert を通す。
 
+use std::time::Instant;
+
 use mm_doc::{Project, SEQUENCE_KIND};
 use mm_ops::Disable;
 use serde_json::json;
@@ -65,10 +67,13 @@ fn comp_fits(before: (usize, f64), after: Option<f64>, fitted: f64) -> bool {
 }
 
 /// `,` で、Source の範囲のカット 1 つの sequence と、カットの長さの sequence のレイヤーができる。insert が入れば真。
+/// 行の多いプロジェクトでは入るまでに待つ上限（`WAIT`）を過ぎることがあるので、入るまでの時間も残す。
 fn insert_step(env: &Env<'_>, log: &mut Log, before: (usize, f64)) -> bool {
     let shared = env.shared;
+    let started = Instant::now();
     surface::post_key(env.surface_hwnd, VK_COMMA);
     let made = wait_until(WAIT, || cuts(shared).len() == 1);
+    let wait_ms = started.elapsed().as_millis();
     let cut = cuts(shared).into_iter().next();
     let ranged = cut.as_ref().is_some_and(|c| {
         (c.in_point.to_f64() - MARK_IN).abs() < EPS && (c.out_point.to_f64() - MARK_OUT).abs() < EPS
@@ -84,6 +89,7 @@ fn insert_step(env: &Env<'_>, log: &mut Log, before: (usize, f64)) -> bool {
             "layer_secs": layer,
             "comp_secs": comp,
             "message": shared.edit.message(),
+            "wait_ms": wait_ms,
         }),
     );
     shot(env, log, "2-first-insert");
@@ -162,7 +168,7 @@ fn reinsert_step(env: &Env<'_>, log: &mut Log, before: (usize, f64)) -> bool {
     restored
 }
 
-/// 唯一のカットを無効にすると、有効なカットが無いので sequence のレイヤーは 1 フレームに縮む。取り消しで元に戻す。
+/// 唯一のカットを無効にすると空の sequence になり、置いたレイヤーは 1 フレームに縮む。取り消しで元に戻す。
 /// 無効にして縮み、取り消しでカットが有効に戻り長さも戻れば真。
 fn disable_step(env: &Env<'_>, log: &mut Log) -> bool {
     let shared = env.shared;

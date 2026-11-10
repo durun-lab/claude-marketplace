@@ -434,5 +434,6 @@ mod tests {
         assert!(s.cache().get("new", 12.0).is_some());
     }
 
+    mod header;
     mod timecode;
 }

@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 
+use crate::geom::Rect;
 use crate::header;
 use crate::keyframe_rows::{self, KeyframeIndex, KeyframeRow};
 use crate::keymarks;
@@ -12,9 +13,12 @@ use crate::zoombar::{self, ZoomBarPart};
 
 /// 端のつまみの幅の上限。
 pub const HANDLE_PX: f32 = 7.0;
-/// 帯の最小の幅。短いレイヤーも掴めるようにし、描く幅と当たり判定の幅を同じにする。再生位置の線（2 px）が帯の左端に重なっても
-/// 線の外に帯が残る幅で、両端のつまみ（幅の 1/3 ずつ）も取れる。
-pub(crate) const MIN_BAR_PX: f32 = 8.0;
+/// 帯の幅の下限。短いレイヤーも掴めるようにする。広げた分は隣のカットに重なり、当たり判定は前のカットを採るので、
+/// 次のカットの左端のつまみを覆わない幅に留める。
+const MIN_BAR_PX: f32 = 3.0;
+/// 空の sequence の帯の幅の下限。空の sequence を置くレイヤーは長さが 1 フレームに縮むので、再生位置の線（2 px）が左端に
+/// 重なっても帯が見える幅にする。行にほかの帯が無いので、広げても隣と重ならない。
+pub(crate) const EMPTY_SEQUENCE_BAR_PX: f32 = 8.0;
 
 /// レイヤーの種類（色分けに使う）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -160,6 +164,11 @@ impl Item {
         !self.keyframes.is_empty()
     }
 
+    /// 空の sequence を置くレイヤーか（`cuts` は有効なカットだけを並べる）。
+    pub(crate) fn is_empty_sequence(&self) -> bool {
+        self.kind == ItemKind::Sequence && self.cuts.is_empty()
+    }
+
     /// サムネイルのキーを付ける。
     pub fn with_thumb(mut self, key: &str) -> Self {
         self.thumb = Some(key.into());
@@ -302,11 +311,22 @@ pub fn cut_span(view: &TimeView, bar: &CutBar) -> (f32, f32) {
     span(view, bar.start, bar.end)
 }
 
-/// 時刻 `[start, end)` の帯の左端と幅（x、w）。短い帯も掴めるように最小の幅を持たせる。
+/// 時刻 `[start, end)` の帯の左端と幅（x、w）。短い帯も掴めるように幅の下限を持たせる。
 pub(crate) fn span(view: &TimeView, start: f64, end: f64) -> (f32, f32) {
     let x = view.x_of(start);
     let w = (view.x_of(end) - x).max(MIN_BAR_PX);
     (x, w)
+}
+
+/// 行 `index` のレイヤー `item` の、時刻 `[start, end)` の帯の矩形。空の sequence の帯は
+/// [`EMPTY_SEQUENCE_BAR_PX`] まで広げる。描く所と当たり判定が同じ矩形を見る。
+pub(crate) fn bar_rect(vp: &Viewport, index: usize, item: &Item, (start, end): (f64, f64)) -> Rect {
+    let bar = vp.bar(index, start, end);
+    if item.is_empty_sequence() {
+        Rect::new(bar.x, bar.y, bar.w.max(EMPTY_SEQUENCE_BAR_PX), bar.h)
+    } else {
+        bar
+    }
 }
 
 /// 幅 `bw`、左端 `bx` の帯の上の `x` が、どの部分か。つまみは帯の幅の 1/3 を超えない。
@@ -347,7 +367,7 @@ pub fn hit_test(model: &TimelineModel, vp: &Viewport, x: f32, y: f32) -> Hit {
             keyframe: mark.keyframe,
         };
     }
-    let bar = vp.bar(index, item.start, item.end);
+    let bar = bar_rect(vp, index, item, (item.start, item.end));
     if !bar.contains(x, y) {
         return Hit::Empty;
     }

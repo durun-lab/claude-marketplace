@@ -29,10 +29,6 @@ const DISCLOSURE_W: f32 = 12.0;
 const RIGHT_PAD: f32 = 4.0;
 /// 文字と矩形の端の余白。
 const TEXT_PAD: f32 = 3.0;
-/// 名前の半角 1 文字の幅の見積もり（既定の文字の大きさ 12 の比例フォントの平均より少し広め）。
-const NAME_CHAR_W: f32 = 6.5;
-/// 名前の全角 1 文字の幅の見積もり。
-const NAME_WIDE_CHAR_W: f32 = 12.0;
 /// 見出しの列の上の角の、タイムコードの左の余白。
 pub(crate) const CORNER_PAD: f32 = 8.0;
 /// 無効なレイヤーの文字の不透明度。帯と同じく薄くする。
@@ -65,16 +61,15 @@ pub(crate) fn row_rect(vp: &Viewport, i: usize) -> Rect {
 
 /// 見出しの行 `row` の部品。行の上端の 1 px は行の境界の線に残す。
 /// ボタンはキーフレームの開閉の左に寄せて、左から有効、ロック、Mute、Solo の順に並べる。
-/// 音を持てないレイヤーは Mute と Solo の分を名前に譲る。名前が Mute と Solo を並べた残りの幅に収まらないときも、
-/// 名前を優先して Mute と Solo を省く（Premiere と Resolve は幅が足りないときボタンを省く）。
+/// 音を持てないレイヤーは Mute と Solo の分を名前に譲る。名前の長さでボタンは省かず、入らない名前は切り詰める
+/// （Mute と Solo はメニューにもキーにも無く、省くと Timeline から押せなくなる）。
 pub(crate) fn cells(row: Rect, item: &Item) -> Cells {
     let (y, h) = (row.y + 1.0, (row.h - 1.0).max(0.0));
     let right = row.right() - RIGHT_PAD - DISCLOSURE_W;
     let button = |slot: f32| Rect::new(right - BUTTON_W * slot, y, BUTTON_W, h);
-    let name_x = row.x + KIND_STRIP_W + ABBR_W;
-    let with_audio = (right - BUTTON_W * 4.0 - name_x).max(0.0);
-    let audio = item.audio.is_some() && with_audio >= name_width(&item.id);
+    let audio = item.audio.is_some();
     let enabled = button(if audio { 4.0 } else { 2.0 });
+    let name_x = row.x + KIND_STRIP_W + ABBR_W;
     Cells {
         kind_strip: Rect::new(row.x, y, KIND_STRIP_W, h),
         abbr: Rect::new(row.x + KIND_STRIP_W, y, ABBR_W, h),
@@ -85,22 +80,6 @@ pub(crate) fn cells(row: Rect, item: &Item) -> Cells {
         solo: audio.then(|| button(1.0)),
         disclosure: Rect::new(right, y, DISCLOSURE_W, h),
     }
-}
-
-/// 名前 `id` を切らずに出すのに要る幅の見積もり（文字の余白を含む）。矩形を決める `cells` は文字の計測を持たないので、
-/// 半角を `NAME_CHAR_W`、それ以外を `NAME_WIDE_CHAR_W` として数える。
-fn name_width(id: &str) -> f32 {
-    let chars: f32 = id
-        .chars()
-        .map(|c| {
-            if c.is_ascii() {
-                NAME_CHAR_W
-            } else {
-                NAME_WIDE_CHAR_W
-            }
-        })
-        .sum();
-    chars + TEXT_PAD * 2.0
 }
 
 /// 行 `index` の見出しの点 (x, y)（Timeline の座標）に当たるもの。ボタンの上ならそのボタン、キーフレームのある
