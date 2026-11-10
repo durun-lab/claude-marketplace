@@ -87,7 +87,7 @@ pub fn timeline_ratio(h: f32, th: f32) -> f32 {
     th.clamp(MIN_TIMELINE_H, room) / h
 }
 
-/// Program と Timeline の仕切りの見た目の矩形（高さ [`GAP`]）。つかむ範囲は [`SPLITTER_GRAB_H`]。
+/// Program と Timeline の仕切りの見た目の矩形（高さ [`GAP`]）。つかめる範囲は [`splitter_at`] が決める。
 pub fn splitter_rect(w: f32, h: f32, ratio: f32) -> Rect {
     Rect::new(0.0, h - timeline_height(h, ratio) - GAP, w, GAP)
 }

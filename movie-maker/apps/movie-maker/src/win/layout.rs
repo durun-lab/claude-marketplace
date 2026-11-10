@@ -4,7 +4,7 @@
 
 use std::sync::{Arc, Mutex, OnceLock};
 
-use tauri::webview::WebviewBuilder;
+use tauri::webview::{PageLoadEvent, PageLoadPayload, WebviewBuilder};
 use tauri::window::WindowBuilder;
 use tauri::{
     LogicalUnit, PhysicalPosition, PhysicalSize, PixelUnit, Position, Rect, Size, Webview,
@@ -100,25 +100,47 @@ pub fn apply(window: &Window, webview: &Webview, l: &Layout) {
     l.shared
         .set_surface_size(s.2.max(1) as u32, s.3.max(1) as u32);
     let script = shell_script(&ws, f64::from(size.width) / scale);
-    let mut sent = l.sent.lock().expect("layout sent");
-    if *sent != script {
+    let last = std::mem::replace(&mut *l.sent.lock().expect("layout sent"), script.clone());
+    if last != script {
         let _ = webview.eval(&script);
-        *sent = script;
     }
 }
 
-/// 割り付けを変えたとき（縦の仕切りのドラッグ、列の開け閉め、Reset UI Layout）にウィンドウの配置を直す関数。
-static REFRESH: OnceLock<Box<dyn Fn() + Send + Sync>> = OnceLock::new();
+/// 割り付けを変えたとき（縦の仕切りのドラッグ、列の開け閉め、Reset UI Layout）と WebView がページを読み直したときに、
+/// ウィンドウの配置を直すのに要るもの。
+struct Installed {
+    window: Window,
+    webview: Webview,
+    layout: Arc<Layout>,
+}
 
-/// ウィンドウの配置を直す関数を設定する。2 回目からは無視する。
-pub fn install_refresh(window: Window, webview: Webview, l: Arc<Layout>) {
-    let _ = REFRESH.set(Box::new(move || apply(&window, &webview, &l)));
+static INSTALLED: OnceLock<Installed> = OnceLock::new();
+
+/// ウィンドウの配置を直すのに要るものを設定する。2 回目からは無視する。
+pub fn install_refresh(window: Window, webview: Webview, layout: Arc<Layout>) {
+    let _ = INSTALLED.set(Installed {
+        window,
+        webview,
+        layout,
+    });
 }
 
 /// 割り付けに合わせてウィンドウの配置を直す。ウィンドウを作る前は何もしない。
 pub fn refresh() {
-    if let Some(f) = REFRESH.get() {
-        f();
+    if let Some(i) = INSTALLED.get() {
+        apply(&i.window, &i.webview, &i.layout);
+    }
+}
+
+/// WebView がページを読み終えたら、列の見た目を送り直す。初期化のスクリプトはウィンドウを作ったときの割り付けを
+/// 持ったままなので、読み直し（F5 など）の後は今の割り付けに戻す。
+fn on_page_load(_: Webview, payload: PageLoadPayload<'_>) {
+    if payload.event() != PageLoadEvent::Finished {
+        return;
+    }
+    if let Some(i) = INSTALLED.get() {
+        i.layout.sent.lock().expect("layout sent").clear();
+        apply(&i.window, &i.webview, &i.layout);
     }
 }
 
@@ -146,7 +168,9 @@ pub fn create_window(
         shell_script(&ws, f64::from(size.width) / scale)
     );
     let webview = window.add_child(
-        WebviewBuilder::new("ui", WebviewUrl::App(UI_ENTRY.into())).initialization_script(init),
+        WebviewBuilder::new("ui", WebviewUrl::App(UI_ENTRY.into()))
+            .initialization_script(init)
+            .on_page_load(on_page_load),
         PhysicalPosition::new(v.0, v.1),
         PhysicalSize::new(v.2.max(1) as u32, v.3 as u32),
     )?;

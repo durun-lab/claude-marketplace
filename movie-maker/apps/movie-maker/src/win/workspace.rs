@@ -15,7 +15,8 @@ use crate::win::theme;
 pub const LEFT_MIN: f64 = 200.0;
 /// 右の列の幅の下限（論理ピクセル）。Inspector のパラメータの欄が読める幅。上限は theme.json の `right-column`。
 pub const RIGHT_MIN: f64 = 300.0;
-/// サーフェスの幅の下限（論理ピクセル）。Program の再生の操作のバーのタイムコードとボタンが 1 行に入る幅。
+/// サーフェスの幅の下限（論理ピクセル）。縦の仕切りの帯を除いた Program と Timeline の幅で、Program の再生の操作の
+/// バーのタイムコードとボタンが 1 行に入る幅。
 pub const MIN_SURFACE_W: f64 = 400.0;
 /// 設定のファイルの形式の版。
 const VERSION: u32 = 1;

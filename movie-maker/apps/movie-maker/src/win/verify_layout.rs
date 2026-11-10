@@ -1,7 +1,9 @@
 //! `--play-test` の割り付けの通し。実際のウィンドウへのマウスのメッセージで、縦の仕切り（WebView の幅）と横の仕切り
-//! （Timeline の高さ）をドラッグし、割り付けと WebView の列が期待どおり変わったかを確かめて撮る。続けて割り付けを設定の
-//! ファイルに書いて Reset UI Layout で既定に戻し、書いた設定を読み直して（開き直し）同じ割り付けに戻るか、列を閉じたとき
-//! サーフェスが広がるかも確かめる。`--play-test` はユーザーの本物の設定を読み書きしないので、設定のファイルは結果の隣に書く。
+//! （Timeline の高さ）をドラッグし、割り付けと WebView の列が期待どおり変わったかと、つかんだまま Esc で押す前に戻るかを
+//! 確かめて撮る。続けて割り付けを設定のファイルに書いて Reset UI Layout で既定に戻し、書いた設定を読み直して（開き直し）
+//! 同じ割り付けに戻るか、列を閉じたときサーフェスが広がり View のチェックが外れるか、閉じた列のパネルを選ぶコマンドが
+//! その列を開けるか、列を閉じたまま WebView を読み直しても閉じたままかも確かめる。`--play-test` はユーザーの本物の設定を
+//! 読み書きしないので、設定のファイルは結果の隣に書く。
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -130,36 +132,39 @@ fn columns_match(env: &Env<'_>, left: f64, right: f64) -> (bool, Value) {
     (ok, dom)
 }
 
-/// 縦の仕切りをつかんで左へ動かし（動かしている間を撮る）、離す。WebView が広がり、左の列だけが広がり、サーフェスが縮む。
+/// 縦の仕切りの、サーフェスの右端の帯の真ん中の点（物理ピクセル）。
+fn vertical_grip(env: &Env<'_>) -> (i32, i32) {
+    let s = env.scale();
+    let half = (f64::from(SPLITTER_W) / 2.0 * s) as i32;
+    let y = (f64::from(env.surface().1) / 3.0 * s) as i32;
+    (env.shared.surface_size().0 as i32 - half, y)
+}
+
+/// 縦の仕切りをつかんで左へ動かし（動かしている間を撮る）、Esc で取り消すと押す前に戻る。続けて押す、動かす、離すを
+/// 投げると、WebView が広がり、左の列だけが広がり、サーフェスが縮む。
 fn vertical_step(env: &Env<'_>, log: &mut Log) {
-    let before = env.web_w();
+    let (start, before) = (env.shared.workspace.get(), env.web_w());
     let want = before + DRAG_WEB;
-    let (s, h) = (env.scale(), env.surface().1);
-    let from_edge = |s: f64| (f64::from(SPLITTER_W) / 2.0 * s) as i32;
-    let from = (
-        env.shared.surface_size().0 as i32 - from_edge(s),
-        (f64::from(h) / 3.0 * s) as i32,
-    );
+    let s = env.scale();
+    let from = vertical_grip(env);
     let to = (from.0 - (DRAG_WEB * s) as i32, from.1);
     // つかんでいる間（仕切りがアクセントの色）を撮る。サーフェスが縮むと Windows が本物のカーソルの位置で
-    // `WM_MOUSEMOVE` を足すので、つかんだままの位置は本物のカーソルに引かれる。撮ったら離して元に戻す。
+    // `WM_MOUSEMOVE` を足すので、つかんだままの位置は本物のカーソルに引かれる。撮ったら Esc で取り消す。
     surface::post_press(env.surface_hwnd, from, to);
     let grabbed = wait_until(WAIT, || env.web_w() > before + TOL);
     let hot = splitter::hot() == Some(mm_ui_layout::Splitter::Vertical);
     env.shoot(log, "2-drag-vertical-held");
+    surface::post_escape(env.surface_hwnd);
+    let cancelled = wait_until(WAIT, || {
+        env.shared.workspace.get() == start && close(env.web_w(), before)
+    });
     surface::post_release(env.surface_hwnd, to);
-    let released = wait_until(WAIT, || splitter::hot().is_none());
-    env.shared.workspace.set(Workspace::default());
-    layout::refresh();
-    wait_until(WAIT, || close(env.web_w(), before));
     // 押す、動かす、離すを続けて投げる。足された `WM_MOUSEMOVE` は離した後に届き、ホバーになるだけ。
-    let from = (env.shared.surface_size().0 as i32 - from_edge(s), from.1);
+    let from = vertical_grip(env);
     let to = (from.0 - (DRAG_WEB * s) as i32, from.1);
     surface::post_drag(env.surface_hwnd, from, to);
     let moved = grabbed && wait_until(WAIT, || close(env.web_w(), want));
-    let right = workspace::Workspace::default()
-        .columns(env.window_w())
-        .right;
+    let right = Workspace::default().columns(env.window_w()).right;
     let (dom_ok, dom) = columns_match(env, want - right, right);
     let surface_px = env.shared.surface_size().0;
     let want_px = (env.window_w() * s).round() as i64 - (want * s).round() as i64;
@@ -167,9 +172,10 @@ fn vertical_step(env: &Env<'_>, log: &mut Log) {
     env.shoot(log, "3-dragged-vertical");
     log.step(
         "drag_vertical",
-        moved && hot && dom_ok && surface_ok,
+        moved && hot && cancelled && dom_ok && surface_ok,
         json!({ "before": before, "want": want, "moved": moved, "hot_while_held": hot,
-                "released": released, "dom": dom, "surface_px": surface_px, "want_surface_px": want_px }),
+                "cancelled_by_escape": cancelled, "dom": dom, "surface_px": surface_px,
+                "want_surface_px": want_px }),
     );
 }
 
@@ -231,25 +237,60 @@ fn dragged_web(ws: &Workspace, env: &Env<'_>) -> f64 {
     ws.columns(env.window_w()).web()
 }
 
-/// 左の列、右の列を順に閉じ、閉じた分だけサーフェスが広がるのと、もう一度開けると戻るのを確かめる。
+/// コマンドのチェックの状態（View のメニューの項目に出すもの）。
+fn checked(shared: &Shared, id: &str) -> Option<bool> {
+    commands::table(shared)
+        .into_iter()
+        .find(|c| c.id == id)?
+        .state
+        .checked
+}
+
+/// 左の列、右の列を順に閉じ、閉じた分だけサーフェスが広がり View のチェックが外れるのと、閉じた左の列のパネルを選ぶ
+/// コマンド（View > Media）がその列を開けるのと、右の列をもう一度開けると戻るのを確かめる。
 fn columns_step(env: &Env<'_>, log: &mut Log) {
-    let toggle = |id: &str| commands::run(env.shared, id).is_ok();
+    let run = |id: &str| commands::run(env.shared, id).is_ok();
     let surface_w = || f64::from(env.shared.surface_size().0) / env.scale();
     let open_w = surface_w();
-    let left_closed = toggle("view.toggle_left_column");
+    let left_closed = run("view.toggle_left_column");
     let grew = wait_until(WAIT, || surface_w() > open_w + 200.0);
+    let unchecked = checked(env.shared, "view.toggle_left_column") == Some(false);
     let (dom_left, dom_l) = columns_match(env, 0.0, 400.0);
     env.shoot(log, "7-left-closed");
-    toggle("view.toggle_left_column");
-    let right_closed = toggle("view.toggle_right_column");
+    let revealed = run("view.show_media") && env.shared.workspace.get().left_open;
+    let right_closed = run("view.toggle_right_column");
     let (dom_right, dom_r) = columns_match(env, 260.0, 0.0);
     env.shoot(log, "8-right-closed");
-    toggle("view.toggle_right_column");
+    run("view.toggle_right_column");
     let both_back = wait_until(WAIT, || (surface_w() - open_w).abs() <= TOL);
+    let ok = left_closed && grew && unchecked && dom_left && revealed && right_closed;
     log.step(
         "close_columns",
-        left_closed && grew && dom_left && right_closed && dom_right && both_back,
-        json!({ "surface_open": open_w, "dom_left_closed": dom_l, "dom_right_closed": dom_r }),
+        ok && dom_right && both_back,
+        json!({ "surface_open": open_w, "unchecked_when_closed": unchecked,
+                "opened_by_panel_command": revealed, "dom_left_closed": dom_l,
+                "dom_right_closed": dom_r }),
+    );
+}
+
+/// 左の列を閉じたまま WebView を読み直しても、閉じたままか（ページを読み終えたら列の見た目を送り直す）。
+fn reload_step(env: &Env<'_>, log: &mut Log) {
+    let closed = commands::run(env.shared, "view.toggle_left_column").is_ok();
+    let (closed_dom, _) = columns_match(env, 0.0, 400.0);
+    // 読み直す前のページで列が合って見えないよう、印を付けたページが新しいページに替わるのを待つ。
+    eval_json(env.webview, "window.__mmBeforeReload = true");
+    let fresh_page = "window.__mmBeforeReload !== true && document.readyState === 'complete'";
+    let reloaded = env.webview.reload().is_ok()
+        && wait_until(WAIT, || {
+            eval_json(env.webview, fresh_page) == Value::Bool(true)
+        });
+    let (dom_ok, dom) = columns_match(env, 0.0, 400.0);
+    env.shoot(log, "9-reloaded-left-closed");
+    commands::run(env.shared, "view.toggle_left_column").ok();
+    log.step(
+        "reload_keeps_columns",
+        closed && closed_dom && reloaded && dom_ok,
+        json!({ "reloaded": reloaded, "dom": dom }),
     );
 }
 
@@ -281,6 +322,7 @@ pub fn run(
     horizontal_step(env, &mut log);
     persist_step(env, &mut log);
     columns_step(env, &mut log);
+    reload_step(env, &mut log);
     shared.workspace.set(Workspace::default());
     layout::refresh();
     log.into_json()

@@ -101,24 +101,6 @@ fn expected_edits() -> Expected {
     ]
 }
 
-/// 割り付け（WebView の列の開け閉め）のキーと、指すコマンドの ID と持ち主。
-fn expected_layout() -> Expected {
-    use crate::win::commands::{Action, LayoutCommand, Owner};
-    let l = |c| Owner::App(Action::Layout(c));
-    vec![
-        (
-            "Ctrl+KeyB",
-            "view.toggle_left_column",
-            l(LayoutCommand::ToggleLeftColumn),
-        ),
-        (
-            "Ctrl+Alt+KeyB",
-            "view.toggle_right_column",
-            l(LayoutCommand::ToggleRightColumn),
-        ),
-    ]
-}
-
 /// 再生と Timeline のキーと、指すコマンドの ID と持ち主。
 fn expected_moves() -> Expected {
     use crate::win::commands::{Action, Owner};
@@ -163,7 +145,6 @@ fn キーからコマンドの_id_を引き_持ち主のコマンドを実行す
     let cases: Expected = expected_edits()
         .into_iter()
         .chain(expected_moves())
-        .chain(expected_layout())
         .collect();
     assert_eq!(cases.len(), BINDINGS.len(), "全部のキーを確かめる");
     for (key, id, owner) in cases {

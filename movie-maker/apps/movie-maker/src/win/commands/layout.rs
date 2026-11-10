@@ -42,12 +42,9 @@ pub(super) fn run(shared: &Shared, command: LayoutCommand) {
 /// パネルを選ぶコマンドの前に、そのパネルの列を開ける。閉じた列のタブを選んでも何も見えないため。
 pub(super) fn reveal(shared: &Shared, panel: &str) {
     let left = LEFT_PANELS.contains(&panel);
-    let hidden = shared.workspace.get();
-    if if left {
-        hidden.left_open
-    } else {
-        hidden.right_open
-    } {
+    let ws = shared.workspace.get();
+    let open = if left { ws.left_open } else { ws.right_open };
+    if open {
         return;
     }
     shared.workspace.update(|w| {
@@ -123,6 +120,21 @@ mod tests {
         shared.workspace.update(|w| w.right_open = false);
         reveal(&shared, "diagnostics");
         assert!(shared.workspace.get().right_open);
+    }
+
+    #[test]
+    fn 割り付けのコマンドは_view_のメニューにあり_キーを持たない() {
+        // Keyboard Shortcuts のウィンドウは表の全部を出すので、表にあれば View の区画に並ぶ。
+        let table = super::super::table(&Shared::new());
+        for id in [
+            "view.toggle_left_column",
+            "view.toggle_right_column",
+            "view.reset_ui_layout",
+        ] {
+            let c = table.iter().find(|c| c.id == id).expect(id);
+            assert_eq!(c.menu, Some(crate::win::menu::Menu::View), "{id}");
+            assert!(c.keys.is_empty(), "{id} はキーを持たない");
+        }
     }
 
     #[test]
