@@ -231,8 +231,8 @@ pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
                     apply_move_layer(shared, doc, from, boundary)
                 }
                 Action::Split { item, time } => tools::apply_split(shared, doc, item, time),
-                Action::ContextMenu { place, time, at } => {
-                    context_menu::on_action(shared, place, time, at);
+                Action::ContextMenu { hit, time, at } => {
+                    context_menu::on_action(shared, hit, time, at);
                 }
             }
         }

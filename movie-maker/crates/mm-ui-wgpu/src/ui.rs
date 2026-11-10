@@ -328,12 +328,12 @@ impl Ui {
 
     /// 右クリックのメニューを出す点を、Timeline の論理ピクセルからサーフェスの物理ピクセルにする。ほかの操作はそのまま。
     fn to_surface(&self, action: Action) -> Action {
-        let Action::ContextMenu { place, time, at } = action else {
+        let Action::ContextMenu { hit, time, at } = action else {
             return action;
         };
         let (t, s) = (self.layout.timeline, self.scale.get());
         Action::ContextMenu {
-            place,
+            hit,
             time,
             at: ((at.0 + t.x) * s, (at.1 + t.y) * s),
         }

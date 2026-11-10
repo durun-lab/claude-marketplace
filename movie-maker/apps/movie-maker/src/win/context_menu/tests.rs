@@ -137,17 +137,19 @@ fn 右クリックしていなければ_split_clip_here_を拒否する() {
 #[test]
 fn 描画スレッドの右クリックは時刻を置いてウィンドウのフックへ点を丸めて渡す() {
     let shared = open_shared();
+    let cut = Hit::Cut {
+        item: 0,
+        cut: 1,
+        part: mm_ui_layout::Part::Body,
+    };
     let seen = Arc::new(Mutex::new(Vec::new()));
     let sink = seen.clone();
     shared
         .window_hook
         .set(move |f| sink.lock().unwrap().push(f));
-    on_action(&shared, Place::Cut, 2.5, (10.4, 20.6));
+    on_action(&shared, cut, 2.5, (10.4, 20.6));
     assert_eq!(shared.context.time(), Some(2.5));
-    assert_eq!(
-        *seen.lock().unwrap(),
-        [Forward::ContextMenu(Place::Cut, (10, 21))]
-    );
+    assert_eq!(*seen.lock().unwrap(), [Forward::ContextMenu(cut, (10, 21))]);
 }
 
 #[test]

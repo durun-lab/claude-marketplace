@@ -5,7 +5,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use mm_ui_layout::{Place, PointerEvent};
+use mm_ui_layout::{Hit, Place, PointerEvent};
 use tauri::{AppHandle, PhysicalPosition, Window};
 use windows::core::w;
 use windows::Win32::Foundation::{HWND, LPARAM, POINT, WPARAM};
@@ -132,15 +132,18 @@ pub fn post_popup_key(menu: isize, vk: usize) {
 /// 右クリックのメニューを出す。描画スレッドが呼び、ポップアップはメインスレッドで出す（メニューを閉じるまで返らない）。
 /// `at` はサーフェスのクライアントの点（物理ピクセル）。サーフェスはウィンドウのクライアント領域の左上から始まるので、
 /// そのままウィンドウの位置になる。
-pub fn show(app: &AppHandle, window: &Window, shared: &Arc<Shared>, place: Place, at: (i32, i32)) {
+pub fn show(app: &AppHandle, window: &Window, shared: &Arc<Shared>, hit: Hit, at: (i32, i32)) {
     let (app_for_menu, window, shared) = (app.clone(), window.clone(), shared.clone());
-    let queued = app.run_on_main_thread(move || popup(&app_for_menu, &window, &shared, place, at));
+    let queued = app.run_on_main_thread(move || popup(&app_for_menu, &window, &shared, hit, at));
     if let Err(e) = queued {
         tracing::warn!("右クリックのメニューを出せない: {e}");
     }
 }
 
-fn popup(app: &AppHandle, window: &Window, shared: &Arc<Shared>, place: Place, at: (i32, i32)) {
+fn popup(app: &AppHandle, window: &Window, shared: &Arc<Shared>, hit: Hit, at: (i32, i32)) {
+    let Some(place) = Place::of(&hit) else {
+        return;
+    };
     let table = commands::table(shared);
     let lines = menu::lines(menu::context_groups(place), &table);
     if lines.is_empty() {
@@ -180,10 +183,10 @@ fn describe(lines: &[Line]) -> Vec<String> {
 }
 
 /// 描画スレッドが `Action::ContextMenu` を受けたとき。右クリックした時刻を置き、メニューを出すようウィンドウのフックへ頼む。
-pub fn on_action(shared: &Arc<Shared>, place: Place, time: f64, at: (f32, f32)) {
+pub fn on_action(shared: &Arc<Shared>, hit: Hit, time: f64, at: (f32, f32)) {
     shared.context.set_time(time);
     let at = (at.0.round() as i32, at.1.round() as i32);
-    if let Err(e) = shared.window_hook.send(Forward::ContextMenu(place, at)) {
+    if let Err(e) = shared.window_hook.send(Forward::ContextMenu(hit, at)) {
         tracing::warn!("右クリックのメニューを出せない: {e}");
     }
 }

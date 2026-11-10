@@ -33,7 +33,9 @@ fn right_click(c: &mut TimelineController, m: &TimelineModel, x: f32, y: f32) ->
 
 fn menu_of(actions: &[Action]) -> (Place, f64, (f32, f32)) {
     match actions.last() {
-        Some(Action::ContextMenu { place, time, at }) => (*place, *time, *at),
+        Some(Action::ContextMenu { hit, time, at }) => {
+            (Place::of(hit).expect("メニューを出す所"), *time, *at)
+        }
         other => panic!("{other:?}"),
     }
 }

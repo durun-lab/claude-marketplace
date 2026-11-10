@@ -5,7 +5,7 @@
 use super::{deselect_cut, Action, Drag, TimelineController};
 use crate::pointed::Place;
 use crate::snap::quantize;
-use crate::timeline::{hit_test, Hit, TimelineModel};
+use crate::timeline::{hit_test, Hit, Part, TimelineModel};
 
 /// メニューキーでメニューを出す点の、目盛りの帯の下端からの距離（論理ピクセル）。何も選んでいないときの点。
 const BELOW_RULER_PX: f32 = 4.0;
@@ -22,13 +22,13 @@ impl TimelineController {
             return Vec::new();
         }
         let hit = hit_test(model, &self.viewport(), x, y);
-        let Some(place) = Place::of(&hit) else {
+        if Place::of(&hit).is_none() {
             return Vec::new();
-        };
+        }
         let time = self.blade_time(x, model, playhead).0;
         let mut out = self.select_under(hit);
         out.push(Action::ContextMenu {
-            place,
+            hit,
             time: time.clamp(0.0, model.duration),
             at: (x, y),
         });
@@ -43,24 +43,39 @@ impl TimelineController {
         let vp = self.viewport();
         let cut = self
             .selected_cut
-            .and_then(|(item, cut)| Some((item, model.items.get(item)?.cuts.get(cut)?)));
-        let (place, time, at) = if let Some((item, bar)) = cut {
+            .and_then(|(item, cut)| Some((item, cut, model.items.get(item)?.cuts.get(cut)?)));
+        let (hit, time, at) = if let Some((item, index, bar)) = cut {
             let time = if (bar.start..bar.end).contains(&playhead) {
                 playhead
             } else {
                 (bar.start + bar.end) / 2.0
             };
-            (Place::Cut, time, (vp.x_of(time), row_center(&vp, item)))
+            (
+                Hit::Cut {
+                    item,
+                    cut: index,
+                    part: Part::Body,
+                },
+                time,
+                (vp.x_of(time), row_center(&vp, item)),
+            )
         } else if let Some((item, it)) = self.selected.and_then(|i| Some((i, model.items.get(i)?)))
         {
             let time = playhead.clamp(it.start, it.end);
-            (Place::Layer, time, (vp.x_of(time), row_center(&vp, item)))
+            (
+                Hit::Layer {
+                    index: item,
+                    part: Part::Body,
+                },
+                time,
+                (vp.x_of(time), row_center(&vp, item)),
+            )
         } else {
             let y = self.layout.ruler.bottom() + BELOW_RULER_PX;
-            (Place::Empty, playhead, (vp.x_of(playhead), y))
+            (Hit::Empty, playhead, (vp.x_of(playhead), y))
         };
         let time = quantize(time, model.fps).clamp(0.0, model.duration);
-        vec![Action::ContextMenu { place, time, at }]
+        vec![Action::ContextMenu { hit, time, at }]
     }
 
     /// ポインターの下のカットかレイヤーを選ぶ。目盛りと空きでは選択を変えない（今の選択に効くメニューを出す）。

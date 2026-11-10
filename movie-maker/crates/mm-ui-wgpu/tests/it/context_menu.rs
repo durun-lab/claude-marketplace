@@ -25,7 +25,7 @@ fn menu_at(ui: &mut Ui, (x, y): (f32, f32)) -> Option<(Place, (f32, f32))> {
     ui.pointer(PointerEvent::ContextMenu { x, y })
         .into_iter()
         .find_map(|a| match a {
-            Action::ContextMenu { place, at, .. } => Some((place, at)),
+            Action::ContextMenu { hit, at, .. } => Place::of(&hit).map(|p| (p, at)),
             _ => None,
         })
 }

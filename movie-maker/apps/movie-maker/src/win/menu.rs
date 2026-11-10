@@ -356,8 +356,8 @@ pub fn connect(app: &App, window: &Window, shared: &Arc<Shared>, bar: MenuBar) {
             shortcuts_window::open(&handle, &target);
         }
         Forward::MenuKey(c) => open_by_access_key(&target, c),
-        Forward::ContextMenu(place, at) => {
-            context_menu::show(&handle, &target, &for_context, place, at);
+        Forward::ContextMenu(hit, at) => {
+            context_menu::show(&handle, &target, &for_context, hit, at);
         }
     });
 }

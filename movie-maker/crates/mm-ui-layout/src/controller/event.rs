@@ -2,8 +2,7 @@
 
 use super::TimelineCommand;
 use crate::gesture::EditKind;
-use crate::pointed::Place;
-use crate::timeline::HeaderButton;
+use crate::timeline::{HeaderButton, Hit};
 
 /// 押したときの修飾キー。ドラッグの種類を選ぶ（カットの端は `alt` で roll、中は `shift` で slide）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -69,12 +68,8 @@ pub enum Action {
     MoveLayer { from: usize, boundary: usize },
     /// Blade でカットを押した。レイヤー `item` の、時刻 `time`（秒。再生位置とフレームに合わせたもの）で割る。
     Split { item: usize, time: f64 },
-    /// 右クリックのメニューを出す。`place` は当たった所、`time` はその時刻（秒。Snapping が入なら再生位置とフレームに合わせたもの。
+    /// 右クリックのメニューを出す。`hit` は当たった所（添字を含む。`Place::of` で右クリックのメニューの種類にする）、`time` はその時刻（秒。Snapping が入なら再生位置とフレームに合わせたもの。
     /// Split Clip Here の時刻）、`at` はメニューを出す点（Timeline の座標）。ポインターの下のカットとレイヤーはこの前の
     /// `Select` と `SelectCut` で選んである。
-    ContextMenu {
-        place: Place,
-        time: f64,
-        at: (f32, f32),
-    },
+    ContextMenu { hit: Hit, time: f64, at: (f32, f32) },
 }
