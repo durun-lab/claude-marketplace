@@ -12,6 +12,7 @@ mod ruler;
 mod scrollbar;
 mod snap;
 mod wave;
+mod zoombar;
 
 use crate::drag_tooltip::DragTooltip;
 use crate::geom::{Color, Quad, Rect};
@@ -123,7 +124,7 @@ impl Canvas {
     }
 }
 
-/// 文字の下に描く矩形（背景、行の縞、帯、帯の波形、吸い付いた帯の端の強調、目盛りの帯、スクロールバー）。
+/// 文字の下に描く矩形（背景、行の縞、帯、帯の波形、吸い付いた帯の端の強調、目盛りの帯、スクロールバー、ズームバー）。
 pub fn timeline_quads(input: &PaintInput) -> Vec<Quad> {
     let mut canvas = Canvas::default();
     canvas.push(
@@ -138,6 +139,7 @@ pub fn timeline_quads(input: &PaintInput) -> Vec<Quad> {
     scrollbar::paint(input, &mut canvas);
     snap::edge_highlight(input, &mut canvas);
     wave::paint(input, &mut canvas);
+    zoombar::paint(input, &mut canvas);
     canvas.into_quads()
 }
 

@@ -155,10 +155,10 @@ Timeline の上端に置く（Resolve と CapCut と同じ）。左から並べ�
 
 ### ズーム
 
-- キー: `=` と `Ctrl+=` で Zoom In、`-` と `Ctrl+-` で Zoom Out、`Shift+Z` で Full Extent Zoom。`+` も Zoom In にする（US の配列では Shift+=、JIS の配列では Shift+; で出る）。もう一度 `Shift+Z` で元の倍率と位置に戻る。キーとボタンの拡大の中心は再生位置、Ctrl+ホイールの中心はポインター（今と同じ）。
+- キー: `=` と `Ctrl+=` で Zoom In、`-` と `Ctrl+-` で Zoom Out、`Shift+Z` で Full Extent Zoom。`+` も Zoom In にする（US のキー配列では Shift+=、JIS のキー配列では Shift+; で出る）。もう一度 `Shift+Z` で元の倍率と位置に戻る（間にほかの操作で表示を変えたら、もう一度全体表示にする）。キーとボタンの拡大の中心は再生位置、Ctrl+ホイールの中心はポインター（今と同じ）。1 回の倍率は √2（2 回で 2 倍。ホイールの 1 目盛りの 1.15 倍より大きく、押した分が見て分かる）。再生位置が見えていなければ、拡大した後に再生位置を中央に置く（拡大した所が見えるように）。
 - ツールバーのスライダーは秒あたりの論理ピクセルを対数で動かす（縮小の下限 `TimeView::zoom_floor` から `MAX_PX_PER_SEC`）。縮小の下限は全体表示の倍率と `MIN_PX_PER_SEC` の小さい方で、長いコンポジションも全体が収まるまで縮められる。
-- ズームバー: Timeline の下端の横のバー。全体の長さの上に見えている範囲のつまみを出し、中のドラッグで動かし、両端のドラッグで拡大縮小する。再生位置もバーの上に細い線で出す（Resolve は再生位置が画面の外にあるとき、バーの上にその位置を出す [100]）。
-- 再生中に再生位置が右端を越えたら、1 画面ぶん送る〔推。Premiere の Page Scroll〕。
+- ズームバー: Timeline の下端の横のバー（高さ 14 論理ピクセル。横は行の領域と同じ範囲で、縦のスクロールバーの下の角も溝の色で埋める）。ズームバーが表す範囲（コンポジションの全体と見えている範囲を合わせたもの）の上に、見えている範囲のスクロールボックスを出し、中のドラッグで動かし、両端（幅 7。スクロールボックスの幅の 1/3 まで）のドラッグで反対の端を保って拡大縮小する（Premiere のズームスクロールバー [94]）。スクロールボックスの幅の下限は 24 論理ピクセルで、縦のスクロールバーと同じ色。溝を押すと押した側へ 1 画面ぶん送る（縦のスクロールバーと同じ）。再生位置もバーの上に再生位置の色の細い線で出す（Resolve は再生位置が画面の外にあるとき、バーの上にその位置を出す [100]）。
+- 再生位置が行の領域の端を越えたら、越えた先が見えるまでその向きへ 1 画面ずつ送る。再生中は Premiere の Page Scroll〔推〕。止めている間も、キーとメニューの移動（← →、Shift+← →、↑ ↓、Home、End）で動かした再生位置を見失わないよう同じく送る〔推〕。左へ送るときは 0 より前を見せない。端の外にあった再生位置が動いても送らず、人が動かした表示を保つ。ドラッグの間は、ポインターの下の時刻が変わって編集の量が飛ぶので送らない。
 
 ### スナップ
 
@@ -201,8 +201,8 @@ Z2 で決めたこと（新しく設計したもの）:
 |---|---|---|---|
 | `=`、`+`、`Ctrl+=` / `-`、`Ctrl+-` | Zoom In / Zoom Out | Premiere [94]、Resolve [100] | Z1 |
 | `Shift+Z` | Full Extent Zoom | Resolve [100]、FCP [106] | Z1 |
-| `↑` / `↓` | Previous Edit / Next Edit | Resolve [101] | Z1 |
-| `Shift+←` / `Shift+→` | Step One Second Back / Forward | Resolve [101] | Z1 |
+| `↑` / `↓` | Previous Edit / Next Edit（前後の帯の端へ。レイヤーとカットの始まりと終わり、0、終わり） | Resolve [101] | Z1 |
+| `Shift+←` / `Shift+→` | Step One Second Back / Forward（fps を丸めたフレームの数） | Resolve [101] | Z1 |
 | `N` | Snapping | Resolve [100]、FCP [106] | Z2 |
 | `A`、`T`、`B` | Selection Tool、Trim Tool、Blade Tool | Resolve [100]、FCP [107] | Z4 |
 | `Ctrl+B` | Split Clip | FCP [107]、CapCut [111] | Z4 |
@@ -212,9 +212,10 @@ Z2 で決めたこと（新しく設計したもの）:
 | `Ctrl+I` | Import Media | Resolve [101] | D1 |
 | `?` | Keyboard Shortcuts | Shotcut [116] | D2 |
 
-- キーの名前の決まりは Z1 が `keys.rs` の `with_modifiers` と `transport.js` の `keyName` に入れ、後の PR は割り当てだけを足す。今は Shift を Ctrl と一緒のときだけ付けるので、`Shift+Z` と `Shift+←` のために、英字と矢印には Shift を付ける形に変える。Shift+Space は今どおり Space として扱う。
-- 記号のキー（`=`、`+`、`-`、`[`、`]`、`?`）は配列でキーの位置が違う（JIS の配列では `=` が Shift+-）。記号は押された文字で引く（サーフェスは `WM_KEYDOWN` の仮想キーを今の配列で文字にし、WebView は `KeyboardEvent.key`）。Shift は文字に含まれるので、記号の名前には付けない（JIS の配列の `Ctrl+=` は Ctrl+Shift+- で押すが、名前は `Ctrl+=`）。サーフェスで文字にするときは Shift だけを押した状態で引く（Ctrl を含めると制御文字になる）。画面のキーの見た目も文字で出す。英字、数字、矢印、Space は今どおり `KeyZ` の形の名前で引く（サーフェスは仮想キー、WebView は `KeyboardEvent.code` から作る。JIS と US の配列で同じ）〔推。Z1 で JIS の配列で確かめる〕。
-- 日本語の IME が入っていると、サーフェスの `WM_KEYDOWN` は英字が `VK_PROCESSKEY` で届き、英字のキーが効かない〔推〕。サーフェスの HWND には IME を結び付けない（`ImmAssociateContextEx`）。Z1 で JIS の配列と一緒に確かめる。
+- キーの名前の決まりは Z1 が `keys.rs` の `with_modifiers` と `transport.js` の `keyName` に入れ、後の PR は割り当てだけを足す。修飾キーは Ctrl、Shift、Alt の順に付ける。Shift は英字、数字、矢印に付け（`Shift+KeyZ`、`Shift+ArrowLeft`）、Space、Home、Delete などほかの名前のキーには今どおり Ctrl と一緒のときだけ付ける（Shift+Space は Space）。
+- 記号のキー（`=`、`+`、`-`、`,`、`.`、`[`、`]`、`?` など）はキー配列でキーの位置が違う（JIS のキー配列では `=` が Shift+-）。記号のキーは押された文字を名前にする（サーフェスは `WM_KEYDOWN` の仮想キーを今のキー配列で文字にし〔`ToUnicodeEx`。デッドキーの途中の状態を変えない指定で文字にする〕、WebView は `KeyboardEvent.key`）。Shift は文字に含まれるので、記号の名前には付けない（JIS のキー配列の `Ctrl+=` は Ctrl+Shift+- で押すが、名前は `Ctrl+=`）。サーフェスで文字にするときは Shift だけを押した状態で文字にする（Ctrl を含めると制御文字になる）。画面のキーの見た目も文字で出す。テンキーの数字と記号も押された文字（`1`、`+`）。英字、数字、矢印、Space、Home、End、Delete、Backspace、Enter、Escape、Tab、PageUp、PageDown、Insert、F1〜F12 は code の名前のキーで、`KeyZ` の形の名前にする（サーフェスは仮想キー、WebView は `KeyboardEvent.code` から作る。JIS と US のキー配列で同じ）。
+- 日本語の IME が入っていると、サーフェスの `WM_KEYDOWN` は英字が `VK_PROCESSKEY` で届き、英字のキーが効かない〔推〕。サーフェスの HWND には IME を結び付けない（`ImmAssociateContextEx` に空の入力のコンテキストと flags 0 を渡す）。外すのはサーフェスの HWND だけで、同じ親の子の WebView の HWND と親の IME は変えない（WebView の入力欄が日本語を受けるのは WebView2 の別のプロセスの窓で、ここで外す IME には掛からない〔推〕）。外した HWND が入力のコンテキストを持たず、隣の HWND と親が持ったままなことは単体テストで、JIS のキー配列の記号のキーは `--play-test` で確かめた（2026-11-10）。IME をオンにして打つ確かめは、キーを送る試験では IME を通らないので手で行う。
+- キーを押し続けたときは、ズーム（Zoom In、Zoom Out）と移動（← →、Shift+← →、↑ ↓）だけを、OS のキーの繰り返しのたびに実行する（Premiere と Resolve の矢印とズームのキー〔推〕）。再生と停止（Space、J、K、L）、編集、Full Extent Zoom は、繰り返すと押した回数より多く働くので最初の押下だけ。繰り返すコマンドは `keys.rs` の `REPEATS` に ID で足す。再生スレッドは届いているフレームと秒の移動を足して 1 回で描き、描くのが繰り返しより遅くても、キーを離した後に進み続けない。
 
 ## キーフレーム
 
@@ -261,7 +262,7 @@ Z2 で決めたこと（新しく設計したもの）:
 | File | Import Media…、Export…（Deliver を開く）、Exit |
 | Edit | Undo、Redo、Lift、Extract、Mark In、Mark Out、Clear In and Out、Insert、Overwrite |
 | View | Zoom In、Zoom Out、Full Extent Zoom、Snapping、Track Height、Show Keyframe Editor、Hide Shy Layers、パネル（Tasks、Media、Story、Inspector など）、Diagnostics、Reset UI Layout |
-| Playback | Play / Stop、Play Reverse、Play Forward、Step One Frame Back / Forward、Go to Start、Go to End、Previous Edit、Next Edit、Go to Previous / Next Keyframe |
+| Playback | Play / Stop、Play Reverse、Play Forward、Step One Frame Back / Forward、Step One Second Back / Forward、Go to Start、Go to End、Previous Edit、Next Edit、Go to Previous / Next Keyframe |
 | Timeline | Selection Tool、Trim Tool、Blade Tool、Split Clip、Add Transition… |
 | Help | Keyboard Shortcuts…、About |
 
@@ -296,11 +297,16 @@ Z2 で決めたこと（新しく設計したもの）:
 
 | 場所 | 出すもの |
 |---|---|
-| Program（レイヤーが無い） | 「Import video and audio to start」と「File > Import Media… (Ctrl+I)」 |
-| Timeline（レイヤーが無い） | 「Open a clip in Media, mark In (I) and Out (O), then press Insert (,)」。Media から Timeline へのドラッグは後 |
-| Inspector（何も選んでいない） | コンポジションの要約（名前、大きさ、fps、長さ、レイヤーの数）と「Select a layer in the Timeline to see its properties.」 |
+| Program（コンポジションに中身が無く、素材も無い） | 「Import video and audio to start」と「File > Import Media… (Ctrl+I)」 |
+| Timeline（コンポジションに中身が無く、sequence のレイヤーがある） | 「Open a clip in Media, mark In (I) and Out (O), then press Insert (,)」。Media から Timeline へのドラッグは後 |
+| Inspector（何も選んでいない） | コンポジションの要約（名前、大きさ、fps、長さ、レイヤーの数）と「Select a layer in the Timeline to see its properties.」。名前はコンポジションの ID、長さは見出しの列の上の角と同じタイムコード |
 | Story（文字起こしが無い） | 「No transcript yet. Transcription runs outside the app for now: run tools/transcribe on a clip, then reopen this tab.」。アプリの中の Transcribe のコマンドができたら、ボタンに替える |
 | Tasks | 実装の無い項目を薄くする（[UI のコマンドの表](#ui-のコマンドの表)） |
+
+- 中身が無いのは、レイヤーが無いか、どのレイヤーもカットの無いシーケンスを置いた sequence のレイヤーのとき。無効のレイヤーとカットは中身に数え、案内を出さない。判定はコンポジションの中身で決め、Timeline の行の見え方では決めない。Shy で全部の行を隠しても案内は出さない（隠した数は見出しの列の上の角に出る。T3）。判定は `mm-ui-wgpu` の `empty_state`。
+- 素材を取り込んだ後は、取り込みはもう次にすることではないので、Program の案内を出さない。
+- Timeline の手順は、Insert の入る先（sequence のレイヤー）があるときだけ出す。sequence のレイヤーが無いと Insert は効かない（`sequence_edit.rs` の `target_layer` が「No sequence layer」で拒否し、メニューの Insert も押せない）。`mm new` の直後に足す `main` もレイヤーが無いので、今は Program の案内だけが出る。最初の Insert で sequence のレイヤーを作れば（Premiere の空の Timeline の「Drop media here to create sequence」[96] と同じく、最初の素材から sequence を作る）、この条件を外せる。後の PR。
+- 要約は選択のイベント（`mm:layer-selected`）に載せる。購読より前に Rust が送ったイベントは WebView に届かないので、Shell は選択のイベントを聞き始めたら頼み（`mm:layer-selection-request`）を投げ、`transport.js` は選択の Tauri イベントを購読し終えてから `layer_selection` で今の選択を読んで答える。時間では待たない。購読してから読む形は UI のコマンドの表（Shell の `useCommandTable`）と同じ。
 
 ## 文言
 
@@ -316,7 +322,8 @@ Z2 で決めたこと（新しく設計したもの）:
 | 再生 / 停止 | Play / Stop (Space) | Space で再生と停止 [94] | Play and stop、Pause/Start Playback [101] |
 | 先頭 / 末尾 | Go to Start (Home) / Go to End (End) | 〔推〕Go to Sequence Start / End | 先頭と末尾へ（Home / End）[101] |
 | 1 フレーム | Step One Frame Back (←) / Step One Frame Forward (→) | ← と → でフレーム単位 [94] | Step One Frame Back / Forward [101] |
-| 編集点 | Previous Edit (↑) / Next Edit (↓) | 〔推〕Go to Previous / Next Edit Point | Previous Edit / Next Edit [101] |
+| 前後の帯の端 | Previous Edit (↑) / Next Edit (↓) | 〔推〕Go to Previous / Next Edit Point | Previous Edit / Next Edit [101] |
+| 1 秒 | Step One Second Back (Shift+←) / Step One Second Forward (Shift+→) | — | Step One Second Back / Forward [101] |
 | J/K/L | Play Reverse (J) / Stop (K) / Play Forward (L) | 〔推〕Shuttle Left / Stop / Right | Play Reverse / Stop / Play Forward [101] |
 | マーク | Mark In (I) / Mark Out (O) / Clear In and Out (Alt+X) | Mark In / Mark Out / Clear In and Out [94] | Mark In / Mark Out / Clear In and Out [101] |
 | 3 点編集 | Insert (,) / Overwrite (.) | `,` と `.` [94] | Insert / Overwrite [103] |
@@ -406,6 +413,10 @@ flowchart TB
 
 T1 が決めた形: 矩形の型は `TimelineLayout`（`mm-ui-layout/src/timeline_layout.rs`）。まだ無い領域は大きさ 0 の定数で場所だけを決めてあり、足す PR が自分の定数を変える。Timeline の高さの下限（`MIN_TIMELINE_H`）はその定数から求める。行の高さと上端は `Rows`、それにズームと縦のスクロールを合わせた見えている所は `Viewport` で、当たり判定、描画、文字、`--play-test` のクリックの位置（`verify_place.rs`）が同じ値を見る。描く関数は `paint/<領域>.rs` に置き、`paint.rs` の `timeline_quads`（文字の下）か `timeline_overlay`（文字の上）の呼び出しに名前の順で 1 行足す。重ね順は呼ぶ順でなく `Depth` で決める（帯の中に描く矩形〔T4 の波形〕は、帯〔`Bar`〕と、帯に重ねるもの〔`OnBar`。端のつまみ、外枠〕の間に区分を 1 つ足す）。テクスチャで描くサムネイルとフィルムストリップ（T5、T6）は矩形の並びの外なので、`Bar` までの矩形の後、残りの矩形の前に描く（文字と同じく、境目の数を `Canvas` の区分から出す）。行の領域からはみ出す矩形は `Canvas::push_in` で切る。ひし形と三角（`QuadShape`）は切ると形が変わるので、切らずに描く。K1 が決めた扱い: 外接する正方形が行の領域に全部収まるひし形だけを `Canvas::push_quad` で描き、領域の端や行の途中で隠れる位置の帯のマーカーは、切っても形が変わらない縦線（矩形）に替えて `push_in` で切る（`keymarks::is_line`）。マーカーの位置は変えず、形だけが変わる。先例は Premiere と AE が時間軸の端でキーフレームを切ること。先例が解消しない点（切ると半分のひし形が残る）に、縦線への切り替えを足した。Medium と Large の帯は名前を上の部分（`labels::name_area`。Medium は帯の高さ 25 からマーカーの 9 を除いた 16）に置き、下端の `MARK_PX`（9 論理ピクセル）にマーカーを並べて、字とひし形を重ねない（Premiere と Resolve もクリップの名前を上に置く）。Small の帯は名前が帯の全体を使うので、マーカーを下端から 4 論理ピクセルの縦線にし、字の下の方にだけ掛ける。キーフレームの時刻は `Item::keyframes`（コンポジションの秒）で、`mm-doc` の `Layer::keyframe_times` が作る。`shiftLayer` が動かすパラメータと同じ一覧（`Layer::comp_time_params` と `comp_time_params_mut`）を読み、端のつまみの `Layer::trim_room` と同じく、操作と Timeline が `mm-doc` の同じ所を見る。再フレーミングの素材の時刻のキーフレームは含めない（K2 でカットを通して足す）。マーカーのまとめ方は先頭のキーフレームから数えるので、横に動かしても位置は変わらない。マーカーを押すと `Hit::BarMark` で、レイヤーを選んで再生位置を動かす。マーカーは端のつまみより上に描くので、重なる所ではマーカーが勝つ（つまみはマーカーの上で掴める）。ホバーしたマーカーは、Inspector のキーフレームの欄で選んだひし形と同じ accent で中を塗り、縁を明るくする（accent に近い青の帯でも紛れない）。レイヤーの見出しは右端にキーフレームの開閉（`Cells::disclosure`、幅 12 論理ピクセル）を空け、キーフレームのあるレイヤー（`Item::has_keyframes`）だけに ▸ を描く。キーフレームの無いレイヤーも空けるので、ボタンの列は行ごとにずれない。▸ を押したときにキーフレームの行を開くのは K2。全体表示は長いコンポジションでも全体を収め（`MIN_PX_PER_SEC` より細かく、下限は `MIN_FIT_PX_PER_SEC`）、Ctrl+ホイールの縮小も全体が収まる所まで（`TimeView::zoom_floor`）。
 
+Z1 が決めた形: Timeline の表示や再生位置を変える UI のコマンドは、`mm-ui-layout` の `TimelineCommand` に足し（Z1 のズームと前後の帯の端、Z2 の `ToggleSnapping`）、コマンドの表の持ち主を `Owner::App(Action::Timeline(..))` にする。キーとメニューから呼ぶと、ドラッグとの前後を保つため `PointerEvent::Command` としてポインターの入力のキュー（`Shared::input`）に積み、描画スレッドの `Ui::pointer` が `TimelineController::handle` に渡す。前後の帯の端へのシークは `Action::Seek` で返り、`render/sync.rs` の `handle_input` は、スクラブのシークと違って Home と End と同じく再生を止めずに送る（`Seeks::jump`。溜めた Program のシークは捨てる）。前後の帯の端（`edit_target`）はスナップの目標とは別に、0、終わり、レイヤーとカットの端から求め、Z2 がスナップの目標に足すキーフレームとマーカーでは止まらない。ページ送りは `Ui::set_playhead` が再生位置を受けるたびに `TimelineController::page_scroll` に渡し、再生中かどうかで分けない。押し続けで繰り返すコマンドは `keys::REPEATS` で、サーフェスは `WM_KEYDOWN` の繰り返しのフラグ（lParam の 30 ビット目）、WebView は `transport.js` が `key_event` に付けて送る `repeat` を見る。キーの名前は `keys::vk_name`（code の名前のキー）、`keys::symbol_name`（記号のキーは押された文字）、`keys::with_modifiers`（修飾キー）で作り、サーフェスの記号のキーは `keyboard::key_name_in` が今のキー配列（`keyboard::keyboard_layout`）で文字にする（`surface.rs` からは振り分けの呼び出しだけ）。ズームバーの高さは `ZOOMBAR_H`（14）で、高さが足りないときは目盛りの帯を先に取る。ズームバーの当たり判定は `Hit::ZoomBar`、スクロールボックスと端とドラッグの計算は `zoombar.rs`、描く関数は `paint/zoombar.rs`（縦のスクロールバーの下の角もここが塗る）。
+
+L1 が決めた形: 再生の操作のバーは `mm-ui-layout/src/transport.rs`（高さ `TRANSPORT_H` の 56 論理ピクセル）。上からタイムコードの行（左に再生位置、右に Program は全体の長さ、Source はイン点とアウト点）、ジョグバー、ボタンの行を重ねる（Premiere の Program モニターの下端と同じ並び。タイムコードをボタンの行の左右に置くと、Source を開いた幅 400 論理ピクセルのバーでボタンの幅が縮み、アイコンが重なる）。`SurfaceLayout` の `program_transport` と `source_transport` が映像の領域の真下のバーの矩形で、映像の領域（`program`、`source`）はバーの分だけ低い（映像の矩形とレターボックスと Review の描き込みは映像の領域から求めるので、ずれない）。ビューアーの領域がバーの高さの 2 倍に足りなければ、バーを出さずに映像に回す（映像の見えないビューアーは使えず、再生の操作はキーとメニューにもあるため）。Program のボタンは Resolve の Viewer の並び（Go to Start、Play Reverse、Stop、Play Forward、Go to End）に Premiere の Step One Frame Back / Forward を足したもので、同じ形のボタンを置かない。再生中は Play Forward を入の色で塗る。Source の In、Out、Clear、Insert、Overwrite は、ボタンの行に全部の名前が入れば名前のボタン、入らなければアイコンのボタン。ボタンはコマンドの表の ID を持ち、押せるかはアプリがコマンドの表から渡す（`ViewerState::disabled`）。押して同じボタンの上で離したときに実行する（Windows のボタンと同じく、押したまま外へずらして離せば取りやめ）。ジョグバーのシークは描画の 1 周でビューアーごとに最後の 1 つだけ送り、再生中なら止める（Timeline の目盛りのスクラブと同じ）。三角は `QuadShape`、縦線と括弧は細い矩形で描き、切らない。`--play-test` はボタンとジョグバーの位置を `transport_button` と `jog_track` で引いて押す（`verify_transport.rs`）。
+
 ### 前提と文言
 
 | PR | 中身 | 依存 | 触る範囲 | 終わりの条件 |
@@ -431,7 +442,7 @@ T1 が決めた形: 矩形の型は `TimelineLayout`（`mm-ui-layout/src/timelin
 
 | PR | 中身 | 依存 | 触る範囲 | 終わりの条件 |
 |---|---|---|---|---|
-| Z1 `feature/movie-maker-timeline-zoom` | ズームのキー、Shift+Z の行き来、ズームバー、再生中の送り、移動のキー（↑ ↓ の Previous/Next Edit、Shift+← → の Step One Second）、キーの名前の決まり（英字と矢印の Shift、記号は押された文字）、サーフェスの IME を切る | T1、B3 | `crates/mm-ui-layout/src/zoombar.rs`（新）、`time_view.rs`、`controller.rs`、`apps/movie-maker/src/win/keys.rs`、`commands.rs`、`surface.rs`（記号の文字と IME）、`apps/movie-maker/web/transport.js`（`keyName`） | Timeline の下にズームバー。Shift+Z の後は全体が収まる。JIS の配列で `=`（Shift+-）と `-` でズームする |
+| Z1 `feature/movie-maker-timeline-zoom` | ズームのキー、Shift+Z の行き来、ズームバー、再生位置のページ送り、移動のキー（↑ ↓ の Previous/Next Edit、Shift+← → の Step One Second）、ズームと移動のキーの押し続け、キーの名前の決まり（英字と矢印の Shift、記号は押された文字）、サーフェスの IME を切る | T1、B3 | `crates/mm-ui-layout/src/zoombar.rs`（新）、`time_view.rs`、`controller.rs`、`apps/movie-maker/src/win/keys.rs`、`commands.rs`、`keyboard.rs`（新。記号のキーの文字）、`surface.rs`（IME と繰り返し）、`ipc.rs`（`key_event` の `repeat`）、`playback/intake.rs`（移動をまとめる）、`apps/movie-maker/web/transport.js`（`keyName` と `repeat`） | Timeline の下にズームバー。Shift+Z の後は全体が収まる。JIS のキー配列で `=`（Shift+-）と `-` でズームする |
 | Z2 `feature/movie-maker-timeline-snapping` | N で入/切、ドラッグ中の反転、スナップの表示、ドラッグ中のツールチップ、キーフレームとマーカーの目標 | 文字の PR、T1、B2、B3 | `crates/mm-ui-layout/src/snap.rs`、`controller.rs`、`paint.rs`、`keys.rs`、`commands.rs` | つまみのドラッグで吸い付いた所に太いガイド線と三角とドラッグ中のツールチップ。吸い付かない所では線が無い |
 | Z3 `feature/movie-maker-timeline-toolbar` | ツールバー（Undo、Redo、Split Clip、Lift、Extract、Snapping、ズーム）。ツールのボタンの場所は空けておく | Z1、Z2、文字の PR | `crates/mm-ui-layout/src/toolbar.rs`（新）、`crates/mm-ui-wgpu/src/ui.rs`、`apps/movie-maker/src/win/surface.rs` | Timeline の上にツールバー。Snapping が押された見た目 |
 | Z4 `feature/movie-maker-timeline-tools` | Selection、Trim、Blade と A、T、B。Ctrl+B の Split Clip（`verify_edit.rs` から Ctrl+B を投げる手段も）。Selection の帯の中のドラッグで `shiftLayer`。08-ui.md のキーの表を直す | Z3、B1 | `crates/mm-ui-layout/src/gesture.rs`、`controller.rs`、`toolbar.rs`、`apps/movie-maker/src/win/edit_actions.rs`、`sequence_edit.rs`、`keys.rs`、`verify_edit.rs`、`docs/design/08-ui.md` | Blade を選んだツールバーのスクリーンショットと、レイヤーを動かした後の帯のスクリーンショット |
@@ -461,7 +472,7 @@ T1 が決めた形: 矩形の型は `TimelineLayout`（`mm-ui-layout/src/timelin
 | D1 `feature/movie-maker-menu-bar` | メニューバー（コマンドの表から）。キーの見た目は項目の文字の `\t` の後ろ（アクセラレーターは登録しない）。チェックと押せるかの状態。Ctrl+I の Import Media。キーでメニューを開く手段 | B3 | `apps/movie-maker/src/win/menu.rs`（新）、`layout.rs`（新。`app.rs` からウィンドウを作る所と割り付けの関数を移す）、`commands.rs`、`keys.rs`、`surface.rs`（F10）、`ui/sdk/src/commands.ts`、`ui/shell/src/Shell.tsx` | ウィンドウの上端に File、Edit、Playback、Timeline、Help（View は Z1 が Zoom を表に足すと出る） |
 | D2 `feature/movie-maker-shortcuts-window` | Keyboard Shortcuts のウィンドウ（`?`、絞り込み、Enter で実行） | B3、D1、Z1（記号のキーの名前） | `ui/shortcuts/`（新）、`ui/tools/build.ts`（ページの入口を足す）、`apps/movie-maker/src/win/layout.rs` か `menu.rs`（ウィンドウを開く。ウィンドウはコードで作り、`capabilities/default.json` は全部のウィンドウに当たる） | 「zoom」で絞ったウィンドウに Zoom In (=)、Zoom Out (-)、Full Extent Zoom (Shift+Z) |
 | D3 `feature/movie-maker-context-menus` | 右クリックのメニュー（`Window::popup_menu_at`） | B3、T3、Z4 | `apps/movie-maker/src/win/surface.rs`、`context_menu.rs`（新） | 項目の並びはテスト（ポップアップは PrintWindow に写らない） |
-| D4 `feature/movie-maker-empty-states` | 空の状態の案内（Program、Timeline、Inspector、Story） | 文字の PR、B3、T1（`paint.rs` を分けた後に足す） | `crates/mm-ui-layout/src/paint.rs`（空の Timeline）、`crates/mm-ui-wgpu/src/program.rs`、`ui/panels/inspector/src/InspectorPanel.tsx`、`ui/panels/story/src/StoryPanel.tsx` | 空のプロジェクトで Program と Timeline に案内、Inspector にコンポジションの要約 |
+| D4 `feature/movie-maker-empty-states` | 空の状態の案内（Program、Timeline、Inspector、Story） | 文字の PR、B3、T1 | `crates/mm-ui-layout/src/empty.rs`（新）、`crates/mm-ui-wgpu/src/empty.rs`（新）、`ui.rs`、`apps/movie-maker/src/win/ipc.rs`、`web/transport.js`、`ui/shell/src/Shell.tsx`、`ui/panels/inspector/src/EmptyInspector.tsx`（新）、`ui/panels/story/src/StoryPanel.tsx` | 空のプロジェクトで Program に案内、カットの無い sequence のレイヤーだけのコンポジションで Timeline に案内、Inspector にコンポジションの要約 |
 
 ### 衝突しやすい共有ファイル
 
@@ -470,11 +481,11 @@ T1 が決めた形: 矩形の型は `TimelineLayout`（`mm-ui-layout/src/timelin
 | `crates/mm-ui-layout/src/` の `lib.rs`、`timeline.rs`、`paint.rs`、`controller.rs`、`screen.rs` | 文字の PR、T1〜T4、Z1〜Z4、K1、K2、L1、L3、D4 | 文字の PR、T1 の順に先。後の PR は自分の領域のファイルを足し、`pub use`、`Item` のフィールド、`paint.rs` の呼び出しには名前の順の位置に 1 行で足す |
 | `crates/mm-ui-wgpu/src/` の `ui.rs`、`model.rs`、`quads.rs` | 文字の PR、T1、T2、T4、T5、K1、L1、Z3、B2 | 同上。`quads.rs` は文字の PR、B2、T5 の順 |
 | `crates/mm-ui-wgpu/tests/` | 文字の PR、B2 | 文字の PR が `tests/it/` にまとめた後に足す |
-| `apps/movie-maker/src/win/keys.rs`、`commands.rs` | B3、T3、Z1、Z2、Z4、K2、L1、D1、D2 | B3 が先。キーの名前の決まりは Z1。コマンドとキーは ID の名前の順に足す |
+| `apps/movie-maker/src/win/keys.rs`、`commands.rs` | B3、T3、Z1、Z2、Z4、K2、L1、D1、D2 | B3 が先。キーの名前の決まりは Z1。コマンドとキーは ID の名前の順に足す（キーの試験は `keys/tests.rs`） |
 | `apps/movie-maker/src/win/surface.rs` | Z1、Z3、Z5、L1、L3、D1、D3 | 当たった所ごとの処理は別のファイルに置き、`surface.rs` には振り分けの 1 行だけ足す |
 | `apps/movie-maker/src/win/app.rs`、`layout.rs` | D1、D2、L2 | ウィンドウを作る所と割り付けの関数は `layout.rs` が持ち、`app.rs` には起動の流れだけを置く |
 | `apps/movie-maker/src/win/verify_edit.rs` | T1、Z4 | 行の位置は `mm-ui-layout` の関数から引く（定数の `ROW_H` を使わない） |
-| `apps/movie-maker/web/transport.js` | E1、Z1、L2 | E1 が先。Z1 は `keyName` だけ |
+| `apps/movie-maker/web/transport.js` | E1、Z1、L2 | E1 が先。Z1 は `keyName` と、keydown で送る `repeat` だけ |
 | `crates/mm-ops/` と生成物（`ops.json`、`ops.ts`） | B1、E2 | 生成物が衝突したら `scripts/regen.sh` で作り直す |
 | `ui/theme/theme.json`、`ui/shell/src/` | L2、B3、K2 | 列の値は L2 だけが変える |
 | `docs/design/08-ui.md`、`05-ops.md` | 文字の PR、T1、Z4（08-ui.md）、E1、B1（05-ops.md） | 文字の PR と T1 は「表示の倍率」の同じ段落に触るので、文字の PR が先 |

@@ -58,13 +58,18 @@ pub fn timeline_layer_ids(comp: &Composition) -> Vec<String> {
         .collect()
 }
 
-/// シーケンスのレイヤーが指すシーケンスと、有効なカットの配置。シーケンスのレイヤーでなければ `None`。
-fn layer_cuts<'a>(project: &'a Project, layer: &Layer) -> Option<(&'a Sequence, Vec<PlacedCut>)> {
+/// シーケンスのレイヤーが指すシーケンス。シーケンスのレイヤーでないか、シーケンスが無ければ `None`。
+pub(crate) fn layer_sequence<'a>(project: &'a Project, layer: &Layer) -> Option<&'a Sequence> {
     if layer.source.kind != SEQUENCE_KIND {
         return None;
     }
     let id: SequenceId = Id::new(layer.source.text_param(SEQUENCE_PARAM).unwrap_or(""));
-    let seq = project.sequence(&id).ok()?;
+    project.sequence(&id).ok()
+}
+
+/// シーケンスのレイヤーが指すシーケンスと、有効なカットの配置。シーケンスのレイヤーでなければ `None`。
+fn layer_cuts<'a>(project: &'a Project, layer: &Layer) -> Option<(&'a Sequence, Vec<PlacedCut>)> {
+    let seq = layer_sequence(project, layer)?;
     Some((seq, place_cuts(seq).ok()?))
 }
 

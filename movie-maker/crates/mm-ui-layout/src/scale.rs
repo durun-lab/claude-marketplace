@@ -88,8 +88,10 @@ impl Scale {
     pub fn layout_to_physical(self, l: SurfaceLayout) -> SurfaceLayout {
         SurfaceLayout {
             program: self.rect_to_physical(l.program),
+            program_transport: self.rect_to_physical(l.program_transport),
             timeline: self.rect_to_physical(l.timeline),
             source: l.source.map(|r| self.rect_to_physical(r)),
+            source_transport: l.source_transport.map(|r| self.rect_to_physical(r)),
         }
     }
 

@@ -140,8 +140,15 @@ mod tests {
             .iter()
             .find(|q| q.shape == QuadShape::Rect)
             .expect("ガイド線");
+        let m = model();
+        let layout = TestViewport::new(&m, SIZE).layout;
+        let column = layout.time_column();
         assert_eq!((line.rect.x, line.rect.w), (HEADER_W + 149.0, 2.0));
-        assert_eq!((line.rect.y, line.rect.h), (0.0, SIZE.1), "時刻の列の全高");
+        assert_eq!(
+            (line.rect.y, line.rect.h),
+            (column.y, column.h),
+            "時刻の列の全高"
+        );
         let down = quads
             .iter()
             .find(|q| q.shape == QuadShape::TriDown)
@@ -152,7 +159,11 @@ mod tests {
             .iter()
             .find(|q| q.shape == QuadShape::TriUp)
             .expect("下端の三角形");
-        assert_eq!(up.rect.bottom(), SIZE.1, "行の領域の下端から上を指す");
+        assert_eq!(
+            up.rect.bottom(),
+            layout.row_area.bottom(),
+            "行の領域の下端から上を指す"
+        );
     }
 
     #[test]
@@ -192,9 +203,15 @@ mod tests {
         };
         let strip = edge_strip(layer, 3.0).expect("レイヤーのアウト点");
         let m = model();
-        let bar = TestViewport::new(&m, SIZE).vp().bar(1, 1.0, 3.0);
+        let f = TestViewport::new(&m, SIZE);
+        let bar = f.vp().bar(1, 1.0, 3.0);
         assert_eq!(strip.rect.right(), bar.right());
-        assert_eq!((strip.rect.y, strip.rect.h), (bar.y, bar.h));
+        let bottom = bar.bottom().min(f.layout.row_area.bottom());
+        assert_eq!(
+            (strip.rect.y, strip.rect.bottom()),
+            (bar.y, bottom),
+            "帯の高さで、行の領域の下端で切る"
+        );
         let cut_edge = SnapKind::CutEdge {
             item: 0,
             cut: 1,

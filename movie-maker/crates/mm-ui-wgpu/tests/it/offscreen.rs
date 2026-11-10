@@ -303,7 +303,9 @@ fn 描き込みは表示の倍率とウィンドウの大きさが変わると�
         "倍率 2 では点の中 {wide:?}"
     );
 
-    let small = (W / 2, H / 2);
+    // 表示の倍率 2 で論理ピクセル 240x150。Timeline の高さの下限（MIN_TIMELINE_H）と再生の操作のバーを
+    // 除いても映像が残る。
+    let small = (W * 3 / 4, H * 3 / 4);
     ui.resize(small.0, small.1);
     let out = render_sized(&device, &queue, &mut ui, small);
     let [sx, sy] = frame_point(fit_rect(16.0, 9.0, ui.layout().program), [0.5, 0.5]);

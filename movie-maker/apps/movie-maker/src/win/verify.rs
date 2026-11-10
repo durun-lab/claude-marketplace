@@ -1,6 +1,7 @@
 //! `--play-test` の再生テスト。プロジェクトを先頭から要求の秒数だけ再生して、ドロップしたフレームの数、
 //! 映像と音のずれ、WebView の時計の誤差を測り、途中のスクリーンショットと一緒に残す。続けて入力、Inspector、
-//! Timeline の編集の工程を通し、テストが適用した編集を戻してから結果の JSON を書いて終わる。
+//! 再生の操作のバー、Timeline の編集、Timeline のズームと移動の工程を通し、テストが適用した編集を戻してから結果の
+//! JSON を書いて終わる。
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::Ordering;
@@ -24,6 +25,8 @@ use crate::win::verify_edit;
 use crate::win::verify_place::placement;
 use crate::win::verify_restore::{self, Savepoint};
 use crate::win::verify_stage::{self, checkpoint, wait_until, StageError};
+use crate::win::verify_transport;
+use crate::win::verify_zoom;
 
 /// 描画が安定して WebView の初期化が終わるまでの待ち。
 const SETTLE: Duration = Duration::from_millis(2500);
@@ -46,8 +49,12 @@ const PLAY_SLACK: Duration = Duration::from_secs(10);
 const INTERACTION_LIMIT: Duration = Duration::from_secs(20);
 /// Inspector は待ちの合計が約 8 秒。
 const INSPECTOR_LIMIT: Duration = Duration::from_secs(30);
+/// 再生の操作のバーは、全部の待ちが上限まで待つと約 80 秒（ふだんは数秒）。
+const TRANSPORT_LIMIT: Duration = Duration::from_secs(90);
 /// Timeline の編集は待ちの合計が約 75 秒。
 const EDIT_LIMIT: Duration = Duration::from_secs(90);
+/// Timeline のズームと移動は、全部の待ちが上限まで待つと約 70 秒（ふだんは数秒）。
+const ZOOM_LIMIT: Duration = Duration::from_secs(90);
 
 /// スクラブで狙う時刻（秒）。
 const SCRUB_TARGET: f64 = 3.0;
@@ -216,7 +223,11 @@ fn run(env: &TestEnv, telemetry: &Telemetry) -> Value {
     let e = env.clone();
     report["inspector"] = stages.run("inspector", INSPECTOR_LIMIT, move || inspector_flow(&e));
     let e = env.clone();
+    report["transport"] = stages.run("transport", TRANSPORT_LIMIT, move || transport_flow(&e));
+    let e = env.clone();
     report["timeline_edit"] = stages.run("timeline_edit", EDIT_LIMIT, move || timeline_edit(&e));
+    let e = env.clone();
+    report["timeline_zoom"] = stages.run("timeline_zoom", ZOOM_LIMIT, move || timeline_zoom(&e));
     report["restore"] = verify_restore::restore(savepoint.as_ref(), shared);
     report["failed_stages"] = json!(stages.failed);
     let _ = env.target.window.set_always_on_top(false);
@@ -365,7 +376,7 @@ fn interaction(shared: &Shared, info: &PlaybackInfo, target: &Target) -> Value {
 /// スクラブの許容誤差（秒）。クリックを物理ピクセルに丸めた半画素（1 秒が `phys_px_per_sec` 物理ピクセル）と、
 /// シークをフレームに丸めた半フレームの和。長いコンポジションの全体表示は 1 物理ピクセルが 2 フレームより長いので、
 /// 2 フレームに決めた許容誤差では、狙った所を押しても外れる。
-fn scrub_tolerance(phys_px_per_sec: f64, fps: f64) -> f64 {
+pub(crate) fn scrub_tolerance(phys_px_per_sec: f64, fps: f64) -> f64 {
     let rounding = 0.5 / phys_px_per_sec + 0.5 / fps;
     (SCRUB_MIN_FRAMES / fps).max(rounding) + SCRUB_EPS
 }
@@ -435,6 +446,17 @@ fn inspector_flow(env: &TestEnv) -> Value {
     })
 }
 
+/// 再生の操作のバーの工程（`verify_transport`）。
+fn transport_flow(env: &TestEnv) -> Value {
+    verify_transport::run(&verify_transport::Env {
+        shared: &env.shared,
+        info: &env.info,
+        surface_hwnd: env.target.surface_hwnd,
+        window_hwnd: env.hwnd,
+        test: &env.test,
+    })
+}
+
 /// Timeline の編集の工程（`verify_edit`）。
 fn timeline_edit(env: &TestEnv) -> Value {
     verify_edit::run(&verify_edit::Env {
@@ -442,6 +464,17 @@ fn timeline_edit(env: &TestEnv) -> Value {
         surface_hwnd: env.target.surface_hwnd,
         window_hwnd: env.hwnd,
         test: &env.test,
+    })
+}
+
+/// Timeline のズームと移動の工程（`verify_zoom`）。
+fn timeline_zoom(env: &TestEnv) -> Value {
+    verify_zoom::run(&verify_zoom::Env {
+        shared: &env.shared,
+        surface_hwnd: env.target.surface_hwnd,
+        window_hwnd: env.hwnd,
+        test: &env.test,
+        webview: env.app.get_webview("ui"),
     })
 }
 

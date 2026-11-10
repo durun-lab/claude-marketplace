@@ -4,6 +4,7 @@ import { act } from "preact/test-utils";
 import { PARAM_VALUE_SCHEMAS, type Asset, type Layer, type Op } from "@mm/sdk";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { hexToRgba, rgbaToHex } from "./color.ts";
+import { timecode } from "./EmptyInspector.tsx";
 import { fieldSpecFor, type ParamKind } from "./fields.ts";
 import { InspectorPanel } from "./InspectorPanel.tsx";
 import { describeLayer, setParamOp } from "./model.ts";
@@ -111,10 +112,46 @@ describe("color", () => {
   });
 });
 
+describe("timecode", () => {
+  // Timeline の見出しの列の上の角（`header/tests.rs` の `timecode`）と同じ例で、同じ決まりを確かめる。
+  it("時:分:秒:フレームで、フレームは時刻を含むフレーム", () => {
+    expect(timecode(0, 30)).toBe("00:00:00:00");
+    expect(timecode(83 + 12 / 30, 30)).toBe("00:01:23:12");
+    expect(timecode(3661.5, 30)).toBe("01:01:01:15");
+    expect(timecode(2 + 5.9 / 30, 30)).toBe("00:00:02:05");
+    expect(timecode(-1, 30)).toBe("00:00:00:00");
+    expect(timecode(1, 0)).toBe("00:00:01:00");
+  });
+
+  it("29.97 fps は 29.97 で数えたフレームを 1 秒 30 フレームで書く（ノンドロップ）", () => {
+    expect(timecode(83.5, 30000 / 1001)).toBe("00:01:23:12");
+  });
+});
+
 describe("InspectorPanel", () => {
-  it("選んだレイヤーが無いと空の表示", () => {
+  it("選んだレイヤーが無いと次にすることを出す", () => {
     render(<InspectorPanel layer={null} onOp={vi.fn()} />, host);
-    expect(host.textContent).toContain("No layer selected");
+    expect(host.textContent).toContain("Select a layer in the Timeline to see its properties.");
+  });
+
+  it("選んだレイヤーが無いときはコンポジションの要約を出す", () => {
+    const composition = { name: "main", width: 1920, height: 1080, fps: 30000 / 1001, duration: 83.5, layer_count: 3 };
+    render(<InspectorPanel layer={null} composition={composition} onOp={vi.fn()} />, host);
+    const summary = [...host.querySelectorAll(".mm-insp-summary-row")].map((r) => r.textContent);
+    expect(summary).toEqual([
+      "Namemain",
+      "Size1920 × 1080",
+      "Frame rate29.97 fps",
+      "Duration00:01:23:12",
+      "Layers3",
+    ]);
+  });
+
+  it("レイヤーを選ぶと案内と要約は消える", () => {
+    const composition = { name: "main", width: 1920, height: 1080, fps: 30, duration: 5, layer_count: 1 };
+    render(<InspectorPanel layer={layer} composition={composition} onOp={vi.fn()} />, host);
+    expect(host.querySelector(".mm-insp-summary")).toBeNull();
+    expect(host.textContent).not.toContain("Select a layer");
   });
 
   it("キーフレームのあるパラメータはマーカーを出し、編集できない", () => {
