@@ -116,12 +116,34 @@ impl Placement {
         self.client((x + dx, y))
     }
 
+    /// `keyframe_point` を画素に丸めない点（クライアントの物理ピクセル）。縮めた表示では 1 画素が数百 ms に当たり、丸めた点を
+    /// 中心に拡大するとひし形が行の領域の外へずれるので、拡大の中心に使う。
+    pub(crate) fn keyframe_anchor(&self, (row, k): (usize, usize), t: f64) -> (f32, f32) {
+        let (x, y) = keyframe_center(&self.viewport(), (row, k), t);
+        let (tl, s) = (self.surface.timeline, self.scale.get());
+        ((tl.x + x) * s, (tl.y + y) * s)
+    }
+
     /// 行 `row` の下のキーフレームの行 `k` の、時刻 `t` のひし形が行の領域に全部見えているか。
     pub(crate) fn keyframe_visible(&self, (row, k): (usize, usize), t: f64) -> bool {
         let (x, y) = keyframe_center(&self.viewport(), (row, k), t);
         let half = ROW_DIAMOND_PX / 2.0;
         let a = self.timeline.row_area;
         x - half >= a.x && x + half <= a.right() && y - half >= a.y && y + half <= a.bottom()
+    }
+
+    /// 時刻 `t` のひし形の中心、行の領域、行の領域に見えている時刻の範囲、1 秒の論理ピクセル（Timeline の座標）。
+    /// ひし形が見えていないときに、どちらへ外れたかを結果の JSON に残す。
+    pub(crate) fn keyframe_where(&self, (row, k): (usize, usize), t: f64) -> serde_json::Value {
+        let vp = self.viewport();
+        let (x, y) = keyframe_center(&vp, (row, k), t);
+        let a = self.timeline.row_area;
+        serde_json::json!({
+            "center": [x, y],
+            "row_area": [a.x, a.y, a.right(), a.bottom()],
+            "secs": [vp.t_of(a.x), vp.t_of(a.right())],
+            "px_per_sec": self.px_per_sec(),
+        })
     }
 
     /// 目盛りの帯の縦の中央の、時刻 `t` の点（クライアントの物理ピクセル）。

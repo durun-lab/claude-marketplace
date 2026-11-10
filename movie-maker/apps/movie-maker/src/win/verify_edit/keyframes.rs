@@ -4,6 +4,8 @@
 //! 戻し、レイヤーの帯を引いて行のひし形が帯と一緒に動く所を撮って取りやめ、] と [ で前後のキーフレームへ動かし、U で閉じて
 //! 開く。手順ごとにスクリーンショットを残す。
 
+use std::sync::atomic::Ordering;
+
 use mm_ui_layout::{HitKind, Mods, PointerEvent, TimelineModel};
 use mm_ui_wgpu::timeline_layer_ids;
 use serde_json::json;
@@ -23,6 +25,9 @@ const SHIFT_SECS: f64 = 1.0;
 const GRAB_W: f32 = 60.0;
 /// ひし形を掴んで動かす縮尺（1 秒の論理ピクセル）。0.5 秒の移動が 30 ピクセルになり、隣のキーフレームの当たりに掛からない。
 const MIN_PX_PER_SEC: f64 = 60.0;
+/// Alt+クリックでキーフレームを打つ点と、両側のひし形の中心との距離（論理ピクセル）。ひし形の当たり（半分の 5.5 と
+/// 余白の 2）の外。
+const ADD_CLEAR_PX: f64 = 10.0;
 
 /// 行を開いたレイヤー（Timeline の行の添字と ID）。
 struct OpenedLayer {
@@ -64,6 +69,24 @@ fn diamond_point(env: &Env<'_>, layer: &OpenedLayer, time: f64, dx: f32) -> Opti
         .then(|| place.keyframe_point((layer.index, 0), time, dx))
 }
 
+/// 最初のキーフレームの行の、時刻 `time` のひし形の画素に丸めない中心。ひし形が見えていなければ `None`。
+fn diamond_anchor(env: &Env<'_>, layer: &OpenedLayer, time: f64) -> Option<(f32, f32)> {
+    let (model, _) = model_of(env.shared)?;
+    let place = placement(env.shared, env.surface_hwnd, &model)?;
+    let row = (layer.index, 0);
+    place
+        .keyframe_visible(row, time)
+        .then(|| place.keyframe_anchor(row, time))
+}
+
+/// ひし形が見えていないときの結果の JSON。ひし形の位置と、行の領域に見えている時刻の範囲を添える。
+fn diamond_missing(env: &Env<'_>, layer: &OpenedLayer, time: f64) -> serde_json::Value {
+    let place = model_of(env.shared)
+        .and_then(|(model, _)| placement(env.shared, env.surface_hwnd, &model))
+        .map(|p| p.keyframe_where((layer.index, 0), time));
+    json!({ "why": "ひし形が見えていない", "time": time, "place": place })
+}
+
 /// 表示の状態の縦のスクロール。
 fn scroll_y(shared: &Shared) -> f32 {
     shared.view.current().map_or(0.0, |s| s.scroll_y)
@@ -76,10 +99,10 @@ fn px_per_sec(shared: &Shared) -> f64 {
 
 /// クライアントの点 `at` に、サーフェスが積むのと同じホイールの入力を `dy` 目盛り積む（`ctrl` で拡大縮小、`shift` で縦の
 /// スクロール）。修飾キーの状態はメッセージで送れないため。
-fn send_wheel(shared: &Shared, at: (i32, i32), dy: f32, (ctrl, shift): (bool, bool)) {
+fn send_wheel(shared: &Shared, at: (f32, f32), dy: f32, (ctrl, shift): (bool, bool)) {
     let wheel = PointerEvent::Wheel {
-        x: at.0 as f32,
-        y: at.1 as f32,
+        x: at.0,
+        y: at.1,
         dy,
         ctrl,
         shift,
@@ -90,7 +113,8 @@ fn send_wheel(shared: &Shared, at: (i32, i32), dy: f32, (ctrl, shift): (bool, bo
 /// 行の領域の中央に Shift+ホイールを `dy` 目盛り送り、縦のスクロールが変わるのを待って、変わった量を返す。
 fn wheel_rows(env: &Env<'_>, place: &Placement, dy: f32) -> f32 {
     let before = scroll_y(env.shared);
-    send_wheel(env.shared, place.row_area_center(), dy, (false, true));
+    let (x, y) = place.row_area_center();
+    send_wheel(env.shared, (x as f32, y as f32), dy, (false, true));
     wait_until(WAIT, || scroll_y(env.shared) != before);
     scroll_y(env.shared) - before
 }
@@ -100,7 +124,7 @@ fn wheel_rows(env: &Env<'_>, place: &Placement, dy: f32) -> f32 {
 fn zoom_to_keyframes(env: &Env<'_>, layer: &OpenedLayer) {
     let shared = env.shared;
     let first = row_times(shared, &layer.id).first().copied();
-    let at = first.and_then(|t| diamond_point(env, layer, t, 0.0));
+    let at = first.and_then(|t| diamond_anchor(env, layer, t));
     let Some(at) = at.filter(|_| px_per_sec(shared) < MIN_PX_PER_SEC) else {
         return;
     };
@@ -176,7 +200,7 @@ fn select_step(env: &Env<'_>, log: &mut Log, layer: &OpenedLayer) -> Option<f64>
     let shared = env.shared;
     let time = *row_times(shared, &layer.id).first()?;
     let Some(at) = diamond_point(env, layer, time, 0.0) else {
-        log.step("keyframe_select", false, json!("ひし形が見えていない"));
+        log.step("keyframe_select", false, diamond_missing(env, layer, time));
         return None;
     };
     shared.keyframes.select(None);
@@ -300,21 +324,29 @@ fn context_step(env: &Env<'_>, log: &mut Log, layer: &OpenedLayer, time: f64) {
     }
 }
 
-/// 最初の 2 つのキーフレームの間を Alt+クリックしてキーフレームを打ち、取り消し 1 回で戻す。修飾キーの状態はメッセージで
+/// Alt+クリックする点。隣り合うキーフレームの間のうち、両側のひし形の当たりから `ADD_CLEAR_PX` 離れられる幅があって
+/// 行の領域に見えている最初の間の中央（最初の 2 つが 1 フレームしか離れていないプロジェクトがある）。
+fn add_point(env: &Env<'_>, layer: &OpenedLayer, times: &[f64]) -> Option<(i32, i32)> {
+    let (model, _) = model_of(env.shared)?;
+    let place = placement(env.shared, env.surface_hwnd, &model)?;
+    let (row, min_gap) = ((layer.index, 0), 2.0 * ADD_CLEAR_PX / place.px_per_sec());
+    let mid = times
+        .windows(2)
+        .filter(|w| w[1] - w[0] >= min_gap)
+        .map(|w| (w[0] + w[1]) / 2.0)
+        .find(|t| place.keyframe_visible(row, *t))?;
+    Some(place.keyframe_point(row, mid, 0.0))
+}
+
+/// キーフレームの間を Alt+クリックしてキーフレームを打ち、取り消し 1 回で戻す。修飾キーの状態はメッセージで
 /// 送れないので、サーフェスが積むのと同じポインターの入力を入力のキューに積む。
 fn add_step(env: &Env<'_>, log: &mut Log, layer: &OpenedLayer) {
     let shared = env.shared;
     let before = row_times(shared, &layer.id);
-    let at = match before[..] {
-        [a, b, ..] => diamond_point(env, layer, (a + b) / 2.0, 0.0),
-        _ => None,
-    };
-    let Some((x, y)) = at else {
-        log.step(
-            "keyframe_add",
-            false,
-            json!("キーフレームの間の位置を求められない"),
-        );
+    let Some((x, y)) = add_point(env, layer, &before) else {
+        let why = "ひし形に掛からずに打てるキーフレームの間が見えていない";
+        let detail = json!({ "why": why, "keyframes": before.len() });
+        log.step("keyframe_add", false, detail);
         return;
     };
     let (x, y) = (x as f32, y as f32);
@@ -377,6 +409,14 @@ fn shift_layer_step(env: &Env<'_>, log: &mut Log, layer: &OpenedLayer) {
     log.step("keyframe_rows_shift_layer", kept, json!({ "start": start }));
 }
 
+/// 描画スレッドが今の再生位置を読んでから 1 フレーム描き終えるまで待つ。Timeline のコマンドは描画スレッドが前の
+/// フレームで読んだ再生位置から行き先を求めるので、シークの直後に送ったキーは前の位置から求められる。
+fn wait_drawn(shared: &Shared) {
+    let drawn = || shared.frames_presented.load(Ordering::SeqCst);
+    let seen = drawn();
+    wait_until(WAIT, || drawn() >= seen + 2);
+}
+
 /// 先頭から ] を 2 回と [ を 1 回押し、選んだレイヤーの 1 つ目、2 つ目、1 つ目のキーフレームへ動くことを確かめる。
 fn navigate_step(env: &Env<'_>, log: &mut Log, layer: &OpenedLayer) {
     let shared = env.shared;
@@ -400,6 +440,7 @@ fn navigate_step(env: &Env<'_>, log: &mut Log, layer: &OpenedLayer) {
     seek_main(shared, 0.0);
     let mut reached = Vec::new();
     for (key, want) in [("]", first), ("]", second), ("[", first)] {
+        wait_drawn(shared);
         keys::dispatch(shared, "play-test", key);
         let ok = wait_until(WAIT, || (shared.playhead() - want).abs() < AT_EPS);
         reached.push(json!({ "key": key, "want": want, "at": shared.playhead(), "ok": ok }));
