@@ -6,6 +6,7 @@ use crate::header;
 use crate::keymarks;
 use crate::time_view::TimeView;
 use crate::timeline_layout::Viewport;
+use crate::zoombar::{self, ZoomBarPart};
 
 /// 端のつまみの幅の上限。
 pub const HANDLE_PX: f32 = 7.0;
@@ -220,6 +221,10 @@ pub enum Hit {
     Scrollbar {
         thumb: bool,
     },
+    /// ズームバー。
+    ZoomBar {
+        part: ZoomBarPart,
+    },
     Empty,
 }
 
@@ -254,30 +259,10 @@ fn part_at(bx: f32, bw: f32, x: f32) -> Part {
 
 /// 点 (x, y)（Timeline の座標）に当たるもの。つまみは帯の幅の 1/3 を超えない。
 pub fn hit_test(model: &TimelineModel, vp: &Viewport, x: f32, y: f32) -> Hit {
+    if let Some(hit) = region_hit(model, vp, x, y) {
+        return hit;
+    }
     let l = vp.layout;
-    if l.ruler.contains(x, y) {
-        return Hit::Ruler;
-    }
-    if l.corner.contains(x, y) {
-        return Hit::Corner;
-    }
-    if l.headers.contains(x, y) {
-        return vp
-            .rows
-            .at(y - l.headers.y + vp.scroll_y)
-            .and_then(|index| Some((index, model.items.get(index)?)))
-            .map_or(Hit::Empty, |(index, item)| {
-                header::button_at(&header::cells(header::row_rect(vp, index), item), x, y).map_or(
-                    Hit::Header { index },
-                    |button| Hit::HeaderButton { index, button },
-                )
-            });
-    }
-    if l.scrollbar.contains(x, y) {
-        return Hit::Scrollbar {
-            thumb: vp.thumb().contains(x, y),
-        };
-    }
     if !l.row_area.contains(x, y) {
         return Hit::Empty;
     }
@@ -307,6 +292,34 @@ pub fn hit_test(model: &TimelineModel, vp: &Viewport, x: f32, y: f32) -> Hit {
         index,
         part: part_at(bar.x, bar.w, x),
     }
+}
+
+/// 行の領域のほかの矩形（目盛りの帯、見出しの列の上の角、見出しの列、縦のスクロールバー、ズームバー）に当たるもの。
+/// どれにも入らなければ `None`。
+fn region_hit(model: &TimelineModel, vp: &Viewport, x: f32, y: f32) -> Option<Hit> {
+    let l = vp.layout;
+    if l.ruler.contains(x, y) {
+        return Some(Hit::Ruler);
+    }
+    if l.corner.contains(x, y) {
+        return Some(Hit::Corner);
+    }
+    if l.headers.contains(x, y) {
+        let row = vp.rows.at(y - l.headers.y + vp.scroll_y);
+        let item = row.and_then(|index| Some((index, model.items.get(index)?)));
+        return Some(item.map_or(Hit::Empty, |(index, item)| {
+            header::hit(vp, (index, item), (x, y))
+        }));
+    }
+    if l.scrollbar.contains(x, y) {
+        let thumb = vp.thumb().contains(x, y);
+        return Some(Hit::Scrollbar { thumb });
+    }
+    if l.zoombar.contains(x, y) {
+        let part = zoombar::part_at(zoombar::thumb_of(vp, model.duration), x);
+        return Some(Hit::ZoomBar { part });
+    }
+    None
 }
 
 /// シーケンスのレイヤーの上の `x` に当たるカット。

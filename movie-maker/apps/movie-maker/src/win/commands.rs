@@ -4,7 +4,7 @@
 use std::sync::{Arc, OnceLock};
 
 use mm_doc::SEQUENCE_KIND;
-use mm_ui_layout::PointerEvent;
+use mm_ui_layout::{PointerEvent, TimelineCommand};
 use serde::Serialize;
 
 use crate::win::edit_actions::{self, EditAction};
@@ -34,21 +34,13 @@ pub enum Action {
     Edit(EditAction),
     /// 再生のコマンド。Source を最後にクリックしていれば Source の、そうでなければ Program の再生に向く。
     Playback(Command),
-    /// Timeline の表示のコマンド。描画スレッドの Timeline の操作が実行する。
-    Timeline(TimelineAction),
+    /// Shy のコマンド。表示の状態を変えるだけで、操作にならない。
+    Shy(ShyCommand),
+    /// Timeline の表示と再生位置のコマンド。ポインターの入力のキューで描画スレッドへ渡し、Timeline の操作が
+    /// ドラッグとの前後を保って実行する。
+    Timeline(TimelineCommand),
     /// Tauri のウィンドウが実行するコマンド。
     Window(WindowAction),
-}
-
-/// Timeline の表示のコマンドの中身。ポインターの入力のキューで描画スレッドへ渡し、ドラッグとの前後を保つ。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TimelineAction {
-    /// Shy の印の付いた行を Timeline から外す・戻す。表示の状態を変えるだけ。
-    HideShyLayers,
-    /// 選んだレイヤーの Shy の印を付ける・外す。表示の状態を変えるだけ。
-    ShySelectedLayers,
-    /// スナップの入/切。ドラッグ中のキーは、押している間だけ反転する。
-    ToggleSnapping,
 }
 
 /// Tauri のウィンドウが実行するコマンドの中身。
@@ -168,6 +160,12 @@ pub static TABLE: &[Spec] = &[
         owner: Owner::App(Action::Playback(Command::Seek(0.0))),
     },
     Spec {
+        id: "playback.next_edit",
+        name: "Next Edit",
+        description: Some("Move the playhead to the next clip or layer boundary"),
+        owner: Owner::App(Action::Timeline(TimelineCommand::NextEdit)),
+    },
+    Spec {
         id: "playback.play_forward",
         name: "Play Forward",
         description: None,
@@ -180,16 +178,34 @@ pub static TABLE: &[Spec] = &[
         owner: Owner::App(Action::Playback(Command::Reverse)),
     },
     Spec {
+        id: "playback.previous_edit",
+        name: "Previous Edit",
+        description: Some("Move the playhead to the previous clip or layer boundary"),
+        owner: Owner::App(Action::Timeline(TimelineCommand::PreviousEdit)),
+    },
+    Spec {
         id: "playback.step_back",
         name: "Step One Frame Back",
         description: None,
         owner: Owner::App(Action::Playback(Command::Step(-1))),
     },
     Spec {
+        id: "playback.step_back_second",
+        name: "Step One Second Back",
+        description: None,
+        owner: Owner::App(Action::Playback(Command::StepSeconds(-1))),
+    },
+    Spec {
         id: "playback.step_forward",
         name: "Step One Frame Forward",
         description: None,
         owner: Owner::App(Action::Playback(Command::Step(1))),
+    },
+    Spec {
+        id: "playback.step_forward_second",
+        name: "Step One Second Forward",
+        description: None,
+        owner: Owner::App(Action::Playback(Command::StepSeconds(1))),
     },
     Spec {
         id: "playback.stop",
@@ -222,18 +238,26 @@ pub static TABLE: &[Spec] = &[
         owner: Owner::App(Action::Edit(EditAction::MarkOut)),
     },
     Spec {
+        id: "timeline.full_extent_zoom",
+        name: "Full Extent Zoom",
+        description: Some(
+            "Fit the whole composition in the Timeline, or return to the previous zoom",
+        ),
+        owner: Owner::App(Action::Timeline(TimelineCommand::FullExtentZoom)),
+    },
+    Spec {
         id: "timeline.hide_shy_layers",
         name: "Hide Shy Layers",
         description: Some(
             "Hide the Shy layers from the Timeline; rendering and export don't change",
         ),
-        owner: Owner::App(Action::Timeline(TimelineAction::HideShyLayers)),
+        owner: Owner::App(Action::Shy(ShyCommand::HideShyLayers)),
     },
     Spec {
         id: "timeline.shy_selected_layers",
         name: "Shy Selected Layers",
         description: Some("Mark the selected layer Shy so Hide Shy Layers can hide its row"),
-        owner: Owner::App(Action::Timeline(TimelineAction::ShySelectedLayers)),
+        owner: Owner::App(Action::Shy(ShyCommand::ShySelectedLayers)),
     },
     Spec {
         id: "timeline.toggle_snapping",
@@ -241,7 +265,19 @@ pub static TABLE: &[Spec] = &[
         description: Some(
             "Snap dragged edges to the playhead, clip and layer edges, keyframes, and markers",
         ),
-        owner: Owner::App(Action::Timeline(TimelineAction::ToggleSnapping)),
+        owner: Owner::App(Action::Timeline(TimelineCommand::ToggleSnapping)),
+    },
+    Spec {
+        id: "timeline.zoom_in",
+        name: "Zoom In",
+        description: Some("Zoom in around the playhead"),
+        owner: Owner::App(Action::Timeline(TimelineCommand::ZoomIn)),
+    },
+    Spec {
+        id: "timeline.zoom_out",
+        name: "Zoom Out",
+        description: Some("Zoom out around the playhead"),
+        owner: Owner::App(Action::Timeline(TimelineCommand::ZoomOut)),
     },
 ];
 
@@ -268,10 +304,8 @@ struct Ready {
     cut_selected: bool,
     /// スナップの入/切（描画スレッドが置いた表示の状態）。
     snapping: bool,
-    /// Timeline で選んでいるレイヤーがあり、それに Shy の印が付いているか（選んでいなければ `None`）。
-    selected_shy: Option<bool>,
-    /// Shy の行を隠している。
-    hide_shy: bool,
+    /// Shy の印と隠すかどうか（表示の状態）と、選んでいるレイヤーの印。
+    shy: shy::ShyReady,
 }
 
 impl Ready {
@@ -281,16 +315,12 @@ impl Ready {
                 .composition(&doc.comp)
                 .is_ok_and(|c| c.layers.iter().any(|l| l.source.kind == SEQUENCE_KIND))
         });
-        let shy = shared.view.shy();
         Self {
-            hide_shy: shy.hide,
-            selected_shy: shared
-                .selected_layer()
-                .map(|id| shy.layers.contains(id.as_str())),
             source_open: shared.source.handle().is_some(),
             sequence,
             cut_selected: shared.edit.selected_cut().is_some(),
             snapping: shared.view.snapping(),
+            shy: shy::ShyReady::of(shared),
         }
     }
 
@@ -301,15 +331,12 @@ impl Ready {
             Owner::App(Action::Edit(Insert | Overwrite)) => self.source_open && self.sequence,
             Owner::App(Action::Edit(Split)) => self.sequence,
             Owner::App(Action::Edit(Lift | Extract)) => self.cut_selected,
-            Owner::App(Action::Timeline(TimelineAction::ShySelectedLayers)) => {
-                self.selected_shy.is_some()
-            }
+            Owner::App(Action::Shy(command)) => self.shy.enabled(command),
             Owner::App(_) | Owner::Panel(_) => true,
         };
         let checked = match spec.owner {
-            Owner::App(Action::Timeline(TimelineAction::HideShyLayers)) => Some(self.hide_shy),
-            Owner::App(Action::Timeline(TimelineAction::ShySelectedLayers)) => self.selected_shy,
-            Owner::App(Action::Timeline(TimelineAction::ToggleSnapping)) => Some(self.snapping),
+            Owner::App(Action::Shy(command)) => self.shy.checked(command),
+            Owner::App(Action::Timeline(TimelineCommand::ToggleSnapping)) => Some(self.snapping),
             Owner::App(_) | Owner::Panel(_) => None,
         };
         State { enabled, checked }
@@ -403,32 +430,26 @@ pub fn run_from_key(shared: &Arc<Shared>, id: &str) -> Result<(), String> {
 
 /// コマンドのキーを離した。押している間だけ効くコマンド（ドラッグ中のスナップの反転）に知らせる。
 pub fn release_from_key(shared: &Shared, id: &str) {
-    let snapping = Owner::App(Action::Timeline(TimelineAction::ToggleSnapping));
+    let snapping = Owner::App(Action::Timeline(TimelineCommand::ToggleSnapping));
     if find(id).is_some_and(|s| s.owner == snapping) {
         timeline_input(shared, PointerEvent::SnapKeyUp);
     }
 }
 
-/// Timeline の表示のコマンドを、ポインターの入力のキュー（`Shared::input`）で描画スレッドへ渡す。
+/// Timeline のコマンドを、ポインターの入力のキュー（`Shared::input`）で描画スレッドへ渡す。
 fn timeline_input(shared: &Shared, input: PointerEvent) {
     shared.input.lock().expect("input").push(input);
 }
 
-/// 編集と再生と Timeline の表示はここで実行し、パネルとウィンドウのコマンドはウィンドウのフックへ渡す。
+/// 編集と再生はここで実行し、Timeline のコマンドはポインターの入力のキューで描画スレッドへ、パネルとウィンドウの
+/// コマンドはウィンドウのフックへ渡す。
 fn execute(shared: &Arc<Shared>, spec: &'static Spec) -> Result<(), String> {
     match spec.owner {
         Owner::App(Action::Edit(action)) => edit_actions::run(shared, action),
         Owner::App(Action::Playback(command)) => play(shared, command),
-        Owner::App(Action::Timeline(TimelineAction::HideShyLayers)) => {
-            shared.view.toggle_hide_shy();
-        }
-        Owner::App(Action::Timeline(TimelineAction::ShySelectedLayers)) => {
-            if let Some(id) = shared.selected_layer() {
-                shared.view.toggle_shy(&id);
-            }
-        }
-        Owner::App(Action::Timeline(TimelineAction::ToggleSnapping)) => {
-            timeline_input(shared, PointerEvent::ToggleSnapping);
+        Owner::App(Action::Shy(command)) => shy::run(shared, command),
+        Owner::App(Action::Timeline(command)) => {
+            timeline_input(shared, PointerEvent::Command(command));
         }
         Owner::App(Action::Window(action)) => {
             return shared.window_hook.send(Forward::Window(action))
@@ -481,6 +502,10 @@ fn play(shared: &Shared, command: Command) {
         shared.send(command);
     }
 }
+
+mod shy;
+
+pub use shy::ShyCommand;
 
 #[cfg(test)]
 mod tests;

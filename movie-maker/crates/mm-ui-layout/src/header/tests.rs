@@ -240,7 +240,7 @@ fn controller(m: &TimelineModel) -> TimelineController {
         px_per_sec: 100.0,
     });
     c.set_rows(Rows::of(&m.items, &RowHeights::default()));
-    c.resize((800.0, 100.0));
+    c.resize((800.0, 120.0));
     c
 }
 

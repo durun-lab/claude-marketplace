@@ -19,8 +19,10 @@
   const FOCUSABLE = "button, a[href], summary, [role=button], [role=tab], [role=option], [tabindex]";
   // keys.rs の BINDINGS のうち編集（clip.*、edit.*、source.*）のキーと同じ。WebView の部品にフォーカスがあるときの Delete などが Timeline の編集にならないよう、送る前に選ぶ。
   const EDIT_KEYS = new Set([
-    "KeyI", "KeyO", "Comma", "Period", "KeyB", "Delete", "Backspace", "Ctrl+KeyZ", "Ctrl+KeyY", "Ctrl+Shift+KeyZ",
+    "KeyI", "KeyO", ",", ".", "KeyB", "Delete", "Backspace", "Ctrl+KeyZ", "Ctrl+KeyY", "Ctrl+Shift+KeyZ",
   ]);
+  // code の名前のキーのうち、Shift を名前に付けるもの（英字、数字、矢印）。keys.rs の with_modifiers と同じ。
+  const SHIFT_NAMED = /^(Key[A-Z]|Digit[0-9]|Arrow(Up|Down|Left|Right))$/;
   // Program と Source の -1 と +1 で共通の title。矢印のキーは、Source をクリックした後は Source の再生に向く（keys.rs の dispatch）。
   const STEP_BACK = "Step One Frame Back (←)";
   const STEP_FORWARD = "Step One Frame Forward (→)";
@@ -89,8 +91,15 @@
   const srcAct = (action, value) => invoke("source_transport", { action, value: value ?? null });
   const edit = (action) => invoke("edit_action", { action });
   const openSource = (asset) => invoke("source_open", { asset });
-  const keyName = (e) =>
-    (e.ctrlKey ? `Ctrl+${e.shiftKey ? "Shift+" : ""}` : "") + (e.altKey ? "Alt+" : "") + e.code;
+  // キーの表（keys.rs）の名前。英字、数字、矢印、Space などは code の名前（KeyZ）、記号は押された文字（key の 1 字）を名前にし、
+  // JIS と US のキー配列で記号のキーの位置が違っても同じ名前にする。Shift は英字、数字、矢印に付け、記号には付けない
+  // （押された文字に入っている）。Space などほかの名前のキーは Ctrl と一緒のときだけ付ける。
+  const keyName = (e) => {
+    const symbol = e.key.length === 1 && !SHIFT_NAMED.test(e.code) && e.code !== "Space";
+    const shift = e.shiftKey && !symbol && (SHIFT_NAMED.test(e.code) || e.ctrlKey);
+    const mods = (e.ctrlKey ? "Ctrl+" : "") + (shift ? "Shift+" : "") + (e.altKey ? "Alt+" : "");
+    return mods + (symbol ? e.key : e.code);
+  };
 
   const build = () => {
     const style = el("style", { textContent: CSS });
@@ -236,14 +245,14 @@
     channel.onmessage = onTick;
     await invoke("subscribe", { onTick: channel });
     window.addEventListener("keydown", (e) => {
-      // パネルが処理したキー（単語の矢印など）は二重に送らない。
-      if (e.repeat || e.defaultPrevented) return;
+      // パネルが処理したキー（単語の矢印など）は二重に送らない。押し続けの繰り返しも送り、繰り返すかは keys.rs が決める。
+      if (e.defaultPrevented) return;
       const target = e.target instanceof Element ? e.target : null;
       if (target?.closest(TEXT_ENTRY)) return;
       const key = keyName(e);
       if (EDIT_KEYS.has(key) && target?.closest(FOCUSABLE)) return;
       if (e.code === "Space") e.preventDefault();
-      invoke("key_event", { source: "webview", key });
+      invoke("key_event", { source: "webview", key, repeat: e.repeat });
     });
     // 選択かプロジェクトのデータが変わったら、Inspector に中身を渡し、レイヤーの一覧を取り直す。
     window.__TAURI__.event.listen(LAYER_SELECTED_EVENT, async (e) => {

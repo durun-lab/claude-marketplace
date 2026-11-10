@@ -122,7 +122,8 @@ fn keep_rows<T>(rows: &mut Vec<T>, keep: &[bool]) {
 
 /// ポインターの入力を UI に渡し、起きた操作を送る。選択は共有状態へ、シークは再生スレッドへ、
 /// 再生の操作のバーのボタンはコマンドの表へ、端のつまみと中のドラッグの確定は編集の操作として適用する。
-/// 1 周に溜まったシークはビューアーごとに最後の 1 つだけ送る（`Seeks`）。
+/// 1 周に溜まったシークはビューアーごとに最後の 1 つだけ送る（`Seeks`）。キーとメニューの Timeline のコマンドの
+/// シーク（前後の帯の端）は、Home と End と同じく再生を止めずにすぐ送る（`Seeks::jump`）。
 pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
     let events = std::mem::take(&mut *shared.input.lock().expect("input"));
     let mut seeks = Seeks::default();
@@ -136,8 +137,10 @@ pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
                 TransportAction::Command(id) => transport::run_command(shared, id),
             }
         }
+        let command = matches!(ev, PointerEvent::Command(_));
         for action in ui.pointer(ev) {
             match action {
+                Action::Seek(t) if command => seeks.jump(shared, t),
                 Action::Seek(t) => seeks.set(Viewer::Program, t),
                 Action::Select(index) => {
                     shared.select_layer(index.and_then(|i| doc.layer_ids.get(i).cloned()));

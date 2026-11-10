@@ -12,7 +12,7 @@ use crate::geom::{Color, Rect};
 use crate::paint::PaintState;
 use crate::palette::{text_on, Palette};
 use crate::text::{place, Align, Label, TextMeasure, TextStyle, UiFont};
-use crate::timeline::{HeaderButton, Item, ItemKind, TimelineModel};
+use crate::timeline::{HeaderButton, Hit, Item, ItemKind, TimelineModel};
 use crate::timeline_layout::Viewport;
 
 /// 種類の色の帯の幅。
@@ -79,16 +79,21 @@ pub(crate) fn cells(row: Rect, item: &Item) -> Cells {
     }
 }
 
-/// 点 (x, y)（Timeline の座標）にあるボタン。
-pub(crate) fn button_at(c: &Cells, x: f32, y: f32) -> Option<HeaderButton> {
-    [
+/// 行 `index` の見出しの点 (x, y)（Timeline の座標）に当たるもの。ボタンの上ならそのボタン、ほかは見出し。
+pub(crate) fn hit(vp: &Viewport, (index, item): (usize, &Item), (x, y): (f32, f32)) -> Hit {
+    let c = cells(row_rect(vp, index), item);
+    let button = [
         (Some(c.enabled), HeaderButton::Enabled),
         (Some(c.lock), HeaderButton::Lock),
         (c.mute, HeaderButton::Mute),
         (c.solo, HeaderButton::Solo),
     ]
     .into_iter()
-    .find_map(|(cell, button)| cell.filter(|r| r.contains(x, y)).map(|_| button))
+    .find_map(|(cell, button)| cell.filter(|r| r.contains(x, y)).map(|_| button));
+    button.map_or(Hit::Header { index }, |button| Hit::HeaderButton {
+        index,
+        button,
+    })
 }
 
 /// 行 `index` のボタン `button` の中心（Timeline の座標）。音を持てないレイヤーの Mute と Solo は `None`。

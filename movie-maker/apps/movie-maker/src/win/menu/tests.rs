@@ -71,9 +71,13 @@ fn 項目は並びの順にコマンドの表の名前とキーの見た目で�
             "-",
             "Step One Frame Back\t←",
             "Step One Frame Forward\t→",
+            "Step One Second Back\tShift+←",
+            "Step One Second Forward\tShift+→",
             "-",
             "Go to Start\tHome",
             "Go to End\tEnd",
+            "Previous Edit\t↑",
+            "Next Edit\t↓",
         ]
     );
     assert_eq!(
@@ -84,8 +88,16 @@ fn 項目は並びの順にコマンドの表の名前とキーの見た目で�
     assert_eq!(menu_texts(Menu::Help, &table), ["About"]);
     assert_eq!(
         menu_texts(Menu::View, &table),
-        ["Snapping\tN", "-", "Shy Selected Layers", "Hide Shy Layers"],
-        "ズームは後の PR が表に足す"
+        [
+            "Zoom In\t=",
+            "Zoom Out\t-",
+            "Full Extent Zoom\tShift+Z",
+            "-",
+            "Snapping\tN",
+            "-",
+            "Shy Selected Layers",
+            "Hide Shy Layers"
+        ]
     );
 }
 
@@ -136,14 +148,14 @@ fn 表のコマンドはメニューバーに一度だけ出るか_not_in_menus_
 fn 表に無い_id_はスキップし_空のグループは区切り線ごと消える() {
     let table = table(&Shared::new());
     let groups: Groups = &[
-        &["timeline.zoom_in"],
-        &["edit.undo", "timeline.zoom_out"],
-        &["timeline.blade_tool"],
+        &["test.absent_one"],
+        &["edit.undo", "test.absent_two"],
+        &["test.absent_three"],
         &["app.exit"],
-        &["view.reset_ui_layout"],
+        &["test.absent_four"],
     ];
     assert_eq!(texts(&lines(groups, &table)), ["Undo\tCtrl+Z", "-", "Exit"]);
-    assert!(lines(&[&["timeline.zoom_in"]], &table).is_empty());
+    assert!(lines(&[&["test.absent_one"]], &table).is_empty());
 }
 
 #[test]
@@ -218,7 +230,7 @@ fn 押せるかが変わった表を同じ_id_の項目に反映する() {
         Fake::new(Some("clip.split")),
         Fake::new(None),
         Fake::new(Some("playback.toggle")),
-        Fake::new(Some("timeline.zoom_in")),
+        Fake::new(Some("test.absent")),
     ];
     apply(&items, &states(&table(&shared)));
     let enabled = |i: usize| items[i].last().map(|s| s.enabled);
