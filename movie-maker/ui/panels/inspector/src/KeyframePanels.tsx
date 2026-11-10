@@ -4,7 +4,7 @@ import { useFitToColumn } from "./fit.ts";
 import { InspectorPanel } from "./InspectorPanel.tsx";
 import { useLayerKinds, type KindLookup } from "./kinds.ts";
 import { describeLayer } from "./model.ts";
-import type { Asset, CompositionSummary, Layer, Op } from "@mm/sdk";
+import type { Asset, CompositionSummary, Layer, Op, ParamSelection } from "@mm/sdk";
 
 /** 再生位置を知らせる DOM のイベント。アプリの WebView の中継スクリプト（`web/transport.js`）が時計の通知ごとに投げる。 */
 export const PLAYHEAD_EVENT = "mm:playhead";
@@ -40,21 +40,34 @@ export interface KeyframePanelsProps {
   assets?: readonly Asset[];
   /** 何も選んでいないときに出す、コンポジションの要約。 */
   composition?: CompositionSummary;
+  /** Timeline のキーフレームの行で選んだパラメータ。届くたびに Inspector と Graph でそのパラメータを選ぶ。 */
+  param?: ParamSelection | null;
   onOp: (op: Op) => void;
   /** パラメータの定義を引く。渡さなければプロジェクトにある値だけで入力欄を作る。 */
   lookup?: KindLookup;
 }
 
+/** Timeline で選んだパラメータが届いたら、選んでいるパスをそれにする。同じ選び直し（同じ `serial`）では動かない。 */
+const useTimelinePick = (param: ParamSelection | null | undefined, setPath: (path: string) => void) => {
+  const serial = param?.serial;
+  const path = param?.path;
+  useEffect(() => {
+    if (path !== undefined) setPath(path);
+    // 通し番号が進んだときだけ選び直す（同じ選択のイベントが送り直されても、Inspector で選んだパラメータを保つ）。
+  }, [serial]);
+};
+
 /**
- * 右の列の Inspector と、その下の Graph。Inspector で名前を押したパラメータを Graph に出す。
- * 列の見えている高さに収め、Inspector の行はその中でスクロールして、Graph は下に残す。
+ * 右の列の Inspector と、その下の Graph。Inspector で名前を押したパラメータと、Timeline のキーフレームの行で選んだ
+ * パラメータを Graph に出す。列の見えている高さに収め、Inspector の行はその中でスクロールして、Graph は下に残す。
  */
-export const KeyframePanels = ({ layer, assets, composition, onOp, lookup }: KeyframePanelsProps) => {
+export const KeyframePanels = ({ layer, assets, composition, param, onOp, lookup }: KeyframePanelsProps) => {
   const box = useRef<HTMLDivElement>(null);
   useFitToColumn(box);
   const kinds = useLayerKinds(layer, lookup);
   const playhead = usePlayhead();
   const [path, setPath] = useState<string | null>(null);
+  useTimelinePick(param, setPath);
   const row =
     layer && path
       ? describeLayer(layer, undefined, kinds).flatMap((s) => s.rows).find((r) => r.path === path)

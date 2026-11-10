@@ -24,6 +24,7 @@ use crate::thumbs::ThumbRenderer;
 
 mod labels;
 mod layout;
+mod selection;
 mod thumbs;
 mod toolbar;
 mod transport;
@@ -179,21 +180,6 @@ impl Ui {
         self.waves.insert(content_hash, peaks);
     }
 
-    /// 選択を置く（`None` で外す）。添字は `TimelineModel::items` のもの。
-    pub fn select(&mut self, index: Option<usize>) {
-        self.controller.selected = index.filter(|i| *i < self.model.items.len());
-    }
-
-    /// 選んだカットを置く（`None` で外す）。添字は `TimelineModel::items` とそのカットのもの。
-    pub fn select_cut(&mut self, cut: Option<(usize, usize)>) {
-        self.controller.selected_cut = cut.filter(|(i, c)| {
-            self.model
-                .items
-                .get(*i)
-                .is_some_and(|item| *c < item.cuts.len())
-        });
-    }
-
     /// 再生位置（秒）。再生とキーで行の領域の端を越えたら、その向きへ 1 画面ずつ送る（`TimelineController::page_scroll`）。
     pub fn set_playhead(&mut self, secs: f64) {
         self.controller.page_scroll(self.playhead, secs);
@@ -274,7 +260,9 @@ impl Ui {
             },
             other => other,
         };
-        self.controller.handle(local, &self.model, self.playhead)
+        let mut actions = self.controller.handle(local, &self.model, self.playhead);
+        self.toggle_keyframe_rows(&mut actions);
+        actions
     }
 
     /// 1 フレーム描く。`target` はサーフェスのテクスチャのビュー。

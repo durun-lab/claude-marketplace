@@ -13,6 +13,7 @@ fn state(px: f64, scroll: f32) -> ViewState {
         heights: RowHeights {
             all: Some(RowHeight::Medium),
             layers,
+            ..RowHeights::default()
         },
         snapping: true,
     }
@@ -71,6 +72,30 @@ fn スナップの入_切を書いて戻し_書いていないファイルは入
     assert!(
         opened(&project, "main").view.snapping(),
         "入/切の無いファイルは入"
+    );
+}
+
+#[test]
+fn キーフレームの行を開いたレイヤーを書いて戻し_書いていないファイルは閉じている() {
+    let tmp = tempfile::tempdir().unwrap();
+    let project = json_project(tmp.path());
+    let shared = opened(&project, "main");
+    let mut open = state(42.0, 0.0);
+    open.heights.keyframe_rows_open.insert("title".into());
+    shared.view.publish(open.clone());
+    shared.view.flush();
+    let path = tmp.path().join(".mm").join("view.json");
+    let text = std::fs::read_to_string(&path).unwrap();
+    let file: serde_json::Value = serde_json::from_str(&text).unwrap();
+    let written = &file["timelines"]["main"]["keyframeRowsOpen"];
+    assert_eq!(*written, serde_json::json!(["title"]), "{text}");
+    assert_eq!(opened(&project, "main").view.current(), Some(open));
+    shared.view.publish(state(42.0, 0.0));
+    shared.view.flush();
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        !text.contains("keyframeRowsOpen"),
+        "閉じていれば書かない: {text}"
     );
 }
 

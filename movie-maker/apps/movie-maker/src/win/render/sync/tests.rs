@@ -1,4 +1,4 @@
-//! Shy のフラグと隠す行を Timeline のモデルに反映する所の試験。
+//! Shy のフラグと隠す行を Timeline のモデルに反映する所と、キーフレームの行の選択を共有状態に置く所の試験。
 
 use mm_ui_layout::{Item, ItemKind};
 
@@ -47,4 +47,24 @@ fn 隠すとフラグの行をモデルと_id_の対応から同じだけ外し_
     assert_eq!(doc.layer_ids, ["a", "c"]);
     assert_eq!(doc.cut_ids, [Vec::<String>::new(), Vec::new()]);
     assert!(model.items.iter().all(|i| !i.shy));
+}
+
+/// 取り消しで消えたカットの ID が共有のカットの選択に残っていても、キーフレームの行で選べば外れ、Delete が
+/// Remove Keyframe になる（Lift が先に押せない）。
+#[test]
+fn キーフレームの行で選ぶと共有のカットの選択を外す() {
+    let shared = Arc::new(Shared::new());
+    shared.edit.select_cut(Some("k-2".into()));
+    let (doc, _) = rows();
+    let pick = mm_ui_layout::RowPick {
+        item: 0,
+        row: 0,
+        keyframe: Some(0),
+    };
+    keyframes::apply(
+        &shared,
+        &doc,
+        mm_ui_layout::KeyframeAction::Select(Some(pick)),
+    );
+    assert_eq!(shared.edit.selected_cut(), None);
 }

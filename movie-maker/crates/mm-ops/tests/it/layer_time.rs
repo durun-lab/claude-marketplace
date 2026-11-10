@@ -4,10 +4,13 @@ use crate::common;
 
 use common::{canon, project, secs};
 use mm_doc::{
-    CaptionPlacement, Crop, CutReframe, Effect, Framing, Interpolation, Layer, LayerAudio, Mask,
-    MaskRect, Node, Param, Project, TimeKeyframe, TimeRemap, Transform,
+    CaptionPlacement, Crop, CutReframe, Effect, Framing, Interpolation, Keyframe, Layer,
+    LayerAudio, Mask, MaskRect, Node, Param, Project, TimeKeyframe, TimeRemap, Transform,
 };
-use mm_ops::{Edge, LockLayer, Op, OpContext, OpError, SetLayerEnabled, ShiftLayer, TrimLayer};
+use mm_ops::{
+    Edge, LockLayer, MoveKeyframe, Op, OpContext, OpError, ParamRef, SetLayerEnabled, ShiftLayer,
+    TrimLayer,
+};
 use mm_types::{Id, ParamValue, RationalTime, Rgba};
 use serde_json::{json, Value};
 
@@ -185,6 +188,50 @@ fn キーフレームの時刻の一覧は_shift_layer_が動かすパラメー�
     let layer: Layer = serde_json::from_value(keyed).unwrap();
     assert!(expected.len() >= 20, "keyed params: {}", expected.len());
     assert_eq!(layer.keyframe_times(), expected);
+}
+
+/// `Layer::comp_time_param_paths`（Timeline のキーフレームの行）のパスは、`ParamRef` で同じパラメータを指す。
+/// パスで指せないのはノードの入力のノードのパラメータだけ。
+#[test]
+fn パラメータのパスは_param_ref_で同じパラメータを指す() {
+    let mut p = project();
+    let layer = p.layer_mut(&Id::new("l1")).unwrap();
+    fill_optional(layer);
+    let mut keyed = serde_json::to_value(&*layer).unwrap();
+    key_all(&mut keyed);
+    *layer = serde_json::from_value(keyed).unwrap();
+    let paths: Vec<(String, Keyframe)> = layer
+        .comp_time_param_paths()
+        .into_iter()
+        .map(|(path, param)| (path, param.keyframes[0].clone()))
+        .collect();
+    assert!(paths.len() >= 20, "keyed params: {}", paths.len());
+    let inputs = layer.comp_time_params().len() - paths.len();
+    assert_eq!(inputs, 1, "ノードの入力の color だけがパスの外");
+    for (i, (path, key)) in (100..).zip(&paths) {
+        let op: Op = MoveKeyframe {
+            target: ParamRef::layer(&Id::new("l1"), path.clone()),
+            from: key.time,
+            keyframe: Keyframe {
+                time: secs(i),
+                ..key.clone()
+            },
+        }
+        .into();
+        let applied = op.apply(&mut p, &OpContext::human());
+        assert!(applied.is_ok(), "{path}: {:?}", applied.err());
+    }
+    let (_, layer) = p.layer(&Id::new("l1")).unwrap();
+    let moved: Vec<RationalTime> = layer
+        .comp_time_param_paths()
+        .into_iter()
+        .map(|(_, param)| param.keyframes[0].time)
+        .collect();
+    let want: Vec<RationalTime> = (100..).take(paths.len()).map(secs).collect();
+    assert_eq!(
+        moved, want,
+        "パスの順に動かした時刻が、同じ順のパラメータに入る"
+    );
 }
 
 #[test]
