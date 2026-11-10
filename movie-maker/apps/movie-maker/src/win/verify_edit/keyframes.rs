@@ -19,6 +19,8 @@ const AT_EPS: f64 = 1e-3;
 const SHIFT_SECS: f64 = 1.0;
 /// 帯を掴むのに求める、見えている帯の幅（論理ピクセル）。中央が端のつまみに掛からない幅。
 const GRAB_W: f32 = 60.0;
+/// ひし形を掴んで動かす縮尺（1 秒の論理ピクセル）。0.5 秒の移動が 30 ピクセルになり、隣のキーフレームの当たりに掛からない。
+const MIN_PX_PER_SEC: f64 = 60.0;
 
 /// 行を開いたレイヤー（Timeline の行の添字と ID）。
 struct OpenedLayer {
@@ -65,20 +67,52 @@ fn scroll_y(shared: &Shared) -> f32 {
     shared.view.current().map_or(0.0, |s| s.scroll_y)
 }
 
+/// 表示の状態の 1 秒の論理ピクセル。
+fn px_per_sec(shared: &Shared) -> f64 {
+    shared.view.current().map_or(0.0, |s| s.time.px_per_sec)
+}
+
+/// クライアントの点 `at` に、サーフェスが積むのと同じホイールの入力を `dy` 目盛り積む（`ctrl` で拡大縮小、`shift` で縦の
+/// スクロール）。修飾キーの状態はメッセージで送れないため。
+fn send_wheel(shared: &Shared, at: (i32, i32), dy: f32, (ctrl, shift): (bool, bool)) {
+    let wheel = PointerEvent::Wheel {
+        x: at.0 as f32,
+        y: at.1 as f32,
+        dy,
+        ctrl,
+        shift,
+    };
+    shared.input.lock().expect("input").push(wheel);
+}
+
 /// 行の領域の中央に Shift+ホイールを `dy` 目盛り送り、縦のスクロールが変わるのを待って、変わった量を返す。
 fn wheel_rows(env: &Env<'_>, place: &Placement, dy: f32) -> f32 {
     let before = scroll_y(env.shared);
-    let (x, y) = place.row_area_center();
-    let wheel = PointerEvent::Wheel {
-        x: x as f32,
-        y: y as f32,
-        dy,
-        ctrl: false,
-        shift: true,
-    };
-    env.shared.input.lock().expect("input").push(wheel);
+    send_wheel(env.shared, place.row_area_center(), dy, (false, true));
     wait_until(WAIT, || scroll_y(env.shared) != before);
     scroll_y(env.shared) - before
+}
+
+/// 縮めた表示（長いプロジェクトの全体表示は 1 秒が 2 論理ピクセルに満たず、0.5 秒の移動が 1 ピクセルに届かない）なら、最初の
+/// キーフレームの所を中心に Ctrl+ホイールで `MIN_PX_PER_SEC` まで拡大する。1 目盛りの倍率を測り、残りを 1 回で送る。
+fn zoom_to_keyframes(env: &Env<'_>, layer: &OpenedLayer) {
+    let shared = env.shared;
+    let first = row_times(shared, &layer.id).first().copied();
+    let at = first.and_then(|t| diamond_point(env, layer, t, 0.0));
+    let Some(at) = at.filter(|_| px_per_sec(shared) < MIN_PX_PER_SEC) else {
+        return;
+    };
+    let zoom = |dy: f32| {
+        let before = px_per_sec(shared);
+        send_wheel(shared, at, dy, (true, false));
+        wait_until(WAIT, || px_per_sec(shared) != before);
+        px_per_sec(shared) / before
+    };
+    let step = zoom(1.0);
+    let left = (MIN_PX_PER_SEC / px_per_sec(shared)).ln() / step.ln();
+    if step > 1.0 && left > 0.0 {
+        zoom(left.ceil() as f32);
+    }
 }
 
 /// キーフレームの行のあるレイヤーが見えていなければ、見えている所にいちばん近いものの上端まで縦にスクロールする
@@ -354,6 +388,7 @@ pub(super) fn run(env: &Env<'_>, log: &mut Log) {
     let Some(layer) = open_step(env, log) else {
         return;
     };
+    zoom_to_keyframes(env, &layer);
     if let Some(time) = select_step(env, log, &layer) {
         drag_step(env, log, &layer, time);
         delete_step(env, log, &layer, time);
