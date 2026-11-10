@@ -11,7 +11,7 @@ use crate::geom::{Color, Quad, Rect};
 use crate::header::timecode;
 use crate::palette::{text_on, Palette};
 use crate::screen::SurfaceLayout;
-use crate::text::{place, place_tabular, Align, Label, TextMeasure, TextStyle, UiFont};
+use crate::text::{place, place_timecode, Align, Label, TextMeasure, TextStyle, UiFont};
 
 /// バーの上端の線の濃さ。
 const EDGE_ALPHA: f32 = 0.5;
@@ -194,7 +194,8 @@ fn frame(out: &mut Vec<Quad>, r: Rect, color: Color) {
     }
 }
 
-/// バーの文字。タイムコードの行の左に再生位置、右に Program は全体の長さ、Source はイン点とアウト点。名前のボタンの名前。
+/// バーの文字。タイムコードの行の右に Program は全体の長さ、Source はイン点とアウト点。名前のボタンの名前。
+/// 左の再生位置は再生中に毎フレーム変わるので、ここでは置かない（[`transport_timecodes`]）。
 pub fn transport_labels(
     layout: &SurfaceLayout,
     state: &TransportState,
@@ -204,8 +205,7 @@ pub fn transport_labels(
     measure: &mut dyn TextMeasure,
 ) -> Vec<Label> {
     let mut out = Vec::new();
-    let mut put = |text: &str, area: Rect, align: Align, style: TextStyle, tabular: bool| {
-        let place = if tabular { place_tabular } else { place };
+    let mut put = |text: &str, area: Rect, align: Align, style: TextStyle| {
         if let Some(mut label) = place(&Arc::from(text), area, 0.0, align, style, measure) {
             label.clip = area;
             out.push(label);
@@ -214,25 +214,11 @@ pub fn transport_labels(
     let style = |size, color| TextStyle { size, color };
     for (viewer, bar, s) in bars(layout, state) {
         let c = cells(bar, viewer);
-        let position = timecode(s.t, s.fps);
-        put(
-            &position,
-            c.position,
-            Align::Left,
-            style(font.base, palette.selection),
-            true,
-        );
         let (range, size) = match viewer {
             Viewer::Program => (timecode(s.duration, s.fps), font.base),
             Viewer::Source => (in_out_text(s), font.small),
         };
-        put(
-            &range,
-            c.range,
-            Align::Right,
-            style(size, palette.label),
-            true,
-        );
+        put(&range, c.range, Align::Right, style(size, palette.label));
         for cell in c.buttons.iter().filter(|b| b.named) {
             let look = ButtonLook::of(cell, viewer, s, controller);
             let name = cell.spec.name.unwrap_or_default();
@@ -241,11 +227,34 @@ pub fn transport_labels(
                 look.place(cell.rect),
                 Align::Center,
                 style(font.base, look.ink(palette)),
-                false,
             );
         }
     }
     out
+}
+
+/// バーのタイムコードの行の左の、再生位置のタイムコード。再生中は毎フレーム変わるので [`transport_labels`] と分けて
+/// 返し、描く所がほかの文字と頂点を分ける（`mm-ui-wgpu` の `TextLayer`）。
+pub fn transport_timecodes(
+    layout: &SurfaceLayout,
+    state: &TransportState,
+    palette: &Palette,
+    font: &UiFont,
+    measure: &mut dyn TextMeasure,
+) -> Vec<Label> {
+    let style = TextStyle {
+        size: font.base,
+        color: palette.selection,
+    };
+    bars(layout, state)
+        .filter_map(|(viewer, bar, s)| {
+            let area = cells(bar, viewer).position;
+            let text = Arc::from(timecode(s.t, s.fps));
+            let mut label = place_timecode(&text, area, 0.0, Align::Left, style, measure)?;
+            label.clip = area;
+            Some(label)
+        })
+        .collect()
 }
 
 /// Source のタイムコードの行の右の文字（`In 00:00:01:00  Out --:--:--:--`）。

@@ -70,14 +70,14 @@ pub(crate) struct Shaped {
     pub(crate) buffer: Buffer,
     /// 切り詰めの位置ごとの左端からの距離（[`TextMeasure::stops`]）。
     stops: Vec<f32>,
-    /// 字の並びの幅（空白を含む。時刻の字を 1 字ずつ並べる幅）。
+    /// 送り幅（空白も幅を持つ）。
     advance: f32,
     /// 最後に使ったフレーム。
     used: u64,
 }
 
 impl Shaped {
-    /// 字の並びの幅（論理ピクセル）。
+    /// 送り幅（論理ピクセル）。1 字ずつのシェーピングの結果を並べるとき、次の字の左端まで進める幅。
     pub(crate) fn advance(&self) -> f32 {
         self.advance
     }
@@ -103,8 +103,9 @@ impl ShapeCache {
         self.count
     }
 
-    /// 時刻の字 `c` の幅。数字は 0〜9 の一番広い幅にそろえる。1 字ずつシェーピングしたものを引くので、足りなければ `None`。
-    pub(crate) fn advance(&self, c: char, size: f32) -> Option<f32> {
+    /// 再生位置のタイムコードの字 `c` の送り幅。数字は 0〜9 の一番広い送り幅にそろえる（等幅の数字）。
+    /// 1 字ずつシェーピングしてキャッシュした結果を引くので、キャッシュに無ければ `None`。
+    pub(crate) fn timecode_advance(&self, c: char, size: f32) -> Option<f32> {
         let of = |c: char| Some(self.get(c.encode_utf8(&mut [0; 4]), size)?.advance);
         if c.is_ascii_digit() {
             ('0'..='9').try_fold(0.0_f32, |w, d| of(d).map(|a| w.max(a)))
@@ -207,14 +208,16 @@ impl TextMeasure for Shaper {
         &self.shaped(text, size).stops
     }
 
-    fn tabular_stops(&mut self, text: &str, size: f32) -> Vec<f32> {
+    /// 字と 0〜9 を 1 字ずつシェーピングしてキャッシュし、送り幅を足していく。同じ字はシェーピングし直さないので、
+    /// 再生中に数字だけが変わる間はシェーピングしない。
+    fn timecode_stops(&mut self, text: &str, size: f32) -> Vec<f32> {
         for c in text.chars().chain('0'..='9') {
             self.shaped(c.encode_utf8(&mut [0; 4]), size);
         }
         let mut x = 0.0;
-        let mut stops = Vec::new();
+        let mut stops = Vec::with_capacity(text.len());
         for c in text.chars() {
-            x += self.cache.advance(c, size).unwrap_or(0.0);
+            x += self.cache.timecode_advance(c, size).unwrap_or(0.0);
             if !c.is_whitespace() {
                 stops.push(x);
             }
@@ -431,23 +434,5 @@ mod tests {
         assert!(s.cache().get("new", 12.0).is_some());
     }
 
-    #[test]
-    fn 時刻の字は数字の幅をそろえ_字ごとに覚えて_別の時刻をシェーピングし直さない() {
-        let mut s = shaper();
-        let a = s.tabular_stops("00:00:00:00", 12.0);
-        let shaped = s.cache().count();
-        let b = s.tabular_stops("11:59:23:17", 12.0);
-        assert_eq!(s.cache().count(), shaped, "別の数字は覚えた字");
-        s.tabular_stops("In 00:00:01:00  Out --:--:--:--", 12.0);
-        assert_eq!(
-            s.cache().count(),
-            shaped + 7,
-            "新しい字（I n 空白 O u t -）だけ"
-        );
-        assert_eq!(a, b, "どの数字でも同じ幅で並ぶ");
-        let wide = ('0'..='9')
-            .map(|d| s.cache().advance(d, 12.0).expect("覚えた"))
-            .fold(0.0_f32, f32::max);
-        assert_eq!(s.cache().advance('1', 12.0), Some(wide));
-    }
+    mod timecode;
 }

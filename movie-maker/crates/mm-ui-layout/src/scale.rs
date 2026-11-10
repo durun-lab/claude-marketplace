@@ -277,7 +277,6 @@ mod tests {
             color: crate::geom::Color([1.0; 4]),
             cut: Some(30.0),
             clip: Rect::new(8.0, 2.0, 100.0, 24.0),
-            tabular: false,
         };
         let cases = [
             (1.25, 13.0, 6.0, 50.0),

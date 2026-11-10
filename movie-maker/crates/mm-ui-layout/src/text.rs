@@ -44,9 +44,10 @@ pub trait TextMeasure {
     /// 切り詰めの位置は書記素クラスタの終わりで、空白の後ろは除く。空の文字列は空。
     fn stops(&mut self, text: &str, size: f32) -> &[f32];
 
-    /// 数字の幅をそろえて 1 字ずつ並べたときの、[`stops`](Self::stops) と同じ形の距離。数字は 0〜9 の一番広い幅に置き、
-    /// 時刻が進んでも字が左右に揺れない。並べ方は `mm-ui-wgpu` の描く所と同じ。既定は通常のシェーピング。
-    fn tabular_stops(&mut self, text: &str, size: f32) -> Vec<f32> {
+    /// 再生位置のタイムコードを 1 字ずつ等幅の数字で並べたときの、[`stops`](Self::stops) と同じ形の距離。
+    /// 数字は 0〜9 の一番広い送り幅で並べるので、再生中に数字が変わっても字が左右に揺れない。
+    /// 並べ方は `mm-ui-wgpu` の描く所と同じ。既定は文字列ごとのシェーピングの距離。
+    fn timecode_stops(&mut self, text: &str, size: f32) -> Vec<f32> {
         self.stops(text, size).to_vec()
     }
 
@@ -95,8 +96,6 @@ pub struct Label {
     pub cut: Option<f32>,
     /// 字を描いてよい矩形。外に出た字の部分は描かない。
     pub clip: Rect,
-    /// 時刻の字。数字の幅をそろえ、字ごとに覚えたグリフを並べて描く（毎フレームシェーピングし直さない）。
-    pub tabular: bool,
 }
 
 /// 文字を置く矩形の中の、横の揃え方。入らずに切り詰めるときは左に揃える。
@@ -126,42 +125,48 @@ pub fn place(
     style: TextStyle,
     measure: &mut dyn TextMeasure,
 ) -> Option<Label> {
-    place_with(text, rect, pad, align, style, measure, false)
-}
-
-/// [`place`] と同じ置き方で、時刻の字を数字の幅をそろえて置く（[`Label::tabular`]）。
-pub fn place_tabular(
-    text: &Arc<str>,
-    rect: Rect,
-    pad: f32,
-    align: Align,
-    style: TextStyle,
-    measure: &mut dyn TextMeasure,
-) -> Option<Label> {
-    place_with(text, rect, pad, align, style, measure, true)
-}
-
-fn place_with(
-    text: &Arc<str>,
-    rect: Rect,
-    pad: f32,
-    align: Align,
-    style: TextStyle,
-    measure: &mut dyn TextMeasure,
-    tabular: bool,
-) -> Option<Label> {
-    let room = rect.w - 2.0 * pad;
-    if text.is_empty() || room <= 0.0 {
+    if !has_room(text, rect, pad) {
         return None;
     }
     let ellipsis = measure.width(ELLIPSIS, style.size);
-    let owned;
-    let stops: &[f32] = if tabular {
-        owned = measure.tabular_stops(text, style.size);
-        &owned
-    } else {
-        measure.stops(text, style.size)
-    };
+    let stops = measure.stops(text, style.size);
+    place_at(text, rect, pad, align, style, (stops, ellipsis))
+}
+
+/// [`place`] と同じ置き方で、再生位置のタイムコードを置く。幅は等幅の数字で 1 字ずつ並べた幅で測る
+/// （[`TextMeasure::timecode_stops`]）。再生中は毎フレーム変わる文字なので、描く所はほかの文字と頂点を分け、
+/// 1 字ずつキャッシュしたシェーピングの結果を並べて描く。
+pub fn place_timecode(
+    text: &Arc<str>,
+    rect: Rect,
+    pad: f32,
+    align: Align,
+    style: TextStyle,
+    measure: &mut dyn TextMeasure,
+) -> Option<Label> {
+    if !has_room(text, rect, pad) {
+        return None;
+    }
+    let ellipsis = measure.width(ELLIPSIS, style.size);
+    let stops = measure.timecode_stops(text, style.size);
+    place_at(text, rect, pad, align, style, (&stops, ellipsis))
+}
+
+/// 空でない `text` を、`rect` に左右 `pad` の余白を空けて置ける幅があるか。無ければ測らない。
+fn has_room(text: &str, rect: Rect, pad: f32) -> bool {
+    !text.is_empty() && rect.w - 2.0 * pad > 0.0
+}
+
+/// 切り詰めの位置が `stops`、省略記号の幅が `ellipsis` の文字を置く（[`place`]）。
+fn place_at(
+    text: &Arc<str>,
+    rect: Rect,
+    pad: f32,
+    align: Align,
+    style: TextStyle,
+    (stops, ellipsis): (&[f32], f32),
+) -> Option<Label> {
+    let room = rect.w - 2.0 * pad;
     let whole = stops.last().copied().unwrap_or(0.0);
     let (x, cut) = match fit(stops, ellipsis, room) {
         Fit::Whole => {
@@ -184,7 +189,6 @@ fn place_with(
         color: style.color,
         cut,
         clip: rect,
-        tabular,
     })
 }
 
@@ -299,5 +303,32 @@ pub(crate) mod tests {
             None
         );
         assert_eq!(placed("", rect, Align::Left), None, "空の文字列");
+    }
+
+    /// 等幅の数字で並べた幅を、文字列ごとの幅の 2 倍で返すテスト用の実装。
+    struct WideTimecode(FakeMeasure);
+
+    impl TextMeasure for WideTimecode {
+        fn stops(&mut self, text: &str, size: f32) -> &[f32] {
+            self.0.stops(text, size)
+        }
+
+        fn timecode_stops(&mut self, text: &str, size: f32) -> Vec<f32> {
+            self.0.stops(text, size).iter().map(|s| s * 2.0).collect()
+        }
+    }
+
+    #[test]
+    fn 再生位置のタイムコードは等幅の数字で並べた幅で置く() {
+        // "12:34" は文字列ごとの幅が 25、等幅の数字で 50。置ける幅は 100 - 8 = 92。
+        let rect = Rect::new(0.0, 0.0, 100.0, 20.0);
+        let mut m = WideTimecode(FakeMeasure::default());
+        let text: Arc<str> = "12:34".into();
+        let plain = place(&text, rect, 4.0, Align::Right, STYLE, &mut m).expect("入る");
+        let timecode = place_timecode(&text, rect, 4.0, Align::Right, STYLE, &mut m).expect("入る");
+        assert_eq!(
+            (plain.x, timecode.x),
+            (4.0 + 92.0 - 25.0, 4.0 + 92.0 - 50.0)
+        );
     }
 }

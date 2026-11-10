@@ -1,4 +1,5 @@
-//! 再生中の時刻の字（Timeline の角、再生の操作のバー）は、字ごとに覚えたグリフを並べるので、時刻が進んでもシェーピングし直さない。
+//! 再生位置のタイムコード（見出しの列の上の角、再生の操作のバー）は、1 字ずつキャッシュしたシェーピングの結果を並べ、
+//! ほかの文字と頂点を分けて描くので、再生中はシェーピングせず、タイムコードのほかの文字の頂点も作り直さない。
 
 use mm_types::{Rgba, RgbaImage, Size};
 use mm_ui_layout::{Item, ItemKind, TimelineModel, ViewerState};
@@ -8,7 +9,7 @@ use crate::support::{gpu, render_sized, FORMAT, H, W};
 
 const FPS: f64 = 30.0;
 /// 進めるフレームの数。
-const FRAMES: usize = 150;
+const FRAMES: u64 = 150;
 
 fn model() -> TimelineModel {
     TimelineModel {
@@ -19,20 +20,21 @@ fn model() -> TimelineModel {
     }
 }
 
+/// 再生中のビューアー。イン点とアウト点は再生中に動かない。
 fn viewer(t: f64) -> ViewerState {
     ViewerState {
         t,
         duration: 600.0,
         fps: FPS,
         playing: true,
-        mark_in: Some(t / 2.0),
+        mark_in: Some(1.0),
         mark_out: None,
         ..ViewerState::default()
     }
 }
 
 #[test]
-fn 時刻を毎フレーム進めても_最初のフレームのあとはシェーピングしない() {
+fn 再生位置を毎フレーム進めても_シェーピングせず_タイムコードの頂点だけを作り直す() {
     let Some((device, queue)) = gpu() else { return };
     let mut ui = Ui::new(&device, FORMAT);
     ui.set_model(model());
@@ -40,7 +42,7 @@ fn 時刻を毎フレーム進めても_最初のフレームのあとはシェ�
     let image = RgbaImage::filled(Size::new(16, 9), Rgba::new(0.5, 0.5, 0.5, 1.0));
     ui.set_frame(&device, &queue, &image);
     ui.set_source_frame(&device, &queue, &image);
-    let step = |ui: &mut Ui, i: usize| {
+    let step = |ui: &mut Ui, i: u64| {
         // 37 フレームずつ進め、数字の桁がいろいろに変わるようにする。
         let t = (i * 37) as f64 / FPS;
         ui.set_playhead(t);
@@ -55,12 +57,17 @@ fn 時刻を毎フレーム進めても_最初のフレームのあとはシェ�
         render_sized(&device, &queue, &mut ui, (W, H));
     }
     let after = ui.text_stats();
-    assert!(
-        after.uploads > first.uploads,
-        "時刻が変わるので頂点は作り直す"
-    );
     assert_eq!(
         after.shaped, first.shaped,
-        "時刻の字は覚えたグリフを並べるだけ"
+        "タイムコードは 1 字ずつキャッシュした字を並べるだけ"
+    );
+    assert_eq!(
+        after.uploads, first.uploads,
+        "タイムコードのほかの文字の頂点は作り直さない"
+    );
+    assert_eq!(
+        after.timecode_uploads,
+        first.timecode_uploads + FRAMES,
+        "タイムコードの頂点は毎フレーム作り直す"
     );
 }

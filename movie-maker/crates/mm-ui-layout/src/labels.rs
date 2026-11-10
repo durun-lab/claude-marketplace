@@ -3,6 +3,7 @@
 //! 帯の名前は帯の見えている所の左に寄せ（帯の左端が画面の外に出ても読める）、入らない分は切り詰めて「…」を付ける。
 //! 名前を入れる幅が狭い帯は測らずにスキップするので、全体表示で数千のカットが細いときはシェーピングしない。
 //! 置くのは見えている行の名前だけで、字は行の領域の中だけに描く（目盛りの帯の下に隠れた行の字は描かない）。
+//! 見出しの列の上の角の再生位置のタイムコードは再生中に毎フレーム変わるので、ほかの文字と分けて置く（[`timeline_timecode`]）。
 
 use std::sync::Arc;
 
@@ -12,7 +13,7 @@ use crate::paint::{bar_color, stripe, trimmed, PaintState};
 use crate::palette;
 use crate::rows::RowHeight;
 use crate::ruler::{label, major_step, ticks};
-use crate::text::{place, Align, Label, TextMeasure, TextStyle, UiFont};
+use crate::text::{place, place_timecode, Align, Label, TextMeasure, TextStyle, UiFont};
 use crate::thumbs::{cut_rect, name_inset};
 use crate::timeline::{Item, TimelineModel};
 use crate::timeline_layout::Viewport;
@@ -50,6 +51,27 @@ pub fn timeline_labels(
     out
 }
 
+/// 見出しの列の上の角に出す再生位置のタイムコード。再生中は毎フレーム変わるので [`timeline_labels`] と分けて返し、
+/// 描く所がほかの文字と頂点を分ける（`mm-ui-wgpu` の `TextLayer`）。
+pub fn timeline_timecode(
+    model: &TimelineModel,
+    vp: &Viewport,
+    state: &PaintState,
+    font: &UiFont,
+    measure: &mut dyn TextMeasure,
+) -> Option<Label> {
+    let time: Arc<str> = header::timecode(state.playhead, model.fps).into();
+    let corner = vp.layout.corner;
+    let style = TextStyle {
+        size: font.base,
+        color: state.palette.selection,
+    };
+    let pad = header::CORNER_PAD;
+    let mut label = place_timecode(&time, corner, pad, Align::Left, style, measure)?;
+    label.clip = corner;
+    Some(label)
+}
+
 /// 文字を置いていく途中の状態。
 struct Placer<'a> {
     vp: &'a Viewport<'a>,
@@ -79,7 +101,6 @@ impl Placer<'_> {
                 color,
                 cut: None,
                 clip: r,
-                tabular: false,
             });
         }
     }
