@@ -243,7 +243,7 @@ Z2 で決めたこと（新しく設計したもの）:
 
 ### UI のコマンドの表
 
-画面の操作を Rust の 1 つの表（`apps/movie-maker/src/win/commands.rs`）に置く。キーの表（`keys.rs`）はキーからコマンドの ID を引くだけにする。
+画面の操作を Rust の 1 つの表（`apps/movie-maker/src/win/commands/table.rs` の `TABLE`。押せるかと実行は `commands.rs`）に置く。キーの表（`keys.rs`）はキーからコマンドの ID を引くだけにする。
 
 | 列 | 中身 |
 |---|---|
@@ -500,7 +500,7 @@ L2 が決めた形: WebView の幅は theme.json の `left-column` と `right-co
 | `crates/mm-ui-layout/src/` の `lib.rs`、`timeline.rs`、`paint.rs`、`controller.rs`、`screen.rs` | 文字の PR、T1〜T4、Z1〜Z4、K1、K2、L1、L3、D4 | 文字の PR、T1 の順に先。後の PR は自分の領域のファイルを足し、`pub use`、`Item` のフィールド、`paint.rs` の呼び出しには名前の順の位置に 1 行で足す |
 | `crates/mm-ui-wgpu/src/` の `ui.rs`、`model.rs`、`quads.rs` | 文字の PR、T1、T2、T4、T5、K1、L1、Z3、B2 | 同上。`quads.rs` は文字の PR、B2、T5 の順 |
 | `crates/mm-ui-wgpu/tests/` | 文字の PR、B2 | 文字の PR が `tests/it/` にまとめた後に足す |
-| `apps/movie-maker/src/win/keys.rs`、`commands.rs` | B3、T3、Z1、Z2、Z4、K2、L1、D1、D2 | B3 が先。キーの名前の決まりは Z1。コマンドとキーは ID の名前の順に足す（キーの試験は `keys/tests.rs`） |
+| `apps/movie-maker/src/win/keys.rs`、`commands.rs`、`commands/table.rs` | B3、T3、Z1、Z2、Z4、K2、L1、D1、D2 | B3 が先。キーの名前の決まりは Z1。コマンドは `commands/table.rs`、キーは `keys.rs` に、ID の名前の順に足す（キーの試験は `keys/tests.rs`） |
 | `apps/movie-maker/src/win/surface.rs` | Z1、Z3、Z5、L1、L3、D1、D3 | 当たった所ごとの処理は別のファイルに置き、`surface.rs` には振り分けの 1 行だけ足す |
 | `apps/movie-maker/src/win/app.rs`、`layout.rs` | D1、L2 | ウィンドウを作る所と割り付けの関数は `layout.rs` が持ち、`app.rs` には起動の流れだけを置く。D2 の Keyboard Shortcuts のウィンドウは `shortcuts_window.rs` に分けた |
 | `apps/movie-maker/src/win/verify_edit.rs` | T1、Z4 | 行の位置は `mm-ui-layout` の関数から引く（定数の `ROW_H` を使わない） |

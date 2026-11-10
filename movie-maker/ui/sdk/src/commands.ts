@@ -2,7 +2,7 @@ import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
 import type { MediaInvoke, MediaListen } from "./ipc.ts";
 
-/** UI のコマンド 1 つ。アプリの UI のコマンドの表（`apps/movie-maker/src/win/commands.rs`）の 1 行と、今押せるか。 */
+/** UI のコマンド 1 つ。アプリの UI のコマンドの表（`apps/movie-maker/src/win/commands/table.rs`）の 1 行と、今押せるか。 */
 export interface UiCommand {
   /** `<分類>.<動詞>`（`clip.split`）。Tasks の項目の `command` が指す。 */
   id: string;
