@@ -295,11 +295,16 @@ Z2 で決めたこと（新しく設計したもの）:
 
 | 場所 | 出すもの |
 |---|---|
-| Program（レイヤーが無い） | 「Import video and audio to start」と「File > Import Media… (Ctrl+I)」 |
-| Timeline（レイヤーが無い） | 「Open a clip in Media, mark In (I) and Out (O), then press Insert (,)」。Media から Timeline へのドラッグは後 |
-| Inspector（何も選んでいない） | コンポジションの要約（名前、大きさ、fps、長さ、レイヤーの数）と「Select a layer in the Timeline to see its properties.」 |
+| Program（コンポジションに中身が無く、素材も無い） | 「Import video and audio to start」と「File > Import Media… (Ctrl+I)」 |
+| Timeline（コンポジションに中身が無く、sequence のレイヤーがある） | 「Open a clip in Media, mark In (I) and Out (O), then press Insert (,)」。Media から Timeline へのドラッグは後 |
+| Inspector（何も選んでいない） | コンポジションの要約（名前、大きさ、fps、長さ、レイヤーの数）と「Select a layer in the Timeline to see its properties.」。名前はコンポジションの ID、長さは見出しの列の上の角と同じタイムコード |
 | Story（文字起こしが無い） | 「No transcript yet. Transcription runs outside the app for now: run tools/transcribe on a clip, then reopen this tab.」。アプリの中の Transcribe のコマンドができたら、ボタンに替える |
 | Tasks | 実装の無い項目を薄くする（[UI のコマンドの表](#ui-のコマンドの表)） |
+
+- 中身が無いのは、レイヤーが無いか、どのレイヤーもカットの無いシーケンスを置いた sequence のレイヤーのとき。無効のレイヤーとカットは中身に数え、案内を出さない。判定はコンポジションの中身で決め、Timeline の行の見え方では決めない。Shy で全部の行を隠しても案内は出さない（隠した数は見出しの列の上の角に出る。T3）。判定は `mm-ui-wgpu` の `empty_state`。
+- 素材を取り込んだ後は、取り込みはもう次にすることではないので、Program の案内を出さない。
+- Timeline の手順は、Insert の入る先（sequence のレイヤー）があるときだけ出す。sequence のレイヤーが無いと Insert は効かない（`sequence_edit.rs` の `target_layer` が「No sequence layer」で拒否し、メニューの Insert も押せない）。`mm new` の直後に足す `main` もレイヤーが無いので、今は Program の案内だけが出る。最初の Insert で sequence のレイヤーを作れば（Premiere の空の Timeline の「Drop media here to create sequence」[96] と同じく、最初の素材から sequence を作る）、この条件を外せる。後の PR。
+- 要約は選択のイベント（`mm:layer-selected`）に載せる。購読より前に Rust が送ったイベントは WebView に届かないので、Shell は選択のイベントを聞き始めたら頼み（`mm:layer-selection-request`）を投げ、`transport.js` は選択の Tauri イベントを購読し終えてから `layer_selection` で今の選択を読んで答える。時間では待たない。購読してから読む形は UI のコマンドの表（Shell の `useCommandTable`）と同じ。
 
 ## 文言
 
@@ -460,7 +465,7 @@ T1 が決めた形: 矩形の型は `TimelineLayout`（`mm-ui-layout/src/timelin
 | D1 `feature/movie-maker-menu-bar` | メニューバー（コマンドの表から）。キーの見た目は項目の文字の `\t` の後ろ（アクセラレーターは登録しない）。チェックと押せるかの状態。Ctrl+I の Import Media。キーでメニューを開く手段 | B3 | `apps/movie-maker/src/win/menu.rs`（新）、`layout.rs`（新。`app.rs` からウィンドウを作る所と割り付けの関数を移す）、`commands.rs`、`keys.rs`、`surface.rs`（F10）、`ui/sdk/src/commands.ts`、`ui/shell/src/Shell.tsx` | ウィンドウの上端に File、Edit、Playback、Timeline、Help（View は Z1 が Zoom を表に足すと出る） |
 | D2 `feature/movie-maker-shortcuts-window` | Keyboard Shortcuts のウィンドウ（`?`、絞り込み、Enter で実行） | B3、D1、Z1（記号のキーの名前） | `ui/shortcuts/`（新）、`ui/tools/build.ts`（ページの入口を足す）、`apps/movie-maker/src/win/layout.rs` か `menu.rs`（ウィンドウを開く。ウィンドウはコードで作り、`capabilities/default.json` は全部のウィンドウに当たる） | 「zoom」で絞ったウィンドウに Zoom In (=)、Zoom Out (-)、Full Extent Zoom (Shift+Z) |
 | D3 `feature/movie-maker-context-menus` | 右クリックのメニュー（`Window::popup_menu_at`） | B3、T3、Z4 | `apps/movie-maker/src/win/surface.rs`、`context_menu.rs`（新） | 項目の並びはテスト（ポップアップは PrintWindow に写らない） |
-| D4 `feature/movie-maker-empty-states` | 空の状態の案内（Program、Timeline、Inspector、Story） | 文字の PR、B3、T1（`paint.rs` を分けた後に足す） | `crates/mm-ui-layout/src/paint.rs`（空の Timeline）、`crates/mm-ui-wgpu/src/program.rs`、`ui/panels/inspector/src/InspectorPanel.tsx`、`ui/panels/story/src/StoryPanel.tsx` | 空のプロジェクトで Program と Timeline に案内、Inspector にコンポジションの要約 |
+| D4 `feature/movie-maker-empty-states` | 空の状態の案内（Program、Timeline、Inspector、Story） | 文字の PR、B3、T1 | `crates/mm-ui-layout/src/empty.rs`（新）、`crates/mm-ui-wgpu/src/empty.rs`（新）、`ui.rs`、`apps/movie-maker/src/win/ipc.rs`、`web/transport.js`、`ui/shell/src/Shell.tsx`、`ui/panels/inspector/src/EmptyInspector.tsx`（新）、`ui/panels/story/src/StoryPanel.tsx` | 空のプロジェクトで Program に案内、カットの無い sequence のレイヤーだけのコンポジションで Timeline に案内、Inspector にコンポジションの要約 |
 
 ### 衝突しやすい共有ファイル
 

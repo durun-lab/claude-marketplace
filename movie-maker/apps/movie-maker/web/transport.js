@@ -5,6 +5,8 @@
   const { invoke, Channel } = window.__TAURI__.core;
   const ADAPTER_WAIT_MS = 1500;
   const LAYER_SELECTED_EVENT = "mm:layer-selected";
+  // shell が選択の DOM のイベントを聞き始めたときに投げる頼み。今の選択を読んで LAYER_SELECTED_EVENT で答える。
+  const LAYER_SELECTION_REQUEST_EVENT = "mm:layer-selection-request";
   const SOURCE_EVENT = "mm:source";
   // Media パネルが素材を選んだときに投げる DOM のイベント（detail.asset が素材の ID）。Source で開く。
   const ASSET_SELECTED_EVENT = "mm:asset-selected";
@@ -213,17 +215,23 @@
     });
   };
 
-  // 選択のイベントは WebView が開く前にも出るので、開いたときと shell が組み上がった後に、いまの選択を引いて Inspector に渡す。
-  const pullSelection = async () => {
+  const readSelection = async () => {
     const detail = await invoke("layer_selection");
     if (detail) window.dispatchEvent(new CustomEvent(LAYER_SELECTED_EVENT, { detail }));
   };
+
+  // 選択の Tauri イベントを購読し終えたら解ける。購読より前に Rust が送った選択（起動時の 1 回目）は届かないので、
+  // shell の頼みには購読の後に今の選択を読んで答える。このスクリプトは shell より先に走るので、頼みを取りこぼさない。
+  let markSubscribed;
+  const subscribed = new Promise((resolve) => {
+    markSubscribed = resolve;
+  });
+  window.addEventListener(LAYER_SELECTION_REQUEST_EVENT, () => subscribed.then(readSelection));
 
   const start = async () => {
     build();
     info = await invoke("project_info");
     showInfo();
-    pullSelection();
     const channel = new Channel();
     channel.onmessage = onTick;
     await invoke("subscribe", { onTick: channel });
@@ -242,7 +250,7 @@
       window.dispatchEvent(new CustomEvent(LAYER_SELECTED_EVENT, { detail: e.payload }));
       info = await invoke("project_info");
       showInfo();
-    });
+    }).then(markSubscribed);
     window.__TAURI__.event.listen(SOURCE_EVENT, (e) => showSource(e.payload));
     window.addEventListener(ASSET_SELECTED_EVENT, (e) => e.detail?.asset && openSource(e.detail.asset));
     window.addEventListener(SEEK_EVENT, (e) => Number.isFinite(e.detail?.time) && act("seek", e.detail.time));
@@ -251,7 +259,6 @@
     setTimeout(async () => {
       info = await invoke("project_info");
       showInfo();
-      pullSelection();
     }, ADAPTER_WAIT_MS);
   };
 

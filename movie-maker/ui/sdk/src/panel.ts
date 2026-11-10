@@ -7,6 +7,7 @@ export type PanelColumn = "left" | "right";
 
 /** 開いているコンポジションの要約。アプリ（`ipc.rs` の `CompositionSummary`）が選択のイベントに載せる。 */
 export interface CompositionSummary {
+  /** コンポジションの ID（コンポジションは名前を別に持たない）。 */
   name: string;
   width: number;
   height: number;
@@ -21,6 +22,7 @@ export interface CompositionSummary {
 export interface LayerSelection {
   layer: Layer | null;
   assets?: Asset[];
+  /** 開いているコンポジションの要約。何も選んでいない Inspector が出す。 */
   composition?: CompositionSummary;
 }
 

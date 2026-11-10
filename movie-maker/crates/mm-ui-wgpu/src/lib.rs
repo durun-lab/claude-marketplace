@@ -6,6 +6,7 @@
 //! Timeline の文字（目盛りの時刻、帯の名前）は cosmic-text でシェーピングし（`fonts.rs`）、glyphon で描く（`text.rs`）。
 
 mod drawing;
+mod empty;
 mod fonts;
 mod model;
 mod names;
@@ -15,6 +16,7 @@ mod text;
 mod ui;
 
 pub use drawing::DrawingRenderer;
+pub use empty::empty_state;
 pub use model::{timeline_cut_ids, timeline_layer_ids, timeline_model};
 pub use program::ProgramViewer;
 pub use quads::QuadRenderer;

@@ -3,18 +3,24 @@ import type { CompositionSummary } from "@mm/sdk";
 const DIGITS = 2;
 const SECS_PER_MIN = 60;
 const MINS_PER_HOUR = 60;
+const SECS_PER_HOUR = SECS_PER_MIN * MINS_PER_HOUR;
+/** フレームの境目の誤差。`mm-ui-layout` の `header.rs` の `FRAME_EPS` と同じ。 */
+const FRAME_EPS = 1e-6;
 const FPS_DECIMALS = 100;
 
 const pad = (n: number) => String(n).padStart(DIGITS, "0");
 
-/** 時:分:秒:フレーム。画面の時刻の書き方（`00:01:23:12`）。 */
+/**
+ * 時刻 `sec`（秒）のタイムコード `HH:MM:SS:FF`。Timeline の見出しの列の上の角（`mm-ui-layout` の `header::timecode`）と
+ * 同じ決まりで、フレームは `sec` を含むフレーム（切り捨て）、1 秒のフレームの数は `fps` を丸めた数（ノンドロップ）。
+ */
 export const timecode = (sec: number, fps: number): string => {
-  const rate = Math.max(1, Math.round(fps));
-  const total = Math.max(0, Math.round(sec * rate));
-  const frames = total % rate;
-  const secs = Math.floor(total / rate);
-  const mins = Math.floor(secs / SECS_PER_MIN);
-  return [Math.floor(mins / MINS_PER_HOUR), mins % MINS_PER_HOUR, secs % SECS_PER_MIN, frames].map(pad).join(":");
+  const rate = Math.max(1, fps);
+  const perSec = Math.round(rate);
+  const frames = Math.floor(Math.max(0, sec) * rate + FRAME_EPS);
+  const secs = Math.floor(frames / perSec);
+  const fields = [Math.floor(secs / SECS_PER_HOUR), Math.floor(secs / SECS_PER_MIN) % MINS_PER_HOUR, secs % SECS_PER_MIN];
+  return [...fields, frames % perSec].map(pad).join(":");
 };
 
 /** fps を小数で出す（29.97 は 29.97、30 は 30）。 */

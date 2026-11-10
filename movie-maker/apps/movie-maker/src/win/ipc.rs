@@ -80,6 +80,7 @@ pub struct LayerSelection {
 /// コンポジションの要約（`ui/sdk` の `CompositionSummary`）。
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct CompositionSummary {
+    /// コンポジションの ID（コンポジションは名前を別に持たない）。
     pub name: String,
     pub width: u32,
     pub height: u32,
@@ -382,7 +383,8 @@ pub async fn project_info(state: State<'_, Arc<SyncState>>) -> Result<ProjectInf
     })
 }
 
-/// いまの選択（Inspector の中身）。WebView が開いたときに、起動前に出たイベントの代わりに引く。
+/// 今の選択（Inspector に送る中身）。購読より前に送った選択のイベントは WebView に届かないので、
+/// Shell が選択のイベントを聞き始めたときに `web/transport.js` が読む。
 #[tauri::command]
 pub async fn layer_selection(
     state: State<'_, Arc<SyncState>>,

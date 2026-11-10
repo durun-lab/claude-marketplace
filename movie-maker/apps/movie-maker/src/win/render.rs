@@ -14,7 +14,7 @@ mod acquire;
 mod sync;
 
 use mm_runtime::{select_adapter, GpuContext, GpuSelector};
-use mm_ui_layout::{EmptyHints, TimelineModel};
+use mm_ui_layout::{EmptyKeys, TimelineModel};
 use mm_ui_wgpu::Ui;
 
 use crate::win::keys;
@@ -228,9 +228,9 @@ fn surface_config(
 }
 
 /// 空の状態の案内に出すキー。キーの表から引き、割り当てを変えても案内がずれないようにする。
-fn empty_hints() -> EmptyHints {
+fn empty_keys() -> EmptyKeys {
     let key = |id: &str| keys::key_label_of(id).into();
-    EmptyHints {
+    EmptyKeys {
         import_media: key("media.import"),
         mark_in: key("source.mark_in"),
         mark_out: key("source.mark_out"),
@@ -261,7 +261,7 @@ impl View {
         }
         ui.set_palette(theme::surface_palette());
         ui.set_font(theme::surface_font());
-        ui.set_hints(empty_hints());
+        ui.set_empty_keys(empty_keys());
         Ok(Self {
             gpu,
             ui,

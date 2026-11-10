@@ -9,10 +9,10 @@
 use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
-    clear_tooltip_area, drag_tooltip, empty_program_labels, empty_timeline_labels, fit_rect,
-    split_viewers, timeline_labels, timeline_overlay, timeline_quads, Action, DrawingShape,
-    EmptyHints, PaintState, PointerEvent, Quad, Rect, RowHeights, Scale, SurfaceLayout, TimeView,
-    TimelineController, TimelineModel, UiFont, ViewState,
+    clear_tooltip_area, drag_tooltip, fit_rect, split_viewers, timeline_labels, timeline_overlay,
+    timeline_quads, Action, DrawingShape, EmptyHints, EmptyKeys, EmptyState, PaintState,
+    PointerEvent, Quad, Rect, RowHeights, Scale, SurfaceLayout, TimeView, TimelineController,
+    TimelineModel, UiFont, ViewState,
 };
 
 use crate::drawing::{DrawingFit, DrawingLayer};
@@ -59,8 +59,8 @@ pub struct Ui {
     /// 最初の表示（戻した表示の状態か、全体表示と sequence の行）を当てたか。
     opened: bool,
     palette: Palette,
-    /// レイヤーが無いときの案内に出すキー。
-    hints: EmptyHints,
+    /// 空の状態の案内（どれを出すかと、案内に出すキー）。
+    empty: EmptyHints,
 }
 
 impl Ui {
@@ -91,13 +91,18 @@ impl Ui {
             playhead: 0.0,
             opened: false,
             palette: Palette::DEFAULT,
-            hints: EmptyHints::default(),
+            empty: EmptyHints::default(),
         }
     }
 
-    /// レイヤーが無いときの案内に出すキー（アプリのキーの表から作ったもの）。
-    pub fn set_hints(&mut self, hints: EmptyHints) {
-        self.hints = hints;
+    /// 空の状態の案内に出すキー（アプリのキーの表から作ったもの）。
+    pub fn set_empty_keys(&mut self, keys: EmptyKeys) {
+        self.empty.keys = keys;
+    }
+
+    /// 空の状態の案内のどれを出すか（プロジェクトのデータから決めたもの。[`crate::empty_state`]）。
+    pub fn set_empty_state(&mut self, show: EmptyState) {
+        self.empty.show = show;
     }
 
     /// Timeline の色（`ui/theme` の theme.json から作ったもの）。
@@ -370,34 +375,17 @@ impl Ui {
         let vp = self.controller.viewport();
         let (model, font) = (&self.model, &self.font);
         let mut labels = timeline_labels(model, &vp, &state, font, text.measure());
+        labels.extend(self.empty.timeline(&vp, &state, font, text.measure()));
         let tooltip = drag_tooltip(model, &vp, &state, font, text.measure(), &mut labels);
         for l in &mut labels {
             l.x += t.x;
             l.y += t.y;
             l.clip = l.clip.translated(t.x, t.y);
         }
-        let empty = empty_timeline_labels(
-            &self.model,
-            &vp,
-            &self.hints,
-            &state.palette,
-            &self.font,
-            text.measure(),
+        labels.extend(
+            self.empty
+                .program(self.layout.program, &state, font, text.measure()),
         );
-        for mut l in empty {
-            l.x += t.x;
-            l.y += t.y;
-            l.clip = l.clip.translated(t.x, t.y);
-            labels.push(l);
-        }
-        labels.extend(empty_program_labels(
-            &self.model,
-            self.layout.program,
-            &self.hints,
-            &state.palette,
-            &self.font,
-            text.measure(),
-        ));
         let viewport = (self.size.0 as u32, self.size.1 as u32);
         text.prepare(device, queue, &labels, self.scale, viewport);
         tooltip
