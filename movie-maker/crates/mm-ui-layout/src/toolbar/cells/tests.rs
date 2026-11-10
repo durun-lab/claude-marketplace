@@ -34,7 +34,7 @@ fn named(c: &Cells) -> Vec<&'static str> {
         .collect()
 }
 
-/// 名前を `dropped` 個のまとまりで省いたとき、全部のボタンとスライダーの下限がちょうど入るツールバーの幅。
+/// 名前を `dropped` 個のグループで省いたとき、全部のボタンとスライダーの下限がちょうど入るツールバーの幅。
 fn width_for(n: &ToolbarNames, dropped: usize) -> f32 {
     let p = Plan {
         dropped,
@@ -46,7 +46,7 @@ fn width_for(n: &ToolbarNames, dropped: usize) -> f32 {
 }
 
 #[test]
-fn ボタンは左から_undo_からスナップの順に並び_右にズームのまとまりが続く() {
+fn ボタンは左から_undo_からスナップの順に並び_右にズームのグループが続く() {
     let b = bar(1000.0);
     let c = cells(b, &names());
     let order: Vec<_> = c.buttons.iter().map(|b| b.spec.name).collect();
@@ -108,7 +108,7 @@ fn 名前の幅は測った幅で_全部が入れば全部のボタンに名前�
 }
 
 #[test]
-fn 狭くなると取り消し_ズーム_ツール_スナップ_編集の順にまとまりごとに名前を省く() {
+fn 狭くなると取り消し_ズーム_ツール_スナップ_編集の順にグループごとに名前を省く() {
     let n = names();
     let expect: [&[&str]; 6] = [
         &ALL_NAMES,
@@ -137,7 +137,7 @@ fn 狭くなると取り消し_ズーム_ツール_スナップ_編集の順に�
     ];
     for (dropped, want) in expect.iter().enumerate() {
         let c = cells(bar(width_for(&n, dropped) + 0.5), &n);
-        assert_eq!(named(&c), *want, "{dropped} 個のまとまりを省く幅");
+        assert_eq!(named(&c), *want, "{dropped} 個のグループを省く幅");
         assert_eq!(c.buttons.len(), BUTTONS.len());
         let slider = c.slider.expect("スライダーの下限が入る");
         assert!(
@@ -146,7 +146,7 @@ fn 狭くなると取り消し_ズーム_ツール_スナップ_編集の順に�
         );
         if let Some(next) = expect.get(dropped + 1) {
             let narrower = cells(bar(width_for(&n, dropped) - 1.0), &n);
-            assert_eq!(named(&narrower), *next, "1 狭ければ次のまとまりも省く");
+            assert_eq!(named(&narrower), *next, "1 狭ければ次のグループも省く");
         }
     }
 }
@@ -184,7 +184,7 @@ fn アイコンだけでも入らなければスライダーを出さずにボ�
         .iter()
         .filter(|c| c.spec.group == Group::Zoom)
         .collect();
-    assert_eq!(zoom.len(), 3, "ズームのまとまりは残す");
+    assert_eq!(zoom.len(), 3, "ズームのグループは残す");
     let last_left = tiny
         .buttons
         .iter()
@@ -193,6 +193,6 @@ fn アイコンだけでも入らなければスライダーを出さずにボ�
         .fold(0.0, f32::max);
     assert!(
         last_left + GROUP_GAP <= zoom[0].rect.x + 0.01,
-        "左のボタンは右のまとまりに掛からない"
+        "左のボタンは右のグループに掛からない"
     );
 }

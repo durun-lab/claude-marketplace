@@ -6,7 +6,7 @@ use crate::geom::{Color, Quad, QuadShape, Rect};
 
 /// 線の太さ。
 const LINE: f32 = 2.0;
-/// Lift と Extract の下の帯（Timeline の行）の上端の、中心からの下がりと高さ。
+/// Lift と Extract の下に描く帯の上端の、中心からの下がりと高さ。
 const TRACK_Y: f32 = 4.0;
 const TRACK_H: f32 = 3.0;
 

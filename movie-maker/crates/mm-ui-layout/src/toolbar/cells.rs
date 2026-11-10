@@ -1,6 +1,6 @@
-//! ツールバーの部品の矩形。名前は入る所まで出し、入らなければ [`NAME_DROP_ORDER`] の順にまとまりごとに省く（Office の
-//! リボンが、幅に合わせて決めた順にグループを縮めるのと同じ）。アイコンだけでも入らなければスライダーを出さずにボタンを縮め
-//! （再生の操作のバーと同じ）、それでも入らなければ右のまとまりに掛かる左のボタンを出さない。
+//! ツールバーの部品の矩形。名前は入る所まで出し、入らなければ [`NAME_DROP_ORDER`] の順にグループごとに省く（Windows の
+//! リボンの ScalingPolicy が、幅に合わせて決めた順にグループを縮めるのと同じ）。アイコンだけでも入らなければスライダーを出さずにボタンを縮め
+//! （再生の操作のバーと同じ）、それでも入らなければ右のグループに掛かる左のボタンを出さない。
 
 use super::{ButtonSpec, Group, ToolbarNames, BUTTONS, NAME_DROP_ORDER};
 use crate::geom::Rect;
@@ -9,7 +9,7 @@ use crate::geom::Rect;
 const BUTTON_H: f32 = 24.0;
 /// ツールバーの左右の余白。
 const PAD: f32 = 8.0;
-/// ボタンの間隔とまとまりの間隔。
+/// ボタンの間隔とグループの間隔。
 const BUTTON_GAP: f32 = 2.0;
 const GROUP_GAP: f32 = 12.0;
 /// アイコンだけのボタンの幅と、幅が足りないときに縮める下限（アイコンの欄の左右に 3 ずつ）。
@@ -19,7 +19,7 @@ const MIN_ICON_BUTTON_W: f32 = 22.0;
 const ICON_W: f32 = 16.0;
 const NAME_GAP: f32 = 4.0;
 const NAME_PAD: f32 = 6.0;
-/// スライダーの幅（欲しい幅と、これより狭ければ出さない下限）とつまみの幅。
+/// スライダーの幅（欲しい幅と、これより狭ければ出さない下限）と、スライダーのつまみの幅。
 const SLIDER_W: f32 = 110.0;
 const SLIDER_MIN_W: f32 = 56.0;
 pub(crate) const THUMB_W: f32 = 10.0;
@@ -55,7 +55,7 @@ impl ButtonCell {
     }
 }
 
-/// スライダー。`rect` がクリックを受ける矩形、`track` が溝（つまみの中心が動く範囲）。
+/// スライダー。`rect` がクリックを受ける矩形、`track` がスライダーの溝（つまみの中心が動く範囲）。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Slider {
     pub rect: Rect,
@@ -63,7 +63,7 @@ pub(crate) struct Slider {
 }
 
 impl Slider {
-    /// 溝の `x` の位置。
+    /// スライダーの溝の `x` の位置（左端が 0、右端が 1）。
     pub(crate) fn fraction_at(&self, x: f32) -> f32 {
         if self.track.w <= 0.0 {
             return 0.0;
@@ -71,7 +71,7 @@ impl Slider {
         ((x - self.track.x) / self.track.w).clamp(0.0, 1.0)
     }
 
-    /// 位置 `fraction` のつまみの中心の x。
+    /// 位置 `fraction` のスライダーのつまみの中心の x。
     pub(crate) fn thumb_x(&self, fraction: f32) -> f32 {
         self.track.x + self.track.w * fraction
     }
@@ -83,14 +83,14 @@ pub(crate) struct Cells {
     pub buttons: Vec<ButtonCell>,
     /// 幅が足りないときは `None`。
     pub slider: Option<Slider>,
-    /// まとまりの間の縦線。
+    /// グループの間の縦線。
     pub separators: Vec<Rect>,
 }
 
 /// 並べ方。
 #[derive(Debug, Clone, Copy, PartialEq)]
 struct Plan {
-    /// 名前を省くまとまりの数（[`NAME_DROP_ORDER`] の先頭から）。
+    /// 名前を省くグループの数（[`NAME_DROP_ORDER`] の先頭から）。
     dropped: usize,
     /// アイコンだけのボタンの幅。
     icon_w: f32,
@@ -109,7 +109,7 @@ impl Plan {
     }
 }
 
-/// 隣り合うボタンの間隔。まとまりの切れ目は広くする（左のまとまりとズームのまとまりの間は、これが最小）。
+/// 隣り合うボタンの間隔。グループの切れ目は広くする（左のグループとズームのグループの間は、これが最小）。
 fn gap(prev: &ButtonSpec, next: &ButtonSpec) -> f32 {
     if prev.group == next.group {
         BUTTON_GAP
@@ -123,7 +123,7 @@ fn gaps() -> f32 {
     BUTTONS.windows(2).map(|w| gap(&w[0], &w[1])).sum()
 }
 
-/// ズームのまとまりの最初のボタンの添字。
+/// ズームのグループの最初のボタンの添字。
 fn zoom_start() -> usize {
     BUTTONS
         .iter()
@@ -131,7 +131,7 @@ fn zoom_start() -> usize {
         .unwrap_or(BUTTONS.len())
 }
 
-/// 行の幅 `w` での並べ方。名前を省くまとまりの少ない方から試し、全部のボタンとスライダーの下限が入るものを採る。
+/// 行の幅 `w` での並べ方。名前を省くグループの少ない方から試し、全部のボタンとスライダーの下限が入るものを採る。
 fn plan(w: f32, names: &ToolbarNames) -> Plan {
     for dropped in 0..=NAME_DROP_ORDER.len() {
         let p = Plan {
@@ -173,7 +173,7 @@ pub(crate) fn cells(bar: Rect, names: &ToolbarNames) -> Cells {
     out
 }
 
-/// ズームのまとまり（`zoom` 番目から最後まで）の幅。スライダーは最初のボタンの後ろに挟む。
+/// ズームのグループ（`zoom` 番目から最後まで）の幅。スライダーは最初のボタンの後ろに挟む。
 fn zoom_width(plan: &Plan, names: &ToolbarNames, zoom: usize) -> f32 {
     let buttons: f32 = (zoom..BUTTONS.len()).map(|i| plan.button(i, names).0).sum();
     let gaps = (BUTTONS.len() - zoom).saturating_sub(1) as f32 * BUTTON_GAP;
@@ -212,7 +212,7 @@ fn left_buttons(
     }
 }
 
-/// ズームのまとまりを `from` の x から並べる。最初のボタン（Zoom Out）の後ろにスライダーを挟む。
+/// ズームのグループを `from` の x から並べる。最初のボタン（Zoom Out）の後ろにスライダーを挟む。
 fn zoom_group(
     out: &mut Cells,
     (row, from): (Rect, f32),
@@ -236,7 +236,7 @@ fn zoom_group(
     }
 }
 
-/// まとまりの間の縦線。`x` は右のまとまりの左端で、線は間隔の中央。
+/// グループの間の縦線。`x` は右のグループの左端で、線は間隔の中央。
 fn separator(x: f32, row: Rect) -> Rect {
     Rect::new(
         x - GROUP_GAP / 2.0,

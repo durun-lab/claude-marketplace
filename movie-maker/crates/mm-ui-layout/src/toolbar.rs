@@ -4,10 +4,10 @@
 //!
 //! ボタンの矩形は [`cells`] 1 か所で決め、描く関数（`paint/toolbar.rs`、[`toolbar_labels`]）、当たり判定
 //! （[`ToolbarController`]）、`--play-test` のクリックの位置（[`toolbar_button`]）が同じ値を見る。
-//! 名前の幅は文字の仕組みで測った値（[`ToolbarNames`]）を使い、入らなければまとまりごとに名前を省く。
+//! 名前の幅は文字の仕組みで測った値（[`ToolbarNames`]）を使い、入らなければグループごとに名前を省く。
 //! ボタンはコマンドの表（アプリの `commands.rs`）の ID を持ち、押して同じボタンの上で離すと、その ID を
 //! [`ToolbarAction::Command`] で返す。押せるかはアプリがコマンドの表から作った [`ToolbarState::disabled`]、Snapping の
-//! 押された見た目は [`ToolbarState::snapping`] で決める。
+//! 入の見た目は [`ToolbarState::snapping`] で決める。
 //! スライダーは秒あたりの論理ピクセルを対数で動かす（[`zoom_fraction`]、[`zoom_px`]）。
 
 mod cells;
@@ -29,7 +29,7 @@ pub(crate) use look::ButtonLook;
 /// スナップのコマンドの ID。このボタンだけが入/切の見た目を持つ。
 const SNAPPING: &str = "timeline.toggle_snapping";
 
-/// ボタンのまとまり。左から並べ、まとまりの間に区切りの縦線を引く。ズームのまとまりだけは右端に寄せる。
+/// ボタンのグループ。左から並べ、グループの間に区切りの縦線を引く。ズームのグループだけは右端に寄せる。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Group {
     History,
@@ -39,7 +39,7 @@ pub(crate) enum Group {
     Zoom,
 }
 
-/// 幅が足りないときに名前を省くまとまりの順（先頭から省く）。取り消しの矢印はどのアプリでも同じ形で通じるので先に省き、
+/// 幅が足りないときに名前を省くグループの順（先頭から省く）。取り消しの矢印はどのアプリでも同じ形で通じるので先に省き、
 /// 編集（Lift と Extract）はアイコンだけでは見分けにくいので最後まで残す。
 pub(crate) const NAME_DROP_ORDER: [Group; 5] = [
     Group::History,
@@ -82,7 +82,7 @@ const fn tool(icon: Icon, name: &'static str, lit: bool) -> ButtonSpec {
     }
 }
 
-/// 全部のボタンを左から並べる順に。ズームのまとまりは Zoom Out と Zoom In の間にスライダーを挟み、Zoom Out と Zoom In は
+/// 全部のボタンを左から並べる順に。ズームのグループは Zoom Out と Zoom In の間にスライダーを挟み、Zoom Out と Zoom In は
 /// 名前を持たない（スライダーの両端の虫眼鏡で通じる）。Full Extent Zoom の名前は「Fit」。
 pub(crate) static BUTTONS: [ButtonSpec; 12] = [
     button(
@@ -163,7 +163,7 @@ pub struct ToolbarView<'a> {
 pub struct ToolbarState {
     /// 今は押せないコマンドの ID。
     pub disabled: Vec<&'static str>,
-    /// スナップが入（Snapping を押された見た目にする）。
+    /// スナップが入（Snapping を入の見た目にする）。
     pub snapping: bool,
     /// 今の秒あたりの論理ピクセルと、縮小の下限（`TimeView::zoom_floor`）。スライダーの位置と、ドラッグの換算に使う。
     pub px_per_sec: f64,

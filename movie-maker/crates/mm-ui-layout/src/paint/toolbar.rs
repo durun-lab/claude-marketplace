@@ -1,5 +1,5 @@
-//! ツールバーの矩形。背景と下端の線、まとまりの間の縦線、ボタンの背景、矩形で描くアイコン、ズームのスライダー
-//! （溝、下限からつまみまでの塗り、つまみ）。字のアイコンとボタンの名前は文字で描く（[`crate::toolbar_labels`]）。
+//! ツールバーの矩形。背景と下端の線、グループの間の縦線、ボタンの背景、矩形で描くアイコン、ズームのスライダー
+//! （スライダーの溝、下限からスライダーのつまみまでの塗り、そのつまみ）。字のアイコンとボタンの名前は文字で描く（[`crate::toolbar_labels`]）。
 
 use super::{Canvas, Depth, PaintInput};
 use crate::geom::Rect;
@@ -9,14 +9,14 @@ use crate::toolbar::{
     ToolbarState, THUMB_W,
 };
 
-/// 下端の線と、まとまりの間の縦線の濃さ。
+/// 下端の線と、グループの間の縦線の濃さ。
 const EDGE_ALPHA: f32 = 0.5;
 const SEPARATOR_ALPHA: f32 = 0.5;
 /// スライダーの溝の高さと濃さ、塗りの濃さ。
 const TRACK_H: f32 = 4.0;
 const TRACK_ALPHA: f32 = 0.35;
 const FILL_ALPHA: f32 = 0.7;
-/// つまみの高さ。
+/// スライダーのつまみの高さ。
 const THUMB_H: f32 = 16.0;
 
 pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
@@ -54,7 +54,7 @@ pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
     }
 }
 
-/// スライダー。溝の上に、下限からつまみまでを accent で塗り、つまみを置く（乗っているか掴んでいる間は明るく）。
+/// スライダーの溝の上に、下限からスライダーのつまみまでを accent で塗り、そのつまみを置く（乗っているか掴んでいる間は明るく）。
 fn paint_slider(
     c: &mut Canvas,
     slider: Slider,

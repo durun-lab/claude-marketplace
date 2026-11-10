@@ -82,7 +82,7 @@ fn コマンドのあるボタンは表の_id_で引け_ツールのボタンは
 }
 
 #[test]
-fn 押せないコマンドは薄く_押せず_snapping_は入のとき押された見た目() {
+fn 押せないコマンドは薄く_押せず_snapping_は入のとき_accent_で塗る() {
     let b = bar(1000.0);
     let mut s = state();
     s.disabled = vec!["clip.lift"];
