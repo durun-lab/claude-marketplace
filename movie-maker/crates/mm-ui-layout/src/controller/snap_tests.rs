@@ -207,6 +207,7 @@ fn ドラッグ中のツールチップはポインターの位置とポイン�
         ..model()
     };
     let mut c = ctl(&s);
+    c.tool = Tool::Trim;
     let y = in_bar(&c, 0);
     c.handle(down(100.0, y), &s, 0.0);
     let slip = by_of(&c.handle(move_to(140.0, y), &s, 0.0));

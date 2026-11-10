@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use mm_doc::Project;
 use mm_runtime::{GpuContext, GpuFrame};
 use mm_types::{CompositionId, RgbaImage};
-use mm_ui_layout::{PointerEvent, ToolbarNames};
+use mm_ui_layout::{PointerEvent, Tool, ToolbarNames};
 use serde::Serialize;
 
 use crate::win::clock::PlayClock;
@@ -181,6 +181,8 @@ pub struct Shared {
     pub workspace: crate::win::workspace::WorkspaceSlot,
     /// 描画スレッドが最後に描いた Timeline のツールバーの名前の幅。`--play-test` がボタンの位置を引く。
     pub toolbar_names: Mutex<ToolbarNames>,
+    /// Timeline の今のツール。描画スレッドが置く。コマンドの表のチェックの状態に出す。履歴にも `.mm/view.json` にも残さない。
+    pub tool: Mutex<Tool>,
 }
 
 impl Shared {
@@ -223,6 +225,7 @@ impl Shared {
             view: crate::win::view_state::ViewSlot::default(),
             workspace: crate::win::workspace::WorkspaceSlot::default(),
             toolbar_names: Mutex::new(ToolbarNames::default()),
+            tool: Mutex::new(Tool::default()),
         }
     }
 

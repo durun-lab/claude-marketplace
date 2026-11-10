@@ -33,6 +33,11 @@ impl Zoom {
     }
 }
 
+/// 今のツールを共有状態に置く。コマンドの表が Selection Tool、Trim Tool、Blade Tool のチェックの状態に読む。
+pub(super) fn publish_tool(shared: &Shared, ui: &Ui) {
+    *shared.tool.lock().expect("tool") = ui.tool();
+}
+
 /// 最後に描いたツールバーの名前の幅を共有状態に置く。名前の幅は字で変わり、ボタンの位置を決めるので、`--play-test` は
 /// これでボタンの位置を引く（`Placement::toolbar_button`）。
 pub(super) fn publish_names(shared: &Shared, ui: &Ui) {

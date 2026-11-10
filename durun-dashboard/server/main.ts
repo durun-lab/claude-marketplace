@@ -1366,7 +1366,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/assistant$/, async (_, b) => askDolphin(await logsReady.then(buildSnapshot), toMessages(b), await focusOf(b)), HAIKU_MS],
   [/^\/api\/learn$/, (_, b) => updateLearn({ scheduled: field<boolean>(b, 'scheduled', 'boolean') })],
   [/^\/api\/learn\/run$/, () => learnNow()],
-  [/^\/api\/workflows\/consult$/, (_, b) => consultWorkflow(optionalString(b, 'id'))],
+  [/^\/api\/workflows\/consult$/, (_, b) => consultWorkflow(optionalString(b, 'id')), CLAUDE_MS],
   [/^\/api\/workflows\/([\w-]+)\/run$/, ([, id = '']) => runWorkflow(id)],
   [/^\/api\/workflows\/([\w-]+)\/settings$/, ([, id = ''], b) => updateWorkflow(id, b)],
   [/^\/api\/workflows\/([\w-]+)\/enabled$/, ([, id = ''], b) => setWorkflowEnabled(id, field<boolean>(b, 'enabled', 'boolean'))],

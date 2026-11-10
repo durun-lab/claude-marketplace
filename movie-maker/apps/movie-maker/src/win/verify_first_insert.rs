@@ -10,7 +10,7 @@ use crate::win::keys;
 use crate::win::state::Shared;
 use crate::win::surface;
 use crate::win::verify_edit::{
-    cuts, mark_source, sequence_of, shot, Env, Log, MARK_IN, MARK_OUT, VK_COMMA, WAIT,
+    cuts, mark_source, sequence_of, shot, tools, Env, Log, MARK_IN, MARK_OUT, VK_COMMA, WAIT,
 };
 use crate::win::verify_stage::wait_until;
 
@@ -169,21 +169,29 @@ fn undo_step(env: &Env<'_>, log: &mut Log, sequences: usize, before: (usize, f64
     shot(env, log, "3-first-insert-undo");
 }
 
-/// Source を開いてイン点とアウト点を付け、insert して、空の sequence の工程を通してから取り消す。
+/// Source を開いてイン点とアウト点を付け、insert して、空の sequence の工程とツールの工程を通してから取り消す。
 /// 空の sequence の工程の途中で止まったら、どこまで戻せばよいか分からないので取り消さない（通しの最後の restore が戻す）。
-fn insert_and_undo(env: &Env<'_>, log: &mut Log, project: &Project) {
+/// ツールの工程はクリックする行が行の領域に見えているときだけ行い（入れた sequence の行は、行の多いプロジェクトでは画面の外に
+/// 足される）、行わなかったら skipped に足す説明を返す。
+fn insert_and_undo(env: &Env<'_>, log: &mut Log, project: &Project) -> Option<&'static str> {
     let (sequences, before) = (project.sequences.len(), comp_shape(project));
     let (Some(before), Some(_)) = (before, mark_source(env, log)) else {
-        return;
+        return None;
     };
     if !insert_step(env, log, before) {
         let why = json!("insert が適用されなかったので取り消さない");
         log.step("undo_first_insert", false, why);
-        return;
+        return None;
     }
-    if extract_step(env, log, before) && redo_step(env, log) && reinsert_step(env, log, before) {
-        undo_step(env, log, sequences, before);
+    if !(extract_step(env, log, before) && redo_step(env, log) && reinsert_step(env, log, before)) {
+        return None;
     }
+    let visible = tools::tool_rows_visible(env);
+    if visible {
+        tools::run(env, log);
+    }
+    undo_step(env, log, sequences, before);
+    (!visible).then_some("。ツールの手順でクリックする行が Timeline の行の領域に見えないので、ツールの手順も行わない")
 }
 
 /// 最初のコンポジションにレイヤーがあるか。見出しの手順はレイヤーが無いと行えない。
@@ -199,7 +207,7 @@ pub fn steps(env: &Env<'_>, log: &mut Log) -> String {
     let mut note =
         String::from("シーケンスのレイヤーが無いので、シーケンスを編集する手順をスキップした");
     match env.shared.doc().filter(|d| !d.project.assets.is_empty()) {
-        Some(doc) => insert_and_undo(env, log, &doc.project),
+        Some(doc) => note.push_str(insert_and_undo(env, log, &doc.project).unwrap_or_default()),
         None => note.push_str("。素材も無いので、最初の insert の通しも行わない"),
     }
     if !has_layers(env.shared) {

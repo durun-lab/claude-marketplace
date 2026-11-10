@@ -426,10 +426,12 @@ export type Harness = { items: HarnessItem[]; kindToggles: Partial<Record<Harnes
 
 /**
  * ワークフローのトリガー。schedule は at（HH:MM）に動き、days（0 が日曜）があればその曜日だけ動く。
- * github-review は、自分へのレビュー依頼が新しく届いたときに動く。slack-mention は、Slack で自分へのメンションが新しく届いたときに動く。
+ * github-review は、自分へのレビュー依頼が新しく届いたときに動く。slack-mention と jira-mention は、Slack と JIRA のコメントで自分へのメンションが新しく届いたときに動く。
  * feedback は、ダッシュボードへの改善要望がたまっているときに、前のウェーブを終えてから、たまった要望を 1 つのウェーブとして渡す。
  */
-export type WorkflowTrigger = { kind: 'schedule'; at: string; days?: number[] } | { kind: 'github-review' } | { kind: 'slack-mention' } | { kind: 'feedback' };
+/** burstMinutes は、メンションが続けて届いたとき、最後のメンションからこの分数だけ新しいものが届かなくなるまで待ち、1 つの依頼にまとめる。 */
+export type MentionTrigger = { kind: 'slack-mention'; burstMinutes?: number } | { kind: 'jira-mention'; burstMinutes?: number };
+export type WorkflowTrigger = { kind: 'schedule'; at: string; days?: number[] } | { kind: 'github-review' } | MentionTrigger | { kind: 'feedback' };
 
 /**
  * ワークフローの定義。人間とエージェントが workflows.json に書く。

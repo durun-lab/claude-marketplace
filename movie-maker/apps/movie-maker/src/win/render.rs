@@ -14,6 +14,7 @@ mod acquire;
 mod sync;
 mod thumbs;
 mod toolbar;
+mod tools;
 mod transport;
 mod waves;
 
@@ -320,6 +321,7 @@ fn run(
             shared.view.publish(state);
         }
         toolbar::publish_names(shared, &view.ui);
+        toolbar::publish_tool(shared, &view.ui);
         match frame(shared, &view.gpu, &mut view.ui, &mut seen) {
             Ok(()) => failed_frames = 0,
             Err(recovery) => {

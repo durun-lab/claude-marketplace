@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use mm_doc::SEQUENCE_KIND;
-use mm_ui_layout::{PointerEvent, TimelineCommand};
+use mm_ui_layout::{PointerEvent, TimelineCommand, Tool};
 use serde::Serialize;
 
 use crate::win::edit_actions::{self, EditAction};
@@ -98,6 +98,8 @@ struct Ready {
     cut_selected: bool,
     /// スナップの入/切（描画スレッドが置いた表示の状態）。
     snapping: bool,
+    /// Timeline の今のツール（描画スレッドが置いたもの）。
+    tool: Tool,
     /// Shy の行を隠すかどうか（表示の状態）と、選んでいるレイヤーの Shy のフラグ。
     shy: shy::ShyReady,
     /// 割り付け（WebView の列の開閉をチェックに出す）。
@@ -116,6 +118,7 @@ impl Ready {
             sequence,
             cut_selected: shared.edit.selected_cut().is_some(),
             snapping: shared.view.snapping(),
+            tool: *shared.tool.lock().expect("tool"),
             shy: shy::ShyReady::of(shared),
             workspace: shared.workspace.get(),
         }
@@ -136,9 +139,20 @@ impl Ready {
             Owner::App(Action::Layout(command)) => layout::checked(&self.workspace, command),
             Owner::App(Action::Shy(command)) => self.shy.checked(command),
             Owner::App(Action::Timeline(TimelineCommand::ToggleSnapping)) => Some(self.snapping),
+            Owner::App(Action::Timeline(command)) => tool_of(command).map(|tool| tool == self.tool),
             Owner::App(_) | Owner::Panel(_) => None,
         };
         State { enabled, checked }
+    }
+}
+
+/// ツールを選ぶコマンドが選ぶツール。ツールのコマンドはチェックの状態（今のツール）を持つ。
+fn tool_of(command: TimelineCommand) -> Option<Tool> {
+    match command {
+        TimelineCommand::SelectionTool => Some(Tool::Selection),
+        TimelineCommand::TrimTool => Some(Tool::Trim),
+        TimelineCommand::BladeTool => Some(Tool::Blade),
+        _ => None,
     }
 }
 
