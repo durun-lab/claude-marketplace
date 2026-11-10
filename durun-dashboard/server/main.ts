@@ -1256,7 +1256,8 @@ const WEB_API_MS = 5000;
 const GITHUB_SEARCH_MS = 15_000;
 // claude でセッションを起動し、止め、再開する。止まるのを待つだけで十数秒かかることがある。
 const CLAUDE_MS = 20_000;
-const HAIKU_MS = 15_000;
+// haiku は claude -p を起動して問い合わせる。CPU 8 個で load average が 20 前後のときは、1 回きりの問い合わせでも 16〜18 秒かかる。
+const HAIKU_MS = 20_000;
 // コードや長い文章を読ませて書かせる。数分かかることがある。
 const READER_MS = 5 * 60_000;
 
