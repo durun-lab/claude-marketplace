@@ -50,6 +50,9 @@ static SYSKEY_IN_TABLE: AtomicBool = AtomicBool::new(false);
 /// 矩形（x、y、幅、高さ。物理ピクセル）。
 pub type PixelRect = (i32, i32, i32, i32);
 
+/// サーフェスの子 HWND のウィンドウクラスの名前。Keyboard Shortcuts のウィンドウを閉じたとき、これで探してフォーカスを戻す。
+pub const CLASS: PCWSTR = w!("MmSurface");
+
 /// 親の HWND の下に子 HWND を作る。位置と大きさは物理ピクセル。
 pub fn create(parent: isize, shared: Arc<Shared>, rect: PixelRect) -> windows::core::Result<isize> {
     // wndproc から共有状態に届く道はこの静的変数だけなので、作る前に置く。
@@ -62,14 +65,14 @@ pub fn create(parent: isize, shared: Arc<Shared>, rect: PixelRect) -> windows::c
             lpfnWndProc: Some(wndproc),
             hInstance: hinstance.into(),
             hCursor: LoadCursorW(None, IDC_ARROW)?,
-            lpszClassName: w!("MmSurface"),
+            lpszClassName: CLASS,
             ..Default::default()
         };
         // 2 回目以降の登録は失敗するが、同じクラスが既にあるだけなので続ける。
         RegisterClassW(&class);
         let hwnd = CreateWindowExW(
             WS_EX_NOPARENTNOTIFY,
-            w!("MmSurface"),
+            CLASS,
             w!("wgpu surface"),
             WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
             x,

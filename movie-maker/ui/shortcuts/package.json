@@ -1,0 +1,9 @@
+{
+  "name": "@mm/shortcuts",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@mm/sdk": "workspace:*",
+    "preact": "^10.27.0"
+  }
+}

@@ -217,6 +217,15 @@ importers:
         specifier: ^10.27.0
         version: 10.29.8
 
+  shortcuts:
+    dependencies:
+      '@mm/sdk':
+        specifier: workspace:*
+        version: link:../sdk
+      preact:
+        specifier: ^10.27.0
+        version: 10.29.8
+
   theme: {}
 
 packages:

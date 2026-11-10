@@ -75,12 +75,17 @@ fn 修飾キーは_ctrl_shift_alt_の順に付き_shift_は英字と数字と矢
 
 type Expected = Vec<(&'static str, &'static str, commands::Owner)>;
 
-/// 編集と取り込みのキーと、指すコマンドの ID と持ち主。
+/// 編集、取り込み、ウィンドウのキーと、指すコマンドの ID と持ち主。
 fn expected_edits() -> Expected {
-    use crate::win::commands::{Action, Owner};
+    use crate::win::commands::{Action, Owner, WindowAction};
     use crate::win::edit_actions::EditAction as E;
     let edit = |a| Owner::App(Action::Edit(a));
     vec![
+        (
+            "?",
+            "app.show_keyboard_shortcuts",
+            Owner::App(Action::Window(WindowAction::ShowKeyboardShortcuts)),
+        ),
         ("Alt+KeyX", "source.clear_in_out", edit(E::ClearInOut)),
         ("KeyI", "source.mark_in", edit(E::MarkIn)),
         ("KeyO", "source.mark_out", edit(E::MarkOut)),
@@ -310,4 +315,15 @@ fn source_を開いて向けていれば再生のキーは_source_に行く() {
     shared.source.set_active(true);
     dispatch(&shared, "surface", "KeyL");
     assert_eq!(rx.try_recv(), Ok(Command::Play), "素材が無ければ Program");
+}
+
+#[test]
+fn 疑問符は_keyboard_shortcuts_を開き_jis_と_us_のどちらの_shift_スラッシュも同じ名前() {
+    // JIS も US も ? は Shift+/ で、押された文字が名前になる（Shift は付かない）。
+    assert_eq!(
+        with_modifiers(&symbol_name(0xBF, Some('?')), false, true, false),
+        "?"
+    );
+    assert_eq!(command_for("?"), Some("app.show_keyboard_shortcuts"));
+    assert_eq!(key_label_of("app.show_keyboard_shortcuts"), "?");
 }

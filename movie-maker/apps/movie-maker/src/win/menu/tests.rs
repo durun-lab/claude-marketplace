@@ -24,6 +24,11 @@ fn texts(lines: &[Line]) -> Vec<String> {
         .collect()
 }
 
+/// コマンドが入っている最初のメニュー。
+fn menu_of(id: &str) -> Option<Menu> {
+    place_of(id).map(|(menu, _)| menu)
+}
+
 fn menu_texts(menu: Menu, table: &[CommandView]) -> Vec<String> {
     let (_, groups) = BAR.iter().find(|(m, _)| *m == menu).expect("メニュー");
     texts(&lines(groups, table))
@@ -92,7 +97,10 @@ fn 項目は並びの順にコマンドの表の名前とキーの見た目で�
         ],
         "ツールのグループと編集のグループの間に区切り線"
     );
-    assert_eq!(menu_texts(Menu::Help, &table), ["About"]);
+    assert_eq!(
+        menu_texts(Menu::Help, &table),
+        ["Keyboard Shortcuts…	?", "-", "About"]
+    );
     assert_eq!(
         menu_texts(Menu::View, &table),
         [
@@ -130,7 +138,7 @@ fn 項目の無いメニューはメニューバーに出さない() {
     assert_eq!(menus.len(), BAR.len(), "どのメニューにも項目がある");
     let without_view: Vec<CommandView> = full
         .into_iter()
-        .filter(|c| menu_of(c.id) != Some(Menu::View))
+        .filter(|c| c.menu != Some(Menu::View))
         .collect();
     let menus: Vec<Menu> = shown(&without_view).into_iter().map(|(m, _)| m).collect();
     assert!(!menus.contains(&Menu::View), "{menus:?}");
@@ -213,7 +221,7 @@ fn webview_に送る表のメニューはメニューの並びから引く() {
         .as_array()
         .and_then(|rows| rows.iter().find(|r| r["id"] == "app.show_about"))
         .expect("About");
-    assert_eq!(about["menu"], "help");
+    assert_eq!(about["menu"], "Help", "画面の名前で送る");
 }
 
 /// 反映された押せるかとチェックの状態を記録する項目。
@@ -312,6 +320,7 @@ fn メニューのイベントは表のコマンドを実行し_パネルとウ�
         "view.show_diagnostics",
         "app.exit",
         "app.show_about",
+        "app.show_keyboard_shortcuts",
     ] {
         run(&shared, id);
     }
@@ -324,6 +333,7 @@ fn メニューのイベントは表のコマンドを実行し_パネルとウ�
             Forward::Panel("view.show_diagnostics"),
             Forward::Window(WindowAction::Exit),
             Forward::Window(WindowAction::About),
+            Forward::Window(WindowAction::ShowKeyboardShortcuts),
         ]
     );
 }
@@ -336,4 +346,33 @@ fn 押せない項目と表に無い_id_のイベントは何もしない() {
     run(&shared, "timeline.zoom_in");
     assert_eq!(shared.edit.message(), "", "編集を積まない");
     assert!(seen.lock().unwrap().is_empty());
+}
+
+#[test]
+fn メニューバーの中の位置はメニューとグループをまたいだ通し番号() {
+    assert_eq!(place_of("media.import"), Some((Menu::File, 0)));
+    assert_eq!(
+        place_of("edit.undo"),
+        Some((Menu::Edit, 3)),
+        "File の 3 つの後"
+    );
+    assert_eq!(place_of("timeline.zoom_in"), Some((Menu::View, 12)));
+    assert_eq!(
+        place_of("timeline.toggle_snapping"),
+        Some((Menu::View, 15)),
+        "区切り線をまたいでも続く"
+    );
+    assert_eq!(place_of("playback.stop"), None, "メニューに無いコマンド");
+    let order = |id| place_of(id).map(|(_, order)| order);
+    assert!(order("timeline.full_extent_zoom") < order("playback.toggle"));
+    assert!(order("clip.add_transition") < order("app.show_keyboard_shortcuts"));
+}
+
+#[test]
+fn メニューの画面の名前はアクセスキーを示す記号を除いた名前() {
+    let names: Vec<String> = BAR.iter().map(|(m, _)| m.name()).collect();
+    assert_eq!(
+        names,
+        ["File", "Edit", "View", "Playback", "Timeline", "Help"]
+    );
 }
