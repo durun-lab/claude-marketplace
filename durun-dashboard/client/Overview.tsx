@@ -1,6 +1,7 @@
 // セッション概要のダッシュボードに置く、概要、チャット、タスク、エージェントのウィジェット。
 import { type ComponentChildren, Fragment } from 'preact';
-import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { memo } from 'preact/compat';
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { type Attention, type BgTask, type Bookmark, type ChatEntry, JIRA_ISSUE_KEY, type ObservedTask, type OutboxMessage, PR_URL, type RepoRef, type Session, type Snapshot, type Subagent, bookmarkKey } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
@@ -467,7 +468,8 @@ const BookmarkButton = ({ sessionId, mark, on }: { sessionId: string; mark: Pick
  */
 type ChatBubbleProps = { sessionId: string; badges?: Badges; e: ChatEntry; codeLink: CodeLink; markText?: MarkText; focused: boolean; bookmarked?: boolean; streaming?: boolean; onStep?: () => void };
 
-const ChatBubble = ({ sessionId, badges, e, codeLink, markText, focused, bookmarked, streaming = false, onStep }: ChatBubbleProps) => {
+// スナップショットが届くたびにチャットは描き直されるので、変わらない発言は描き直さない。
+const ChatBubble = memo(({ sessionId, badges, e, codeLink, markText, focused, bookmarked, streaming = false, onStep }: ChatBubbleProps) => {
   const [editing, setEditing] = useState(false);
   const text = useTypewriter(e.text, streaming && e.kind === 'message', onStep);
   const now = useContext(NowContext);
@@ -500,7 +502,7 @@ const ChatBubble = ({ sessionId, badges, e, codeLink, markText, focused, bookmar
       </div>
     </div>
   );
-};
+});
 
 /** Claude がまだ読んでいない、送ったメッセージ。既読を付けず、届けられなかったものには未配信と添える。 */
 const UnreadBubble = ({ m }: { m: OutboxMessage }) => {
@@ -540,9 +542,9 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
   // 開いたときに読み込んだ発言の数。これより後ろの発言は開いている間に届いたものなので、一文字ずつ書き出す。
   const arrived = useRef<{ id: string; count: number }>();
   if (entries && arrived.current?.id !== s.id) arrived.current = { id: s.id, count: list.length };
-  const followBottom = () => {
+  const followBottom = useCallback(() => {
     if (box.current && stick.current) box.current.scrollTop = box.current.scrollHeight;
-  };
+  }, []);
   useLayoutEffect(() => {
     if (box.current && stick.current) box.current.scrollTop = box.current.scrollHeight;
   }, [list.length, unread.length]);
@@ -593,6 +595,9 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
     toPrompt(dir);
   };
   const codeLink = useMemo(() => fileLink(s.id), [s.id]);
+  // スナップショットは届くたびに作り直されるので、中身が同じ間は同じものを渡し、吹き出しを描き直させない。
+  const badgesKey = JSON.stringify([s.prs, s.issues, s.jira]);
+  const badges = useMemo<Badges>(() => ({ prs: s.prs, issues: s.issues, jira: s.jira }), [badgesKey]);
   const markText = useRefMarks(s, useTermMarks(s));
   const marked = new Set(s.bookmarks?.map(bookmarkKey));
   const [badgeMenu, setBadgeMenu] = useState<BadgeMenu>();
@@ -615,7 +620,7 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
           : list.length + unread.length === 0 ? <Empty>まだやり取りがありません。</Empty> : (
           <>
             {first > 0 && <button class="btn btn-sm chat-more" onClick={() => loadBefore(first)}>前の {Math.min(CHAT_PAGE, first)} 件を表示</button>}
-            {list.slice(first).map((e, i) => <ChatBubble key={first + i} sessionId={s.id} badges={s} e={e} codeLink={codeLink} markText={markText} focused={first + i === jump?.index} bookmarked={marked.has(bookmarkKey(e))} streaming={first + i >= (arrived.current?.count ?? Infinity)} onStep={followBottom} />)}
+            {list.slice(first).map((e, i) => <ChatBubble key={first + i} sessionId={s.id} badges={badges} e={e} codeLink={codeLink} markText={markText} focused={first + i === jump?.index} bookmarked={marked.has(bookmarkKey(e))} streaming={first + i >= (arrived.current?.count ?? Infinity)} onStep={followBottom} />)}
             {unread.map((m) => <UnreadBubble key={m.id} m={m} />)}
             <div class="chat-nav">
               <button class="btn btn-sm" title="前の依頼へ" aria-label="前の依頼へ" onClick={() => toPrompt(-1)}>↑</button>
