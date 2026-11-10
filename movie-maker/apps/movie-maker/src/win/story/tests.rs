@@ -2,7 +2,7 @@
 
 use std::fs;
 
-use mm_doc::{Asset, Cut, Node, Sequence, WordEdit, SEQUENCE_KIND, SEQUENCE_PARAM};
+use mm_doc::{Asset, Cut, Node, Sequence, Topic, WordEdit, SEQUENCE_KIND, SEQUENCE_PARAM};
 use mm_types::{ColorSpace, Id, ParamValue, RationalTime};
 
 use super::*;
@@ -126,4 +126,55 @@ fn 撮影素材のレイヤーでも素材の時刻が再生位置に変わる()
     assert_eq!(story.timeline_time(ASSET, 13.0).unwrap(), Some(5.0));
     assert_eq!(story.timeline_time(ASSET, 20.0).unwrap(), None);
     assert_eq!(story.timeline_time("other", 13.0).unwrap(), None);
+}
+
+/// 素材 1 つと話題 2 つ（素材の 1-3 秒と 4-5 秒）と、レイヤーの無いコンポジション `main` を書き手で開いた Story。
+fn saved_story(dir: &Path) -> (StoryState, Arc<mm_serve::Core>) {
+    let mut project = Project::new();
+    project.assets.push(asset());
+    for (id, from, to) in [("t1", 1, 3), ("t2", 4, 5)] {
+        project.bins.topics.push(Topic {
+            id: Id::new(id),
+            asset: Id::new(ASSET),
+            in_point: secs(from),
+            out_point: secs(to),
+            title: id.into(),
+            rating: Default::default(),
+            tags: Vec::new(),
+        });
+    }
+    let fps = mm_types::Rational::integer(30);
+    let comp = mm_doc::Composition::new(Id::new("main"), 320, 180, fps, secs(10));
+    project.compositions.push(comp);
+    let store = mm_store::Store::create(dir, &project, 0).expect("project.mmdb を作る");
+    let core = mm_serve::Core::new(store, None);
+    let shared = Arc::new(Shared::new());
+    let _ = shared.core.set(core.clone());
+    let version = core.version().expect("バージョン");
+    shared.publish_saved(version, Arc::new(project), Id::new("main"));
+    let story = StoryState::new(shared, &dir.join("project.mmdb"), dir.join("cache"));
+    (story, core)
+}
+
+#[test]
+fn 並べ先の_sequence_が無ければ_開いているコンポジションに_sequence_とレイヤーを作って並べ_取り消し_1_回で戻る(
+) {
+    let dir = tempfile::tempdir().unwrap();
+    let (story, core) = saved_story(dir.path());
+    let before = core.project().unwrap().project;
+    let ids = |v: [&str; 2]| v.map(String::from);
+    story
+        .arrange_new(&ids(["t2", "t1"]), &ids(["k2", "k1"]))
+        .expect("並べる");
+    let after = core.project().unwrap().project;
+    let seq = after.sequence(&Id::new("main-seq")).unwrap();
+    let cuts: Vec<&str> = seq.cuts.iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(cuts, ["k2", "k1"], "話題の順");
+    let (_, layer) = after.layer(&Id::new("main-seq-layer")).unwrap();
+    assert_eq!(layer.out_point, secs(3), "話題の長さの和");
+    let overview = story.overview().unwrap();
+    assert_eq!(overview.open_sequence.as_deref(), Some("main-seq"));
+
+    core.undo(&mm_serve::Caller::webview()).expect("取り消す");
+    assert_eq!(core.project().unwrap().project, before);
 }

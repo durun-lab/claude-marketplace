@@ -56,6 +56,7 @@ const fake = (topics: Topic[] = [], over: Partial<StoryApi> = {}): StoryApi => (
   timelineTime: vi.fn().mockResolvedValue(2.5),
   cutTime: vi.fn().mockResolvedValue(7.5),
   apply: vi.fn().mockResolvedValue({ ok: true, value: {} }),
+  arrangeNew: vi.fn().mockResolvedValue({ ok: true, value: {} }),
   seek: vi.fn().mockResolvedValue(undefined),
   ...over,
 });
@@ -335,5 +336,40 @@ describe("StoryPanel の検索と並べる", () => {
     expect(api.cutTime).toHaveBeenCalledWith(firstCut);
     expect(api.seek).toHaveBeenCalledWith(7.5);
     expect(host.querySelector(".mm-story-tray")).toBeNull();
+  });
+});
+
+describe("StoryPanel の並べ先の sequence が無いとき", () => {
+  const noSequence = () =>
+    vi.fn().mockResolvedValue({
+      assets: [{ id: "a1", name: "talk.wav", duration: 5, has_transcript: true }],
+      sequences: [],
+      open_sequence: null,
+    });
+
+  it("Arrange は開いているコンポジションに sequence を作って並べる", async () => {
+    const api = fake([topic("t1", 0, 1), topic("t2", 3, 5)], { overview: noSequence() });
+    await mount(api);
+    const picks = host.querySelectorAll<HTMLInputElement>('input[aria-label="Pick topic"]');
+    await press(picks[1] as HTMLElement);
+    await press(picks[0] as HTMLElement);
+    expect(host.textContent).toContain("No sequence yet. Arrange creates one in the open composition.");
+    await press(button("Arrange"));
+    expect(sent(api)).toEqual([]);
+    const [topics, cuts] = vi.mocked(api.arrangeNew).mock.calls[0] ?? [];
+    expect(topics).toEqual(["t2", "t1"]);
+    expect(cuts?.length).toBe(2);
+    expect(api.cutTime).toHaveBeenCalledWith(cuts?.[0]);
+    expect(host.querySelector(".mm-story-tray")).toBeNull();
+  });
+
+  it("sequence を作って並べるのを断られたら、理由を出して選んだ話題を残す", async () => {
+    const arrangeNew = vi.fn().mockResolvedValue({ ok: false, error: "Not found: topic t1" });
+    await mount(fake([topic("t1", 0, 1)], { overview: noSequence(), arrangeNew }));
+    const pick = host.querySelector<HTMLInputElement>('input[aria-label="Pick topic"]');
+    await press(pick as HTMLElement);
+    await press(button("Arrange"));
+    expect(host.querySelector(".mm-story-error")?.textContent).toBe("Not found: topic t1");
+    expect(host.querySelectorAll(".mm-story-tray-item").length).toBe(1);
   });
 });

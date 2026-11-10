@@ -31,4 +31,12 @@ describe("createIpcStoryApi", () => {
     expect(await api.apply(op)).toEqual({ ok: false, error: "既にその状態" });
     expect(call).toHaveBeenCalledWith("apply_op", { op });
   });
+
+  it("sequence を作って並べるのは story_arrange_new で送り、拒否された理由を返す", async () => {
+    const call = vi.fn().mockResolvedValueOnce({ touched: ["main-seq"] }).mockRejectedValueOnce("No project open");
+    const api = createIpcStoryApi(call);
+    expect(await api.arrangeNew(["t1"], ["k1"])).toEqual({ ok: true, value: { touched: ["main-seq"] } });
+    expect(call).toHaveBeenCalledWith("story_arrange_new", { topics: ["t1"], cuts: ["k1"] });
+    expect(await api.arrangeNew(["t1"], ["k1"])).toEqual({ ok: false, error: "No project open" });
+  });
 });

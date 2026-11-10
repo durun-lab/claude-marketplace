@@ -98,6 +98,10 @@ const api: StoryApi = {
     applyOp(op);
     return { ok: true, value: {} };
   },
+  arrangeNew: async (topicIds) => {
+    cuts += topicIds.length;
+    return { ok: true, value: {} };
+  },
   seek: async (s) => console.debug("seek", s, seconds(time(s))),
 };
 

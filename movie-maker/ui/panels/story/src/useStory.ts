@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "preact/hooks";
-import { type Op, type RationalTime, type Topic, announceAsset } from "@mm/sdk";
+import { type Op, type OpResult, type RationalTime, type Topic, announceAsset } from "@mm/sdk";
 import type { StoryApi, StoryHit, StoryOverview, StoryTranscript } from "./api.ts";
 import { toSeconds } from "./model.ts";
 
@@ -15,6 +15,8 @@ export interface Loaded {
   reload: () => Promise<void>;
   /** 操作を順に送る。1 つでも断られたら止めて理由を `error` に出し、`false` を返す。 */
   apply: (ops: Op[]) => Promise<boolean>;
+  /** 編集の頼みを順に送る。`apply` と同じく、断られたら止めて理由を出し、送った後に読み直す。 */
+  request: (sends: (() => Promise<OpResult>)[]) => Promise<boolean>;
 }
 
 /** 素材の一覧と、選んだ素材の文字起こしを読み、操作を送ったあとに読み直す。 */
@@ -45,11 +47,11 @@ export const useLoaded = (api: StoryApi, refreshKey: number): Loaded => {
     announceAsset(id);
     api.transcript(id).then(setTranscript, (e: unknown) => setError(errorText(e)));
   };
-  const apply = async (ops: Op[]): Promise<boolean> => {
+  const request = async (sends: (() => Promise<OpResult>)[]): Promise<boolean> => {
     setError(null);
     let ok = true;
-    for (const op of ops) {
-      const result = await api.apply(op);
+    for (const send of sends) {
+      const result = await send();
       if (!result.ok) {
         setError(result.error);
         ok = false;
@@ -59,7 +61,8 @@ export const useLoaded = (api: StoryApi, refreshKey: number): Loaded => {
     await reload();
     return ok;
   };
-  return { overview, assetId, transcript, error, setError, selectAsset, reload, apply };
+  const apply = (ops: Op[]): Promise<boolean> => request(ops.map((op) => () => api.apply(op)));
+  return { overview, assetId, transcript, error, setError, selectAsset, reload, apply, request };
 };
 
 export interface Search {

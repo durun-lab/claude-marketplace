@@ -1,15 +1,18 @@
 //! Story パネルの Tauri のコマンド。名前と引数の形は `ui/sdk/README.md` の「Story のコマンド」。
-//! 文字起こしの編集（話題、削除、修正、評価、タグ、並べる）は `apply_op` で送る。
+//! 文字起こしの編集（話題、削除、修正、評価、タグ、並べる）は `apply_op` で送る。並べ先の sequence が無いときの
+//! 並べる（`story_arrange_new`）だけは、sequence と sequence のレイヤーの ID と長さをアプリが決めるのでここで受ける。
 
 use std::sync::Arc;
 
 use tauri::State;
 
+use crate::win::edit::EditOutcome;
 use crate::win::story::{Overview, StoryHit, StoryState, StoryTranscript, WordRange};
 
 /// このパネルのコマンドを呼び出す。知らない名前には `false` を返す。
 pub fn handler(invoke: tauri::ipc::Invoke) -> bool {
     let h: fn(tauri::ipc::Invoke) -> bool = tauri::generate_handler![
+        story_arrange_new,
         story_overview,
         story_transcript,
         story_range,
@@ -83,4 +86,14 @@ pub async fn story_timeline_time(
 #[tauri::command]
 pub async fn story_cut_time(state: Story<'_>, cut: String) -> Result<Option<f64>, String> {
     blocking(state, move |s| s.cut_time(&cut)).await
+}
+
+/// 話題を、開いているコンポジションに足す新しい sequence に並べる（カットの ID は `cuts`）。並べ先の sequence が無いときの Arrange。
+#[tauri::command]
+pub async fn story_arrange_new(
+    state: Story<'_>,
+    topics: Vec<String>,
+    cuts: Vec<String>,
+) -> Result<EditOutcome, String> {
+    blocking(state, move |s| s.arrange_new(&topics, &cuts)).await
 }
