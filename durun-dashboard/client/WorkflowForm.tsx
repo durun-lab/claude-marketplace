@@ -1,6 +1,6 @@
 // ワークフローの「設定」。workflows.json の 1 つの定義を、画面で直して書き込む。
 import { useState } from 'preact/hooks';
-import { EFFORT_LEVELS, type MentionTrigger, MODELS, type WorkflowInfo, type WorkflowSettings, type WorkflowTrigger } from '../shared/types.ts';
+import { EFFORT_LEVELS, MODELS, type WorkflowInfo, type WorkflowSettings, type WorkflowTrigger } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { Choice } from './ui.tsx';
 
@@ -16,13 +16,13 @@ const EVENTS: { kind: EventKind; label: string }[] = [
 ];
 const NEW_SCHEDULE: Schedule = { kind: 'schedule', at: '09:00' };
 const DEFAULT_BURST_MINUTES = 5;
-const isMention = (t: WorkflowTrigger): t is MentionTrigger => t.kind === 'slack-mention' || t.kind === 'jira-mention';
 
-const settingsOf = ({ name, cwd, theme, prompt, triggers, mode, compact, maxSessions, model, effort }: WorkflowInfo): WorkflowSettings => ({ name, cwd, theme, prompt, triggers, mode, compact, maxSessions, model, effort });
+const settingsOf = ({ name, cwd, theme, prompt, triggers, burstMinutes, mode, compact, maxSessions, model, effort }: WorkflowInfo): WorkflowSettings => ({ name, cwd, theme, prompt, triggers, burstMinutes, mode, compact, maxSessions, model, effort });
 
 /** モードに関わらない項目は落として送る。workflows.json に読まれない項目を残さないため。 */
 const cleaned = (s: WorkflowSettings): WorkflowSettings => ({
   ...s,
+  burstMinutes: s.burstMinutes || undefined,
   compact: s.mode === 'continue' && s.compact ? true : undefined,
   maxSessions: s.mode === 'new' && s.maxSessions && s.maxSessions > 1 ? s.maxSessions : undefined,
   theme: s.theme?.trim() || undefined,
@@ -50,13 +50,16 @@ const ScheduleRow = ({ t, onChange, onRemove }: { t: Schedule; onChange: (t: Sch
   );
 };
 
-const BurstRow = ({ t, label, onChange }: { t: MentionTrigger; label: string; onChange: (t: MentionTrigger) => void }) => (
-  <label class="workflow-day">
-    <input type="checkbox" checked={!!t.burstMinutes} onChange={(e) => onChange({ kind: t.kind, ...(e.currentTarget.checked ? { burstMinutes: DEFAULT_BURST_MINUTES } : {}) })} />
-    {label}が続けて届いたら、最後の 1 件から
-    <input type="number" min={1} class="input input-sm workflow-number" disabled={!t.burstMinutes} value={t.burstMinutes ?? DEFAULT_BURST_MINUTES} onInput={(e) => onChange({ kind: t.kind, burstMinutes: Number(e.currentTarget.value) || 1 })} />
-    分待ってまとめる
-  </label>
+const BurstField = ({ minutes, onChange }: { minutes?: number; onChange: (minutes?: number) => void }) => (
+  <fieldset class="workflow-fieldset">
+    <legend>バースト制御</legend>
+    <label class="workflow-day">
+      <input type="checkbox" checked={!!minutes} onChange={(e) => onChange(e.currentTarget.checked ? DEFAULT_BURST_MINUTES : undefined)} />
+      レビュー依頼とメンションが続けて届いたら、最後の 1 件から
+      <input type="number" min={1} class="input input-sm workflow-number" disabled={!minutes} value={minutes ?? DEFAULT_BURST_MINUTES} onInput={(e) => onChange(Number(e.currentTarget.value) || 1)} />
+      分待ってまとめる
+    </label>
+  </fieldset>
 );
 
 const TriggersField = ({ triggers, onChange }: { triggers: WorkflowTrigger[]; onChange: (t: WorkflowTrigger[]) => void }) => {
@@ -74,7 +77,6 @@ const TriggersField = ({ triggers, onChange }: { triggers: WorkflowTrigger[]; on
           </label>
         ))}
       </div>
-      {triggers.map((t, i) => isMention(t) && <BurstRow key={t.kind} t={t} label={EVENTS.find((e) => e.kind === t.kind)?.label ?? ''} onChange={(n) => onChange(triggers.map((o, j) => (j === i ? n : o)))} />)}
       {triggers.map((t, i) => t.kind === 'schedule' && <ScheduleRow key={i} t={t} onChange={(n) => setAt(i, n)} onRemove={() => setAt(i)} />)}
       <button class="xp-task-link" onClick={() => onChange([...triggers, NEW_SCHEDULE])}>時刻を足す</button>
     </fieldset>
@@ -132,6 +134,7 @@ export const WorkflowForm = ({ w, themes, onClose }: { w: WorkflowInfo; themes: 
         <datalist id="workflow-themes">{themes.map((t) => <option key={t} value={t} />)}</datalist>
       </label>
       <TriggersField triggers={s.triggers} onChange={(triggers) => set({ triggers })} />
+      <BurstField minutes={s.burstMinutes} onChange={(burstMinutes) => set({ burstMinutes })} />
       <ActionField s={s} set={set} />
       <label class="stack">
         <span>依頼</span>

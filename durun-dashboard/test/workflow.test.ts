@@ -25,18 +25,25 @@ test('引き継ぐモードと同時数と、レビュー依頼とメンショ�
   assert.deepEqual(workflows[0]?.triggers, [{ kind: 'github-review' }, { kind: 'slack-mention' }, { kind: 'feedback' }, { kind: 'schedule', at: '18:30', days: [1, 5] }]);
 });
 
-test('メンションのトリガーは、正の整数のバースト時間だけを読む', () => {
-  const triggers = [{ kind: 'jira-mention', burstMinutes: 5 }, { kind: 'slack-mention', burstMinutes: 0 }];
-  assert.deepEqual(parseWorkflows(JSON.stringify({ workflows: [def({ triggers })] })).workflows[0]?.triggers, [{ kind: 'jira-mention', burstMinutes: 5 }, { kind: 'slack-mention' }]);
+test('バースト時間は、ワークフローの正の整数だけを読む', () => {
+  const burstOf = (extra: object) => parseWorkflows(JSON.stringify({ workflows: [def(extra)] })).workflows[0]?.burstMinutes;
+  assert.equal(burstOf({ burstMinutes: 5 }), 5);
+  assert.equal(burstOf({ burstMinutes: 0 }), undefined);
 });
 
-test('バーストは、最後のメンションからバースト時間が過ぎたら URL を並べた 1 つの依頼にまとめて渡す', () => {
-  const w = parseWorkflows(JSON.stringify({ workflows: [def({ triggers: [{ kind: 'slack-mention', burstMinutes: 5 }] })] })).workflows[0];
+test('メンションのトリガーに書いたバースト時間は、ワークフローのバースト時間として読む', () => {
+  const triggers = [{ kind: 'jira-mention', burstMinutes: 3 }, { kind: 'slack-mention' }];
+  const w = parseWorkflows(JSON.stringify({ workflows: [def({ triggers })] })).workflows[0];
+  assert.equal(w?.burstMinutes, 3);
+  assert.deepEqual(w?.triggers, [{ kind: 'jira-mention' }, { kind: 'slack-mention' }]);
+});
+
+test('バーストは、最後のイベントからバースト時間が過ぎたら、トリガーの種類ごとに 1 つの依頼にまとめて渡す', () => {
+  const w = parseWorkflows(JSON.stringify({ workflows: [def({ burstMinutes: 5, triggers: [{ kind: 'slack-mention' }, { kind: 'github-review' }] })] })).workflows[0];
   assert.ok(w);
-  const run = { queue: [], bursts: { 'slack-mention': { texts: ['a', 'b'], lastAt: 0 } } };
+  const run = { queue: [], bursts: { 'slack-mention': { texts: ['a', 'b'], lastAt: 0 }, 'github-review': { texts: ['x#1 t\nu'], lastAt: 0 } } };
   assert.deepEqual(flushBursts(w, run, 4 * 60_000), []);
-  const [text] = flushBursts(w, run, 5 * 60_000);
-  assert.equal(text, 'Slack で自分へのメンションが届きました:\na\nb');
+  assert.deepEqual(flushBursts(w, run, 5 * 60_000), ['Slack で自分へのメンションが届きました:\na\nb', 'GitHub で自分へのレビュー依頼が届きました:\nx#1 t\nu']);
   assert.deepEqual(run.bursts, {});
 });
 

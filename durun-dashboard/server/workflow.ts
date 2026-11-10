@@ -4,7 +4,7 @@
 // 改善要望のトリガーは、要望が届いたときと前のウェーブを終えたときにもすぐ確かめる。
 import fs from 'node:fs';
 import path from 'node:path';
-import { EFFORT_LEVELS, type ImproveState, type MentionTrigger, MODELS, type WorkflowDef, type WorkflowInfo, type WorkflowState, type WorkflowTrigger } from '../shared/types.ts';
+import { EFFORT_LEVELS, type BurstKind, type ImproveState, MODELS, type WorkflowDef, type WorkflowInfo, type WorkflowState, type WorkflowTrigger } from '../shared/types.ts';
 import { isAlive, readLiveSessions } from './claude.ts';
 import { COMPACT_COMMAND, compactSession, sendMessage, startTrackedSession } from './deliver.ts';
 import { DONE_MARK, feedbackEvent, finishItems, improveWorkflow, onFeedback, pendingItems } from './improve.ts';
@@ -31,12 +31,10 @@ type Parsed = { workflows: WorkflowDef[]; error?: string };
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 
+const positiveInt = (v: unknown): number | undefined => (Number.isInteger(v) && (v as number) > 0 ? (v as number) : undefined);
+
 const triggerOf = (raw: unknown): WorkflowTrigger => {
-  if (isObject(raw) && raw.kind === 'github-review') return { kind: 'github-review' };
-  if (isObject(raw) && (raw.kind === 'slack-mention' || raw.kind === 'jira-mention')) {
-    const { burstMinutes } = raw;
-    return { kind: raw.kind, ...(Number.isInteger(burstMinutes) && (burstMinutes as number) > 0 ? { burstMinutes: burstMinutes as number } : {}) };
-  }
+  if (isObject(raw) && (raw.kind === 'github-review' || raw.kind === 'slack-mention' || raw.kind === 'jira-mention')) return { kind: raw.kind };
   if (isObject(raw) && raw.kind === 'feedback') return { kind: 'feedback' };
   if (isObject(raw) && raw.kind === 'schedule' && typeof raw.at === 'string' && TIME_PATTERN.test(raw.at)) {
     const days = Array.isArray(raw.days) ? raw.days.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6) : undefined;
@@ -47,10 +45,12 @@ const triggerOf = (raw: unknown): WorkflowTrigger => {
 
 const defOf = (raw: unknown, i: number): WorkflowDef => {
   if (!isObject(raw)) throw new Error(`${i + 1} 番目がオブジェクトではありません`);
-  const { id, name, enabled, cwd, theme, prompt, triggers, mode, maxSessions, compact, model, effort } = raw;
+  const { id, name, enabled, cwd, theme, prompt, triggers, mode, burstMinutes, maxSessions, compact, model, effort } = raw;
   if (typeof id !== 'string' || !ID_PATTERN.test(id)) throw new Error(`${i + 1} 番目の id は英数字とハイフンで書いてください`);
   if (typeof cwd !== 'string' || !path.isAbsolute(cwd)) throw new Error(`${id} の cwd は絶対パスで書いてください`);
   if (typeof prompt !== 'string' || !prompt.trim()) throw new Error(`${id} の prompt が空です`);
+  // メンションのトリガーごとに burstMinutes を書いた定義も、ワークフローのバースト時間として読む。
+  const burst = positiveInt(burstMinutes) ?? (Array.isArray(triggers) ? triggers.map((t) => (isObject(t) ? positiveInt(t.burstMinutes) : undefined)).find(Boolean) : undefined);
   return {
     id,
     name: typeof name === 'string' && name.trim() ? name.trim() : id,
@@ -60,6 +60,7 @@ const defOf = (raw: unknown, i: number): WorkflowDef => {
     prompt,
     triggers: Array.isArray(triggers) ? triggers.map(triggerOf) : [],
     mode: mode === 'continue' ? 'continue' : 'new',
+    ...(burst ? { burstMinutes: burst } : {}),
     ...(mode === 'continue' && compact === true ? { compact: true } : {}),
     ...(Number.isInteger(maxSessions) && (maxSessions as number) > 0 ? { maxSessions: maxSessions as number } : {}),
     ...(typeof model === 'string' && (MODELS as readonly string[]).includes(model) ? { model } : {}),
@@ -289,47 +290,45 @@ export const endFeedbackWave = (sessionId: string, message: string | undefined):
 };
 
 /** レビュー依頼のトリガーを持つワークフローに、新しく届いた依頼を積む。初めて読んだときに届いていた依頼では動かない。 */
-const checkReviews = async (list: WorkflowDef[]): Promise<void> => {
+const checkReviews = async (list: WorkflowDef[], now: number): Promise<void> => {
   if (!list.length) return;
   const prs = (await githubInbox()).find((s) => s.title === DIRECT_SECTION)?.prs ?? [];
   for (const w of list) {
     const run = runOf(w.id);
     const fresh = run.seenPrs ? prs.filter((pr) => !run.seenPrs?.includes(pr.url)) : [];
-    for (const pr of fresh) enqueue(w, `GitHub で自分へのレビュー依頼が届きました: ${pr.repo}#${pr.number} ${pr.title}\n${pr.url}`);
+    enqueueEvents(w, 'github-review', fresh.map((pr) => `${pr.repo}#${pr.number} ${pr.title}\n${pr.url}`), now);
     run.seenPrs = [...new Set([...prs.map((pr) => pr.url), ...(run.seenPrs ?? [])])].slice(0, SEEN_KEPT);
   }
 };
 
-const mentionTrigger = (w: WorkflowDef, kind: MentionTrigger['kind']): MentionTrigger | undefined => w.triggers.find((t): t is MentionTrigger => t.kind === kind);
-
-// 本文は依頼に写さず、Claude が URL から読む。
-const MENTION_HEADER: Record<MentionTrigger['kind'], string> = {
+// メンションの本文は依頼に写さず、Claude が URL から読む。
+const EVENT_HEADER: Record<BurstKind, string> = {
+  'github-review': 'GitHub で自分へのレビュー依頼が届きました:',
   'slack-mention': 'Slack で自分へのメンションが届きました:',
   'jira-mention': 'JIRA で自分へのメンションが届きました:',
 };
 
-const mentionRequest = (kind: MentionTrigger['kind'], urls: string[]): string => `${MENTION_HEADER[kind]}\n${urls.join('\n')}`;
+const eventRequest = (kind: BurstKind, texts: string[]): string => `${EVENT_HEADER[kind]}\n${texts.join('\n')}`;
 
-/** メンションの URL を積む。トリガーに burstMinutes があれば、まとめて渡すまで待たせる。 */
-const enqueueMentions = (w: WorkflowDef, kind: MentionTrigger['kind'], urls: string[], now: number): void => {
-  if (!urls.length) return;
-  if (!mentionTrigger(w, kind)?.burstMinutes) return urls.forEach((u) => enqueue(w, mentionRequest(kind, [u])));
+/** イベントを積む。ワークフローに burstMinutes があれば、まとめて渡すまで待たせる。 */
+const enqueueEvents = (w: WorkflowDef, kind: BurstKind, texts: string[], now: number): void => {
+  if (!texts.length) return;
+  if (!w.burstMinutes) return texts.forEach((t) => enqueue(w, eventRequest(kind, [t])));
   const run = runOf(w.id);
   run.bursts ??= {};
   const burst = (run.bursts[kind] ??= { texts: [], lastAt: now });
-  burst.texts.push(...urls);
+  burst.texts.push(...texts);
   burst.lastAt = now;
 };
 
-/** 最後のメンションから burstMinutes が過ぎたバーストを、1 つの依頼にまとめて積む。 */
+/** 最後のイベントから burstMinutes が過ぎたバーストを、トリガーの種類ごとに 1 つの依頼にまとめて積む。 */
 export const flushBursts = (w: WorkflowDef, run: WorkflowRun, now: number): string[] => {
   const flushed: string[] = [];
-  for (const kind of Object.keys(run.bursts ?? {}) as MentionTrigger['kind'][]) {
+  for (const kind of Object.keys(run.bursts ?? {}) as BurstKind[]) {
     const burst = run.bursts?.[kind];
-    const minutes = mentionTrigger(w, kind)?.burstMinutes ?? 0;
-    if (!burst || now - burst.lastAt < minutes * 60_000) continue;
+    if (!burst || now - burst.lastAt < (w.burstMinutes ?? 0) * 60_000) continue;
     delete run.bursts?.[kind];
-    flushed.push(mentionRequest(kind, burst.texts));
+    flushed.push(eventRequest(kind, burst.texts));
   }
   return flushed;
 };
@@ -342,7 +341,7 @@ const checkMentions = async (list: WorkflowDef[], now: number): Promise<void> =>
     const run = runOf(w.id);
     const fresh = run.seenMentions ? mentions.filter((m) => !run.seenMentions?.includes(m.url)) : [];
     // 検索の結果は新しい順なので、古いものから積む。
-    enqueueMentions(w, 'slack-mention', fresh.reverse().map((m) => m.url), now);
+    enqueueEvents(w, 'slack-mention', fresh.reverse().map((m) => m.url), now);
     run.seenMentions = [...new Set([...mentions.map((m) => m.url), ...(run.seenMentions ?? [])])].slice(0, SEEN_KEPT);
     if (run.error?.startsWith(MENTION_ERROR)) run.error = undefined;
   }
@@ -355,7 +354,7 @@ const checkJiraMentions = async (list: WorkflowDef[], now: number): Promise<void
   for (const w of list) {
     const run = runOf(w.id);
     const fresh = run.seenJira ? mentions.filter((m) => !run.seenJira?.includes(m.url)) : [];
-    enqueueMentions(w, 'jira-mention', fresh.reverse().map((m) => m.url), now);
+    enqueueEvents(w, 'jira-mention', fresh.reverse().map((m) => m.url), now);
     run.seenJira = [...new Set([...mentions.map((m) => m.url), ...(run.seenJira ?? [])])].slice(0, SEEN_KEPT);
     if (run.error?.startsWith(JIRA_MENTION_ERROR)) run.error = undefined;
   }
@@ -380,7 +379,7 @@ const tick = async (): Promise<void> => {
     const due = w.triggers.find((t): t is Extract<WorkflowTrigger, { kind: 'schedule' }> => t.kind === 'schedule' && scheduleDue(t, from, now));
     if (due) enqueue(w, `時刻のトリガー（${due.at}）で動きました。`);
   }
-  await checkEvents(active, 'github-review', 'レビュー依頼を読めません', checkReviews);
+  await checkEvents(active, 'github-review', 'レビュー依頼を読めません', (list) => checkReviews(list, now));
   await checkEvents(active, 'slack-mention', MENTION_ERROR, (list) => checkMentions(list, now));
   await checkEvents(active, 'jira-mention', JIRA_MENTION_ERROR, (list) => checkJiraMentions(list, now));
   checkFeedback(active.filter(hasFeedback));
@@ -457,7 +456,7 @@ const rewriteDef = (id: string, edit: (raw: Record<string, unknown>, i: number) 
 export const setWorkflowEnabled = (id: string, enabled: boolean): void => rewriteDef(id, (w) => ({ ...w, enabled }));
 
 // 画面の「設定」で直す項目。id と ON と OFF は直さない。
-const EDITABLE = ['name', 'cwd', 'theme', 'prompt', 'triggers', 'mode', 'compact', 'maxSessions', 'model', 'effort'] as const;
+const EDITABLE = ['name', 'cwd', 'theme', 'prompt', 'triggers', 'burstMinutes', 'mode', 'compact', 'maxSessions', 'model', 'effort'] as const;
 
 /** 画面の「設定」で直した項目を書き込む。送らなかった項目は消して既定に戻す。読めない値なら書かずに理由を返す。 */
 export const updateWorkflow = (id: string, body: unknown): void => {
@@ -487,10 +486,10 @@ const consultPrompt = (target: WorkflowDef | undefined): string => `${MARK} 人�
 - triggers: 次の配列
   - { "kind": "schedule", "at": "09:00", "days": [1, 2, 3, 4, 5] }: 時刻で動く。days は 0 が日曜で、省くと毎日
   - { "kind": "github-review" }: GitHub で自分へのレビュー依頼が新しく届いたときに動く
-  - { "kind": "slack-mention", "burstMinutes": 5 }: Slack で自分へのメンションが新しく届いたときに動く。Claude Code の /mcp で Slack に接続している必要がある
-  - { "kind": "jira-mention", "burstMinutes": 5 }: JIRA のコメントで自分へのメンションが新しく届いたときに動く
-  - メンションの burstMinutes: 続けて届いたメンションを、最後のものからこの分数だけ次が届かなくなるまで待って 1 つの依頼にまとめる。省くと 1 件ずつ動く
+  - { "kind": "slack-mention" }: Slack で自分へのメンションが新しく届いたときに動く。Claude Code の /mcp で Slack に接続している必要がある
+  - { "kind": "jira-mention" }: JIRA のコメントで自分へのメンションが新しく届いたときに動く
   - { "kind": "feedback" }: ダッシュボードへの改善要望がたまっているときに動く。前のウェーブを終えてから、たまった要望を 1 つのウェーブとして渡す。要望の一覧と、最後に「${DONE_MARK}」の行に対応を終えた要望を書く約束は、ダッシュボードが依頼の前に書き足す
+- burstMinutes: レビュー依頼とメンションが続けて届いたとき、最後のものからこの分数だけ次が届かなくなるまで待って、トリガーの種類ごとに 1 つの依頼にまとめる。省くと 1 件ずつ動く
 - mode: "new" はイベントごとに新しいセッションを起動する。"continue" は 1 つのセッションを引き継いでイベントをチャットに送り、セッションが無いかアーカイブされていたら新しく起動する
 - compact: mode が "continue" のとき、true なら、イベントを送る前に毎回前回までの会話を compact する
 - maxSessions: mode が "new" のとき、同時に動かすセッションの上限（既定 1）。上限を超えたイベントは、空くまで待たせる
