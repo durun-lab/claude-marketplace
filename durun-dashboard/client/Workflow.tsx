@@ -23,8 +23,10 @@ const close = () => dock(WORKFLOW_KEY, '', WORKFLOW_KEY);
 
 export const WorkflowIcon = () => <DesktopIcon icon={WORKFLOW_ICON} title={WORKFLOW_TITLE} hint="時刻やレビュー依頼、改善要望をきっかけに、セッションを動かします。ダブルクリックで開きます" onLaunch={openWorkflow} />;
 
+const burstText = (t: WorkflowTrigger): string => ('burstMinutes' in t && t.burstMinutes ? `（${t.burstMinutes} 分でまとめる）` : '');
+
 const triggerText = (t: WorkflowTrigger): string =>
-  t.kind === 'github-review' ? 'レビュー依頼' : t.kind === 'slack-mention' ? 'Slack のメンション' : t.kind === 'feedback' ? '改善要望' : `${t.days ? `${t.days.map((d) => DAYS[d]).join('')} ` : '毎日 '}${t.at}`;
+  t.kind === 'github-review' ? 'レビュー依頼' : t.kind === 'slack-mention' ? `Slack のメンション${burstText(t)}` : t.kind === 'jira-mention' ? `JIRA のメンション${burstText(t)}` : t.kind === 'feedback' ? '改善要望' : `${t.days ? `${t.days.map((d) => DAYS[d]).join('')} ` : '毎日 '}${t.at}`;
 
 const actionText = (w: WorkflowInfo): string => (w.mode === 'continue' ? `1 つのセッションを引き継ぐ${w.compact ? '（毎回 compact）' : ''}` : `新しいセッション（同時 ${w.maxSessions ?? 1} まで）`);
 
@@ -78,7 +80,7 @@ export const WorkflowFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot })
               <h3 class="xp-task-title">詳細</h3>
               <div class="xp-task-body">
                 {state.error && <p class="recycle-error">{state.error}</p>}
-                <p>時刻や、GitHub で自分へのレビュー依頼、Slack で自分へのメンション、ダッシュボードへの改善要望が届いたことをきっかけに、セッションを動かします。</p>
+                <p>時刻や、GitHub で自分へのレビュー依頼、Slack と JIRA で自分へのメンション、ダッシュボードへの改善要望が届いたことをきっかけに、セッションを動かします。</p>
                 <p>「改善要望」のトリガーは、前のウェーブを終えてから、たまった要望を 1 つのウェーブとして渡します。</p>
                 <p>「新しいセッション」はイベントごとに起動し、同時に動かす数を抑えます。「引き継ぐ」は 1 つのセッションのチャットにイベントを送り、毎回前回までの会話を compact することもできます。</p>
                 <p>「設定」で項目を直せます。作るときと、依頼の中身を練り直すときは、エージェントと相談します。</p>
