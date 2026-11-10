@@ -121,6 +121,29 @@ fn 縦のスクロールバーはスクロールボックスとそれ以外を�
     assert_eq!(hit(thumb.bottom() + 10.0), Hit::Scrollbar { thumb: false });
 }
 
+#[test]
+fn ズームバーはスクロールボックスの両端と中と溝を分ける() {
+    let m = model();
+    let mut f = viewport(&m);
+    // 10 秒のうち 2 秒から 7 秒が見えている。スクロールボックスは溝の 2/10 から 7/10。
+    f.time = TimeView {
+        origin: 2.0,
+        px_per_sec: f64::from(f.layout.row_area.w) / 5.0,
+    };
+    let bar = f.layout.zoombar;
+    let (left, right) = (bar.x + bar.w * 0.2, bar.x + bar.w * 0.7);
+    let at = |x| hit_test(&m, &f.vp(), x, bar.y + bar.h / 2.0);
+    let part = |part| Hit::ZoomBar { part };
+    assert_eq!(at(left - 100.0), part(ZoomBarPart::TrackBefore));
+    assert_eq!(at(left + 3.0), part(ZoomBarPart::StartEdge));
+    assert_eq!(at((left + right) / 2.0), part(ZoomBarPart::Thumb));
+    assert_eq!(at(right - 3.0), part(ZoomBarPart::EndEdge));
+    assert_eq!(at(right + 100.0), part(ZoomBarPart::TrackAfter));
+    assert_eq!(at(HEADER_W / 2.0), Hit::Empty, "見出しの列の下は溝の外");
+    let above = hit_test(&m, &f.vp(), (left + right) / 2.0, bar.y - 1.0);
+    assert!(!matches!(above, Hit::ZoomBar { .. }), "行の領域の下端まで");
+}
+
 fn seq_model() -> TimelineModel {
     let cut = |start, end, gap| CutBar {
         start,

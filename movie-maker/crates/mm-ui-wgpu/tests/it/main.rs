@@ -9,3 +9,4 @@ mod support;
 mod text;
 mod thumbs;
 mod transport;
+mod zoom;

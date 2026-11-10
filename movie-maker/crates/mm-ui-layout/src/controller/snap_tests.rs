@@ -8,6 +8,9 @@ use crate::snap::SnapKind;
 use crate::timeline::{CutBar, Item, ItemKind};
 use crate::timeline_layout::HEADER_W;
 
+/// N とメニューの Snapping が送る入力。
+const TOGGLE: PointerEvent = PointerEvent::Command(TimelineCommand::ToggleSnapping);
+
 /// 文字のレイヤー（0-10 秒、キーフレームは 6 秒）と撮影素材のレイヤー（2-4 秒）。マーカーは 8 秒。
 fn model() -> TimelineModel {
     let mut text = Item::layer(0.0, 10.0, ItemKind::Text, true);
@@ -73,11 +76,9 @@ fn ドラッグしていなければ入_切のコマンドで入_切を切り替
     let m = model();
     let mut c = ctl(&m);
     assert!(c.snapping, "既定は入");
-    assert!(c
-        .handle(PointerEvent::ToggleSnapping, &m, PLAYHEAD)
-        .is_empty());
+    assert!(c.handle(TOGGLE, &m, PLAYHEAD).is_empty());
     assert!(!c.snapping);
-    c.handle(PointerEvent::ToggleSnapping, &m, PLAYHEAD);
+    c.handle(TOGGLE, &m, PLAYHEAD);
     assert!(c.snapping);
     assert!(c.handle(PointerEvent::SnapKeyUp, &m, PLAYHEAD).is_empty());
     assert!(c.snapping, "離しただけでは変えない");
@@ -88,7 +89,7 @@ fn ドラッグ中の入_切のキーは押している間だけ反転し_入_�
     let m = model();
     let mut c = ctl(&m);
     drag_out(&mut c, &m, 697.0);
-    let held = by_of(&c.handle(PointerEvent::ToggleSnapping, &m, PLAYHEAD));
+    let held = by_of(&c.handle(TOGGLE, &m, PLAYHEAD));
     assert!((held - (quantize(6.97, 30.0) - 4.0)).abs() < 1e-9, "{held}");
     assert_eq!(snapped_kind(&c), None, "押している間は吸い付かない");
     assert!(c.snapping, "入/切は変えない");
@@ -103,7 +104,7 @@ fn スナップを切っていれば押している間だけ吸い付く() {
     let mut c = ctl(&m);
     c.snapping = false;
     drag_out(&mut c, &m, 697.0);
-    c.handle(PointerEvent::ToggleSnapping, &m, PLAYHEAD);
+    c.handle(TOGGLE, &m, PLAYHEAD);
     assert_eq!(snapped_kind(&c), Some(SnapKind::Playhead));
     let done = c.handle(PointerEvent::Up, &m, PLAYHEAD);
     assert!(matches!(done[..], [Action::Edit { done: true, by, .. }] if (by - 3.0).abs() < 1e-9));
@@ -122,9 +123,7 @@ fn 押しただけで動かしていなければ入_切のキーで編集にし�
     let mut c = ctl(&m);
     let y = in_bar(&c, 1);
     c.handle(down(396.0, y), &m, PLAYHEAD);
-    assert!(c
-        .handle(PointerEvent::ToggleSnapping, &m, PLAYHEAD)
-        .is_empty());
+    assert!(c.handle(TOGGLE, &m, PLAYHEAD).is_empty());
     assert!(c.handle(PointerEvent::Up, &m, PLAYHEAD).is_empty());
     assert!(c.snapping);
 }
