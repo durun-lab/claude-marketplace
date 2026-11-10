@@ -28,6 +28,8 @@ pub const SERVE_COMMAND: &str = "serve";
 const CLEANUP_LIMIT: Duration = Duration::from_secs(5);
 /// 一時フォルダーを消し直す間隔。
 const CLEANUP_STEP: Duration = Duration::from_millis(50);
+/// 同じ名前のフォルダーがあったときに、番号を進めて一時フォルダーを作り直す回数の上限。
+const WORK_DIR_ATTEMPTS: u32 = 64;
 /// `Shutdown` の応答と、その後にプロセスが終わるのを待つ期限。
 const SHUTDOWN_WAIT: Duration = Duration::from_secs(2);
 /// `Shutdown` の後に終わったかを見直す間隔。
@@ -174,14 +176,35 @@ impl PipeHost {
     }
 }
 
-/// このプロセスが起こすホストごとの一時フォルダーを作る。
+/// このプロセスが起こすホストごとの一時フォルダー（`mm-<名前>-<pid>-<番号>`）を作る。
 fn create_work_dir(name: &str) -> Result<PathBuf> {
     static NEXT: AtomicU64 = AtomicU64::new(0);
-    let n = NEXT.fetch_add(1, Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("mm-{name}-{}-{n}", std::process::id()));
-    std::fs::create_dir_all(&dir)
-        .map_err(|e| MmError::Internal(format!("{} を作れない: {e}", dir.display())))?;
-    Ok(dir)
+    let prefix = format!("mm-{name}-{}", std::process::id());
+    create_fresh_dir(&std::env::temp_dir(), &prefix, || {
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    })
+}
+
+/// `base` の下に `<prefix>-<番号>` のフォルダーを新しく作る。Windows は pid を使い回すので、前に同じ pid だった
+/// プロセスが残したフォルダーの名前は使わず次の番号にする（`mkdtemp` と同じく、新しく作れた名前だけを使う）。
+fn create_fresh_dir(base: &Path, prefix: &str, mut next: impl FnMut() -> u64) -> Result<PathBuf> {
+    for _ in 0..WORK_DIR_ATTEMPTS {
+        let dir = base.join(format!("{prefix}-{}", next()));
+        match std::fs::create_dir(&dir) {
+            Ok(()) => return Ok(dir),
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(e) => {
+                return Err(MmError::Internal(format!(
+                    "{} を作れない: {e}",
+                    dir.display()
+                )))
+            }
+        }
+    }
+    Err(MmError::Internal(format!(
+        "{} に {prefix}-<番号> のフォルダーが {WORK_DIR_ATTEMPTS} 個ともある",
+        base.display()
+    )))
 }
 
 /// 止めたホストの一時フォルダーを消す。ホストの子のプロセスがファイルを放すまで `limit` まで消し直す。
@@ -419,6 +442,28 @@ mod tests {
     fn is_ours(entry: &std::fs::DirEntry) -> bool {
         let prefix = format!("mm-{}-{}-", KIND.name, std::process::id());
         entry.file_name().to_string_lossy().starts_with(&prefix)
+    }
+
+    #[test]
+    fn 前に同じ_pid_だったプロセスが残したフォルダーは使わず_次の番号で作る() {
+        let base = tempfile::Builder::new()
+            .prefix("mm-host-pipe-fresh-")
+            .tempdir()
+            .unwrap();
+        for n in 0..2 {
+            let left = base.path().join(format!("mm-host_test-7-{n}"));
+            std::fs::create_dir(&left).unwrap();
+            std::fs::write(left.join("cache"), b"").unwrap();
+        }
+        let mut numbers = 0..;
+        let dir =
+            create_fresh_dir(base.path(), "mm-host_test-7", || numbers.next().unwrap()).unwrap();
+        assert_eq!(dir, base.path().join("mm-host_test-7-2"));
+        assert_eq!(
+            std::fs::read_dir(&dir).unwrap().count(),
+            0,
+            "空のフォルダー"
+        );
     }
 
     #[test]

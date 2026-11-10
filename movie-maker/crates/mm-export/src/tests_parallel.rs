@@ -10,8 +10,11 @@ use mm_types::RgbaImage;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-fn temp(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("mm_export_par_{name}_{}", std::process::id()))
+fn temp(name: &str) -> tempfile::TempDir {
+    tempfile::Builder::new()
+        .prefix(&format!("mm_export_par_{name}_"))
+        .tempdir()
+        .unwrap()
 }
 
 /// 送られたフレームの番号と、`begin_pass` の呼ばれ方を残す。
@@ -62,7 +65,7 @@ fn settings_of(media: &SampleMedia) -> EncodeSettings {
         size: media.size,
         fps: media.fps,
         codec: "sample".into(),
-        output_path: temp("unused.json"),
+        output_path: temp("unused").path().join("unused.json"),
         audio: None,
         stream: None,
         source_peak: 1.0,
@@ -72,7 +75,7 @@ fn settings_of(media: &SampleMedia) -> EncodeSettings {
 #[test]
 fn 並行で描いたフレームの番号は_1_つのレンダラーと同じ順に送られる() {
     let media = SampleMedia::default();
-    let (project, comp, _) = vertical_project(&media, &temp("unused.json"));
+    let (project, comp, _) = vertical_project(&media, &temp("unused").path().join("unused.json"));
     let range = project.composition(&comp).unwrap().range().unwrap();
     let settings = settings_of(&media);
     let config = RuntimeConfig::sample();
@@ -129,10 +132,11 @@ fn 並行でも書き出しの数と音は同じで_半端な_fps_の音も揃�
         fps: mm_types::Rational::new(30_000, 1001).unwrap(),
         ..SampleMedia::default()
     };
-    let (project, _, _) = vertical_project(&media, &temp("unused.json"));
+    let (project, _, _) = vertical_project(&media, &temp("unused").path().join("unused.json"));
     let mut summaries = Vec::new();
     for parallel in [0, 3] {
-        let out = temp(&format!("ntsc{parallel}")).join("out.json");
+        let tmp = temp(&format!("ntsc{parallel}"));
+        let out = tmp.path().join("out.json");
         let mut engine = assemble(&RuntimeConfig::sample()).unwrap();
         let options = ExportOptions {
             output: Some(out.clone()),
@@ -144,7 +148,6 @@ fn 並行でも書き出しの数と音は同じで_半端な_fps_の音も揃�
         let written: EncodeReport = serde_json::from_slice(&std::fs::read(&out).unwrap()).unwrap();
         assert_eq!(written.frames, s.frames);
         summaries.push((s.frames, s.audio_frames));
-        let _ = std::fs::remove_dir_all(out.parent().unwrap());
     }
     assert_eq!(
         summaries[0], summaries[1],
@@ -156,8 +159,9 @@ fn 並行でも書き出しの数と音は同じで_半端な_fps_の音も揃�
 #[test]
 fn 並行の書き出しを取り消すと一時ファイルを残さず戻る() {
     let media = SampleMedia::default();
-    let (project, _, _) = vertical_project(&media, &temp("unused.json"));
-    let out = temp("cancel").join("out.json");
+    let (project, _, _) = vertical_project(&media, &temp("unused").path().join("unused.json"));
+    let tmp = temp("cancel");
+    let out = tmp.path().join("out.json");
     let flag = Arc::new(AtomicBool::new(false));
     let seen = Arc::new(AtomicU64::new(0));
     let (f, s) = (flag.clone(), seen.clone());
@@ -182,13 +186,12 @@ fn 並行の書き出しを取り消すと一時ファイルを残さず戻る()
     assert!(!partial_path(&out).exists(), "一時ファイルは消える");
     let total = VERTICAL_DURATION_SECONDS as u64 * media.fps.num() as u64;
     assert!(seen.load(Ordering::Relaxed) < total, "途中で止まる");
-    let _ = std::fs::remove_dir_all(temp("cancel"));
 }
 
 #[test]
 fn ワーカーを組めない設定は並行の書き出しのエラーになる() {
     let media = SampleMedia::default();
-    let (project, comp, _) = vertical_project(&media, &temp("unused.json"));
+    let (project, comp, _) = vertical_project(&media, &temp("unused").path().join("unused.json"));
     let range = project.composition(&comp).unwrap().range().unwrap();
     let settings = settings_of(&media);
     // decode に選べない実装（fs はキャッシュの実装）を選んで、ワーカーのエンジンを組めない設定にする
@@ -215,7 +218,7 @@ fn ワーカーを組めない設定は並行の書き出しのエラーにな�
 #[test]
 fn 二パスのエンコーダーには同じ映像を_2_回送り_進み具合は_2_回分になる() {
     let media = SampleMedia::default();
-    let (project, comp, _) = vertical_project(&media, &temp("unused.json"));
+    let (project, comp, _) = vertical_project(&media, &temp("unused").path().join("unused.json"));
     let range = project.composition(&comp).unwrap().range().unwrap();
     let settings = settings_of(&media);
     let log = Log::default();
@@ -277,7 +280,10 @@ fn コーデックのコンテナと合わない拡張子は書き出す前に�
 
 #[test]
 fn 音を短い区間ずつ混ぜても_1_回で混ぜたのと同じ() {
-    let (project, comp, _) = vertical_project(&SampleMedia::default(), &temp("unused.json"));
+    let (project, comp, _) = vertical_project(
+        &SampleMedia::default(),
+        &temp("unused").path().join("unused.json"),
+    );
     let range = project.composition(&comp).unwrap().range().unwrap();
     let mut engine = assemble(&RuntimeConfig::sample()).unwrap();
     let whole = engine.render_audio(&project, &comp, range).unwrap();
@@ -292,7 +298,10 @@ fn 音を短い区間ずつ混ぜても_1_回で混ぜたのと同じ() {
 
 #[test]
 fn 止める旗が立てば音を混ぜずに戻る() {
-    let (project, comp, _) = vertical_project(&SampleMedia::default(), &temp("unused.json"));
+    let (project, comp, _) = vertical_project(
+        &SampleMedia::default(),
+        &temp("unused").path().join("unused.json"),
+    );
     let range = project.composition(&comp).unwrap().range().unwrap();
     let mut engine = assemble(&RuntimeConfig::sample()).unwrap();
     let step = mm_types::RationalTime::new(1, 3).unwrap();
@@ -303,7 +312,7 @@ fn 止める旗が立てば音を混ぜずに戻る() {
 #[test]
 fn nvenc_は並行の指定があっても並行にしない() {
     let media = SampleMedia::default();
-    let (project, comp, _) = vertical_project(&media, &temp("unused.json"));
+    let (project, comp, _) = vertical_project(&media, &temp("unused").path().join("unused.json"));
     let range = project.composition(&comp).unwrap().range().unwrap();
     let control = ExportControl::default();
     let plan = Plan {

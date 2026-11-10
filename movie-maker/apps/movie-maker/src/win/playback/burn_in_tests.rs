@@ -79,9 +79,13 @@ fn text_layers(project: &Project, comp: &CompositionId) -> usize {
 
 #[test]
 fn 焼き込むレンダーターゲットがあるとプレビューは書き出しと同じ字幕のレイヤーを描く() {
-    let dir = std::env::temp_dir().join(format!("mm_preview_burn_in_{}", std::process::id()));
-    let (project, comp) = project_with_store(&dir, true);
-    let mut player = player(&project, comp.clone(), &dir);
+    let guard = tempfile::Builder::new()
+        .prefix("mm_preview_burn_in-")
+        .tempdir()
+        .unwrap();
+    let dir = guard.path();
+    let (project, comp) = project_with_store(dir, true);
+    let mut player = player(&project, comp.clone(), dir);
     let shown = player.shown_project();
     assert!(text_layers(&shown, &comp) >= 2, "字幕の影と本体が足される");
     let words = crate::win::deliver::transcript_words(Some(&dir.join("store")), &project);
@@ -98,7 +102,6 @@ fn 焼き込むレンダーターゲットがあるとプレビューは書き�
         Arc::ptr_eq(&shown, &player.shown_project()),
         "元が同じ間は作り直さない"
     );
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 /// 書き手として `project.mmdb` を開いた `Core` を置いた `Shared`（アプリと同じ形）。
@@ -111,10 +114,14 @@ fn shared_with_core(dir: &std::path::Path) -> (Arc<Shared>, Arc<mm_serve::Core>)
 
 #[test]
 fn 文字起こしを取り込み直すとプロジェクトのデータが同じでも字幕を作り直す() {
-    let dir = std::env::temp_dir().join(format!("mm_preview_retranscribe_{}", std::process::id()));
-    let (project, comp) = project_with_store(&dir, true);
-    let (shared, core) = shared_with_core(&dir);
-    let mut player = player_in(shared, &project, comp, &dir);
+    let guard = tempfile::Builder::new()
+        .prefix("mm_preview_retranscribe-")
+        .tempdir()
+        .unwrap();
+    let dir = guard.path();
+    let (project, comp) = project_with_store(dir, true);
+    let (shared, core) = shared_with_core(dir);
+    let mut player = player_in(shared, &project, comp, dir);
     let before = player.shown_project();
     let words = [("さようなら。", 3)].map(|(text, at)| WordInput {
         segment: 0,
@@ -133,15 +140,18 @@ fn 文字起こしを取り込み直すとプロジェクトのデータが同�
     let after = player.shown_project();
     assert!(!Arc::ptr_eq(&before, &after), "単語が変わったので作り直す");
     assert_ne!(before, after);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn 文字起こしに関係の無い保存では字幕を作り直さない() {
-    let dir = std::env::temp_dir().join(format!("mm_preview_unrelated_{}", std::process::id()));
-    let (project, comp) = project_with_store(&dir, true);
-    let (shared, core) = shared_with_core(&dir);
-    let mut player = player_in(shared, &project, comp.clone(), &dir);
+    let guard = tempfile::Builder::new()
+        .prefix("mm_preview_unrelated-")
+        .tempdir()
+        .unwrap();
+    let dir = guard.path();
+    let (project, comp) = project_with_store(dir, true);
+    let (shared, core) = shared_with_core(dir);
+    let mut player = player_in(shared, &project, comp.clone(), dir);
     let before = player.shown_project();
     let comment = mm_store::NewComment {
         comp: comp.to_string(),
@@ -157,14 +167,16 @@ fn 文字起こしに関係の無い保存では字幕を作り直さない() {
         Arc::ptr_eq(&before, &player.shown_project()),
         "コメントの保存では使い回す"
     );
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn 焼き込まない設定のプレビューは字幕を足さない() {
-    let dir = std::env::temp_dir().join(format!("mm_preview_plain_{}", std::process::id()));
-    let (project, comp) = project_with_store(&dir, false);
-    let mut player = player(&project, comp.clone(), &dir);
+    let guard = tempfile::Builder::new()
+        .prefix("mm_preview_plain-")
+        .tempdir()
+        .unwrap();
+    let dir = guard.path();
+    let (project, comp) = project_with_store(dir, false);
+    let mut player = player(&project, comp.clone(), dir);
     assert_eq!(*player.shown_project(), project);
-    let _ = std::fs::remove_dir_all(&dir);
 }

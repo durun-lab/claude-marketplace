@@ -152,16 +152,17 @@ mod tests {
 
     #[test]
     fn bgra_を_rgba_の_png_にする() {
-        let dir = std::env::temp_dir().join(format!("mm_capture_{}", std::process::id()));
-        std::fs::create_dir_all(&dir).unwrap();
-        let path = dir.join("x.png");
+        let dir = tempfile::Builder::new()
+            .prefix("mm_capture_")
+            .tempdir()
+            .unwrap();
+        let path = dir.path().join("x.png");
         write_png(&path, 2, 1, &[10, 20, 30, 0, 40, 50, 60, 0]).unwrap();
         let decoder =
             png::Decoder::new(std::io::BufReader::new(std::fs::File::open(&path).unwrap()));
         let mut reader = decoder.read_info().unwrap();
         let mut buf = vec![0; reader.output_buffer_size().unwrap()];
         reader.next_frame(&mut buf).unwrap();
-        let _ = std::fs::remove_dir_all(&dir);
         assert_eq!(buf, [30, 20, 10, 255, 60, 50, 40, 255]);
     }
 

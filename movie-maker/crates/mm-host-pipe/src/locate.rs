@@ -78,7 +78,11 @@ mod tests {
 
     #[test]
     fn 置き場所の中のプラグインだけを受ける() {
-        let tmp = std::env::temp_dir().join(format!("mm-host-pipe-locate-{}", std::process::id()));
+        let guard = tempfile::Builder::new()
+            .prefix("mm-host-pipe-locate-")
+            .tempdir()
+            .unwrap();
+        let tmp = guard.path().to_path_buf();
         let root = tmp.join("plugins");
         std::fs::create_dir_all(root.join("Vendor")).unwrap();
         std::fs::write(root.join("Vendor/A.clap"), b"").unwrap();
@@ -103,6 +107,5 @@ mod tests {
         assert!(matches!(none, Err(MmError::NotFound(_))), "{none:?}");
         let dll = resolve_in_roots(&roots, "Vendor/A.dll", is_clap);
         assert!(matches!(dll, Err(MmError::InvalidArgument(_))), "{dll:?}");
-        std::fs::remove_dir_all(&tmp).unwrap();
     }
 }

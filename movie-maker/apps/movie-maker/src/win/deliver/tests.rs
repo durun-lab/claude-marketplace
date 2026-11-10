@@ -15,8 +15,11 @@ use super::*;
 
 const WAIT: Duration = Duration::from_secs(60);
 
-fn temp(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("mm_deliver_{name}_{}", std::process::id()))
+fn temp(name: &str) -> tempfile::TempDir {
+    tempfile::Builder::new()
+        .prefix(&format!("mm_deliver_{name}_"))
+        .tempdir()
+        .unwrap()
 }
 
 /// 出力先が別の 2 つのレンダーターゲット（`mp4`、`second`）を持つデータを開いた状態。
@@ -60,8 +63,9 @@ fn finished(rx: &Receiver<ExportStatus>) -> ExportStatus {
 
 #[test]
 fn キューのレンダーターゲットを順に書き出し_書き出したファイルだけフォルダーを開ける() {
-    let dir = temp("order");
-    let state = state(&dir);
+    let tmp = temp("order");
+    let dir = tmp.path();
+    let state = state(dir);
     let (emit, rx) = collect();
     state
         .start(request(&["second", "mp4"]), RuntimeConfig::sample(), emit)
@@ -78,13 +82,13 @@ fn キューのレンダーターゲットを順に書き出し_書き出した�
     let a = dir.join("a.json");
     assert_eq!(state.revealable(&a.to_string_lossy()).unwrap(), a);
     assert!(state.revealable("C:/Windows/notepad.exe").is_err());
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn 同じ出力先を指す組と_無い対象は始める前に拒否する() {
-    let dir = temp("reject");
-    let state = state(&dir);
+    let tmp = temp("reject");
+    let dir = tmp.path();
+    let state = state(dir);
     let (emit, _rx) = collect();
     let mut project = (*state.project().unwrap()).clone();
     project.render_targets[1].output_path = project.render_targets[0].output_path.clone();
@@ -104,8 +108,9 @@ fn 同じ出力先を指す組と_無い対象は始める前に拒否する() {
 
 #[test]
 fn 取り消すと書き出し中の分を止め_残りは書き出さず_一時ファイルを残さない() {
-    let dir = temp("cancel");
-    let state = state(&dir);
+    let tmp = temp("cancel");
+    let dir = tmp.path();
+    let state = state(dir);
     let (tx, rx) = channel();
     let tx = Mutex::new(tx);
     let canceller = state.clone();
@@ -123,15 +128,15 @@ fn 取り消すと書き出し中の分を止め_残りは書き出さず_一時
         last.items.iter().all(|i| i.state == ItemState::Cancelled),
         "{last:?}"
     );
-    let leftovers = std::fs::read_dir(&dir).map(|d| d.count()).unwrap_or(0);
+    let leftovers = std::fs::read_dir(dir).map(|d| d.count()).unwrap_or(0);
     assert_eq!(leftovers, 0, "出力も一時ファイルも残らない");
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn 書き出し中にもう一度始めようとすると拒否する() {
-    let dir = temp("busy");
-    let state = state(&dir);
+    let tmp = temp("busy");
+    let dir = tmp.path();
+    let state = state(dir);
     let (gate_tx, gate_rx) = channel::<()>();
     let (seen_tx, seen_rx) = channel();
     let gate_rx = Mutex::new(gate_rx);
@@ -158,13 +163,13 @@ fn 書き出し中にもう一度始めようとすると拒否する() {
     assert_eq!(e, "Export in progress");
     gate_tx.send(()).unwrap();
     finished(&seen_rx);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn 一覧にはレンダーターゲットとコンポジションが出る() {
-    let dir = temp("overview");
-    let o = state(&dir).overview().unwrap();
+    let tmp = temp("overview");
+    let dir = tmp.path();
+    let o = state(dir).overview().unwrap();
     assert_eq!(o.targets.len(), 2);
     assert_eq!(o.compositions[0].id, "main");
     assert!(o.compositions[0].duration > 0.0);
@@ -216,8 +221,9 @@ fn subtitle_state(dir: &std::path::Path) -> Arc<DeliverState> {
 
 #[test]
 fn 字幕を出すレンダーターゲットはアプリの書き出しで文字起こしを渡され_字幕のファイルを置く() {
-    let dir = temp("subtitles");
-    let state = subtitle_state(&dir);
+    let tmp = temp("subtitles");
+    let dir = tmp.path();
+    let state = subtitle_state(dir);
     let (emit, rx) = collect();
     // sequence のレイヤーを描けるのは wgpu のレンダラーだけ（モックは持たない）。共有の GPU は最初に作った
     // バックエンドで固定されるので、再生の試験と同じ D3D12（`present`）を求める。
@@ -237,12 +243,12 @@ fn 字幕を出すレンダーターゲットはアプリの書き出しで文�
     let srt = std::fs::read_to_string(dir.join("out.srt")).expect("sidecar の字幕");
     assert!(srt.contains("こんにちは"), "{srt}");
     assert!(dir.join("out.vtt").exists());
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn 一覧の出力先は開くときに直す前の相対のまま返す() {
-    let dir = temp("relative");
+    let tmp = temp("relative");
+    let dir = tmp.path();
     let (mut project, comp, _) = vertical_project(&SampleMedia::default(), &dir.join("a.json"));
     project.render_targets[0].output_path = "exports/yt.mp4".into();
     project.render_targets[0].delivery.chapters = true;
@@ -262,8 +268,9 @@ fn 一覧の出力先は開くときに直す前の相対のまま返す() {
 
 #[test]
 fn 大文字小文字と区切りだけが違う出力先も同じとして拒否する() {
-    let dir = temp("shared");
-    let state = state(&dir);
+    let tmp = temp("shared");
+    let dir = tmp.path();
+    let state = state(dir);
     let comp = state.shared.doc().unwrap().comp;
     for (a, b) in [("Out.mp4", "out.mp4"), ("a/x.mp4", "a\\x.mp4")] {
         let mut project = (*state.project().unwrap()).clone();
@@ -280,8 +287,9 @@ fn 大文字小文字と区切りだけが違う出力先も同じとして拒�
 
 #[test]
 fn 一時ファイルの名前と重なる出力先も拒否する() {
-    let dir = temp("partial");
-    let state = state(&dir);
+    let tmp = temp("partial");
+    let dir = tmp.path();
+    let state = state(dir);
     let comp = state.shared.doc().unwrap().comp;
     let mut project = (*state.project().unwrap()).clone();
     project.render_targets[0].output_path = "x.mp4".into();
@@ -296,8 +304,9 @@ fn 一時ファイルの名前と重なる出力先も拒否する() {
 
 #[test]
 fn 一本が失敗しても残りは書き出す() {
-    let dir = temp("partial_fail");
-    let state = state(&dir);
+    let tmp = temp("partial_fail");
+    let dir = tmp.path();
+    let state = state(dir);
     let comp = state.shared.doc().unwrap().comp;
     let mut project = (*state.project().unwrap()).clone();
     project.render_targets[0].codec = "no-such-codec".into();
@@ -311,13 +320,13 @@ fn 一本が失敗しても残りは書き出す() {
     assert!(last.items[0].error.is_some());
     assert_eq!(last.items[1].state, ItemState::Done, "{last:?}");
     assert!(dir.join("b.json").exists());
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn 書き出しのスレッドがパニックしても_キューは止まった状態で知らせる() {
-    let dir = temp("panic");
-    let state = state(&dir);
+    let tmp = temp("panic");
+    let dir = tmp.path();
+    let state = state(dir);
     let (tx, rx) = channel();
     let tx = Mutex::new(tx);
     let armed = AtomicBool::new(true);
@@ -342,12 +351,11 @@ fn 書き出しのスレッドがパニックしても_キューは止まった�
         "{last:?}"
     );
     assert!(!state.status().running);
-    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
 fn キューを止めると_動いていない項目だけ理由つきの失敗になる() {
-    let target = state(&temp("stop")).project().unwrap().render_targets[0].clone();
+    let target = state(temp("stop").path()).project().unwrap().render_targets[0].clone();
     let queued = ExportItem::queued(&target);
     let done = ExportItem {
         state: ItemState::Done,
@@ -371,7 +379,11 @@ fn キューを止めると_動いていない項目だけ理由つきの失敗�
 #[test]
 fn 進み具合は_total_が_0_のうちは終わりにせず_最後のフレームは間隔を待たずに送る() {
     let (emit, rx) = collect();
-    let target = state(&temp("progress")).project().unwrap().render_targets[0].clone();
+    let target = state(temp("progress").path())
+        .project()
+        .unwrap()
+        .render_targets[0]
+        .clone();
     let status = Arc::new(Mutex::new(ExportStatus {
         running: true,
         items: vec![ExportItem::queued(&target)],
@@ -405,7 +417,7 @@ fn 書き出しのレンダラーは再生より小さい_vram_のキャッシ�
 
 #[test]
 fn ffprobe_を起動できなければ検証を使えないとする() {
-    std::env::set_var("MM_FFPROBE", temp("none").join("ffprobe-missing"));
+    std::env::set_var("MM_FFPROBE", temp("none").path().join("ffprobe-missing"));
     let available = ffprobe_available();
     std::env::remove_var("MM_FFPROBE");
     assert!(!available);

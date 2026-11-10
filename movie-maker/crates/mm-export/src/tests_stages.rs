@@ -20,8 +20,11 @@ const MAX_AHEAD: usize = 3 + 4 + 1;
 /// 割り込んだ描画が描く時刻を、このフレーム数で巡らせる（書き出しの時刻と別の時刻にデコーダーをシークさせる）。
 const STILL_CYCLE: usize = 7;
 
-fn temp(name: &str) -> PathBuf {
-    std::env::temp_dir().join(format!("mm_export_stages_{name}_{}", std::process::id()))
+fn temp(name: &str) -> tempfile::TempDir {
+    tempfile::Builder::new()
+        .prefix(&format!("mm_export_stages_{name}_"))
+        .tempdir()
+        .unwrap()
 }
 
 fn settings_of(media: &SampleMedia) -> EncodeSettings {
@@ -29,7 +32,7 @@ fn settings_of(media: &SampleMedia) -> EncodeSettings {
         size: media.size,
         fps: media.fps,
         codec: "sample".into(),
-        output_path: temp("unused.json"),
+        output_path: temp("unused").path().join("unused.json"),
         audio: None,
         stream: None,
         source_peak: 1.0,
@@ -101,7 +104,7 @@ fn run_on(
     between: &mut dyn FnMut(&mut Engine),
 ) -> Result<usize> {
     let media = SampleMedia::default();
-    let (project, comp, _) = vertical_project(&media, &temp("unused.json"));
+    let (project, comp, _) = vertical_project(&media, &temp("unused").path().join("unused.json"));
     let range = project.composition(&comp).unwrap().range().unwrap();
     let composition = composition.unwrap_or(comp);
     let plan = Plan {
@@ -160,7 +163,7 @@ fn within_limit<T: Send + 'static>(
 /// `GET /frame` の代わりに、書き出しと別の時刻の静止画を同じエンジンで描き、左上の画素のフレーム番号を返す。
 fn still(engine: &mut Engine, n: usize) -> i64 {
     let media = SampleMedia::default();
-    let (project, comp, _) = vertical_project(&media, &temp("unused.json"));
+    let (project, comp, _) = vertical_project(&media, &temp("unused").path().join("unused.json"));
     let t = RationalTime::from_frames((n % STILL_CYCLE) as i64, media.fps).unwrap();
     let image = engine
         .render_frame(&project, &comp, t, media.size, Quality::Full)

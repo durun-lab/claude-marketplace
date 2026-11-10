@@ -204,8 +204,11 @@ fn 入力の大きさが違えば誤り() {
 
 #[test]
 fn 素材の_hlsl_を書き換えると指紋が変わり_読めなければキャッシュしない() {
-    let dir = std::env::temp_dir().join(format!("mm-nodes-hlsl-fp-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("一時フォルダー");
+    let guard = tempfile::Builder::new()
+        .prefix("mm-nodes-hlsl-fp-")
+        .tempdir()
+        .unwrap();
+    let dir = guard.path().to_path_buf();
     let path = dir.join("a.hlsl");
     std::fs::write(&path, fixture("invert.hlsl")).expect("書ける");
     let kind = ShaderHlslKind::with_dxc(None);

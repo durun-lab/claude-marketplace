@@ -16,5 +16,8 @@ schemars = { workspace = true, optional = true }
 # JSON Schema の導出。mm-ops が操作の引数のスキーマを書き出すために使う。
 schema = ["dep:schemars", "mm-types/schema"]
 
+[dev-dependencies]
+tempfile = { workspace = true }
+
 [lints]
 workspace = true

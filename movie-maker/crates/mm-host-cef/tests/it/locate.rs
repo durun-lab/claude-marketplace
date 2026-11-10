@@ -21,9 +21,10 @@ fn 起動できない実行ファイルは使わない() {
     assert!(!supports_cef(Path::new("mm-host-cef-が無い場所/none.exe")));
 }
 
-/// このプロセスが起こしたホストの一時フォルダー（`mm-host-cef-<pid>-<番号>`）。
+/// このプロセスの pid を名前に持つホストの一時フォルダー（`mm-<ランチャーの KIND.name>-<pid>-<番号>`）。
+/// 前に同じ pid だったプロセスが残したものも入るので、起こす前と比べて使う。
 pub(crate) fn work_dirs() -> Vec<std::path::PathBuf> {
-    let prefix = format!("mm-host-cef-{}-", std::process::id());
+    let prefix = format!("mm-host_cef-{}-", std::process::id());
     std::fs::read_dir(std::env::temp_dir())
         .map(|dir| {
             dir.filter_map(Result::ok)
@@ -45,9 +46,14 @@ fn 起動に失敗したホストの一時フォルダーを残さない() {
         gpu: None,
         client_pid: None,
     };
+    let before = work_dirs();
     assert!(
         CefLauncher::start(spec).is_err(),
         "feature 無しのホストは起動しない"
     );
-    assert_eq!(work_dirs(), Vec::<std::path::PathBuf>::new());
+    let left: Vec<_> = work_dirs()
+        .into_iter()
+        .filter(|d| !before.contains(d))
+        .collect();
+    assert_eq!(left, Vec::<std::path::PathBuf>::new());
 }

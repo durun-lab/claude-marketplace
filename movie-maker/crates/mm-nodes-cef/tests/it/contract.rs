@@ -155,8 +155,11 @@ fn 面積_0_の画布はホストに頼まず透明を返す() {
 
 #[test]
 fn ホストの実行ファイルを差し替えると指紋が変わり_モックは指紋を持たない() {
-    let dir = std::env::temp_dir().join(format!("mm-nodes-cef-fp-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("一時フォルダー");
+    let guard = tempfile::Builder::new()
+        .prefix("mm-nodes-cef-fp-")
+        .tempdir()
+        .unwrap();
+    let dir = guard.path().to_path_buf();
     let exe = dir.join("mm-host-cef.exe");
     std::fs::write(&exe, "a").expect("書ける");
     let kind = WebCefKind::with_host(Arc::new(SampleLauncher), exe.clone());
@@ -174,8 +177,11 @@ fn ホストの実行ファイルを差し替えると指紋が変わり_モッ�
 
 #[test]
 fn 組み立てたホストは同じフォルダーの本体の_dll_と_libcef_を指紋に入れる() {
-    let dir = std::env::temp_dir().join(format!("mm-nodes-cef-bundle-{}", std::process::id()));
-    std::fs::create_dir_all(&dir).expect("一時フォルダー");
+    let guard = tempfile::Builder::new()
+        .prefix("mm-nodes-cef-bundle-")
+        .tempdir()
+        .unwrap();
+    let dir = guard.path().to_path_buf();
     let exe = dir.join("mm-host-cef.exe");
     std::fs::write(&exe, "boot").expect("書ける");
     let kind = WebCefKind::with_host(Arc::new(SampleLauncher), exe.clone());
