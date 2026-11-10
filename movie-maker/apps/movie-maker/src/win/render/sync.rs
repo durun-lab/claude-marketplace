@@ -69,6 +69,7 @@ impl DocSync {
                 return;
             };
             ui.update_model(timeline_model(&doc.project, comp));
+            ui.set_empty_state(mm_ui_wgpu::empty_state(&doc.project, comp));
             // SDR の書き出しと同じ素材の上限の明るさでトーンマップし、プレビューと書き出しの映像を揃える。
             ui.set_hdr_peak(tone_map_peak(&doc.project));
             self.layer_ids = timeline_layer_ids(comp);

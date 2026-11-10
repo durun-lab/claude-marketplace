@@ -273,6 +273,15 @@ fn キーの見た目() {
 }
 
 #[test]
+fn 空の状態の案内が引くコマンドにはキーがある() {
+    assert_eq!(key_label_of("media.import"), "Ctrl+I");
+    assert_eq!(key_label_of("source.mark_in"), "I");
+    assert_eq!(key_label_of("source.mark_out"), "O");
+    assert_eq!(key_label_of("clip.insert"), ",");
+    assert_eq!(key_label_of("no.such"), "");
+}
+
+#[test]
 fn n_はスナップの入_切を描画スレッドへ渡し_離すとドラッグ中の反転を戻す() {
     use mm_ui_layout::{PointerEvent, TimelineCommand};
     let toggle = PointerEvent::Command(TimelineCommand::ToggleSnapping);
