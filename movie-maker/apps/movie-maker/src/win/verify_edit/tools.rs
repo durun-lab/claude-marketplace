@@ -174,7 +174,7 @@ fn split_clip_step(env: &Env<'_>, log: &mut Log) {
     }
 }
 
-pub(super) fn run(env: &Env<'_>, log: &mut Log) {
+pub(crate) fn run(env: &Env<'_>, log: &mut Log) {
     blade_steps(env, log);
     selection_cut_step(env, log);
     move_steps(env, log);

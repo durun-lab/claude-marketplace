@@ -10,7 +10,7 @@ use crate::win::keys;
 use crate::win::state::Shared;
 use crate::win::surface;
 use crate::win::verify_edit::{
-    cuts, mark_source, sequence_of, shot, Env, Log, MARK_IN, MARK_OUT, VK_COMMA, WAIT,
+    cuts, mark_source, sequence_of, shot, tools, Env, Log, MARK_IN, MARK_OUT, VK_COMMA, WAIT,
 };
 use crate::win::verify_stage::wait_until;
 
@@ -182,6 +182,7 @@ fn insert_and_undo(env: &Env<'_>, log: &mut Log, project: &Project) {
         return;
     }
     if extract_step(env, log, before) && redo_step(env, log) && reinsert_step(env, log, before) {
+        tools::run(env, log);
         undo_step(env, log, sequences, before);
     }
 }

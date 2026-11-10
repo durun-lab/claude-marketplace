@@ -24,7 +24,7 @@ use crate::win::verify_place::{placement, Placement};
 use crate::win::verify_stage::{checkpoint, wait_until};
 
 mod header;
-mod tools;
+pub(super) mod tools;
 mod trim;
 
 /// 仮想キーコード。
