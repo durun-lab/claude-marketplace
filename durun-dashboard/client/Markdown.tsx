@@ -1,5 +1,6 @@
 import type { MarkedToken, Token, Tokens } from 'marked';
 import { type ComponentChildren, type ComponentType, createContext } from 'preact';
+import { memo } from 'preact/compat';
 import { useContext, useEffect, useRef, useState } from 'preact/hooks';
 import { imgOf } from '../shared/html.ts';
 import { GITHUB_ATTACHMENT } from '../shared/types.ts';
@@ -148,13 +149,14 @@ const Block = ({ t }: { t: MarkedToken }) => {
   }
 };
 
-export const Markdown = ({ text, codeLink, markText }: { text: string; codeLink?: CodeLink; markText?: MarkText }) => (
+/** 字句解析と描画は文の長さに比例して重いので、文と描き方が変わらない限り描き直さない。チャットはスナップショットが届くたびに描き直されるため。 */
+export const Markdown = memo(({ text, codeLink, markText }: { text: string; codeLink?: CodeLink; markText?: MarkText }) => (
   <CodeLinkContext.Provider value={codeLink}>
     <MarkTextContext.Provider value={markText}>
       <div class="md"><Blocks tokens={lexMarkdown(text)} /></div>
     </MarkTextContext.Provider>
   </CodeLinkContext.Provider>
-);
+));
 
 /** 長い文は、max 文字に収まる行までを出し、「もっと読む」で全体を出す。 */
 export const MarkdownPreview = ({ text, max }: { text: string; max: number }) => {
