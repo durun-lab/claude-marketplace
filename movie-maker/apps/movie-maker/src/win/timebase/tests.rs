@@ -31,6 +31,17 @@ fn フレームの後半の秒も表示と同じフレームに数える() {
 }
 
 #[test]
+fn フレームの境目の時刻は丸めの誤差で手前のフレームに数えない() {
+    assert_eq!(frame_index(0.7, 30.0), 21, "0.7 × 30 は 20.999…");
+    let ntsc = Rational::new(30000, 1001).unwrap();
+    for k in 0..20_000 {
+        let at = RationalTime::from_frames(k, ntsc).unwrap().to_f64();
+        assert_eq!(frame_index(at, ntsc.to_f64()), k, "29.97 fps の {k}");
+        assert_eq!(frame_index(k as f64 / 30.0, 30.0), k, "30 fps の {k}");
+    }
+}
+
+#[test]
 fn 素材の時刻はレイヤーの_speed_と_in_を通して再生位置になる() {
     let p = fast_project();
     let comp = &p.compositions[0];

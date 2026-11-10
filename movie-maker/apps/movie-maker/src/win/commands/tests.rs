@@ -159,7 +159,7 @@ fn snapping_はチェックの状態に表示の状態の入_切を出し_変わ
 
 #[test]
 fn snapping_はメニューからもキーからも描画スレッドへ入_切を渡す() {
-    use mm_ui_layout::PointerEvent;
+    let toggle = PointerEvent::Command(TimelineCommand::ToggleSnapping);
     let shared = Arc::new(Shared::new());
     run(&shared, "timeline.toggle_snapping").expect("メニュー");
     run_from_key(&shared, "timeline.toggle_snapping").expect("キー");
@@ -167,11 +167,7 @@ fn snapping_はメニューからもキーからも描画スレッドへ入_切�
     release_from_key(&shared, "playback.toggle");
     assert_eq!(
         *shared.input.lock().unwrap(),
-        [
-            PointerEvent::ToggleSnapping,
-            PointerEvent::ToggleSnapping,
-            PointerEvent::SnapKeyUp
-        ]
+        [toggle, toggle, PointerEvent::SnapKeyUp]
     );
 }
 
@@ -193,6 +189,31 @@ fn 再生のコマンドを_program_に送り_表に無い_id_は拒否する() 
     );
     assert!(run(&shared, "clip.nope").is_err());
     assert!(rx.try_recv().is_err(), "拒否したコマンドは何も送らない");
+}
+
+#[test]
+fn timeline_のコマンドはポインターの入力のキューに積み_秒の移動は再生へ送る() {
+    use TimelineCommand::{FullExtentZoom, NextEdit, ZoomIn};
+    let shared = Arc::new(Shared::new());
+    let (tx, rx) = channel();
+    *shared.commands.lock().unwrap() = Some(tx);
+    run(&shared, "timeline.zoom_in").expect("Zoom In");
+    run_from_key(&shared, "timeline.full_extent_zoom").expect("Full Extent Zoom");
+    run(&shared, "playback.next_edit").expect("Next Edit");
+    assert_eq!(
+        *shared.input.lock().unwrap(),
+        [
+            PointerEvent::Command(ZoomIn),
+            PointerEvent::Command(FullExtentZoom),
+            PointerEvent::Command(NextEdit)
+        ]
+    );
+    assert!(
+        rx.try_recv().is_err(),
+        "Timeline のコマンドは再生へ送らない"
+    );
+    run(&shared, "playback.step_back_second").expect("Step One Second Back");
+    assert_eq!(rx.try_recv(), Ok(Command::StepSeconds(-1)));
 }
 
 #[test]

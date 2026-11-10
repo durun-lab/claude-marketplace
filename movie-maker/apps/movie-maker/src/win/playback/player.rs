@@ -23,6 +23,8 @@ use crate::win::history::HistoryMirror;
 use crate::win::hotpatch;
 use crate::win::state::{FrameImage, Shared};
 
+mod step;
+
 /// 先読みする音の長さ（秒）。映像 1 フレームの描画が数十 ms かかっても音が途切れない長さ。
 const AUDIO_AHEAD_SECS: f64 = 0.4;
 /// 1 回に描く音の長さ（サンプル）。0.1 秒。
@@ -223,11 +225,8 @@ impl Player {
             Command::Toggle if self.playing => self.pause(),
             Command::Toggle => self.play(),
             Command::Seek(t) => self.seek_to(t),
-            Command::Step(n) => {
-                let here = self.pause_position();
-                let idx = crate::win::timebase::frame_index(here, self.fps_f) + n;
-                self.seek_to(idx as f64 / self.fps_f);
-            }
+            Command::Step(n) => self.step(n),
+            Command::StepSeconds(n) => self.step_seconds(n),
             Command::Edit => self.apply_edits(),
             Command::Reverse => self.start_reverse(),
             Command::Undo => self.step_history(true),

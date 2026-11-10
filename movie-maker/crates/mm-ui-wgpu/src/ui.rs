@@ -5,6 +5,7 @@
 //! Timeline は矩形（背景、帯、目盛り、ドラッグ中のツールチップの矩形）、文字（目盛りの時刻、帯の名前、ツールチップの量）、
 //! 矩形（再生位置の線、スナップの表示。ツールチップの矩形の上は除く）の順に重ねる。
 //! Timeline の表示の状態（ズーム、スクロール、行の高さ、スナップの入/切）は [`Ui::view_state`] で出し、[`Ui::restore_view`] で戻す。
+//! キーとメニューの Timeline のコマンドも、ドラッグとの前後を保つため [`Ui::pointer`] で受ける。
 
 use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
@@ -177,8 +178,9 @@ impl Ui {
         });
     }
 
-    /// 再生位置（秒）。
+    /// 再生位置（秒）。再生とキーで行の領域の端を越えたら、その向きへ 1 画面ずつ送る（`TimelineController::page_scroll`）。
     pub fn set_playhead(&mut self, secs: f64) {
+        self.controller.page_scroll(self.playhead, secs);
         self.playhead = secs;
     }
 

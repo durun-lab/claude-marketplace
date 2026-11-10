@@ -5,7 +5,7 @@
 | スナップの目標 | ドラッグ中の端を吸い付ける時刻と、その種類（再生位置、レイヤーの端、カットの端、キーフレーム、マーカー、コンポジションの始まりと終わり）。同じ近さなら、この順の先のものを採る。近さの差が 1 マイクロ秒以内なら同じ近さとみなす。動かしている端そのものは目標から外す | `SnapTarget`、`SnapKind`、`snap::targets`、`TIE_SECS` |
 | 吸い付く距離 | 吸い付く目標までの距離の上限。8 論理ピクセルで、時間でなく画面の距離なので、ズームの倍率に依らない | `SNAP_PX` |
 | 吸い付いた先の文 | 何に吸い付いたかを出す 1 行（Snapped to Playhead、Snapped to Layer Edge、Snapped to Clip Edge、Snapped to Keyframe、Snapped to Marker、Snapped to Start、Snapped to End）。ステータスバーが出す。カットは画面の文言の Clip と呼ぶ | `SnapTarget::message` |
-| 反転（スナップの） | ドラッグ中にスナップの入/切のキー（N）を押している間だけ、入/切を逆にすること。離すかドラッグが終わると戻り、入/切そのものは変えない（FCP の N と同じ） | `PointerEvent::ToggleSnapping`、`PointerEvent::SnapKeyUp`、`keys::release` |
+| 反転（スナップの） | ドラッグ中にスナップの入/切のキー（N）を押している間だけ、入/切を逆にすること。離すかドラッグが終わると戻り、入/切そのものは変えない（FCP の N と同じ） | `TimelineCommand::ToggleSnapping`、`PointerEvent::SnapKeyUp`、`keys::release` |
 | ポインターの入力のキュー | サーフェスのポインターの入力と、ドラッグに効くキー（スナップの入/切とその反転を戻す知らせ）を描画スレッドへ渡すキュー。同じキューで渡すので、ドラッグの終わりとの前後が保たれる | `Shared::input`、`PointerEvent` |
 | スナップの表示 | 吸い付いたときだけ出す、ガイド線と、目盛りの帯の下端の下向きの三角形、行の領域の下端の上向きの三角形。三角形は時刻の列に全部入るときだけ描く。端が目標に届かない（素材の端や 1 フレームの長さで止まった）ときは出さない | `PaintState::snap`、`paint/snap.rs` |
 | ガイド線（スナップの） | 吸い付いた時刻に出す、太さ 2 で時刻の列の全高の縦の線。吸い付いていないドラッグには出さない。用語集の識別子 `PaintState::guide` は `PaintState::snap` になった | `PaintState::snap`、`paint/snap.rs` の `GUIDE_W` |

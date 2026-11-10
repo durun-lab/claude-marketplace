@@ -26,6 +26,8 @@ pub enum Command {
     Seek(f64),
     /// 現在のフレームから `n` フレーム動かす（再生中なら止める）。
     Step(i64),
+    /// 現在のフレームから `n` 秒動かす（再生中なら止める）。1 秒は fps を丸めたフレームの数（タイムコードの 1 秒）。
+    StepSeconds(i64),
     /// `Shared::edits` に積んだ操作を適用する。
     Edit,
     /// 逆向きに再生する（映像だけ。J キー）。他のコマンドで止まる。
@@ -283,6 +285,12 @@ mod tests {
         assert!(at(1.0), "1 秒のフレーム");
         shared.send(Command::Step(1));
         assert!(at(1.0 + 1.0 / info.fps), "1 フレーム進む");
+        shared.send(Command::StepSeconds(-1));
+        let second = info.fps.round();
+        assert!(
+            at((info.fps + 1.0 - second) / info.fps),
+            "1 秒ぶんのフレームを戻る"
+        );
         shared.send(Command::Seek(f64::MAX));
         assert!(
             at(info.duration - 1.0 / info.fps),
