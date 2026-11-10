@@ -79,6 +79,7 @@ impl Placer<'_> {
                 color,
                 cut: None,
                 clip: r,
+                tabular: false,
             });
         }
     }

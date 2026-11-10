@@ -67,7 +67,8 @@ pub use scale::{Scale, TextPlacement};
 pub use screen::{split_viewers, SurfaceLayout, TIMELINE_RATIO, VIEW_MARGIN};
 pub use snap::{quantize, snap, SnapKind, SnapTarget, Snapped, SNAP_PX};
 pub use text::{
-    fit, line_height, place, Align, Fit, Label, TextMeasure, TextStyle, UiFont, ELLIPSIS,
+    fit, line_height, place, place_tabular, Align, Fit, Label, TextMeasure, TextStyle, UiFont,
+    ELLIPSIS,
 };
 pub use thumbs::{timeline_thumbs, ThumbQuad, THUMB_ASPECT};
 pub use time_view::{TimeView, MAX_PX_PER_SEC, MIN_FIT_PX_PER_SEC, MIN_PX_PER_SEC};

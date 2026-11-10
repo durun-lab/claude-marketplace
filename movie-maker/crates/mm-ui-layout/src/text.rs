@@ -44,6 +44,12 @@ pub trait TextMeasure {
     /// 切り詰めの位置は書記素クラスタの終わりで、空白の後ろは除く。空の文字列は空。
     fn stops(&mut self, text: &str, size: f32) -> &[f32];
 
+    /// 数字の幅をそろえて 1 字ずつ並べたときの、[`stops`](Self::stops) と同じ形の距離。数字は 0〜9 の一番広い幅に置き、
+    /// 時刻が進んでも字が左右に揺れない。並べ方は `mm-ui-wgpu` の描く所と同じ。既定は通常のシェーピング。
+    fn tabular_stops(&mut self, text: &str, size: f32) -> Vec<f32> {
+        self.stops(text, size).to_vec()
+    }
+
     /// 全体の幅。
     fn width(&mut self, text: &str, size: f32) -> f32 {
         self.stops(text, size).last().copied().unwrap_or(0.0)
@@ -89,6 +95,8 @@ pub struct Label {
     pub cut: Option<f32>,
     /// 字を描いてよい矩形。外に出た字の部分は描かない。
     pub clip: Rect,
+    /// 時刻の字。数字の幅をそろえ、字ごとに覚えたグリフを並べて描く（毎フレームシェーピングし直さない）。
+    pub tabular: bool,
 }
 
 /// 文字を置く矩形の中の、横の揃え方。入らずに切り詰めるときは左に揃える。
@@ -118,12 +126,42 @@ pub fn place(
     style: TextStyle,
     measure: &mut dyn TextMeasure,
 ) -> Option<Label> {
+    place_with(text, rect, pad, align, style, measure, false)
+}
+
+/// [`place`] と同じ置き方で、時刻の字を数字の幅をそろえて置く（[`Label::tabular`]）。
+pub fn place_tabular(
+    text: &Arc<str>,
+    rect: Rect,
+    pad: f32,
+    align: Align,
+    style: TextStyle,
+    measure: &mut dyn TextMeasure,
+) -> Option<Label> {
+    place_with(text, rect, pad, align, style, measure, true)
+}
+
+fn place_with(
+    text: &Arc<str>,
+    rect: Rect,
+    pad: f32,
+    align: Align,
+    style: TextStyle,
+    measure: &mut dyn TextMeasure,
+    tabular: bool,
+) -> Option<Label> {
     let room = rect.w - 2.0 * pad;
     if text.is_empty() || room <= 0.0 {
         return None;
     }
     let ellipsis = measure.width(ELLIPSIS, style.size);
-    let stops = measure.stops(text, style.size);
+    let owned;
+    let stops: &[f32] = if tabular {
+        owned = measure.tabular_stops(text, style.size);
+        &owned
+    } else {
+        measure.stops(text, style.size)
+    };
     let whole = stops.last().copied().unwrap_or(0.0);
     let (x, cut) = match fit(stops, ellipsis, room) {
         Fit::Whole => {
@@ -146,6 +184,7 @@ pub fn place(
         color: style.color,
         cut,
         clip: rect,
+        tabular,
     })
 }
 

@@ -11,7 +11,7 @@ use std::sync::Arc;
 use crate::geom::{Color, Rect};
 use crate::paint::PaintState;
 use crate::palette::{text_on, Palette};
-use crate::text::{place, Align, Label, TextMeasure, TextStyle, UiFont};
+use crate::text::{place, place_tabular, Align, Label, TextMeasure, TextStyle, UiFont};
 use crate::timeline::{HeaderButton, Hit, Item, ItemKind, TimelineModel};
 use crate::timeline_layout::Viewport;
 
@@ -205,7 +205,7 @@ pub(crate) fn labels(
         color: state.palette.selection,
     };
     let mut out = placer.out;
-    if let Some(mut label) = place(
+    if let Some(mut label) = place_tabular(
         &time,
         corner,
         CORNER_PAD,

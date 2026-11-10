@@ -237,6 +237,7 @@ mod tests {
             color: crate::palette::LABEL,
             cut: None,
             clip: Rect::new(x - 4.0, 90.0, 400.0, 20.0),
+            tabular: false,
         };
         let mut labels = vec![
             label("long bar name", 250.0),

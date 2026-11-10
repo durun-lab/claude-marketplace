@@ -19,6 +19,7 @@ struct Placed {
     size: f32,
     color: Color,
     at: TextPlacement,
+    tabular: bool,
 }
 
 /// 文字の描画の数（計装と試験に使う）。
@@ -157,6 +158,7 @@ fn placed(label: &Label, scale: Scale) -> Placed {
         size: label.size,
         color: label.color,
         at: scale.label_to_physical(label),
+        tabular: label.tabular,
     }
 }
 
@@ -164,19 +166,44 @@ fn placed(label: &Label, scale: Scale) -> Placed {
 fn text_areas<'a>(cache: &'a ShapeCache, next: &Prepared) -> Vec<TextArea<'a>> {
     let mut areas = Vec::with_capacity(next.labels.len() + 8);
     for p in &next.labels {
-        let Some(shaped) = cache.get(&p.text, p.size) else {
-            continue;
-        };
         let bounds = pixel_bounds(p.at.clip);
         let cut = p.at.cut.map(|c| c as i32);
         let right = cut.map_or(bounds.right, |c| c.min(bounds.right));
         let clipped = TextBounds { right, ..bounds };
-        areas.push(area(&shaped.buffer, p, p.at.x, clipped));
+        if p.tabular {
+            push_tabular(&mut areas, cache, p, clipped);
+        } else if let Some(shaped) = cache.get(&p.text, p.size) {
+            areas.push(area(&shaped.buffer, p, p.at.x, clipped));
+        } else {
+            continue;
+        }
         if let (Some(c), Some(dots)) = (cut, cache.get(ELLIPSIS, p.size)) {
             areas.push(area(&dots.buffer, p, c as f32, bounds));
         }
     }
     areas
+}
+
+/// 時刻の字を、覚えた 1 字ずつのグリフで左から並べる。数字は一番広い数字の幅で進める（置き場所は `tabular_stops` と同じ）。
+fn push_tabular<'a>(
+    areas: &mut Vec<TextArea<'a>>,
+    cache: &'a ShapeCache,
+    p: &Placed,
+    bounds: TextBounds,
+) {
+    let mut left = p.at.x;
+    for c in p.text.chars() {
+        let Some(advance) = cache.advance(c, p.size) else {
+            return;
+        };
+        let glyph = cache.get(c.encode_utf8(&mut [0; 4]), p.size);
+        if let (Some(shaped), false) = (glyph, c.is_whitespace()) {
+            // 狭い数字（1 など）は幅をそろえた升の中央に置く。
+            let inset = (advance - shaped.advance()) / 2.0 * p.at.scale;
+            areas.push(area(&shaped.buffer, p, left + inset, bounds));
+        }
+        left += advance * p.at.scale;
+    }
 }
 
 /// シェーピングした `buffer` を、文字 `p` の行に左端 `left` から描く範囲。

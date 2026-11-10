@@ -11,7 +11,7 @@ use crate::geom::{Color, Quad, Rect};
 use crate::header::timecode;
 use crate::palette::{text_on, Palette};
 use crate::screen::SurfaceLayout;
-use crate::text::{place, Align, Label, TextMeasure, TextStyle, UiFont};
+use crate::text::{place, place_tabular, Align, Label, TextMeasure, TextStyle, UiFont};
 
 /// バーの上端の線の濃さ。
 const EDGE_ALPHA: f32 = 0.5;
@@ -204,7 +204,8 @@ pub fn transport_labels(
     measure: &mut dyn TextMeasure,
 ) -> Vec<Label> {
     let mut out = Vec::new();
-    let mut put = |text: &str, area: Rect, align: Align, style: TextStyle| {
+    let mut put = |text: &str, area: Rect, align: Align, style: TextStyle, tabular: bool| {
+        let place = if tabular { place_tabular } else { place };
         if let Some(mut label) = place(&Arc::from(text), area, 0.0, align, style, measure) {
             label.clip = area;
             out.push(label);
@@ -219,12 +220,19 @@ pub fn transport_labels(
             c.position,
             Align::Left,
             style(font.base, palette.selection),
+            true,
         );
         let (range, size) = match viewer {
             Viewer::Program => (timecode(s.duration, s.fps), font.base),
             Viewer::Source => (in_out_text(s), font.small),
         };
-        put(&range, c.range, Align::Right, style(size, palette.label));
+        put(
+            &range,
+            c.range,
+            Align::Right,
+            style(size, palette.label),
+            true,
+        );
         for cell in c.buttons.iter().filter(|b| b.named) {
             let look = ButtonLook::of(cell, viewer, s, controller);
             let name = cell.spec.name.unwrap_or_default();
@@ -233,6 +241,7 @@ pub fn transport_labels(
                 look.place(cell.rect),
                 Align::Center,
                 style(font.base, look.ink(palette)),
+                false,
             );
         }
     }

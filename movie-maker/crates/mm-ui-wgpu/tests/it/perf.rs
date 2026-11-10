@@ -4,7 +4,9 @@
 
 use std::time::{Duration, Instant};
 
-use mm_ui_layout::{CutBar, Item, ItemKind, Peaks, PointerEvent, TimelineModel, WaveSource};
+use mm_ui_layout::{
+    CutBar, Item, ItemKind, Peaks, PointerEvent, TimelineModel, ViewerState, WaveSource,
+};
 use mm_ui_wgpu::{slot_image_len, TextStats, Ui};
 
 use crate::support::{gpu, FORMAT};
@@ -240,13 +242,23 @@ fn 数千のカットの_timeline_を拡大と移動と再生で描く時間() {
         b.phase("縦のスクロール", 120, |ui, _| {
             ui.pointer(wheel(-1.0, false, true));
         }),
-        b.phase("再生", 120, |ui, i| ui.set_playhead(i as f64 / 60.0)),
+        b.phase("再生", 120, |ui, i| {
+            let t = i as f64 / 60.0;
+            ui.set_playhead(t);
+            let viewer = ViewerState {
+                t,
+                duration: 60.0,
+                fps: 30.0,
+                playing: true,
+                ..ViewerState::default()
+            };
+            ui.set_transport(viewer, None);
+        }),
     ];
     print_phases(&phases);
     let play = &phases[4];
     assert_eq!(
-        play.text.shaped + play.text.uploads,
-        0,
-        "再生中はシェーピングせず、頂点も作らない"
+        play.text.shaped, 0,
+        "再生中は時刻の字をシェーピングし直さない"
     );
 }

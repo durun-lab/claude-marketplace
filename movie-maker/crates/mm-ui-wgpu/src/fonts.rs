@@ -70,8 +70,17 @@ pub(crate) struct Shaped {
     pub(crate) buffer: Buffer,
     /// 切り詰めの位置ごとの左端からの距離（[`TextMeasure::stops`]）。
     stops: Vec<f32>,
+    /// 字の並びの幅（空白を含む。時刻の字を 1 字ずつ並べる幅）。
+    advance: f32,
     /// 最後に使ったフレーム。
     used: u64,
+}
+
+impl Shaped {
+    /// 字の並びの幅（論理ピクセル）。
+    pub(crate) fn advance(&self) -> f32 {
+        self.advance
+    }
 }
 
 /// シェーピングの結果のキャッシュ。字の大きさ（f32 のビット）ごとに、文字列から引く。
@@ -92,6 +101,16 @@ impl ShapeCache {
     /// これまでにシェーピングした回数。
     pub(crate) fn count(&self) -> u64 {
         self.count
+    }
+
+    /// 時刻の字 `c` の幅。数字は 0〜9 の一番広い幅にそろえる。1 字ずつシェーピングしたものを引くので、足りなければ `None`。
+    pub(crate) fn advance(&self, c: char, size: f32) -> Option<f32> {
+        let of = |c: char| Some(self.get(c.encode_utf8(&mut [0; 4]), size)?.advance);
+        if c.is_ascii_digit() {
+            ('0'..='9').try_fold(0.0_f32, |w, d| of(d).map(|a| w.max(a)))
+        } else {
+            of(c)
+        }
     }
 }
 
@@ -164,8 +183,9 @@ impl Shaper {
     }
 }
 
-impl TextMeasure for Shaper {
-    fn stops(&mut self, text: &str, size: f32) -> &[f32] {
+impl Shaper {
+    /// `text` をシェーピングしてキャッシュし、キャッシュしたものを返す。
+    fn shaped(&mut self, text: &str, size: f32) -> &Shaped {
         let cache = &mut self.cache;
         let map = cache.shaped.entry(size.to_bits()).or_default();
         if !map.contains_key(text) {
@@ -178,7 +198,28 @@ impl TextMeasure for Shaper {
         }
         let shaped = map.get_mut(text).expect("キャッシュしたばかり");
         shaped.used = cache.frame;
-        &shaped.stops
+        shaped
+    }
+}
+
+impl TextMeasure for Shaper {
+    fn stops(&mut self, text: &str, size: f32) -> &[f32] {
+        &self.shaped(text, size).stops
+    }
+
+    fn tabular_stops(&mut self, text: &str, size: f32) -> Vec<f32> {
+        for c in text.chars().chain('0'..='9') {
+            self.shaped(c.encode_utf8(&mut [0; 4]), size);
+        }
+        let mut x = 0.0;
+        let mut stops = Vec::new();
+        for c in text.chars() {
+            x += self.cache.advance(c, size).unwrap_or(0.0);
+            if !c.is_whitespace() {
+                stops.push(x);
+            }
+        }
+        stops
     }
 }
 
@@ -196,9 +237,11 @@ fn shape(fonts: &mut FontSystem, family: &str, text: &str, size: f32) -> Shaped 
     buffer.set_text(text, &attrs, Shaping::Advanced, None);
     buffer.shape_until_scroll(fonts, false);
     let stops = stops_of(&buffer);
+    let advance = buffer.layout_runs().next().map_or(0.0, |run| run.line_w);
     Shaped {
         buffer,
         stops,
+        advance,
         used: 0,
     }
 }
@@ -386,5 +429,25 @@ mod tests {
         s.end_frame();
         assert!(s.cache().get("old 0", 12.0).is_none());
         assert!(s.cache().get("new", 12.0).is_some());
+    }
+
+    #[test]
+    fn 時刻の字は数字の幅をそろえ_字ごとに覚えて_別の時刻をシェーピングし直さない() {
+        let mut s = shaper();
+        let a = s.tabular_stops("00:00:00:00", 12.0);
+        let shaped = s.cache().count();
+        let b = s.tabular_stops("11:59:23:17", 12.0);
+        assert_eq!(s.cache().count(), shaped, "別の数字は覚えた字");
+        s.tabular_stops("In 00:00:01:00  Out --:--:--:--", 12.0);
+        assert_eq!(
+            s.cache().count(),
+            shaped + 7,
+            "新しい字（I n 空白 O u t -）だけ"
+        );
+        assert_eq!(a, b, "どの数字でも同じ幅で並ぶ");
+        let wide = ('0'..='9')
+            .map(|d| s.cache().advance(d, 12.0).expect("覚えた"))
+            .fold(0.0_f32, f32::max);
+        assert_eq!(s.cache().advance('1', 12.0), Some(wide));
     }
 }
