@@ -208,7 +208,7 @@
     );
     ui.layers.replaceChildren(
       ...info.layers.map((l) =>
-        el("li", { textContent: `${l.kind.padEnd(11)} ${l.id}  ${l.start.toFixed(1)}-${l.end.toFixed(1)}s` }),
+        el("li", { textContent: `${l.kind.padEnd(11)} ${l.id}  ${l.start.toFixed(3)}-${l.end.toFixed(3)}s` }),
       ),
     );
   };

@@ -190,8 +190,11 @@ const settle = async (provider: AuthProvider, request: Flow['request'], answer: 
   return { ok: true, text: `${provider.title}を終えました。` };
 };
 
-/** 認証済みならすぐに返し、切れていれば人間に尋ねて、OK なら認証する。同じ相手の流れが進んでいれば、それに加わって同じ結果を待つ。 */
-export const requestAuth = (provider: AuthProvider, sessionId: string): Promise<AuthResult> => {
+/**
+ * 認証済みならすぐに返し、切れていれば人間に尋ねて、OK なら認証する。同じ相手の流れが進んでいれば、それに加わって同じ結果を待つ。
+ * sessionId が無いのは、ダッシュボード自身が求めたとき。
+ */
+export const requestAuth = (provider: AuthProvider, sessionId?: string): Promise<AuthResult> => {
   let flow = flows.get(provider.key);
   if (!flow) {
     const { title, command, url, lastLoginAt } = provider;
@@ -201,7 +204,7 @@ export const requestAuth = (provider: AuthProvider, sessionId: string): Promise<
     flow = { request, decide, result: settle(provider, request, answer).finally(() => flows.delete(provider.key)) };
     flows.set(provider.key, flow);
   }
-  if (!flow.request.sessionIds.includes(sessionId)) {
+  if (sessionId && !flow.request.sessionIds.includes(sessionId)) {
     flow.request.sessionIds.push(sessionId);
     changed();
   }
