@@ -71,11 +71,12 @@ fn drawn(m: &TimelineModel, height: RowHeight, waves: &Waves) -> (Vec<Quad>, Rec
         scroll_y: 0.0,
     };
     let st = state(0.0);
-    let without = timeline_quads(&PaintInput::new(m, &vp, &st));
+    let without = timeline_quads(&PaintInput::new(m, &vp, &st)).quads;
     let with = timeline_quads(&PaintInput {
         waves: Some(waves),
         ..PaintInput::new(m, &vp, &st)
-    });
+    })
+    .quads;
     let added = with.into_iter().filter(|q| !without.contains(q)).collect();
     (added, vp.bar(0, m.items[0].start, m.items[0].end))
 }

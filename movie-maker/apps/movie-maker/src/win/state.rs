@@ -138,10 +138,11 @@ pub struct Shared {
     pub edits: Mutex<Vec<PendingEdit>>,
     /// キーとドラッグの編集を順に計画して適用するキュー。最初の編集で作る。
     pub edit_lane: Mutex<Option<Sender<EditJob>>>,
-    /// プロジェクトの `cache/`。帯の波形の読み込みが探す。開いたときに置く。
+    /// プロジェクトの `cache/`。帯の波形とサムネイルの読み込みが探す。開いたときに置く。
     pub cache_dir: OnceLock<std::path::PathBuf>,
     /// 取り込みが素材 1 つの出力（プレビュー動画、サムネイル、波形）をキャッシュに作り終えるたびに進む。
     /// 帯の波形は、これと素材の一覧の変化を合図に、まだ読めていない素材のキャッシュを探し直す。
+    /// 帯のサムネイルは、これを合図に読めなかったキーを帯に戻して読み直す。
     pub ingest_serial: AtomicU64,
     /// 書き手として開いた `project.mmdb` の中心。操作はここで保存してから描き直す。JSON のプロジェクトでは空。
     pub core: OnceLock<Arc<mm_serve::Core>>,

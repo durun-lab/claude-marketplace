@@ -88,6 +88,7 @@ fn キーフレームの開閉は見出しの右端に置き_キーフレーム�
     let f = TestViewport::new(&m, SIZE);
     let vp = f.vp();
     let tris: Vec<Rect> = timeline_quads(&PaintInput::new(&m, &vp, &state(0.0)))
+        .quads
         .into_iter()
         .filter(|q| q.shape == QuadShape::TriRight)
         .map(|q| q.rect)
@@ -382,12 +383,12 @@ fn ポインターが乗ったボタンは背景を明るくする() {
         index: 0,
         button: HeaderButton::Lock,
     };
-    let plain = timeline_quads(&PaintInput::new(&m, &f.vp(), &state(0.0)));
+    let plain = timeline_quads(&PaintInput::new(&m, &f.vp(), &state(0.0))).quads;
     let hot = PaintState {
         hover,
         ..state(0.0)
     };
-    let hot = timeline_quads(&PaintInput::new(&m, &f.vp(), &hot));
+    let hot = timeline_quads(&PaintInput::new(&m, &f.vp(), &hot)).quads;
     let behind = |quads: &[Quad]| {
         quads
             .iter()
@@ -403,7 +404,7 @@ fn 無効なレイヤーの見出しに斜線を引く_有効なら引かない(
     let off = model(vec![Item::layer(0.0, 5.0, ItemKind::Image, false)]);
     let count = |m: &TimelineModel| {
         let f = TestViewport::new(m, SIZE);
-        let quads = timeline_quads(&PaintInput::new(m, &f.vp(), &state(0.0)));
+        let quads = timeline_quads(&PaintInput::new(m, &f.vp(), &state(0.0))).quads;
         let dot = |q: &&Quad| q.rect.right() <= HEADER_W && q.rect.w <= 3.0 && q.rect.h <= 3.0;
         quads.iter().filter(dot).count()
     };
@@ -472,12 +473,14 @@ fn 隠しているときは見出しの列の上の角に隠した数だけを�
 fn 見出しのドラッグで入る位置に線を出す() {
     let m = many(3);
     let f = TestViewport::new(&m, SIZE);
-    let plain = timeline_quads(&PaintInput::new(&m, &f.vp(), &state(0.0))).len();
+    let plain = timeline_quads(&PaintInput::new(&m, &f.vp(), &state(0.0)))
+        .quads
+        .len();
     let st = PaintState {
         header_drop: Some(1),
         ..state(0.0)
     };
-    let quads = timeline_quads(&PaintInput::new(&m, &f.vp(), &st));
+    let quads = timeline_quads(&PaintInput::new(&m, &f.vp(), &st)).quads;
     assert_eq!(quads.len(), plain + 2, "見出しの列と行の領域に 1 本ずつ");
     let y = f.vp().row(1).y;
     let on_edge = |q: &Quad| (q.rect.y + q.rect.h / 2.0 - y).abs() < 0.01;

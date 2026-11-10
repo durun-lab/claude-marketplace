@@ -94,7 +94,7 @@ pub fn plan_and_apply(shared: &Shared, action: EditAction) -> Result<(), String>
         playhead: shared.playhead(),
     };
     let planned = plan_action(shared, &ctx, action)?;
-    edit::submit_based(shared, vec![planned.op], doc.version)?;
+    edit::submit_based(shared, planned.ops, doc.version)?;
     // イン点・アウト点は素材の整理で、Timeline で選んだカットには関係しない。
     if !matches!(action, EditAction::MarkIn | EditAction::MarkOut) {
         shared
@@ -162,7 +162,10 @@ fn mark(shared: &Shared, is_in: bool) -> Result<Planned, String> {
     } else {
         MarkOut { asset, at }.into()
     };
-    Ok(Planned { op, select: None })
+    Ok(Planned {
+        ops: vec![op],
+        select: None,
+    })
 }
 
 #[cfg(test)]

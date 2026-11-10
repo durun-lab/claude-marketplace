@@ -127,6 +127,18 @@ fn 押せるかが変わると表を送り直す() {
 }
 
 #[test]
+fn シーケンスのレイヤーが無くても_source_を開いていれば_insert_と_overwrite_は押せる() {
+    let ready = Ready {
+        source_open: true,
+        ..Ready::default()
+    };
+    let enabled = |id: &str| ready.state(find(id).expect(id)).enabled;
+    assert!(enabled("clip.insert"), "最初の insert がシーケンスを作る");
+    assert!(enabled("clip.overwrite"));
+    assert!(!enabled("clip.split"), "割るカットが無い");
+}
+
+#[test]
 fn snapping_はチェックの状態に表示の状態の入_切を出し_変われば表を送り直す() {
     let shared = Shared::new();
     let mut sent = None;
