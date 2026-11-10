@@ -256,7 +256,9 @@ impl TimelineController {
         playhead: f64,
     ) -> Vec<Action> {
         match ev {
-            PointerEvent::Down { x, y, mods } => self.down(x, y, mods, (model, playhead)),
+            PointerEvent::Down { x, y, mods } => {
+                self.press_with_tool((x, y), mods, (model, playhead))
+            }
             PointerEvent::Move { x, y } => self.moved(x, y, model, playhead),
             PointerEvent::Up => self.up(model),
             PointerEvent::Wheel {
@@ -300,20 +302,8 @@ impl TimelineController {
         t.clamp(0.0, (model.duration - frame).max(0.0))
     }
 
-    fn down(
-        &mut self,
-        x: f32,
-        y: f32,
-        mods: Mods,
-        (model, playhead): (&TimelineModel, f64),
-    ) -> Vec<Action> {
+    fn down(&mut self, x: f32, y: f32, mods: Mods, model: &TimelineModel) -> Vec<Action> {
         let hit = hit_test(model, &self.viewport(), x, y);
-        self.blade_line = None;
-        if self.tool == Tool::Blade {
-            if let Some(out) = self.press_blade(hit, x, model, playhead) {
-                return out;
-            }
-        }
         match hit {
             Hit::Ruler => {
                 self.drag = Drag::Scrub;

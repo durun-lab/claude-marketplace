@@ -5,7 +5,7 @@ use super::snapping::LANDED_EPS;
 use super::{Action, Drag, Mods, TimelineController};
 use crate::gesture::{shift_layer_edit, EditKind};
 use crate::snap::{quantize, snap, targets, Moving, SnapKind, SnapTarget, SNAP_PX};
-use crate::timeline::{Hit, Part, TimelineModel};
+use crate::timeline::{hit_test, Hit, Part, TimelineModel};
 use crate::tool::{BladeLine, Tool};
 
 /// 割る時刻がカットの端に重なったとみなす差（秒）。フレームに丸めた時刻と、有理数の時刻から求めた端の誤差を吸収する。
@@ -70,9 +70,26 @@ impl TimelineController {
         (quantize(time, model.fps), snapped.is_some())
     }
 
+    /// 押下。Blade のときのカットとレイヤーの上は Blade が受け、ほかは通常の押下（`down`）に任せる。押すと Blade の線は消す。
+    pub(super) fn press_with_tool(
+        &mut self,
+        (x, y): (f32, f32),
+        mods: Mods,
+        (model, playhead): (&TimelineModel, f64),
+    ) -> Vec<Action> {
+        self.blade_line = None;
+        if self.tool == Tool::Blade {
+            let hit = hit_test(model, &self.viewport(), x, y);
+            if let Some(out) = self.press_blade(hit, x, model, playhead) {
+                return out;
+            }
+        }
+        self.down(x, y, mods, model)
+    }
+
     /// Blade での押下。割れるカットの上なら割る操作を返し、ほかのカットとレイヤーの上では何もしない。
     /// それ以外の所は通常の押下に任せる（`None`）。
-    pub(super) fn press_blade(
+    fn press_blade(
         &self,
         hit: Hit,
         x: f32,
