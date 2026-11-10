@@ -32,8 +32,8 @@ fn model() -> TimelineModel {
             label: format!("take-{i:04}.mp4").into(),
             wave: Some(WaveSource {
                 content_hash: format!("take-{}", i % WAVE_ASSETS).into(),
-                at: i as f64 * 2.0,
-                src: (i / WAVE_ASSETS % (WAVE_SECS / 2)) as f64 * 2.0,
+                comp_time: i as f64 * 2.0,
+                wave_time: (i / WAVE_ASSETS % (WAVE_SECS / 2)) as f64 * 2.0,
                 speed: 1.0,
             }),
             ..CutBar::default()

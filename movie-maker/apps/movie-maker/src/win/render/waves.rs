@@ -16,10 +16,10 @@ use mm_ui_wgpu::Ui;
 
 use crate::win::state::Shared;
 
-/// 波形を読みたい素材のコンテンツハッシュと、その一覧の版（一覧を作り直すたびに進む）。
+/// 波形を読みたい素材のコンテンツハッシュと、その一覧の通し番号（一覧を作り直すたびに進む）。
 pub(super) struct WaveWanted<'a> {
     pub hashes: &'a [Arc<str>],
-    pub rev: u64,
+    pub serial: u64,
 }
 
 /// 素材ごとの読み込みの状態。キャッシュに無かった素材は持たず、次の合図で探し直す。
@@ -33,8 +33,8 @@ enum Load {
 struct Job {
     hash: Arc<str>,
     path: PathBuf,
-    /// 頼んだときの、探した回数。読めなかった結果が届く前に次の合図があれば読み直す。
-    round: u64,
+    /// 頼んだときの探した回数。読めなかった結果が届く前に次の合図があれば読み直す。
+    scan: u64,
 }
 
 /// 読んだ結果。読めなければ `peaks` が `None`（キャッシュに無い、ハッシュが違う）。
@@ -47,10 +47,10 @@ pub(super) struct WaveSync {
     jobs: Sender<Job>,
     done: Receiver<Loaded>,
     state: HashMap<Arc<str>, Load>,
-    /// 最後に探したときの合図（素材の一覧の版、取り込みの回数）。`None` なら次の周で探す。
+    /// 最後に探したときの合図（素材の一覧と取り込みの通し番号）。`None` なら次の周で探す。
     seen: Option<(u64, u64)>,
     /// 探した回数。
-    round: u64,
+    scans: u64,
 }
 
 impl WaveSync {
@@ -75,7 +75,7 @@ impl WaveSync {
             done,
             state: HashMap::new(),
             seen: None,
-            round: 0,
+            scans: 0,
         }
     }
 
@@ -100,16 +100,16 @@ impl WaveSync {
                 set(job.hash.clone(), peaks);
                 self.state.insert(job.hash, Load::Done);
             }
-            None if job.round < self.round => self.request(job.hash, job.path),
+            None if job.scan < self.scans => self.request(job.hash, job.path),
             None => {
                 self.state.remove(&job.hash);
             }
         }
     }
 
-    /// 合図（素材の一覧の版か、取り込みの回数）が前に探したときから変わっていれば、読んでいない素材を読むスレッドに頼む。
+    /// 合図（素材の一覧か取り込みの通し番号）が前に探したときから変わっていれば、読んでいない素材を読むスレッドに頼む。
     fn rescan(&mut self, shared: &Shared, wanted: WaveWanted) {
-        let signal = (wanted.rev, shared.ingest_serial.load(Ordering::SeqCst));
+        let signal = (wanted.serial, shared.ingest_serial.load(Ordering::SeqCst));
         if self.seen == Some(signal) {
             return;
         }
@@ -117,7 +117,7 @@ impl WaveSync {
             return;
         };
         self.seen = Some(signal);
-        self.round += 1;
+        self.scans += 1;
         let layout = CacheLayout::new(root.clone());
         for hash in wanted.hashes {
             if !self.state.contains_key(hash) {
@@ -130,7 +130,7 @@ impl WaveSync {
         let job = Job {
             hash: hash.clone(),
             path,
-            round: self.round,
+            scan: self.scans,
         };
         if self.jobs.send(job).is_ok() {
             self.state.insert(hash, Load::Reading);

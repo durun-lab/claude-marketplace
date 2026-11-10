@@ -14,7 +14,7 @@ use crate::names::Namer;
 
 mod wave;
 
-use wave::WaveRefs;
+use wave::WaveResolver;
 
 /// 音を持てるレイヤーの種類。Mixer のトラック（`apps/movie-maker` の `mixer.rs`）と同じで、見出しに Mute と Solo を出す。
 const AUDIO_KINDS: [&str; 3] = [FOOTAGE_KIND, NESTED_KIND, SEQUENCE_KIND];
@@ -94,7 +94,7 @@ pub fn timeline_cut_ids(project: &Project, comp: &Composition) -> Vec<Vec<String
 /// シーケンスのレイヤーには、有効なカットを先頭から並べる（隙間は空きとして区別する）。
 pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
     let names = Namer::new(project);
-    let mut waves = WaveRefs::new(project);
+    let mut waves = WaveResolver::new(project);
     let items = visible_layers(comp)
         .map(|(layer, range)| Item {
             id: layer.id.as_str().into(),
@@ -152,7 +152,7 @@ fn cut_bars(
     project: &Project,
     layer: &Layer,
     names: &Namer,
-    waves: &mut WaveRefs<'_>,
+    waves: &mut WaveResolver<'_>,
 ) -> Vec<CutBar> {
     let Some((seq, placed)) = layer_cuts(project, layer) else {
         return Vec::new();

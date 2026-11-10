@@ -78,7 +78,7 @@ impl GpuContext {
         Self::with(&GpuRequest::default())
     }
 
-    /// 指定どおりに作る。PC 全体で同時に作るプロセスの数を絞る札（[`crate::device_slot`]）を、作る間だけ持つ。
+    /// 指定どおりに作る。PC 全体で同時に作るプロセスの数を絞る枠（[`crate::device_slot`]）を、作る間だけ持つ。
     pub fn with(request: &GpuRequest) -> Result<Arc<Self>> {
         let _slot = crate::device_slot::acquire();
         pollster::block_on(Self::new_async(request))

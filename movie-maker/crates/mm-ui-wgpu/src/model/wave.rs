@@ -9,13 +9,14 @@ use mm_ui_layout::WaveSource;
 
 use super::comp_secs;
 
-/// 帯の波形の元を作るもの。素材を ID から引く表を 1 回だけ作り、コンテンツハッシュの文字列は同じ素材の帯どうしで共有する。
-pub(super) struct WaveRefs<'a> {
+/// レイヤーとカットから帯の波形の元を引くもの。素材を ID から引く表を 1 回だけ作り、
+/// コンテンツハッシュの文字列は同じ素材の帯どうしで共有する。
+pub(super) struct WaveResolver<'a> {
     assets: HashMap<&'a AssetId, &'a Asset>,
     hashes: HashMap<&'a AssetId, Arc<str>>,
 }
 
-impl<'a> WaveRefs<'a> {
+impl<'a> WaveResolver<'a> {
     pub(super) fn new(project: &'a Project) -> Self {
         Self {
             assets: project.assets.iter().map(|a| (&a.id, a)).collect(),
@@ -43,10 +44,15 @@ impl<'a> WaveRefs<'a> {
         self.source(&cut.source, at, cut.speed.to_f64() * layer.speed.to_f64())
     }
 
-    /// 撮影素材のノード `node` の元。`(at, src)` はコンポジションの時刻と、そこに当たる素材の時刻。
+    /// 撮影素材のノード `node` の波形の元。`(comp_time, media_time)` はコンポジションの時刻と、そこに当たる素材の時刻。
     /// キャッシュの波形は音の最初のサンプルから数え、再生の音は映像の先頭を素材の時刻 0 に置くので、
     /// 素材の時刻に音と映像の先頭のずれを足して波形の時刻にする。素材がプロジェクトに無ければ出さない。
-    fn source(&mut self, node: &Node, (at, src): (f64, f64), speed: f64) -> Option<WaveSource> {
+    fn source(
+        &mut self,
+        node: &Node,
+        (comp_time, media_time): (f64, f64),
+        speed: f64,
+    ) -> Option<WaveSource> {
         if node.kind != FOOTAGE_KIND {
             return None;
         }
@@ -62,8 +68,8 @@ impl<'a> WaveRefs<'a> {
             .clone();
         Some(WaveSource {
             content_hash,
-            at,
-            src: src + asset.timebase_offset.to_f64(),
+            comp_time,
+            wave_time: media_time + asset.timebase_offset.to_f64(),
             speed,
         })
     }
@@ -145,7 +151,14 @@ mod tests {
         .with_layers(vec![talk, remapped, lost, seq]);
         let m = timeline_model(&project, &comp);
         let of = |w: Option<&mm_ui_layout::WaveSource>| {
-            w.map(|w| (w.content_hash.to_string(), w.at, w.src, w.speed))
+            w.map(|w| {
+                (
+                    w.content_hash.to_string(),
+                    w.comp_time,
+                    w.wave_time,
+                    w.speed,
+                )
+            })
         };
         let wave = |i: usize| of(m.items[i].wave.as_ref());
         let some = |h: &str, at, src, speed| Some((h.to_string(), at, src, speed));

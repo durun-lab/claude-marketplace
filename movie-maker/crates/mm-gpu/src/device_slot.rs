@@ -2,20 +2,20 @@
 //!
 //! 多くのプロセス（並べて回すテストと、別の worktree のテスト）が同時に D3D12 のデバイスを作ると、VRAM に余裕があっても
 //! デバイスの作成が `Not enough memory left`（E_OUTOFMEMORY）や `D3D12CreateDevice` の失敗で落ちる。作り終えたデバイスが
-//! いくつあっても落ちないので、作る間だけ札を持つ。札は名前付きのミューテックスで、持ち主のプロセスが落ちても OS が放す。
+//! いくつあっても落ちないので、作る間だけ枠を 1 つ持つ。枠は名前付きのミューテックスで、持ち主のプロセスが落ちても OS が放す。
 
 /// 同時にデバイスを作れるプロセスの数。4 なら mm-ui-wgpu の結合テストを 4 本並べて（各 48 スレッド）回しても落ちず、
 /// 1 本で回す時間も変わらない。
 #[cfg(windows)]
 const SLOTS: usize = 4;
 
-/// デバイスを作る間に持つ札。落とすと放す（中身は落とすときだけ使う）。
+/// デバイスを作る枠。作る間だけ持ち、落とすと放す（中身は落とすときだけ使う）。
 pub(crate) struct DeviceSlot {
     #[cfg(windows)]
     _held: Option<win::Held>,
 }
 
-/// 札が空くまで待って 1 つ取る。ミューテックスを作れなければ、絞らずに作らせる（札を持たない）。
+/// 枠が空くまで待って 1 つ取る。ミューテックスを作れなければ、絞らずに作らせる（枠を持たない）。
 pub(crate) fn acquire() -> DeviceSlot {
     DeviceSlot {
         #[cfg(windows)]
@@ -31,7 +31,7 @@ mod win {
         CreateMutexW, ReleaseMutex, WaitForMultipleObjects, INFINITE,
     };
 
-    /// 取った札。`index` 番のミューテックスを持っている。
+    /// 取った枠。`index` 番のミューテックスを持っている。
     pub(super) struct Held {
         handles: Vec<HANDLE>,
         index: usize,
@@ -46,7 +46,7 @@ mod win {
             match unsafe { CreateMutexW(None, false, &name) } {
                 Ok(h) => handles.push(h),
                 Err(e) => {
-                    tracing::warn!("GPU のデバイスを作る札のミューテックスを作れない: {e}");
+                    tracing::warn!("GPU のデバイスを作る枠のミューテックスを作れない: {e}");
                     close(&handles);
                     return None;
                 }

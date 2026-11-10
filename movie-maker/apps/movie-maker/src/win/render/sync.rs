@@ -25,9 +25,9 @@ pub(super) struct DocSync {
     layer_ids: Vec<String>,
     /// レイヤーごとのカットの ID（シーケンスでないレイヤーは空）。
     cut_ids: Vec<Vec<String>>,
-    /// 帯の波形を出す素材のコンテンツハッシュ（Timeline のモデルから引く）と、それを作り直した回数。
+    /// 帯の波形を出す素材のコンテンツハッシュ（Timeline のモデルから引く）と、一覧を作り直すたびに進む通し番号。
     wave_hashes: Vec<Arc<str>>,
-    wave_rev: u64,
+    wave_serial: u64,
 }
 
 /// Source のフレームを Program と同じサーフェスの Source の領域に出す。
@@ -74,7 +74,7 @@ impl DocSync {
             };
             let model = timeline_model(&doc.project, comp);
             self.wave_hashes = model.wave_hashes();
-            self.wave_rev += 1;
+            self.wave_serial += 1;
             ui.update_model(model);
             ui.set_empty_state(mm_ui_wgpu::empty_state(&doc.project, comp));
             // SDR の書き出しと同じ素材の上限の明るさでトーンマップし、プレビューと書き出しの映像を揃える。
@@ -96,7 +96,7 @@ impl DocSync {
     pub(super) fn wave_wanted(&self) -> WaveWanted<'_> {
         WaveWanted {
             hashes: &self.wave_hashes,
-            rev: self.wave_rev,
+            serial: self.wave_serial,
         }
     }
 

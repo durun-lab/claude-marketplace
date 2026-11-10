@@ -50,7 +50,7 @@ fn キャッシュに無い素材は合図が変わるまで探さず_取り込�
     let hashes: Vec<Arc<str>> = vec!["h".into()];
     let wanted = || WaveWanted {
         hashes: &hashes,
-        rev: 1,
+        serial: 1,
     };
     let mut sync = WaveSync::new();
     let mut got = Vec::new();
@@ -80,12 +80,12 @@ fn 読めなかった結果が届く前に合図があれば_すぐ読み直す(
     write_sidecar(&path, "h", vec![0.5, 0.5]);
     let mut sync = WaveSync::new();
     // 1 回目に探したときの「無い」が、2 回目の合図の後に届く。
-    sync.round = 2;
+    sync.scans = 2;
     let stale = Loaded {
         job: Job {
             hash: "h".into(),
             path,
-            round: 1,
+            scan: 1,
         },
         peaks: None,
     };

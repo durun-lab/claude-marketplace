@@ -16,18 +16,18 @@ fn flat(peak: f32) -> Waves {
     w
 }
 
-fn src(at: f64, src: f64) -> Option<WaveSource> {
+fn source(comp_time: f64, wave_time: f64) -> Option<WaveSource> {
     Some(WaveSource {
         content_hash: "a".into(),
-        at,
-        src,
+        comp_time,
+        wave_time,
         speed: 1.0,
     })
 }
 
 fn layer_model() -> TimelineModel {
     let mut item = Item::layer(1.0, 4.0, ItemKind::Footage, true);
-    item.wave = src(1.0, 0.0);
+    item.wave = source(1.0, 0.0);
     TimelineModel {
         duration: 5.0,
         fps: 30.0,
@@ -46,8 +46,8 @@ fn seq_model() -> TimelineModel {
     };
     let mut seq = Item::layer(0.0, 5.0, ItemKind::Sequence, true);
     seq.cuts = vec![
-        cut(0.0, 2.0, false, src(0.0, 3.0)),
-        cut(2.0, 3.0, true, src(2.0, 0.0)),
+        cut(0.0, 2.0, false, source(0.0, 3.0)),
+        cut(2.0, 3.0, true, source(2.0, 0.0)),
     ];
     TimelineModel {
         duration: 5.0,
