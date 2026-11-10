@@ -10,9 +10,11 @@ export {
 } from "./client.ts";
 export type { JsonSchema, SchemaObject } from "./codegen.ts";
 export {
+  closeShortcutsWindow,
   COMMANDS_CHANGED_EVENT,
   commandTitle,
   createIpcCommandsApi,
+  IPC_CLOSE_SHORTCUTS,
   IPC_COMMAND_TABLE,
   IPC_RUN_COMMAND,
   NOT_AVAILABLE,

@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use serde::Serialize;
+use serde::{Serialize, Serializer};
 use tauri::menu::{
     CheckMenuItem, IsMenuItem, Menu as NativeMenu, MenuItem, PredefinedMenuItem, Submenu,
 };
@@ -12,11 +12,11 @@ use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{PostMessageW, SC_KEYMENU, WM_SYSCOMMAND};
 
 use crate::win::commands::{self, CommandView, Forward, State, WindowAction, PANEL_COMMAND_EVENT};
+use crate::win::shortcuts_window;
 use crate::win::state::Shared;
 
-/// メニューバーのメニュー。
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "lowercase")]
+/// メニューバーのメニュー。WebView へは画面の名前（`Edit`）で送り、Keyboard Shortcuts のウィンドウが区画の見出しに使う。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Menu {
     File,
     Edit,
@@ -37,6 +37,17 @@ impl Menu {
             Menu::Timeline => "&Timeline",
             Menu::Help => "&Help",
         }
+    }
+
+    /// 画面の名前（`title` からアクセスキーを示す `&` を除いたもの）。
+    pub fn name(self) -> String {
+        self.title().replace('&', "")
+    }
+}
+
+impl Serialize for Menu {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.name())
     }
 }
 
@@ -170,11 +181,19 @@ pub fn label(command: &CommandView) -> String {
     }
 }
 
-/// コマンドが入っている最初のメニュー。
-pub fn menu_of(id: &str) -> Option<Menu> {
+/// コマンドが入っている最初のメニューと、メニューバーの中の位置（メニューとグループをまたいだ通し番号）。
+/// Keyboard Shortcuts のウィンドウは、この位置の順に並べてメニューごとの区画にする。
+pub fn place_of(id: &str) -> Option<(Menu, usize)> {
     BAR.iter()
-        .find(|(_, groups)| groups.iter().any(|g| g.contains(&id)))
-        .map(|(menu, _)| *menu)
+        .flat_map(|(menu, groups)| {
+            groups
+                .iter()
+                .flat_map(|g| g.iter())
+                .map(move |i| (*menu, *i))
+        })
+        .enumerate()
+        .find(|(_, (_, i))| *i == id)
+        .map(|(order, (menu, _))| (menu, order))
 }
 
 /// メニューの項目か区切り線の、Tauri の項目。押せるかとチェックの状態を後から反映するため、コマンドの ID を持つ。
@@ -297,6 +316,9 @@ pub fn connect(app: &App, window: &Window, shared: &Arc<Shared>, bar: MenuBar) {
             let _ = target.close();
         }
         Forward::Window(WindowAction::About) => about(&target),
+        Forward::Window(WindowAction::ShowKeyboardShortcuts) => {
+            shortcuts_window::open(&handle, &target);
+        }
         Forward::MenuKey(c) => open_by_access_key(&target, c),
     });
 }
