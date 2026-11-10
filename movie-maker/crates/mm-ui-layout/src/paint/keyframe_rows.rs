@@ -2,10 +2,13 @@
 //! キーフレームのひし形。ひし形は行の領域に収まるものだけを切らずに描き、収まらないものは縦線にして切る（帯のマーカーと同じ）。
 //! ひし形は横に見えているものだけを描き、帯のマーカーをまとめる幅より近いものは 1 つだけ描く（毎フレームにキーフレームを
 //! 持つ行を縮めて見ても、描く数が行の幅で頭打ちになる）。選んだものとポインターが乗ったものは、まとめずに上に描く。
-//! 選んだキーフレームは accent の輪で囲み、ドラッグ中のキーフレームは動かした先に描く。行の名前の文字は `keyframe_rows.rs`。
+//! 選んだキーフレームは accent の輪で囲み、ドラッグ中のキーフレームは動かした先に描く。レイヤーを動かすドラッグ
+//! （`shiftLayer`）の間は、帯と帯のマーカーと同じく、行の範囲とひし形を動かした後の時刻で描く。行の名前の文字は
+//! `keyframe_rows.rs`。
 
-use super::{bar_color, stripe, Canvas, Depth, PaintInput};
+use super::{bar_color, stripe, trimmed, Canvas, Depth, PaintInput};
 use crate::geom::{Quad, Rect};
+use crate::gesture::EditKind;
 use crate::keyframe_rows::{
     header_rect, keyframe_center, keyframes_within, merge_column, row_rect, square, KeyframeIndex,
     KeyframeRow, ROW_DIAMOND_PX,
@@ -64,7 +67,8 @@ fn backgrounds(s: &PaintInput, c: &mut Canvas, (i, item): (usize, &Item), k: usi
     c.push_in(Depth::Back, row, stripe(p, i), area);
     let strip = Rect::new(head.x, head.y, KIND_STRIP_W, head.h);
     c.push_in(Depth::Bar, strip, bar_color(item), headers);
-    let (x0, x1) = (s.vp.x_of(item.start), s.vp.x_of(item.end));
+    let (start, end) = trimmed(item, i, s.state.preview);
+    let (x0, x1) = (s.vp.x_of(start), s.vp.x_of(end));
     let span = Rect::new(x0, row.y, x1 - x0, row.h);
     c.push_in(Depth::Back, span, p.selection.with_alpha(SPAN_ALPHA), area);
     let this = |item: usize, row: usize| (item, row) == (i, k);
@@ -90,16 +94,27 @@ fn back(r: Rect) -> Rect {
     Rect::new(r.x, r.y + 1.0, r.w, (r.h - 1.0).max(0.0))
 }
 
+/// ドラッグ中の `shiftLayer` で、レイヤー `i` のキーフレームが帯と一緒に動く量（秒）。
+fn shifted_by(s: &PaintInput, i: usize) -> f64 {
+    match s.state.preview {
+        Some((EditKind::ShiftLayer { item }, by)) if item == i => by,
+        _ => 0.0,
+    }
+}
+
 /// 行 `k` の横に見えているキーフレームのひし形。近いものは列ごとに 1 つだけ描き、選んだものとポインターが乗ったものは
 /// 後から上に描く。ドラッグ中のキーフレームは元の位置に描かず、動かした先に最後に描く。
 fn diamonds(s: &PaintInput, c: &mut Canvas, (i, k): (usize, usize), row: &KeyframeRow) {
     let st = &s.state.keyframe_rows;
     let dragging = st.dragging.filter(|(at, _)| (at.item, at.row) == (i, k));
     let area = s.vp.layout.row_area;
+    let by = shifted_by(s, i);
+    // 動かした後の時刻で見える範囲を、動かす前の時刻の範囲に戻して引く。
+    let dx = (by * s.vp.time.px_per_sec) as f32;
     let half = RING_PX / 2.0;
     let mut column = None;
     let mut on_top = Vec::new();
-    for j in keyframes_within(s.vp, row, (area.x - half, area.right() + half)) {
+    for j in keyframes_within(s.vp, row, (area.x - half - dx, area.right() + half - dx)) {
         if dragging.is_some_and(|(d, _)| d.keyframe == j) {
             continue;
         }
@@ -113,10 +128,10 @@ fn diamonds(s: &PaintInput, c: &mut Canvas, (i, k): (usize, usize), row: &Keyfra
             Look::Normal => {
                 let col = merge_column(s.vp, time);
                 if column.replace(col) != Some(col) {
-                    diamond(s, c, (i, k), time, Look::Normal);
+                    diamond(s, c, (i, k), time + by, Look::Normal);
                 }
             }
-            other => on_top.push((time, other)),
+            other => on_top.push((time + by, other)),
         }
     }
     for (time, look) in on_top {

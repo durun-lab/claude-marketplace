@@ -272,6 +272,38 @@ fn ドラッグ中のキーフレームは動かした先に描き_元の位置�
     assert_eq!(rings, [keyframe_center(&vp, (0, 0), 2.5)]);
 }
 
+#[test]
+fn レイヤーを動かすドラッグの間は_行のひし形と範囲も帯と一緒に動かした先に描く() {
+    let m = model();
+    let (layout, rows) = opened(&m);
+    let vp = vp(&layout, &rows);
+    let st = PaintState {
+        preview: Some((crate::gesture::EditKind::ShiftLayer { item: 0 }, 0.5)),
+        ..state(0.0)
+    };
+    let quads = timeline_quads(&PaintInput::new(&m, &vp, &st)).quads;
+    let rims: Vec<(f32, f32)> = diamonds(&quads, ROW_DIAMOND_PX)
+        .iter()
+        .map(center)
+        .collect();
+    let want = [((0, 0), 1.5), ((0, 0), 4.5), ((0, 1), 2.5)];
+    for (row, t) in want {
+        assert!(
+            rims.contains(&keyframe_center(&vp, row, t)),
+            "{t}: {rims:?}"
+        );
+    }
+    assert!(!rims.contains(&keyframe_center(&vp, (0, 0), 1.0)));
+    let span = st.palette.selection.with_alpha(0.05);
+    let row = row_rect(&vp, 0, 0);
+    let spans: Vec<f32> = quads
+        .iter()
+        .filter(|q| q.color == span && q.rect.y == row.y + 1.0)
+        .map(|q| q.rect.x)
+        .collect();
+    assert_eq!(spans, [vp.x_of(0.5)], "レイヤーの範囲も 0.5 秒動かした先");
+}
+
 /// title の Position の行に、0 から 10 秒の毎フレーム（30 fps、3.3 px おき）のキーフレームを置いたモデル。
 fn every_frame() -> TimelineModel {
     let mut m = model();
