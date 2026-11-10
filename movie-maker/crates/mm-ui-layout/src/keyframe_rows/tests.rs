@@ -264,6 +264,93 @@ fn ドラッグ中のキーフレームは動かした先に描き_元の位置�
     assert_eq!(rings, [keyframe_center(&vp, (0, 0), 2.5)]);
 }
 
+/// title の Position の行に、0 から 10 秒の毎フレーム（30 fps、3.3 px おき）のキーフレームを置いたモデル。
+fn every_frame() -> TimelineModel {
+    let mut m = model();
+    let times: Vec<f64> = (0..=300).map(|f| f64::from(f) / 30.0).collect();
+    m.items[0].keyframe_rows[1] = row("Transform › Position", &times);
+    m
+}
+
+/// 行 `k` のひし形の縁の中心の時刻。
+fn drawn_times(quads: &[Quad], vp: &Viewport, k: usize) -> Vec<f64> {
+    let y = keyframe_center(vp, (0, k), 0.0).1;
+    let rims = diamonds(quads, ROW_DIAMOND_PX);
+    let on_row = rims.iter().map(center).filter(|c| c.1 == y);
+    on_row.map(|(x, _)| vp.t_of(x)).collect()
+}
+
+#[test]
+fn 毎フレームのキーフレームは見えている所だけを列ごとに_1_つ描き_選んだものとポインターの乗ったものはまとめない(
+) {
+    let m = every_frame();
+    let (layout, rows) = opened(&m);
+    let at = |keyframe| KeyframeIndex {
+        item: 0,
+        row: 1,
+        keyframe,
+    };
+    let st = PaintState {
+        hover: Hit::RowKeyframe(at(32)),
+        keyframe_rows: KeyframeRowState {
+            selected: Some(RowPick {
+                item: 0,
+                row: 1,
+                keyframe: Some(31),
+            }),
+            dragging: None,
+        },
+        ..state(0.0)
+    };
+    let vp = vp(&layout, &rows);
+    let quads = timeline_quads(&PaintInput::new(&m, &vp, &st)).quads;
+    let times = drawn_times(&quads, &vp, 1);
+    let columns = (layout.row_area.w / MERGE_PX).ceil() as usize + 2;
+    assert!(times.len() <= columns + 2, "{} 個", times.len());
+    assert!(times
+        .iter()
+        .all(|t| *t <= vp.t_of(layout.row_area.right() + 8.0)));
+    let near = |t: f64| times.iter().any(|d| (d - t).abs() < 1e-3);
+    assert!(
+        near(31.0 / 30.0) && near(32.0 / 30.0),
+        "選んだものと乗ったもの"
+    );
+    let rings = diamonds(&quads, ROW_DIAMOND_PX + 4.0);
+    assert_eq!(rings.len(), 1);
+    assert_eq!(center(&rings[0]), keyframe_center(&vp, (0, 1), 31.0 / 30.0));
+}
+
+#[test]
+fn まとめるひし形は横に動かしても変わらず_当たり判定は近いキーフレーム() {
+    let m = every_frame();
+    let (layout, rows) = opened(&m);
+    let shown = |origin: f64| {
+        let mut vp = vp(&layout, &rows);
+        vp.time.origin = origin;
+        let quads = timeline_quads(&PaintInput::new(&m, &vp, &state(0.0))).quads;
+        let times = drawn_times(&quads, &vp, 1);
+        let inside: Vec<i64> = times
+            .iter()
+            .filter(|t| (1.0..7.0).contains(*t))
+            .map(|t| (t * 30.0).round() as i64)
+            .collect();
+        inside
+    };
+    assert_eq!(
+        shown(0.0),
+        shown(0.37),
+        "左端の時刻によらず同じキーフレームを描く"
+    );
+    let vp = vp(&layout, &rows);
+    let (x, y) = keyframe_center(&vp, (0, 1), 100.0 / 30.0);
+    let want = KeyframeIndex {
+        item: 0,
+        row: 1,
+        keyframe: 100,
+    };
+    assert_eq!(hit_test(&m, &vp, x + 1.0, y), Hit::RowKeyframe(want));
+}
+
 #[test]
 fn 行の領域に収まらないひし形は縦線にして切る() {
     let mut m = model();

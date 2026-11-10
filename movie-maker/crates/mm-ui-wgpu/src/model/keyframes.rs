@@ -172,6 +172,8 @@ fn reframe_row<'a>(
             keys.extend(comp.map(|comp| KeyframeSource { span, index, comp }));
         }
     }
+    // 行のキーフレームは前から順（Timeline が二分探索で見えている所を引く）。カットの並びと速さによらずそろえる。
+    keys.sort_by(|a, b| a.comp.total_cmp(&b.comp));
     (!keys.is_empty()).then(|| KeyframeRowSource {
         name: format!("Reframe › {}", title(field)),
         spans,

@@ -1,11 +1,14 @@
 //! キーフレームの行。見えている行の見出しの背景（レイヤーの種類の色の帯を続ける）、行の背景（レイヤーの範囲を明るく）、
 //! キーフレームのひし形。ひし形は行の領域に収まるものだけを切らずに描き、収まらないものは縦線にして切る（帯のマーカーと同じ）。
+//! ひし形は横に見えているものだけを描き、帯のマーカーをまとめる幅より近いものは 1 つだけ描く（毎フレームにキーフレームを
+//! 持つ行を縮めて見ても、描く数が行の幅で頭打ちになる）。選んだものとポインターが乗ったものは、まとめずに上に描く。
 //! 選んだキーフレームは accent の輪で囲み、ドラッグ中のキーフレームは動かした先に描く。行の名前の文字は `keyframe_rows.rs`。
 
 use super::{bar_color, stripe, Canvas, Depth, PaintInput};
 use crate::geom::{Quad, Rect};
 use crate::keyframe_rows::{
-    header_rect, keyframe_center, row_rect, square, KeyframeIndex, KeyframeRow, ROW_DIAMOND_PX,
+    header_rect, keyframe_center, keyframes_within, merge_column, row_rect, square, KeyframeIndex,
+    KeyframeRow, ROW_DIAMOND_PX,
 };
 use crate::palette;
 use crate::timeline::{Hit, Item};
@@ -34,12 +37,17 @@ enum Look {
 }
 
 pub(super) fn paint(s: &PaintInput, c: &mut Canvas) {
+    let area = s.vp.layout.row_area;
     for i in s.vp.visible_rows() {
         let Some(item) = s.model.items.get(i) else {
             break;
         };
         let open = s.vp.rows.keyframe_rows(i);
         for (k, row) in item.keyframe_rows.iter().enumerate().take(open) {
+            let r = row_rect(s.vp, i, k);
+            if r.bottom() <= area.y || r.y >= area.bottom() {
+                continue;
+            }
             backgrounds(s, c, (i, item), k);
             diamonds(s, c, (i, k), row);
         }
@@ -82,11 +90,16 @@ fn band(r: Rect) -> Rect {
     Rect::new(r.x, r.y + 1.0, r.w, (r.h - 1.0).max(0.0))
 }
 
-/// 行 `k` のキーフレームのひし形。ドラッグ中のキーフレームは元の位置に描かず、動かした先に最後に描く。
+/// 行 `k` の横に見えているキーフレームのひし形。近いものは列ごとに 1 つだけ描き、選んだものとポインターが乗ったものは
+/// 後から上に描く。ドラッグ中のキーフレームは元の位置に描かず、動かした先に最後に描く。
 fn diamonds(s: &PaintInput, c: &mut Canvas, (i, k): (usize, usize), row: &KeyframeRow) {
     let st = &s.state.keyframe_rows;
     let dragging = st.dragging.filter(|(at, _)| (at.item, at.row) == (i, k));
-    for (j, keyframe) in row.keyframes.iter().enumerate() {
+    let area = s.vp.layout.row_area;
+    let reach = RING_PX / 2.0;
+    let mut column = None;
+    let mut on_top = Vec::new();
+    for j in keyframes_within(s.vp, row, (area.x - reach, area.right() + reach)) {
         if dragging.is_some_and(|(d, _)| d.keyframe == j) {
             continue;
         }
@@ -95,7 +108,19 @@ fn diamonds(s: &PaintInput, c: &mut Canvas, (i, k): (usize, usize), row: &Keyfra
             row: k,
             keyframe: j,
         };
-        diamond(s, c, (i, k), keyframe.time, look(s, at));
+        let time = row.keyframes[j].time;
+        match look(s, at) {
+            Look::Normal => {
+                let col = merge_column(s.vp, time);
+                if column.replace(col) != Some(col) {
+                    diamond(s, c, (i, k), time, Look::Normal);
+                }
+            }
+            other => on_top.push((time, other)),
+        }
+    }
+    for (time, look) in on_top {
+        diamond(s, c, (i, k), time, look);
     }
     if let Some((_, to)) = dragging {
         diamond(s, c, (i, k), to, Look::Selected);

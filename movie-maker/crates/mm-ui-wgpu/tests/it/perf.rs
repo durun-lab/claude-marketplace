@@ -4,7 +4,10 @@
 
 use std::time::{Duration, Instant};
 
-use mm_ui_layout::{CutBar, Item, ItemKind, Peaks, PointerEvent, TimelineModel, WaveSource};
+use mm_ui_layout::{
+    CutBar, Item, ItemKind, KeyframeRow, Peaks, PointerEvent, RowKeyframe, TimelineCommand,
+    TimelineModel, WaveSource,
+};
 use mm_ui_wgpu::{slot_image_len, TextStats, Ui};
 
 use crate::support::{gpu, FORMAT};
@@ -32,8 +35,22 @@ fn thumb_key(i: usize) -> String {
     format!("k{}", i % THUMB_KEYS)
 }
 
+/// 時刻 `times` のキーフレームの行。どのキーフレームもコンポジションの全体を動かせる。
+fn keyframe_row(name: &str, times: &[f64]) -> KeyframeRow {
+    let keyframes = times.iter().map(|&time| RowKeyframe {
+        time,
+        min: 0.0,
+        max: CUTS as f64 * 2.0,
+    });
+    KeyframeRow {
+        name: name.into(),
+        keyframes: keyframes.collect(),
+    }
+}
+
 /// 2 秒のカットを並べた sequence と、静止画のレイヤー。名前は全部ちがう。
-/// 静止画のレイヤーは始まりと終わりの 0.5 秒にフェードのキーフレームを持ち、上の `TRACKED` 本は毎フレームに持つ。
+/// 静止画のレイヤーは始まりと終わりの 0.5 秒にフェードのキーフレーム（Opacity の行）を持ち、上の `TRACKED` 本は
+/// 毎フレームに持つ（Position、Scale、Rotation の 3 行。トラッキングの結果を貼った形）。
 fn model() -> TimelineModel {
     let mut seq = Item::layer(0.0, CUTS as f64 * 2.0, ItemKind::Sequence, true).with_label("main");
     seq.cuts = (0..CUTS)
@@ -55,14 +72,24 @@ fn model() -> TimelineModel {
     let mut items = vec![seq];
     items.extend((1..LAYERS).map(|i| {
         if i <= TRACKED {
+            let rows = [
+                "Transform › Position",
+                "Transform › Scale",
+                "Transform › Rotation",
+            ];
             return Item::layer(0.0, 600.0, ItemKind::Image, true)
+                .with_id(&format!("tracked-{i}"))
                 .with_label(&format!("tracked-{i}.png"))
-                .with_keyframes(&tracked);
+                .with_keyframes(&tracked)
+                .with_keyframe_rows(rows.map(|r| keyframe_row(r, &tracked)).into());
         }
         let start = (i % 500) as f64 * 12.0;
+        let fade = [start, start + 0.5, start + 7.5, start + 8.0];
         let item = Item::layer(start, start + 8.0, ItemKind::Image, true)
+            .with_id(&format!("overlay-{i}"))
             .with_label(&format!("overlay-{i}.png"))
-            .with_keyframes(&[start, start + 0.5, start + 7.5, start + 8.0]);
+            .with_keyframes(&fade)
+            .with_keyframe_rows(vec![keyframe_row("Opacity", &fade)]);
         if thumbs_on() {
             item.with_thumb(&thumb_key(i))
         } else {
@@ -249,4 +276,40 @@ fn 数千のカットの_timeline_を拡大と移動と再生で描く時間() {
         0,
         "再生中はシェーピングせず、頂点も作らない"
     );
+}
+
+/// 全部のレイヤーのキーフレームの行を開いた Timeline（Show Keyframe Editor をレイヤーを選ばずに押した状態）。
+/// 上の `TRACKED` 本は 3 行とも毎フレームにキーフレームを持ち、全体表示ではひし形が行の幅いっぱいに並ぶ。
+#[test]
+#[ignore = "測定用。リリースビルドで動かす"]
+fn キーフレームの行を全部開いた_timeline_を描く時間() {
+    let Some(mut b) = bench() else { return };
+    b.ui.pointer(PointerEvent::Command(TimelineCommand::ShowKeyframeEditor));
+    let (first, _) = b.frame();
+    println!("最初のフレーム（フォントの読み込みを含む）: {first:.2} ms");
+    let t = b.ui.layout().timeline;
+    let at = (t.x + t.w / 2.0, t.y + t.h / 2.0);
+    let wheel = |dy, ctrl, shift| PointerEvent::Wheel {
+        x: at.0,
+        y: at.1,
+        dy,
+        ctrl,
+        shift,
+    };
+    let phases = [
+        b.phase("開いて全体表示", 60, |_, _| {}),
+        b.phase("開いて拡大", 40, |ui, _| {
+            ui.pointer(wheel(1.0, true, false));
+        }),
+        b.phase("開いて移動", 120, |ui, _| {
+            ui.pointer(wheel(1.0, false, false));
+        }),
+        b.phase("開いて縦のスクロール", 120, |ui, _| {
+            ui.pointer(wheel(-1.0, false, true));
+        }),
+        b.phase("開いて再生", 120, |ui, i| {
+            ui.set_playhead(i as f64 / 60.0)
+        }),
+    ];
+    print_phases(&phases);
 }

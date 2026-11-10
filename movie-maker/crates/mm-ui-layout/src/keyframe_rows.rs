@@ -4,10 +4,12 @@
 //! 自動試験のクリックの位置が同じ値を見る。座標は Timeline の矩形の左上を (0, 0) とする。
 
 use std::collections::BTreeSet;
+use std::ops::Range;
 use std::sync::Arc;
 
 use crate::geom::Rect;
 use crate::header;
+use crate::keymarks::MERGE_PX;
 use crate::paint::PaintState;
 use crate::rows::KEYFRAME_ROW_H;
 use crate::text::{place, Align, Label, TextMeasure, TextStyle, UiFont};
@@ -125,15 +127,33 @@ pub(crate) fn row_at(vp: &Viewport, i: usize, y: f32) -> Option<usize> {
     vp.rows.keyframe_row_at(i, content)
 }
 
+/// キーフレームのうち、中心の x（Timeline の座標）が `x0` から `x1` に入るものの添字の範囲。キーフレームは前から順なので
+/// 二分探索で引き、毎フレームにキーフレームを持つ行でも見えている所だけを扱う。
+pub(crate) fn keyframes_within(
+    vp: &Viewport,
+    row: &KeyframeRow,
+    (x0, x1): (f32, f32),
+) -> Range<usize> {
+    let (t0, t1) = (vp.t_of(x0), vp.t_of(x1));
+    let lo = row.keyframes.partition_point(|k| k.time < t0);
+    let hi = row.keyframes.partition_point(|k| k.time <= t1);
+    lo..hi.max(lo)
+}
+
+/// 時刻 `t` のひし形をまとめる列（幅は帯のマーカーをまとめる幅）。左端の時刻によらず時刻とズームで決まるので、
+/// 横に動かしても描くひし形が変わらない。
+pub(crate) fn merge_column(vp: &Viewport, t: f64) -> i64 {
+    (t * vp.time.px_per_sec / f64::from(MERGE_PX)).floor() as i64
+}
+
 /// 行 `index` のレイヤーの、行の領域の点 (x, y) に当たるもの。ひし形が重なる所では、中心が近い方。
 /// 点がキーフレームの行に無ければ `None`。
 pub(crate) fn hit(vp: &Viewport, (index, item): (usize, &Item), (x, y): (f32, f32)) -> Option<Hit> {
     let row = row_at(vp, index, y)?;
-    let keys = &item.keyframe_rows.get(row)?.keyframes;
-    let near = keys
-        .iter()
-        .map(|k| keyframe_center(vp, (index, row), k.time))
-        .enumerate()
+    let r = item.keyframe_rows.get(row)?;
+    let reach = ROW_DIAMOND_PX / 2.0 + HIT_SLACK;
+    let near = keyframes_within(vp, r, (x - reach, x + reach))
+        .map(|j| (j, keyframe_center(vp, (index, row), r.keyframes[j].time)))
         .filter(|(_, c)| square(*c, ROW_DIAMOND_PX + 2.0 * HIT_SLACK).contains(x, y))
         .min_by(|a, b| (a.1 .0 - x).abs().total_cmp(&(b.1 .0 - x).abs()));
     Some(
