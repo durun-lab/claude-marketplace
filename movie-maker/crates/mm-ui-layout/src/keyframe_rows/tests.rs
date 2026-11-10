@@ -394,12 +394,13 @@ fn まとめるひし形は横に動かしても変わらず_当たり判定は�
 #[test]
 fn 行の領域に収まらないひし形は縦線にして切る() {
     let mut m = model();
-    // 行の領域は 180 から 1000（8.2 秒）。8.18 秒のひし形は右端からはみ出す。
-    m.items[0].keyframe_rows[1] = row("Transform › Position", &[8.18]);
     let (layout, rows) = opened(&m);
     let vp = vp(&layout, &rows);
+    // 中心を行の領域の右端の 2 px 内側に置いたひし形は、右端からはみ出す。
+    let t = f64::from(layout.row_area.w - 2.0) / vp.time.px_per_sec;
+    m.items[0].keyframe_rows[1] = row("Transform › Position", &[t]);
     let quads = timeline_quads(&PaintInput::new(&m, &vp, &state(0.0))).quads;
-    let (x, _) = keyframe_center(&vp, (0, 1), 8.18);
+    let (x, _) = keyframe_center(&vp, (0, 1), t);
     assert!(diamonds(&quads, ROW_DIAMOND_PX)
         .iter()
         .all(|q| center(q).0 != x));

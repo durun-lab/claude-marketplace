@@ -46,10 +46,10 @@ fn timecode_of(m: &TimelineModel, playhead: f64) -> Label {
 }
 
 #[test]
-fn 見出しの列は幅_180_で_行の領域と目盛りの帯はその右から始まる() {
+fn 見出しの列は幅_220_で_行の領域と目盛りの帯はその右から始まる() {
     let m = model(vec![Item::layer(0.0, 5.0, ItemKind::Text, true)]);
     let l = TestViewport::new(&m, SIZE).layout;
-    assert_eq!(HEADER_W, 180.0);
+    assert_eq!(HEADER_W, 220.0);
     assert_eq!(l.headers.x, 0.0);
     assert_eq!(l.headers.w, HEADER_W);
     assert_eq!(l.row_area.x, HEADER_W);

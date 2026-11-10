@@ -10,6 +10,8 @@ use crate::support::{bar_rect, close, gpu, hex, px_in, render_sized, FORMAT, H, 
 
 /// 再生位置（秒）。撮影素材のレイヤー（0-4 秒）のアウト点のつまみをここへドラッグすると吸い付く。
 const PLAYHEAD: f64 = 6.0;
+/// 吸い付く目標（再生位置、帯の端、終わり）から離れた時刻（秒）。ここへドラッグしたときのツールチップはポインターの右に入る。
+const FREE: f64 = 7.0;
 
 /// ドラッグしたまま描いた結果。
 struct Dragged {
@@ -141,7 +143,7 @@ fn 吸い付いたドラッグは太いガイド線と上下の三角形とツ�
 
 #[test]
 fn 吸い付かないドラッグにはガイド線を出さない() {
-    let Some(d) = drag_to(7.8, 0.0) else {
+    let Some(d) = drag_to(FREE, 0.0) else {
         return;
     };
     assert_eq!(
@@ -157,12 +159,12 @@ fn 吸い付かないドラッグにはガイド線を出さない() {
 
 #[test]
 fn 再生位置の線はツールチップの矩形の上に描かない() {
-    let Some(mut h) = hold(7.8, 0.0) else {
+    let Some(mut h) = hold(FREE, 0.0) else {
         return;
     };
     // ツールチップの中（ポインターの右 30）を通る時刻に再生位置を置く。
     let per_sec = bar_rect(&h.ui, &h.model, 1.0, 0, (0.0, 1.0)).w;
-    h.ui.set_playhead(7.8 + f64::from(30.0 / per_sec));
+    h.ui.set_playhead(FREE + f64::from(30.0 / per_sec));
     let image = render_sized(&h.device, &h.queue, &mut h.ui, (W, H));
     let playhead = |p: [u8; 3]| close(p, hex(palette::PLAYHEAD), 8);
     let area = tooltip_area(h.at);
