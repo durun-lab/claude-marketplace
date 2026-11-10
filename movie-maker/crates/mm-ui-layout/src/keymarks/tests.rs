@@ -74,6 +74,32 @@ fn 見えている範囲の外のキーフレームは出さない() {
 }
 
 #[test]
+fn ドラッグ中の_shift_layer_のマーカーは動かした時刻で描き_領域の外から入るものも描く() {
+    let mut m = model(&[1.0, 15.0]);
+    m.duration = 20.0;
+    m.items[0].end = 20.0;
+    let f = TestViewport::new(&m, SIZE);
+    let vp = f.vp();
+    assert!(
+        vp.x_of(15.0) > vp.layout.row_area.right(),
+        "15 秒は領域の外"
+    );
+    let centers = |by: f64| -> Vec<f32> {
+        let st = crate::paint::PaintState {
+            preview: Some((crate::gesture::EditKind::ShiftLayer { item: 0 }, by)),
+            ..state(0.0)
+        };
+        let quads = timeline_quads(&PaintInput::new(&m, &vp, &st)).quads;
+        let outer = quads.into_iter().filter(|q| q.shape == QuadShape::Diamond);
+        let outer = outer.filter(|q| q.rect.w == MARK_PX);
+        outer.map(|q| q.rect.x + q.rect.w / 2.0).collect()
+    };
+    let x0 = vp.layout.row_area.x;
+    assert_eq!(centers(0.5), [x0 + 150.0], "1 秒のマーカーが 1.5 秒へ");
+    assert_eq!(centers(-10.0), [x0 + 500.0], "15 秒のマーカーが 5 秒へ入る");
+}
+
+#[test]
 fn small_の行と領域の端では縦線_収まる_medium_はひし形() {
     let m = model(&[0.0, 1.0]);
     let f = TestViewport::new(&m, SIZE);

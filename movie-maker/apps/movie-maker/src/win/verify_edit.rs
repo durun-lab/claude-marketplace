@@ -1,6 +1,6 @@
 //! `--play-test` の Timeline 編集の通し。実際のウィンドウへのキーとドラッグで、Source を開いてイン点・アウト点を付け、
-//! insert、端のドラッグ（ripple）、中のドラッグ（slip）、split、lift、取り消し、レイヤーの端のドラッグ（Esc での取り消しと trimLayer）、
-//! スナップ（再生位置とカットの端、N を押している間の反転、再生位置の線の手前のツールチップ）を順に行い、そのたびに
+//! insert、端のドラッグ（ripple）、Trim の中のドラッグ（slip）、Ctrl+B の split、lift、取り消し、レイヤーの端のドラッグ（Esc での取り消しと
+//! trimLayer）、スナップ（再生位置とカットの端、N を押している間の反転、再生位置の線の手前のツールチップ）、ツール（`tools.rs`）を順に行い、そのたびに
 //! プロジェクトのデータが期待どおり変わったかを確かめて、段ごとにスクリーンショットを残す。
 
 use std::sync::Arc;
@@ -8,8 +8,10 @@ use std::time::Duration;
 
 use mm_doc::{Cut, Project, Sequence, SEQUENCE_KIND, SEQUENCE_PARAM};
 use mm_types::{Id, ParamValue};
+use mm_ui_layout::Tool;
 use mm_ui_wgpu::timeline_model;
 use serde_json::{json, Value};
+use trim::{trim_step, trim_target};
 
 use crate::win::cli::PlayTest;
 use crate::win::keys;
@@ -23,13 +25,14 @@ use crate::win::verify_stage::wait_until;
 mod header;
 mod keyframes;
 mod log;
+pub(super) mod tools;
+mod trim;
 
 pub(super) use log::{shot, Log};
 
 /// 仮想キーコード。
 const VK_I: u32 = 0x49;
 const VK_O: u32 = 0x4F;
-const VK_B: u32 = 0x42;
 pub(super) const VK_COMMA: u32 = 0xBC;
 const VK_DELETE: u32 = 0x2E;
 const VK_N: u32 = 0x4E;
@@ -219,6 +222,7 @@ fn drag_steps(env: &Env<'_>, log: &mut Log, id: &str) {
     shot(env, log, "3-ripple");
 
     let in_before = cut_named(shared, id).map(|c| c.in_point.to_f64());
+    tools::select_tool(env, Tool::Trim);
     let mid = (start + end - DRAG_SECS) / 2.0;
     let by = (DRAG_SECS * g.place.px_per_sec() / 2.0) as f32;
     surface::post_drag(
@@ -236,6 +240,7 @@ fn drag_steps(env: &Env<'_>, log: &mut Log, id: &str) {
         json!({ "in_before": in_before, "in_after": in_after }),
     );
     shot(env, log, "4-slip");
+    tools::select_tool(env, Tool::Selection);
 }
 
 /// 再生位置で split、選んだカットの lift、取り消し。
@@ -247,7 +252,7 @@ fn cut_steps(env: &Env<'_>, log: &mut Log, id: &str) {
     };
     let before = cuts(shared).len();
     seek_main(shared, (start + end) / 2.0);
-    surface::post_key(env.surface_hwnd, VK_B);
+    keys::dispatch(shared, "play-test", "Ctrl+KeyB");
     let split = wait_until(WAIT, || cuts(shared).len() == before + 1);
     log.step(
         "split",
@@ -279,87 +284,6 @@ fn cut_steps(env: &Env<'_>, log: &mut Log, id: &str) {
     });
     log.step("undo_lift", undone, json!({}));
     shot(env, log, "7-undo");
-}
-
-/// 行の領域に見えている、シーケンスでない最初のレイヤーの、Timeline の行の添字、ID、終わり（秒）。
-fn trim_target(shared: &Shared, place: &Placement) -> Option<(usize, String, f64)> {
-    let doc = shared.doc()?;
-    let comp = doc.project.composition(&doc.comp).ok()?;
-    let ids = mm_ui_wgpu::timeline_layer_ids(comp);
-    let model = timeline_model(&doc.project, comp);
-    let row = place.first_visible(|i| model.items[i].cuts.is_empty())?;
-    Some((row, ids.get(row)?.clone(), model.items[row].end))
-}
-
-fn layer_out(shared: &Shared, id: &str) -> Option<f64> {
-    let doc = shared.doc()?;
-    let (_, layer) = doc.project.layer(&Id::new(id)).ok()?;
-    Some(layer.out_point.to_f64())
-}
-
-/// レイヤーのアウト点のつまみを引くドラッグ。レイヤーの ID、掴む所、引いた先（サーフェスの座標）。
-struct TrimDrag {
-    id: String,
-    from: (i32, i32),
-    to: (i32, i32),
-}
-
-fn trim_drag(shared: &Shared, hwnd: isize) -> Option<TrimDrag> {
-    let g = geometry(shared, hwnd)?;
-    let (row, id, end) = trim_target(shared, &g.place)?;
-    Some(TrimDrag {
-        id,
-        from: g.at(row, end, -HANDLE_INSET),
-        to: g.at(row, end - TRIM_SECS, -HANDLE_INSET),
-    })
-}
-
-/// アウト点のつまみを引いたまま Esc を押して離し、データが変わらないことを確かめる。
-fn trim_cancel_step(env: &Env<'_>, log: &mut Log, drag: &TrimDrag) {
-    let before = layer_out(env.shared, &drag.id);
-    surface::post_press(env.surface_hwnd, drag.from, drag.to);
-    std::thread::sleep(SETTLE);
-    surface::post_escape(env.surface_hwnd);
-    surface::post_release(env.surface_hwnd, drag.to);
-    std::thread::sleep(SETTLE);
-    let kept = layer_out(env.shared, &drag.id) == before;
-    log.step("trim_cancel", kept, json!({ "out_before": before }));
-}
-
-/// レイヤーのアウト点のつまみを引いて、離す前（帯だけが動く）と離した後（trimLayer）を撮り、取り消し 1 回で戻す。
-fn trim_step(env: &Env<'_>, log: &mut Log) {
-    let shared = env.shared;
-    let Some(drag) = trim_drag(shared, env.surface_hwnd) else {
-        log.step("trim_drag", false, json!("レイヤーの位置を引けない"));
-        return;
-    };
-    trim_cancel_step(env, log, &drag);
-    let TrimDrag { id, from, to } = drag;
-    let before = layer_out(shared, &id);
-    surface::post_press(env.surface_hwnd, from, to);
-    std::thread::sleep(SETTLE);
-    let held = layer_out(shared, &id) == before;
-    shot(env, log, "8-trim-dragging");
-    surface::post_release(env.surface_hwnd, to);
-    let trimmed = wait_until(WAIT, || layer_out(shared, &id) != before);
-    let after = layer_out(shared, &id);
-    log.step(
-        "trim_drag",
-        held && trimmed,
-        json!({ "layer": id, "out_before": before, "out_after": after, "unchanged_while_dragging": held }),
-    );
-    shot(env, log, "9-trim");
-    if !trimmed {
-        log.step(
-            "undo_trim",
-            false,
-            json!("trimLayer が適用されなかったので取り消さない"),
-        );
-        return;
-    }
-    keys::dispatch(shared, "play-test", "Ctrl+KeyZ");
-    let undone = wait_until(WAIT, || layer_out(shared, &id) == before);
-    log.step("undo_trim", undone, json!({}));
 }
 
 /// レイヤー `id` の、コンポジションの時間軸での終わり（秒）。
@@ -465,4 +389,5 @@ fn sequence_steps(env: &Env<'_>, log: &mut Log) {
     }
     trim_step(env, log);
     snap_step(env, log);
+    tools::run(env, log);
 }

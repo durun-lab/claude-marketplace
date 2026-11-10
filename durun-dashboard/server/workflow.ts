@@ -1,14 +1,14 @@
 // ワークフローアプリ。Claude Code のルーティンのように、トリガーでセッションを動かす。ルーティンと違い、手元のダッシュボードで動く。
 // 定義は workflows.json に置き、人間とエージェントが書く。ダッシュボードは書き換えを読み直してすぐ使い、画面で切り替えた ON と OFF と、「設定」で直した項目を書き込む。
-// 動きは 1 分ごとに確かめる。時刻のトリガーはその間に過ぎた時刻で、レビュー依頼のトリガーは GitHub の Inbox に新しく現れた PR で、メンションのトリガーは Slack の検索に新しく現れた発言で動く。
+// 動きは 1 分ごとに確かめる。時刻のトリガーはその間に過ぎた時刻で、レビュー依頼のトリガーは GitHub の Inbox に新しく現れた PR で、メンションのトリガーは Slack の検索と JIRA のコメントに新しく現れたメンションで動く。
 // 改善要望のトリガーは、要望が届いたときと前のウェーブを終えたときにもすぐ確かめる。
 import fs from 'node:fs';
 import path from 'node:path';
-import { EFFORT_LEVELS, type ImproveState, MODELS, type WorkflowDef, type WorkflowInfo, type WorkflowState, type WorkflowTrigger } from '../shared/types.ts';
+import { EFFORT_LEVELS, type ImproveState, type MentionTrigger, MODELS, type WorkflowDef, type WorkflowInfo, type WorkflowState, type WorkflowTrigger } from '../shared/types.ts';
 import { isAlive, readLiveSessions } from './claude.ts';
 import { COMPACT_COMMAND, compactSession, sendMessage, startTrackedSession } from './deliver.ts';
 import { DONE_MARK, feedbackEvent, finishItems, improveWorkflow, onFeedback, pendingItems } from './improve.ts';
-import { githubInbox } from './integrations.ts';
+import { githubInbox, jiraMentions } from './integrations.ts';
 import { slackMentions } from './slack.ts';
 import { DATA_DIR, type FeedbackWave, newId, persist, state, touch, type WorkflowRun } from './store.ts';
 
@@ -21,6 +21,7 @@ const SEEN_KEPT = 500;
 const MARK = '[durun-dashboard ワークフロー]';
 const DIRECT_SECTION = 'Needs your review';
 const MENTION_ERROR = 'Slack のメンションを読めません';
+const JIRA_MENTION_ERROR = 'JIRA のメンションを読めません';
 const ID_PATTERN = /^[\w-]+$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 // 溜まったイベントを 1 つの依頼にまとめるときの区切り。
@@ -32,7 +33,10 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 
 const triggerOf = (raw: unknown): WorkflowTrigger => {
   if (isObject(raw) && raw.kind === 'github-review') return { kind: 'github-review' };
-  if (isObject(raw) && raw.kind === 'slack-mention') return { kind: 'slack-mention' };
+  if (isObject(raw) && (raw.kind === 'slack-mention' || raw.kind === 'jira-mention')) {
+    const { burstMinutes } = raw;
+    return { kind: raw.kind, ...(Number.isInteger(burstMinutes) && (burstMinutes as number) > 0 ? { burstMinutes: burstMinutes as number } : {}) };
+  }
   if (isObject(raw) && raw.kind === 'feedback') return { kind: 'feedback' };
   if (isObject(raw) && raw.kind === 'schedule' && typeof raw.at === 'string' && TIME_PATTERN.test(raw.at)) {
     const days = Array.isArray(raw.days) ? raw.days.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6) : undefined;
@@ -295,19 +299,56 @@ const checkReviews = async (list: WorkflowDef[]): Promise<void> => {
   }
 };
 
-/** メンションのトリガーを持つワークフローに、新しく届いたメンションを積む。初めて読んだときに届いていたメンションでは動かない。 */
-const checkMentions = async (list: WorkflowDef[]): Promise<void> => {
+const mentionTrigger = (w: WorkflowDef, kind: MentionTrigger['kind']): MentionTrigger | undefined => w.triggers.find((t): t is MentionTrigger => t.kind === kind);
+
+/** メンションを積む。トリガーに burstMinutes があれば、まとめて渡すまで待たせる。 */
+const enqueueMentions = (w: WorkflowDef, kind: MentionTrigger['kind'], texts: string[], now: number): void => {
+  if (!texts.length) return;
+  if (!mentionTrigger(w, kind)?.burstMinutes) return texts.forEach((t) => enqueue(w, t));
+  const run = runOf(w.id);
+  run.bursts ??= {};
+  const burst = (run.bursts[kind] ??= { texts: [], lastAt: now });
+  burst.texts.push(...texts);
+  burst.lastAt = now;
+};
+
+/** 最後のメンションから burstMinutes が過ぎたバーストを、1 つの依頼にまとめて積む。 */
+export const flushBursts = (w: WorkflowDef, run: WorkflowRun, now: number): string[] => {
+  const flushed: string[] = [];
+  for (const kind of Object.keys(run.bursts ?? {}) as MentionTrigger['kind'][]) {
+    const burst = run.bursts?.[kind];
+    const minutes = mentionTrigger(w, kind)?.burstMinutes ?? 0;
+    if (!burst || now - burst.lastAt < minutes * 60_000) continue;
+    delete run.bursts?.[kind];
+    flushed.push(burst.texts.length > 1 ? `${burst.texts.length} 件のメンションをまとめて渡します。${SEPARATOR}${burst.texts.join(SEPARATOR)}` : (burst.texts[0] ?? ''));
+  }
+  return flushed;
+};
+
+/** メンションのトリガーを持つワークフローに、新しく届いた Slack のメンションを積む。初めて読んだときに届いていたメンションでは動かない。 */
+const checkMentions = async (list: WorkflowDef[], now: number): Promise<void> => {
   if (!list.length) return;
   const mentions = await slackMentions();
   for (const w of list) {
     const run = runOf(w.id);
     const fresh = run.seenMentions ? mentions.filter((m) => !run.seenMentions?.includes(m.url)) : [];
     // 検索の結果は新しい順なので、古いものから積む。
-    for (const m of fresh.reverse()) enqueue(w, `Slack で自分へのメンションが届きました（${m.channel}）:
-${m.text}
-${m.url}`);
+    enqueueMentions(w, 'slack-mention', fresh.reverse().map((m) => `Slack で自分へのメンションが届きました（${m.channel}）:\n${m.text}\n${m.url}`), now);
     run.seenMentions = [...new Set([...mentions.map((m) => m.url), ...(run.seenMentions ?? [])])].slice(0, SEEN_KEPT);
     if (run.error?.startsWith(MENTION_ERROR)) run.error = undefined;
+  }
+};
+
+/** JIRA のメンションのトリガーを持つワークフローに、新しく届いたコメントでのメンションを積む。初めて読んだときに届いていたメンションでは動かない。 */
+const checkJiraMentions = async (list: WorkflowDef[], now: number): Promise<void> => {
+  if (!list.length) return;
+  const mentions = await jiraMentions();
+  for (const w of list) {
+    const run = runOf(w.id);
+    const fresh = run.seenJira ? mentions.filter((m) => !run.seenJira?.includes(m.url)) : [];
+    enqueueMentions(w, 'jira-mention', fresh.reverse().map((m) => `JIRA で自分へのメンションが届きました（${m.key} ${m.summary ?? ''}）:\n${m.text}\n${m.url}`), now);
+    run.seenJira = [...new Set([...mentions.map((m) => m.url), ...(run.seenJira ?? [])])].slice(0, SEEN_KEPT);
+    if (run.error?.startsWith(JIRA_MENTION_ERROR)) run.error = undefined;
   }
 };
 
@@ -331,9 +372,14 @@ const tick = async (): Promise<void> => {
     if (due) enqueue(w, `時刻のトリガー（${due.at}）で動きました。`);
   }
   await checkEvents(active, 'github-review', 'レビュー依頼を読めません', checkReviews);
-  await checkEvents(active, 'slack-mention', MENTION_ERROR, checkMentions);
+  await checkEvents(active, 'slack-mention', MENTION_ERROR, (list) => checkMentions(list, now));
+  await checkEvents(active, 'jira-mention', JIRA_MENTION_ERROR, (list) => checkJiraMentions(list, now));
   checkFeedback(active.filter(hasFeedback));
-  for (const w of active) dispatch(w);
+  for (const w of active) {
+    const run = runOf(w.id);
+    for (const text of flushBursts(w, run, now)) enqueue(w, text);
+    dispatch(w);
+  }
   persist();
 };
 
@@ -431,7 +477,9 @@ const consultPrompt = (target: WorkflowDef | undefined): string => `${MARK} 人�
 - triggers: 次の配列
   - { "kind": "schedule", "at": "09:00", "days": [1, 2, 3, 4, 5] }: 時刻で動く。days は 0 が日曜で、省くと毎日
   - { "kind": "github-review" }: GitHub で自分へのレビュー依頼が新しく届いたときに動く
-  - { "kind": "slack-mention" }: Slack で自分へのメンションが新しく届いたときに動く。Claude Code の /mcp で Slack に接続している必要がある
+  - { "kind": "slack-mention", "burstMinutes": 5 }: Slack で自分へのメンションが新しく届いたときに動く。Claude Code の /mcp で Slack に接続している必要がある
+  - { "kind": "jira-mention", "burstMinutes": 5 }: JIRA のコメントで自分へのメンションが新しく届いたときに動く
+  - メンションの burstMinutes: 続けて届いたメンションを、最後のものからこの分数だけ次が届かなくなるまで待って 1 つの依頼にまとめる。省くと 1 件ずつ動く
   - { "kind": "feedback" }: ダッシュボードへの改善要望がたまっているときに動く。前のウェーブを終えてから、たまった要望を 1 つのウェーブとして渡す。要望の一覧と、最後に「${DONE_MARK}」の行に対応を終えた要望を書く約束は、ダッシュボードが依頼の前に書き足す
 - mode: "new" はイベントごとに新しいセッションを起動する。"continue" は 1 つのセッションを引き継いでイベントをチャットに送り、セッションが無いかアーカイブされていたら新しく起動する
 - compact: mode が "continue" のとき、true なら、イベントを送る前に毎回前回までの会話を compact する

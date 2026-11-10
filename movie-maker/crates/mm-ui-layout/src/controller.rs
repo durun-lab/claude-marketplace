@@ -9,6 +9,7 @@
 //! 帯のマーカーとキーフレームの行の操作は `controller/keyframe_rows.rs`。
 
 mod command;
+mod tools;
 mod zoom;
 
 pub use command::{edit_target, TimelineCommand};
@@ -23,6 +24,7 @@ use crate::snap::{quantize, SnapTarget};
 use crate::time_view::TimeView;
 use crate::timeline::{hit_test, HeaderButton, Hit, Part, TimelineModel};
 use crate::timeline_layout::{TimelineLayout, Viewport};
+use crate::tool::{BladeLine, Tool};
 use crate::zoombar::ZoomBarDrag;
 use zoom::FullExtent;
 
@@ -86,6 +88,8 @@ pub enum Action {
     MoveLayer { from: usize, boundary: usize },
     /// キーフレームの行の操作（`controller/keyframe_rows.rs`）。
     Keyframe(KeyframeAction),
+    /// Blade でカットを押した。レイヤー `item` の、時刻 `time`（秒。再生位置とフレームに合わせたもの）で割る。
+    Split { item: usize, time: f64 },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -104,6 +108,11 @@ enum Drag {
         item: usize,
         cut: usize,
         mods: Mods,
+        from: f64,
+    },
+    /// レイヤーの帯の中（Selection）。離したときに `shiftLayer` にする。`from` はつかんだ時刻。
+    ShiftLayer {
+        item: usize,
         from: f64,
     },
     /// 見出しの縦のドラッグ。
@@ -131,6 +140,10 @@ pub struct TimelineController {
     pub selected_cut: Option<(usize, usize)>,
     /// スナップの入/切（表示の状態）。
     pub snapping: bool,
+    /// 今のツール。取り消しの履歴にも `.mm/view.json` にも入れず、開くたびに Selection から始める。
+    pub tool: Tool,
+    /// Blade のときの、ポインターの下のカットに描く割る時刻の線。
+    blade_line: Option<BladeLine>,
     rows: Rows,
     layout: TimelineLayout,
     /// Timeline の大きさ（論理ピクセル）。
@@ -159,6 +172,8 @@ impl TimelineController {
             selected: None,
             selected_cut: None,
             snapping: true,
+            tool: Tool::default(),
+            blade_line: None,
             rows: Rows::default(),
             layout: TimelineLayout::default(),
             size: (0.0, 0.0),
@@ -224,6 +239,7 @@ impl TimelineController {
             .selected_cut
             .filter(|(i, c)| model.items.get(*i).is_some_and(|it| *c < it.cuts.len()));
         self.hover = Hit::Empty;
+        self.blade_line = None;
         self.end_drag();
         self.repick(model);
     }
@@ -252,7 +268,9 @@ impl TimelineController {
         playhead: f64,
     ) -> Vec<Action> {
         match ev {
-            PointerEvent::Down { x, y, mods } => self.press((x, y), mods, model, playhead),
+            PointerEvent::Down { x, y, mods } => {
+                self.press_with_tool((x, y), mods, (model, playhead))
+            }
             PointerEvent::Move { x, y } => self.moved(x, y, model, playhead),
             PointerEvent::Up => self.up(model),
             PointerEvent::Wheel {
@@ -266,15 +284,18 @@ impl TimelineController {
                 self.follow_scroll(model.items.len());
                 if self.drag == Drag::None {
                     self.hover = hit_test(model, &self.viewport(), x, y);
+                    self.update_blade_line(model, playhead);
                 }
                 Vec::new()
             }
             PointerEvent::Leave => {
                 self.hover = Hit::Empty;
+                self.blade_line = None;
                 Vec::new()
             }
             PointerEvent::Cancel => {
                 self.end_drag();
+                self.update_blade_line(model, playhead);
                 Vec::new()
             }
             PointerEvent::Command(command) => self.command(command, model, playhead),
@@ -320,14 +341,7 @@ impl TimelineController {
         match hit {
             Hit::Layer { index, part } => {
                 self.selected = Some(index);
-                if part != Part::Body {
-                    self.drag = Drag::Edge {
-                        item: index,
-                        cut: None,
-                        part,
-                        mods,
-                    };
-                }
+                self.drag = self.layer_press(index, part, mods, x);
                 deselect_cut(Action::Select(Some(index)), had_cut)
             }
             Hit::Cut { item, cut, part } => self.press_cut((item, cut, part), x, mods),
@@ -354,20 +368,7 @@ impl TimelineController {
     ) -> Vec<Action> {
         self.selected = Some(item);
         self.selected_cut = Some((item, cut));
-        self.drag = match part {
-            Part::Body => Drag::Body {
-                item,
-                cut,
-                mods,
-                from: self.viewport().t_of(x),
-            },
-            _ => Drag::Edge {
-                item,
-                cut: Some(cut),
-                part,
-                mods,
-            },
-        };
+        self.drag = self.cut_press((item, cut, part), mods, x);
         vec![
             Action::Select(Some(item)),
             Action::SelectCut(self.selected_cut),
@@ -393,7 +394,12 @@ impl TimelineController {
         match self.drag {
             Drag::None => {
                 self.hover = hit_test(model, &self.viewport(), x, y);
+                self.update_blade_line(model, playhead);
                 Vec::new()
+            }
+            Drag::ShiftLayer { .. } => {
+                let edit = self.shift_layer_drag(x, model, playhead);
+                self.report(edit)
             }
             Drag::Scrub => vec![Action::Seek(self.seek_at(x, model))],
             Drag::Header(drag) => self.drag_header(drag, y, model.items.len()),
@@ -443,7 +449,7 @@ impl TimelineController {
             (Drag::Header(header), _) => header.release(),
             (Drag::Keyframe(drag), _) => self.release_keyframe(drag, model),
             // 動かさずに離したクリックは編集にしない。
-            (Drag::Edge { .. } | Drag::Body { .. }, Some((kind, by)))
+            (Drag::Edge { .. } | Drag::Body { .. } | Drag::ShiftLayer { .. }, Some((kind, by)))
                 if by.abs() >= frame / 2.0 =>
             {
                 vec![Action::Edit {
@@ -478,3 +484,5 @@ mod scroll_tests;
 mod snap_tests;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tool_tests;

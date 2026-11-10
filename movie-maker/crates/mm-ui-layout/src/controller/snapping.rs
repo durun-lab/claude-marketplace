@@ -10,7 +10,7 @@ use crate::snap::{quantize, snap, targets, Moving, SNAP_PX};
 use crate::timeline::{Part, TimelineModel};
 
 /// 端が目標に届いたとみなす差（秒）。量はスナップした時刻と端の差なので、止まらなければ浮動小数の誤差しか残らない。
-const LANDED_EPS: f64 = 1e-9;
+pub(super) const LANDED_EPS: f64 = 1e-9;
 
 impl TimelineController {
     /// 今のドラッグで吸い付くか。入/切を、押している間の反転と合わせる。
@@ -80,15 +80,21 @@ impl TimelineController {
         self.resnap(model, playhead)
     }
 
-    /// 端とキーフレームのドラッグを今のポインターの位置で置き直す。押しただけでまだ動かしていなければ、その位置を編集にしない。
+    /// 端、レイヤーを動かすドラッグ、キーフレームのドラッグを今のポインターの位置で置き直す。押しただけでまだ動かして
+    /// いなければ、その位置を編集にしない。キーフレームのドラッグは編集（`last_edit`）を持たないので先に受ける。
     fn resnap(&mut self, model: &TimelineModel, playhead: f64) -> Vec<Action> {
         if let Drag::Keyframe(drag) = self.drag {
             return self.drag_keyframe(drag, self.pointer.0, model, playhead);
         }
-        if !matches!(self.drag, Drag::Edge { .. }) || self.last_edit.is_none() {
+        if self.last_edit.is_none() {
             return Vec::new();
         }
-        let edit = self.edge_drag(self.pointer.0, model, playhead);
+        let x = self.pointer.0;
+        let edit = match self.drag {
+            Drag::Edge { .. } => self.edge_drag(x, model, playhead),
+            Drag::ShiftLayer { .. } => self.shift_layer_drag(x, model, playhead),
+            _ => return Vec::new(),
+        };
         self.report(edit)
     }
 

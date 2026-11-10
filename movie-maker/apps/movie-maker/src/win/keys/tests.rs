@@ -91,7 +91,7 @@ fn expected_edits() -> Expected {
         ("KeyO", "source.mark_out", edit(E::MarkOut)),
         (",", "clip.insert", edit(E::Insert)),
         (".", "clip.overwrite", edit(E::Overwrite)),
-        ("KeyB", "clip.split", edit(E::Split)),
+        ("Ctrl+KeyB", "clip.split", edit(E::Split)),
         ("Delete", "clip.lift", edit(E::Lift)),
         ("Backspace", "clip.extract", edit(E::Extract)),
         ("Ctrl+KeyZ", "edit.undo", edit(E::Undo)),
@@ -104,6 +104,7 @@ fn expected_edits() -> Expected {
 /// 再生と Timeline のキーと、指すコマンドの ID と持ち主。
 fn expected_moves() -> Expected {
     use crate::win::commands::{Action, Owner};
+    use mm_ui_layout::TimelineCommand::{BladeTool, SelectionTool, TrimTool};
     use mm_ui_layout::TimelineCommand::{FullExtentZoom, NextEdit, PreviousEdit};
     use mm_ui_layout::TimelineCommand::{NextKeyframe, PreviousKeyframe, ShowKeyframeEditor};
     use mm_ui_layout::TimelineCommand::{ToggleSnapping, ZoomIn, ZoomOut};
@@ -139,6 +140,9 @@ fn expected_moves() -> Expected {
             t(ShowKeyframeEditor),
         ),
         ("Shift+KeyZ", "timeline.full_extent_zoom", t(FullExtentZoom)),
+        ("KeyA", "timeline.selection_tool", t(SelectionTool)),
+        ("KeyT", "timeline.trim_tool", t(TrimTool)),
+        ("KeyB", "timeline.blade_tool", t(BladeTool)),
         ("KeyN", "timeline.toggle_snapping", t(ToggleSnapping)),
         ("=", "timeline.zoom_in", t(ZoomIn)),
         ("+", "timeline.zoom_in", t(ZoomIn)),
@@ -273,6 +277,7 @@ fn キーは_2_つのコマンドに割り当てたもののほかは重なら�
 #[test]
 fn キーの見た目() {
     assert_eq!(label("KeyB"), "B");
+    assert_eq!(label("Ctrl+KeyB"), "Ctrl+B");
     assert_eq!(label("Ctrl+KeyZ"), "Ctrl+Z");
     assert_eq!(label("Ctrl+Shift+KeyZ"), "Ctrl+Shift+Z");
     assert_eq!(label(","), ",");

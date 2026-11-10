@@ -5,6 +5,7 @@ use super::zoom::ZOOM_KEY_STEP;
 use super::{Action, TimelineController};
 use crate::snap::quantize;
 use crate::timeline::TimelineModel;
+use crate::tool::Tool;
 
 /// キーとメニューから Timeline に送るコマンド。UI のコマンドの表の Timeline の行が指し、ポインターの入力
 /// （[`super::PointerEvent::Command`]）で届く。
@@ -22,6 +23,12 @@ pub enum TimelineCommand {
     NextEdit,
     /// スナップの入/切（Snapping）。ドラッグ中は入/切を変えず、[`super::PointerEvent::SnapKeyUp`] まで反転する。
     ToggleSnapping,
+    /// ツールを Selection にする（Selection Tool）。
+    SelectionTool,
+    /// ツールを Trim にする（Trim Tool）。
+    TrimTool,
+    /// ツールを Blade にする（Blade Tool）。
+    BladeTool,
     /// 選んだレイヤー（選んでいなければ全部のレイヤー）の前のキーフレームへ再生位置を動かす（Go to Previous Keyframe）。
     PreviousKeyframe,
     /// 同じく次のキーフレームへ（Go to Next Keyframe）。
@@ -50,6 +57,9 @@ impl TimelineController {
             TimelineCommand::PreviousEdit => return seek(edit_target(model, playhead, false)),
             TimelineCommand::NextEdit => return seek(edit_target(model, playhead, true)),
             TimelineCommand::ToggleSnapping => return self.toggle_snapping(model, playhead),
+            TimelineCommand::SelectionTool => self.set_tool(Tool::Selection, model, playhead),
+            TimelineCommand::TrimTool => self.set_tool(Tool::Trim, model, playhead),
+            TimelineCommand::BladeTool => self.set_tool(Tool::Blade, model, playhead),
             TimelineCommand::PreviousKeyframe
             | TimelineCommand::NextKeyframe
             | TimelineCommand::ShowKeyframeEditor

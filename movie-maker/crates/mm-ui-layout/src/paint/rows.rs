@@ -70,7 +70,7 @@ pub(crate) fn bar_color(item: &Item) -> Color {
     }
 }
 
-/// 帯の始まりと終わり。ドラッグ中の `trimLayer` は動かした後の位置にする。
+/// 帯の始まりと終わり。ドラッグ中の `trimLayer` と `shiftLayer` は動かした後の位置にする。
 /// 確定は離したときの 1 回の操作に任せ、ここでは描く位置だけを変える。
 pub(crate) fn trimmed(item: &Item, index: usize, preview: Option<(EditKind, f64)>) -> (f64, f64) {
     match preview {
@@ -78,6 +78,9 @@ pub(crate) fn trimmed(item: &Item, index: usize, preview: Option<(EditKind, f64)
             Side::In => (item.start + by, item.end),
             Side::Out => (item.start, item.end + by),
         },
+        Some((EditKind::ShiftLayer { item: i }, by)) if i == index => {
+            (item.start + by, item.end + by)
+        }
         _ => (item.start, item.end),
     }
 }

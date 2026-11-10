@@ -1,6 +1,6 @@
 // ワークフローの「設定」。workflows.json の 1 つの定義を、画面で直して書き込む。
 import { useState } from 'preact/hooks';
-import { EFFORT_LEVELS, MODELS, type WorkflowInfo, type WorkflowSettings, type WorkflowTrigger } from '../shared/types.ts';
+import { EFFORT_LEVELS, type MentionTrigger, MODELS, type WorkflowInfo, type WorkflowSettings, type WorkflowTrigger } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { Choice } from './ui.tsx';
 
@@ -11,9 +11,12 @@ const DAYS = ['日', '月', '火', '水', '木', '金', '土'];
 const EVENTS: { kind: EventKind; label: string }[] = [
   { kind: 'github-review', label: 'GitHub のレビュー依頼' },
   { kind: 'slack-mention', label: 'Slack のメンション' },
+  { kind: 'jira-mention', label: 'JIRA のメンション' },
   { kind: 'feedback', label: '改善要望' },
 ];
 const NEW_SCHEDULE: Schedule = { kind: 'schedule', at: '09:00' };
+const DEFAULT_BURST_MINUTES = 5;
+const isMention = (t: WorkflowTrigger): t is MentionTrigger => t.kind === 'slack-mention' || t.kind === 'jira-mention';
 
 const settingsOf = ({ name, cwd, prompt, triggers, mode, compact, maxSessions, model, effort }: WorkflowInfo): WorkflowSettings => ({ name, cwd, prompt, triggers, mode, compact, maxSessions, model, effort });
 
@@ -46,6 +49,15 @@ const ScheduleRow = ({ t, onChange, onRemove }: { t: Schedule; onChange: (t: Sch
   );
 };
 
+const BurstRow = ({ t, label, onChange }: { t: MentionTrigger; label: string; onChange: (t: MentionTrigger) => void }) => (
+  <label class="workflow-day">
+    <input type="checkbox" checked={!!t.burstMinutes} onChange={(e) => onChange({ kind: t.kind, ...(e.currentTarget.checked ? { burstMinutes: DEFAULT_BURST_MINUTES } : {}) })} />
+    {label}が続けて届いたら、最後の 1 件から
+    <input type="number" min={1} class="input input-sm workflow-number" disabled={!t.burstMinutes} value={t.burstMinutes ?? DEFAULT_BURST_MINUTES} onInput={(e) => onChange({ kind: t.kind, burstMinutes: Number(e.currentTarget.value) || 1 })} />
+    分待ってまとめる
+  </label>
+);
+
 const TriggersField = ({ triggers, onChange }: { triggers: WorkflowTrigger[]; onChange: (t: WorkflowTrigger[]) => void }) => {
   const has = (kind: EventKind) => triggers.some((t) => t.kind === kind);
   const setEvent = (kind: EventKind, on: boolean) => onChange(on ? [...triggers, { kind } as WorkflowTrigger] : triggers.filter((t) => t.kind !== kind));
@@ -61,6 +73,7 @@ const TriggersField = ({ triggers, onChange }: { triggers: WorkflowTrigger[]; on
           </label>
         ))}
       </div>
+      {triggers.map((t, i) => isMention(t) && <BurstRow key={t.kind} t={t} label={EVENTS.find((e) => e.kind === t.kind)?.label ?? ''} onChange={(n) => onChange(triggers.map((o, j) => (j === i ? n : o)))} />)}
       {triggers.map((t, i) => t.kind === 'schedule' && <ScheduleRow key={i} t={t} onChange={(n) => setAt(i, n)} onRemove={() => setAt(i)} />)}
       <button class="xp-task-link" onClick={() => onChange([...triggers, NEW_SCHEDULE])}>時刻を足す</button>
     </fieldset>

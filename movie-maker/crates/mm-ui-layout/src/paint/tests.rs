@@ -188,6 +188,71 @@ fn ドラッグ中の_trim_layer_は帯の端を動かして描く() {
     );
 }
 
+#[test]
+fn ドラッグ中の_shift_layer_は帯を同じ幅のまま動かして描く() {
+    let shift = |item, by| Some((EditKind::ShiftLayer { item }, by));
+    let r = bar_of(&model(), shift(0, 0.5));
+    assert_eq!((r.x, r.w), (HEADER_W + 150.0, 200.0), "後ろへ");
+    let r = bar_of(&model(), shift(0, -1.0));
+    assert_eq!((r.x, r.w), (HEADER_W, 200.0), "前へ");
+    assert_eq!(bar_of(&model(), shift(1, 1.0)).x, HEADER_W + 100.0);
+}
+
+/// Blade の線 `blade_line` を、再生位置 `playhead` と一緒に描いた文字の上の矩形。
+fn blade_overlay(blade_line: Option<crate::tool::BladeLine>, playhead: f64) -> Vec<Quad> {
+    let m = model();
+    let f = TestViewport::new(&m, SIZE);
+    let st = state(playhead);
+    let vp = f.vp();
+    timeline_overlay(&PaintInput {
+        blade_line,
+        ..PaintInput::new(&m, &vp, &st)
+    })
+}
+
+#[test]
+fn blade_の線は指したレイヤーの帯の高さで割る時刻に立ち_再生位置と見分けられる色() {
+    use crate::tool::BladeLine;
+    let at = |time, item| BladeLine {
+        item,
+        time,
+        snapped: false,
+    };
+    let text = Palette::DEFAULT.selection;
+    let lines = |blade_line| -> Vec<Quad> {
+        let over = blade_overlay(blade_line, 0.0);
+        over.into_iter().filter(|q| q.color == text).collect()
+    };
+    assert!(lines(None).is_empty());
+    let line = lines(Some(at(2.0, 0)));
+    assert_eq!(line.len(), 1, "吸い付いていない線はテーマの text の色");
+    let m = model();
+    let bar = TestViewport::new(&m, SIZE).vp().bar(0, 1.0, 3.0);
+    let r = line[0].rect;
+    assert_eq!(r.x + r.w / 2.0, HEADER_W + 200.0, "2 秒の位置");
+    assert!(
+        r.y < bar.y && r.bottom() > bar.bottom(),
+        "帯の上下に少し出る"
+    );
+    assert!(lines(Some(at(2.0, 9))).is_empty());
+}
+
+#[test]
+fn 再生位置に吸い付いた_blade_の線はガイド線の色で再生位置の線より上に描く() {
+    use crate::tool::BladeLine;
+    let line = BladeLine {
+        item: 0,
+        time: 2.0,
+        snapped: true,
+    };
+    let over = blade_overlay(Some(line), 2.0);
+    let last = over.last().expect("線");
+    assert_eq!(last.color, palette::GUIDE, "いちばん上に描く");
+    assert_eq!(last.rect.x + last.rect.w / 2.0, HEADER_W + 200.0);
+    let playhead = over.iter().position(|q| q.color == palette::PLAYHEAD);
+    assert!(playhead.is_some_and(|i| i + 1 < over.len()));
+}
+
 fn seq_model() -> TimelineModel {
     let cut = |start, end, gap| CutBar {
         start,

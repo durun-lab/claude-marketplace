@@ -61,7 +61,7 @@ pub static TABLE: &[Spec] = &[
     Spec {
         id: "clip.split",
         name: "Split Clip",
-        description: Some("Split the clip at the playhead"),
+        description: Some("Split the clip at the playhead (Blade Tool splits at the pointer)"),
         owner: Owner::App(Action::Edit(EditAction::Split)),
     },
     Spec {
@@ -201,6 +201,12 @@ pub static TABLE: &[Spec] = &[
         owner: Owner::App(Action::Edit(EditAction::MarkOut)),
     },
     Spec {
+        id: "timeline.blade_tool",
+        name: "Blade Tool",
+        description: Some("Click a clip to split it at the pointer"),
+        owner: Owner::App(Action::Timeline(TimelineCommand::BladeTool)),
+    },
+    Spec {
         id: "timeline.full_extent_zoom",
         name: "Full Extent Zoom",
         description: Some(
@@ -223,6 +229,12 @@ pub static TABLE: &[Spec] = &[
         owner: Owner::App(Action::Timeline(TimelineCommand::RemoveKeyframe)),
     },
     Spec {
+        id: "timeline.selection_tool",
+        name: "Selection Tool",
+        description: Some("Drag a layer to move it in time; select clips and trim their edges"),
+        owner: Owner::App(Action::Timeline(TimelineCommand::SelectionTool)),
+    },
+    Spec {
         id: "timeline.show_keyframe_editor",
         name: "Show Keyframe Editor",
         description: Some(
@@ -243,6 +255,12 @@ pub static TABLE: &[Spec] = &[
             "Snap dragged edges to the playhead, clip and layer edges, keyframes, and markers",
         ),
         owner: Owner::App(Action::Timeline(TimelineCommand::ToggleSnapping)),
+    },
+    Spec {
+        id: "timeline.trim_tool",
+        name: "Trim Tool",
+        description: Some("Drag inside a clip to slip its content; Shift+drag to slide the clip"),
+        owner: Owner::App(Action::Timeline(TimelineCommand::TrimTool)),
     },
     Spec {
         id: "timeline.zoom_in",

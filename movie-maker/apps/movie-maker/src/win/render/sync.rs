@@ -14,6 +14,7 @@ use mm_ui_wgpu::{timeline_cut_ids, timeline_layer_ids, timeline_model, Region, U
 
 use super::thumbs::ThumbSync;
 use super::toolbar::Zoom;
+use super::tools;
 use super::transport::{self, Seeks, TransportSync};
 use super::waves::{WaveSync, WaveWanted};
 use super::View;
@@ -75,8 +76,8 @@ pub(super) struct DocSync {
     /// カットの選択が変わったことを見分ける通し番号。
     seen_cut: u64,
     /// Timeline に出しているデータ。ドラッグの編集は、人が見ていたこのデータとそのバージョンで計画する。
-    shown: Option<OpenDoc>,
-    layer_ids: Vec<String>,
+    pub(super) shown: Option<OpenDoc>,
+    pub(super) layer_ids: Vec<String>,
     /// レイヤーごとのカットの ID（シーケンスでないレイヤーは空）。
     cut_ids: Vec<Vec<String>>,
     /// 帯の波形を出す素材のコンテンツハッシュ（Timeline のモデルから引く）と、一覧を作り直すたびに進む通し番号。
@@ -231,6 +232,7 @@ pub(super) fn handle_input(shared: &Arc<Shared>, ui: &mut Ui, doc: &DocSync) {
                     apply_move_layer(shared, doc, from, boundary)
                 }
                 Action::Keyframe(action) => keyframes::apply(shared, doc, action),
+                Action::Split { item, time } => tools::apply_split(shared, doc, item, time),
             }
         }
     }

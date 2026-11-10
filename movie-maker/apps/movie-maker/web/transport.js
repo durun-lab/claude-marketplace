@@ -18,7 +18,7 @@
   const FOCUSABLE = "button, a[href], summary, [role=button], [role=tab], [role=option], [tabindex]";
   // keys.rs の BINDINGS のうち編集（clip.*、edit.*、source.*）のキーと同じ。WebView の部品にフォーカスがあるときの Delete などが Timeline の編集にならないよう、送る前に選ぶ。
   const EDIT_KEYS = new Set([
-    "KeyI", "KeyO", ",", ".", "KeyB", "Delete", "Backspace", "Ctrl+KeyZ", "Ctrl+KeyY", "Ctrl+Shift+KeyZ", "Alt+KeyX",
+    "KeyI", "KeyO", ",", ".", "Ctrl+KeyB", "Delete", "Backspace", "Ctrl+KeyZ", "Ctrl+KeyY", "Ctrl+Shift+KeyZ", "Alt+KeyX",
   ]);
   // code の名前のキーのうち、Shift を名前に付けるもの（英字、数字、矢印）。keys.rs の with_modifiers と同じ。
   const SHIFT_NAMED = /^(Key[A-Z]|Digit[0-9]|Arrow(Up|Down|Left|Right))$/;
