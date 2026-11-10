@@ -8,7 +8,7 @@ import { formatReview } from '../server/deliver.ts';
 import { countChecks, gitDiff, inRepo, parseDiff, repoFile, parseIncluded, resolveRange } from '../server/integrations.ts';
 import { latestMemory, toMemoryStatus, toMemoryUsage } from '../server/memory.ts';
 import { type BranchView, type MemoryStatus, WORKTREE } from '../shared/types.ts';
-import { arrangeThemes, renameTheme, stoppedStatus, subagentRunning, toBgTask } from '../server/snapshot.ts';
+import { arrangeThemes, moveToTheme, renameTheme, stoppedStatus, subagentRunning, toBgTask } from '../server/snapshot.ts';
 import { tempDir } from './tmp.ts';
 
 test('summarizeLog は、会話ログに載った skills の一覧を、後から届いた分も含めて名前ごとに集め、説明の書き出しを添える', () => {
@@ -388,6 +388,15 @@ test('renameTheme は、リポジトリ名がテーマになっているセッ�
   const sessions = [meta('/w/some-repository'), meta('/w/some-repository/.worktrees/x'), meta('/w/other', ' some-repository '), meta('/w/some-repository', 'engage'), meta('/w/other')];
   renameTheme(sessions, 'some-repository', 'サンプル');
   assert.deepEqual(sessions.map((s) => s.theme), ['サンプル', 'サンプル', 'サンプル', 'engage', undefined]);
+});
+
+test('moveToTheme は、セッションと start_session で起動した子孫を同じテーマへ移し、ほかのセッションは動かさない', () => {
+  const meta = (id: string, parent?: string) => ({ id, cwd: '/w/r', parent, theme: '元', jira: [], archived: false, firstSeen: 0, replySeenAt: 0 });
+  const sessions = [meta('p'), meta('c', 'p'), meta('g', 'c'), meta('o')];
+  moveToTheme(sessions, 'p', '先');
+  assert.deepEqual(sessions.map((s) => s.theme), ['先', '先', '先', '元']);
+  moveToTheme(sessions, 'c', undefined);
+  assert.deepEqual(sessions.map((s) => s.theme), ['先', undefined, undefined, '元']);
 });
 
 test('arrangeThemes は並べ替えた順に従い、並べ替えた後に現れたテーマを前に、名前の順で置く', () => {

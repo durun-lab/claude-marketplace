@@ -1,12 +1,12 @@
-// Claude 向けの MCP サーバー（Streamable HTTP）。人間への質問、資料の表示、レビュー依頼、コマンドの実行の依頼、コードに表示するブランチ、テーマの登録、文章校正、認証の依頼、FL Connect での FL Studio の読み書き、ムービーメーカーでの movie-maker の操作を受ける。
+// Claude 向けの MCP サーバー（Streamable HTTP）。人間への質問、資料の表示、レビュー依頼、コマンドの実行の依頼、コードに表示するブランチ、テーマの登録、子セッションの起動と依頼、文章校正、認証の依頼、FL Connect での FL Studio の読み書き、ムービーメーカーでの movie-maker の操作を受ける。
 import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import { applyEvent, emptyRun, newVersion, reviseInput, titleOf } from '../shared/proofread.ts';
-import type { BranchView, DiffRange, DocFormat, ProofFile, ProofVersion } from '../shared/types.ts';
+import { type BranchView, type DiffRange, type DocFormat, EFFORT_LEVELS, MODELS, type ProofFile, type ProofVersion } from '../shared/types.ts';
 import { authProvider, requestAuth } from './auth.ts';
 import { readLiveSessions } from './claude.ts';
-import { autoRunCommand, dropStaleRequests, unwait, waitFor } from './deliver.ts';
+import { autoRunCommand, dropStaleRequests, sendMessage, startChildSession, unwait, waitFor } from './deliver.ts';
 import { callFlTool, FL_TOOL_NAMES } from './flconnect.ts';
 import { callMmTool, MM_TOOL_NAMES } from './movieMaker.ts';
 import { sessionIdForPid } from './hooks.ts';
@@ -29,6 +29,7 @@ const INSTRUCTIONS = `durun-dashboard は、人間が複数の Claude Code セ�
 - 権限の確認や auto モードに止められて自分では実行できないコマンドを人間に実行してほしいときは、\`! コマンド\` を打つよう頼まずに request_command で頼んでください。実行を選んだと返ったらターンを終えてください。出力は次のターンに届きます。
 - レビューする PR など、作業ツリーに無いブランチを人間に見せたいときは、show_branches でコードの表示をそのブランチに切り替えてください。
 - 作業のテーマや関連する JIRA 課題が分かったら set_task で登録してください。
+- 仕事を別のセッションに任せるときは、claude --bg を Bash で打たずに start_session で子セッションを起動してください。子セッションへの追加の依頼は send_to_session で送ってください。
 - Google Cloud（gcloud）や、Slack、Notion などの MCP サーバーの認証やログインが必要になったら、authenticate で人間に頼んでください。人間が認証を終えると結果が返ります。認証済みなら、尋ねずにすぐ返ります。
 - Web サービスにブラウザでログインしてほしいときは、authenticate の provider に browser を、url にログイン画面の URL を渡してください。人間がブラウザでログインを終えると結果が返ります。
 - 人間がメッセージに文章校正アプリを添付したら、proofread で文章を校正し、書き手の事情を知っている指摘に comment_proofread でコメントを返してください。主要な指摘にコメントを返したら、文章は直さずにターンを終えてください。人間がアプリで校正した版（v2 など）へのコメントを頼まれたら、proofread に file と version を渡して、その版の指摘を受け取ってください。人間に修正版を頼まれたら、revise_proofread に file と version を渡して作ってください。
@@ -134,6 +135,34 @@ const TOOLS = [
         title: { type: 'string', description: 'このセッションの作業名' },
         jira: { type: 'array', items: { type: 'string' }, description: '関連する JIRA の課題キー（例: PROJ-1102）' },
       },
+    },
+  },
+  {
+    name: 'start_session',
+    description:
+      'このセッションの作業ディレクトリで、バックグラウンドの子セッションを起動し、仕事を任せる。子セッションはこのセッションと同じテーマに入り、人間がこのセッションを別のテーマへ移すと一緒に移る。子セッションの id が返るので、追加の依頼を send_to_session で送るときに使う。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        prompt: { type: 'string', description: '子セッションへの依頼' },
+        name: { type: 'string', description: '子セッションの名前。ダッシュボードの作業名にもなる（例: mention-lpo-ab-test）' },
+        model: { type: 'string', enum: [...MODELS], description: '省くと Claude Code の設定に従う' },
+        effort: { type: 'string', enum: [...EFFORT_LEVELS], description: '省くと Claude Code の設定に従う' },
+      },
+      required: ['prompt'],
+    },
+  },
+  {
+    name: 'send_to_session',
+    description:
+      'start_session で起動した自分の子セッションへ、追加の依頼を送る。人間がダッシュボードから送るときと同じく、子セッションが作業中なら作業を止めずに受け付けさせ、終わっていれば再開して渡す。アーカイブされた子セッションへは送れない。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        session_id: { type: 'string', description: 'start_session が返した子セッションの id' },
+        text: { type: 'string', description: '送る依頼' },
+      },
+      required: ['session_id', 'text'],
     },
   },
   {
@@ -542,6 +571,29 @@ const reviseProofread = async (res: ServerResponse, rpcId: RpcId, params: RpcPar
   }
 };
 
+/** claude --bg は混んだマシンで数十秒かかるので、打ち切られないよう SSE で返す。 */
+const startSessionTool = (res: ServerResponse, rpcId: RpcId, params: RpcParams, sessionId: string, args: ToolArgs): void => {
+  const prompt = str(args.prompt);
+  if (!prompt) return send(res, { id: rpcId, result: textResult('prompt を渡してください。', true) });
+  const model = (MODELS as readonly unknown[]).includes(args.model) ? String(args.model) : undefined;
+  const effort = (EFFORT_LEVELS as readonly unknown[]).includes(args.effort) ? String(args.effort) : undefined;
+  const finish = openStream(res, rpcId, params, () => '子セッションを起動しています');
+  startChildSession(sessionId, prompt, str(args.name), model, effort).then(
+    (child) => finish(textResult(`子セッションを起動しました。session_id: ${child.id}`)),
+    (e: Error) => finish(textResult(`子セッションを起動できませんでした。${e.message}`, true)),
+  );
+};
+/** 子セッションが会話を引き継いだ複製へ移っていたら、複製へ送る。 */
+const sendToChild = (sessionId: string, args: ToolArgs): object => {
+  const text = str(args.text);
+  let child = state.sessions[str(args.session_id) ?? ''];
+  while (child?.movedTo && state.sessions[child.movedTo]) child = state.sessions[child.movedTo];
+  if (!text) return textResult('text を渡してください。', true);
+  if (child?.parent !== sessionId) return textResult('session_id に、start_session で起動した自分の子セッションの id を渡してください。', true);
+  if (child.archived || child.archiveWhenIdle) return textResult('子セッションはアーカイブされています。続けて任せるなら、start_session で起動し直してください。', true);
+  const { delivery } = sendMessage(child.id, text);
+  return textResult(delivery === 'queued' ? '子セッションは権限の確認を待っているので、答えた後に届けます。' : '子セッションへ送りました。');
+};
 /** from を省いたときは範囲を決めず、画面の既定（分岐点から未コミットの変更まで）に任せる。 */
 const reviewRange = async (sessionId: string, args: ToolArgs): Promise<DiffRange | undefined> => {
   const from = str(args.from);
@@ -588,6 +640,10 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
       return void showBranches(req, sessionId, args).then((result) => send(res, { id: rpcId, result }));
     case 'set_task':
       return send(res, { id: rpcId, result: setTask(sessionId, args) });
+    case 'start_session':
+      return startSessionTool(res, rpcId, params, sessionId, args);
+    case 'send_to_session':
+      return send(res, { id: rpcId, result: sendToChild(sessionId, args) });
     case 'authenticate': {
       const provider = authProvider(args.provider, str(args.server), state.sessions[sessionId]?.cwd, str(args.url));
       if (!provider) return send(res, { id: rpcId, result: textResult('provider に gcloud、mcp、browser のどれかを渡してください。mcp のときは server に MCP サーバーの名前も、browser のときは url にログイン画面の http か https の URL も渡してください。', true) });

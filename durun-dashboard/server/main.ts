@@ -45,7 +45,7 @@ import { MAX_SENTENCES, priorReadings, proofread, revise, summarizeProof } from 
 import { parseProof } from './proofText.ts';
 import { recordRateLimits } from './rateLimits.ts';
 import { searchSessions, warmSearch } from './search.ts';
-import { badgeUrls, buildSnapshot, conversationOf, onLogWarmed, renameTheme, warmLogs } from './snapshot.ts';
+import { badgeUrls, buildSnapshot, conversationOf, moveToTheme, onLogWarmed, renameTheme, warmLogs } from './snapshot.ts';
 import { DATA_DIR, newId, onChange, save, state, touch } from './store.ts';
 import { type Conversation, explainTerm, peekReplies, sessionGlossary, suggestTitle, summarize, summaryText, termKey } from './suggest.ts';
 import { hasJev } from './jev.ts';
@@ -810,7 +810,7 @@ const updateQueue = (id: string, action: 'edit' | 'save' | 'cancel', body: unkno
 type Handler = (m: string[], body: unknown, url: URL, req: IncomingMessage) => unknown;
 
 const setTheme = (id: string, body: unknown): void => {
-  sessionMeta(id).theme = field<string>(body, 'theme', 'string').trim() || undefined;
+  moveToTheme(Object.values(state.sessions), sessionMeta(id).id, field<string>(body, 'theme', 'string').trim() || undefined);
   touch();
 };
 

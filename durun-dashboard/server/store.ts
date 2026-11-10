@@ -21,6 +21,8 @@ export type SessionMeta = {
   archived: boolean;
   /** 人間が作業中にアーカイブした。入力待ちか停止になったら、アーカイブする */
   archiveWhenIdle?: boolean;
+  /** start_session でこのセッションを起動した親のセッションの id。人間が親を別のテーマへ移すと、このセッションも移る */
+  parent?: string;
   /** 会話を引き継いだ複製のセッションの id。設定とやり取りは複製へ移してあり、このセッションはアーカイブしてある */
   movedTo?: string;
   /** アーカイブしたが、Claude Code の一覧から消せなかった理由。作業ツリーに人間の手当てが要るものが残る理由ならゴミ箱に入れ、ほかの理由なら後で消し直す */
@@ -281,13 +283,14 @@ export const newId = (): string => randomUUID().slice(0, 8);
 export const moveSession = (from: string, to: string): void => {
   const old = state.sessions[from];
   if (!old || from === to) return;
-  const { theme, title, jira, pinned, dangerous, badges, hiddenBadges, slack, hiddenSlack, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews } = old;
-  Object.assign(ensureSession(to, old.cwd), { theme, title, jira, pinned, dangerous, badges, hiddenBadges, slack, hiddenSlack, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews });
+  const { parent, theme, title, jira, pinned, dangerous, badges, hiddenBadges, slack, hiddenSlack, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews } = old;
+  Object.assign(ensureSession(to, old.cwd), { parent, theme, title, jira, pinned, dangerous, badges, hiddenBadges, slack, hiddenSlack, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews });
   Object.assign(old, { archived: true, movedTo: to, pinned: undefined, dangerous: undefined, bookmarks: undefined, jobId: undefined });
   for (const items of [state.attention, state.docs, state.outbox]) {
     for (const item of items) if (item.sessionId === from) item.sessionId = to;
   }
   state.sessionOrder = state.sessionOrder.map((id) => (id === from ? to : id));
+  for (const meta of Object.values(state.sessions)) if (meta.parent === from) meta.parent = to;
   touch();
 };
 

@@ -163,8 +163,18 @@ const trackedSession = async (output: string, cwd: string): Promise<SessionMeta>
 };
 
 /** バックグラウンドのセッションを起動し、ダッシュボードの記録を返す。記録に印を付けたいときに使う。id を引けなければ reject する。 */
-export const startTrackedSession = async (cwd: string, prompt: string, model?: string, effort?: string): Promise<SessionMeta> =>
-  trackedSession(await claudeOutput(['--bg', ...modelFlags(model, effort), '--', prompt], cwd), cwd);
+export const startTrackedSession = async (cwd: string, prompt: string, model?: string, effort?: string, name?: string): Promise<SessionMeta> =>
+  trackedSession(await claudeOutput(['--bg', ...(name ? ['--name', name] : []), ...modelFlags(model, effort), '--', prompt], cwd), cwd);
+
+/** 親のセッションの作業ディレクトリで子のセッションを起動し、親と同じテーマに入れる。 */
+export const startChildSession = async (parentId: string, prompt: string, name?: string, model?: string, effort?: string): Promise<SessionMeta> => {
+  const parent = state.sessions[parentId];
+  if (!parent) throw new Error(`unknown session: ${parentId}`);
+  const meta = await startTrackedSession(parent.cwd, prompt, model, effort, name);
+  Object.assign(meta, { parent: parentId, theme: parent.theme, ...(name ? { title: name } : {}) });
+  touch();
+  return meta;
+};
 
 /**
  * claude stop は止める指示を出すとすぐに戻り、supervisor が止まったと記録するのは 1、2 秒後になる。
