@@ -51,7 +51,12 @@ fn op_of(doc: &DocSync, action: KeyframeAction) -> Option<Op> {
 }
 
 /// 選んだ行を置き、選択のイベントを送り直させる（Inspector と Graph がそのパラメータを選ぶ）。
+/// 選んだら共有のカットの選択も外す。Delete は押せる最初のコマンド（Lift、Remove Keyframe の順）を実行するので、
+/// 取り消しで消えたカットの ID が残っていると、キーフレームを選んでいても Lift が先に押せてしまう。
 fn select(shared: &Shared, doc: &DocSync, pick: Option<RowPick>) {
+    if pick.is_some() {
+        shared.edit.select_cut(None);
+    }
     let selection = pick.and_then(|p| {
         let shown = doc.shown.as_ref()?;
         let comp = shown.project.composition(&shown.comp).ok()?;
