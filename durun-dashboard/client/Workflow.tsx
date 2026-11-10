@@ -88,7 +88,7 @@ export const WorkflowFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot })
             </section>
           </aside>
           <div class="recycle-list">
-            {target ? <WorkflowForm key={target.id} w={target} onClose={() => setEditing(undefined)} /> : (
+            {target ? <WorkflowForm key={target.id} w={target} themes={snapshot.themes} onClose={() => setEditing(undefined)} /> : (
               <table class="recycle-table workflow-table">
                 <thead>
                   <tr><th>名前</th><th>トリガー</th><th>アクション</th><th>最後の実行</th><th>操作</th></tr>

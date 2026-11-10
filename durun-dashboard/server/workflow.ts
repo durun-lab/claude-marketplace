@@ -47,7 +47,7 @@ const triggerOf = (raw: unknown): WorkflowTrigger => {
 
 const defOf = (raw: unknown, i: number): WorkflowDef => {
   if (!isObject(raw)) throw new Error(`${i + 1} 番目がオブジェクトではありません`);
-  const { id, name, enabled, cwd, prompt, triggers, mode, maxSessions, compact, model, effort } = raw;
+  const { id, name, enabled, cwd, theme, prompt, triggers, mode, maxSessions, compact, model, effort } = raw;
   if (typeof id !== 'string' || !ID_PATTERN.test(id)) throw new Error(`${i + 1} 番目の id は英数字とハイフンで書いてください`);
   if (typeof cwd !== 'string' || !path.isAbsolute(cwd)) throw new Error(`${id} の cwd は絶対パスで書いてください`);
   if (typeof prompt !== 'string' || !prompt.trim()) throw new Error(`${id} の prompt が空です`);
@@ -56,6 +56,7 @@ const defOf = (raw: unknown, i: number): WorkflowDef => {
     name: typeof name === 'string' && name.trim() ? name.trim() : id,
     enabled: enabled === true,
     cwd,
+    ...(typeof theme === 'string' && theme.trim() ? { theme: theme.trim() } : {}),
     prompt,
     triggers: Array.isArray(triggers) ? triggers.map(triggerOf) : [],
     mode: mode === 'continue' ? 'continue' : 'new',
@@ -134,7 +135,7 @@ const launch = (w: WorkflowDef, run: WorkflowRun, text: string): void => {
   const wave = unassignedWave(run);
   startTrackedSession(w.cwd, text, w.model, w.effort)
     .then((meta) => {
-      Object.assign(meta, { workflow: w.id, title: w.name });
+      Object.assign(meta, { workflow: w.id, title: w.name, ...(w.theme ? { theme: w.theme } : {}) });
       if (w.mode === 'continue') run.sessionId = meta.id;
       if (wave) wave.sessionId = meta.id;
       run.error = undefined;
@@ -456,7 +457,7 @@ const rewriteDef = (id: string, edit: (raw: Record<string, unknown>, i: number) 
 export const setWorkflowEnabled = (id: string, enabled: boolean): void => rewriteDef(id, (w) => ({ ...w, enabled }));
 
 // 画面の「設定」で直す項目。id と ON と OFF は直さない。
-const EDITABLE = ['name', 'cwd', 'prompt', 'triggers', 'mode', 'compact', 'maxSessions', 'model', 'effort'] as const;
+const EDITABLE = ['name', 'cwd', 'theme', 'prompt', 'triggers', 'mode', 'compact', 'maxSessions', 'model', 'effort'] as const;
 
 /** 画面の「設定」で直した項目を書き込む。送らなかった項目は消して既定に戻す。読めない値なら書かずに理由を返す。 */
 export const updateWorkflow = (id: string, body: unknown): void => {
@@ -481,6 +482,7 @@ const consultPrompt = (target: WorkflowDef | undefined): string => `${MARK} 人�
 - name: 画面とセッションのバッジに出す名前
 - enabled: true で動く。新しく作るときは、人間が良いと言うまで false にする
 - cwd: セッションを動かす作業ディレクトリ（絶対パス）
+- theme: 起動したセッションを入れるテーマ。省くと作業ディレクトリのリポジトリ名になる
 - prompt: セッションへの依頼。イベントの内容は、ダッシュボードが依頼の前に書き足す
 - triggers: 次の配列
   - { "kind": "schedule", "at": "09:00", "days": [1, 2, 3, 4, 5] }: 時刻で動く。days は 0 が日曜で、省くと毎日
