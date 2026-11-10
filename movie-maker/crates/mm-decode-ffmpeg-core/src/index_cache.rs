@@ -8,11 +8,14 @@
 //!   PTS には composition offset が要り、パケットを読まずには得られない。mkv の cues は粗くて全フレームに足りない。
 //! - 置き場所は処理全体で 1 つ（`set_index_cache`）。3 つのデコーダー（ffmpeg、d3d12va、cuvid）が同じ
 //!   `Timeline::build` を通るので、デコーダーのインターフェースを変えずに全部に効く。
+//! - 大きな素材（長い録画）の全パケットを読む走査は、処理全体で一度に 1 つ。長い録画を並べて読むとどれも遅くなり
+//!   （4 本を並べると 4 GB の走査が 28 秒から 65 秒）、同じ素材を複数のデコーダーが同時に開くと同じファイルを読み直すため。
+//!   待つ間に同じ素材の索引が置かれたら、読まずに引く。小さな素材（画像、短い素材）は順番を待たない。
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::Path;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, RwLock};
 
 use mm_cache_api::{CacheKey, CacheKind, CacheStore, ContentHash};
 use mm_types::Result;
@@ -25,8 +28,12 @@ const INDEX_VERSION: u32 = 1;
 const SAMPLE_BYTES: u64 = 64 * 1024;
 /// 指紋に使う、素材の中の場所の数（先頭、中央、末尾）。
 const SAMPLE_SPOTS: u64 = 3;
+/// 走査の順番を待つ素材の大きさの下限。150 MB/s のディスクで 2 秒ほど読む大きさ。
+const LARGE_BYTES: u64 = 256 * 1024 * 1024;
 
 static STORE: RwLock<Option<Arc<dyn CacheStore>>> = RwLock::new(None);
+/// 大きな素材の全パケットを読む走査の順番。
+static SCANNING: Mutex<()> = Mutex::new(());
 
 /// 索引を置く場所を決める。`None` で置かない（毎回読む）。
 pub fn set_index_cache(store: Option<Arc<dyn CacheStore>>) {
@@ -37,33 +44,62 @@ fn store() -> Option<Arc<dyn CacheStore>> {
     STORE.read().expect("index cache lock").clone()
 }
 
-/// `scan_video` の結果を `cache/` から引く。無ければ読んで置く。
+/// `scan_video` の結果を `cache/` から引く。無ければ読んで置く（大きな素材は走査の順番を待つ）。
 pub fn scan_video_cached(path: &Path, stream_index: usize) -> Result<VideoScan> {
-    let Some(store) = store() else {
-        return scan_video(path, stream_index);
-    };
-    let key = fingerprint(path).map(|hash| CacheKey {
-        kind: CacheKind::Intermediate,
-        content_hash: ContentHash(hash),
-        variant: format!("video-index-v{INDEX_VERSION}-s{stream_index}"),
+    let large = std::fs::metadata(path).is_ok_and(|m| m.len() >= LARGE_BYTES);
+    let scan = || scan_video(path, stream_index);
+    let key = store().map(|store| {
+        let key = fingerprint(path).map(|hash| CacheKey {
+            kind: CacheKind::Intermediate,
+            content_hash: ContentHash(hash),
+            variant: format!("video-index-v{INDEX_VERSION}-s{stream_index}"),
+        });
+        (store, key)
     });
-    let Ok(key) = key else {
-        return scan_video(path, stream_index);
-    };
-    if let Some(scan) = store
-        .get(&key)
-        .ok()
-        .flatten()
-        .and_then(|b| VideoScan::from_bytes(&b))
-    {
-        mm_trace::counter!("decode.index_cache_hits", 1);
-        return Ok(scan);
+    match key {
+        Some((store, Ok(key))) => cached_or_scan(store.as_ref(), &key, large, scan),
+        _ => {
+            let _turn = turn(large);
+            scan()
+        }
     }
-    let scan = scan_video(path, stream_index)?;
-    if let Err(e) = store.put(&key, &scan.to_bytes()) {
+}
+
+/// 置いてある索引を引く。無ければ（大きな素材は走査の順番を待ってから）`scan` で作って置く。待つ間に置かれた索引は読まずに引く。
+fn cached_or_scan(
+    store: &dyn CacheStore,
+    key: &CacheKey,
+    large: bool,
+    scan: impl FnOnce() -> Result<VideoScan>,
+) -> Result<VideoScan> {
+    if let Some(found) = cached(store, key) {
+        return Ok(found);
+    }
+    let _turn = turn(large);
+    if let Some(found) = cached(store, key) {
+        return Ok(found);
+    }
+    let made = scan()?;
+    if let Err(e) = store.put(key, &made.to_bytes()) {
         tracing::warn!(error = %e, "PTS の索引をキャッシュに置けない");
     }
-    Ok(scan)
+    Ok(made)
+}
+
+/// 大きな素材の走査の順番。小さな素材は取らない。
+fn turn(large: bool) -> Option<MutexGuard<'static, ()>> {
+    large.then(|| SCANNING.lock().unwrap_or_else(PoisonError::into_inner))
+}
+
+/// 置いてある索引。壊れていれば無いことにする。
+fn cached(store: &dyn CacheStore, key: &CacheKey) -> Option<VideoScan> {
+    let scan = store
+        .get(key)
+        .ok()
+        .flatten()
+        .and_then(|b| VideoScan::from_bytes(&b))?;
+    mm_trace::counter!("decode.index_cache_hits", 1);
+    Some(scan)
 }
 
 /// 素材の指紋。大きさと、先頭・中央・末尾の `SAMPLE_BYTES`。
@@ -134,6 +170,10 @@ impl VideoScan {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::Duration;
+
     use super::*;
 
     fn scan() -> VideoScan {
@@ -173,6 +213,94 @@ mod tests {
         };
         assert!(VideoScan::from_bytes(&key_out.to_bytes()).is_none());
         assert!(VideoScan::from_bytes(&[]).is_none());
+    }
+
+    /// 試験用の置き場所。置いた回数を数える。
+    #[derive(Default)]
+    struct Counting {
+        map: Mutex<HashMap<CacheKey, Vec<u8>>>,
+        puts: AtomicUsize,
+    }
+
+    impl CacheStore for Counting {
+        fn id(&self) -> &'static str {
+            "counting"
+        }
+        fn get(&self, key: &CacheKey) -> Result<Option<Vec<u8>>> {
+            Ok(self.map.lock().unwrap().get(key).cloned())
+        }
+        fn put(&self, key: &CacheKey, bytes: &[u8]) -> Result<()> {
+            self.puts.fetch_add(1, Ordering::SeqCst);
+            self.map.lock().unwrap().insert(key.clone(), bytes.to_vec());
+            Ok(())
+        }
+        fn remove(&self, key: &CacheKey) -> Result<()> {
+            self.map.lock().unwrap().remove(key);
+            Ok(())
+        }
+        fn size_bytes(&self) -> u64 {
+            0
+        }
+        fn limit_bytes(&self) -> Option<u64> {
+            None
+        }
+        fn clear(&self) -> Result<()> {
+            self.map.lock().unwrap().clear();
+            Ok(())
+        }
+    }
+
+    fn key(hash: &str) -> CacheKey {
+        CacheKey {
+            kind: CacheKind::Intermediate,
+            content_hash: ContentHash(hash.into()),
+            variant: "video-index-v1-s0".into(),
+        }
+    }
+
+    #[test]
+    fn 大きな素材を同時に開いても全パケットを読むのは_1_回で_後の方は置かれた索引を引く() {
+        let store = Arc::new(Counting::default());
+        let scans = Arc::new(AtomicUsize::new(0));
+        let open = || {
+            let (store, scans) = (store.clone(), scans.clone());
+            std::thread::spawn(move || {
+                let slow = || {
+                    scans.fetch_add(1, Ordering::SeqCst);
+                    std::thread::sleep(Duration::from_millis(100));
+                    Ok(scan())
+                };
+                let found = cached_or_scan(store.as_ref(), &key("abc"), true, slow);
+                found.unwrap().raw_pts
+            })
+        };
+        let (a, b) = (open(), open());
+        assert_eq!(a.join().unwrap(), b.join().unwrap());
+        let count = |n: &AtomicUsize| n.load(Ordering::SeqCst);
+        assert_eq!((count(&scans), count(&store.puts)), (1, 1));
+    }
+
+    #[test]
+    fn 小さな素材は大きな素材の走査を待たずに読む() {
+        let store = Arc::new(Counting::default());
+        let (inside, scanning) = std::sync::mpsc::channel();
+        let big = {
+            let store = store.clone();
+            std::thread::spawn(move || {
+                let slow = || {
+                    inside.send(()).unwrap();
+                    std::thread::sleep(Duration::from_millis(600));
+                    Ok(scan())
+                };
+                cached_or_scan(store.as_ref(), &key("big"), true, slow).unwrap();
+            })
+        };
+        scanning.recv().unwrap();
+        let started = std::time::Instant::now();
+        cached_or_scan(store.as_ref(), &key("small"), false, || Ok(scan())).unwrap();
+        let took = started.elapsed();
+        assert!(took < Duration::from_millis(300), "待った: {took:?}");
+        big.join().unwrap();
     }
 
     #[test]
