@@ -5,14 +5,15 @@
 //! Timeline は矩形（背景、帯、目盛り、ドラッグ中のツールチップの矩形）、文字（目盛りの時刻、帯の名前、ツールチップの量）、
 //! 矩形（再生位置の線、スナップの表示。ツールチップの矩形の上は除く）の順に重ねる。
 //! Timeline の表示の状態（ズーム、スクロール、行の高さ、スナップの入/切）は [`Ui::view_state`] で出し、[`Ui::restore_view`] で戻す。
+//! キーとメニューの Timeline のコマンドも、ドラッグとの前後を保つため [`Ui::pointer`] で受ける。
 
 use mm_types::RgbaImage;
 use mm_ui_layout::palette::{self, Palette};
 use mm_ui_layout::{
     clear_tooltip_area, drag_tooltip, fit_rect, split_viewers, timeline_labels, timeline_overlay,
-    timeline_quads, transport_labels, Action, DrawingShape, PaintState, PointerEvent, Quad, Rect,
-    RowHeights, Scale, SurfaceLayout, TimeView, TimelineController, TimelineModel,
-    TransportController, TransportState, UiFont, ViewState,
+    timeline_quads, transport_labels, Action, DrawingShape, EmptyHints, EmptyKeys, EmptyState,
+    PaintState, PointerEvent, Quad, Rect, RowHeights, Scale, SurfaceLayout, TimeView,
+    TimelineController, TimelineModel, TransportController, TransportState, UiFont, ViewState,
 };
 
 use crate::drawing::{DrawingFit, DrawingLayer};
@@ -63,6 +64,8 @@ pub struct Ui {
     /// 最初の表示（戻した表示の状態か、全体表示と sequence の行）を当てたか。
     opened: bool,
     palette: Palette,
+    /// 空の状態の案内（どれを出すかと、案内に出すキー）。
+    empty: EmptyHints,
 }
 
 impl Ui {
@@ -97,7 +100,18 @@ impl Ui {
             playhead: 0.0,
             opened: false,
             palette: Palette::DEFAULT,
+            empty: EmptyHints::default(),
         }
+    }
+
+    /// 空の状態の案内に出すキー（アプリのキーの表から作ったもの）。
+    pub fn set_empty_keys(&mut self, keys: EmptyKeys) {
+        self.empty.keys = keys;
+    }
+
+    /// 空の状態の案内のどれを出すか（プロジェクトのデータから決めたもの。[`crate::empty_state`]）。
+    pub fn set_empty_state(&mut self, show: EmptyState) {
+        self.empty.show = show;
     }
 
     /// Timeline の色（`ui/theme` の theme.json から作ったもの）。
@@ -164,8 +178,9 @@ impl Ui {
         });
     }
 
-    /// 再生位置（秒）。
+    /// 再生位置（秒）。再生とキーで行の領域の端を越えたら、その向きへ 1 画面ずつ送る（`TimelineController::page_scroll`）。
     pub fn set_playhead(&mut self, secs: f64) {
+        self.controller.page_scroll(self.playhead, secs);
         self.playhead = secs;
     }
 
@@ -377,12 +392,17 @@ impl Ui {
         let vp = self.controller.viewport();
         let (model, font) = (&self.model, &self.font);
         let mut labels = timeline_labels(model, &vp, &state, font, text.measure());
+        labels.extend(self.empty.timeline(&vp, &state, font, text.measure()));
         let tooltip = drag_tooltip(model, &vp, &state, font, text.measure(), &mut labels);
         for l in &mut labels {
             l.x += t.x;
             l.y += t.y;
             l.clip = l.clip.translated(t.x, t.y);
         }
+        labels.extend(
+            self.empty
+                .program(self.layout.program, &state, font, text.measure()),
+        );
         labels.extend(transport_labels(
             &self.layout,
             &self.transport,

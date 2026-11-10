@@ -68,22 +68,31 @@ const MESSAGE_JS: &str =
     r#"document.querySelector(".mm-shell-right > [role=status]")?.textContent ?? null"#;
 
 /// 工程に要るもの。
-pub struct Env<'a> {
-    pub shared: &'a Arc<Shared>,
-    pub webview: Option<Webview>,
-    pub window_hwnd: isize,
-    pub test: &'a PlayTest,
+struct Env<'a> {
+    shared: &'a Arc<Shared>,
+    window_hwnd: isize,
+    test: &'a PlayTest,
 }
 
-/// 橋、割り付け、キーフレームの欄、編集の結果の文言を順に確かめる。
-pub fn run(env: &Env) -> Value {
-    let Some(webview) = env.webview.as_ref() else {
+/// 橋、割り付け、キーフレームの欄、編集の結果の文言を順に確かめる。スクリーンショットはウィンドウ `window_hwnd` を撮る。
+pub fn run(
+    shared: &Arc<Shared>,
+    webview: Option<Webview>,
+    window_hwnd: isize,
+    test: &PlayTest,
+) -> Value {
+    let Some(webview) = webview.as_ref() else {
         return json!({ "skipped": "WebView が無い" });
     };
-    let keys = keys(env.shared, webview);
-    let columns = columns(env, webview);
-    let strip = keyframe_strip(env, webview);
-    let message = edit_message(env, webview);
+    let env = Env {
+        shared,
+        window_hwnd,
+        test,
+    };
+    let keys = keys(shared, webview);
+    let columns = columns(&env, webview);
+    let strip = keyframe_strip(&env, webview);
+    let message = edit_message(&env, webview);
     let ok = |v: &Value| v["ok"] == true || v.get("skipped").is_some();
     json!({
         "all_ok": ok(&keys) && ok(&columns) && ok(&strip) && ok(&message),

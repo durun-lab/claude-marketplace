@@ -1,6 +1,7 @@
 //! `--play-test` の再生テスト。プロジェクトを先頭から要求の秒数だけ再生して、ドロップしたフレームの数、
-//! 映像と音のずれ、WebView の時計の誤差を測り、途中のスクリーンショットと一緒に残す。続けて入力、WebView、
-//! Inspector、再生の操作のバー、Timeline の編集の工程を通し、テストが適用した編集を戻してから結果の JSON を書いて終わる。
+//! 映像と音のずれ、WebView の時計の誤差を測り、途中のスクリーンショットと一緒に残す。続けて入力、WebView、Inspector、
+//! 再生の操作のバー、Timeline の編集、Timeline のズームと移動の工程を通し、テストが適用した編集を戻してから結果の
+//! JSON を書いて終わる。
 
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::atomic::Ordering;
@@ -26,6 +27,7 @@ use crate::win::verify_restore::{self, Savepoint};
 use crate::win::verify_stage::{self, checkpoint, wait_until, StageError};
 use crate::win::verify_transport;
 use crate::win::verify_webview;
+use crate::win::verify_zoom;
 
 /// 描画が安定して WebView の初期化が終わるまでの待ち。
 const SETTLE: Duration = Duration::from_millis(2500);
@@ -54,6 +56,8 @@ const INSPECTOR_LIMIT: Duration = Duration::from_secs(30);
 const TRANSPORT_LIMIT: Duration = Duration::from_secs(90);
 /// Timeline の編集は待ちの合計が約 75 秒。
 const EDIT_LIMIT: Duration = Duration::from_secs(90);
+/// Timeline のズームと移動は、全部の待ちが上限まで待つと約 70 秒（ふだんは数秒）。
+const ZOOM_LIMIT: Duration = Duration::from_secs(90);
 
 /// スクラブで狙う時刻（秒）。
 const SCRUB_TARGET: f64 = 3.0;
@@ -221,12 +225,7 @@ fn run(env: &TestEnv, telemetry: &Telemetry) -> Value {
     });
     let e = env.clone();
     report["webview"] = stages.run("webview", WEBVIEW_LIMIT, move || {
-        verify_webview::run(&verify_webview::Env {
-            shared: &e.shared,
-            webview: e.app.get_webview("ui"),
-            window_hwnd: e.hwnd,
-            test: &e.test,
-        })
+        verify_webview::run(&e.shared, e.app.get_webview("ui"), e.hwnd, &e.test)
     });
     let e = env.clone();
     report["inspector"] = stages.run("inspector", INSPECTOR_LIMIT, move || inspector_flow(&e));
@@ -234,6 +233,8 @@ fn run(env: &TestEnv, telemetry: &Telemetry) -> Value {
     report["transport"] = stages.run("transport", TRANSPORT_LIMIT, move || transport_flow(&e));
     let e = env.clone();
     report["timeline_edit"] = stages.run("timeline_edit", EDIT_LIMIT, move || timeline_edit(&e));
+    let e = env.clone();
+    report["timeline_zoom"] = stages.run("timeline_zoom", ZOOM_LIMIT, move || timeline_zoom(&e));
     report["restore"] = verify_restore::restore(savepoint.as_ref(), shared);
     report["failed_stages"] = json!(stages.failed);
     let _ = env.target.window.set_always_on_top(false);
@@ -473,21 +474,16 @@ fn timeline_edit(env: &TestEnv) -> Value {
     })
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn スクラブの許容誤差は_1_物理ピクセルが長い全体表示で広がり_下限は_2_フレーム() {
-        // 9:38 の全体表示（1 秒が約 1.25 物理ピクセル）。半画素は 0.4 秒。
-        let wide = scrub_tolerance(1.25, 30.0);
-        assert!((wide - (0.4 + 0.5 / 30.0)).abs() < 1e-6, "{wide}");
-        // 1 秒 125 物理ピクセルなら 2 フレーム。ちょうど 2 フレームずれた結果も許す。
-        let zoomed = scrub_tolerance(125.0, 30.0);
-        assert!(
-            (2.0 / 30.0..2.0 / 30.0 + 1e-6).contains(&zoomed),
-            "{zoomed}"
-        );
-        assert!((3.066_666_666_666_667_f64 - 3.0).abs() <= zoomed);
-    }
+/// Timeline のズームと移動の工程（`verify_zoom`）。
+fn timeline_zoom(env: &TestEnv) -> Value {
+    verify_zoom::run(&verify_zoom::Env {
+        shared: &env.shared,
+        surface_hwnd: env.target.surface_hwnd,
+        window_hwnd: env.hwnd,
+        test: &env.test,
+        webview: env.app.get_webview("ui"),
+    })
 }
+
+#[cfg(test)]
+mod tests;

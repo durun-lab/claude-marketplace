@@ -5,6 +5,8 @@
 (() => {
   const { invoke, Channel } = window.__TAURI__.core;
   const LAYER_SELECTED_EVENT = "mm:layer-selected";
+  // shell が選択の DOM のイベントを聞き始めたときに投げる頼み。今の選択を読んで LAYER_SELECTED_EVENT で答える。
+  const LAYER_SELECTION_REQUEST_EVENT = "mm:layer-selection-request";
   // Media パネルが素材を選んだときに投げる DOM のイベント（detail.asset が素材の ID）。Source で開く。
   const ASSET_SELECTED_EVENT = "mm:asset-selected";
   // 再生位置を shell の Inspector と Graph に知らせる DOM のイベントと、前後のキーフレームへのシークの頼み（detail.time は秒）。
@@ -16,8 +18,10 @@
   const FOCUSABLE = "button, a[href], summary, [role=button], [role=tab], [role=option], [tabindex]";
   // keys.rs の BINDINGS のうち編集（clip.*、edit.*、source.*）のキーと同じ。WebView の部品にフォーカスがあるときの Delete などが Timeline の編集にならないよう、送る前に選ぶ。
   const EDIT_KEYS = new Set([
-    "KeyI", "KeyO", "Comma", "Period", "KeyB", "Delete", "Backspace", "Ctrl+KeyZ", "Ctrl+KeyY", "Ctrl+Shift+KeyZ", "Alt+KeyX",
+    "KeyI", "KeyO", ",", ".", "KeyB", "Delete", "Backspace", "Ctrl+KeyZ", "Ctrl+KeyY", "Ctrl+Shift+KeyZ", "Alt+KeyX",
   ]);
+  // code の名前のキーのうち、Shift を名前に付けるもの（英字、数字、矢印）。keys.rs の with_modifiers と同じ。
+  const SHIFT_NAMED = /^(Key[A-Z]|Digit[0-9]|Arrow(Up|Down|Left|Right))$/;
   const nowUs = () => Math.round((performance.timeOrigin + performance.now()) * 1000);
 
   // 開いているコンポジションの fps と長さ（project_info）。再生位置を進める上限と、再生位置のイベントの fps に使う。
@@ -33,8 +37,15 @@
 
   const act = (action, value) => invoke("transport", { action, value: value ?? null });
   const openSource = (asset) => invoke("source_open", { asset });
-  const keyName = (e) =>
-    (e.ctrlKey ? `Ctrl+${e.shiftKey ? "Shift+" : ""}` : "") + (e.altKey ? "Alt+" : "") + e.code;
+  // キーの表（keys.rs）の名前。英字、数字、矢印、Space などは code の名前（KeyZ）、記号は押された文字（key の 1 字）を名前にし、
+  // JIS と US のキー配列で記号のキーの位置が違っても同じ名前にする。Shift は英字、数字、矢印に付け、記号には付けない
+  // （押された文字に入っている）。Space などほかの名前のキーは Ctrl と一緒のときだけ付ける。
+  const keyName = (e) => {
+    const symbol = e.key.length === 1 && !SHIFT_NAMED.test(e.code) && e.code !== "Space";
+    const shift = e.shiftKey && !symbol && (SHIFT_NAMED.test(e.code) || e.ctrlKey);
+    const mods = (e.ctrlKey ? "Ctrl+" : "") + (shift ? "Shift+" : "") + (e.altKey ? "Alt+" : "");
+    return mods + (symbol ? e.key : e.code);
+  };
 
   // 画面に出した時刻を ack で返し、アプリが通知の遅れと WebView の時計の誤差を測る。
   const onTick = (msg) => {
@@ -47,26 +58,39 @@
     });
   };
 
+  const readSelection = async () => {
+    const detail = await invoke("layer_selection");
+    if (detail) window.dispatchEvent(new CustomEvent(LAYER_SELECTED_EVENT, { detail }));
+  };
+
+  // 選択の Tauri イベントを購読し終えたら解ける。購読より前に Rust が送った選択（起動時の 1 回目）は届かないので、
+  // shell の頼みには購読の後に今の選択を読んで答える。このスクリプトは shell より先に走るので、頼みを取りこぼさない。
+  let markSubscribed;
+  const subscribed = new Promise((resolve) => {
+    markSubscribed = resolve;
+  });
+  window.addEventListener(LAYER_SELECTION_REQUEST_EVENT, () => subscribed.then(readSelection));
+
   const start = async () => {
     info = await invoke("project_info");
     const channel = new Channel();
     channel.onmessage = onTick;
     await invoke("subscribe", { onTick: channel });
     window.addEventListener("keydown", (e) => {
-      // パネルが処理したキー（単語の矢印など）は二重に送らない。
-      if (e.repeat || e.defaultPrevented) return;
+      // パネルが処理したキー（単語の矢印など）は二重に送らない。押し続けの繰り返しも送り、繰り返すかは keys.rs が決める。
+      if (e.defaultPrevented) return;
       const target = e.target instanceof Element ? e.target : null;
       if (target?.closest(TEXT_ENTRY)) return;
       const key = keyName(e);
       if (EDIT_KEYS.has(key) && target?.closest(FOCUSABLE)) return;
       if (e.code === "Space") e.preventDefault();
-      invoke("key_event", { source: "webview", key });
+      invoke("key_event", { source: "webview", key, repeat: e.repeat });
     });
     // 選択かプロジェクトのデータが変わったら、Inspector に中身を渡し、fps と長さを取り直す。
     window.__TAURI__.event.listen(LAYER_SELECTED_EVENT, async (e) => {
       window.dispatchEvent(new CustomEvent(LAYER_SELECTED_EVENT, { detail: e.payload }));
       info = await invoke("project_info");
-    });
+    }).then(markSubscribed);
     window.addEventListener(ASSET_SELECTED_EVENT, (e) => e.detail?.asset && openSource(e.detail.asset));
     window.addEventListener(SEEK_EVENT, (e) => Number.isFinite(e.detail?.time) && act("seek", e.detail.time));
   };

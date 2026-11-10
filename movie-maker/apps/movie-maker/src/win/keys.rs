@@ -1,5 +1,7 @@
 //! キーの表。キーの名前からコマンドの ID を引き、中身の実行は UI のコマンドの表（`commands.rs`）に任せる。
 //! サーフェスと WebView のどちらから来たキーも同じ関数に入れる。
+//! キーの名前は、英字、数字、矢印、Space などは `KeyboardEvent.code` の名前（`KeyZ`）、記号は押された文字（`=`）で、
+//! JIS と US のキー配列で記号のキーの位置が違っても同じ名前になる。WebView の側は `web/transport.js` の `keyName` が同じ決まりで作る。
 
 use std::sync::Arc;
 
@@ -9,9 +11,9 @@ use crate::win::state::Shared;
 /// コマンドの ID とキーの名前の組。ID の名前の順に並べ、同じ ID の中は画面に出すキーを先に置く。
 const BINDINGS: &[(&str, &str)] = &[
     ("clip.extract", "Backspace"),
-    ("clip.insert", "Comma"),
+    ("clip.insert", ","),
     ("clip.lift", "Delete"),
-    ("clip.overwrite", "Period"),
+    ("clip.overwrite", "."),
     ("clip.split", "KeyB"),
     ("edit.redo", "Ctrl+KeyY"),
     ("edit.redo", "Ctrl+Shift+KeyZ"),
@@ -19,45 +21,86 @@ const BINDINGS: &[(&str, &str)] = &[
     ("media.import", "Ctrl+KeyI"),
     ("playback.go_to_end", "End"),
     ("playback.go_to_start", "Home"),
+    ("playback.next_edit", "ArrowDown"),
     ("playback.play_forward", "KeyL"),
     ("playback.play_reverse", "KeyJ"),
+    ("playback.previous_edit", "ArrowUp"),
     ("playback.step_back", "ArrowLeft"),
+    ("playback.step_back_second", "Shift+ArrowLeft"),
     ("playback.step_forward", "ArrowRight"),
+    ("playback.step_forward_second", "Shift+ArrowRight"),
     ("playback.stop", "KeyK"),
     ("playback.toggle", "Space"),
     ("source.clear_in_out", "Alt+KeyX"),
     ("source.mark_in", "KeyI"),
     ("source.mark_out", "KeyO"),
+    ("timeline.full_extent_zoom", "Shift+KeyZ"),
     ("timeline.toggle_snapping", "KeyN"),
+    ("timeline.zoom_in", "="),
+    ("timeline.zoom_in", "+"),
+    ("timeline.zoom_in", "Ctrl+="),
+    ("timeline.zoom_out", "-"),
+    ("timeline.zoom_out", "Ctrl+-"),
 ];
 
-/// 仮想キーコードをキー名にする（WebView の `KeyboardEvent.code` に寄せた名前）。
-pub fn vk_name(vk: u32) -> String {
-    match vk {
-        0x41..=0x5A => format!("Key{}", char::from_u32(vk).unwrap_or('?')),
-        0x30..=0x39 => format!("Digit{}", char::from_u32(vk).unwrap_or('?')),
-        0x20 => "Space".to_owned(),
-        0x23 => "End".to_owned(),
-        0x24 => "Home".to_owned(),
-        0x08 => "Backspace".to_owned(),
-        0x2E => "Delete".to_owned(),
-        0xBC => "Comma".to_owned(),
-        0xBE => "Period".to_owned(),
-        0x25 => "ArrowLeft".to_owned(),
-        0x27 => "ArrowRight".to_owned(),
-        _ => format!("Vk{vk:02X}"),
+/// キーを押し続けたときに、OS のキーの繰り返しのたびに実行するコマンドの ID（ズームと、フレーム、秒、帯の端の移動）。
+/// ID の名前の順。再生と停止、編集、全体表示の行き来は、繰り返すと押した回数より多く働くので最初の押下だけにする。
+const REPEATS: &[&str] = &[
+    "playback.next_edit",
+    "playback.previous_edit",
+    "playback.step_back",
+    "playback.step_back_second",
+    "playback.step_forward",
+    "playback.step_forward_second",
+    "timeline.zoom_in",
+    "timeline.zoom_out",
+];
+
+/// code の名前のキー（英字、数字、矢印、Space など）の仮想キーコードの名前。WebView の `KeyboardEvent.code` と同じ名前にする。
+/// 記号のキーはキー配列でキーの位置が違うので `None` にし、押された文字を名前にする（[`symbol_name`]）。
+pub fn vk_name(vk: u32) -> Option<String> {
+    let name = match vk {
+        0x41..=0x5A => return Some(format!("Key{}", char::from_u32(vk)?)),
+        0x30..=0x39 => return Some(format!("Digit{}", char::from_u32(vk)?)),
+        0x70..=0x7B => return Some(format!("F{}", vk - 0x6F)),
+        0x08 => "Backspace",
+        0x09 => "Tab",
+        0x0D => "Enter",
+        0x1B => "Escape",
+        0x20 => "Space",
+        0x21 => "PageUp",
+        0x22 => "PageDown",
+        0x23 => "End",
+        0x24 => "Home",
+        0x25 => "ArrowLeft",
+        0x26 => "ArrowUp",
+        0x27 => "ArrowRight",
+        0x28 => "ArrowDown",
+        0x2D => "Insert",
+        0x2E => "Delete",
+        _ => return None,
+    };
+    Some(name.to_owned())
+}
+
+/// 記号のキーの名前。押された文字（今のキー配列で、Shift だけを押した状態で文字にしたもの）か、文字にならなければ仮想キーの番号。
+pub fn symbol_name(vk: u32, typed: Option<char>) -> String {
+    match typed {
+        Some(c) => c.to_string(),
+        None => format!("Vk{vk:02X}"),
     }
 }
 
-/// 修飾キーをキー名の前に付ける。Ctrl と Alt は常に、Shift は Ctrl と一緒のときだけ付ける
-/// （Shift を押しながらの Space や矢印は、これまでどおりそのキーとして扱う）。
+/// 修飾キーをキーの名前の前に Ctrl、Shift、Alt の順に付ける。Shift は英字、数字、矢印には付け、記号には付けない
+/// （押された文字に Shift が入っている。JIS のキー配列の `=` は Shift+- で押すが、名前は `=`）。Space などほかの名前のキーは
+/// Ctrl と一緒のときだけ付ける（Shift を押しながらの Space は Space のまま）。
 pub fn with_modifiers(name: &str, ctrl: bool, shift: bool, alt: bool) -> String {
     let mut out = String::new();
     if ctrl {
         out.push_str("Ctrl+");
-        if shift {
-            out.push_str("Shift+");
-        }
+    }
+    if shift && shift_in_name(name, ctrl) {
+        out.push_str("Shift+");
     }
     if alt {
         out.push_str("Alt+");
@@ -66,9 +109,23 @@ pub fn with_modifiers(name: &str, ctrl: bool, shift: bool, alt: bool) -> String 
     out
 }
 
+/// Shift を押したときに、名前 `name` のキーの名前に Shift を付けるか。記号のキーの名前は押された文字 1 字。
+fn shift_in_name(name: &str, ctrl: bool) -> bool {
+    let symbol = name.chars().count() == 1;
+    let named = ["Key", "Digit", "Arrow"]
+        .iter()
+        .any(|p| name.starts_with(p));
+    !symbol && (named || ctrl)
+}
+
 /// キーに割り当てたコマンドの ID。
 pub fn command_for(key: &str) -> Option<&'static str> {
     BINDINGS.iter().find(|(_, k)| *k == key).map(|(id, _)| *id)
+}
+
+/// キー `key` を押し続けたときの繰り返しも、コマンドを実行するか（[`REPEATS`]）。
+pub fn repeats(key: &str) -> bool {
+    command_for(key).is_some_and(|id| REPEATS.contains(&id))
 }
 
 /// コマンドに割り当てたキー。先頭が画面に出すキー。
@@ -78,6 +135,11 @@ pub fn keys_of(id: &str) -> Vec<&'static str> {
         .filter(|(i, _)| *i == id)
         .map(|(_, k)| *k)
         .collect()
+}
+
+/// コマンドのキーを画面に出す見た目（`keys_of` の先頭を `label` に通したもの）。割り当てが無ければ空。
+pub fn key_label_of(id: &str) -> String {
+    keys_of(id).first().map(|k| label(k)).unwrap_or_default()
 }
 
 /// キーの名前の先頭に付く修飾キー。`with_modifiers` が付ける順。
@@ -99,8 +161,6 @@ pub fn label(key: &str) -> String {
         "ArrowRight" => "→",
         "ArrowUp" => "↑",
         "ArrowDown" => "↓",
-        "Comma" => ",",
-        "Period" => ".",
         _ => name
             .strip_prefix("Key")
             .or_else(|| name.strip_prefix("Digit"))
@@ -142,185 +202,4 @@ pub fn release(shared: &Shared, key: &str) {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::win::playback::Command;
-    use std::sync::mpsc::channel;
-
-    #[test]
-    fn 英字と矢印は_code_の名前にする() {
-        assert_eq!(vk_name(0x4A), "KeyJ");
-        assert_eq!(vk_name(0x20), "Space");
-        assert_eq!(vk_name(0x27), "ArrowRight");
-    }
-
-    #[test]
-    fn サーフェスと_webview_のどちらのキーも同じコマンドになる() {
-        let shared = Arc::new(Shared::new());
-        let (tx, rx) = channel();
-        *shared.commands.lock().unwrap() = Some(tx);
-        dispatch(&shared, "surface", "Space");
-        dispatch(&shared, "webview", "Space");
-        dispatch(&shared, "webview", "KeyZ");
-        assert_eq!(rx.try_recv(), Ok(Command::Toggle));
-        assert_eq!(rx.try_recv(), Ok(Command::Toggle));
-        assert!(rx.try_recv().is_err(), "割り当ての無いキーは何も送らない");
-    }
-
-    #[test]
-    fn 修飾キーはキー名の前に付く_shift_は_ctrl_と一緒のときだけ() {
-        assert_eq!(with_modifiers("KeyZ", true, false, false), "Ctrl+KeyZ");
-        assert_eq!(with_modifiers("KeyZ", true, true, false), "Ctrl+Shift+KeyZ");
-        assert_eq!(with_modifiers("Space", false, true, false), "Space");
-        assert_eq!(with_modifiers("KeyX", false, false, true), "Alt+KeyX");
-    }
-
-    #[test]
-    fn キーからコマンドの_id_を引き_持ち主の編集か再生のコマンドを実行する() {
-        use crate::win::commands::{Action, Owner, TimelineAction};
-        use crate::win::edit_actions::EditAction as E;
-        use Command::{Pause, Play, Reverse, Seek, Step, Toggle};
-        let edit = |a| Owner::App(Action::Edit(a));
-        let play = |c| Owner::App(Action::Playback(c));
-        let cases = [
-            ("Alt+KeyX", "source.clear_in_out", edit(E::ClearInOut)),
-            ("KeyI", "source.mark_in", edit(E::MarkIn)),
-            ("KeyO", "source.mark_out", edit(E::MarkOut)),
-            ("Comma", "clip.insert", edit(E::Insert)),
-            ("Period", "clip.overwrite", edit(E::Overwrite)),
-            ("KeyB", "clip.split", edit(E::Split)),
-            ("Delete", "clip.lift", edit(E::Lift)),
-            ("Backspace", "clip.extract", edit(E::Extract)),
-            ("Ctrl+KeyZ", "edit.undo", edit(E::Undo)),
-            ("Ctrl+KeyY", "edit.redo", edit(E::Redo)),
-            ("Ctrl+Shift+KeyZ", "edit.redo", edit(E::Redo)),
-            ("Ctrl+KeyI", "media.import", Owner::Panel("media")),
-            ("Space", "playback.toggle", play(Toggle)),
-            ("KeyJ", "playback.play_reverse", play(Reverse)),
-            ("KeyK", "playback.stop", play(Pause)),
-            ("KeyL", "playback.play_forward", play(Play)),
-            ("ArrowLeft", "playback.step_back", play(Step(-1))),
-            ("ArrowRight", "playback.step_forward", play(Step(1))),
-            ("Home", "playback.go_to_start", play(Seek(0.0))),
-            ("End", "playback.go_to_end", play(Seek(f64::MAX))),
-            (
-                "KeyN",
-                "timeline.toggle_snapping",
-                Owner::App(Action::Timeline(TimelineAction::ToggleSnapping)),
-            ),
-        ];
-        assert_eq!(cases.len(), BINDINGS.len(), "全部のキーを確かめる");
-        for (key, id, owner) in cases {
-            assert_eq!(command_for(key), Some(id), "{key}");
-            let spec = commands::find(id).expect(id);
-            assert_eq!(spec.owner, owner, "{key}");
-        }
-        assert_eq!(command_for("KeyZ"), None);
-        assert_eq!(keys_of("edit.redo"), ["Ctrl+KeyY", "Ctrl+Shift+KeyZ"]);
-        assert!(keys_of("export.start").is_empty());
-    }
-
-    /// ウィンドウのフックに渡ったものを記録する。
-    fn record_forwards(shared: &Shared) -> Arc<std::sync::Mutex<Vec<Forward>>> {
-        let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
-        let sink = seen.clone();
-        shared
-            .window_hook
-            .set(move |f| sink.lock().unwrap().push(f));
-        seen
-    }
-
-    #[test]
-    fn ctrl_i_は_import_media_をウィンドウのフックで_shell_に渡す() {
-        let shared = Arc::new(Shared::new());
-        let seen = record_forwards(&shared);
-        dispatch(&shared, "surface", "Ctrl+KeyI");
-        dispatch(&shared, "webview", "Ctrl+KeyI");
-        assert_eq!(
-            *seen.lock().unwrap(),
-            [
-                Forward::Panel("media.import"),
-                Forward::Panel("media.import")
-            ]
-        );
-    }
-
-    #[test]
-    fn webview_の表に無い_alt_英字はウィンドウにメニューを開かせる() {
-        let shared = Arc::new(Shared::new());
-        let seen = record_forwards(&shared);
-        dispatch(&shared, "webview", "Alt+KeyF");
-        dispatch(&shared, "surface", "Alt+KeyE");
-        dispatch(&shared, "webview", "Ctrl+Alt+KeyE");
-        dispatch(&shared, "webview", "Alt+Digit1");
-        assert_eq!(
-            *seen.lock().unwrap(),
-            [Forward::MenuKey('f')],
-            "サーフェスの Alt+英字は WM_SYSCHAR で開く"
-        );
-        assert_eq!(access_char("Alt+KeyT"), Some('t'));
-        assert_eq!(access_char("Alt+KeyF10"), None);
-        assert_eq!(access_char("KeyF"), None);
-    }
-
-    #[test]
-    fn キーは重ならず_id_の順に並び_指すコマンドは表にある() {
-        for (i, (id, key)) in BINDINGS.iter().enumerate() {
-            let same = BINDINGS.iter().filter(|(_, k)| k == key).count();
-            assert_eq!(same, 1, "{key} が 2 つのコマンドを指す");
-            assert!(commands::find(id).is_some(), "{id} が表に無い");
-            if let Some((next, _)) = BINDINGS.get(i + 1) {
-                assert!(id <= next, "{id} と {next} の順");
-            }
-        }
-    }
-
-    #[test]
-    fn キーの見た目() {
-        assert_eq!(label("KeyB"), "B");
-        assert_eq!(label("Ctrl+KeyZ"), "Ctrl+Z");
-        assert_eq!(label("Ctrl+Shift+KeyZ"), "Ctrl+Shift+Z");
-        assert_eq!(label("Comma"), ",");
-        assert_eq!(label("Period"), ".");
-        assert_eq!(label("ArrowLeft"), "←");
-        assert_eq!(label("Digit1"), "1");
-        assert_eq!(label("Space"), "Space");
-        assert_eq!(label("Delete"), "Delete");
-        assert_eq!(label("Shift+KeyZ"), "Shift+Z");
-        assert_eq!(label("Alt+KeyX"), "Alt+X");
-        assert_eq!(label("ArrowUp"), "↑");
-        assert_eq!(label("+"), "+", "記号のキーは押された文字");
-        assert_eq!(label("Ctrl+="), "Ctrl+=");
-        assert_eq!(label("Ctrl++"), "Ctrl++");
-        assert_eq!(label("-"), "-");
-    }
-
-    #[test]
-    fn n_はスナップの入_切を描画スレッドへ渡し_離すとドラッグ中の反転を戻す() {
-        use mm_ui_layout::PointerEvent;
-        let shared = Arc::new(Shared::new());
-        dispatch(&shared, "surface", "KeyN");
-        release(&shared, "KeyN");
-        release(&shared, "KeyK");
-        dispatch(&shared, "webview", "KeyN");
-        assert_eq!(
-            *shared.input.lock().unwrap(),
-            [
-                PointerEvent::ToggleSnapping,
-                PointerEvent::SnapKeyUp,
-                PointerEvent::ToggleSnapping
-            ],
-            "ドラッグとの前後を保つため、ポインターの入力のキューに入れる。K を離しても何もしない"
-        );
-    }
-
-    #[test]
-    fn source_を開いて向けていれば再生のキーは_source_に行く() {
-        let shared = Arc::new(Shared::new());
-        let (tx, rx) = channel();
-        *shared.commands.lock().unwrap() = Some(tx);
-        shared.source.set_active(true);
-        dispatch(&shared, "surface", "KeyL");
-        assert_eq!(rx.try_recv(), Ok(Command::Play), "素材が無ければ Program");
-    }
-}
+mod tests;

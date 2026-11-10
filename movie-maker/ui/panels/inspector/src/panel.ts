@@ -12,5 +12,11 @@ export const panel = definePanel({
   column: "right",
   order: 10,
   render: ({ selection, sendOp }) =>
-    h(KeyframePanels, { layer: selection.layer, assets: selection.assets, onOp: sendOp, lookup }),
+    h(KeyframePanels, {
+      layer: selection.layer,
+      assets: selection.assets,
+      composition: selection.composition,
+      onOp: sendOp,
+      lookup,
+    }),
 });

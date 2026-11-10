@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { ASSET_SELECTED_EVENT } from "@mm/sdk";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { PLAYHEAD_EVENT, SEEK_EVENT } from "../../panels/inspector/src/KeyframePanels.tsx";
-import { LAYER_SELECTED_EVENT } from "./Shell.tsx";
+import { LAYER_SELECTED_EVENT, LAYER_SELECTION_REQUEST_EVENT } from "./Shell.tsx";
 
 /**
  * アプリが initialization_script で shell に入れる WebView の橋。jsdom の試験は Vite が `new URL(…, import.meta.url)` を
@@ -12,11 +12,13 @@ import { LAYER_SELECTED_EVENT } from "./Shell.tsx";
  */
 const BRIDGE = readFileSync(resolve(import.meta.dirname, "../../../apps/movie-maker/web/transport.js"), "utf8");
 const INFO = { fps: 30, duration: 10 };
+const SELECTION = { layer: null, assets: [], composition: null };
+const ANSWERS: Record<string, unknown> = { project_info: INFO, layer_selection: SELECTION };
 
 type Handler = (e: { payload: unknown }) => void;
 const tauriEvents = new Map<string, Handler>();
-const invoke = vi.fn<(command: string, args?: Record<string, unknown>) => Promise<unknown>>(async (command) =>
-  command === "project_info" ? INFO : undefined,
+const invoke = vi.fn<(command: string, args?: Record<string, unknown>) => Promise<unknown>>(
+  async (command) => ANSWERS[command],
 );
 
 /** Tauri の Channel の代わり。 */
@@ -70,20 +72,21 @@ describe("WebView の橋のキー", () => {
     expect(channel?.onmessage).toBeTypeOf("function");
   });
 
-  it("WebView のキーをアプリのキーの表に送り、Space はページのスクロールに使わせない", () => {
+  it("WebView のキーをアプリのキーの表に送り、押し続けは繰り返しの印を付け、Space はページのスクロールに使わせない", () => {
     const space = key({ code: "Space", key: " " });
     key({ code: "KeyZ", key: "Z", ctrlKey: true, shiftKey: true });
+    key({ code: "KeyL", key: "l", repeat: true });
     expect(argsOf("key_event")).toEqual([
-      { source: "webview", key: "Space" },
-      { source: "webview", key: "Ctrl+Shift+KeyZ" },
+      { source: "webview", key: "Space", repeat: false },
+      { source: "webview", key: "Ctrl+Shift+KeyZ", repeat: false },
+      { source: "webview", key: "KeyL", repeat: true },
     ]);
     expect(space.defaultPrevented).toBe(true);
   });
 
-  it("入力欄のキー、押し続け、パネルが処理したキーは送らない", () => {
+  it("入力欄のキーと、パネルが処理したキーは送らない", () => {
     const input = document.body.appendChild(document.createElement("input"));
     key({ code: "Space", key: " " }, input);
-    key({ code: "KeyL", key: "l", repeat: true });
     const panel = document.body.appendChild(document.createElement("div"));
     panel.addEventListener("keydown", (e) => e.preventDefault());
     key({ code: "ArrowLeft", key: "ArrowLeft" }, panel);
@@ -94,8 +97,9 @@ describe("WebView の橋のキー", () => {
     const button = document.body.appendChild(document.createElement("button"));
     key({ code: "Delete", key: "Delete" }, button);
     key({ code: "KeyX", key: "x", altKey: true }, button);
+    key({ code: "Comma", key: "," }, button);
     key({ code: "Space", key: " " }, button);
-    expect(argsOf("key_event")).toEqual([{ source: "webview", key: "Space" }]);
+    expect(argsOf("key_event")).toEqual([{ source: "webview", key: "Space", repeat: false }]);
   });
 });
 
@@ -120,6 +124,14 @@ describe("WebView の橋のイベント", () => {
     await flush();
     expect(seen).toEqual([{ layer: null, assets: [] }]);
     expect(argsOf("project_info")).toHaveLength(1);
+  });
+
+  it("shell の頼みには、今の選択を読んで選択の DOM のイベントで答える", async () => {
+    const seen = record(LAYER_SELECTED_EVENT);
+    window.dispatchEvent(new CustomEvent(LAYER_SELECTION_REQUEST_EVENT));
+    await flush();
+    expect(argsOf("layer_selection")).toHaveLength(1);
+    expect(seen).toEqual([SELECTION]);
   });
 
   it("パネルが選んだ素材は Source で開き、シークの頼みは再生位置を動かす", () => {

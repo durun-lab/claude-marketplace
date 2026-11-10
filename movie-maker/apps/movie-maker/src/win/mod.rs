@@ -17,6 +17,7 @@ mod history;
 mod hotpatch;
 mod inspector_ipc;
 mod ipc;
+mod keyboard;
 mod keys;
 mod layout;
 mod media;
@@ -48,6 +49,7 @@ mod verify_restore;
 mod verify_stage;
 mod verify_transport;
 mod verify_webview;
+mod verify_zoom;
 mod view_state;
 
 pub use app::run;

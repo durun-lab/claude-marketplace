@@ -151,6 +151,11 @@ fn タイムコードは_時_分_秒_フレームで_フレームは時刻を含
         "00:00:01:00",
         "fps が 0 でもおかしくならない"
     );
+    assert_eq!(
+        timecode(83.5, 30000.0 / 1001.0),
+        "00:01:23:12",
+        "29.97 fps は 29.97 で数えたフレームを 1 秒 30 フレームで書く（ノンドロップ）"
+    );
 }
 
 #[test]
@@ -235,7 +240,7 @@ fn controller(m: &TimelineModel) -> TimelineController {
         px_per_sec: 100.0,
     });
     c.set_rows(Rows::of(&m.items, &RowHeights::default()));
-    c.resize((800.0, 100.0));
+    c.resize((800.0, 120.0));
     c
 }
 

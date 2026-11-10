@@ -77,6 +77,13 @@ impl Seeks {
         }
     }
 
+    /// キーとメニューの Timeline のコマンドのシーク（前後の帯の端）。Home と End と同じく再生を止めずにすぐ送り、
+    /// それより前に溜めた Program のシークは捨てる（後の入力が勝つ）。
+    pub(super) fn jump(&mut self, shared: &Shared, t: f64) {
+        self.program = None;
+        shared.send(Command::Seek(t));
+    }
+
     /// 溜めたシークを送る。スクラブは再生を止めて位置を追う（Timeline の目盛りのクリックと同じ）。
     pub(super) fn send(self, shared: &Shared) {
         if let Some(t) = self.program {
@@ -135,5 +142,18 @@ mod tests {
             rx.try_iter().collect::<Vec<_>>(),
             [Command::Pause, Command::Seek(2.0)]
         );
+    }
+
+    #[test]
+    fn 前後の帯の端へのシークは再生を止めずにすぐ送り_前に溜めたスクラブを捨てる() {
+        let shared = Shared::new();
+        let (tx, rx) = channel();
+        *shared.commands.lock().unwrap() = Some(tx);
+        shared.playing.store(true, Ordering::SeqCst);
+        let mut seeks = Seeks::default();
+        seeks.set(Viewer::Program, 1.0);
+        seeks.jump(&shared, 2.0);
+        seeks.send(&shared);
+        assert_eq!(rx.try_iter().collect::<Vec<_>>(), [Command::Seek(2.0)]);
     }
 }

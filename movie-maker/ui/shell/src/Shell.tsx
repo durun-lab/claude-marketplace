@@ -16,6 +16,9 @@ import { PANELS } from "./registry.ts";
 /** 選択の変わったことを知らせるイベント。アプリの WebView の橋（`apps/movie-maker/web/transport.js`）が、Timeline の選択の Tauri イベントをこの名前の DOM のイベントにつなぐ。 */
 export const LAYER_SELECTED_EVENT = "mm:layer-selected";
 
+/** Shell が選択のイベントを聞き始めたときに投げる頼み。アプリの WebView の橋（`transport.js`）が、今の選択を読んで選択のイベントで答える。 */
+export const LAYER_SELECTION_REQUEST_EVENT = "mm:layer-selection-request";
+
 export type { LayerSelection };
 
 export interface ShellProps {
@@ -57,6 +60,8 @@ const useLayerSelection = (): LayerSelection => {
   useEffect(() => {
     const onSelected = (e: Event) => setSelection((e as CustomEvent<LayerSelection>).detail);
     window.addEventListener(LAYER_SELECTED_EVENT, onSelected);
+    // 起動時の選択は Shell が聞き始める前に送られて届かないので、聞き始めてから今の選択を頼む。
+    window.dispatchEvent(new CustomEvent(LAYER_SELECTION_REQUEST_EVENT));
     return () => window.removeEventListener(LAYER_SELECTED_EVENT, onSelected);
   }, []);
   return selection;

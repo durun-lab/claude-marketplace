@@ -6,19 +6,22 @@ use mm_audio_api::{AudioBlock, DEFAULT_CHANNELS, DEFAULT_SAMPLE_RATE};
 
 use super::Command;
 
-/// 受けたコマンドに、すでに届いているコマンドを続けて取り出す。連続するシークは最後の 1 つにまとめる。
+/// 受けたコマンドに、すでに届いているコマンドを続けて取り出す。連続するシークと移動は 1 つにまとめる。
 pub(super) fn collect_batch(first: Command, rx: &Receiver<Command>) -> Vec<Command> {
     let mut batch = vec![first];
     batch.extend(rx.try_iter());
-    coalesce_seeks(batch)
+    coalesce(batch)
 }
 
-/// 連続するシークを最後の 1 つにする。スクラブで積まれた古い位置を描いて、プレビューが遅れるのを防ぐ。
-pub fn coalesce_seeks(commands: Vec<Command>) -> Vec<Command> {
+/// 連続するシークを最後の 1 つにし、連続するフレームと秒の移動は量を足して 1 つにする。スクラブや矢印の押し続けで
+/// 積まれた古い位置を 1 つずつ描いて、プレビューが遅れたり、キーを離した後も進み続けたりするのを防ぐ。
+pub fn coalesce(commands: Vec<Command>) -> Vec<Command> {
     let mut out: Vec<Command> = Vec::with_capacity(commands.len());
     for cmd in commands {
-        match out.last_mut() {
-            Some(last @ Command::Seek(_)) if matches!(cmd, Command::Seek(_)) => *last = cmd,
+        match (out.last_mut(), cmd) {
+            (Some(last @ Command::Seek(_)), Command::Seek(_)) => *last = cmd,
+            (Some(Command::Step(n)), Command::Step(m)) => *n += m,
+            (Some(Command::StepSeconds(n)), Command::StepSeconds(m)) => *n += m,
             _ => out.push(cmd),
         }
     }
@@ -44,7 +47,7 @@ mod tests {
     #[test]
     fn 連続するシークは最後の1つにまとまり_間のコマンドは順序を保つ() {
         let seeks: Vec<Command> = (0..1000).map(|i| Command::Seek(f64::from(i))).collect();
-        assert_eq!(coalesce_seeks(seeks), vec![Command::Seek(999.0)]);
+        assert_eq!(coalesce(seeks), vec![Command::Seek(999.0)]);
         let mixed = vec![
             Command::Seek(1.0),
             Command::Seek(2.0),
@@ -54,13 +57,31 @@ mod tests {
             Command::Play,
         ];
         assert_eq!(
-            coalesce_seeks(mixed),
+            coalesce(mixed),
             vec![
                 Command::Seek(2.0),
                 Command::Step(1),
                 Command::Seek(4.0),
                 Command::Play
             ]
+        );
+    }
+
+    #[test]
+    fn 連続するフレームと秒の移動は量を足して_1_つにする() {
+        use Command::{Pause, Step, StepSeconds};
+        let held = vec![
+            Step(1),
+            Step(1),
+            Step(1),
+            StepSeconds(-1),
+            StepSeconds(-1),
+            Pause,
+            Step(-1),
+        ];
+        assert_eq!(
+            coalesce(held),
+            vec![Step(3), StepSeconds(-2), Pause, Step(-1)]
         );
     }
 
