@@ -21,6 +21,7 @@ use crate::win::verify_place::{placement, Placement};
 use crate::win::verify_stage::{checkpoint, wait_until};
 
 mod header;
+mod keyframes;
 
 /// 仮想キーコード。
 const VK_I: u32 = 0x49;
@@ -473,6 +474,7 @@ pub fn run(env: &Env<'_>) -> Value {
         sequence_steps(env, &mut log);
     }
     header::run(env, &mut log);
+    keyframes::run(env, &mut log);
     let mut out = log.into_json();
     if !has_sequence {
         out["skipped"] =

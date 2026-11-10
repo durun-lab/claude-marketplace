@@ -3,8 +3,9 @@
 //! ズーム、スクロール、行の高さは、描画スレッドが置いた表示の状態（`ViewSlot::current`）を読む。
 
 use mm_ui_layout::{
-    button_center, name_center, split_viewers, zoombar, HeaderButton, Item, Rect, Rows, Scale,
-    SurfaceLayout, TimelineLayout, TimelineModel, ViewState, Viewport,
+    button_center, disclosure_center, keyframe_center, name_center, split_viewers, zoombar,
+    HeaderButton, Item, Rect, Rows, Scale, SurfaceLayout, TimelineLayout, TimelineModel, ViewState,
+    Viewport, ROW_DIAMOND_PX,
 };
 
 use crate::win::state::Shared;
@@ -95,6 +96,25 @@ impl Placement {
     pub(crate) fn header_name(&self, item: &Item, row: usize, dy: f32) -> (i32, i32) {
         let (x, y) = name_center(&self.viewport(), item, row);
         self.client((x, y + dy))
+    }
+
+    /// 行 `row` の見出しのキーフレームの開閉（▸）の中心（クライアントの物理ピクセル）。
+    pub(crate) fn disclosure(&self, item: &Item, row: usize) -> (i32, i32) {
+        self.client(disclosure_center(&self.viewport(), item, row))
+    }
+
+    /// 行 `row` の下のキーフレームの行 `k` の、時刻 `t` のひし形の中心から `dx` ずらした点（クライアントの物理ピクセル）。
+    pub(crate) fn keyframe_point(&self, (row, k): (usize, usize), t: f64, dx: f32) -> (i32, i32) {
+        let (x, y) = keyframe_center(&self.viewport(), (row, k), t);
+        self.client((x + dx, y))
+    }
+
+    /// 行 `row` の下のキーフレームの行 `k` の、時刻 `t` のひし形が行の領域に全部見えているか。
+    pub(crate) fn keyframe_visible(&self, (row, k): (usize, usize), t: f64) -> bool {
+        let (x, y) = keyframe_center(&self.viewport(), (row, k), t);
+        let half = ROW_DIAMOND_PX / 2.0;
+        let a = self.timeline.row_area;
+        x - half >= a.x && x + half <= a.right() && y - half >= a.y && y + half <= a.bottom()
     }
 
     /// 目盛りの帯の縦の中央の、時刻 `t` の点（クライアントの物理ピクセル）。
