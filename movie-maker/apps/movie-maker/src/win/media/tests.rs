@@ -280,3 +280,20 @@ fn 選択かドロップで渡されていないパスは取り込まない() {
         "選んだパスは受ける（無いファイルは素材ごとの失敗）"
     );
 }
+
+#[test]
+fn 取り込みを終えると描画スレッドへの知らせが進み_断った取り込みでは進まない() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = state_with(dir.path(), vec![]);
+    let picked = dir.path().join("picked.mp4");
+    state.offer([picked.clone()]);
+    let serial = || state.shared.ingest_serial.load(Ordering::SeqCst);
+    let emit = |_| {};
+    assert!(state
+        .import(&["C:/Windows/win.ini".to_owned()], &emit)
+        .is_err());
+    assert_eq!(serial(), 0);
+    let path = picked.to_string_lossy().into_owned();
+    assert!(state.import(&[path], &emit).is_ok());
+    assert_eq!(serial(), 1, "素材ごとに失敗しても、取り込みを終えたら進む");
+}

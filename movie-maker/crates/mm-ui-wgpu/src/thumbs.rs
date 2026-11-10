@@ -177,6 +177,16 @@ impl Slots {
         self.entries.retain(|_, e| *e != Entry::Missing);
     }
 
+    /// `key` が読めなかったサムネイルか。
+    pub(crate) fn is_missing(&self, key: &str) -> bool {
+        self.entries.get(key) == Some(&Entry::Missing)
+    }
+
+    /// 読めなかったサムネイルが 1 つでもあるか。
+    pub(crate) fn has_missing(&self) -> bool {
+        self.entries.values().any(|e| *e == Entry::Missing)
+    }
+
     /// スロットに入っているサムネイルの数。
     pub(crate) fn resident(&self) -> usize {
         self.entries
@@ -191,6 +201,8 @@ pub(crate) struct ThumbRenderer {
     format: wgpu::TextureFormat,
     slots: Slots,
     gpu: Option<Gpu>,
+    /// 直近のフレームで描いた数。
+    drawn: u32,
 }
 
 impl ThumbRenderer {
@@ -199,6 +211,7 @@ impl ThumbRenderer {
             format,
             slots: Slots::new(CAPACITY),
             gpu: None,
+            drawn: 0,
         }
     }
 
@@ -210,8 +223,20 @@ impl ThumbRenderer {
         self.slots.retry_missing();
     }
 
+    pub(crate) fn is_missing(&self, key: &str) -> bool {
+        self.slots.is_missing(key)
+    }
+
+    pub(crate) fn has_missing(&self) -> bool {
+        self.slots.has_missing()
+    }
+
     pub(crate) fn resident(&self) -> usize {
         self.slots.resident()
+    }
+
+    pub(crate) fn drawn(&self) -> u32 {
+        self.drawn
     }
 
     /// 読み込んだサムネイル `cell`（`cell_from_rgb` の大きさ）をスロットに書く。`None` と大きさ違いは読めなかったサムネイルとして覚える。
@@ -274,11 +299,13 @@ impl ThumbRenderer {
                 })
             })
             .collect();
+        self.drawn = 0;
         let Some(gpu) = self.gpu.as_mut().filter(|_| !instances.is_empty()) else {
             return 0;
         };
         gpu.write(device, queue, &instances, viewport);
-        instances.len() as u32
+        self.drawn = instances.len() as u32;
+        self.drawn
     }
 
     /// `prepare` が返した数のサムネイルを 1 回で描く。

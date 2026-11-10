@@ -79,7 +79,30 @@ fn small_の行と鍵の無い帯には出さない() {
 }
 
 #[test]
-fn 読めなかったサムネイルはサムネイルなしで描き続け_サーフェスを作り直した_ui_はもう一度頼む() {
+fn 読めなかったサムネイルは帯から外して名前を左に戻し_編集の後も頼み直さない() {
+    let Some((device, queue)) = gpu() else { return };
+    let mut plain = ui(&device, &model(false), None);
+    let without = render_sized(&device, &queue, &mut plain, (W, H));
+    let m = model(true);
+    let mut ui = ui(&device, &m, None);
+    let pending = render_sized(&device, &queue, &mut ui, (W, H));
+    ui.take_thumb_requests();
+    ui.set_thumb(&device, &queue, "k", None);
+    let missing = render_sized(&device, &queue, &mut ui, (W, H));
+    assert!(missing == without, "名前を右へずらさない");
+    assert!(pending != without, "読み込みを待つ間は名前の左を空けておく");
+    assert_eq!(ui.thumb_stats().dropped, 1);
+    ui.update_model(m.clone());
+    render_sized(&device, &queue, &mut ui, (W, H));
+    assert!(
+        ui.take_thumb_requests().is_empty(),
+        "読めなかったサムネイルは編集の後も頼み直さない"
+    );
+    assert_eq!(ui.thumb_stats().dropped, 1, "置き換えたモデルからも外す");
+}
+
+#[test]
+fn 取り込みを終えたら読めなかったサムネイルを帯に戻して頼み直し_届いたら描く() {
     let Some((device, queue)) = gpu() else { return };
     let m = model(true);
     let mut ui = ui(&device, &m, None);
@@ -87,31 +110,10 @@ fn 読めなかったサムネイルはサムネイルなしで描き続け_サ�
     ui.take_thumb_requests();
     ui.set_thumb(&device, &queue, "k", None);
     render_sized(&device, &queue, &mut ui, (W, H));
-    assert!(
-        ui.take_thumb_requests().is_empty(),
-        "読めなかったサムネイルは頼み直さない"
-    );
-    assert_eq!(ui.thumb_stats().drawn, 0);
-    // サーフェスを作り直す（Lost）と、アトラスは空から作り直し、同じサムネイルをもう一度頼む。
-    ui.reset_thumbs();
+    ui.retry_thumbs();
     render_sized(&device, &queue, &mut ui, (W, H));
     assert_eq!(ui.take_thumb_requests().len(), 1);
-}
-
-#[test]
-fn アトラスを作り直すと届いていたサムネイルも頼み直し_届いたら描く() {
-    let Some((device, queue)) = gpu() else { return };
-    let m = model(true);
-    let mut ui = ui(&device, &m, None);
-    render_sized(&device, &queue, &mut ui, (W, H));
-    ui.take_thumb_requests();
-    ui.set_thumb(&device, &queue, "k", Some(&red_cell()));
-    render_sized(&device, &queue, &mut ui, (W, H));
-    assert_eq!(ui.thumb_stats().drawn, 1);
-    ui.reset_thumbs();
-    render_sized(&device, &queue, &mut ui, (W, H));
     assert_eq!(ui.thumb_stats(), ThumbStats::default());
-    assert_eq!(ui.take_thumb_requests().len(), 1);
     ui.set_thumb(&device, &queue, "k", Some(&red_cell()));
     render_sized(&device, &queue, &mut ui, (W, H));
     assert_eq!(ui.thumb_stats().drawn, 1);

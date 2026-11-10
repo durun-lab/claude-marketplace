@@ -40,7 +40,7 @@ fn 無いファイルと壊れたファイルは_none() {
 fn 読み込みは別のスレッドで行い_鍵ごとに結果を返す() {
     let dir = tempfile::tempdir().unwrap();
     write_thumb(dir.path(), "good", RED_BLUE);
-    let sync = ThumbSync::new(CacheLayout::new(dir.path()));
+    let sync = ThumbSync::new(&Shared::new(), CacheLayout::new(dir.path()));
     for key in ["good", "gone"] {
         sync.requests.send(key.into()).unwrap();
     }

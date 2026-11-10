@@ -67,16 +67,18 @@ fn 全部が見えていれば捨てず_少し待ってから頼み直す() {
 }
 
 #[test]
-fn 読めなかったサムネイルは頼み直さず_モデルが変わったら頼み直す() {
+fn 読めなかったサムネイルは頼み直さず_取り込みを終えたら頼み直す() {
     let mut s = Slots::new(2);
     s.begin_frame();
     s.look(&key("a"));
     s.take_requests();
     s.missing("a");
+    assert!(s.is_missing("a") && s.has_missing());
     s.begin_frame();
     assert_eq!(s.look(&key("a")), None);
     assert!(s.take_requests().is_empty());
     s.retry_missing();
+    assert!(!s.has_missing());
     s.begin_frame();
     s.look(&key("a"));
     assert_eq!(s.take_requests(), [key("a")]);

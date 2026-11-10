@@ -26,6 +26,7 @@ mod thumbs;
 mod transport;
 mod view;
 
+use thumbs::DroppedThumbs;
 pub use thumbs::ThumbStats;
 
 /// サーフェスの上のどの領域か。
@@ -48,8 +49,8 @@ pub struct Ui {
     program: ProgramViewer,
     /// 帯の先頭のサムネイル。
     thumbs: ThumbRenderer,
-    /// 直近のフレームで描いたサムネイルの数。
-    thumbs_drawn: u32,
+    /// 読めなかったので帯から外したサムネイルのキー。
+    dropped_thumbs: DroppedThumbs,
     /// Program の上に重ねる描き込み。
     drawing: DrawingLayer,
     /// 表示の倍率（DPI / 96）。
@@ -86,7 +87,7 @@ impl Ui {
             font: UiFont::default(),
             program: ProgramViewer::new(device, format),
             thumbs: ThumbRenderer::new(format),
-            thumbs_drawn: 0,
+            dropped_thumbs: DroppedThumbs::default(),
             drawing: DrawingLayer::new(device, format),
             scale: Scale::ONE,
             source: ProgramViewer::new(device, format),
@@ -161,17 +162,17 @@ impl Ui {
 
     /// Timeline に出すもの。最初に渡されたときに全体表示にし、sequence の行が見える所までスクロールする。
     pub fn set_model(&mut self, model: TimelineModel) {
-        self.thumbs.retry_missing();
         self.model = model;
+        self.drop_missing_thumbs();
         self.opened = false;
         self.relayout_rows();
     }
 
     /// 編集で並びや長さが変わったモデルに置き換える。拡大とスクロールは保ち、範囲の外の選択だけ外す。
     pub fn update_model(&mut self, model: TimelineModel) {
-        self.thumbs.retry_missing();
         self.controller.model_changed(&model);
         self.model = model;
+        self.drop_missing_thumbs();
         self.relayout_rows();
     }
 

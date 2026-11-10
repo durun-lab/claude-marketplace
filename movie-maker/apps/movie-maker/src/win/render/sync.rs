@@ -1,17 +1,52 @@
 //! 描画スレッドの、共有状態と UI の行き来。Timeline に出すプロジェクトのデータ、Source のフレーム、
 //! ポインターの入力から選択とシークとドラッグの編集へ。
 
+use std::path::Path;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
+use mm_ingest::CacheLayout;
 use mm_render_api::tone_map_peak;
 use mm_ui_layout::{Action, EditKind, PointerEvent, TransportAction, Viewer};
 use mm_ui_wgpu::{timeline_cut_ids, timeline_layer_ids, timeline_model, Region, Ui};
 
-use super::transport::{self, Seeks};
+use super::thumbs::ThumbSync;
+use super::transport::{self, Seeks, TransportSync};
 use super::View;
+use crate::win::review::drawing::DrawingSync;
 use crate::win::sequence_edit::{gesture_op, TimelineIds};
 use crate::win::state::{FrameImage, OpenDoc, Shared};
+
+/// 描画スレッドが共有状態から `Ui` へ渡したものの控え。`Ui` を作り直したら一緒に作り直す。
+pub(super) struct Syncs {
+    pub(super) doc: DocSync,
+    source: SourceSync,
+    drawing: DrawingSync,
+    thumbs: ThumbSync,
+    transport: TransportSync,
+}
+
+impl Syncs {
+    /// `cache` は `<project>/cache`（帯のサムネイルを読む）。
+    pub(super) fn new(shared: &Shared, cache: &Path) -> Self {
+        Self {
+            doc: DocSync::default(),
+            source: SourceSync::default(),
+            drawing: DrawingSync::default(),
+            thumbs: ThumbSync::new(shared, CacheLayout::new(cache)),
+            transport: TransportSync::default(),
+        }
+    }
+
+    /// 共有状態の変わった所を `view` の `Ui` に渡す。
+    pub(super) fn refresh(&mut self, shared: &Shared, view: &mut View) {
+        self.doc.refresh(shared, &mut view.ui);
+        self.source.refresh(shared, view);
+        self.drawing.refresh(shared, &mut view.ui);
+        self.thumbs.refresh(shared, &view.gpu, &mut view.ui);
+        self.transport.refresh(shared, &mut view.ui);
+    }
+}
 
 /// 編集で変わったプロジェクトのデータを Timeline に反映する。Timeline の添字とレイヤー、カットの ID の対応も持つ。
 #[derive(Default)]

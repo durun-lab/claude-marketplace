@@ -4,6 +4,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex, TryLockError};
 
 use mm_doc::Asset;
@@ -311,6 +312,7 @@ impl MediaState {
         let known = || self.assets().into_iter().map(|a| a.content_hash).collect();
         let apply = |op: Op| crate::win::edit::submit(&self.shared, vec![op]).map(|_| ());
         run_import(&opts, paths, &known, &apply, emit);
+        self.shared.ingest_serial.fetch_add(1, Ordering::SeqCst);
         Ok(())
     }
 }

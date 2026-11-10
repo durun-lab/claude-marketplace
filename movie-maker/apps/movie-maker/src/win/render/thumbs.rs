@@ -1,8 +1,10 @@
 //! Timeline の帯の先頭のサムネイルの読み込み。キャッシュの `thumbs/`（Media のパネルと同じ JPEG）を別のスレッドで読み、
 //! 描画スレッドは届いた分だけを `Ui` に渡す。描画を待たせず、届くまではサムネイルなしで描く。
-//! `Ui` を作り直したとき（サーフェスの作り直し）はこれも作り直し、新しいアトラスにサムネイルを詰め直す。
+//! 素材の取り込みを終えたら、読めなかったサムネイルを `Ui` に読み直させる（取り込みでキャッシュにできたかもしれない）。
+//! `Ui` を作り直したとき（レンダラーの GPU が変わったとき）はこれも作り直し、新しいアトラスにサムネイルを詰め直す。
 
 use std::path::Path;
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
 
@@ -11,22 +13,25 @@ use mm_ingest::CacheLayout;
 use mm_ui_wgpu::{cell_from_rgb, Ui};
 
 use super::Gpu;
+use crate::win::state::Shared;
 
 /// 1 フレームにスロットへ書くサムネイルの数の上限。一度に大量に届いても、フレームを延ばさない。
 const UPLOADS_PER_FRAME: usize = 16;
 
-/// 読み込み 1 件の結果。鍵と、スロットの大きさの RGBA8（読めなければ `None`）。
+/// 読み込み 1 件の結果。キーと、スロットの大きさの RGBA8（読めなければ `None`）。
 type Loaded = (Arc<str>, Option<Vec<u8>>);
 
 /// `Ui` が頼んだサムネイルを読むスレッドと、その結果を受ける口。落とすとスレッドが止まる。
 pub(super) struct ThumbSync {
     requests: Sender<Arc<str>>,
     loaded: Receiver<Loaded>,
+    /// 最後に見た `Shared::ingest_serial`。
+    seen_ingest: u64,
 }
 
 impl ThumbSync {
-    /// `cache` は `<project>/cache`。
-    pub(super) fn new(cache: CacheLayout) -> Self {
+    /// `cache` は `<project>/cache`。作った時点より前の取り込みは、`Ui` が最初に頼むときに読むので数えない。
+    pub(super) fn new(shared: &Shared, cache: CacheLayout) -> Self {
         let (requests, wanted) = channel::<Arc<str>>();
         let (done, loaded) = channel::<Loaded>();
         std::thread::Builder::new()
@@ -40,11 +45,21 @@ impl ThumbSync {
                 }
             })
             .expect("thumbs thread");
-        Self { requests, loaded }
+        Self {
+            requests,
+            loaded,
+            seen_ingest: shared.ingest_serial.load(Ordering::SeqCst),
+        }
     }
 
-    /// `ui` が新たに頼んだサムネイルを読むスレッドに渡し、読み終えたサムネイルを `ui` に渡す。
-    pub(super) fn refresh(&mut self, gpu: &Gpu, ui: &mut Ui) {
+    /// 取り込みを終えていれば `ui` に読み直させ、`ui` が新たに頼んだサムネイルを読むスレッドに渡し、
+    /// 読み終えたサムネイルを `ui` に渡す。
+    pub(super) fn refresh(&mut self, shared: &Shared, gpu: &Gpu, ui: &mut Ui) {
+        let ingest = shared.ingest_serial.load(Ordering::SeqCst);
+        if ingest != self.seen_ingest {
+            self.seen_ingest = ingest;
+            ui.retry_thumbs();
+        }
         for key in ui.take_thumb_requests() {
             let _ = self.requests.send(key);
         }

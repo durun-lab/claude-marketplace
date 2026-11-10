@@ -156,6 +156,9 @@ pub struct Shared {
     doc: Mutex<Option<OpenDoc>>,
     /// `doc` を置き直すたびに進む。読む側が作り直すかどうかの判定に使う。
     pub doc_serial: AtomicU64,
+    /// 素材の取り込みを終えるたびに進む。キャッシュ（帯のサムネイルなど）ができたかもしれないことを描画スレッドに知らせる。
+    /// 取り込み済みの素材をもう一度取り込んだときはプロジェクトのデータが変わらないので、`doc_serial` とは別に持つ。
+    pub ingest_serial: AtomicU64,
     /// Timeline で選んだレイヤーの ID。
     selected_layer: Mutex<Option<String>>,
     /// 選択を置き直すたびに進む。
@@ -201,6 +204,7 @@ impl Shared {
             history: HistoryMirror::default(),
             doc: Mutex::new(None),
             doc_serial: AtomicU64::new(0),
+            ingest_serial: AtomicU64::new(0),
             selected_layer: Mutex::new(None),
             selection_serial: AtomicU64::new(0),
             edit: EditState::default(),
