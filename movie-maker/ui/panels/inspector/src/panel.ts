@@ -16,6 +16,7 @@ export const panel = definePanel({
       layer: selection.layer,
       assets: selection.assets,
       composition: selection.composition,
+      param: selection.param,
       onOp: sendOp,
       lookup,
     }),

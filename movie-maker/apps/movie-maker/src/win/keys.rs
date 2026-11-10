@@ -20,6 +20,8 @@ const BINDINGS: &[(&str, &str)] = &[
     ("edit.undo", "Ctrl+KeyZ"),
     ("media.import", "Ctrl+KeyI"),
     ("playback.go_to_end", "End"),
+    ("playback.go_to_next_keyframe", "]"),
+    ("playback.go_to_previous_keyframe", "["),
     ("playback.go_to_start", "Home"),
     ("playback.next_edit", "ArrowDown"),
     ("playback.play_forward", "KeyL"),
@@ -35,6 +37,8 @@ const BINDINGS: &[(&str, &str)] = &[
     ("source.mark_in", "KeyI"),
     ("source.mark_out", "KeyO"),
     ("timeline.full_extent_zoom", "Shift+KeyZ"),
+    ("timeline.remove_keyframe", "Delete"),
+    ("timeline.show_keyframe_editor", "KeyU"),
     ("timeline.toggle_snapping", "KeyN"),
     ("timeline.zoom_in", "="),
     ("timeline.zoom_in", "+"),
@@ -43,9 +47,12 @@ const BINDINGS: &[(&str, &str)] = &[
     ("timeline.zoom_out", "Ctrl+-"),
 ];
 
-/// キーを押し続けたときに、OS のキーの繰り返しのたびに実行するコマンドの ID（ズームと、フレーム、秒、帯の端の移動）。
-/// ID の名前の順。再生と停止、編集、全体表示の行き来は、繰り返すと押した回数より多く働くので最初の押下だけにする。
+/// キーを押し続けたときに、OS のキーの繰り返しのたびに実行するコマンドの ID（ズームと、フレーム、秒、帯の端、
+/// キーフレームの移動）。ID の名前の順。再生と停止、編集、全体表示の行き来は、繰り返すと押した回数より多く働くので
+/// 最初の押下だけにする。
 const REPEATS: &[&str] = &[
+    "playback.go_to_next_keyframe",
+    "playback.go_to_previous_keyframe",
     "playback.next_edit",
     "playback.previous_edit",
     "playback.step_back",
@@ -123,6 +130,21 @@ pub fn command_for(key: &str) -> Option<&'static str> {
     BINDINGS.iter().find(|(_, k)| *k == key).map(|(id, _)| *id)
 }
 
+/// キーで今実行するコマンドの ID。同じキーのコマンドのうち、今押せる先頭のもの（VS Code のキーの割り当ての `when` と
+/// 同じく、場面でキーを使い分ける。Delete はキーフレームの行で選んだキーフレームがあれば外し、無ければカットを抜く）。
+/// どれも押せなければ先頭のもの（押せない理由を編集が画面に出す）。
+fn command_now(shared: &Shared, key: &str) -> Option<&'static str> {
+    let mut ids = BINDINGS
+        .iter()
+        .filter(|(_, k)| *k == key)
+        .map(|(id, _)| *id);
+    let first = ids.next()?;
+    let ready = std::iter::once(first)
+        .chain(ids)
+        .find(|id| commands::enabled(shared, id));
+    Some(ready.unwrap_or(first))
+}
+
 /// キー `key` を押し続けたときの繰り返しも、コマンドを実行するか（[`REPEATS`]）。
 pub fn repeats(key: &str) -> bool {
     command_for(key).is_some_and(|id| REPEATS.contains(&id))
@@ -182,7 +204,7 @@ fn access_char(key: &str) -> Option<char> {
 /// アクセスキーが効かないので、表に無い WebView の Alt+英字はウィンドウのフックでメニューを開かせる。
 pub fn dispatch(shared: &Arc<Shared>, source: &str, key: &str) {
     let _span = tracing::info_span!("window.key").entered();
-    let result = match (command_for(key), source, access_char(key)) {
+    let result = match (command_now(shared, key), source, access_char(key)) {
         (Some(id), _, _) => commands::run_from_key(shared, id),
         (None, "webview", Some(c)) => shared.window_hook.send(Forward::MenuKey(c)),
         _ => Ok(()),

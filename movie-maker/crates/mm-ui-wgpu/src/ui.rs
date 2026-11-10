@@ -187,6 +187,11 @@ impl Ui {
         });
     }
 
+    /// キーフレームの行で選んだもの。モデルを作り直した後は、作り直したモデルで引き直したもの。
+    pub fn keyframe_pick(&self) -> Option<mm_ui_layout::RowPick> {
+        self.controller.keyframe_pick()
+    }
+
     /// 再生位置（秒）。再生とキーで行の領域の端を越えたら、その向きへ 1 画面ずつ送る（`TimelineController::page_scroll`）。
     pub fn set_playhead(&mut self, secs: f64) {
         self.controller.page_scroll(self.playhead, secs);
@@ -297,7 +302,9 @@ impl Ui {
             },
             other => other,
         };
-        self.controller.handle(local, &self.model, self.playhead)
+        let mut actions = self.controller.handle(local, &self.model, self.playhead);
+        self.toggle_keyframe_rows(&mut actions);
+        actions
     }
 
     /// 1 フレーム描く。`target` はサーフェスのテクスチャのビュー。

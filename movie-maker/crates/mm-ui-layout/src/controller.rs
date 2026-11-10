@@ -13,6 +13,7 @@ mod zoom;
 pub use command::{edit_target, TimelineCommand};
 
 use crate::gesture::{body_edit, frame_secs, EditKind};
+use crate::keyframe_rows::KeyframeAction;
 use crate::paint::PaintState;
 use crate::palette::Palette;
 use crate::rows::Rows;
@@ -82,6 +83,8 @@ pub enum Action {
     HeaderButton { index: usize, button: HeaderButton },
     /// 見出しのドラッグを離した。行 `from` を行の境界 `boundary`（0 が先頭の行の上、行の数が最後の行の下）へ動かす。
     MoveLayer { from: usize, boundary: usize },
+    /// キーフレームの行の操作（`controller/keyframe_rows.rs`）。
+    Keyframe(KeyframeAction),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -104,6 +107,8 @@ enum Drag {
     },
     /// 見出しの縦のドラッグ。
     Header(header_drag::HeaderDrag),
+    /// キーフレームの行のキーフレームのドラッグ。
+    Keyframe(keyframe_rows::KeyframeDrag),
     /// スクロールボックスのドラッグ。`grab_offset` は押した点の、スクロールボックスの上端からの距離。
     Thumb {
         grab_offset: f32,
@@ -140,6 +145,8 @@ pub struct TimelineController {
     drag: Drag,
     /// 全体表示のコマンドで全体表示にしたときの、全体表示とその前の表示。
     full_extent: Option<FullExtent>,
+    /// キーフレームの行で選んだもの。
+    pick: Option<keyframe_rows::Picked>,
 }
 
 impl TimelineController {
@@ -160,6 +167,7 @@ impl TimelineController {
             last_edit: None,
             drag: Drag::None,
             full_extent: None,
+            pick: None,
         }
     }
 
@@ -167,6 +175,7 @@ impl TimelineController {
     pub fn set_rows(&mut self, rows: Rows) {
         self.rows = rows;
         self.relayout();
+        self.keep_pick_in_rows();
     }
 
     /// Timeline の大きさ（論理ピクセル）を置き直す。
@@ -215,6 +224,7 @@ impl TimelineController {
             .filter(|(i, c)| model.items.get(*i).is_some_and(|it| *c < it.cuts.len()));
         self.hover = Hit::Empty;
         self.end_drag();
+        self.repick(model);
     }
 
     /// 描くときの状態。
@@ -226,8 +236,9 @@ impl TimelineController {
             selected_cut: self.selected_cut,
             snap: self.snap,
             preview: self.last_edit,
-            drag_tooltip: self.drag_tooltip(),
+            drag_tooltip: self.drag_tooltip().or(self.keyframe_tooltip()),
             header_drop: self.header_drop(),
+            keyframe_rows: self.keyframe_row_state(),
             palette: Palette::DEFAULT,
         }
     }
@@ -240,7 +251,7 @@ impl TimelineController {
         playhead: f64,
     ) -> Vec<Action> {
         match ev {
-            PointerEvent::Down { x, y, mods } => self.down(x, y, mods, model),
+            PointerEvent::Down { x, y, mods } => self.press((x, y), mods, model, playhead),
             PointerEvent::Move { x, y } => self.moved(x, y, model, playhead),
             PointerEvent::Up => self.up(model),
             PointerEvent::Wheel {
@@ -402,6 +413,7 @@ impl TimelineController {
             }
             Drag::Scrub => vec![Action::Seek(self.seek_at(x, model))],
             Drag::Header(drag) => self.drag_header(drag, y, model.items.len()),
+            Drag::Keyframe(drag) => self.drag_keyframe(drag, x, model, playhead),
             Drag::Thumb { grab_offset } => {
                 let content = self.rows.content_height();
                 self.scroll_y = scroll_for_thumb(self.layout.scrollbar, content, y - grab_offset);
@@ -445,6 +457,7 @@ impl TimelineController {
         let frame = frame_secs(model);
         match (drag, last) {
             (Drag::Header(header), _) => header.release(),
+            (Drag::Keyframe(drag), _) => self.release_keyframe(drag, model),
             // 動かさずに離したクリックは編集にしない。
             (Drag::Edge { .. } | Drag::Body { .. }, Some((kind, by)))
                 if by.abs() >= frame / 2.0 =>
@@ -470,6 +483,7 @@ fn deselect_cut(select: Action, had_cut: Option<(usize, usize)>) -> Vec<Action> 
 }
 
 mod header_drag;
+mod keyframe_rows;
 mod snapping;
 
 #[cfg(test)]

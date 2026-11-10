@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use crate::header;
+use crate::keyframe_rows::{self, KeyframeIndex, KeyframeRow};
 use crate::keymarks;
 use crate::time_view::TimeView;
 use crate::timeline_layout::Viewport;
@@ -97,8 +98,10 @@ pub struct Item {
     pub audio: Option<AudioState>,
     /// 帯に出す名前。空なら出さない。シーケンスのレイヤーはカットの名前を出す。
     pub label: Arc<str>,
-    /// レイヤーのパラメータのキーフレームの時刻（コンポジションの秒、前から順、重複なし）。再フレーミングは含めない。
+    /// レイヤーのパラメータのキーフレームの時刻（コンポジションの秒、前から順、重複なし）。再フレーミングはカットを通した時刻。
     pub keyframes: Arc<[f64]>,
+    /// キーフレームのあるパラメータごとのキーフレームの行。開くとレイヤーの行の下に並ぶ。
+    pub keyframe_rows: Vec<KeyframeRow>,
     /// シーケンスのレイヤーのカット。先頭から順。シーケンス以外は空。
     pub cuts: Vec<CutBar>,
     /// 端のつまみで動かせる範囲。
@@ -121,6 +124,7 @@ impl Item {
             audio: None,
             label: Arc::default(),
             keyframes: Arc::default(),
+            keyframe_rows: Vec::new(),
             cuts: Vec::new(),
             trim: TrimBounds::FREE,
             wave: None,
@@ -136,6 +140,12 @@ impl Item {
     /// キーフレームの時刻（前から順）を付ける。
     pub fn with_keyframes(mut self, times: &[f64]) -> Self {
         self.keyframes = times.into();
+        self
+    }
+
+    /// キーフレームの行を付ける。
+    pub fn with_keyframe_rows(mut self, rows: Vec<KeyframeRow>) -> Self {
+        self.keyframe_rows = rows;
         self
     }
 
@@ -227,6 +237,22 @@ pub enum Hit {
         index: usize,
         button: HeaderButton,
     },
+    /// レイヤーの見出しのキーフレームの開閉（▸）。キーフレームのあるレイヤーだけ。`index` は行の添字。
+    Disclosure {
+        index: usize,
+    },
+    /// キーフレームの行の見出し。`item` はレイヤーの添字、`row` はキーフレームの行の添字。
+    KeyframeRowHeader {
+        item: usize,
+        row: usize,
+    },
+    /// キーフレームの行の、キーフレームの無い所。
+    KeyframeRow {
+        item: usize,
+        row: usize,
+    },
+    /// キーフレームの行のキーフレーム。
+    RowKeyframe(KeyframeIndex),
     Ruler,
     Layer {
         index: usize,
@@ -299,6 +325,9 @@ pub fn hit_test(model: &TimelineModel, vp: &Viewport, x: f32, y: f32) -> Hit {
     else {
         return Hit::Empty;
     };
+    if let Some(hit) = keyframe_rows::hit(vp, (index, item), (x, y)) {
+        return hit;
+    }
     // 帯のマーカーは端のつまみより上に描くので、重なる所ではマーカーが勝つ（つまみはマーカーの上で掴める）。
     if let Some(mark) = keymarks::mark_at(vp, index, item, (x, y)) {
         return Hit::BarMark {

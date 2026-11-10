@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use mm_doc::SEQUENCE_KIND;
 use mm_ui_layout::{PointerEvent, TimelineCommand};
 use serde::Serialize;
 
@@ -154,6 +153,22 @@ pub static TABLE: &[Spec] = &[
         owner: Owner::App(Action::Playback(Command::Seek(f64::MAX))),
     },
     Spec {
+        id: "playback.go_to_next_keyframe",
+        name: "Go to Next Keyframe",
+        description: Some(
+            "Move the playhead to the next keyframe of the selected layer, or of any layer",
+        ),
+        owner: Owner::App(Action::Timeline(TimelineCommand::NextKeyframe)),
+    },
+    Spec {
+        id: "playback.go_to_previous_keyframe",
+        name: "Go to Previous Keyframe",
+        description: Some(
+            "Move the playhead to the previous keyframe of the selected layer, or of any layer",
+        ),
+        owner: Owner::App(Action::Timeline(TimelineCommand::PreviousKeyframe)),
+    },
+    Spec {
         id: "playback.go_to_start",
         name: "Go to Start",
         description: None,
@@ -254,6 +269,20 @@ pub static TABLE: &[Spec] = &[
         owner: Owner::App(Action::Shy(ShyCommand::HideShyLayers)),
     },
     Spec {
+        id: "timeline.remove_keyframe",
+        name: "Remove Keyframe",
+        description: Some("Remove the keyframe selected in the Timeline's keyframe rows"),
+        owner: Owner::App(Action::Timeline(TimelineCommand::RemoveKeyframe)),
+    },
+    Spec {
+        id: "timeline.show_keyframe_editor",
+        name: "Show Keyframe Editor",
+        description: Some(
+            "Open or close a row per keyframed property below the selected layer, or all layers",
+        ),
+        owner: Owner::App(Action::Timeline(TimelineCommand::ShowKeyframeEditor)),
+    },
+    Spec {
         id: "timeline.shy_selected_layers",
         name: "Shy Selected Layers",
         description: Some("Mark the selected layer Shy so Hide Shy Layers can hide its row"),
@@ -292,55 +321,6 @@ pub struct State {
     pub enabled: bool,
     /// 入/切のあるコマンドだけが持つ。
     pub checked: Option<bool>,
-}
-
-/// 押せるかを決める今の状態。表を作るたびに 1 度だけ読む。
-struct Ready {
-    /// Source に素材を開いている。イン点・アウト点と insert、overwrite は Source の範囲を使う。
-    source_open: bool,
-    /// 開いているコンポジションにシーケンスのレイヤーがある。split、insert、overwrite はそのカットを編集する。
-    sequence: bool,
-    /// Timeline でカットを選んでいる。lift と extract は選んだカットを抜く。
-    cut_selected: bool,
-    /// スナップの入/切（描画スレッドが置いた表示の状態）。
-    snapping: bool,
-    /// Shy の行を隠すかどうか（表示の状態）と、選んでいるレイヤーの Shy のフラグ。
-    shy: shy::ShyReady,
-}
-
-impl Ready {
-    fn of(shared: &Shared) -> Self {
-        let sequence = shared.doc().is_some_and(|doc| {
-            doc.project
-                .composition(&doc.comp)
-                .is_ok_and(|c| c.layers.iter().any(|l| l.source.kind == SEQUENCE_KIND))
-        });
-        Self {
-            source_open: shared.source.handle().is_some(),
-            sequence,
-            cut_selected: shared.edit.selected_cut().is_some(),
-            snapping: shared.view.snapping(),
-            shy: shy::ShyReady::of(shared),
-        }
-    }
-
-    fn state(&self, spec: &Spec) -> State {
-        use EditAction::{ClearInOut, Extract, Insert, Lift, MarkIn, MarkOut, Overwrite, Split};
-        let enabled = match spec.owner {
-            Owner::App(Action::Edit(ClearInOut | MarkIn | MarkOut)) => self.source_open,
-            Owner::App(Action::Edit(Insert | Overwrite)) => self.source_open && self.sequence,
-            Owner::App(Action::Edit(Split)) => self.sequence,
-            Owner::App(Action::Edit(Lift | Extract)) => self.cut_selected,
-            Owner::App(Action::Shy(command)) => self.shy.enabled(command),
-            Owner::App(_) | Owner::Panel(_) => true,
-        };
-        let checked = match spec.owner {
-            Owner::App(Action::Shy(command)) => self.shy.checked(command),
-            Owner::App(Action::Timeline(TimelineCommand::ToggleSnapping)) => Some(self.snapping),
-            Owner::App(_) | Owner::Panel(_) => None,
-        };
-        State { enabled, checked }
-    }
 }
 
 /// WebView に送る表の 1 行。`ui/sdk` の `UiCommand` と同じ形。
@@ -414,6 +394,11 @@ fn spec_of(id: &str) -> Result<&'static Spec, String> {
     find(id).ok_or_else(|| format!("Unknown command: {id}"))
 }
 
+/// 今押せるか。同じキーのコマンドから、今押せるものを選ぶのに使う（`keys::dispatch`）。
+pub fn enabled(shared: &Shared, id: &str) -> bool {
+    find(id).is_some_and(|spec| Ready::of(shared).state(spec).enabled)
+}
+
 /// 押せるかを画面に出す呼び出し箇所（メニュー、Tasks の項目）からコマンドを実行する。押せないコマンドは拒否する。
 pub fn run(shared: &Arc<Shared>, id: &str) -> Result<(), String> {
     let spec = spec_of(id)?;
@@ -468,8 +453,11 @@ fn play(shared: &Shared, command: Command) {
     }
 }
 
+mod ready;
 mod shy;
 mod window_hook;
+
+use ready::Ready;
 
 pub use shy::ShyCommand;
 pub use window_hook::{Forward, WindowHook};

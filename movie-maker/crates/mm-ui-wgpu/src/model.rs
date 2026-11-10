@@ -1,7 +1,5 @@
 //! プロジェクトのデータから Timeline のモデルを作る。
 
-use std::sync::Arc;
-
 use mm_doc::{
     Composition, Layer, Project, Sequence, SequenceId, FOOTAGE_KIND, NESTED_KIND, SEQUENCE_KIND,
     SEQUENCE_PARAM,
@@ -12,8 +10,10 @@ use mm_ui_layout::{AudioState, CutBar, Item, ItemKind, TimelineModel, TrimBounds
 
 use crate::names::Namer;
 
+mod keyframes;
 mod wave;
 
+pub use keyframes::{keyframe_rows, KeyframeRowSource, KeyframeSource, ParamSpan};
 use wave::WaveResolver;
 
 /// 音を持てるレイヤーの種類。Mixer のトラック（`apps/movie-maker` の `mixer.rs`）と同じで、見出しに Mute と Solo を出す。
@@ -96,20 +96,24 @@ pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
     let names = Namer::new(project);
     let mut waves = WaveResolver::new(project);
     let items = visible_layers(comp)
-        .map(|(layer, range)| Item {
-            id: layer.id.as_str().into(),
-            start: range.start.to_f64(),
-            end: range.end.to_f64(),
-            kind: kind_of(layer),
-            enabled: layer.enabled,
-            locked: layer.lock,
-            shy: false,
-            audio: audio_state(layer),
-            label: names.label(&layer.source),
-            keyframes: keyframe_secs(layer),
-            cuts: cut_bars(project, layer, &names, &mut waves),
-            trim: trim_bounds(project, layer, range),
-            wave: waves.layer(layer),
+        .map(|(layer, range)| {
+            let rows = keyframe_rows(project, comp, layer);
+            Item {
+                id: layer.id.as_str().into(),
+                start: range.start.to_f64(),
+                end: range.end.to_f64(),
+                kind: kind_of(layer),
+                enabled: layer.enabled,
+                locked: layer.lock,
+                shy: false,
+                audio: audio_state(layer),
+                label: names.label(&layer.source),
+                keyframes: keyframes::marker_times(layer, &rows),
+                keyframe_rows: keyframes::layout_rows(&rows, comp.fps.to_f64()),
+                cuts: cut_bars(project, layer, &names, &mut waves),
+                trim: trim_bounds(project, layer, range),
+                wave: waves.layer(layer),
+            }
         })
         .collect();
     TimelineModel {
@@ -119,15 +123,6 @@ pub fn timeline_model(project: &Project, comp: &Composition) -> TimelineModel {
         markers: comp.markers.iter().map(|m| m.time.to_f64()).collect(),
         ..TimelineModel::default()
     }
-}
-
-/// レイヤーのキーフレームの時刻（コンポジションの秒、前から順）。`shiftLayer` が動かすパラメータと同じ一覧から引く。
-fn keyframe_secs(layer: &Layer) -> Arc<[f64]> {
-    layer
-        .keyframe_times()
-        .into_iter()
-        .map(|t| t.to_f64())
-        .collect()
 }
 
 /// 端のつまみで動かせる範囲。`trimLayer` の検査と同じ素材の余白（`Layer::trim_room`）から作る。

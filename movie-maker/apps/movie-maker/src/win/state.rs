@@ -176,6 +176,8 @@ pub struct Shared {
     pub meters: Mutex<crate::win::mixer::MeterLane>,
     /// Timeline の表示の状態（ズーム、スクロール、行の高さ）。描画スレッドが置き、`.mm/view.json` に書く。
     pub view: crate::win::view_state::ViewSlot,
+    /// Timeline のキーフレームの行で選んだもの。描画スレッドが置き、コマンドの表と選択のイベントが読む。
+    pub keyframes: crate::win::keyframe_edit::KeyframeSlot,
 }
 
 impl Shared {
@@ -216,6 +218,7 @@ impl Shared {
             series: Mutex::new(BTreeMap::new()),
             meters: Mutex::new(crate::win::mixer::MeterLane::default()),
             view: crate::win::view_state::ViewSlot::default(),
+            keyframes: crate::win::keyframe_edit::KeyframeSlot::default(),
         }
     }
 

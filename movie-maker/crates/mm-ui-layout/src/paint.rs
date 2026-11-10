@@ -5,6 +5,7 @@
 //! 重ね順は呼ぶ順でなく [`Depth`] で決めるので、領域を足す PR はファイルを 1 つと、呼び出しを 1 行足せばよい。
 
 mod header;
+mod keyframe_rows;
 mod keymarks;
 mod playhead;
 mod rows;
@@ -17,6 +18,7 @@ mod zoombar;
 use crate::drag_tooltip::DragTooltip;
 use crate::geom::{Color, Quad, Rect};
 use crate::gesture::EditKind;
+use crate::keyframe_rows::KeyframeRowState;
 use crate::palette::Palette;
 use crate::snap::SnapTarget;
 use crate::timeline::{Hit, TimelineModel};
@@ -44,6 +46,8 @@ pub struct PaintState {
     pub drag_tooltip: Option<DragTooltip>,
     /// 見出しのドラッグで入る位置の行の境界（0 が先頭の行の上、行の数が最後の行の下）。そこに入る位置の線を出す。
     pub header_drop: Option<usize>,
+    /// キーフレームの行で選んだものと、ドラッグ中のキーフレーム。
+    pub keyframe_rows: KeyframeRowState,
     /// 色。
     pub palette: Palette,
 }
@@ -135,6 +139,7 @@ pub fn timeline_quads(input: &PaintInput) -> Vec<Quad> {
         input.state.palette.panel,
     );
     header::paint(input, &mut canvas);
+    keyframe_rows::paint(input, &mut canvas);
     keymarks::paint(input, &mut canvas);
     rows::paint(input, &mut canvas);
     ruler::paint(input, &mut canvas);

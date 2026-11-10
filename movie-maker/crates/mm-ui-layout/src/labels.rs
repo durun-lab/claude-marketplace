@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use crate::geom::{Color, Rect};
 use crate::header;
+use crate::keyframe_rows;
 use crate::paint::{bar_color, stripe, trimmed, PaintState};
 use crate::palette;
 use crate::rows::RowHeight;
@@ -46,6 +47,7 @@ pub fn timeline_labels(
     placer.bars(model, state, font.base);
     let mut out = placer.out;
     out.extend(header::labels(model, vp, state, font, measure));
+    out.extend(keyframe_rows::labels(model, vp, state, font, measure));
     out
 }
 

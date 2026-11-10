@@ -31,6 +31,7 @@ export {
   type PanelColumn,
   type PanelContext,
   type PanelDescriptor,
+  type ParamSelection,
 } from "./panel.ts";
 export { DOC_CHANGED_EVENT, onDocChanged, type DocChanged } from "./docChanged.ts";
 export { ASSET_SELECTED_EVENT, announceAsset } from "./events.ts";
