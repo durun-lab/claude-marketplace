@@ -247,6 +247,8 @@ export type Session = {
   archiveWhenIdle?: boolean;
   /** 会話を引き継いだ複製のセッションの id。会話は複製で続くので、画面はこのセッションを開くと複製の画面へ移る。 */
   movedTo?: string;
+  /** このセッションを start_session で起動した親のセッションの id。 */
+  parent?: string;
   /** 人間がピン留めした。一覧の先頭にまとめて出す。 */
   pinned: boolean;
   /** このセッションを起動したワークフローの名前。前に受け取ったスナップショットには無いことがある。 */

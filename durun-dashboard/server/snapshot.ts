@@ -267,6 +267,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     archived: meta.archived,
     archiveWhenIdle: meta.archiveWhenIdle,
     movedTo: meta.movedTo,
+    parent: meta.parent,
     pinned: !!meta.pinned,
     workflow: workflowNameOf(meta.workflow),
     dangerous: !!meta.dangerous,

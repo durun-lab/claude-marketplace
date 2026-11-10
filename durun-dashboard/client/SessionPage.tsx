@@ -185,7 +185,20 @@ const DangerousToggle = ({ s }: { s: Session }) => (
 );
 
 /** 名前の行をウィジェットの見出しにする。状態はウィンドウの中に置き、狭いウィンドウでもタイトルバーを 1 行に保つ。概要は下部に置く。 */
-const SessionHead = ({ s, themes }: { s: Session; themes: string[] }) => (
+/** start_session で起動した親と子のセッションへのリンク。 */
+const Family = ({ s, sessions }: { s: Session; sessions: Session[] }) => {
+  const parent = s.parent ? sessions.find((p) => p.id === s.parent) : undefined;
+  const children = sessions.filter((c) => c.parent === s.id);
+  if (!parent && !children.length) return null;
+  return (
+    <div class="head-row family">
+      {parent && <span>親: <a href={href.session(parent.id)}>{parent.name}</a></span>}
+      {children.length > 0 && <span>子: {children.map((c) => <a key={c.id} href={href.session(c.id)}>{c.name}</a>)}</span>}
+    </div>
+  );
+};
+
+const SessionHead = ({ s, themes, sessions }: { s: Session; themes: string[]; sessions: Session[] }) => (
   <>
     <div class="head-row session-title">
       <NameEditor key={s.id} s={s} />
@@ -212,6 +225,7 @@ const SessionHead = ({ s, themes }: { s: Session; themes: string[] }) => (
           </span>
         )}
       </div>
+      <Family s={s} sessions={sessions} />
       <Summary s={s} />
     </div>
   </>

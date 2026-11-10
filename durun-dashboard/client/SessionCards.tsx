@@ -1,3 +1,4 @@
+import { Fragment, type JSX } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { BgTask, ObservedTask, Session, SessionSummary, Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
@@ -111,12 +112,20 @@ const toggleWhileSelecting = (e: MouseEvent, s: Session, sel: Selection): void =
   sel.toggle([s.id], !sel.selected.has(s.id));
 };
 
-const SessionCard = ({ s, sel, dragging, drag }: { s: Session; sel: Selection; dragging: boolean; drag: DragHandlers }) => {
+/** 子セッションを畳むボタン。count は子の数。 */
+type Fold = { count: number; open: boolean; toggle: () => void };
+
+const SessionCard = ({ s, sel, dragging, drag, fold }: { s: Session; sel: Selection; dragging: boolean; drag: DragHandlers; fold?: Fold }) => {
   const drafting = hasDraft(s.id);
   return (
     <article class={`card session-card is-${s.status}${drafting ? ' has-draft' : ''}${dragging ? ' is-dragging' : ''}`} draggable {...drag}>
       <header class="card-head">
         <SelectBox ids={[s.id]} sel={sel} label={`${s.name} を選ぶ`} />
+        {fold && (
+          <button type="button" class="fold" aria-expanded={fold.open} title={`子セッション ${fold.count} 件を${fold.open ? '畳む' : '開く'}`} onClick={fold.toggle}>
+            {fold.open ? '▾' : '▸'} {fold.count}
+          </button>
+        )}
         <StatusBadge status={s.status} waitingFor={s.waitingFor} />
         {drafting && <Chip tone="info" title="チャットに送っていない書きかけのメッセージがある">✎ 入力中</Chip>}
         <h3 class="card-title"><a class="stretched" href={href.session(s.id)} onClick={(e) => toggleWhileSelecting(e, s, sel)}>{s.name}</a></h3>
@@ -208,6 +217,13 @@ const ThemeTitle = ({ theme, count }: { theme: string; count: number }) => {
 
 // 折りたたんだテーマは、ホームを開き直しても閉じたままにするため、ブラウザに保存する。
 const COLLAPSED_KEY = 'dashboard-collapsed-themes';
+const FOLDED_KEY = 'dashboard-folded-parents';
+
+/** 同じまとまりに親が無いセッションを根にする。start_session で起動した子は、親のカードの下に並べる。 */
+const rootsOf = (sessions: Session[]): Session[] => {
+  const ids = new Set(sessions.map((s) => s.id));
+  return sessions.filter((s) => !s.parent || !ids.has(s.parent));
+};
 
 /** ピン留めは付けるだけにして、テーマを残す。ピン留めから出すときは、外してから落とした先のテーマにする。 */
 const moveToGroup = (s: Session, to: string): Promise<unknown> =>
@@ -381,9 +397,27 @@ const useThemeOrder = (themes: string[]) => {
   return { themes: order, dragging, headDrag, listDrop };
 };
 
+/** 子のあるカードは、子を一段下げてその下に並べ、畳めるようにする。all はまとまりのセッションで、並びはその順に従う。 */
+const Tree = ({ roots, all, render, folded }: { roots: Session[]; all: Session[]; render: (s: Session, fold?: Fold) => JSX.Element; folded: ReturnType<typeof useCollapsed> }) => (
+  <>
+    {roots.map((s) => {
+      const children = all.filter((c) => c.parent === s.id);
+      if (!children.length) return render(s);
+      const open = !folded.collapsed.has(s.id);
+      return (
+        <Fragment key={s.id}>
+          {render(s, { count: children.length, open, toggle: () => folded.toggle(s.id, !open) })}
+          {open && <div class="cards session-children"><Tree roots={children} all={all} render={render} folded={folded} /></div>}
+        </Fragment>
+      );
+    })}
+  </>
+);
+
 /** アーカイブしたセッションは並べない。 */
 export const ThemeGroups = ({ snapshot, sel }: { snapshot: Snapshot; sel: Selection }) => {
   const { collapsed, toggle } = useCollapsed(COLLAPSED_KEY);
+  const folded = useCollapsed(FOLDED_KEY);
   const visible = snapshot.sessions.filter((s) => !s.archived);
   const { themes, dragging: draggedTheme, headDrag, listDrop } = useThemeOrder(snapshot.themes);
   const { groups, carried, dragOf, groupDrag } = useSessionOrder(snapshot, visible, sel.selected, themes);
@@ -401,7 +435,7 @@ export const ThemeGroups = ({ snapshot, sel }: { snapshot: Snapshot; sel: Select
             </h3>
           </summary>
           <div class="cards">
-            {g.sessions.map((s) => <SessionCard key={s.id} s={s} sel={sel} dragging={carried.has(s.id)} drag={dragOf(s, g.theme)} />)}
+            {g.sessions.length > 0 && <Tree roots={rootsOf(g.sessions)} all={g.sessions} render={(s, fold) => <SessionCard key={s.id} s={s} sel={sel} dragging={carried.has(s.id)} drag={dragOf(s, g.theme)} fold={fold} />} folded={folded} />}
           </div>
         </details>
       ))}
