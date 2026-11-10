@@ -443,6 +443,8 @@ export type WorkflowDef = {
   name: string;
   enabled: boolean;
   cwd: string;
+  /** 起動したセッションを入れるテーマ。省くとほかのセッションと同じく、作業ディレクトリのリポジトリ名になる。 */
+  theme?: string;
   prompt: string;
   triggers: WorkflowTrigger[];
   mode: 'new' | 'continue';

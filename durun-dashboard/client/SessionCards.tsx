@@ -1,10 +1,12 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { BgTask, ObservedTask, Session, SessionSummary, Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
+import { AppIcon } from './apps.tsx';
 import { hasDraft } from './drafts.ts';
 import { useCollapsed } from './hooks.ts';
 import { ARROW_STEP, arrangeSessions, gatherAfter, moveTo } from './order.ts';
 import { href } from './router.ts';
+import { WORKFLOW_ICON } from './Workflow.tsx';
 import { Chip, Empty, IssueChip, JiraChips, PinIcon, PrChips, StatusBadge, StatusCounts, Time } from './ui.tsx';
 
 const UNCLASSIFIED = '未分類';
@@ -127,7 +129,7 @@ const SessionCard = ({ s, sel, dragging, drag }: { s: Session; sel: Selection; d
           {/* 前に開いていたときのデータには、PR の一覧が無いことがある。 */}
           {(s.prs?.length || s.jira.length > 0 || !!s.issues?.length || !!s.workflow) && (
             <div class="chips">
-              {s.workflow && <Chip tone="info" title="このセッションを起動したワークフロー">{s.workflow}</Chip>}
+              {s.workflow && <Chip tone="info" title="このセッションを起動したワークフロー"><AppIcon icon={WORKFLOW_ICON} size={14} />{s.workflow}</Chip>}
               {/* 一覧のまま PR や課題を見られるよう、session を渡さず、セッションの画面へ移らずにウィンドウに浮かべて開く。 */}
               {s.prs?.map((pr) => <PrChips key={pr.url} pr={pr} />)}
               <JiraChips issues={s.jira} />

@@ -18,13 +18,14 @@ const NEW_SCHEDULE: Schedule = { kind: 'schedule', at: '09:00' };
 const DEFAULT_BURST_MINUTES = 5;
 const isMention = (t: WorkflowTrigger): t is MentionTrigger => t.kind === 'slack-mention' || t.kind === 'jira-mention';
 
-const settingsOf = ({ name, cwd, prompt, triggers, mode, compact, maxSessions, model, effort }: WorkflowInfo): WorkflowSettings => ({ name, cwd, prompt, triggers, mode, compact, maxSessions, model, effort });
+const settingsOf = ({ name, cwd, theme, prompt, triggers, mode, compact, maxSessions, model, effort }: WorkflowInfo): WorkflowSettings => ({ name, cwd, theme, prompt, triggers, mode, compact, maxSessions, model, effort });
 
 /** モードに関わらない項目は落として送る。workflows.json に読まれない項目を残さないため。 */
 const cleaned = (s: WorkflowSettings): WorkflowSettings => ({
   ...s,
   compact: s.mode === 'continue' && s.compact ? true : undefined,
   maxSessions: s.mode === 'new' && s.maxSessions && s.maxSessions > 1 ? s.maxSessions : undefined,
+  theme: s.theme?.trim() || undefined,
   model: s.model || undefined,
   effort: s.effort || undefined,
 });
@@ -105,7 +106,7 @@ const ActionField = ({ s, set }: { s: WorkflowSettings; set: (patch: Partial<Wor
 );
 
 /** 1 つのワークフローの設定。保存すると workflows.json に書き込み、閉じる。開いた後に定義が書き換わっても、直している値は保つ。 */
-export const WorkflowForm = ({ w, onClose }: { w: WorkflowInfo; onClose: () => void }) => {
+export const WorkflowForm = ({ w, themes, onClose }: { w: WorkflowInfo; themes: string[]; onClose: () => void }) => {
   const [s, setS] = useState(() => settingsOf(w));
   const set = (patch: Partial<WorkflowSettings>) => setS((prev) => ({ ...prev, ...patch }));
   const save = async () => {
@@ -124,6 +125,11 @@ export const WorkflowForm = ({ w, onClose }: { w: WorkflowInfo; onClose: () => v
       <label class="inline-field">
         <span class="nowrap">ディレクトリ</span>
         <input class="input mono" value={s.cwd} onInput={(e) => set({ cwd: e.currentTarget.value })} />
+      </label>
+      <label class="inline-field">
+        <span class="nowrap">テーマ</span>
+        <input class="input" list="workflow-themes" placeholder="省くとリポジトリ名" value={s.theme ?? ''} onInput={(e) => set({ theme: e.currentTarget.value })} />
+        <datalist id="workflow-themes">{themes.map((t) => <option key={t} value={t} />)}</datalist>
       </label>
       <TriggersField triggers={s.triggers} onChange={(triggers) => set({ triggers })} />
       <ActionField s={s} set={set} />
