@@ -30,9 +30,9 @@ flowchart LR
 
 | 項目 | 測り方 | スパンかカウンタ |
 |---|---|---|
-| 描画の 1 フレーム（CPU） | `mm-render` の `render_frame` のスパン。中にレイヤーごとの評価、合成、リードバックのスパン | スパン |
+| 描画の 1 フレーム（CPU） | `mm-render` の `render_frame` のスパン。中にレイヤーごとの評価、合成、リードバックのスパン。レイヤーの `render.layer`（シーケンスのカットはカットの ID で 1 つ）には、レイヤーの ID（`layer`）、ノードの種類（`kind`）、素材の `contentHash` の先頭 8 桁（`asset`。素材を参照するレイヤーだけ）を付ける | スパン |
 | 描画の 1 フレーム（GPU） | wgpu のタイムスタンプのクエリ。`Features::TIMESTAMP_QUERY` で compute と render のパスの先頭と末尾に `timestamp_writes` を書き、`Queue::get_timestamp_period()`（1 tick のナノ秒）で換算する [44]。パスの中の点は `TIMESTAMP_QUERY_INSIDE_PASSES`（native のみ）[44] | スパン（GPU のトラック） |
-| デコード | `Decoder::next_frame` と `seek` のスパン。シークは「頼んでから正しいフレームが出るまで」。実装（`d3d12va`、`cuvid`、`ffmpeg`）と素材の形（コーデック、解像度、GOP）をフィールドに | スパン |
+| デコード | `Decoder::next_frame` と `seek` のスパン。シークは「頼んでから正しいフレームが出るまで」。実装（`d3d12va`、`cuvid`、`ffmpeg`）と素材の形（コーデック、解像度、GOP）をフィールドに。素材を開く所（`render.open_source`。プレビューではバックグラウンドのスレッドに出る）、PTS の索引の走査（`decode.scan_index`）、レンダラーのシーク（`render.seek_source`）も測る | スパン |
 | キャッシュ | 引いた回数とヒットした回数（フレーム、プレビュー動画、文字の画像、音の PCM の種類ごと）。大きさ | カウンタ |
 | 操作の適用 | `mm-ops` の `apply` のスパン（検証、適用、逆操作の生成、`touches`、記録の書き込み）。トランザクションは全体で 1 つ | スパン |
 | 操作から画面まで | 入力のイベントが届いた時刻から、その結果のフレームがサーフェスに出た時刻まで。wgpu のサーフェスは Rust の中で閉じる。WebView の画面は、`performance.now()` の時刻を操作に添えて送り、Rust が受けた時刻と、変更の通知が画面に戻って描かれた時刻（`requestAnimationFrame` の後）まで | スパン（流れとしてつなぐ） |
@@ -107,7 +107,7 @@ flowchart LR
 | 段 | 残すもの | 形 | 負担 |
 |---|---|---|---|
 | 常時（既定） | `INFO` のスパンの、名前ごとの回数と分布（中央値、95%、99%、最大。HDR のヒストグラム〔推。`hdrhistogram` クレート〕）、カウンタ、イベント。1 分ごとに 1 行 | `metrics.jsonl`（1 行 1 分。JSON Schema を `mm-trace/schema/` に） | 1% 以下 |
-| 詳しく（手で入れる、予算を超えたら自動で 30 秒） | 全部のスパンとイベント、GPU の時間、WebView の計測 | Chrome の trace event の JSON（`tracing-chrome` の `Layer` [40]。`ph: "X"` の complete event、`ts` と `dur` はマイクロ秒、B/E は入れ子に [42]）。Perfetto UI で開ける [40][43] | 数%〔推〕 |
+| 詳しく（手で入れる、予算を超えたら自動で 30 秒） | 全部のスパンとイベント、GPU の時間、WebView の計測 | Chrome の trace event の JSON（`tracing-chrome` の `Layer` [40]。`ph: "X"` の complete event、`ts` と `dur` はマイクロ秒、B/E は入れ子に [42]。スパンのフィールドは `args` に文字列で書く）。Perfetto UI で開ける [40][43] | 数%〔推〕 |
 | 生で見る（開発中） | 同上をリアルタイムに | `tracing-tracy` の `Layer` で Tracy に送る（`ondemand` で、Tracy がつながるまで集めない。`only-localhost` で外に出さない）[41]。Tracy はスレッドをまたぐスパンと順序の入れ違うスパンを扱えないので、非同期のスパンは Chrome の形で見る [41] | Tracy のゾーン 1 つは数十 ns〔推。公式の現行の数は未確認〕 |
 | ETW（Windows で OS の中まで見る） | 同上を ETW に | `tracing-etw` の `Layer` [54]。Windows Performance Analyzer で OS のスケジューラや DPC と並べて見る | 詳しくと同じ |
 
