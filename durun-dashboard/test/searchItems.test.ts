@@ -81,3 +81,8 @@ test('JIRA の課題は、ハイフンで始めたときだけ、渡したスペ
   assert.deepEqual(keys('-12', []), []);
   assert.deepEqual(keys('12', ['LPO']), ['jira:LPO-12', 'jira:CATS-12', 'jira:LPO-120']);
 });
+
+test('セッションは id でも探せる', () => {
+  const withId = { ...snapshot, sessions: [session('148fb50f-3d76-4772', 'id で探す', 1), ...snapshot.sessions] } as unknown as Snapshot;
+  assert.deepEqual(localGroups(withId, '148FB50F').find((g) => g.title === 'セッション')?.items.map((i) => i.href), ['#/s/148fb50f-3d76-4772']);
+});

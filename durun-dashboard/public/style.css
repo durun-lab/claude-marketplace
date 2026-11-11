@@ -739,12 +739,14 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .learn-harness .learn-leaf { padding-left: 22px; }
 .learn-switch { margin: 0 4px 0 0; vertical-align: -2px; }
 .learn-harness tr.is-off td { color: #8c8c8c; }
-.workflow-table th:nth-child(1) { width: 22%; }
-.workflow-table th:nth-child(2) { width: 18%; }
-.workflow-table th:nth-child(3) { width: 22%; }
-.workflow-table th:nth-child(4) { width: 22%; }
+/* 列の幅を中身に合わせる。名前と操作は折り返さずに詰め、トリガーとアクションと最後の実行は折り返して残りの幅を分け合う。 */
+.workflow-table { table-layout: auto; }
+.workflow-table th:nth-child(n) { width: auto; white-space: nowrap; }
+.workflow-table td { overflow: visible; white-space: normal; vertical-align: top; }
+.workflow-table td:first-child, .workflow-table td:last-child { width: 1%; white-space: nowrap; }
 .workflow-table tr.is-off td { color: #8c8c8c; }
-.workflow-actions { display: flex; gap: 8px; }
+.workflow-actions > * { display: inline; }
+.workflow-actions > * + * { margin-left: 8px; }
 /* メモ帳と Internet Explorer の、XP のメニュー。 */
 .xp-menu { padding: 2px 7px; border: 0; background: none; font: inherit; }
 .xp-menu:hover, .xp-menu:has(+ :popover-open) { background: #316ac5; color: #fff; }
