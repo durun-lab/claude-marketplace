@@ -140,3 +140,10 @@ test('1 つのファイルに並べていた定義を、ワークフローごと
   assert.equal(agentOf('moved'), '---\nname: moved\ndescription: ダッシュボードのワークフロー「移す」の指示\nmodel: sonnet\neffort: low\n---\n\n移した依頼\n');
   assert.deepEqual([fs.existsSync(legacy), fs.existsSync(`${legacy}.migrated`)], [false, true]);
 });
+
+test('compactWindow は引き継ぐモードで、Claude Code が受け付ける範囲だけ読む', () => {
+  const window = (extra: Def) => parse(def(extra)).workflows[0]?.compactWindow;
+  assert.equal(window({ mode: 'continue', compactWindow: 200_000 }), 200_000);
+  assert.equal(window({ mode: 'new', compactWindow: 200_000 }), undefined);
+  assert.equal(window({ mode: 'continue', compactWindow: 50_000 }), undefined);
+});
