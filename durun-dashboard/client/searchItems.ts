@@ -42,7 +42,7 @@ export const localGroups = (snapshot: Snapshot | null, q: string, opened: Opened
     {
       title: 'セッション',
       items: sessions
-        .filter((s) => hit(s.name, s.theme, s.repo, s.branch, s.cwd, s.pr && `#${s.pr.number} ${s.pr.title}`, ...s.jira.map((j) => `${j.key} ${j.summary ?? ''}`)))
+        .filter((s) => hit(s.id, s.name, s.theme, s.repo, s.branch, s.cwd, s.pr && `#${s.pr.number} ${s.pr.title}`, ...s.jira.map((j) => `${j.key} ${j.summary ?? ''}`)))
         .toSorted((a, b) => openedAt(`session:${b.id}`) - openedAt(`session:${a.id}`) || b.updatedAt - a.updatedAt)
         .map((s) => ({ key: `session:${s.id}`, label: s.name, sub: joined(s.repo, s.branch), href: href.session(s.id), status: s.status, waitingFor: s.waitingFor, at: s.updatedAt })),
     },
