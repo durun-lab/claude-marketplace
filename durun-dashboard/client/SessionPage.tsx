@@ -338,6 +338,39 @@ const legacySessionLayout = (): unknown => {
   }
 };
 
+/** セッションごとに選んだタブ。セッションの id から、枠の id と選んだタブの id の組へ引く。 */
+const SESSION_TABS_KEY = 'session-tabs';
+type SessionTabs = Record<string, Record<string, string>>;
+
+const readSessionTabs = (): SessionTabs => {
+  try {
+    return (JSON.parse(localStorage.getItem(SESSION_TABS_KEY) ?? '{}') as SessionTabs | null) ?? {};
+  } catch {
+    return {};
+  }
+};
+
+/** 共通の配置に、このセッションで選んだタブを当てる。枠から外したタブは当てない。 */
+const withSessionTabs = (saved: unknown, sessionId: string): unknown => {
+  const mine = readSessionTabs()[sessionId];
+  if (!mine || !Array.isArray(saved)) return saved;
+  return (saved as Partial<Layout[number]>[]).map((p) => {
+    const active = p.id === undefined ? undefined : mine[p.id];
+    return active && p.tabs?.some((t) => t.id === active) ? { ...p, active } : p;
+  });
+};
+
+// ponytail: 終わったセッションの分も消さずに残る。数千件で重くなったら、一覧に無いセッションの分を捨てる。
+const saveSessionTabs = (sessionId: string, layout: Layout): void => {
+  try {
+    const all = readSessionTabs();
+    all[sessionId] = Object.fromEntries(layout.flatMap((p) => (p.active ? [[p.id, p.active]] : [])));
+    localStorage.setItem(SESSION_TABS_KEY, JSON.stringify(all));
+  } catch {
+    // 保存できなくても、開いている間は選んだタブのまま使える。
+  }
+};
+
 /** セッションの画面のチャットを出し、bookmarkKey が key の発言へ移る。画面をまだ描いていなければ、描いて会話を読み込んでから移る。 */
 export const openChatAt = (sessionId: string, key: string): void => {
   if (currentSessionId() !== sessionId) location.hash = href.session(sessionId);
@@ -390,13 +423,19 @@ const useSessionData = (s: Session, snapshot: Snapshot, file?: string): SessionD
 };
 
 /**
- * 配置はすべてのセッションで共通にし、ホームとは別に保存する。
+ * 配置はすべてのセッションで共通にし、ホームとは別に保存する。タブを重ねた枠で選んだタブは、セッションごとに覚える。
  * コードや使用量の画面へのリンクで開いたときは、そのウィジェットを重ねた枠でそのタブを選び、枠までスクロールする。ファイルを開くときは、コードのウィジェットがそのファイルまで送る。
  */
 const SessionDashboard = ({ s, tab, file, snapshot, editing, onEditDone }: DashboardProps) => {
   const data = useSessionData(s, snapshot, file);
   const { current, sessionLayouts } = useDashboards();
-  const store = { saved: sessionLayouts?.[current] ?? legacySessionLayout(), save: (layout: Layout) => saveSessionLayout(current, layout) };
+  const store = {
+    saved: withSessionTabs(sessionLayouts?.[current] ?? legacySessionLayout(), s.id),
+    save: (layout: Layout) => {
+      saveSessionTabs(s.id, layout);
+      saveSessionLayout(current, layout);
+    },
+  };
   const focus = useMemo<WidgetFocus | undefined>(() => (tab === 'overview' ? undefined : { kind: tab }), [tab, file]);
   useEffect(() => {
     if (focus && !file) document.querySelector(`.widget[data-tabs~="${tab}"]`)?.scrollIntoView({ block: 'start' });
