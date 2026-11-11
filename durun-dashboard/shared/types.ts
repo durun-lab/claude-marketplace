@@ -433,6 +433,10 @@ export type Harness = { items: HarnessItem[]; kindToggles: Partial<Record<Harnes
  */
 export type WorkflowTrigger = { kind: 'schedule'; at: string; days?: number[] } | { kind: 'github-review' } | { kind: 'slack-mention' } | { kind: 'jira-mention' } | { kind: 'feedback' };
 /** バースト制御でまとめるトリガー。時刻と改善要望は、それぞれ 1 回で 1 つの依頼になるので含めない。 */
+/** Claude Code の autoCompactWindow が受け付けるトークン数。 */
+export const COMPACT_WINDOW_MIN = 100_000;
+export const COMPACT_WINDOW_MAX = 1_000_000;
+
 export type BurstKind = 'github-review' | 'slack-mention' | 'jira-mention';
 
 /**
@@ -454,6 +458,8 @@ export type WorkflowDef = {
   burstMinutes?: number;
   maxSessions?: number;
   compact?: boolean;
+  /** mode が continue のとき、会話がこのトークン数に達したら自動で compact する。Claude Code の autoCompactWindow で、起動するときに渡す。省くと Claude Code の設定に従う。 */
+  compactWindow?: number;
   model?: string;
   effort?: string;
 };

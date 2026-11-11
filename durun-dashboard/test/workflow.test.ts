@@ -97,3 +97,10 @@ test('読めない設定は書き込まずに理由を返す', () => {
   assert.throws(() => updateWorkflow('daily', { cwd, prompt: 'x', triggers: [{ kind: 'schedule', at: '25:00' }], mode: 'new' }), /トリガー/);
   assert.equal(fs.readFileSync(WORKFLOWS_FILE, 'utf8'), before);
 });
+
+test('compactWindow は引き継ぐモードで、Claude Code が受け付ける範囲だけ読む', () => {
+  const window = (extra: object) => parseWorkflows(JSON.stringify({ workflows: [def(extra)] })).workflows[0]?.compactWindow;
+  assert.equal(window({ mode: 'continue', compactWindow: 200_000 }), 200_000);
+  assert.equal(window({ mode: 'new', compactWindow: 200_000 }), undefined);
+  assert.equal(window({ mode: 'continue', compactWindow: 50_000 }), undefined);
+});
