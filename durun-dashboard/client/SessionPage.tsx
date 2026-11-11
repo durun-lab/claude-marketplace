@@ -193,7 +193,18 @@ const Family = ({ s, sessions }: { s: Session; sessions: Session[] }) => {
   return (
     <div class="head-row family">
       {parent && <span>親: <a href={href.session(parent.id)}>{parent.name}</a></span>}
-      {children.length > 0 && <span>子: {children.map((c) => <a key={c.id} href={href.session(c.id)}>{c.name}</a>)}</span>}
+      {children.length > 0 && (
+        <div class="family-children">
+          子:
+          <ul>
+            {children.map((c) => (
+              <li key={c.id}>
+                <a href={href.session(c.id)}>{c.name}</a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 };
