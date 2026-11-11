@@ -163,9 +163,12 @@ const trackedSession = async (output: string, cwd: string): Promise<SessionMeta>
   return ensureSession(sessionId, cwd);
 };
 
-/** バックグラウンドのセッションを起動し、ダッシュボードの記録を返す。記録に印を付けたいときに使う。id を引けなければ reject する。 */
-export const startTrackedSession = async (cwd: string, prompt: string, model?: string, effort?: string, name?: string): Promise<SessionMeta> =>
-  trackedSession(await claudeOutput(['--bg', ...(name ? ['--name', name] : []), ...modelFlags(model, effort), '--', prompt], cwd), cwd);
+/**
+ * バックグラウンドのセッションを起動し、ダッシュボードの記録を返す。記録に印を付けたいときに使う。id を引けなければ reject する。
+ * settings は --settings で渡す。止めたセッションを再開するときも、起動したときの --settings が使われる。
+ */
+export const startTrackedSession = async (cwd: string, prompt: string, model?: string, effort?: string, name?: string, settings?: object): Promise<SessionMeta> =>
+  trackedSession(await claudeOutput(['--bg', ...(name ? ['--name', name] : []), ...modelFlags(model, effort), ...(settings ? ['--settings', JSON.stringify(settings)] : []), '--', prompt], cwd), cwd);
 
 /** 親のセッションの作業ディレクトリで子のセッションを起動し、親と同じテーマに入れる。 */
 export const startChildSession = async (parentId: string, prompt: string, name?: string, model?: string, effort?: string): Promise<SessionMeta> => {
