@@ -96,13 +96,30 @@ const Log = ({ slackRef, onOpenThread }: { slackRef: string; onOpenThread?: (ref
   );
 };
 
-/** タブの名前。会話を読んだら、チャンネルの名前かスレッドの親の発言の先頭にし、スレッドにはチャンネルの名前を小さく添える。 */
-const TabLabel = ({ slackRef }: { slackRef: string }) => {
+/** 会話を Slack で開くリンク。アプリのリンクを作れなければ、開いた URL のまま開く。 */
+const conversationLink = (ref: string, c: SlackConversation | undefined): string | undefined =>
+  (c?.team && (c.thread ? appLink(c, c.thread) : `slack://channel?team=${c.team}&id=${c.channel}`)) || (isUrl(ref) ? ref : undefined);
+
+/**
+ * タブの名前。会話を読んだら、チャンネルの名前かスレッドの親の発言の先頭にし、スレッドにはチャンネルの名前を小さく添える。
+ * 選んでいるタブの名前を押すと、その会話を Slack で開く。ほかのタブの名前を押したときは、タブを選ぶだけにする。
+ */
+const TabLabel = ({ slackRef, active }: { slackRef: string; active: boolean }) => {
   const { data } = useConversation(slackRef);
+  const link = active ? conversationLink(slackRef, data) : undefined;
+  const open = (e: MouseEvent) => {
+    if (!link) return;
+    e.stopPropagation();
+    // slack:// は新しいタブで開くと空のタブが残るので、発言の時刻のリンクと同じくこの画面から開く。
+    if (link.startsWith('slack:')) location.href = link;
+    else window.open(link, '_blank', 'noopener');
+  };
   return (
     <>
       <span class="skype-presence" aria-hidden="true">✓</span>
-      <span class="skype-tab-title">{data?.title ?? shortLabel(slackRef)}</span>
+      <span class={`skype-tab-title${link ? ' is-link' : ''}`} title={link ? 'Slack で開く' : undefined} onClick={open}>
+        {data?.title ?? shortLabel(slackRef)}
+      </span>
       {data?.thread && data.channelName && <small class="skype-channel">#{data.channelName}</small>}
     </>
   );
@@ -220,7 +237,7 @@ const SkypePanel = ({ refs, current, onPick, onReorder, onClose, onAdd, onOpenTh
                 onReorder(moveTo(refs, r, target));
               }}
             >
-              <TabLabel slackRef={r} />
+              <TabLabel slackRef={r} active={r === current} />
             </button>
             <button class="skype-tab-close" aria-label="この会話を閉じる" title="閉じる" onClick={() => onClose(r)}>×</button>
           </span>
