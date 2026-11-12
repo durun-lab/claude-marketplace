@@ -249,6 +249,8 @@ export type Session = {
   movedTo?: string;
   /** このセッションを start_session で起動した親のセッションの id。 */
   parent?: string;
+  /** ダッシュボードが追加アカウントで起動したときの、そのアカウントの名前。 */
+  account?: string;
   /** 人間がピン留めした。一覧の先頭にまとめて出す。 */
   pinned: boolean;
   /** このセッションを起動したワークフローの名前。前に受け取ったスナップショットには無いことがある。 */
@@ -562,6 +564,8 @@ export type Snapshot = {
   notion?: boolean;
   /** Jev のキーを設定してあるか。画面は、設定してあるときだけ、イルカの吹き出しにマインスイーパのヒントを出す。 */
   jev?: boolean;
+  /** 追加アカウントの名前。前に受け取ったスナップショットには無いことがある。 */
+  accounts?: string[];
   /** Claude が MCP で文章校正のファイルにコメントか修正版を書き込んだ時刻を、ファイルの id ごとに持つ。画面が前に受け取ったスナップショットから描き始めるときは無い。 */
   proofCommentedAt?: Record<string, number>;
   /** 画面のファイルの更新時刻。変わったら画面が読み込み直す。 */

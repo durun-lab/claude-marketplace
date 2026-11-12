@@ -77,7 +77,7 @@ type Preset = { cwd: string; theme: string; prompt?: string; parent?: string };
 let presetOnOpen: Preset | undefined;
 const presetListeners = new Set<(preset: Preset) => void>();
 
-const NewSession = ({ cwds, themes, sessions, onClose }: { cwds: string[]; themes: string[]; sessions: Session[]; onClose: () => void }) => {
+const NewSession = ({ cwds, themes, sessions, accounts, onClose }: { cwds: string[]; themes: string[]; sessions: Session[]; accounts: string[]; onClose: () => void }) => {
   const dir = useRef<HTMLInputElement>(null);
   const ask = useRef<HTMLTextAreaElement>(null);
   const [cwd, setCwd] = useSaved('dashboard-new-session-cwd');
@@ -88,6 +88,8 @@ const NewSession = ({ cwds, themes, sessions, onClose }: { cwds: string[]; theme
   const [asChild, setAsChild] = useState(false);
   const [model, setModel] = useSaved('dashboard-new-session-model', MODELS);
   const [effort, setEffort] = useSaved('dashboard-new-session-effort', EFFORT_LEVELS);
+  // 追加アカウントにはコネクタが無いので、前回の選択を残さず、毎回プライマリアカウントから始める。
+  const [account, setAccount] = useState('');
   // セッションの画面から開いたときは、そのセッションの作業ディレクトリとテーマを入れる。開いている間にもう一度開かれたら、入れ直す。
   // ディレクトリが埋まっていれば、次に書く最初の依頼から入力できるようにする。
   useEffect(() => {
@@ -113,7 +115,7 @@ const NewSession = ({ cwds, themes, sessions, onClose }: { cwds: string[]; theme
     if (!ready) return;
     onClose();
     const child = asChild ? parent : undefined;
-    if (await attempt('セッションの起動', () => api.startSession(cwd.trim(), prompt, model, effort, theme, child))) toast('セッションを起動しました');
+    if (await attempt('セッションの起動', () => api.startSession(cwd.trim(), prompt, model, effort, theme, child, account))) toast('セッションを起動しました');
     else if (!presetListeners.size) openNewSession(cwd.trim(), theme, prompt, parent);
   };
   return (
@@ -137,6 +139,7 @@ const NewSession = ({ cwds, themes, sessions, onClose }: { cwds: string[]; theme
       <div class="actions">
         <Choice label="モデル" value={model} options={MODELS} onChange={setModel} />
         <Choice label="effort" value={effort} options={EFFORT_LEVELS} onChange={setEffort} />
+        {accounts.length > 0 && <Choice label="アカウント" value={account} options={accounts} empty="プライマリ" onChange={setAccount} />}
         {parent && (
           <label class="inline-field">
             <input type="checkbox" checked={asChild} onChange={(e) => setAsChild(e.currentTarget.checked)} />
@@ -186,7 +189,7 @@ export const NewSessionIcon = ({ cwd, theme, parent }: { cwd?: string; theme?: s
 
 export const NewSessionFloat = ({ f, snapshot }: HomeData & { f: Float }) => (
   <FloatFrame f={f} title={NEW_SESSION_TITLE} icon={NEW_SESSION_ICON} controls={[{ kind: 'close', label: '閉じる', onClick: closeNewSession }]}>
-    <NewSession cwds={recentCwds(snapshot.sessions)} themes={snapshot.themes} sessions={snapshot.sessions} onClose={closeNewSession} />
+    <NewSession cwds={recentCwds(snapshot.sessions)} themes={snapshot.themes} sessions={snapshot.sessions} accounts={snapshot.accounts ?? []} onClose={closeNewSession} />
   </FloatFrame>
 );
 

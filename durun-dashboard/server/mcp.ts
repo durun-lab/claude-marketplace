@@ -148,6 +148,7 @@ const TOOLS = [
         name: { type: 'string', description: '子セッションの名前。ダッシュボードの作業名にもなる（例: mention-lpo-ab-test）' },
         model: { type: 'string', enum: [...MODELS], description: '省くと Claude Code の設定に従う' },
         effort: { type: 'string', enum: [...EFFORT_LEVELS], description: '省くと Claude Code の設定に従う' },
+        account: { type: 'string', description: '省くとこのセッションと同じ Claude のアカウントで動く。人間に頼まれたときだけ、primary か追加アカウントの名前を渡す' },
       },
       required: ['prompt'],
     },
@@ -596,7 +597,8 @@ const startSessionTool = (res: ServerResponse, rpcId: RpcId, params: RpcParams, 
   const model = (MODELS as readonly unknown[]).includes(args.model) ? String(args.model) : undefined;
   const effort = (EFFORT_LEVELS as readonly unknown[]).includes(args.effort) ? String(args.effort) : undefined;
   const finish = openStream(res, rpcId, params, () => '子セッションを起動しています');
-  startChildSession(sessionId, prompt, str(args.name), model, effort).then(
+  const account = str(args.account);
+  startChildSession(sessionId, prompt, str(args.name), model, effort, account === 'primary' ? '' : account).then(
     (child) => finish(textResult(`子セッションを起動しました。session_id: ${child.id}`)),
     (e: Error) => finish(textResult(`子セッションを起動できませんでした。${e.message}`, true)),
   );

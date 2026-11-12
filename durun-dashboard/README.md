@@ -304,6 +304,22 @@ Claude Code の設定で `crossSessionInbound` を `accept` にすると、保�
 | `FL_CONNECT_MIDI_IN`、`FL_CONNECT_MIDI_OUT` | FL Connect がダッシュボードの側で開く MIDI のポート。既定はどちらも `FL Connect (B)`。loopMIDI のように自分に返るポートを使うときは、入力用と出力用の 2 つを作って指す |
 | `FL_CONNECT_DEBUG_PORT` | ② の道で FL を起動するときに開く、WebView2 のデバッグのポート（既定は 9222） |
 
+### 追加アカウント
+
+推論にだけ使う Claude のアカウントを足せる。
+コネクタ（claude.ai の MCP サーバー、Artifact、Claude in Chrome）は、`claude` にログインしているプライマリアカウントにだけ付く。
+
+1. 追加アカウントで `claude setup-token` を実行し、トークンを得る
+2. `~/.durun-dashboard/accounts/<名前>.json` に次のように書く。ファイルの名前がアカウントの名前になる
+
+   ```json
+   { "env": { "CLAUDE_CODE_OAUTH_TOKEN": "<トークン>" } }
+   ```
+
+- 新規セッションのウィンドウで「アカウント」を選ぶと、そのアカウントで起動する。既定はプライマリアカウント
+- `start_session` で起動した子セッションは、既定で親と同じアカウントで動く。`account` に `primary` か名前を渡すと変えられる
+- コネクタを使う作業は、プライマリアカウントのセッションに `start_session` で任せる
+
 ## 開発
 
 ```sh

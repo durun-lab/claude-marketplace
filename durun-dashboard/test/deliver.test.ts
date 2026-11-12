@@ -489,6 +489,32 @@ if (args[0] === '--bg') { fs.writeFileSync(${js(argsFile)}, lines(args)); consol
   assert.deepEqual([child.id, child.cwd, child.parent, child.title, child.theme], ['s30', tmp, 'p30', 'mention-x', '親のテーマ']);
 });
 
+test('子セッションは、アカウントを省くと親の追加アカウントを受け継ぎ、primary を渡すとプライマリアカウントで動く', async () => {
+  const bin = path.join(tmp, 'bin-account');
+  const argsFile = path.join(tmp, 'account-args');
+  const jobs = [{ id: 'j31', sessionId: 's31', kind: 'background', pid: 1 }];
+  useFakeClaude(
+    bin,
+    `if (args[0] === 'agents') console.log(${js(JSON.stringify(jobs))});
+if (args[0] === '--bg') { fs.writeFileSync(${js(argsFile)}, lines(args)); console.log('backgrounded · j31'); }`,
+  );
+  const accounts = path.join(tmp, 'data', 'accounts');
+  fs.mkdirSync(accounts, { recursive: true });
+  fs.writeFileSync(path.join(accounts, 'sub.json'), '{}');
+  Object.assign(ensureSession('p31', tmp), { account: 'sub' });
+  const argsOf = (): string[] => fs.readFileSync(argsFile, 'utf8').split('\n').slice(0, -1);
+
+  const inherited = await startChildSession('p31', '依頼');
+  assert.deepEqual(argsOf(), ['--bg', '--settings', path.join(accounts, 'sub.json'), '--', '依頼']);
+  assert.equal(inherited.account, 'sub');
+
+  const primary = await startChildSession('p31', '依頼', undefined, undefined, undefined, '');
+  assert.deepEqual(argsOf(), ['--bg', '--', '依頼']);
+  assert.equal(primary.account, undefined);
+
+  await assert.rejects(startChildSession('p31', '依頼', undefined, undefined, undefined, 'none'), /追加アカウントがありません/);
+});
+
 test('アーカイブで消すときは、動いているバックグラウンドのセッションを止めてから claude rm し、端末のセッションは消さない。アーカイブは消し終わるのを待たずに返り、消せなければ理由を残す', async () => {
   // 偽の claude は呼ばれた引数を書き足す。agents は、動いている j3、止まっている j5、端末の s4 を返す。
   // stop は少し後で supervisor の名簿から j3 を消す。rm は、名簿に残っている j3 と、未コミットの変更がある j5 を断る。
