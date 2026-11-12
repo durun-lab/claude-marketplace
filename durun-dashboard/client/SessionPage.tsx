@@ -30,7 +30,7 @@ import { JIRA_VIEW_TITLE, JIRA_WIDGET, JiraWidget } from './JiraView.tsx';
 import { SLACK_THREAD_TITLE, SLACK_WIDGET, SessionSlack, slackThreadControls } from './SlackThread.tsx';
 import { PR_TITLE, PR_WIDGET, PrWidget } from './PrView.tsx';
 import { type SessionTab, currentSessionId, href } from './router.ts';
-import { Chip, CopyButton, CopyText, Empty, IssueChip, JiraChips, Loading, PrChips, StatusBadge } from './ui.tsx';
+import { Chip, CopyButton, CopyText, Empty, IssueChip, JiraChips, Loading, PrChips, StatusBadge, StatusDot } from './ui.tsx';
 import { UsageView } from './Usage.tsx';
 
 const ThemeEditor = ({ s, themes }: { s: Session; themes: string[] }) => {
@@ -203,13 +203,19 @@ const Family = ({ s, sessions }: { s: Session; sessions: Session[] }) => {
   if (!parent && !children.length) return null;
   return (
     <div class="head-row family">
-      {parent && <span>親: <a href={href.session(parent.id)}>{parent.name}</a></span>}
+      {parent && (
+        <span class="family-link">
+          親: <StatusDot status={parent.status} waitingFor={parent.waitingFor} />
+          <a href={href.session(parent.id)}>{parent.name}</a>
+        </span>
+      )}
       {children.length > 0 && (
         <div class="family-children">
           子:
           <ul>
             {children.map((c) => (
-              <li key={c.id}>
+              <li key={c.id} class="family-link">
+                <StatusDot status={c.status} waitingFor={c.waitingFor} />
                 <a href={href.session(c.id)}>{c.name}</a>
               </li>
             ))}
