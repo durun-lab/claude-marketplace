@@ -209,8 +209,11 @@ const runOf = (id: string): WorkflowRun => {
   return (state.workflowRuns[id] ??= { queue: [] });
 };
 
-// 指示から補助のスクリプトなどを使えるよう、ワークフローのフォルダーを添える。
-const promptFor = (w: WorkflowDef, event: string): string => `${MARK}「${w.name}」 ${event}\n\n${w.prompt}\n\n（このワークフローのフォルダー: ${w.dir}）`;
+/**
+ * イベントの内容が指示に埋もれないよう、指示は本文を写さずに agent のファイルを指す。
+ * 補助のスクリプトなどは、同じフォルダーにあるので、ファイルの場所から辿れる。
+ */
+const promptFor = (w: WorkflowDef, event: string): string => `${MARK}「${w.name}」 ${event}\n\n進め方は ${agentPath(w.dir, w.id)} の指示に従ってください。`;
 
 /** 起動を頼み、id をまだ受け取っていないセッションの数。ワークフローごとに数える。 */
 const launching = new Map<string, number>();
@@ -581,8 +584,8 @@ const consultPrompt = (target: WorkflowDef | undefined): string => `${MARK} 人�
 フォルダー名が id です。英数字とハイフンで、ほかのフォルダーと重ならないものにしてください。ほかのワークフローは変えないでください。
 - <id>.md: Claude Code の agent として書く、セッションへの指示。普段のセッションからもサブエージェントとして呼べる
   - フロントマター: name（id と同じ）、description（どんなときに使う agent か）、model（${MODELS.join(' / ')}）、effort（${EFFORT_LEVELS.join(' / ')}）。model と effort は省くと Claude Code の設定に従う
-  - 本文: セッションへの依頼。イベントの内容は、ダッシュボードが依頼の前に書き足す
-- 補助のスクリプトなど: 同じフォルダーに置ける。ダッシュボードは依頼の最後にフォルダーの場所を書き足す
+  - 本文: セッションへの依頼。ダッシュボードはイベントの内容だけを送り、本文はこのファイルの場所で指す
+- 補助のスクリプトなど: 同じフォルダーに置ける。セッションは <id>.md の場所から辿る
 - workflow.json: 次の項目を持つ JSON
 - name: 画面とセッションのバッジに出す名前
 - enabled: true で動く。新しく作るときは、人間が良いと言うまで false にする
