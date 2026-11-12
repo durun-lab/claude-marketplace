@@ -52,7 +52,9 @@ test('要望が届くと、たまった要望と区切りの印の書き方を 1
   const [args = ''] = calls();
   assert.match(args, /^--bg$/m);
   assert.match(args, /^opus$/m);
-  assert.match(args, new RegExp(`1 件たまっています[\\s\\S]*${first}: 一つ目[\\s\\S]*対応した要望:[\\s\\S]*worktree`));
+  // 指示の本文は写さず、agent のファイルを指す。
+  assert.match(args, new RegExp(`1 件たまっています[\\s\\S]*${first}: 一つ目[\\s\\S]*対応した要望:[\\s\\S]*improve\\.md の指示に従って`));
+  assert.doesNotMatch(args, /worktree/);
   assert.equal(state.workflowRuns?.improve?.feedback?.stalled, 'unmarked');
 
   // 待機中は、新しい要望が届いてもウェーブを始めない。
