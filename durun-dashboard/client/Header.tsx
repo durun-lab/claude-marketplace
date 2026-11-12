@@ -27,6 +27,7 @@ import { clickedInsteadOf } from './nudge.ts';
 import { Empty, Loading, Meter, Time, paceColor, rateColor } from './ui.tsx';
 import { openWallpaper } from './Wallpaper.tsx';
 import { openAccounts } from './Accounts.tsx';
+import { openControlPanel } from './ControlPanel.tsx';
 import { XpPrompt } from './XpConfirm.tsx';
 import { XpDropdown } from './XpMenu.tsx';
 import { TranslateTray } from './TranslateTray.tsx';
@@ -363,6 +364,8 @@ const AppMenu = ({ onSearch, onEdit, docs, autoContinue, agentPriority }: MenuPr
             <div class="app-menu-sub">
               <div class="app-menu-item" tabindex={0} aria-haspopup="true"><AppIcon icon="🖥️" /><span>コントロール パネル(<u>C</u>)</span><span class="app-menu-arrow" aria-hidden="true">▶</span></div>
               <div class="app-menu-submenu" role="group" aria-label="コントロール パネル">
+                <button class="app-menu-item" title="JIRA や Notion のトークンなど、~/.durun-dashboard/.env.local の設定を分類ごとに直す" onClick={openControlPanel}><AppIcon icon="🖥️" />コントロール パネルを開く</button>
+                <hr class="app-menu-sep" />
                 <button class="app-menu-item" title="Windows XP のスキンの壁紙を、画像のファイルか URL で変える" onClick={openWallpaper}>壁紙</button>
                 <button class="app-menu-item" title="推論にだけ使う追加の Claude アカウントを登録する" onClick={openAccounts}>Claude アカウント</button>
                 <div class="app-menu-sub">

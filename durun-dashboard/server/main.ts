@@ -30,6 +30,7 @@ import { applyAgentPriority, setAgentPriority } from './agentPriority.ts';
 import { learnNow, noteActivity, updateLearn } from './reflect.ts';
 import { consultWorkflow, runWorkflow, setWorkflowEnabled, startWorkflows, updateWorkflow } from './workflow.ts';
 import { harness, setHarnessToggle } from './harness.ts';
+import { readEnvValues, writeEnvValue } from './envFile.ts';
 import { fileCandidates, listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
 import { channelIdOf, onSlackAuthExpired, slackChannels, slackConversation, slackKeyOf, slackTargetOf } from './slack.ts';
@@ -1054,6 +1055,18 @@ const accountName = (body: unknown): string => {
   return name;
 };
 
+// start.ts が node --env-file-if-exists で読ませるファイル。書き換えると、node --watch がサーバーを起動し直す。
+const ENV_FILE = path.join(DATA_DIR, '.env.local');
+
+/** コントロール パネルで直した値を .env.local に書く。書けない値は、理由を添えて断る。 */
+const setEnvValue = (body: unknown): void => {
+  try {
+    writeEnvValue(ENV_FILE, field<string>(body, 'key', 'string'), field<string>(body, 'value', 'string').trim());
+  } catch (e) {
+    throw e instanceof HttpError ? e : new HttpError(400, (e as Error).message);
+  }
+};
+
 const addAccount = (body: unknown): void => {
   const token = field<string>(body, 'token', 'string').trim();
   if (!token) throw new HttpError(400, 'token is required');
@@ -1281,8 +1294,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/wallpaper\/reset$/, () => clearWallpaper(DATA_DIR)],
   [/^\/api\/accounts$/, (_, b) => addAccount(b)],
   [/^\/api\/accounts\/remove$/, (_, b) => removeAccount(accountName(b))],
-  [/^\/api\/accounts$/, (_, b) => addAccount(b)],
-  [/^\/api\/accounts\/remove$/, (_, b) => removeAccount(accountName(b))],
+  [/^\/api\/settings\/env$/, (_, b) => setEnvValue(b)],
   [/^\/api\/sessions$/, (_, b) => newSession(b), CLAUDE_MS],
   [/^\/api\/sessions\/order$/, (_, b) => orderSessions(b)],
   [/^\/api\/sessions\/([^/]+)\/theme$/, ([, id = ''], b) => setTheme(id, b)],
@@ -1400,6 +1412,7 @@ const memoryNow = latestMemory(() => platform.readMemory());
 
 const GET_ROUTES: Route[] = [
   [/^\/api\/snapshot$/, () => buildSnapshot()],
+  [/^\/api\/settings\/env$/, () => readEnvValues(ENV_FILE)],
   // アーカイブしていないセッションの作業ディレクトリの CLAUDE.md も並べる。
   [/^\/api\/learn\/harness$/, () => harness(CLAUDE_DIR, [...new Set(Object.values(state.sessions).filter((m) => !m.archived).map((m) => m.cwd))])],
   [/^\/api\/translate\/status$/, () => translateStatus()],
