@@ -16,7 +16,7 @@ import { fillCallerPid } from './callerPid.ts';
 import { compress, compressedFile, compressedStream, etagOf, notModified, pickEncoding } from './compress.ts';
 import { bump, forgetCached, saveCache } from './cache.ts';
 import { CLAUDE_DIR, borrowSkills, PROJECTS_DIR, SESSIONS_DIR, STATUSLINE_DIR, TASKS_DIR, readLiveSessions, forgetStat, readSubagents, saveLogSummaries, summarizeLog, trustWatchedDir } from './claude.ts';
-import { allowPermission, allowPermissions, answerCommand, runCommands, answerQuestion, archiveSession, compactSession, discardSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, retryRemovals, sendMessage, sendQueued, SessionStateError, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
+import { ACCOUNT_NAME, removeAccount, saveAccount, allowPermission, allowPermissions, answerCommand, runCommands, answerQuestion, archiveSession, compactSession, discardSession, flushArchives, flushQueue, forkSession, isWaiting, redeliverInterrupted, redeliver, resolveAttention, retryRemovals, sendMessage, sendQueued, SessionStateError, startSession, stopSession, submitReview, switchSession } from './deliver.ts';
 import { makeDiagram } from './diagram.ts';
 import { docAsset, inlineAssets } from './docAssets.ts';
 import { type ExportFormat, exportHtml } from './docExport.ts';
@@ -1048,6 +1048,18 @@ const terminalResize = (id: string, body: unknown): void => {
   if (!resizeTerminal(id, Number(cols), Number(rows))) throw new HttpError(404, '端末は閉じています');
 };
 
+const accountName = (body: unknown): string => {
+  const name = field<string>(body, 'name', 'string').trim();
+  if (!ACCOUNT_NAME.test(name)) throw new HttpError(400, '名前は英数字、-、_ の 40 文字以内にしてください');
+  return name;
+};
+
+const addAccount = (body: unknown): void => {
+  const token = field<string>(body, 'token', 'string').trim();
+  if (!token) throw new HttpError(400, 'token is required');
+  saveAccount(accountName(body), token);
+};
+
 /** 起動したセッションは、セッションファイルとフックから一覧に現れる。 */
 const newSession = (body: unknown): Promise<void> => {
   const cwd = field<string>(body, 'cwd', 'string');
@@ -1056,8 +1068,8 @@ const newSession = (body: unknown): Promise<void> => {
   if (!path.isAbsolute(cwd) || !fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) {
     throw new HttpError(400, `ディレクトリがありません: ${cwd}`);
   }
-  const { theme, parent } = body as { theme?: unknown; parent?: unknown };
-  return startSession(cwd, prompt, oneOf(body, 'model', MODELS), oneOf(body, 'effort', EFFORT_LEVELS), typeof theme === 'string' ? theme.trim() || undefined : undefined, typeof parent === 'string' ? parent : undefined);
+  const { theme, parent, account } = body as { theme?: unknown; parent?: unknown; account?: unknown };
+  return startSession(cwd, prompt, oneOf(body, 'model', MODELS), oneOf(body, 'effort', EFFORT_LEVELS), typeof theme === 'string' ? theme.trim() || undefined : undefined, typeof parent === 'string' ? parent : undefined, typeof account === 'string' ? account || undefined : undefined);
 };
 
 const conversation = (id: string): Conversation => {
@@ -1267,6 +1279,10 @@ type Route = [RegExp, Handler, number?];
 const POST_ROUTES: Route[] = [
   [/^\/api\/wallpaper\/url$/, (_, b) => setWallpaperUrl(b)],
   [/^\/api\/wallpaper\/reset$/, () => clearWallpaper(DATA_DIR)],
+  [/^\/api\/accounts$/, (_, b) => addAccount(b)],
+  [/^\/api\/accounts\/remove$/, (_, b) => removeAccount(accountName(b))],
+  [/^\/api\/accounts$/, (_, b) => addAccount(b)],
+  [/^\/api\/accounts\/remove$/, (_, b) => removeAccount(accountName(b))],
   [/^\/api\/sessions$/, (_, b) => newSession(b), CLAUDE_MS],
   [/^\/api\/sessions\/order$/, (_, b) => orderSessions(b)],
   [/^\/api\/sessions\/([^/]+)\/theme$/, ([, id = ''], b) => setTheme(id, b)],

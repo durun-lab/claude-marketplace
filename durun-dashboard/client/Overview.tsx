@@ -139,6 +139,7 @@ const MainAgent = ({ s }: { s: Session }) => {
       <span class="subagent-desc">{active?.subject ?? s.name}</span>
       <span class="subagent-meta">
         {s.usage.model && <Chip>{s.usage.model}</Chip>}
+        {s.account && <Chip>{s.account}</Chip>}
         <span title="コンテキストの使用率">コンテキスト {Math.round(s.usage.contextPercent)}%</span>
       </span>
     </div>
