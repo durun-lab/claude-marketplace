@@ -2,7 +2,8 @@
 // statusline の値は、描いたセッションが最後に API を呼んだときのもので、バックグラウンドのセッションは使用制限を載せない。
 import type { RateLimit, RateLimits } from '../shared/types.ts';
 import { peekCached } from './cache.ts';
-import { readRateLimits, withPoints } from './claude.ts';
+import { readAccountRateLimits, readRateLimits, withPoints } from './claude.ts';
+import { accountNames } from './deliver.ts';
 import { askRateLimits } from './haiku.ts';
 import { type RateWindow, state, touch } from './store.ts';
 
@@ -69,6 +70,13 @@ export const currentRateLimits = (now: number): RateLimits | undefined => {
   const fresh = readRateLimits(FRESH_MS);
   return fresh?.fiveHour && !behind(fresh.fiveHour) ? fresh : (peekUsage(now) ?? readRateLimits());
 };
+
+/** 追加アカウントの名前ごとの使用制限。そのアカウントで動いたセッションの statusline から読めたアカウントだけを入れる。 */
+export const accountRateLimits = (): Record<string, RateLimits> =>
+  Object.fromEntries(accountNames().flatMap((name) => {
+    const limits = readAccountRateLimits(name);
+    return limits ? [[name, limits]] : [];
+  }));
 
 /** statusline が変わったときに、今の使用率を推移に記録する。 */
 export const recordRateLimits = (): void => {

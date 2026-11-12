@@ -14,7 +14,7 @@ fs.writeFileSync(
   path.join(dataDir, 'state.json'),
   JSON.stringify({ sessions: {}, attention: [], docs: [], outbox: [], dismissed: [], improve: { enabled: false }, errors: {}, prNotes: {}, sessionOrder: [] }),
 );
-const { STATUSLINE_DIR, readRateLimits, readStatusline } = await import('../server/claude.ts');
+const { STATUSLINE_DIR, readAccountRateLimits, readRateLimits, readStatusline } = await import('../server/claude.ts');
 const { forgetCached } = await import('../server/cache.ts');
 const { askRateLimits, rateLimitsOf } = await import('../server/haiku.ts');
 const { advanceRateWindow, currentRateLimits, recordRateLimits } = await import('../server/rateLimits.ts');
@@ -223,4 +223,21 @@ test('currentRateLimits は、1 分以内に描いた statusline に今の 5 時
   assert.equal(currentRateLimits(Date.now())?.fiveHour?.usedPercent, 40);
   fs.writeFileSync(file, JSON.stringify({ rate_limits: { five_hour: window(45, fiveHourEnd), seven_day: window(10, sevenDayEnd) } }));
   assert.deepEqual([currentRateLimits(Date.now())?.fiveHour?.usedPercent, currentRateLimits(Date.now())?.sevenDay?.usedPercent], [45, 10]);
+});
+
+test('追加アカウントで動いたセッションの使用制限は、プライマリに混ぜず、そのアカウントの 5 時間と 7 日の値として読む', () => {
+  fs.rmSync(STATUSLINE_DIR, { recursive: true, force: true });
+  fs.mkdirSync(STATUSLINE_DIR, { recursive: true });
+  state.rateWindows = {};
+  const now = Math.floor(Date.now() / 1000);
+  const write = (name: string, fiveHour: number, sevenDay: number): void =>
+    fs.writeFileSync(path.join(STATUSLINE_DIR, `${name}.json`), JSON.stringify({ rate_limits: { five_hour: { used_percentage: fiveHour, resets_at: now + 3600 }, seven_day: { used_percentage: sevenDay, resets_at: now + 86400 } } }));
+  state.sessions.extra = { id: 'extra', cwd: dataDir, jira: [], archived: false, firstSeen: 0, replySeenAt: 0, account: 'sub' };
+  write('primary', 10, 20);
+  write('extra', 70, 80);
+  assert.deepEqual([readRateLimits()?.fiveHour?.usedPercent, readRateLimits()?.sevenDay?.usedPercent], [10, 20]);
+  const sub = readAccountRateLimits('sub');
+  assert.deepEqual([sub?.fiveHour?.usedPercent, sub?.sevenDay?.usedPercent], [70, 80]);
+  assert.equal(readAccountRateLimits('other'), undefined);
+  delete state.sessions.extra;
 });

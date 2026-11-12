@@ -1,5 +1,6 @@
+import { Fragment } from 'preact';
 import { useContext, useEffect, useState } from 'preact/hooks';
-import { AGENT_PRIORITIES, type AgentPriority, type Attention, type DocMeta, type ImproveState, type MemoryStatus, type RateLimit, type Session, type Snapshot } from '../shared/types.ts';
+import { AGENT_PRIORITIES, type AgentPriority, type Attention, type DocMeta, type ImproveState, type MemoryStatus, type RateLimit, type RateLimits, type Session, type Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { AppIcon, useApps } from './apps.tsx';
 import { createDashboard, duplicateDashboard, renameDashboard, switchDashboard, useDashboards } from './dashboards.ts';
@@ -113,7 +114,10 @@ const Ring = ({ r, width, limit, rateWindow }: { r: number; width?: number; limi
  * 値がまだ無いときも空のリングを残し、内訳で出し方を案内する。消すと、出せることに気づけない。
  * loading は、スナップショットがまだ届いていないこと。値が無いとは限らないので、案内の代わりにスケルトンを出す。
  */
-const RateTray = ({ fiveHour, sevenDay, loading }: { fiveHour?: RateLimit; sevenDay?: RateLimit; loading: boolean }) => {
+type RateTrayProps = { fiveHour?: RateLimit; sevenDay?: RateLimit; accounts?: Record<string, RateLimits>; loading: boolean };
+
+/** アイコンの輪はプライマリアカウントの値で描き、追加アカウントの値は開いた一覧の下にアカウントごとに並べる。 */
+const RateTray = ({ fiveHour, sevenDay, accounts = {}, loading }: RateTrayProps) => {
   const empty = !fiveHour && !sevenDay;
   const weekdays = useRateWeekdays();
   const sevenDays = { ...SEVEN_DAYS, weekdays };
@@ -135,6 +139,13 @@ const RateTray = ({ fiveHour, sevenDay, loading }: { fiveHour?: RateLimit; seven
         <b class="rate-head">使用制限</b>
         {fiveHour && <RateMeter limit={fiveHour} rateWindow={FIVE_HOURS} />}
         {sevenDay && <RateMeter limit={sevenDay} rateWindow={sevenDays} />}
+        {Object.entries(accounts).map(([name, limits]) => (
+          <Fragment key={name}>
+            <b class="rate-account">{name}</b>
+            {limits.fiveHour && <RateMeter limit={limits.fiveHour} rateWindow={FIVE_HOURS} />}
+            {limits.sevenDay && <RateMeter limit={limits.sevenDay} rateWindow={sevenDays} />}
+          </Fragment>
+        ))}
         {loading ? <Loading /> : empty && (
           <p class="rate-empty">
             まだ値がありません。Claude.ai のプランで Claude Code にログインしていると出ます。
@@ -568,7 +579,7 @@ export const Header = ({ snapshot, assets, connected, home, onSearch, onEdit, on
         <TranslateTray />
         <MicTray />
         <LoginTray login={snapshot?.claudeLogin} />
-        <RateTray fiveHour={rate?.fiveHour} sevenDay={rate?.sevenDay} loading={!snapshot} />
+        <RateTray fiveHour={rate?.fiveHour} sevenDay={rate?.sevenDay} accounts={snapshot?.accountRateLimits} loading={!snapshot} />
         <MemoryTray />
         <TaskbarClock />
       </div>

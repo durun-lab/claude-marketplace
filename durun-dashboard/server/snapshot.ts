@@ -14,7 +14,7 @@ import { badgeIssue, badgeOf, badgePr, cachedPr, findJiraKeys, jiraBase, jiraIss
 import { hasJev } from './jev.ts';
 import { notionEnabled } from './notion.ts';
 import { proofCommentedAt } from './proofFiles.ts';
-import { currentRateLimits } from './rateLimits.ts';
+import { accountRateLimits, currentRateLimits } from './rateLimits.ts';
 import { ensureSession, newId, persist, state, type SessionMeta } from './store.ts';
 import { type Conversation, peekReplies, peekSummary, peekTasks, peekWaiting } from './suggest.ts';
 
@@ -441,6 +441,7 @@ export const buildSnapshot = (): Snapshot => {
     docs: state.docs.map(({ content: _content, ...meta }) => meta).reverse(),
     outbox: state.outbox,
     rateLimits: currentRateLimits(now),
+    accountRateLimits: accountRateLimits(),
     themes,
     sessionOrder: state.sessionOrder,
     improve: improveState(),
