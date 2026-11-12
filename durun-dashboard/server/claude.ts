@@ -810,7 +810,28 @@ const lastRecorded = (recorded: RateWindow | undefined, now: number): RateLimit 
   recorded && recorded.resetsAt > now ? { usedPercent: recorded.points.at(-1)?.[1] ?? 0, resetsAt: recorded.resetsAt } : undefined;
 
 /**
- * レート制限はアカウント単位なので、全セッションの statusline から最新の値を選ぶ。
+ * account のセッションの statusline に載った使用制限。account が undefined ならプライマリアカウントのセッションのもの。
+ * statusline のファイルの名前はセッションの id なので、ダッシュボードの記録からそのセッションのアカウントを引く。
+ */
+const statuslineLimits = (now: number, maxAge: number, account: string | undefined): (RawStatusline['rate_limits'] | undefined)[] =>
+  listDir(STATUSLINE_DIR)
+    .filter((f) => f.endsWith('.json') && state.sessions[f.slice(0, -'.json'.length)]?.account === account && now - (mtimeOf(path.join(STATUSLINE_DIR, f)) ?? 0) < maxAge)
+    .map((f) => readJsonCached<RawStatusline>(path.join(STATUSLINE_DIR, f))?.rate_limits);
+
+/**
+ * 追加アカウントの使用制限。get_usage は setup-token のトークンでは読めないので、そのアカウントで動いたセッションの statusline だけから選ぶ。
+ * 推移は記録しないので、週の使用率も 5 時間の枠に揃えず、それぞれの枠の最新の値を出す。
+ */
+export const readAccountRateLimits = (account: string): RateLimits | undefined => {
+  const now = Date.now();
+  const all = statuslineLimits(now, RATE_LIMIT_MAX_AGE_MS, account);
+  const fiveHour = newestLimit(all.map((l) => l?.five_hour), now);
+  const sevenDay = newestLimit(all.map((l) => l?.seven_day), now);
+  return fiveHour || sevenDay ? { fiveHour, sevenDay, updatedAt: now } : undefined;
+};
+
+/**
+ * レート制限はアカウント単位なので、プライマリアカウントの全セッションの statusline から最新の値を選ぶ。
  * 週の制限をリセットしても週の枠のリセット時刻は変わらず、止まったセッションには前の高い使用率が残る。
  * リセットでは 5 時間の枠が始まり直すので、週の使用率は、今の 5 時間の枠で API を呼んだセッションの値から選ぶ。
  * 5 時間の枠がどれも終わっていれば、その後に API を呼んだセッションは無いので、記録した最後の値を使う。
@@ -818,9 +839,7 @@ const lastRecorded = (recorded: RateWindow | undefined, now: number): RateLimit 
  */
 export const readRateLimits = (maxAge = RATE_LIMIT_MAX_AGE_MS): RateLimits | undefined => {
   const now = Date.now();
-  const all = listDir(STATUSLINE_DIR)
-    .filter((f) => f.endsWith('.json') && now - (mtimeOf(path.join(STATUSLINE_DIR, f)) ?? 0) < maxAge)
-    .map((f) => readJsonCached<RawStatusline>(path.join(STATUSLINE_DIR, f))?.rate_limits);
+  const all = statuslineLimits(now, maxAge, undefined);
   const fiveHour = newestLimit(all.map((l) => l?.five_hour), now);
   const fiveHourEnd = fiveHour?.resetsAt;
   const sevenDay =

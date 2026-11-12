@@ -5,7 +5,7 @@ import type { Attention, BgTask, Session, SessionStatus, Snapshot, Subagent, Usa
 import { authRequests, claudeLoginState } from './auth.ts';
 import { cacheVersion } from './cache.ts';
 import * as claude from './claude.ts';
-import { autoActionOf, isAllowable, trashOf } from './deliver.ts';
+import { accountNames, autoActionOf, isAllowable, trashOf } from './deliver.ts';
 import { isHelperSession } from './haiku.ts';
 import { learnState } from './reflect.ts';
 import { improveState, workflowNameOf, workflowState } from './workflow.ts';
@@ -14,7 +14,7 @@ import { badgeIssue, badgeOf, badgePr, cachedPr, findJiraKeys, jiraBase, jiraIss
 import { hasJev } from './jev.ts';
 import { notionEnabled } from './notion.ts';
 import { proofCommentedAt } from './proofFiles.ts';
-import { currentRateLimits } from './rateLimits.ts';
+import { accountRateLimits, currentRateLimits } from './rateLimits.ts';
 import { ensureSession, newId, persist, state, type SessionMeta } from './store.ts';
 import { type Conversation, peekReplies, peekSummary, peekTasks, peekWaiting } from './suggest.ts';
 
@@ -267,6 +267,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     archived: meta.archived,
     archiveWhenIdle: meta.archiveWhenIdle,
     movedTo: meta.movedTo,
+    account: meta.account,
     parent: meta.parent,
     pinned: !!meta.pinned,
     workflow: workflowNameOf(meta.workflow),
@@ -440,6 +441,7 @@ export const buildSnapshot = (): Snapshot => {
     docs: state.docs.map(({ content: _content, ...meta }) => meta).reverse(),
     outbox: state.outbox,
     rateLimits: currentRateLimits(now),
+    accountRateLimits: accountRateLimits(),
     themes,
     sessionOrder: state.sessionOrder,
     improve: improveState(),
@@ -454,6 +456,7 @@ export const buildSnapshot = (): Snapshot => {
     jiraBase: jiraBase(),
     notion: notionEnabled(),
     jev: hasJev(),
+    accounts: accountNames(),
     proofCommentedAt,
     assets: { js: mtimeMs(path.join(PUBLIC_DIR, 'app.js')), css: mtimeMs(path.join(PUBLIC_DIR, 'style.css')) },
     // 一覧に出さない古いセッションも、Claude Code の一覧に残るので入れる。会話ログは読まずに名前を付ける。

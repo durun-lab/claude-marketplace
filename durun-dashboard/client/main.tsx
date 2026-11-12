@@ -46,6 +46,7 @@ import { Toasts } from './toast.tsx';
 import { Loading } from './ui.tsx';
 import { DIAGRAM_PROMPT_KEY, DiagramPromptFloat } from './Overview.tsx';
 import { WALLPAPER_KEY, WallpaperFloat } from './Wallpaper.tsx';
+import { ACCOUNTS_KEY, AccountsFloat } from './Accounts.tsx';
 
 type PageProps = { route: Route; snapshot: Snapshot; editing: boolean; onEditDone: () => void };
 
@@ -68,7 +69,7 @@ const Page = ({ route, snapshot, editing, onEditDone }: PageProps) => {
 const BookmarksWindow = (props: { f: Float; snapshot: Snapshot }) => <BookmarksFloat {...props} onOpen={openChatAt} />;
 
 // 浮かべたウィジェットを、元のダッシュボードの保存キーごとに描く部品。
-const FLOATS: Record<string, ComponentType<{ f: Float; snapshot: Snapshot }>> = { [HOME_KEY]: HomeFloat, [SESSION_KEY]: SessionFloat, [FILE_KEY]: FileFloat, [DOC_KEY]: DocFloat, [NEW_SESSION_KEY]: NewSessionFloat, [PR_KEY]: PrFloat, [JIRA_KEY]: JiraFloat, [NOTION_KEY]: NotionFloat, [WALLPAPER_KEY]: WallpaperFloat, [EXPLORER_KEY]: ExplorerFloat, [NOTEPAD_KEY]: NotepadFloat, [PROOFREAD_KEY]: ProofreadFloat, [TERMINAL_KEY]: TerminalFloat, [FL_KEY]: FlConnectFloat, [MM_KEY]: MovieMakerFloat, [CDRIP_KEY]: CdRipFloat, [TRANSLATE_KEY]: TranslateFloat, [MINESWEEPER_KEY]: MinesweeperFloat, [SOLITAIRE_KEY]: SolitaireFloat, [IE_KEY]: InternetExplorerFloat, [DIAGRAM_PROMPT_KEY]: DiagramPromptFloat, [BOOKMARKS_KEY]: BookmarksWindow, [ATTACHMENT_KEY]: AttachmentFloat, [RECYCLE_BIN_KEY]: RecycleBinFloat, [LEARN_KEY]: LearnFloat, [WORKFLOW_KEY]: WorkflowFloat };
+const FLOATS: Record<string, ComponentType<{ f: Float; snapshot: Snapshot }>> = { [HOME_KEY]: HomeFloat, [SESSION_KEY]: SessionFloat, [FILE_KEY]: FileFloat, [DOC_KEY]: DocFloat, [NEW_SESSION_KEY]: NewSessionFloat, [PR_KEY]: PrFloat, [JIRA_KEY]: JiraFloat, [NOTION_KEY]: NotionFloat, [WALLPAPER_KEY]: WallpaperFloat, [ACCOUNTS_KEY]: AccountsFloat, [EXPLORER_KEY]: ExplorerFloat, [NOTEPAD_KEY]: NotepadFloat, [PROOFREAD_KEY]: ProofreadFloat, [TERMINAL_KEY]: TerminalFloat, [FL_KEY]: FlConnectFloat, [MM_KEY]: MovieMakerFloat, [CDRIP_KEY]: CdRipFloat, [TRANSLATE_KEY]: TranslateFloat, [MINESWEEPER_KEY]: MinesweeperFloat, [SOLITAIRE_KEY]: SolitaireFloat, [IE_KEY]: InternetExplorerFloat, [DIAGRAM_PROMPT_KEY]: DiagramPromptFloat, [BOOKMARKS_KEY]: BookmarksWindow, [ATTACHMENT_KEY]: AttachmentFloat, [RECYCLE_BIN_KEY]: RecycleBinFloat, [LEARN_KEY]: LearnFloat, [WORKFLOW_KEY]: WorkflowFloat };
 
 const floatId = (f: Float): string => `${f.key} ${f.scope} ${f.tab.id}`;
 

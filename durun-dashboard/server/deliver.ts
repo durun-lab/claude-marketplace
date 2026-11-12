@@ -12,13 +12,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { setImmediate } from 'node:timers/promises';
 import { isDeepStrictEqual } from 'node:util';
+import { createHash } from 'node:crypto';
 import type { Delivery, OutboxMessage, QueuedMessage, ReviewComment } from '../shared/types.ts';
 import { copyCached } from './cache.ts';
 import { CLAUDE_DIR, HUMAN_LABEL, SESSIONS_DIR, findTranscript, isAlive, readJson, readLiveSessions, summarizeLog, type LiveSession, type LogSummary } from './claude.ts';
 import { UpstreamError } from './haiku.ts';
 import { claudeCommand, platform } from './platform.ts';
 import { run } from './run.ts';
-import { ensureSession, moveSession, newId, state, touch, type SessionMeta } from './store.ts';
+import { DATA_DIR, ensureSession, moveSession, newId, state, touch, type SessionMeta } from './store.ts';
 
 // バックグラウンドのセッションを動かす supervisor の名簿。動いているジョブだけが workers に載る。
 const ROSTER = path.join(CLAUDE_DIR, 'daemon', 'roster.json');
@@ -138,19 +139,64 @@ const modelFlags = (model?: string, effort?: string, permissionMode?: string): s
   ...(permissionMode ? ['--permission-mode', permissionMode] : []),
 ];
 
+// 追加アカウントは、Claude Code の settings のファイルで、env の CLAUDE_CODE_OAUTH_TOKEN に claude setup-token のトークンを持つ。
+// bg セッションは supervisor の環境変数で動き、起動した claude の環境変数を受け継がないので、--settings で渡す。
+// ファイルのパスを渡すと、トークンがプロセスの一覧に出ず、再開したときも同じファイルを読み直す。
+const ACCOUNTS_DIR = path.join(DATA_DIR, 'accounts');
+
+/** 追加アカウントの名前。プライマリアカウントは入れない。 */
+export const accountNames = (): string[] =>
+  (fs.existsSync(ACCOUNTS_DIR) ? fs.readdirSync(ACCOUNTS_DIR) : []).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -'.json'.length)).sort();
+
+/** 追加アカウントの名前に使える文字。ファイルの名前になるので、パスの区切りを入れさせない。 */
+export const ACCOUNT_NAME = /^[A-Za-z0-9_-]{1,40}$/;
+
+/** トークンは本人だけが読めるファイルに書き、画面には返さない。同じ名前なら書き換える。 */
+export const saveAccount = (name: string, token: string): void => {
+  fs.mkdirSync(ACCOUNTS_DIR, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(path.join(ACCOUNTS_DIR, `${name}.json`), JSON.stringify({ env: { CLAUDE_CODE_OAUTH_TOKEN: token } }), { mode: 0o600 });
+  touch();
+};
+
+/** 消したアカウントで動いていたセッションは、再開するとファイルを読めずに失敗する。 */
+export const removeAccount = (name: string): void => {
+  fs.rmSync(path.join(ACCOUNTS_DIR, `${name}.json`), { force: true });
+  touch();
+};
+
+// --settings を複数渡すと後のものだけが効くので、ほかの設定と追加アカウントを 1 つのファイルにまとめて渡す。
+const MERGED_DIR = path.join(DATA_DIR, 'launch-settings');
+
+/**
+ * settings と account を 1 つの --settings にする。account だけならアカウントのファイルを、settings だけならその JSON を渡す。
+ * 両方あれば、トークンを含むので本人だけが読めるファイルに書く。名前を中身から決めるので、同じ組み合わせは同じファイルを使い回す。
+ */
+const settingsFlags = (settings?: object, account?: string): string[] => {
+  if (account && !accountNames().includes(account)) throw new Error(`追加アカウントがありません: ${account}`);
+  const accountFile = account ? path.join(ACCOUNTS_DIR, `${account}.json`) : undefined;
+  if (!settings) return accountFile ? ['--settings', accountFile] : [];
+  if (!accountFile) return ['--settings', JSON.stringify(settings)];
+  const accountEnv = (readJson<{ env?: object }>(accountFile)?.env ?? {}) as object;
+  const merged = JSON.stringify({ ...settings, env: { ...(settings as { env?: object }).env, ...accountEnv } });
+  const file = path.join(MERGED_DIR, `${createHash('sha256').update(merged).digest('hex').slice(0, 16)}.json`);
+  fs.mkdirSync(MERGED_DIR, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(file, merged, { mode: 0o600 });
+  return ['--settings', file];
+};
+
 /**
  * 人間が画面から始めるセッション。依頼が - で始まる箇条書きでもオプションと解釈されないよう、-- の後に置く。
- * model と effort が空なら Claude Code の設定に従う。
+ * model と effort が空なら Claude Code の設定に従う。account が空ならプライマリアカウントで動く。
  * theme を渡すと、起動したセッションに付ける。parent を渡すと、そのセッションの子として記録する。
  */
-export const startSession = async (cwd: string, prompt: string, model?: string, effort?: string, theme?: string, parent?: string): Promise<void> => {
-  const output = await claudeOutput(['--bg', ...modelFlags(model, effort), '--', prompt], cwd);
+export const startSession = async (cwd: string, prompt: string, model?: string, effort?: string, theme?: string, parent?: string, account?: string): Promise<void> => {
+  const output = await claudeOutput(['--bg', ...modelFlags(model, effort), ...settingsFlags(undefined, account), '--', prompt], cwd);
   // 空のテーマを付けると、リポジトリ名にならず未分類になる。
   const known = parent && state.sessions[parent] ? parent : undefined;
-  if (!theme && !known) return;
+  if (!theme && !known && !account) return;
   // 起動は済んでいるので、テーマや親を付けられなくても失敗にしない。
   try {
-    Object.assign(await trackedSession(output, cwd), theme ? { theme } : {}, known ? { parent: known } : {});
+    Object.assign(await trackedSession(output, cwd), theme ? { theme } : {}, known ? { parent: known } : {}, account ? { account } : {});
     touch();
   } catch (e) {
     console.error(`起動したセッションにテーマや親を付けられません: ${(e as Error).message}`);
@@ -166,15 +212,22 @@ const trackedSession = async (output: string, cwd: string): Promise<SessionMeta>
 /**
  * バックグラウンドのセッションを起動し、ダッシュボードの記録を返す。記録に印を付けたいときに使う。id を引けなければ reject する。
  * settings は --settings で渡す。止めたセッションを再開するときも、起動したときの --settings が使われる。
+ * account が空ならプライマリアカウントで動く。
  */
-export const startTrackedSession = async (cwd: string, prompt: string, model?: string, effort?: string, name?: string, settings?: object): Promise<SessionMeta> =>
-  trackedSession(await claudeOutput(['--bg', ...(name ? ['--name', name] : []), ...modelFlags(model, effort), ...(settings ? ['--settings', JSON.stringify(settings)] : []), '--', prompt], cwd), cwd);
+export const startTrackedSession = async (cwd: string, prompt: string, model?: string, effort?: string, name?: string, settings?: object, account?: string): Promise<SessionMeta> => {
+  const meta = await trackedSession(await claudeOutput(['--bg', ...(name ? ['--name', name] : []), ...modelFlags(model, effort), ...settingsFlags(settings, account), '--', prompt], cwd), cwd);
+  meta.account = account;
+  return meta;
+};
 
-/** 親のセッションの作業ディレクトリで子のセッションを起動し、親と同じテーマに入れる。 */
-export const startChildSession = async (parentId: string, prompt: string, name?: string, model?: string, effort?: string): Promise<SessionMeta> => {
+/**
+ * 親のセッションの作業ディレクトリで子のセッションを起動し、親と同じテーマに入れる。
+ * account を省くと親と同じアカウントで動く。空文字ならプライマリアカウントで動く。
+ */
+export const startChildSession = async (parentId: string, prompt: string, name?: string, model?: string, effort?: string, account?: string): Promise<SessionMeta> => {
   const parent = state.sessions[parentId];
   if (!parent) throw new Error(`unknown session: ${parentId}`);
-  const meta = await startTrackedSession(parent.cwd, prompt, model, effort, name);
+  const meta = await startTrackedSession(parent.cwd, prompt, model, effort, name, undefined, (account ?? parent.account) || undefined);
   Object.assign(meta, { parent: parentId, theme: parent.theme, ...(name ? { title: name } : {}) });
   touch();
   return meta;

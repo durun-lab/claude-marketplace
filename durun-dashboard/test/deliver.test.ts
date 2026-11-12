@@ -12,7 +12,7 @@ import { tempDir } from './tmp.ts';
 const tmp = tempDir('durun-dashboard-deliver-');
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
-const { SessionStateError, answerCommand, archiveSession, compactSession, discardSession, flushArchives, flushQueue, forkSession, keptWorktree, postToInbox, redeliver, redeliverInterrupted, removeSession, retryRemovals, sendMessage, sendQueued, startChildSession, startSession, stopSession, switchSession, trashOf, waitFor } = await import('../server/deliver.ts');
+const { SessionStateError, accountNames, removeAccount, saveAccount, answerCommand, archiveSession, compactSession, discardSession, flushArchives, flushQueue, forkSession, keptWorktree, postToInbox, redeliver, redeliverInterrupted, removeSession, retryRemovals, sendMessage, sendQueued, startChildSession, startSession, startTrackedSession, stopSession, switchSession, trashOf, waitFor } = await import('../server/deliver.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 const { cached, peekCached } = await import('../server/cache.ts');
 const { platform } = await import('../server/platform.ts');
@@ -487,6 +487,50 @@ if (args[0] === '--bg') { fs.writeFileSync(${js(argsFile)}, lines(args)); consol
   const child = await startChildSession('p30', '依頼', 'mention-x', 'opus', 'medium');
   assert.deepEqual(fs.readFileSync(argsFile, 'utf8').split('\n').slice(0, -1), ['--bg', '--name', 'mention-x', '--model', 'opus', '--effort', 'medium', '--', '依頼']);
   assert.deepEqual([child.id, child.cwd, child.parent, child.title, child.theme], ['s30', tmp, 'p30', 'mention-x', '親のテーマ']);
+});
+
+test('追加アカウントはトークンを settings の env に書き、外すと一覧から消える', () => {
+  saveAccount('extra', 'sk-ant-oat01-test');
+  const file = path.join(tmp, 'data', 'accounts', 'extra.json');
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { env: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-test' } });
+  assert.ok(accountNames().includes('extra'));
+  removeAccount('extra');
+  assert.ok(!accountNames().includes('extra'));
+});
+
+test('子セッションは、アカウントを省くと親の追加アカウントを受け継ぎ、primary を渡すとプライマリアカウントで動く', async () => {
+  const bin = path.join(tmp, 'bin-account');
+  const argsFile = path.join(tmp, 'account-args');
+  const jobs = [{ id: 'j31', sessionId: 's31', kind: 'background', pid: 1 }];
+  useFakeClaude(
+    bin,
+    `if (args[0] === 'agents') console.log(${js(JSON.stringify(jobs))});
+if (args[0] === '--bg') { fs.writeFileSync(${js(argsFile)}, lines(args)); console.log('backgrounded · j31'); }`,
+  );
+  const accounts = path.join(tmp, 'data', 'accounts');
+  fs.mkdirSync(accounts, { recursive: true });
+  fs.writeFileSync(path.join(accounts, 'sub.json'), '{}');
+  Object.assign(ensureSession('p31', tmp), { account: 'sub' });
+  const argsOf = (): string[] => fs.readFileSync(argsFile, 'utf8').split('\n').slice(0, -1);
+
+  const inherited = await startChildSession('p31', '依頼');
+  assert.deepEqual(argsOf(), ['--bg', '--settings', path.join(accounts, 'sub.json'), '--', '依頼']);
+  assert.equal(inherited.account, 'sub');
+
+  const primary = await startChildSession('p31', '依頼', undefined, undefined, undefined, '');
+  assert.deepEqual(argsOf(), ['--bg', '--', '依頼']);
+  assert.equal(primary.account, undefined);
+
+  await assert.rejects(startChildSession('p31', '依頼', undefined, undefined, undefined, 'none'), /追加アカウントがありません/);
+
+  // --settings は後のものだけが効くので、ほかの設定と追加アカウントは 1 つのファイルにまとめて渡す。
+  fs.writeFileSync(path.join(accounts, 'sub.json'), JSON.stringify({ env: { CLAUDE_CODE_OAUTH_TOKEN: 't' } }));
+  const merged = await startTrackedSession(tmp, '依頼', undefined, undefined, undefined, { autoCompactWindow: 100_000, env: { A: '1' } }, 'sub');
+  const [, flag, file = ''] = argsOf();
+  assert.equal(flag, '--settings');
+  assert.equal(path.dirname(file), path.join(tmp, 'data', 'launch-settings'));
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { autoCompactWindow: 100_000, env: { A: '1', CLAUDE_CODE_OAUTH_TOKEN: 't' } });
+  assert.equal(merged.account, 'sub');
 });
 
 test('アーカイブで消すときは、動いているバックグラウンドのセッションを止めてから claude rm し、端末のセッションは消さない。アーカイブは消し終わるのを待たずに返り、消せなければ理由を残す', async () => {

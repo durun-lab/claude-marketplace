@@ -158,7 +158,7 @@ export const api = {
   hideTerm: (id: string, term: string) => postJson(`${session(id)}/terms/hide`, { term }),
   /** on が真ならブックマークに足し、偽なら外す。 */
   bookmark: (id: string, { kind, at, text }: Pick<Bookmark, 'kind' | 'at' | 'text'>, on: boolean) => postJson(`${session(id)}/bookmarks`, { kind, at, text, on }),
-  startSession: (cwd: string, prompt: string, model: string, effort: string, theme: string, parent?: string) => postJson('/api/sessions', { cwd, prompt, model, effort, theme, parent }),
+  startSession: (cwd: string, prompt: string, model: string, effort: string, theme: string, parent?: string, account?: string) => postJson('/api/sessions', { cwd, prompt, model, effort, theme, parent, account }),
   message: (id: string, text: string) =>
     postJson<{ message: OutboxMessage; delivery: Delivery }>(`${session(id)}/message`, { text }),
   /** 「キュー」で保留する。今送れるセッションなら、すぐに送られて queued が false になる。 */
@@ -248,6 +248,8 @@ export const api = {
   },
   wallpaperUrl: (url: string) => postJson('/api/wallpaper/url', { url }),
   resetWallpaper: () => postJson('/api/wallpaper/reset'),
+  addAccount: (name: string, token: string) => postJson('/api/accounts', { name, token }),
+  removeAccount: (name: string) => postJson('/api/accounts/remove', { name }),
   reportError: (message: string, stack: string | undefined) => postJson('/api/errors', { message, stack, url: location.href }),
   /** 画面が固まった処理。detail は、固まっていた間に動いたスクリプトの内訳。 */
   reportSlow: (message: string, ms: number, detail: string) => postJson('/api/errors', { message, ms, stack: detail, url: location.href }),
