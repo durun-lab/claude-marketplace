@@ -81,10 +81,13 @@ export const totalTokens = (t: TokenTotals): number => t.input + t.output + t.ca
 export const truncate = (text: string, max: number): string =>
   text.length > max ? `${text.slice(0, max)}…` : text;
 
-/** 分けた質問への回答を、どの質問への答えかが分かる形で 1 つにまとめる。答えていない質問は省き、自由記述は最後に添える。 */
-export const askAnswer = (questions: { question: string }[], picked: string[][], note: string): string => {
+/**
+ * 分けた質問への回答を、どの質問への答えかが分かる形で 1 つにまとめる。答えていない質問は省き、全体への自由記述は最後に添える。
+ * notes は質問ごとの自由記述で、選んだ選択肢の後ろに続ける。
+ */
+export const askAnswer = (questions: { question: string }[], picked: string[][], notes: string[], note: string): string => {
   const lines = questions.flatMap((q, i) => {
-    const answers = picked[i] ?? [];
+    const answers = [...(picked[i] ?? []), ...(notes[i]?.trim() ? [notes[i].trim()] : [])];
     return answers.length ? [`「${q.question}」への回答: ${answers.join('、')}`] : [];
   });
   return [lines.join('\n'), note.trim()].filter(Boolean).join('\n\n');
