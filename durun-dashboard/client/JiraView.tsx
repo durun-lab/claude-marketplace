@@ -100,15 +100,16 @@ const Detail = ({ issue, loading, reload }: { issue: JiraDetail; loading: boolea
     {issue.children.length > 0 && (
       <ul class="jira-list">{issue.children.map((c) => <IssueRow key={c.key} issue={c} fields={CHILD_FIELDS} />)}</ul>
     )}
+    {/* 新しい会話から読むので、書く欄を上に置き、新しいものから並べる。 */}
+    <CommentForm target="課題" send={(text) => api.jiraComment(issue.key, text)} onPosted={reload} />
     <ul class="pr-view-posts">
-      {issue.comments.map((c) => (
+      {issue.comments.toSorted((a, b) => b.at - a.at).map((c) => (
         <li key={`${c.author}${c.at}`} class="pr-comment">
           <span class="muted">{c.author} · <Time at={c.at} /></span>
           <Translatable text={c.body}>{(t) => <Markdown text={t} />}</Translatable>
         </li>
       ))}
     </ul>
-    <CommentForm target="課題" send={(text) => api.jiraComment(issue.key, text)} onPosted={reload} />
   </div>
 );
 
