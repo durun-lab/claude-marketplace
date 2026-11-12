@@ -2049,3 +2049,17 @@ table.data { width: 100%; border-collapse: collapse; }
 .family-link a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 使用制限の一覧で、追加アカウントの値の前に名前を出す。 */
 .rate-account { margin-top: 4px; font-size: 12px; }
+/* コントロール パネル。XP のカテゴリの表示のように、分類を大きなアイコンと説明で 2 列に並べる。 */
+.cpl-categories-wrap, .cpl-group { display: grid; gap: 10px; padding: 14px 18px; }
+.cpl-pick { margin: 0; color: #215dc6; font-size: 16px; font-weight: 400; }
+.cpl-categories { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 6px 14px; }
+.cpl-category { display: flex; align-items: flex-start; gap: 8px; padding: 6px; border: 1px solid transparent; border-radius: 3px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.cpl-category:hover { border-color: #b9c8ea; background: #eef3fc; }
+.cpl-category b { display: block; color: #215dc6; font-size: 12px; }
+.cpl-category small { display: block; color: #555; }
+.cpl-heading { display: flex; align-items: center; gap: 8px; margin: 0; color: #215dc6; font-size: 16px; font-weight: 400; }
+.cpl-setting { display: grid; gap: 3px; padding-top: 8px; border-top: 1px solid #ece9d8; }
+.cpl-label { font-weight: 700; }
+.cpl-key { color: #777; font-weight: 400; }
+.cpl-setting .actions { flex-wrap: nowrap; }
+.cpl-setting .input { flex: 1; min-width: 0; }
