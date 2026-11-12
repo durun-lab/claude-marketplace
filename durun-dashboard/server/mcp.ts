@@ -127,7 +127,7 @@ const TOOLS = [
   },
   {
     name: 'set_task',
-    description: 'このセッションのテーマ、作業名、関連する JIRA 課題をダッシュボードに登録する。ダッシュボードはテーマごとにセッションをまとめる。',
+    description: 'このセッションのテーマ、作業名、関連する JIRA 課題をダッシュボードに登録する。ダッシュボードはテーマごとにセッションをまとめる。start_session で起動した子セッションのテーマは親に従うので、theme は登録しない。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -434,9 +434,11 @@ const setTask = (sessionId: string, args: ToolArgs): object => {
   const meta = state.sessions[sessionId];
   if (!meta) return textResult('このセッションはまだダッシュボードに登録されていません。', true);
   const jira = strList(args.jira)?.map((k) => k.toUpperCase());
-  Object.assign(meta, { theme: str(args.theme) ?? meta.theme, title: str(args.title) ?? meta.title, jira: jira ?? meta.jira });
+  // 子セッションは親のテーマに入れ、人間が親のテーマを変えたときに一緒に移す。子が自分で別のテーマに移らないよう、theme は捨てる。
+  const theme = meta.parent ? meta.theme : (str(args.theme) ?? meta.theme);
+  Object.assign(meta, { theme, title: str(args.title) ?? meta.title, jira: jira ?? meta.jira });
   touch();
-  return textResult('登録しました。');
+  return textResult(meta.parent && str(args.theme) ? '登録しました。子セッションなので、テーマは親のテーマのままにしました。' : '登録しました。');
 };
 
 const toView = (v: unknown): BranchView | undefined => {

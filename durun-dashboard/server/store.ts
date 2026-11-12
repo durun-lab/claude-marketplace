@@ -114,7 +114,7 @@ export type StoredDoc = {
 };
 
 /**
- * ワークフローに移す前の、改善要望の自動実装の設定。起動したときに workflows.json の定義へ移す。
+ * ワークフローに移す前の、改善要望の自動実装の設定。起動したときにワークフローの定義へ移す。
  * run は移したときに動いていたウェーブで、終わるまでワークフローに次のウェーブを始めさせない。
  */
 export type LegacyImprove = { enabled?: boolean; model?: string; effort?: string; run?: { sessionId: string; pid: number } };
@@ -176,7 +176,7 @@ type State = {
   mmRecentProjects?: string[];
   /** 学習アプリ。pid は提案を作っている学習のセッションのもの。 */
   learn: LearnSettings & { runs: LearnRun[]; pid?: number; error?: string };
-  /** ワークフローごとの動き。定義は workflows.json にある。 */
+  /** ワークフローごとの動き。定義はワークフローのフォルダーにある。 */
   workflowRuns?: Record<string, WorkflowRun>;
   /** ワークフローの時刻のトリガーを最後に確かめた時刻。これより後に過ぎた時刻で動かす。 */
   workflowCheckedAt?: number;
