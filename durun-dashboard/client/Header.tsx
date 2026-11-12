@@ -1,6 +1,6 @@
 import { Fragment } from 'preact';
 import { useContext, useEffect, useState } from 'preact/hooks';
-import { AGENT_PRIORITIES, type AgentPriority, type Attention, type DocMeta, type ImproveState, type MemoryStatus, type RateLimit, type RateLimits, type Session, type Snapshot } from '../shared/types.ts';
+import { type Attention, type DocMeta, type ImproveState, type MemoryStatus, type RateLimit, type RateLimits, type Session, type Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { AppIcon, useApps } from './apps.tsx';
 import { createDashboard, duplicateDashboard, renameDashboard, switchDashboard, useDashboards } from './dashboards.ts';
@@ -21,13 +21,10 @@ import { setRateWeekdays, useRateWeekdays } from './rateWeekdays.ts';
 import { DOT_RADIUS, FIVE_HOURS_MS, GRAPH_HEIGHT, GRAPH_WIDTH, PLOT, RING_STROKE, SEVEN_DAYS_MS, type RateGraphShape, paceOf, rateGraphShape } from './rateGraph.ts';
 import { useLiveReload } from './reload.ts';
 import { currentSessionId, href } from './router.ts';
-import { SKINS, setSkin, useSkin, type Skin } from './skin.ts';
 import { EDIT_SHORTCUT, FULLSCREEN_SHORTCUT, HOME_SHORTCUT, SEARCH_SHORTCUT, isShortcut, onDoubleTap, shortcutLabel } from './shortcut.ts';
 import { clickedInsteadOf } from './nudge.ts';
 import { Empty, Loading, Meter, Time, paceColor, rateColor } from './ui.tsx';
-import { openWallpaper } from './Wallpaper.tsx';
-import { openAccounts } from './Accounts.tsx';
-import { openControlPanel } from './ControlPanel.tsx';
+import { CATEGORIES, openControlPanel } from './ControlPanel.tsx';
 import { XpPrompt } from './XpConfirm.tsx';
 import { XpDropdown } from './XpMenu.tsx';
 import { TranslateTray } from './TranslateTray.tsx';
@@ -250,11 +247,9 @@ type MenuProps = { onSearch: () => void; onEdit?: () => void };
  * 名前の左のボタンで開くメニュー。外を押すか Esc で閉じるよう、popover で開く。
  * リンクは popovertarget で閉じられないので、項目を押したら、ここでまとめて閉じる。
  */
-const PRIORITY_LABEL: Record<AgentPriority, string> = { normal: '通常', low: '低め', idle: 'アイドル' };
 
-const AppMenu = ({ onSearch, onEdit, docs, autoContinue, agentPriority }: MenuProps & { docs: DocMeta[]; autoContinue: boolean; agentPriority: AgentPriority }) => {
+const AppMenu = ({ onSearch, onEdit, docs, autoContinue }: MenuProps & { docs: DocMeta[]; autoContinue: boolean }) => {
   const light = useLightMode();
-  const skin = useSkin();
   // Esc でも全画面が解けるので、押した状態は fullscreenchange から取る。
   const [fullscreen, setFullscreen] = useState(() => !!document.fullscreenElement);
   useEffect(() => {
@@ -364,26 +359,11 @@ const AppMenu = ({ onSearch, onEdit, docs, autoContinue, agentPriority }: MenuPr
             <div class="app-menu-sub">
               <div class="app-menu-item" tabindex={0} aria-haspopup="true"><AppIcon icon="🖥️" /><span>コントロール パネル(<u>C</u>)</span><span class="app-menu-arrow" aria-hidden="true">▶</span></div>
               <div class="app-menu-submenu" role="group" aria-label="コントロール パネル">
-                <button class="app-menu-item" title="JIRA や Notion のトークンなど、~/.durun-dashboard/.env.local の設定を分類ごとに直す" onClick={openControlPanel}><AppIcon icon="🖥️" />コントロール パネルを開く</button>
+                <button class="app-menu-item" title="画面やエージェント、つなぐサービスの設定を分類ごとに直す" onClick={() => openControlPanel()}><AppIcon icon="🖥️" />コントロール パネルを開く</button>
                 <hr class="app-menu-sep" />
-                <button class="app-menu-item" title="Windows XP のスキンの壁紙を、画像のファイルか URL で変える" onClick={openWallpaper}>壁紙</button>
-                <button class="app-menu-item" title="推論にだけ使う追加の Claude アカウントを登録する" onClick={openAccounts}>Claude アカウント</button>
-                <div class="app-menu-sub">
-                  <div class="app-menu-item" tabindex={0} aria-haspopup="true">スキン<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
-                  <div class="app-menu-submenu" role="group" aria-label="スキン">
-                    {Object.entries(SKINS).map(([id, label]) => (
-                      <button key={id} class="app-menu-item" aria-pressed={skin === id} onClick={() => setSkin(id as Skin)}>{label}</button>
-                    ))}
-                  </div>
-                </div>
-                <div class="app-menu-sub">
-                  <div class="app-menu-item" tabindex={0} aria-haspopup="true" title="エージェントのプロセスの優先度。低めやアイドルにすると、ゲームやほかの作業に CPU を先に回す">優先度: {PRIORITY_LABEL[agentPriority]}<span class="app-menu-arrow" aria-hidden="true">▶</span></div>
-                  <div class="app-menu-submenu" role="group" aria-label="優先度">
-                    {AGENT_PRIORITIES.map((p) => (
-                      <button key={p} class="app-menu-item" aria-pressed={agentPriority === p} onClick={() => void attempt('エージェントの優先度の切り替え', () => api.agentPriority(p))}>{PRIORITY_LABEL[p]}</button>
-                    ))}
-                  </div>
-                </div>
+                {CATEGORIES.map((c) => (
+                  <button key={c.id} class="app-menu-item" title={c.help} onClick={() => openControlPanel(c.id)}><AppIcon icon={c.icon} />{c.title}</button>
+                ))}
               </div>
             </div>
             <div class="app-menu-sub">
@@ -560,7 +540,7 @@ export const Header = ({ snapshot, assets, connected, home, onSearch, onEdit, on
   const stale = useLiveReload(assets);
   return (
     <header class="topbar">
-      <AppMenu onSearch={onSearch} onEdit={onEdit} docs={snapshot?.docs ?? []} autoContinue={!!snapshot?.autoContinue} agentPriority={snapshot?.agentPriority ?? 'normal'} />
+      <AppMenu onSearch={onSearch} onEdit={onEdit} docs={snapshot?.docs ?? []} autoContinue={!!snapshot?.autoContinue} />
       <Brand home={home} />
       {/* 浮かべたウィンドウのボタンは、Float.tsx の FloatFrame がここへ置く。 */}
       <div class="taskbar-windows" />
