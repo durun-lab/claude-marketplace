@@ -18,9 +18,14 @@ test('firstLines は、空行を数えずに n 行目までを返し、間の空
 
 test('askAnswer は、選んだ選択肢を質問ごとの行にし、答えていない質問を省いて、自由記述を最後に添える', () => {
   const questions = [{ question: '添付の値' }, { question: '直す画面' }];
-  assert.equal(askAnswer(questions, [['ファイル'], ['受信箱', 'チャット']], ''), '「添付の値」への回答: ファイル\n「直す画面」への回答: 受信箱、チャット');
-  assert.equal(askAnswer(questions, [[], ['受信箱']], '添付はおまかせ\n'), '「直す画面」への回答: 受信箱\n\n添付はおまかせ');
-  assert.equal(askAnswer(questions, [], '両方おまかせ'), '両方おまかせ');
+  assert.equal(askAnswer(questions, [['ファイル'], ['受信箱', 'チャット']], [], ''), '「添付の値」への回答: ファイル\n「直す画面」への回答: 受信箱、チャット');
+  assert.equal(askAnswer(questions, [[], ['受信箱']], [], '添付はおまかせ\n'), '「直す画面」への回答: 受信箱\n\n添付はおまかせ');
+  assert.equal(askAnswer(questions, [], [], '両方おまかせ'), '両方おまかせ');
+});
+
+test('askAnswer は、質問ごとの自由記述を選んだ選択肢の後ろに続け、自由記述だけでもその質問の回答にする', () => {
+  const questions = [{ question: '添付の値' }, { question: '直す画面' }];
+  assert.equal(askAnswer(questions, [['ファイル'], []], ['名前も添える', ' 受信箱だけ \n'], ''), '「添付の値」への回答: ファイル、名前も添える\n「直す画面」への回答: 受信箱だけ');
 });
 
 test('termSplitter は、用語集の語を大文字と小文字を区別せずにすべて拾い、長い語から当てる', () => {

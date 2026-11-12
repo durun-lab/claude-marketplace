@@ -38,17 +38,29 @@ const OptionLabel = ({ label, description }: { label: string; description?: stri
   </>
 );
 
-type QuestionTabsProps = { id: string; questions: AskedQuestion[]; picked: string[][]; tab: number; busy: boolean; setTab: (tab: number) => void; pick: (option: string) => void };
+type QuestionTabsProps = {
+  id: string;
+  questions: AskedQuestion[];
+  picked: string[][];
+  notes: string[];
+  tab: number;
+  busy: boolean;
+  setTab: (tab: number) => void;
+  pick: (option: string) => void;
+  setNote: (note: string) => void;
+};
 
-/** 分けた質問を、Claude Code の AskUserQuestion のようにタブで 1 つずつ出す。最後のタブで回答を見直す。 */
-const QuestionTabs = ({ id, questions, picked, tab, busy, setTab, pick }: QuestionTabsProps) => {
+/** 分けた質問を、Claude Code の AskUserQuestion のようにタブで 1 つずつ出す。質問ごとに自由記述も書ける。最後のタブで回答を見直す。 */
+const QuestionTabs = ({ id, questions, picked, notes, tab, busy, setTab, pick, setNote }: QuestionTabsProps) => {
   const q = questions[tab];
+  const answered = (i: number): boolean => !!picked[i]?.length || !!notes[i]?.trim();
+  const summary = (i: number): string => [...(picked[i] ?? []), ...(notes[i]?.trim() ? [notes[i].trim()] : [])].join('、');
   const labelOf = (x: AskedQuestion, i: number): string => x.header ?? `質問 ${i + 1}`;
   return (
     <>
       <div class="pick-tabs" role="tablist" aria-label="質問">
         {questions.map((x, i) => (
-          <button key={i} role="tab" aria-selected={i === tab} onClick={() => setTab(i)}>{picked[i]?.length ? '✓ ' : ''}{labelOf(x, i)}</button>
+          <button key={i} role="tab" aria-selected={i === tab} onClick={() => setTab(i)}>{answered(i) ? '✓ ' : ''}{labelOf(x, i)}</button>
         ))}
         <button role="tab" aria-selected={!q} onClick={() => setTab(questions.length)}>送信</button>
       </div>
@@ -64,12 +76,23 @@ const QuestionTabs = ({ id, questions, picked, tab, busy, setTab, pick }: Questi
                 </button>
               );
             })}
-            {q.multiSelect && <button class="btn" onClick={() => setTab(tab + 1)}>次へ</button>}
           </Actions>
+          <textarea
+            class="input"
+            rows={1}
+            placeholder="この質問への自由記述（選択肢に添えるか、選択肢の代わりに書く）"
+            value={notes[tab] ?? ''}
+            onInput={(e) => setNote(e.currentTarget.value)}
+          />
+          {(q.multiSelect || !!notes[tab]?.trim()) && (
+            <Actions>
+              <button class="btn" onClick={() => setTab(tab + 1)}>次へ</button>
+            </Actions>
+          )}
         </>
       ) : (
         <div class="md">
-          <ul>{questions.map((x, i) => <li key={i}>{labelOf(x, i)}: {picked[i]?.join('、') || '未回答'}</li>)}</ul>
+          <ul>{questions.map((x, i) => <li key={i}>{labelOf(x, i)}: {summary(i) || '未回答'}</li>)}</ul>
         </div>
       )}
     </>
@@ -79,11 +102,12 @@ const QuestionTabs = ({ id, questions, picked, tab, busy, setTab, pick }: Questi
 const AskBody = ({ a }: { a: Attention }) => {
   const [text, setText] = useState('');
   const [picked, setPicked] = useState<string[][]>([]);
+  const [notes, setNotes] = useState<string[]>([]);
   const [tab, setTab] = useState(0);
   const [busy, setBusy] = useState(false);
   const questions = a.questions ?? [];
-  // 質問を分けたときは、全部に答えるか自由記述を書けば送れる。
-  const ready = (questions.length > 0 && questions.every((_, i) => picked[i]?.length)) || !!text.trim();
+  // 質問を分けたときは、全部に選ぶか質問ごとの自由記述で答えるか、全体への自由記述を書けば送れる。
+  const ready = (questions.length > 0 && questions.every((_, i) => picked[i]?.length || notes[i]?.trim())) || !!text.trim();
   const send = async (answer: string) => {
     if (busy || !answer.trim()) return;
     setBusy(true);
@@ -93,20 +117,21 @@ const AskBody = ({ a }: { a: Attention }) => {
     setText('');
     toast('回答を送りました');
   };
-  const submit = () => ready && send(questions.length ? askAnswer(questions, picked, text) : text);
+  const submit = () => ready && send(questions.length ? askAnswer(questions, picked, notes, text) : text);
   // 1 つを選ぶ質問は、選ぶと次のタブへ進む。いくつでも選べる質問は、押すたびに選ぶか外す。
   const pick = (option: string) => {
     const multi = questions[tab]?.multiSelect;
     setPicked((p) => questions.map((_, i) => (i !== tab ? (p[i] ?? []) : multi ? toggled(p[i] ?? [], option) : [option])));
     if (!multi) setTab(tab + 1);
   };
+  const setNote = (note: string) => setNotes((n) => questions.map((_, i) => (i === tab ? note : (n[i] ?? ''))));
   // AskUserQuestion の本文は質問と選択肢を並べたものなので、タブで出すときは重ねて出さない。
   const body = a.kind === 'question' && questions.length ? undefined : a.body;
   return (
     <>
       <Body id={a.sessionId} text={body !== a.title ? body : undefined} />
       {questions.length > 0 ? (
-        <QuestionTabs id={a.sessionId} questions={questions} picked={picked} tab={tab} busy={busy} setTab={setTab} pick={pick} />
+        <QuestionTabs id={a.sessionId} questions={questions} picked={picked} notes={notes} tab={tab} busy={busy} setTab={setTab} pick={pick} setNote={setNote} />
       ) : (
         a.options && a.options.length > 0 && (
           <Actions>
