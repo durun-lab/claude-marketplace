@@ -103,21 +103,37 @@ const Detail = ({ pr, loading, reload }: { pr: PrDetail; loading: boolean; reloa
   </div>
 );
 
-/** PR や課題をバッジにしているセッションの名前。押すと、そのセッションの画面へ移る。JIRA の課題の画面でも使う。セッションの見出しの親と子と同じく、状態の丸を付けて縦に並べる。 */
-export const RelatedSessions = ({ sessions }: { sessions: Session[] }) =>
-  sessions.length ? (
+const RelatedLink = ({ s }: { s: Session }) => (
+  <li class="family-link">
+    <StatusDot status={s.status} waitingFor={s.waitingFor} />
+    <a href={href.session(s.id)}>{s.name}</a>
+  </li>
+);
+
+/**
+ * PR や課題をバッジにしているセッションの名前。押すと、そのセッションの画面へ移る。JIRA の課題の画面でも使う。セッションの見出しの親と子と同じく、状態の丸を付けて縦に並べる。
+ * アーカイブ済みのセッションは、終わった作業なので畳んで後ろに薄く出す。
+ */
+export const RelatedSessions = ({ sessions }: { sessions: Session[] }) => {
+  if (!sessions.length) return null;
+  const archived = sessions.filter((s) => s.archived);
+  return (
     <div class="family-children related-sessions">
       <span class="muted">関連セッション</span>
       <ul>
-        {sessions.map((s) => (
-          <li key={s.id} class="family-link">
-            <StatusDot status={s.status} waitingFor={s.waitingFor} />
-            <a href={href.session(s.id)}>{s.name}</a>
+        {sessions.filter((s) => !s.archived).map((s) => <RelatedLink key={s.id} s={s} />)}
+        {archived.length > 0 && (
+          <li class="related-archived">
+            <details>
+              <summary>アーカイブ済み {archived.length} 件</summary>
+              <ul>{archived.map((s) => <RelatedLink key={s.id} s={s} />)}</ul>
+            </details>
           </li>
-        ))}
+        )}
       </ul>
     </div>
-  ) : null;
+  );
+};
 
 /** 開いたときと「更新」を押したとき、version が変わったときに GitHub から読み直す。related は、この PR をバッジにしているセッション。 */
 const PrView = ({ url, version, related }: { url: string; version?: string; related: Session[] }) => {

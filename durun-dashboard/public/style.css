@@ -1306,6 +1306,8 @@ a.skype-time:hover { color: #0078ca; text-decoration: underline; }
 .pr-view-title { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
 .pr-view-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12.5px; }
 .related-sessions { margin-bottom: 10px; font-size: 12.5px; }
+.related-archived { min-width: 0; opacity: .55; }
+.related-archived summary { color: var(--muted); cursor: pointer; }
 /* 課題のステータスは、押すと移せる先をステータスの下に並べる。 */
 .jira-status { anchor-scope: --jira-status; }
 .jira-status-button { anchor-name: --jira-status; display: inline-flex; padding: 0; border: 0; background: none; font: inherit; cursor: pointer; }
