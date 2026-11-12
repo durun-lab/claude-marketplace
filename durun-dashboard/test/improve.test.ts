@@ -122,3 +122,21 @@ test('ワークフローに移す前の改善のセッションが動いてい�
   assert.deepEqual(pending(), [third]);
   assert.match(calls().at(-1) ?? '', /1 件たまっています/);
 });
+
+test('溜まったイベントは、次に渡すときに 1 つの依頼にまとめ、依頼の頭と指示の場所は 1 回だけ書く', async () => {
+  const dir = path.join(WORKFLOWS_DIR, 'batch');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'workflow.json'), JSON.stringify({ name: 'まとめ', cwd: dataDir, triggers: [], mode: 'new' }));
+  fs.writeFileSync(path.join(dir, 'batch.md'), '---\nname: batch\n---\n\n指示\n');
+  // 書き込みと一緒に定義を読み直させる。
+  setWorkflowEnabled('batch', false);
+  state.workflowRuns = { batch: { queue: ['一つ目のイベント', '二つ目のイベント'] } };
+  runWorkflow('batch');
+  assert.deepEqual(state.workflowRuns.batch?.queue, []);
+  // イベントの区切りが calls の区切りと同じ --- なので、記録をそのまま読む。前のテストのワークフローの起動も混ざるので、このワークフローの分だけを数える。
+  const raw = (): string => (fs.existsSync(callsFile) ? fs.readFileSync(callsFile, 'utf8') : '');
+  await new Promise<void>((resolve) => onChange(() => raw().includes('batch.md') && resolve()));
+  assert.equal(raw().match(/「まとめ」/g)?.length, 1);
+  assert.match(raw(), /「まとめ」 一つ目のイベント[\s\S]*二つ目のイベント[\s\S]*今すぐ実行[\s\S]*batch\.md の指示に従って/);
+  assert.equal(raw().match(/batch\.md の指示に従って/g)?.length, 1);
+});
