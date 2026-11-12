@@ -2,6 +2,7 @@ import type {
   AgentPriority, CdMeta, AssistantMessage, TranslateStatus, AssistantReply, Bookmark, BranchView, ChatEntry, Dashboards, Delivery, DiffFile, DiffRange, DiffResult, Doc, DocEditResult, DocMeta, ExplorerDir, FeedbackContext, FeedbackTarget, FileTarget, GithubSearch, Glossary, Harness, HarnessToggle, InboxSection, PrReviewEvent, JiraDetail, JiraIssue, MemoryStatus, NotionPage, OutboxMessage, PrDetail, PrNotes, PrThread, ProofEvent, ProofFile, ProofFileMeta, ProofMode, ProofReading, Replies, RepoRef, ReviewComment, ReviseNote, SearchResponse, SessionSummary, SkillInfo, SlackChannel, SlackConversation, TextSaveResult, WorkflowSettings,
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
+import type { EnvValues } from '../shared/envSettings.ts';
 
 export const DELIVERY_TOAST: Record<Delivery, string> = {
   mcp: 'Claude に届けました',
@@ -216,6 +217,8 @@ export const api = {
   workflowEnabled: (id: string, enabled: boolean) => postJson(`/api/workflows/${seg(id)}/enabled`, { enabled }),
   workflowSettings: (id: string, settings: WorkflowSettings) => postJson(`/api/workflows/${seg(id)}/settings`, settings),
   harness: () => getJson<Harness>('/api/learn/harness'),
+  envValues: () => getJson<EnvValues>('/api/settings/env'),
+  setEnvValue: (key: string, value: string) => postJson('/api/settings/env', { key, value }),
   harnessToggle: ({ setting, key }: HarnessToggle, on: boolean) => postJson('/api/learn/toggle', { setting, key, on }),
   autoContinue: (enabled: boolean) => postJson<void>('/api/auto-continue', { enabled }),
   agentPriority: (priority: AgentPriority) => postJson<void>('/api/agent-priority', { priority }),
