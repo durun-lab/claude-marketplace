@@ -8,6 +8,7 @@ import { type Float, FloatFrame, dock, floatUp, latestFloat, setFloatSettings } 
 import { highlightLine, languageOf } from './highlight.ts';
 import { useFetch } from './hooks.ts';
 import { OPEN_SHORTCUT, SAVE_SHORTCUT, isShortcut, shortcutLabel } from './shortcut.ts';
+import { clickedInsteadOf } from './nudge.ts';
 import { toast } from './toast.tsx';
 import { XpConfirm } from './XpConfirm.tsx';
 import { XpMenu } from './XpMenu.tsx';
@@ -254,8 +255,8 @@ export const NotepadFloat = ({ f }: { f: Float }) => {
             }}
           >
             <button class="xp-item" onClick={clear}><span>新規(N)</span></button>
-            <button class="xp-item" onClick={() => setPicking(true)}><span>開く(O)...</span><kbd>{shortcutLabel(OPEN_SHORTCUT)}</kbd></button>
-            <button class="xp-item" disabled={!s.path} onClick={saveFile}><span>上書き保存(S)</span><kbd>{shortcutLabel(SAVE_SHORTCUT)}</kbd></button>
+            <button class="xp-item" onClick={(e) => (clickedInsteadOf(e, OPEN_SHORTCUT), setPicking(true))}><span>開く(O)...</span><kbd>{shortcutLabel(OPEN_SHORTCUT)}</kbd></button>
+            <button class="xp-item" disabled={!s.path} onClick={(e) => (clickedInsteadOf(e, SAVE_SHORTCUT), saveFile())}><span>上書き保存(S)</span><kbd>{shortcutLabel(SAVE_SHORTCUT)}</kbd></button>
             <hr class="xp-sep" />
             <button class="xp-item xp-submenu" popovertarget={menuId('recent')}><span>最近使ったファイル(F)</span></button>
             <div id={menuId('recent')} class="xp-dropdown" popover>

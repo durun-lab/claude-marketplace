@@ -8,6 +8,7 @@ import { useFloats } from './Float.tsx';
 import { MINESWEEPER_KEY, askMinesHint, canHint } from './Games.tsx';
 import { type Bounds, type Fling, glide, pushSample, releaseVelocity, type Sample, type Wall, windUp } from './fling.ts';
 import { Markdown } from './Markdown.tsx';
+import { onMutter } from './nudge.ts';
 import { JiraTip } from './JiraView.tsx';
 import { PrTip } from './PrView.tsx';
 import { currentSessionId } from './router.ts';
@@ -433,6 +434,8 @@ const DolphinChat = ({ turns, thinking, hearing, sendStates, onAsk, onDecide, on
  * 画面を泳ぎ回るイルカ。ドラッグで動かせ、押すと吹き出しでダッシュボードのことを答える。チャットの用語か PR へのリンクにマウスを載せると、止まって別の吹き出しで説明する。
  * jev は Jev を使えるか。使えてマインスイーパを開いていれば、吹き出しからヒントを出せる。
  */
+const MUTTER_MS = 6000;
+
 export const Dolphin = ({ jev }: { jev?: boolean }) => {
   const [open, setOpen] = useState(false);
   const [turns, setTurns] = useState<Turn[]>([]);
@@ -444,12 +447,26 @@ export const Dolphin = ({ jev }: { jev?: boolean }) => {
   const chat = useRef<HTMLElement>(null);
   const tip = useRef<HTMLDivElement>(null);
   const [explained, setExplained] = useState<Explained>();
+  const [mutter, setMutter] = useState<string>();
   const motion = useRef<Motion>({ x: innerWidth - W - 16, y: innerHeight - H - 52, vx: 0, vy: 0, tx: 0, ty: 0, restUntil: 0, speed: 0, yaw: 0, pitch: 0, trickT: 0 });
   const live = useRef<Live>({ hover: false, open, thinking });
   Object.assign(live.current, { open, thinking, explained });
   useEffect(() => {
     explainers.add(setExplained);
     return () => void explainers.delete(setExplained);
+  }, []);
+  // 呟きは読み終えるくらいの間だけ出し、次の呟きが来たらそちらに替える。
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const off = onMutter((text) => {
+      clearTimeout(timer);
+      setMutter(text);
+      timer = setTimeout(() => setMutter(undefined), MUTTER_MS);
+    });
+    return () => {
+      off();
+      clearTimeout(timer);
+    };
   }, []);
   useEffect(() => {
     if (canvas.current && box.current) return animate(canvas.current, box.current, [chat, tip], motion.current, live.current);
@@ -508,6 +525,11 @@ export const Dolphin = ({ jev }: { jev?: boolean }) => {
   return (
     <div class="dolphin" ref={box}>
       {open && <DolphinChat turns={turns} thinking={thinking} hearing={hearing} sendStates={sendStates} onAsk={ask} onDecide={decide} onHint={jev && mines && canHint(mines) ? () => hint(mines) : undefined} onClose={() => setOpen(false)} chatRef={chat} />}
+      {!explained && mutter && (
+        <div class="card dolphin-chat dolphin-term" ref={tip} role="status">
+          <p class="dolphin-say">{mutter}</p>
+        </div>
+      )}
       {explained && (
         <div class={`card dolphin-chat ${'term' in explained ? 'dolphin-term' : 'dolphin-pr'}`} ref={tip} role="tooltip">
           {/* useCached は読み込み中も前の PR や課題を残すので、PR と課題ごとに作り直す。 */}

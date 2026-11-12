@@ -22,7 +22,8 @@ import { DOT_RADIUS, FIVE_HOURS_MS, GRAPH_HEIGHT, GRAPH_WIDTH, PLOT, RING_STROKE
 import { useLiveReload } from './reload.ts';
 import { currentSessionId, href } from './router.ts';
 import { SKINS, setSkin, useSkin, type Skin } from './skin.ts';
-import { EDIT_SHORTCUT, FULLSCREEN_SHORTCUT, SEARCH_SHORTCUT, isShortcut, onDoubleTap, shortcutLabel } from './shortcut.ts';
+import { EDIT_SHORTCUT, FULLSCREEN_SHORTCUT, HOME_SHORTCUT, SEARCH_SHORTCUT, isShortcut, onDoubleTap, shortcutLabel } from './shortcut.ts';
+import { clickedInsteadOf } from './nudge.ts';
 import { Empty, Loading, Meter, Time, paceColor, rateColor } from './ui.tsx';
 import { openWallpaper } from './Wallpaper.tsx';
 import { openAccounts } from './Accounts.tsx';
@@ -390,7 +391,7 @@ const AppMenu = ({ onSearch, onEdit, docs, autoContinue, agentPriority }: MenuPr
                 ))}
                 <hr class="app-menu-sep" />
                 {onEdit && (
-                  <button class="app-menu-item" onClick={onEdit}>
+                  <button class="app-menu-item" onClick={(e) => (clickedInsteadOf(e, EDIT_SHORTCUT), onEdit())}>
                     編集<kbd>{shortcutLabel(EDIT_SHORTCUT)}</kbd>
                   </button>
                 )}
@@ -400,14 +401,14 @@ const AppMenu = ({ onSearch, onEdit, docs, autoContinue, agentPriority }: MenuPr
               </div>
             </div>
             <hr class="app-menu-sep" />
-            <button class="app-menu-item" title="セッション、要対応、資料、会話ログを探す" onClick={onSearch}>
+            <button class="app-menu-item" title="セッション、要対応、資料、会話ログを探す" onClick={(e) => (clickedInsteadOf(e, SEARCH_SHORTCUT), onSearch())}>
               <AppIcon icon="🔍" /><span>検索(<u>S</u>)</span><kbd>{shortcutLabel(SEARCH_SHORTCUT)}</kbd>
             </button>
           </div>
         </div>
         {/* XP の「ログオフ」「終了オプション」の位置に、画面全体の切り替えと、自動継続モードを置く。 */}
         <div class="app-menu-foot">
-          <button class="app-menu-item" aria-pressed={fullscreen} title={`画面全体に広げる（${shortcutLabel(FULLSCREEN_SHORTCUT)}）`} onClick={toggleFullscreen}>
+          <button class="app-menu-item" aria-pressed={fullscreen} title={`画面全体に広げる（${shortcutLabel(FULLSCREEN_SHORTCUT)}）`} onClick={(e) => (clickedInsteadOf(e, FULLSCREEN_SHORTCUT), toggleFullscreen())}>
             <svg class="app-menu-foot-icon is-orange" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3" /></svg>全画面
           </button>
           <button class="app-menu-item" aria-pressed={light} title="通信と描画を減らす。更新は 3 秒おきになり、アニメーションとイルカが止まる。タブが裏にある間は更新も通知も止まる" onClick={() => setLightMode(!light)}>
@@ -533,6 +534,7 @@ const Brand = ({ home }: { home: boolean }) => {
   const onClick = (e: MouseEvent) => {
     // 新しいタブやウィンドウで開くときは、この画面は移らない。
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (!home || back) clickedInsteadOf(e, HOME_SHORTCUT);
     if (!home) setBack(location.hash);
     else if (back) {
       e.preventDefault();

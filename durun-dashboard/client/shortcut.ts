@@ -3,7 +3,7 @@
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
 
 /** key は小文字で書く。 */
-type Shortcut = { key: string; shift?: boolean };
+export type Shortcut = { key: string; shift?: boolean };
 
 export const SEARCH_SHORTCUT: Shortcut = { key: 'k' };
 export const EDIT_SHORTCUT: Shortcut = { key: 'e', shift: true };
