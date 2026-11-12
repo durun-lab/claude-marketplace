@@ -310,11 +310,7 @@ Claude Code の設定で `crossSessionInbound` を `accept` にすると、保�
 コネクタ（claude.ai の MCP サーバー、Artifact、Claude in Chrome）は、`claude` にログインしているプライマリアカウントにだけ付く。
 
 1. 追加アカウントで `claude setup-token` を実行し、トークンを得る
-2. `~/.durun-dashboard/accounts/<名前>.json` に次のように書く。ファイルの名前がアカウントの名前になる
-
-   ```json
-   { "env": { "CLAUDE_CODE_OAUTH_TOKEN": "<トークン>" } }
-   ```
+2. スタートメニューの「コントロール パネル」→「Claude アカウント」で、名前とトークンを登録する。トークンは `~/.durun-dashboard/accounts/<名前>.json` に本人だけが読める形で置き、画面には返さない
 
 - 新規セッションのウィンドウで「アカウント」を選ぶと、そのアカウントで起動する。既定はプライマリアカウント
 - `start_session` で起動した子セッションは、既定で親と同じアカウントで動く。`account` に `primary` か名前を渡すと変えられる

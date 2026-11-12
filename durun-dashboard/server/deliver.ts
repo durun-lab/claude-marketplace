@@ -147,6 +147,22 @@ const ACCOUNTS_DIR = path.join(DATA_DIR, 'accounts');
 export const accountNames = (): string[] =>
   (fs.existsSync(ACCOUNTS_DIR) ? fs.readdirSync(ACCOUNTS_DIR) : []).filter((f) => f.endsWith('.json')).map((f) => f.slice(0, -'.json'.length)).sort();
 
+/** 追加アカウントの名前に使える文字。ファイルの名前になるので、パスの区切りを入れさせない。 */
+export const ACCOUNT_NAME = /^[A-Za-z0-9_-]{1,40}$/;
+
+/** トークンは本人だけが読めるファイルに書き、画面には返さない。同じ名前なら書き換える。 */
+export const saveAccount = (name: string, token: string): void => {
+  fs.mkdirSync(ACCOUNTS_DIR, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(path.join(ACCOUNTS_DIR, `${name}.json`), JSON.stringify({ env: { CLAUDE_CODE_OAUTH_TOKEN: token } }), { mode: 0o600 });
+  touch();
+};
+
+/** 消したアカウントで動いていたセッションは、再開するとファイルを読めずに失敗する。 */
+export const removeAccount = (name: string): void => {
+  fs.rmSync(path.join(ACCOUNTS_DIR, `${name}.json`), { force: true });
+  touch();
+};
+
 const accountFlags = (account?: string): string[] => {
   if (!account) return [];
   if (!accountNames().includes(account)) throw new Error(`追加アカウントがありません: ${account}`);
