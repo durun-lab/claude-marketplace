@@ -2,7 +2,7 @@ import { Fragment } from 'preact';
 import { useContext, useEffect, useState } from 'preact/hooks';
 import { type Attention, type DocMeta, type ImproveState, type MemoryStatus, type RateLimit, type RateLimits, type Session, type Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
-import { AppIcon, useApps } from './apps.tsx';
+import { AppIcon, recentApps, useApps } from './apps.tsx';
 import { createDashboard, duplicateDashboard, renameDashboard, switchDashboard, useDashboards } from './dashboards.ts';
 import { EXPLORER_ICON, EXPLORER_KEY, EXPLORER_TITLE, openExplorer } from './Explorer.tsx';
 import { baseName, useFavorites } from './explorerFavorites.ts';
@@ -310,7 +310,7 @@ const AppMenu = ({ onSearch, onEdit, docs, autoContinue }: MenuProps & { docs: D
               <span><b>インターネット</b><small>{IE_TITLE}</small></span>
             </button>
             {apps.length > 0 && <hr class="app-menu-sep" />}
-            {apps.map((a) => (
+            {recentApps(apps).map((a) => (
               <button key={a.kind} class="app-menu-item" onClick={a.launch}><AppIcon icon={a.icon} />{a.title}</button>
             ))}
             <hr class="app-menu-sep app-menu-all-sep" />

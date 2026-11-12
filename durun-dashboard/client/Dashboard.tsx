@@ -1,7 +1,7 @@
 // ウィジェットを並べたダッシュボード。ホームとセッション概要が、それぞれのウィジェットを渡して使う。
 import type { ComponentChildren, ComponentType, JSX, RefObject } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import { AppIcon, setApps } from './apps.tsx';
+import { AppIcon, markAppUsed, setApps } from './apps.tsx';
 import { attachIcon, composerAt } from './attach.ts';
 import { type Control, EDGES, WindowControls, controlsVar, dock, iconVar, floatOut, floatUp, useFloats, dockedControls } from './Float.tsx';
 import {
@@ -549,6 +549,7 @@ const WidgetGroup = <P extends object>({ p, widgets, data, titleOf, onChange, ed
   const max = controls.find((c) => c.kind === 'max');
   const onDblClick = (e: MouseEvent) => {
     const target = e.target as Element;
+    if (p.free && only && target.closest('.desktop-icon')) markAppUsed(kindOf(only.id));
     if ((e.currentTarget as Element).firstElementChild?.contains(target) && !target.closest('a, input, textarea, select, button:not([role="tab"])')) max?.onClick(e);
   };
   return (
@@ -639,7 +640,7 @@ export const Dashboard = <P extends object>({ widgets, defaults, storageKey, sto
   const latest = useRef(data);
   latest.current = data;
   useEffect(() => {
-    setApps(Object.entries(widgets).flatMap(([kind, w]) => (w.launch ? [{ kind, title: w.title, icon: w.icon, launch: () => w.launch?.(latest.current) }] : [])));
+    setApps(Object.entries(widgets).flatMap(([kind, w]) => (w.launch ? [{ kind, title: w.title, icon: w.icon, launch: () => (markAppUsed(kind), w.launch?.(latest.current)) }] : [])));
     return () => setApps([]);
   }, [widgets]);
   useEffect(() => setPlacing(undefined), [editing]);
