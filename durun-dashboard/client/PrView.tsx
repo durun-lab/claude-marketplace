@@ -88,8 +88,10 @@ const Detail = ({ pr, loading, reload }: { pr: PrDetail; loading: boolean; reloa
         ))}
       </ul>
     </details>
+    {/* 新しい会話から読むので、書く欄を上に置き、新しいものから並べる。 */}
+    <CommentForm target="PR " send={(text) => api.prComment(pr.url, text)} onPosted={reload} />
     <ul class="pr-view-posts">
-      {pr.posts.map((p) => (
+      {pr.posts.toSorted((a, b) => b.at - a.at).map((p) => (
         <li key={`${p.author}${p.at}`} class="pr-comment">
           <span class="muted">
             {p.author} · <Ext href={p.url ?? ''}><Time at={p.at} /></Ext>
@@ -99,7 +101,6 @@ const Detail = ({ pr, loading, reload }: { pr: PrDetail; loading: boolean; reloa
         </li>
       ))}
     </ul>
-    <CommentForm target="PR " send={(text) => api.prComment(pr.url, text)} onPosted={reload} />
   </div>
 );
 
