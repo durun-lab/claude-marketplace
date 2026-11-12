@@ -739,12 +739,14 @@ body:has(.fb-panel) .toasts { right: calc(min(380px, 100vw - 32px) + 28px); }
 .learn-harness .learn-leaf { padding-left: 22px; }
 .learn-switch { margin: 0 4px 0 0; vertical-align: -2px; }
 .learn-harness tr.is-off td { color: #8c8c8c; }
-.workflow-table th:nth-child(1) { width: 22%; }
-.workflow-table th:nth-child(2) { width: 18%; }
-.workflow-table th:nth-child(3) { width: 22%; }
-.workflow-table th:nth-child(4) { width: 22%; }
+/* 列の幅を中身に合わせる。名前と操作は折り返さずに詰め、トリガーとアクションと最後の実行は折り返して残りの幅を分け合う。 */
+.workflow-table { table-layout: auto; }
+.workflow-table th:nth-child(n) { width: auto; white-space: nowrap; }
+.workflow-table td { overflow: visible; white-space: normal; vertical-align: top; }
+.workflow-table td:first-child, .workflow-table td:last-child { width: 1%; white-space: nowrap; }
 .workflow-table tr.is-off td { color: #8c8c8c; }
-.workflow-actions { display: flex; gap: 8px; }
+.workflow-actions > * { display: inline; }
+.workflow-actions > * + * { margin-left: 8px; }
 /* メモ帳と Internet Explorer の、XP のメニュー。 */
 .xp-menu { padding: 2px 7px; border: 0; background: none; font: inherit; }
 .xp-menu:hover, .xp-menu:has(+ :popover-open) { background: #316ac5; color: #fff; }
@@ -1039,6 +1041,8 @@ p.wallpaper-preview { display: grid; place-items: center; padding: 12px; text-al
 .skype-tab > [role="tab"] { display: flex; align-items: baseline; gap: 6px; min-width: 0; padding: 5px 8px; border: 0; background: none; color: #00578a; font: inherit; font-size: 12.5px; cursor: pointer; }
 .skype-tab.is-active > [role="tab"] { font-weight: bold; }
 .skype-tab-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.skype-tab-title.is-link { cursor: pointer; }
+.skype-tab-title.is-link:hover { text-decoration: underline; }
 .skype-presence { display: grid; flex: none; place-items: center; align-self: center; width: 14px; height: 14px; border-radius: 50%; background: #7fba00; color: #fff; font-size: 9px; font-weight: bold; }
 .skype-channel { flex: none; color: #5d8aa8; font-size: 11px; font-weight: normal; }
 .skype-tab-close { padding: 0 6px 0 0; border: 0; background: none; color: #5d8aa8; font: inherit; cursor: pointer; }
@@ -1301,7 +1305,9 @@ a.skype-time:hover { color: #0078ca; text-decoration: underline; }
 .pr-view-head { display: flex; align-items: baseline; gap: 8px; }
 .pr-view-title { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
 .pr-view-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12.5px; }
-.related-sessions { margin-bottom: 10px; }
+.related-sessions { margin-bottom: 10px; font-size: 12.5px; }
+.related-archived { min-width: 0; opacity: .55; }
+.related-archived summary { color: var(--muted); cursor: pointer; }
 /* 課題のステータスは、押すと移せる先をステータスの下に並べる。 */
 .jira-status { anchor-scope: --jira-status; }
 .jira-status-button { anchor-name: --jira-status; display: inline-flex; padding: 0; border: 0; background: none; font: inherit; cursor: pointer; }
@@ -2035,4 +2041,9 @@ table.data { width: 100%; border-collapse: collapse; }
 .child-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; font-size: 12px; }
 .child-list li { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .child-list a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.family a + a { margin-left: 10px; }
+/* 子セッションは名前が長いので、横に詰めずに 1 行に 1 つずつ左を揃えて並べる。 */
+.family-children { display: flex; gap: 6px; min-width: 0; }
+.family-children > span { flex: none; }
+.family-children ul { display: grid; gap: 2px; min-width: 0; margin: 0; padding: 0; list-style: none; }
+.family-link { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.family-link a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

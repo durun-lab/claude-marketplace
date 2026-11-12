@@ -7,7 +7,7 @@
 // 改善要望のトリガーは、要望が届いたときと前のウェーブを終えたときにもすぐ確かめる。
 import fs from 'node:fs';
 import path from 'node:path';
-import { EFFORT_LEVELS, type BurstKind, type ImproveState, MODELS, type WorkflowDef, type WorkflowInfo, type WorkflowState, type WorkflowTrigger } from '../shared/types.ts';
+import { COMPACT_WINDOW_MAX, COMPACT_WINDOW_MIN, EFFORT_LEVELS, type BurstKind, type ImproveState, MODELS, type WorkflowDef, type WorkflowInfo, type WorkflowState, type WorkflowTrigger } from '../shared/types.ts';
 import { CLAUDE_DIR, isAlive, readLiveSessions } from './claude.ts';
 import { COMPACT_COMMAND, compactSession, sendMessage, startTrackedSession } from './deliver.ts';
 import { DONE_MARK, feedbackEvent, finishItems, improveWorkflow, onFeedback, pendingItems } from './improve.ts';
@@ -73,12 +73,14 @@ export const formatAgent = (agent: Agent, fields: { model?: string; effort?: str
   return `---\n${[...kept, ...added].join('\n')}\n---\n\n${fields.prompt.trim()}\n`;
 };
 
+const isCompactWindow = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= COMPACT_WINDOW_MIN && (v as number) <= COMPACT_WINDOW_MAX;
+
 const agentPath = (dir: string, id: string): string => path.join(dir, `${id}.md`);
 
 /** workflow.json の設定と agent の指示を合わせて、1 つの定義にする。 */
 export const defOf = (id: string, dir: string, raw: unknown, agent: Agent): WorkflowDef => {
   if (!isObject(raw)) throw new Error(`${id} の ${SETTINGS_FILE} がオブジェクトではありません`);
-  const { name, enabled, cwd, theme, triggers, mode, burstMinutes, maxSessions, compact } = raw;
+  const { name, enabled, cwd, theme, triggers, mode, burstMinutes, maxSessions, compact, compactWindow } = raw;
   const [prompt, model, effort] = [agent.body, agentField(agent, 'model'), agentField(agent, 'effort')];
   if (!ID_PATTERN.test(id)) throw new Error(`フォルダー名 ${id} は英数字とハイフンで書いてください`);
   if (typeof cwd !== 'string' || !path.isAbsolute(cwd)) throw new Error(`${id} の cwd は絶対パスで書いてください`);
@@ -97,6 +99,7 @@ export const defOf = (id: string, dir: string, raw: unknown, agent: Agent): Work
     mode: mode === 'continue' ? 'continue' : 'new',
     ...(burst ? { burstMinutes: burst } : {}),
     ...(mode === 'continue' && compact === true ? { compact: true } : {}),
+    ...(mode === 'continue' && isCompactWindow(compactWindow) ? { compactWindow } : {}),
     ...(Number.isInteger(maxSessions) && (maxSessions as number) > 0 ? { maxSessions: maxSessions as number } : {}),
     ...(typeof model === 'string' && (MODELS as readonly string[]).includes(model) ? { model } : {}),
     ...(typeof effort === 'string' && (EFFORT_LEVELS as readonly string[]).includes(effort) ? { effort } : {}),
@@ -225,7 +228,7 @@ const launch = (w: WorkflowDef, run: WorkflowRun, text: string): void => {
   launching.set(w.id, (launching.get(w.id) ?? 0) + 1);
   run.lastRunAt = Date.now();
   const wave = unassignedWave(run);
-  startTrackedSession(w.cwd, text, w.model, w.effort)
+  startTrackedSession(w.cwd, text, w.model, w.effort, undefined, w.compactWindow ? { autoCompactWindow: w.compactWindow } : undefined)
     .then((meta) => {
       Object.assign(meta, { workflow: w.id, title: w.name, ...(w.theme ? { theme: w.theme } : {}) });
       if (w.mode === 'continue') run.sessionId = meta.id;
@@ -550,7 +553,7 @@ export const setWorkflowEnabled = (id: string, enabled: boolean): void => {
 };
 
 // 画面の「設定」で直す項目のうち、workflow.json に書くもの。id と ON と OFF は直さない。指示と model と effort は agent に書く。
-const EDITABLE = ['name', 'cwd', 'theme', 'triggers', 'burstMinutes', 'mode', 'compact', 'maxSessions'] as const;
+const EDITABLE = ['name', 'cwd', 'theme', 'triggers', 'burstMinutes', 'mode', 'compact', 'compactWindow', 'maxSessions'] as const;
 
 /**
  * 画面の「設定」で直した項目を書き込む。送らなかった項目は消して既定に戻す。読めない値なら書かずに理由を返す。
@@ -594,6 +597,7 @@ const consultPrompt = (target: WorkflowDef | undefined): string => `${MARK} 人�
 - burstMinutes: レビュー依頼とメンションが続けて届いたとき、最後のものからこの分数だけ次が届かなくなるまで待って、トリガーの種類ごとに 1 つの依頼にまとめる。省くと 1 件ずつ動く
 - mode: "new" はイベントごとに新しいセッションを起動する。"continue" は 1 つのセッションを引き継いでイベントをチャットに送り、セッションが無いかアーカイブされていたら新しく起動する
 - compact: mode が "continue" のとき、true なら、イベントを送る前に毎回前回までの会話を compact する
+- compactWindow: mode が "continue" のとき、会話がこのトークン数（${COMPACT_WINDOW_MIN}〜${COMPACT_WINDOW_MAX}）に達したら自動で compact する。省くと Claude Code の設定に従う。次にセッションを起動したときから効く
 - maxSessions: mode が "new" のとき、同時に動かすセッションの上限（既定 1）。上限を超えたイベントは、空くまで待たせる
 
 ## 進め方

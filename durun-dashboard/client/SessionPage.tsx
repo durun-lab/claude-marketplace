@@ -14,6 +14,8 @@ import { IE_ICON, IE_KEY, IE_TITLE, InternetExplorerIcon, openInternetExplorer }
 import { NOTEPAD_ICON, NOTEPAD_KEY, NOTEPAD_TITLE, NotepadIcon, openNotepad } from './Notepad.tsx';
 import { PROOFREAD_ICON, PROOFREAD_KEY, PROOFREAD_TITLE, ProofreadIcon, openProofread } from './Proofread.tsx';
 import { RECYCLE_BIN_ICON, RECYCLE_BIN_KEY, RECYCLE_BIN_TITLE, RecycleBinIcon, openRecycleBin } from './RecycleBin.tsx';
+import { LEARN_ICON, LEARN_KEY, LEARN_TITLE, LearnIcon, openLearn } from './Learn.tsx';
+import { WORKFLOW_ICON, WORKFLOW_KEY, WORKFLOW_TITLE, WorkflowIcon, openWorkflow } from './Workflow.tsx';
 import { TERMINAL_ICON, TERMINAL_KEY, TERMINAL_TITLE, TerminalIcon, openTerminal } from './Terminal.tsx';
 import { FL_ICON, FL_KEY, FL_TITLE, FlConnectIcon, openFlConnect } from './FlConnect.tsx';
 import { MM_ICON, MM_KEY, MM_TITLE, MovieMakerIcon, openMovieMaker } from './MovieMaker.tsx';
@@ -30,7 +32,7 @@ import { JIRA_VIEW_TITLE, JIRA_WIDGET, JiraWidget } from './JiraView.tsx';
 import { SLACK_THREAD_TITLE, SLACK_WIDGET, SessionSlack, slackThreadControls } from './SlackThread.tsx';
 import { PR_TITLE, PR_WIDGET, PrWidget } from './PrView.tsx';
 import { type SessionTab, currentSessionId, href } from './router.ts';
-import { Chip, CopyButton, CopyText, Empty, IssueChip, JiraChips, Loading, PrChips, StatusBadge } from './ui.tsx';
+import { Chip, CopyButton, CopyText, Empty, IssueChip, JiraChips, Loading, PrChips, StatusBadge, StatusDot } from './ui.tsx';
 import { UsageView } from './Usage.tsx';
 
 const ThemeEditor = ({ s, themes }: { s: Session; themes: string[] }) => {
@@ -120,13 +122,24 @@ const archiveControl = ({ s }: { s: Session }): Control[] => {
   return [{ kind: 'archive', label: archiveLabel(s), pressed: on, onClick: () => void attempt('アーカイブの切り替え', () => api.archive(s.id, !on)) }];
 };
 
-/** バッジの右の × で、バッジを外す。外したバッジは、ブランチや set_task から見つけ直しても出さない。 */
-const Removable = ({ s, url, children }: { s: Session; url: string; children: ComponentChildren }) => (
-  <span class="badge-item">
-    {children}
-    <button class="badge-remove" title="バッジを外す" aria-label="バッジを外す" onClick={() => void attempt('バッジの取り外し', () => api.removeBadge(s.id, url))}>×</button>
-  </span>
-);
+/**
+ * バッジの右の × で、バッジを外す。外したバッジは、ブランチや set_task から見つけ直しても出さない。
+ * 外した結果がスナップショットで届くまで待たせないよう、押したらすぐ隠し、外せなかったときだけ戻す。
+ */
+const Removable = ({ s, url, children }: { s: Session; url: string; children: ComponentChildren }) => {
+  const [removed, setRemoved] = useState(false);
+  if (removed) return null;
+  const remove = () => {
+    setRemoved(true);
+    void attempt('バッジの取り外し', () => api.removeBadge(s.id, url)).then((res) => res === undefined && setRemoved(false));
+  };
+  return (
+    <span class="badge-item">
+      {children}
+      <button class="badge-remove" title="バッジを外す" aria-label="バッジを外す" onClick={remove}>×</button>
+    </span>
+  );
+};
 
 /** PR、Issue、JIRA の課題の URL か、セッションのリポジトリの #番号か、課題のキーを打って Enter を押すと、バッジに登録する。#番号と課題のキーは、メッセージ欄と同じく補完する。 */
 const BadgeInput = ({ s }: { s: Session }) => {
@@ -192,8 +205,25 @@ const Family = ({ s, sessions }: { s: Session; sessions: Session[] }) => {
   if (!parent && !children.length) return null;
   return (
     <div class="head-row family">
-      {parent && <span>親: <a href={href.session(parent.id)}>{parent.name}</a></span>}
-      {children.length > 0 && <span>子: {children.map((c) => <a key={c.id} href={href.session(c.id)}>{c.name}</a>)}</span>}
+      {parent && (
+        <span class="family-link">
+          親: <StatusDot status={parent.status} waitingFor={parent.waitingFor} />
+          <a href={href.session(parent.id)}>{parent.name}</a>
+        </span>
+      )}
+      {children.length > 0 && (
+        <div class="family-children">
+          子:
+          <ul>
+            {children.map((c) => (
+              <li key={c.id} class="family-link">
+                <StatusDot status={c.status} waitingFor={c.waitingFor} />
+                <a href={href.session(c.id)}>{c.name}</a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 };
@@ -300,6 +330,8 @@ const WIDGETS: Record<string, Widget<SessionData>> = {
   [TRANSLATE_KEY]: { title: TRANSLATE_TITLE, icon: TRANSLATE_ICON, Body: () => <TranslateIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openTranslate() },
   [BOOKMARKS_KEY]: { title: BOOKMARKS_TITLE, icon: BOOKMARKS_ICON, Body: BookmarksIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openBookmarks() },
   [RECYCLE_BIN_KEY]: { title: RECYCLE_BIN_TITLE, icon: RECYCLE_BIN_ICON, Body: ({ trashed }) => <RecycleBinIcon full={trashed} />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openRecycleBin() },
+  [LEARN_KEY]: { title: LEARN_TITLE, icon: LEARN_ICON, Body: () => <LearnIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openLearn() },
+  [WORKFLOW_KEY]: { title: WORKFLOW_TITLE, icon: WORKFLOW_ICON, Body: () => <WorkflowIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openWorkflow() },
   remote: { title: REMOTE_TITLE, icon: REMOTE_ICON, Body: RemoteIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => openRemote(s) },
   [CHAT_WIDGET]: { title: 'チャット', icon: '💬', Body: Chat, size: { w: 18, h: ROWS - 6 }, sketch: 'chat' },
   outbox: { title: '送信したメッセージ', icon: '📤', Body: OutboxList, size: { w: 6, h: 10 }, sketch: 'list' },
@@ -335,6 +367,39 @@ const legacySessionLayout = (): unknown => {
     return JSON.parse(localStorage.getItem(SESSION_KEY) ?? 'null');
   } catch {
     return null;
+  }
+};
+
+/** セッションごとに選んだタブ。セッションの id から、枠の id と選んだタブの id の組へ引く。 */
+const SESSION_TABS_KEY = 'session-tabs';
+type SessionTabs = Record<string, Record<string, string>>;
+
+const readSessionTabs = (): SessionTabs => {
+  try {
+    return (JSON.parse(localStorage.getItem(SESSION_TABS_KEY) ?? '{}') as SessionTabs | null) ?? {};
+  } catch {
+    return {};
+  }
+};
+
+/** 共通の配置に、このセッションで選んだタブを当てる。枠から外したタブは当てない。 */
+const withSessionTabs = (saved: unknown, sessionId: string): unknown => {
+  const mine = readSessionTabs()[sessionId];
+  if (!mine || !Array.isArray(saved)) return saved;
+  return (saved as Partial<Layout[number]>[]).map((p) => {
+    const active = p.id === undefined ? undefined : mine[p.id];
+    return active && p.tabs?.some((t) => t.id === active) ? { ...p, active } : p;
+  });
+};
+
+// ponytail: 終わったセッションの分も消さずに残る。数千件で重くなったら、一覧に無いセッションの分を捨てる。
+const saveSessionTabs = (sessionId: string, layout: Layout): void => {
+  try {
+    const all = readSessionTabs();
+    all[sessionId] = Object.fromEntries(layout.flatMap((p) => (p.active ? [[p.id, p.active]] : [])));
+    localStorage.setItem(SESSION_TABS_KEY, JSON.stringify(all));
+  } catch {
+    // 保存できなくても、開いている間は選んだタブのまま使える。
   }
 };
 
@@ -390,13 +455,19 @@ const useSessionData = (s: Session, snapshot: Snapshot, file?: string): SessionD
 };
 
 /**
- * 配置はすべてのセッションで共通にし、ホームとは別に保存する。
+ * 配置はすべてのセッションで共通にし、ホームとは別に保存する。タブを重ねた枠で選んだタブは、セッションごとに覚える。
  * コードや使用量の画面へのリンクで開いたときは、そのウィジェットを重ねた枠でそのタブを選び、枠までスクロールする。ファイルを開くときは、コードのウィジェットがそのファイルまで送る。
  */
 const SessionDashboard = ({ s, tab, file, snapshot, editing, onEditDone }: DashboardProps) => {
   const data = useSessionData(s, snapshot, file);
   const { current, sessionLayouts } = useDashboards();
-  const store = { saved: sessionLayouts?.[current] ?? legacySessionLayout(), save: (layout: Layout) => saveSessionLayout(current, layout) };
+  const store = {
+    saved: withSessionTabs(sessionLayouts?.[current] ?? legacySessionLayout(), s.id),
+    save: (layout: Layout) => {
+      saveSessionTabs(s.id, layout);
+      saveSessionLayout(current, layout);
+    },
+  };
   const focus = useMemo<WidgetFocus | undefined>(() => (tab === 'overview' ? undefined : { kind: tab }), [tab, file]);
   useEffect(() => {
     if (focus && !file) document.querySelector(`.widget[data-tabs~="${tab}"]`)?.scrollIntoView({ block: 'start' });

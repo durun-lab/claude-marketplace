@@ -27,7 +27,7 @@ export const WorkflowIcon = () => <DesktopIcon icon={WORKFLOW_ICON} title={WORKF
 const triggerText = (t: WorkflowTrigger): string =>
   t.kind === 'github-review' ? 'レビュー依頼' : t.kind === 'slack-mention' ? 'Slack のメンション' : t.kind === 'jira-mention' ? 'JIRA のメンション' : t.kind === 'feedback' ? '改善要望' : `${t.days ? `${t.days.map((d) => DAYS[d]).join('')} ` : '毎日 '}${t.at}`;
 
-const actionText = (w: WorkflowInfo): string => (w.mode === 'continue' ? `1 つのセッションを引き継ぐ${w.compact ? '（毎回 compact）' : ''}` : `新しいセッション（同時 ${w.maxSessions ?? 1} まで）`);
+const actionText = (w: WorkflowInfo): string => (w.mode === 'continue' ? `1 つのセッションを引き継ぐ${w.compact ? '（毎回 compact）' : ''}${w.compactWindow ? `（${w.compactWindow / 1000} 千トークンで自動 compact）` : ''}` : `新しいセッション（同時 ${w.maxSessions ?? 1} まで）`);
 
 /** 相談のセッションを起動し、そのチャットへ移る。 */
 const consult = (id?: string) =>

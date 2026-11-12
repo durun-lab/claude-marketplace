@@ -6,7 +6,7 @@ import { applyEvent, emptyRun, newVersion, reviseInput, titleOf } from '../share
 import { type BranchView, type DiffRange, type DocFormat, EFFORT_LEVELS, MODELS, type ProofFile, type ProofVersion } from '../shared/types.ts';
 import { authProvider, requestAuth } from './auth.ts';
 import { readLiveSessions } from './claude.ts';
-import { autoRunCommand, dropStaleRequests, sendMessage, startChildSession, unwait, waitFor } from './deliver.ts';
+import { archiveSession, autoRunCommand, dropStaleRequests, sendMessage, startChildSession, unwait, waitFor } from './deliver.ts';
 import { callFlTool, FL_TOOL_NAMES } from './flconnect.ts';
 import { callMmTool, MM_TOOL_NAMES } from './movieMaker.ts';
 import { sessionIdForPid } from './hooks.ts';
@@ -29,7 +29,7 @@ const INSTRUCTIONS = `durun-dashboard は、人間が複数の Claude Code セ�
 - 権限の確認や auto モードに止められて自分では実行できないコマンドを人間に実行してほしいときは、\`! コマンド\` を打つよう頼まずに request_command で頼んでください。実行を選んだと返ったらターンを終えてください。出力は次のターンに届きます。
 - レビューする PR など、作業ツリーに無いブランチを人間に見せたいときは、show_branches でコードの表示をそのブランチに切り替えてください。
 - 作業のテーマや関連する JIRA 課題が分かったら set_task で登録してください。
-- 仕事を別のセッションに任せるときは、claude --bg を Bash で打たずに start_session で子セッションを起動してください。子セッションへの追加の依頼は send_to_session で送ってください。
+- 仕事を別のセッションに任せるときは、claude --bg を Bash で打たずに start_session で子セッションを起動してください。子セッションへの追加の依頼は send_to_session で送ってください。子セッションの状態は list_sessions で見て、仕事を終えた子セッションは archive_session で片付けてください。
 - Google Cloud（gcloud）や、Slack、Notion などの MCP サーバーの認証やログインが必要になったら、authenticate で人間に頼んでください。人間が認証を終えると結果が返ります。認証済みなら、尋ねずにすぐ返ります。
 - Web サービスにブラウザでログインしてほしいときは、authenticate の provider に browser を、url にログイン画面の URL を渡してください。人間がブラウザでログインを終えると結果が返ります。
 - 人間がメッセージに文章校正アプリを添付したら、proofread で文章を校正し、書き手の事情を知っている指摘に comment_proofread でコメントを返してください。主要な指摘にコメントを返したら、文章は直さずにターンを終えてください。人間がアプリで校正した版（v2 など）へのコメントを頼まれたら、proofread に file と version を渡して、その版の指摘を受け取ってください。人間に修正版を頼まれたら、revise_proofread に file と version を渡して作ってください。
@@ -163,6 +163,22 @@ const TOOLS = [
         text: { type: 'string', description: '送る依頼' },
       },
       required: ['session_id', 'text'],
+    },
+  },
+  {
+    name: 'list_sessions',
+    description:
+      'start_session で起動した自分の子セッションの一覧を返す。session_id、作業名、状態（作業中、入力待ち、停止）、アーカイブ済みかを 1 行ずつ並べる。会話を引き継いだ複製へ移った子セッションは、複製の session_id で出す。',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'archive_session',
+    description:
+      'start_session で起動した自分の子セッションをアーカイブする。人間がダッシュボードでアーカイブするときと同じく、作業中なら止めずに、入力待ちか停止になってからアーカイブする。',
+    inputSchema: {
+      type: 'object',
+      properties: { session_id: { type: 'string', description: 'start_session か list_sessions が返した子セッションの id' } },
+      required: ['session_id'],
     },
   },
   {
@@ -596,6 +612,25 @@ const sendToChild = (sessionId: string, args: ToolArgs): object => {
   const { delivery } = sendMessage(child.id, text);
   return textResult(delivery === 'queued' ? '子セッションは権限の確認を待っているので、答えた後に届けます。' : '子セッションへ送りました。');
 };
+/** 複製へ移った子セッションは、parent を引き継いだ複製だけを出す。 */
+const listChildren = (sessionId: string): object => {
+  const live = readLiveSessions();
+  const children = Object.values(state.sessions).filter((m) => m.parent === sessionId && !m.movedTo);
+  const lines = children.map((m) => {
+    const status = live.get(m.id)?.status;
+    const archived = m.archived ? 'アーカイブ済み' : m.archiveWhenIdle ? 'アーカイブ待ち' : 'アーカイブしていない';
+    return `- session_id: ${m.id}、作業名: ${m.title ?? '（なし）'}、状態: ${status === 'busy' ? '作業中' : status === 'idle' ? '入力待ち' : '停止'}、${archived}`;
+  });
+  return textResult(lines.length ? lines.join('\n') : 'start_session で起動した子セッションはありません。');
+};
+
+const archiveChild = (sessionId: string, args: ToolArgs): object => {
+  let child = state.sessions[str(args.session_id) ?? ''];
+  while (child?.movedTo && state.sessions[child.movedTo]) child = state.sessions[child.movedTo];
+  if (child?.parent !== sessionId) return textResult('session_id に、start_session で起動した自分の子セッションの id を渡してください。', true);
+  if (child.archived || child.archiveWhenIdle) return textResult('子セッションはもうアーカイブしてあります。');
+  return textResult(archiveSession(child) ? '子セッションは作業中なので、入力待ちか停止になってからアーカイブします。' : '子セッションをアーカイブしました。');
+};
 /** from を省いたときは範囲を決めず、画面の既定（分岐点から未コミットの変更まで）に任せる。 */
 const reviewRange = async (sessionId: string, args: ToolArgs): Promise<DiffRange | undefined> => {
   const from = str(args.from);
@@ -646,6 +681,10 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
       return startSessionTool(res, rpcId, params, sessionId, args);
     case 'send_to_session':
       return send(res, { id: rpcId, result: sendToChild(sessionId, args) });
+    case 'list_sessions':
+      return send(res, { id: rpcId, result: listChildren(sessionId) });
+    case 'archive_session':
+      return send(res, { id: rpcId, result: archiveChild(sessionId, args) });
     case 'authenticate': {
       const provider = authProvider(args.provider, str(args.server), state.sessions[sessionId]?.cwd, str(args.url));
       if (!provider) return send(res, { id: rpcId, result: textResult('provider に gcloud、mcp、browser のどれかを渡してください。mcp のときは server に MCP サーバーの名前も、browser のときは url にログイン画面の http か https の URL も渡してください。', true) });

@@ -12,7 +12,7 @@ import { moveTo } from './order.ts';
 import { Markdown } from './Markdown.tsx';
 import { href } from './router.ts';
 import { toast } from './toast.tsx';
-import { Chip, Empty, Ext, Loading, PrIcon, Time, onSubmitKey, PrChips, prState } from './ui.tsx';
+import { Chip, Empty, Ext, Loading, PrIcon, StatusDot, Time, onSubmitKey, PrChips, prState } from './ui.tsx';
 import { Translatable } from './TranslateTray.tsx';
 
 export const PR_TITLE = 'PR';
@@ -88,8 +88,10 @@ const Detail = ({ pr, loading, reload }: { pr: PrDetail; loading: boolean; reloa
         ))}
       </ul>
     </details>
+    {/* 新しい会話から読むので、書く欄を上に置き、新しいものから並べる。 */}
+    <CommentForm target="PR " send={(text) => api.prComment(pr.url, text)} onPosted={reload} />
     <ul class="pr-view-posts">
-      {pr.posts.map((p) => (
+      {pr.posts.toSorted((a, b) => b.at - a.at).map((p) => (
         <li key={`${p.author}${p.at}`} class="pr-comment">
           <span class="muted">
             {p.author} · <Ext href={p.url ?? ''}><Time at={p.at} /></Ext>
@@ -99,18 +101,40 @@ const Detail = ({ pr, loading, reload }: { pr: PrDetail; loading: boolean; reloa
         </li>
       ))}
     </ul>
-    <CommentForm target="PR " send={(text) => api.prComment(pr.url, text)} onPosted={reload} />
   </div>
 );
 
-/** PR や課題をバッジにしているセッションの名前。押すと、そのセッションの画面へ移る。JIRA の課題の画面でも使う。 */
-export const RelatedSessions = ({ sessions }: { sessions: Session[] }) =>
-  sessions.length ? (
-    <div class="pr-view-meta related-sessions">
+const RelatedLink = ({ s }: { s: Session }) => (
+  <li class="family-link">
+    <StatusDot status={s.status} waitingFor={s.waitingFor} />
+    <a href={href.session(s.id)}>{s.name}</a>
+  </li>
+);
+
+/**
+ * PR や課題をバッジにしているセッションの名前。押すと、そのセッションの画面へ移る。JIRA の課題の画面でも使う。セッションの見出しの親と子と同じく、状態の丸を付けて縦に並べる。
+ * アーカイブ済みのセッションは、終わった作業なので畳んで後ろに薄く出す。
+ */
+export const RelatedSessions = ({ sessions }: { sessions: Session[] }) => {
+  if (!sessions.length) return null;
+  const archived = sessions.filter((s) => s.archived);
+  return (
+    <div class="family-children related-sessions">
       <span class="muted">関連セッション</span>
-      {sessions.map((s) => <a key={s.id} href={href.session(s.id)}>{s.name}</a>)}
+      <ul>
+        {sessions.filter((s) => !s.archived).map((s) => <RelatedLink key={s.id} s={s} />)}
+        {archived.length > 0 && (
+          <li class="related-archived">
+            <details>
+              <summary>アーカイブ済み {archived.length} 件</summary>
+              <ul>{archived.map((s) => <RelatedLink key={s.id} s={s} />)}</ul>
+            </details>
+          </li>
+        )}
+      </ul>
     </div>
-  ) : null;
+  );
+};
 
 /** 開いたときと「更新」を押したとき、version が変わったときに GitHub から読み直す。related は、この PR をバッジにしているセッション。 */
 const PrView = ({ url, version, related }: { url: string; version?: string; related: Session[] }) => {
