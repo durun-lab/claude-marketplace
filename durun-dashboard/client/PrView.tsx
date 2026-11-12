@@ -12,7 +12,7 @@ import { moveTo } from './order.ts';
 import { Markdown } from './Markdown.tsx';
 import { href } from './router.ts';
 import { toast } from './toast.tsx';
-import { Chip, Empty, Ext, Loading, PrIcon, Time, onSubmitKey, PrChips, prState } from './ui.tsx';
+import { Chip, Empty, Ext, Loading, PrIcon, StatusDot, Time, onSubmitKey, PrChips, prState } from './ui.tsx';
 import { Translatable } from './TranslateTray.tsx';
 
 export const PR_TITLE = 'PR';
@@ -103,12 +103,19 @@ const Detail = ({ pr, loading, reload }: { pr: PrDetail; loading: boolean; reloa
   </div>
 );
 
-/** PR や課題をバッジにしているセッションの名前。押すと、そのセッションの画面へ移る。JIRA の課題の画面でも使う。 */
+/** PR や課題をバッジにしているセッションの名前。押すと、そのセッションの画面へ移る。JIRA の課題の画面でも使う。セッションの見出しの親と子と同じく、状態の丸を付けて縦に並べる。 */
 export const RelatedSessions = ({ sessions }: { sessions: Session[] }) =>
   sessions.length ? (
-    <div class="pr-view-meta related-sessions">
+    <div class="family-children related-sessions">
       <span class="muted">関連セッション</span>
-      {sessions.map((s) => <a key={s.id} href={href.session(s.id)}>{s.name}</a>)}
+      <ul>
+        {sessions.map((s) => (
+          <li key={s.id} class="family-link">
+            <StatusDot status={s.status} waitingFor={s.waitingFor} />
+            <a href={href.session(s.id)}>{s.name}</a>
+          </li>
+        ))}
+      </ul>
     </div>
   ) : null;
 
