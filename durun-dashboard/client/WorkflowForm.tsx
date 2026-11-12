@@ -17,7 +17,7 @@ const EVENTS: { kind: EventKind; label: string }[] = [
 const NEW_SCHEDULE: Schedule = { kind: 'schedule', at: '09:00' };
 const DEFAULT_BURST_MINUTES = 5;
 
-const settingsOf = ({ name, cwd, theme, prompt, triggers, burstMinutes, mode, compact, compactWindow, maxSessions, model, effort }: WorkflowInfo): WorkflowSettings => ({ name, cwd, theme, prompt, triggers, burstMinutes, mode, compact, compactWindow, maxSessions, model, effort });
+const settingsOf = ({ name, cwd, theme, prompt, triggers, burstMinutes, mode, compact, compactWindow, maxSessions, model, effort, account }: WorkflowInfo): WorkflowSettings => ({ name, cwd, theme, prompt, triggers, burstMinutes, mode, compact, compactWindow, maxSessions, model, effort, account });
 
 /** モードに関わらない項目は落として送る。定義に読まれない項目を残さないため。 */
 const cleaned = (s: WorkflowSettings): WorkflowSettings => ({
@@ -27,6 +27,7 @@ const cleaned = (s: WorkflowSettings): WorkflowSettings => ({
   // 範囲の外の値は定義に読まれず黙って消えるので、Claude Code が受け付ける範囲に収めて送る。
   compactWindow: s.mode === 'continue' && s.compactWindow ? Math.min(Math.max(s.compactWindow, COMPACT_WINDOW_MIN), COMPACT_WINDOW_MAX) : undefined,
   maxSessions: s.mode === 'new' && s.maxSessions && s.maxSessions > 1 ? s.maxSessions : undefined,
+  account: s.account || undefined,
   theme: s.theme?.trim() || undefined,
   model: s.model || undefined,
   effort: s.effort || undefined,
@@ -85,7 +86,7 @@ const TriggersField = ({ triggers, onChange }: { triggers: WorkflowTrigger[]; on
   );
 };
 
-const ActionField = ({ s, set }: { s: WorkflowSettings; set: (patch: Partial<WorkflowSettings>) => void }) => (
+const ActionField = ({ s, set, accounts }: { s: WorkflowSettings; set: (patch: Partial<WorkflowSettings>) => void; accounts: string[] }) => (
   <fieldset class="workflow-fieldset">
     <legend>アクション</legend>
     <label class="workflow-day">
@@ -120,12 +121,13 @@ const ActionField = ({ s, set }: { s: WorkflowSettings; set: (patch: Partial<Wor
     <div class="workflow-events">
       <Choice label="モデル" value={s.model} options={MODELS} onChange={(model) => set({ model })} />
       <Choice label="effort" value={s.effort} options={EFFORT_LEVELS} onChange={(effort) => set({ effort })} />
+      {(accounts.length > 0 || s.account) && <Choice label="アカウント" value={s.account} options={s.account && !accounts.includes(s.account) ? [...accounts, s.account] : accounts} empty="プライマリ" title="追加アカウントには claude.ai のコネクタがありません" onChange={(account) => set({ account })} />}
     </div>
   </fieldset>
 );
 
 /** 1 つのワークフローの設定。保存するとワークフローのフォルダーに書き込み、閉じる。開いた後に定義が書き換わっても、直している値は保つ。 */
-export const WorkflowForm = ({ w, themes, onClose }: { w: WorkflowInfo; themes: string[]; onClose: () => void }) => {
+export const WorkflowForm = ({ w, themes, accounts, onClose }: { w: WorkflowInfo; themes: string[]; accounts: string[]; onClose: () => void }) => {
   const [s, setS] = useState(() => settingsOf(w));
   const set = (patch: Partial<WorkflowSettings>) => setS((prev) => ({ ...prev, ...patch }));
   const save = async () => {
@@ -152,7 +154,7 @@ export const WorkflowForm = ({ w, themes, onClose }: { w: WorkflowInfo; themes: 
       </label>
       <TriggersField triggers={s.triggers} onChange={(triggers) => set({ triggers })} />
       <BurstField minutes={s.burstMinutes} onChange={(burstMinutes) => set({ burstMinutes })} />
-      <ActionField s={s} set={set} />
+      <ActionField s={s} set={set} accounts={accounts} />
       <label class="stack">
         <span>依頼</span>
         <textarea class="input workflow-prompt" value={s.prompt} onInput={(e) => set({ prompt: e.currentTarget.value })} />

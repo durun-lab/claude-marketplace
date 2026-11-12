@@ -12,7 +12,7 @@ import { tempDir } from './tmp.ts';
 const tmp = tempDir('durun-dashboard-deliver-');
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tmp, 'data');
 process.env.CLAUDE_CONFIG_DIR = path.join(tmp, 'claude');
-const { SessionStateError, accountNames, removeAccount, saveAccount, answerCommand, archiveSession, compactSession, discardSession, flushArchives, flushQueue, forkSession, keptWorktree, postToInbox, redeliver, redeliverInterrupted, removeSession, retryRemovals, sendMessage, sendQueued, startChildSession, startSession, stopSession, switchSession, trashOf, waitFor } = await import('../server/deliver.ts');
+const { SessionStateError, accountNames, removeAccount, saveAccount, answerCommand, archiveSession, compactSession, discardSession, flushArchives, flushQueue, forkSession, keptWorktree, postToInbox, redeliver, redeliverInterrupted, removeSession, retryRemovals, sendMessage, sendQueued, startChildSession, startSession, startTrackedSession, stopSession, switchSession, trashOf, waitFor } = await import('../server/deliver.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 const { cached, peekCached } = await import('../server/cache.ts');
 const { platform } = await import('../server/platform.ts');
@@ -522,6 +522,15 @@ if (args[0] === '--bg') { fs.writeFileSync(${js(argsFile)}, lines(args)); consol
   assert.equal(primary.account, undefined);
 
   await assert.rejects(startChildSession('p31', '依頼', undefined, undefined, undefined, 'none'), /追加アカウントがありません/);
+
+  // --settings は後のものだけが効くので、ほかの設定と追加アカウントは 1 つのファイルにまとめて渡す。
+  fs.writeFileSync(path.join(accounts, 'sub.json'), JSON.stringify({ env: { CLAUDE_CODE_OAUTH_TOKEN: 't' } }));
+  const merged = await startTrackedSession(tmp, '依頼', undefined, undefined, undefined, { autoCompactWindow: 100_000, env: { A: '1' } }, 'sub');
+  const [, flag, file = ''] = argsOf();
+  assert.equal(flag, '--settings');
+  assert.equal(path.dirname(file), path.join(tmp, 'data', 'launch-settings'));
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { autoCompactWindow: 100_000, env: { A: '1', CLAUDE_CODE_OAUTH_TOKEN: 't' } });
+  assert.equal(merged.account, 'sub');
 });
 
 test('アーカイブで消すときは、動いているバックグラウンドのセッションを止めてから claude rm し、端末のセッションは消さない。アーカイブは消し終わるのを待たずに返り、消せなければ理由を残す', async () => {
