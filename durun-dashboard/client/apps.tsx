@@ -6,6 +6,27 @@ export type AppEntry = { kind: string; title: string; icon: string; launch: () =
 let apps: AppEntry[] = [];
 const listeners = new Set<(list: AppEntry[]) => void>();
 
+// 起動した時刻をアプリの種類ごとにブラウザに覚え、スタートメニューに最近使ったものから出す。
+const USED_KEY = 'dashboard-app-used';
+/** XP のスタートメニューの既定と同じく、6 件まで出す。 */
+const RECENT_APPS = 6;
+
+const readUsed = (): Record<string, number> => {
+  try {
+    return JSON.parse(localStorage.getItem(USED_KEY) ?? '{}') as Record<string, number>;
+  } catch {
+    return {};
+  }
+};
+
+export const markAppUsed = (kind: string): void => localStorage.setItem(USED_KEY, JSON.stringify({ ...readUsed(), [kind]: Date.now() }));
+
+/** 最近起動した順に並べ、まだ起動していないものは元の並びのまま後ろに続ける。 */
+export const recentApps = (list: AppEntry[]): AppEntry[] => {
+  const used = readUsed();
+  return [...list].sort((a, b) => (used[b.kind] ?? 0) - (used[a.kind] ?? 0)).slice(0, RECENT_APPS);
+};
+
 export const setApps = (next: AppEntry[]): void => {
   apps = next;
   listeners.forEach((fn) => fn(next));
