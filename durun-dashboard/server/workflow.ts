@@ -263,48 +263,54 @@ const queueTo = (sessionId: string, texts: string[]): void => {
 };
 
 /**
- * 引き継いでいるセッションへイベントを送る。動いているセッションにはチャットのキューに積み、入力待ちになったら送らせる。
- * 止まっているセッションには、まとめて送って再開させる。
- * compact なら、前回までの会話を compact してから送る。止まっているセッションは compact で再開させ、イベントはその後ろのキューに積む。
+ * 引き継いでいるセッションへ依頼を送る。動いているセッションにはチャットのキューに積み、送らせる。止まっているセッションには、送って再開させる。
+ * compact なら、前回までの会話を compact してから送る。止まっているセッションは compact で再開させ、依頼はその後ろのキューに積む。
  */
-const deliverTo = (w: WorkflowDef, sessionId: string, texts: string[]): void => {
+const deliverTo = (w: WorkflowDef, sessionId: string, text: string): void => {
   const live = readLiveSessions().has(sessionId);
-  if (live) return queueTo(sessionId, w.compact ? [COMPACT_COMMAND, ...texts] : texts);
-  if (!w.compact) return void sendMessage(sessionId, texts.join(SEPARATOR));
+  if (live) return queueTo(sessionId, w.compact ? [COMPACT_COMMAND, text] : [text]);
+  if (!w.compact) return void sendMessage(sessionId, text);
   compactSession(sessionId, state.sessions[sessionId]?.cwd ?? w.cwd)
-    .then(() => queueTo(sessionId, texts))
+    .then(() => queueTo(sessionId, [text]))
     // compact できなくても、イベントは落とさずに送る。
     .catch((e: Error) => {
       runOf(w.id).error = `セッションを compact できません: ${e.message}`;
-      sendMessage(sessionId, texts.join(SEPARATOR));
+      sendMessage(sessionId, text);
     })
     .finally(touch);
 };
 
-/** 待たせているイベントを、動かせるだけセッションに渡す。 */
+/** 溜まっているイベントをすべて取り出し、1 つの依頼にまとめる。 */
+const takeAll = (w: WorkflowDef, run: WorkflowRun): string => promptFor(w, run.queue.splice(0).join(SEPARATOR));
+
+/**
+ * 待たせているイベントを、渡せるようになったら 1 つの依頼にまとめて渡す。
+ * 渡せるのは、新しいセッションなら同時に動かす数に空きがあるとき、引き継ぐセッションなら作業中でないとき。それまではワークフローのキューに溜める。
+ */
 const dispatch = (w: WorkflowDef): void => {
   const run = runOf(w.id);
   if (!run.queue.length) return;
   if (w.mode === 'new') {
-    const max = w.maxSessions ?? 1;
-    for (let n = runningCount(w.id); n < max && run.queue.length; n++) launch(w, run, run.queue.shift() as string);
+    if (runningCount(w.id) >= (w.maxSessions ?? 1)) return;
+    launch(w, run, takeAll(w, run));
     return touch();
   }
   // 起動を待っている間は、次のイベントを同じセッションへ送るため、id が分かるまで待つ。
   if (launching.get(w.id)) return;
-  const texts = run.queue.splice(0);
   const sessionId = continuedSession(run);
+  if (sessionId && readLiveSessions().get(sessionId)?.status === 'busy') return;
   if (sessionId) {
     run.lastRunAt = Date.now();
     const wave = unassignedWave(run);
     if (wave) wave.sessionId = sessionId;
-    deliverTo(w, sessionId, texts);
-  } else launch(w, run, texts.join(SEPARATOR));
+    deliverTo(w, sessionId, takeAll(w, run));
+  } else launch(w, run, takeAll(w, run));
   touch();
 };
 
+/** イベントの内容だけを溜め、依頼の形には渡すときにまとめる。 */
 const enqueue = (w: WorkflowDef, event: string): void => {
-  runOf(w.id).queue.push(promptFor(w, event));
+  runOf(w.id).queue.push(event);
 };
 
 const hasFeedback = (w: WorkflowDef): boolean => w.triggers.some((t) => t.kind === 'feedback');
