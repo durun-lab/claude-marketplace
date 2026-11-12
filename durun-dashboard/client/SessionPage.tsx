@@ -120,13 +120,24 @@ const archiveControl = ({ s }: { s: Session }): Control[] => {
   return [{ kind: 'archive', label: archiveLabel(s), pressed: on, onClick: () => void attempt('アーカイブの切り替え', () => api.archive(s.id, !on)) }];
 };
 
-/** バッジの右の × で、バッジを外す。外したバッジは、ブランチや set_task から見つけ直しても出さない。 */
-const Removable = ({ s, url, children }: { s: Session; url: string; children: ComponentChildren }) => (
-  <span class="badge-item">
-    {children}
-    <button class="badge-remove" title="バッジを外す" aria-label="バッジを外す" onClick={() => void attempt('バッジの取り外し', () => api.removeBadge(s.id, url))}>×</button>
-  </span>
-);
+/**
+ * バッジの右の × で、バッジを外す。外したバッジは、ブランチや set_task から見つけ直しても出さない。
+ * 外した結果がスナップショットで届くまで待たせないよう、押したらすぐ隠し、外せなかったときだけ戻す。
+ */
+const Removable = ({ s, url, children }: { s: Session; url: string; children: ComponentChildren }) => {
+  const [removed, setRemoved] = useState(false);
+  if (removed) return null;
+  const remove = () => {
+    setRemoved(true);
+    void attempt('バッジの取り外し', () => api.removeBadge(s.id, url)).then((res) => res === undefined && setRemoved(false));
+  };
+  return (
+    <span class="badge-item">
+      {children}
+      <button class="badge-remove" title="バッジを外す" aria-label="バッジを外す" onClick={remove}>×</button>
+    </span>
+  );
+};
 
 /** PR、Issue、JIRA の課題の URL か、セッションのリポジトリの #番号か、課題のキーを打って Enter を押すと、バッジに登録する。#番号と課題のキーは、メッセージ欄と同じく補完する。 */
 const BadgeInput = ({ s }: { s: Session }) => {
