@@ -1305,7 +1305,7 @@ a.skype-time:hover { color: #0078ca; text-decoration: underline; }
 .pr-view-head { display: flex; align-items: baseline; gap: 8px; }
 .pr-view-title { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
 .pr-view-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 12.5px; }
-.related-sessions { margin-bottom: 10px; }
+.related-sessions { margin-bottom: 10px; font-size: 12.5px; }
 /* 課題のステータスは、押すと移せる先をステータスの下に並べる。 */
 .jira-status { anchor-scope: --jira-status; }
 .jira-status-button { anchor-name: --jira-status; display: inline-flex; padding: 0; border: 0; background: none; font: inherit; cursor: pointer; }
@@ -2041,6 +2041,7 @@ table.data { width: 100%; border-collapse: collapse; }
 .child-list a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 子セッションは名前が長いので、横に詰めずに 1 行に 1 つずつ左を揃えて並べる。 */
 .family-children { display: flex; gap: 6px; min-width: 0; }
+.family-children > span { flex: none; }
 .family-children ul { display: grid; gap: 2px; min-width: 0; margin: 0; padding: 0; list-style: none; }
 .family-link { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .family-link a { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
