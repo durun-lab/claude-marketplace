@@ -12,6 +12,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { setImmediate } from 'node:timers/promises';
 import { isDeepStrictEqual } from 'node:util';
+import { createHash } from 'node:crypto';
 import type { Delivery, OutboxMessage, QueuedMessage, ReviewComment } from '../shared/types.ts';
 import { copyCached } from './cache.ts';
 import { CLAUDE_DIR, HUMAN_LABEL, SESSIONS_DIR, findTranscript, isAlive, readJson, readLiveSessions, summarizeLog, type LiveSession, type LogSummary } from './claude.ts';
@@ -163,10 +164,24 @@ export const removeAccount = (name: string): void => {
   touch();
 };
 
-const accountFlags = (account?: string): string[] => {
-  if (!account) return [];
-  if (!accountNames().includes(account)) throw new Error(`追加アカウントがありません: ${account}`);
-  return ['--settings', path.join(ACCOUNTS_DIR, `${account}.json`)];
+// --settings を複数渡すと後のものだけが効くので、ほかの設定と追加アカウントを 1 つのファイルにまとめて渡す。
+const MERGED_DIR = path.join(DATA_DIR, 'launch-settings');
+
+/**
+ * settings と account を 1 つの --settings にする。account だけならアカウントのファイルを、settings だけならその JSON を渡す。
+ * 両方あれば、トークンを含むので本人だけが読めるファイルに書く。名前を中身から決めるので、同じ組み合わせは同じファイルを使い回す。
+ */
+const settingsFlags = (settings?: object, account?: string): string[] => {
+  if (account && !accountNames().includes(account)) throw new Error(`追加アカウントがありません: ${account}`);
+  const accountFile = account ? path.join(ACCOUNTS_DIR, `${account}.json`) : undefined;
+  if (!settings) return accountFile ? ['--settings', accountFile] : [];
+  if (!accountFile) return ['--settings', JSON.stringify(settings)];
+  const accountEnv = (readJson<{ env?: object }>(accountFile)?.env ?? {}) as object;
+  const merged = JSON.stringify({ ...settings, env: { ...(settings as { env?: object }).env, ...accountEnv } });
+  const file = path.join(MERGED_DIR, `${createHash('sha256').update(merged).digest('hex').slice(0, 16)}.json`);
+  fs.mkdirSync(MERGED_DIR, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(file, merged, { mode: 0o600 });
+  return ['--settings', file];
 };
 
 /**
@@ -175,7 +190,7 @@ const accountFlags = (account?: string): string[] => {
  * theme を渡すと、起動したセッションに付ける。parent を渡すと、そのセッションの子として記録する。
  */
 export const startSession = async (cwd: string, prompt: string, model?: string, effort?: string, theme?: string, parent?: string, account?: string): Promise<void> => {
-  const output = await claudeOutput(['--bg', ...modelFlags(model, effort), ...accountFlags(account), '--', prompt], cwd);
+  const output = await claudeOutput(['--bg', ...modelFlags(model, effort), ...settingsFlags(undefined, account), '--', prompt], cwd);
   // 空のテーマを付けると、リポジトリ名にならず未分類になる。
   const known = parent && state.sessions[parent] ? parent : undefined;
   if (!theme && !known && !account) return;
@@ -197,11 +212,11 @@ const trackedSession = async (output: string, cwd: string): Promise<SessionMeta>
 /**
  * バックグラウンドのセッションを起動し、ダッシュボードの記録を返す。記録に印を付けたいときに使う。id を引けなければ reject する。
  * settings は --settings で渡す。止めたセッションを再開するときも、起動したときの --settings が使われる。
- * account は、settings を渡さないときだけ使える。
+ * account が空ならプライマリアカウントで動く。
  */
 export const startTrackedSession = async (cwd: string, prompt: string, model?: string, effort?: string, name?: string, settings?: object, account?: string): Promise<SessionMeta> => {
-  const meta = await trackedSession(await claudeOutput(['--bg', ...(name ? ['--name', name] : []), ...modelFlags(model, effort), ...(settings ? ['--settings', JSON.stringify(settings)] : accountFlags(account)), '--', prompt], cwd), cwd);
-  if (!settings) meta.account = account;
+  const meta = await trackedSession(await claudeOutput(['--bg', ...(name ? ['--name', name] : []), ...modelFlags(model, effort), ...settingsFlags(settings, account), '--', prompt], cwd), cwd);
+  meta.account = account;
   return meta;
 };
 

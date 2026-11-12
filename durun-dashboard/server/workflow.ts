@@ -80,7 +80,7 @@ const agentPath = (dir: string, id: string): string => path.join(dir, `${id}.md`
 /** workflow.json の設定と agent の指示を合わせて、1 つの定義にする。 */
 export const defOf = (id: string, dir: string, raw: unknown, agent: Agent): WorkflowDef => {
   if (!isObject(raw)) throw new Error(`${id} の ${SETTINGS_FILE} がオブジェクトではありません`);
-  const { name, enabled, cwd, theme, triggers, mode, burstMinutes, maxSessions, compact, compactWindow } = raw;
+  const { name, enabled, cwd, theme, triggers, mode, burstMinutes, maxSessions, compact, compactWindow, account } = raw;
   const [prompt, model, effort] = [agent.body, agentField(agent, 'model'), agentField(agent, 'effort')];
   if (!ID_PATTERN.test(id)) throw new Error(`フォルダー名 ${id} は英数字とハイフンで書いてください`);
   if (typeof cwd !== 'string' || !path.isAbsolute(cwd)) throw new Error(`${id} の cwd は絶対パスで書いてください`);
@@ -103,6 +103,7 @@ export const defOf = (id: string, dir: string, raw: unknown, agent: Agent): Work
     ...(Number.isInteger(maxSessions) && (maxSessions as number) > 0 ? { maxSessions: maxSessions as number } : {}),
     ...(typeof model === 'string' && (MODELS as readonly string[]).includes(model) ? { model } : {}),
     ...(typeof effort === 'string' && (EFFORT_LEVELS as readonly string[]).includes(effort) ? { effort } : {}),
+    ...(typeof account === 'string' && account ? { account } : {}),
   };
 };
 
@@ -231,7 +232,7 @@ const launch = (w: WorkflowDef, run: WorkflowRun, text: string): void => {
   launching.set(w.id, (launching.get(w.id) ?? 0) + 1);
   run.lastRunAt = Date.now();
   const wave = unassignedWave(run);
-  startTrackedSession(w.cwd, text, w.model, w.effort, undefined, w.compactWindow ? { autoCompactWindow: w.compactWindow } : undefined)
+  startTrackedSession(w.cwd, text, w.model, w.effort, undefined, w.compactWindow ? { autoCompactWindow: w.compactWindow } : undefined, w.account)
     .then((meta) => {
       Object.assign(meta, { workflow: w.id, title: w.name, ...(w.theme ? { theme: w.theme } : {}) });
       if (w.mode === 'continue') run.sessionId = meta.id;
@@ -562,7 +563,7 @@ export const setWorkflowEnabled = (id: string, enabled: boolean): void => {
 };
 
 // 画面の「設定」で直す項目のうち、workflow.json に書くもの。id と ON と OFF は直さない。指示と model と effort は agent に書く。
-const EDITABLE = ['name', 'cwd', 'theme', 'triggers', 'burstMinutes', 'mode', 'compact', 'compactWindow', 'maxSessions'] as const;
+const EDITABLE = ['name', 'cwd', 'theme', 'triggers', 'burstMinutes', 'mode', 'compact', 'compactWindow', 'maxSessions', 'account'] as const;
 
 /**
  * 画面の「設定」で直した項目を書き込む。送らなかった項目は消して既定に戻す。読めない値なら書かずに理由を返す。
@@ -606,6 +607,7 @@ const consultPrompt = (target: WorkflowDef | undefined): string => `${MARK} 人�
 - burstMinutes: レビュー依頼とメンションが続けて届いたとき、最後のものからこの分数だけ次が届かなくなるまで待って、トリガーの種類ごとに 1 つの依頼にまとめる。省くと 1 件ずつ動く
 - mode: "new" はイベントごとに新しいセッションを起動する。"continue" は 1 つのセッションを引き継いでイベントをチャットに送り、セッションが無いかアーカイブされていたら新しく起動する
 - compact: mode が "continue" のとき、true なら、イベントを送る前に毎回前回までの会話を compact する
+- account: セッションを動かす追加アカウントの名前（${DATA_DIR}/accounts/<名前>.json）。省くとプライマリアカウントで動く。追加アカウントには claude.ai のコネクタが無いので、コネクタを使うワークフローでは省く
 - compactWindow: mode が "continue" のとき、会話がこのトークン数（${COMPACT_WINDOW_MIN}〜${COMPACT_WINDOW_MAX}）に達したら自動で compact する。省くと Claude Code の設定に従う。次にセッションを起動したときから効く
 - maxSessions: mode が "new" のとき、同時に動かすセッションの上限（既定 1）。上限を超えたイベントは、空くまで待たせる
 

@@ -466,6 +466,8 @@ export type WorkflowDef = {
   compactWindow?: number;
   model?: string;
   effort?: string;
+  /** セッションを動かす追加アカウントの名前。省くとプライマリアカウントで動く。 */
+  account?: string;
 };
 
 /** 画面の「設定」で直す項目。 */
