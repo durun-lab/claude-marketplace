@@ -11,7 +11,7 @@ const dataDir = tempDir('durun-dashboard-improve-');
 process.env.DURUN_DASHBOARD_DATA_DIR = dataDir;
 process.env.CLAUDE_CONFIG_DIR = tempDir('durun-dashboard-improve-claude-');
 const { saveFeedback } = await import('../server/improve.ts');
-const { WORKFLOWS_DIR, endFeedbackWave, improveState, runWorkflow, setWorkflowEnabled, startWorkflows } = await import('../server/workflow.ts');
+const { BUNDLED_AGENTS_DIR, WORKFLOWS_DIR, endFeedbackWave, improveState, runWorkflow, setWorkflowEnabled, startWorkflows, updateWorkflow, workflowState } = await import('../server/workflow.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 
 const feedbackDir = path.join(dataDir, 'feedback');
@@ -37,8 +37,16 @@ test('自動実装の設定を、改善要望のトリガーを持つワーク�
   const dir = path.join(WORKFLOWS_DIR, 'improve');
   const def = JSON.parse(fs.readFileSync(path.join(dir, 'workflow.json'), 'utf8'));
   assert.deepEqual([def.enabled, def.mode, def.compact, def.triggers], [true, 'continue', true, [{ kind: 'feedback' }]]);
-  const agent = fs.readFileSync(path.join(dir, 'improve.md'), 'utf8');
-  assert.match(agent, /^---\nname: improve\n[\s\S]*\nmodel: opus\n---\n[\s\S]*worktree/);
+  // 指示はフォルダーに書かず、plugin に同梱した agent を使う。設定を保存しても、指示を変えなければ写さない。
+  assert.equal(fs.existsSync(path.join(dir, 'improve.md')), false);
+  const w = workflowState().workflows.find((x) => x.id === 'improve');
+  assert.equal(w?.agentFile, path.join(BUNDLED_AGENTS_DIR, 'improve.md'));
+  updateWorkflow('improve', { ...w, account: 'sub' });
+  assert.equal(fs.existsSync(path.join(dir, 'improve.md')), false);
+  updateWorkflow('improve', { ...w, prompt: '別の指示' });
+  assert.match(fs.readFileSync(path.join(dir, 'improve.md'), 'utf8'), /^---\nname: improve\n[\s\S]*\n---\n\n別の指示\n$/);
+  fs.rmSync(path.join(dir, 'improve.md'));
+  updateWorkflow('improve', w);
   assert.equal(state.improve, undefined);
 });
 
@@ -54,7 +62,7 @@ test('要望が届くと、たまった要望の一覧を 1 つのウェーブ�
   assert.match(args, /^opus$/m);
   // 依頼は要望の一覧だけにし、読み方や進め方は agent のファイルを指す。
   assert.match(args, new RegExp(`1 件たまっています[\\s\\S]*${first}: 一つ目[\\s\\S]*improve\\.md の指示に従って`));
-  assert.doesNotMatch(args, /worktree|targets|対応した要望/);
+  assert.doesNotMatch(args, /git worktree|targets|対応した要望/);
   assert.equal(state.workflowRuns?.improve?.feedback?.stalled, 'unmarked');
 
   // 待機中は、新しい要望が届いてもウェーブを始めない。

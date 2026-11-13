@@ -2,6 +2,7 @@
 // 1 つのワークフローは ~/.claude/agents/<id>/ の 1 つのフォルダーにまとめ、フォルダーを写せばほかの人の手元でも動く。
 // 指示と model と effort は、同じフォルダーの <id>.md に Claude Code の agent として書く。普段のセッションからもサブエージェントとして呼べる。
 // トリガーや動かし方は workflow.json に書く。補助のスクリプトなども同じフォルダーに置ける。
+// ダッシュボードが動きを前提にする指示（改善要望の対応など）は plugin の agents/ に同梱し、フォルダーに <id>.md が無ければそれを使う。
 // 定義は人間とエージェントが書く。ダッシュボードは書き換えを読み直してすぐ使い、画面で切り替えた ON と OFF と、「設定」で直した項目を書き込む。
 // 動きは 1 分ごとに確かめる。時刻のトリガーはその間に過ぎた時刻で、レビュー依頼のトリガーは GitHub の Inbox に新しく現れた PR で、メンションのトリガーは Slack の検索と JIRA のコメントに新しく現れたメンションで動く。
 // 改善要望のトリガーは、要望が届いたときと前のウェーブを終えたときにもすぐ確かめる。
@@ -16,6 +17,8 @@ import { slackMentions } from './slack.ts';
 import { DATA_DIR, type FeedbackWave, newId, persist, state, touch, type WorkflowRun } from './store.ts';
 
 export const WORKFLOWS_DIR = path.join(CLAUDE_DIR, 'agents');
+// ダッシュボードと同じチェックアウトにある plugin の agent。コードと指示の版をそろえるため、インストールした plugin ではなくこちらを読む。
+export const BUNDLED_AGENTS_DIR = path.join(import.meta.dirname, '..', '..', 'plugins', 'durun-dashboard', 'agents');
 // 1 つのファイルに定義を並べていたころの置き場所。起動したときに、フォルダーへ移す。
 const LEGACY_FILE = path.join(DATA_DIR, 'workflows.json');
 const SETTINGS_FILE = 'workflow.json';
@@ -77,19 +80,29 @@ const isCompactWindow = (v: unknown): v is number => Number.isInteger(v) && (v a
 
 const agentPath = (dir: string, id: string): string => path.join(dir, `${id}.md`);
 
+/** 使う agent のファイル。フォルダーの <id>.md を、同梱の agent より先に使う。 */
+const agentFileOf = (dir: string, id: string): string => {
+  const own = agentPath(dir, id);
+  const bundled = agentPath(BUNDLED_AGENTS_DIR, id);
+  return !fs.existsSync(own) && fs.existsSync(bundled) ? bundled : own;
+};
+
+const readAgent = (file: string): Agent => (fs.existsSync(file) ? parseAgent(fs.readFileSync(file, 'utf8')) : { lines: [], body: '' });
+
 /** workflow.json の設定と agent の指示を合わせて、1 つの定義にする。 */
-export const defOf = (id: string, dir: string, raw: unknown, agent: Agent): WorkflowDef => {
+export const defOf = (id: string, dir: string, raw: unknown, agent: Agent, agentFile = agentPath(dir, id)): WorkflowDef => {
   if (!isObject(raw)) throw new Error(`${id} の ${SETTINGS_FILE} がオブジェクトではありません`);
   const { name, enabled, cwd, theme, triggers, mode, burstMinutes, maxSessions, compact, compactWindow, account } = raw;
   const [prompt, model, effort] = [agent.body, agentField(agent, 'model'), agentField(agent, 'effort')];
   if (!ID_PATTERN.test(id)) throw new Error(`フォルダー名 ${id} は英数字とハイフンで書いてください`);
   if (typeof cwd !== 'string' || !path.isAbsolute(cwd)) throw new Error(`${id} の cwd は絶対パスで書いてください`);
-  if (!prompt) throw new Error(`${id} の ${id}.md に指示がありません`);
+  if (!prompt) throw new Error(`${id} の ${agentFile} に指示がありません`);
   // メンションのトリガーごとに burstMinutes を書いた定義も、ワークフローのバースト時間として読む。
   const burst = positiveInt(burstMinutes) ?? (Array.isArray(triggers) ? triggers.map((t) => (isObject(t) ? positiveInt(t.burstMinutes) : undefined)).find(Boolean) : undefined);
   return {
     id,
     dir,
+    agentFile,
     name: typeof name === 'string' && name.trim() ? name.trim() : id,
     enabled: enabled === true,
     cwd,
@@ -117,8 +130,8 @@ const readDir = (dir: string): WorkflowDef | undefined => {
     return undefined;
   }
   try {
-    const agent = fs.existsSync(agentPath(dir, id)) ? parseAgent(fs.readFileSync(agentPath(dir, id), 'utf8')) : { lines: [], body: '' };
-    return defOf(id, dir, JSON.parse(settings), agent);
+    const agentFile = agentFileOf(dir, id);
+    return defOf(id, dir, JSON.parse(settings), readAgent(agentFile), agentFile);
   } catch (e) {
     throw new Error(`${id} を読めません: ${(e as Error).message}`);
   }
@@ -165,7 +178,7 @@ const forgetWorkflows = (): void => {
 
 /**
  * 定義を 1 つのフォルダーに書く。既にあれば書かない。id と prompt と model と effort は agent に、ほかは workflow.json に書く。
- * agent の description は、普段のセッションがサブエージェントを選ぶときに読む。
+ * prompt が無ければ agent は書かず、同梱の agent を使う。agent の description は、普段のセッションがサブエージェントを選ぶときに読む。
  */
 const writeWorkflowDir = (def: Record<string, unknown>): void => {
   const { id, prompt, model, effort, ...settings } = def as { id: string; prompt: string; model?: string; effort?: string; name?: unknown };
@@ -174,7 +187,7 @@ const writeWorkflowDir = (def: Record<string, unknown>): void => {
   fs.mkdirSync(dir, { recursive: true });
   const name = typeof settings.name === 'string' ? settings.name : id;
   const head = { lines: [`name: ${id}`, `description: ダッシュボードのワークフロー「${name}」の指示`], body: '' };
-  fs.writeFileSync(agentPath(dir, id), formatAgent(head, { model, effort, prompt }));
+  if (prompt) fs.writeFileSync(agentPath(dir, id), formatAgent(head, { model, effort, prompt }));
   fs.writeFileSync(path.join(dir, SETTINGS_FILE), `${JSON.stringify(settings, null, 2)}\n`);
   forgetWorkflows();
 };
@@ -214,7 +227,7 @@ const runOf = (id: string): WorkflowRun => {
  * イベントの内容が指示に埋もれないよう、指示は本文を写さずに agent のファイルを指す。
  * 補助のスクリプトなどは、同じフォルダーにあるので、ファイルの場所から辿れる。
  */
-const promptFor = (w: WorkflowDef, event: string): string => `${MARK}「${w.name}」 ${event}\n\n進め方は ${agentPath(w.dir, w.id)} の指示に従ってください。`;
+const promptFor = (w: WorkflowDef, event: string): string => `${MARK}「${w.name}」 ${event}\n\n進め方は ${w.agentFile} の指示に従ってください。`;
 
 /** 起動を頼み、id をまだ受け取っていないセッションの数。ワークフローごとに数える。 */
 const launching = new Map<string, number>();
@@ -545,9 +558,8 @@ const filesOf = (id: string) => {
   const dir = path.join(WORKFLOWS_DIR, id);
   if (!ID_PATTERN.test(id) || !fs.existsSync(path.join(dir, SETTINGS_FILE))) throw new Error(`ワークフロー ${id} がありません`);
   const settingsFile = path.join(dir, SETTINGS_FILE);
-  const agentFile = agentPath(dir, id);
-  const agent = fs.existsSync(agentFile) ? parseAgent(fs.readFileSync(agentFile, 'utf8')) : { lines: [], body: '' };
-  return { dir, settingsFile, agentFile, agent, settings: JSON.parse(fs.readFileSync(settingsFile, 'utf8')) as Record<string, unknown> };
+  const agentFile = agentFileOf(dir, id);
+  return { dir, settingsFile, agentFile, agent: readAgent(agentFile), settings: JSON.parse(fs.readFileSync(settingsFile, 'utf8')) as Record<string, unknown> };
 };
 
 const writeSettings = (file: string, settings: Record<string, unknown>): void => {
@@ -579,8 +591,12 @@ export const updateWorkflow = (id: string, body: unknown): void => {
   }
   const str = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
   const agentText = formatAgent(agent, { model: str(body.model), effort: str(body.effort), prompt: typeof body.prompt === 'string' ? body.prompt : '' });
-  defOf(id, dir, next, parseAgent(agentText));
-  fs.writeFileSync(agentFile, agentText);
+  const nextAgent = parseAgent(agentText);
+  defOf(id, dir, next, nextAgent, agentFile);
+  // 同梱の agent を使っているときは、指示か model か effort を変えたときだけ、フォルダーに <id>.md を書いて上書きする。
+  const own = agentPath(dir, id);
+  const same = nextAgent.body === agent.body && AGENT_KEYS.every((k) => agentField(nextAgent, k) === agentField(agent, k));
+  if (agentFile === own || !same) fs.writeFileSync(own, agentText);
   writeSettings(settingsFile, next);
 };
 

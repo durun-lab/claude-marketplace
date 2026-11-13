@@ -33,7 +33,7 @@ test('定義を読み、省いた項目は既定にする', () => {
   const { workflows, error } = parse(def({ enabled: true, model: 'nope', effort: 'high' }));
   assert.equal(error, undefined);
   const dir = workflows[0]?.dir ?? '';
-  assert.deepEqual(workflows, [{ id: 'daily', dir, name: 'daily', enabled: true, cwd, prompt: '朝の確認', triggers: [{ kind: 'schedule', at: '09:00' }], mode: 'new', effort: 'high' }]);
+  assert.deepEqual(workflows, [{ id: 'daily', dir, agentFile: path.join(dir, 'daily.md'), name: 'daily', enabled: true, cwd, prompt: '朝の確認', triggers: [{ kind: 'schedule', at: '09:00' }], mode: 'new', effort: 'high' }]);
   assert.equal(path.basename(dir), 'daily');
 });
 

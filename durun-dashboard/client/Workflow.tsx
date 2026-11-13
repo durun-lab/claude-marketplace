@@ -53,7 +53,7 @@ const Row = ({ w, now, onEdit }: { w: WorkflowInfo; now: number; onEdit: () => v
     <td class="workflow-actions">
       <button class="xp-task-link" onClick={() => void attempt('ワークフローの実行', () => api.workflowRun(w.id))}>実行</button>
       <button class="xp-task-link" onClick={onEdit}>設定</button>
-      <button class="xp-task-link" title={`${w.dir}/${w.id}.md`} onClick={() => openNotepadFile(`${w.dir}/${w.id}.md`)}>指示</button>
+      <button class="xp-task-link" title={w.agentFile} onClick={() => openNotepadFile(w.agentFile)}>指示</button>
       <button class="xp-task-link" onClick={() => consult(w.id)}>相談</button>
       {w.sessionId && <a href={href.session(w.sessionId)}>セッション</a>}
     </td>
