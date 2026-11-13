@@ -25,6 +25,8 @@ export type SessionMeta = {
   parent?: string;
   /** ダッシュボードが追加アカウントで起動した。無ければプライマリアカウントで動く */
   account?: string;
+  /** ダッシュボードが起動するときに --settings で渡した、このセッションだけの settings のファイル。アカウントを切り替えるときに env を書き換える */
+  settingsFile?: string;
   /** 会話を引き継いだ複製のセッションの id。設定とやり取りは複製へ移してあり、このセッションはアーカイブしてある */
   movedTo?: string;
   /** アーカイブしたが、Claude Code の一覧から消せなかった理由。作業ツリーに人間の手当てが要るものが残る理由ならゴミ箱に入れ、ほかの理由なら後で消し直す */
@@ -285,8 +287,8 @@ export const newId = (): string => randomUUID().slice(0, 8);
 export const moveSession = (from: string, to: string): void => {
   const old = state.sessions[from];
   if (!old || from === to) return;
-  const { parent, account, theme, title, jira, pinned, dangerous, badges, hiddenBadges, slack, hiddenSlack, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews } = old;
-  Object.assign(ensureSession(to, old.cwd), { parent, account, theme, title, jira, pinned, dangerous, badges, hiddenBadges, slack, hiddenSlack, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews });
+  const { parent, account, settingsFile, theme, title, jira, pinned, dangerous, badges, hiddenBadges, slack, hiddenSlack, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews } = old;
+  Object.assign(ensureSession(to, old.cwd), { parent, account, settingsFile, theme, title, jira, pinned, dangerous, badges, hiddenBadges, slack, hiddenSlack, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews });
   Object.assign(old, { archived: true, movedTo: to, pinned: undefined, dangerous: undefined, bookmarks: undefined, jobId: undefined });
   for (const items of [state.attention, state.docs, state.outbox]) {
     for (const item of items) if (item.sessionId === from) item.sessionId = to;
