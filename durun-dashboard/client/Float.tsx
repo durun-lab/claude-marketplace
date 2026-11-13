@@ -180,7 +180,7 @@ const fitMedia = (f: Float, el: EventTarget | null): void => {
 
 /**
  * タイトルバーのドラッグで動かし、上下左右の辺と 4 つの角のドラッグで大きさを変える。
- * タスクバーには、ヘッダーの .taskbar-windows へ、このウィンドウのボタンを置く。
+ * タスクバーには、ヘッダーの .taskbar-windows へ、このウィンドウのボタンを置く。最近触ったウィンドウから左に並べる。
  * ウィンドウ化のボタンは、最大化していれば前の状態に戻し、ウィンドウなら onDock で元の枠に戻す。元の枠が無いウィンドウでは、最大化している間だけ出す。
  * 最大化のボタンは、最大化している間は出さない。
  * 最大化している間は、動かすことも大きさを変えることもできない。
@@ -243,7 +243,8 @@ export const FloatFrame = ({ f, title, icon, controls, onDock, tray, children }:
       <WindowControls controls={all} />
       {!f.max && EDGES.map((edge) => <div key={edge} class={`float-edge is-${edge}`} {...grab(edge)} />)}
       {taskbar && !(tray && f.min) && createPortal(
-        <button class="taskbar-window" title={title} style={iconVar(icon)} aria-pressed={active} onClick={() => toggleTask(f)}>{title}</button>,
+        // 一覧は触ったウィンドウを最後に移すので、後ろのものほど左に並べ、最近触ったウィンドウから順にする。
+        <button class="taskbar-window" title={title} style={`${iconVar(icon)}; order: ${-z}`} aria-pressed={active} onClick={() => toggleTask(f)}>{title}</button>,
         taskbar,
       )}
     </section>
