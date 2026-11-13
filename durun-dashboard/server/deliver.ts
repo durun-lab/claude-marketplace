@@ -784,12 +784,15 @@ export const continueStopped = async (sessionId: string, cwd: string): Promise<v
  * フラグを付けて --resume すると、Claude Code は会話を引き継いだ複製を別の id で起動するので、ダッシュボードの設定を複製へ移し、元のセッションはアーカイブする。
  * 端末で始めて終わったセッションは保存したオプションを持たないので、同じ id のまま続く。
  * 止めて再開するので、作業中のセッションと端末で開いているセッションでは失敗する。
+ * 複製は渡したフラグだけで動き、元の --settings を引き継がない。account を省くと今のアカウントのファイルを渡し直し、空文字ならプライマリアカウントで動かす。
  */
-export const switchSession = async (sessionId: string, text: string, model?: string, effort?: string, permissionMode?: string): Promise<string> => {
+export const switchSession = async (sessionId: string, text: string, model?: string, effort?: string, permissionMode?: string, account?: string): Promise<string> => {
   const meta = state.sessions[sessionId];
   if (!meta) throw new Error(`unknown session: ${sessionId}`);
   const live = readLiveSessions().get(sessionId);
   if (live && !restartable(live)) throw new SessionStateError('作業中のセッションと端末で開いているセッションは、モデルと effort を変えられません');
+  const nextAccount = (account ?? meta.account) || undefined;
+  const flags = [...modelFlags(model, effort, permissionMode), ...settingsFlags(undefined, nextAccount)];
   state.outbox.push({ id: newId(), sessionId, text, createdAt: Date.now() });
   const pending = undelivered(sessionId);
   // 届け直すと複製がもう 1 つできるので、巻き戻しと同じく sending を付けない。
@@ -797,7 +800,7 @@ export const switchSession = async (sessionId: string, text: string, model?: str
   touch();
   let output: string;
   try {
-    output = await relaunch(sessionId, meta.cwd, joinTexts(pending), live?.jobId, undefined, modelFlags(model, effort, permissionMode));
+    output = await relaunch(sessionId, meta.cwd, joinTexts(pending), live?.jobId, undefined, flags);
     // claude はセッションを起動しないまま正常に終わることがある。届いたことにすると、本文がどこにも残らない。
     if (!backgroundedJob(output)) throw new UpstreamError(output.trim() || 'claude がセッションを起動しませんでした');
   } catch (e) {
@@ -805,7 +808,11 @@ export const switchSession = async (sessionId: string, text: string, model?: str
     touch();
     throw e;
   }
-  return follow(sessionId, output);
+  const next = await follow(sessionId, output);
+  const moved = state.sessions[next];
+  if (moved) moved.account = nextAccount;
+  touch();
+  return next;
 };
 
 /**
@@ -831,13 +838,14 @@ const follow = async (sessionId: string, output: string): Promise<string> => {
  * 元のセッションは止めずに残すので、作業中のセッションと端末で開いているセッションからも分岐できる。
  * テーマと、set_task で付けた JIRA の課題と、人間が登録したり外したりしたバッジは、分岐先にも付ける。名前は、ほかの新しいセッションと同じく、最初の応答の後に haiku に付けさせる。
  */
-export const forkSession = async (sessionId: string, text: string, model?: string, effort?: string, permissionMode?: string): Promise<string> => {
+export const forkSession = async (sessionId: string, text: string, model?: string, effort?: string, permissionMode?: string, account?: string): Promise<string> => {
   const meta = state.sessions[sessionId];
   if (!meta) throw new Error(`unknown session: ${sessionId}`);
-  const output = await claudeOutput(['--bg', '--resume', sessionId, '--fork-session', ...modelFlags(model, effort, permissionMode), '--', text], meta.cwd);
+  const nextAccount = (account ?? meta.account) || undefined;
+  const output = await claudeOutput(['--bg', '--resume', sessionId, '--fork-session', ...modelFlags(model, effort, permissionMode), ...settingsFlags(undefined, nextAccount), '--', text], meta.cwd);
   const fork = await backgroundedSession(output);
   if (!fork) throw new Error('分岐したセッションの id を引けません');
-  Object.assign(ensureSession(fork, meta.cwd), { theme: meta.theme, jira: [...meta.jira], badges: meta.badges, hiddenBadges: meta.hiddenBadges, slack: meta.slack, hiddenSlack: meta.hiddenSlack });
+  Object.assign(ensureSession(fork, meta.cwd), { theme: meta.theme, jira: [...meta.jira], badges: meta.badges, hiddenBadges: meta.hiddenBadges, slack: meta.slack, hiddenSlack: meta.hiddenSlack, account: nextAccount });
   state.outbox.push({ id: newId(), sessionId: fork, text, createdAt: Date.now(), deliveredAt: Date.now(), via: 'resume' });
   touch();
   return fork;
