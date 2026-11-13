@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import type { ServerResponse } from 'node:http';
 import path from 'node:path';
-import { ASK_TOOL, type LiveSession, questionDialog, readCustomTitle, readLiveSessions, summarizeLog, toQuestions } from './claude.ts';
+import { ASK_TOOL, CLAUDE_DIR, type LiveSession, questionDialog, readCustomTitle, readLiveSessions, summarizeLog, toQuestions } from './claude.ts';
 import { dropStaleRequests, forgetPermission, noteAutoAllow, isAllowable, releasePermissions, waitForPermission } from './deliver.ts';
 import { flHookContext } from './flconnect.ts';
 import { mmHookContext } from './movieMaker.ts';
@@ -25,7 +25,7 @@ export type HookInput = {
   notification_type?: string;
   message?: string;
   tool_name?: string;
-  tool_input?: { command?: unknown; questions?: unknown; name?: unknown; path?: unknown; files?: unknown; caption?: unknown };
+  tool_input?: { command?: unknown; questions?: unknown; name?: unknown; path?: unknown; files?: unknown; caption?: unknown; file_path?: unknown };
 };
 
 /** フックへの応答。PreToolUse で、ツールを使ってよいかを Claude Code に返す。UserPromptSubmit と PostToolUse で、Claude に伝えることを添える。 */
@@ -150,6 +150,19 @@ const refreshPrFor = (meta: SessionMeta): void => {
   for (const branch of summarizeLog(meta.transcriptPath).branches) void refreshPr(meta.cwd, branch);
 };
 
+// 自動メモリと会話ログの置き場。Claude が覚え書きに書く Markdown は、人間に見せる資料ではない。
+const CLAUDE_PROJECTS = path.join(CLAUDE_DIR, 'projects');
+
+/** Write で書いた Markdown を、エクスプローラーから足したファイルと同じく資料に並べる。人間が外したファイルは並べ直さない。 */
+const recordWrittenMarkdown = (meta: SessionMeta, input: HookInput): void => {
+  const f = input.tool_input?.file_path;
+  if (typeof f !== 'string' || !/\.md$/i.test(f)) return;
+  const file = path.resolve(input.cwd ?? meta.cwd, f);
+  if (isInside(file, CLAUDE_PROJECTS) || meta.files?.some((x) => x.path === file) || meta.hiddenDocs?.includes(file)) return;
+  meta.files = [...(meta.files ?? []), { path: file, at: Date.now() }];
+  touch();
+};
+
 const observe = (meta: SessionMeta, event: string | undefined, input: HookInput): void => {
   // worktree に入って会話ログが移った後も、フックは移る前の場所を渡すことがある。覚えた場所があれば、会話ログの無い場所には置き換えない。
   if (input.transcript_path && meta.transcriptPath !== input.transcript_path && (!meta.transcriptPath || fs.existsSync(input.transcript_path))) {
@@ -168,6 +181,7 @@ const observe = (meta: SessionMeta, event: string | undefined, input: HookInput)
   }
   if (event === 'PostToolUse' && input.tool_name === 'Bash' && PR_COMMAND.test(String(input.tool_input?.command ?? ''))) refreshPrFor(meta);
   if (event === 'PostToolUse' && input.tool_name === SEND_USER_FILE) recordSentFiles(meta, input);
+  if (event === 'PostToolUse' && input.tool_name === 'Write') recordWrittenMarkdown(meta, input);
 };
 
 /** 応答を返し終える前でも、作業が始まってこの時間が経てば名前を付ける。 */

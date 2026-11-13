@@ -404,11 +404,26 @@ const watchLocalFile = (req: IncomingMessage, res: ServerResponse, id: string, u
 };
 
 /**
+ * 作業ディレクトリから辿れない Markdown のパスは、末尾が一致するこのセッションの資料のファイルに読み替える。
+ * Claude は書いたファイルを、作業ディレクトリの外のものでも、そのファイルのある場所からの相対パスで書くことがある。
+ */
+const docByTail = (id: string, local: ReturnType<typeof localPath>): ReturnType<typeof localPath> => {
+  const tail = local.ref.replace(/^\.\//, '');
+  if (!/\.md$/i.test(tail)) return local;
+  const meta = sessionMeta(id);
+  const paths = [...(meta.files ?? []).map((f) => f.path), ...state.docs.filter((d) => d.sessionId === meta.id && d.path).map((d) => d.path ?? '')];
+  const hit = paths.find((p) => p.endsWith(`/${tail}`));
+  const stat = hit ? fs.statSync(hit, { throwIfNoEntry: false }) : undefined;
+  return hit && stat?.isFile() ? { ref: local.ref, full: hit, stat } : local;
+};
+
+/**
  * チャットのファイルパスの開き先。画像と動画はコードの画面で見られず、Markdown は整えた見た目で読みたいので、リポジトリにあってもウィンドウに浮かべる。
  * Markdown には、資料の題名に添える最初の見出しを付けて返す。どこでも開けなければ 404 にする。
  */
 const resolveFile = async (id: string, url: URL): Promise<FileTarget> => {
-  const { ref, full, stat } = localPath(id, url);
+  const local = localPath(id, url);
+  const { ref, full, stat } = local.stat || !id ? local : docByTail(id, local);
   if (stat && /\.md$/i.test(full) && stat.size <= MAX_LOCAL_FILE_BYTES) return { where: 'local', path: full, heading: firstHeading(fs.readFileSync(full, 'utf8')) };
   if (stat && mediaType(full)) return { where: 'local', path: full };
   if (id && (await inRepo(sessionMeta(id).cwd, ref))) return { where: 'repo' };
