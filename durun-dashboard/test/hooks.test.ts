@@ -19,6 +19,7 @@ useFakeClaude(
 process.stdout.write(lines([JSON.stringify({ type: 'control_response', response: { subtype: 'success', request_id, response: { rate_limits: null } } })]));`,
 );
 const { handleHook, holdPermission } = await import('../server/hooks.ts');
+const { CLAUDE_DIR } = await import('../server/claude.ts');
 const { autoActionOf } = await import('../server/deliver.ts');
 const { ensureSession, onChange, state } = await import('../server/store.ts');
 
@@ -293,6 +294,13 @@ test('SendUserFile で送ったファイルは、送ったときの説明を題�
   assert.deepEqual(sent()[0], { title: 'mock.png', format: 'image', path: path.join(tmp, 'mock.png'), seen: false });
   assert.equal(sent().length, 3);
   assert.deepEqual(meta.hiddenDocs, []);
+});
+
+test('Write で書いた Markdown は資料のファイルに並べ、同じファイルは重ねず、人間が外したものと自動メモリの覚え書きは並べない', () => {
+  const base = { session_id: 'written', cwd: tmp, hook_event_name: 'PostToolUse', tool_name: 'Write' };
+  const meta = Object.assign(ensureSession('written', tmp), { hiddenDocs: [path.join(tmp, 'hidden.md')] });
+  for (const file of ['drafts/plan.md', 'drafts/plan.md', 'code.ts', 'hidden.md', path.join(CLAUDE_DIR, 'projects', 'p', 'memory', 'note.md')]) handleHook({ ...base, tool_input: { file_path: file } }, 0);
+  assert.deepEqual(meta.files?.map((f) => f.path), [path.join(tmp, 'drafts', 'plan.md')]);
 });
 
 test('ブックマークした発言のあるセッションは、アーカイブして会話ログが止まってから日がたっても、ブックマークから開けるよう一覧から外さない', async () => {
