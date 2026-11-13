@@ -141,6 +141,28 @@ const Removable = ({ s, url, children }: { s: Session; url: string; children: Co
   );
 };
 
+// バッジがこの数を超えると探しにくくなるので、終わった分をまとめて外すボタンを出す。
+const MANY_BADGES = 10;
+
+/** マージ済みとクローズ済みの PR と Issue、完了した JIRA の課題のバッジを、まとめて外す。 */
+const RemoveFinished = ({ s }: { s: Session }) => {
+  const prs = s.prs ?? [];
+  const issues = s.issues ?? [];
+  if (prs.length + s.jira.length + issues.length < MANY_BADGES) return null;
+  const urls = [
+    ...prs.filter((pr) => pr.state !== 'OPEN').map((pr) => pr.url),
+    ...s.jira.filter((j) => j.statusCategory === 'done').map((j) => j.url),
+    ...issues.filter((i) => i.state !== 'Open').map((i) => i.url),
+  ];
+  if (!urls.length) return null;
+  const remove = () => void attempt('バッジの取り外し', () => Promise.all(urls.map((url) => api.removeBadge(s.id, url))));
+  return (
+    <button type="button" class="btn btn-sm" title="マージ済み、クローズ済み、完了済みのバッジをまとめて外す" onClick={remove}>
+      終わった {urls.length} 件を外す
+    </button>
+  );
+};
+
 /** PR、Issue、JIRA の課題の URL か、セッションのリポジトリの #番号か、課題のキーを打って Enter を押すと、バッジに登録する。#番号と課題のキーは、メッセージ欄と同じく補完する。 */
 const BadgeInput = ({ s }: { s: Session }) => {
   const [value, setValue] = useState('');
@@ -247,6 +269,7 @@ const SessionHead = ({ s, themes, sessions }: { s: Session; themes: string[]; se
         {s.prs?.map((pr) => <Removable key={pr.url} s={s} url={pr.url}><PrChips pr={pr} session={s.id} /></Removable>)}
         {s.jira.map((j) => <Removable key={j.key} s={s} url={j.url}><JiraChips issues={[j]} session={s.id} /></Removable>)}
         {s.issues?.map((i) => <Removable key={i.url} s={s} url={i.url}><IssueChip issue={i} /></Removable>)}
+        <RemoveFinished s={s} />
         <BadgeInput s={s} />
         {s.attachCommand && (
           <span class="attach">
