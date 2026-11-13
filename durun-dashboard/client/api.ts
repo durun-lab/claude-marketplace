@@ -44,7 +44,8 @@ const seg = (value: string): string => encodeURIComponent(value).replaceAll('%3A
 const session = (id: string): string => `/api/sessions/${seg(id)}`;
 
 /** 複製や分岐の起動に渡すモデルと effort と権限モード。空の項目は元のセッションか Claude Code の設定に従う。 */
-export type Launch = { model: string; effort: string; permissionMode: string };
+/** account は追加アカウントの名前で、空文字ならプライマリアカウント。 */
+export type Launch = { model: string; effort: string; permissionMode: string; account: string };
 
 /** ファイルを読む API の場所。エクスプローラーからセッションの外で開いたファイルは id が空で、セッションを付けずに読む。 */
 const files = (id: string): string => (id ? session(id) : '/api');

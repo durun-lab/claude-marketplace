@@ -1,5 +1,5 @@
 import type { RefObject } from 'preact';
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useContext, useEffect, useId, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { EFFORT_LEVELS, MODELS, PERMISSION_MODES, type Attention, type ChatEntry, type OutboxMessage, type QueuedMessage, type Session, type SessionStatus } from '../shared/types.ts';
 import { DELIVERY_TOAST, type Launch, api, attempt } from './api.ts';
 import { ATTACH_DRAG_TYPE, insertAt, useAttachMode } from './attach.ts';
@@ -9,7 +9,7 @@ import { WidgetPanel } from './Dashboard.tsx';
 import { chatIndexOf } from './delivery.ts';
 import { loadDraft, saveDraft } from './drafts.ts';
 import { dateTime } from './format.ts';
-import { useCached, useFetch } from './hooks.ts';
+import { AccountsContext, useCached, useFetch } from './hooks.ts';
 import { AttentionCard } from './Inbox.tsx';
 import { toast } from './toast.tsx';
 import { href, currentSessionId } from './router.ts';
@@ -298,7 +298,7 @@ const SendModeMenu = ({ mode, onChange }: { mode: SendMode; onChange: (mode: Sen
 };
 
 const SWITCH_HELP = '選び直して送ると、会話を引き継いだ複製を選んだ設定で起動し、元のセッションはアーカイブします';
-const FORK_HELP = '会話を引き継いだ別のセッションを選んでいるモデルと effort とモードで起動してメッセージを渡し、その画面へ移ります。元のセッションは残ります';
+const FORK_HELP = '会話を引き継いだ別のセッションを選んでいるモデルと effort とモードとアカウントで起動してメッセージを渡し、その画面へ移ります。元のセッションは残ります';
 const STOP_HELP = '作業中でもセッションを止めます。次にメッセージを送ると再開します';
 const NO_STOP_HELP = '端末で開いているセッションは、ここからは止められません';
 const NO_SWITCH_HELP = '作業中のセッションと端末で開いているセッションは、ここからは変えられません';
@@ -321,7 +321,9 @@ const useModelChoice = (s: Session) => {
     model: MODELS.find((m) => s.usage.model?.includes(m)) ?? '',
     effort: EFFORT_LEVELS.find((e) => e === s.usage.effort) ?? '',
     permissionMode: PERMISSION_MODES.find((m) => m === s.usage.permissionMode) ?? '',
+    account: s.account ?? '',
   };
+  const accounts = useContext(AccountsContext);
   const [picked, setPicked] = useState<Partial<Launch>>({});
   const chosen = { ...current, ...picked };
   const enabled = canSwitch(s);
@@ -339,6 +341,10 @@ const useModelChoice = (s: Session) => {
         {field('model', 'モデル', MODELS, s.usage.model)}
         {field('effort', 'effort', EFFORT_LEVELS, s.usage.effort)}
         {field('permissionMode', 'モード', PERMISSION_MODES, s.usage.permissionMode)}
+        {/* 外したアカウントで動いているセッションも、今のアカウントを選択肢に出す。 */}
+        {(accounts.length > 0 || s.account) && (
+          <Choice label="アカウント" value={chosen.account} options={s.account && !accounts.includes(s.account) ? [...accounts, s.account] : accounts} empty="プライマリ" disabled={!enabled} title={title} onChange={(account) => setPicked((p) => ({ ...p, account }))} />
+        )}
       </>
     ),
   };
@@ -372,7 +378,7 @@ const MessageForm = ({ s }: { s: Session }) => {
     return !!res;
   };
   const switchAndSend = async () => {
-    const res = await attempt('モデルと effort とモードの切り替え', () => api.switchModel(s.id, text, choice.launch));
+    const res = await attempt('モデルと effort とモードとアカウントの切り替え', () => api.switchModel(s.id, text, choice.launch));
     if (!res) return false;
     choice.reset();
     toast(res.sessionId === s.id ? '設定を変えて届けました' : '設定を変えた複製に乗り換えて届けました');
