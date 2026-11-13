@@ -262,9 +262,9 @@ export const Home = ({ snapshot, editing, onEditDone }: HomeData & EditProps) =>
   const store = { saved: layouts[current], save: (layout: Layout) => saveDashboardLayout(current, layout) };
   const root = useRef<HTMLDivElement>(null);
   useKeptScroll(root, current);
-  // 切り替えたダッシュボードの配置を読み直すよう、key で作り直す。囲みは並べ方に関わらないよう display: contents にする。
+  // 切り替えたダッシュボードの配置を読み直すよう、key で作り直す。
   return (
-    <div ref={root} style="display: contents">
+    <div ref={root} class="dashboard-scope">
       <Dashboard key={current} widgets={WIDGETS} defaults={DEFAULT_LAYOUT} storageKey={HOME_KEY} store={store} data={{ snapshot }} editing={editing} onEditDone={onEditDone} />
     </div>
   );
