@@ -12,7 +12,6 @@ import os from 'node:os';
 import path from 'node:path';
 import { setImmediate } from 'node:timers/promises';
 import { isDeepStrictEqual } from 'node:util';
-import { createHash } from 'node:crypto';
 import type { Delivery, OutboxMessage, QueuedMessage, ReviewComment } from '../shared/types.ts';
 import { copyCached } from './cache.ts';
 import { CLAUDE_DIR, HUMAN_LABEL, SESSIONS_DIR, findTranscript, isAlive, readJson, readLiveSessions, summarizeLog, type LiveSession, type LogSummary } from './claude.ts';
@@ -151,37 +150,42 @@ export const accountNames = (): string[] =>
 /** 追加アカウントの名前に使える文字。ファイルの名前になるので、パスの区切りを入れさせない。 */
 export const ACCOUNT_NAME = /^[A-Za-z0-9_-]{1,40}$/;
 
-/** トークンは本人だけが読めるファイルに書き、画面には返さない。同じ名前なら書き換える。 */
+/** トークンは本人だけが読めるファイルに書き、画面には返さない。同じ名前なら書き換え、そのアカウントで動くセッションの settings にも書き直す。 */
 export const saveAccount = (name: string, token: string): void => {
   fs.mkdirSync(ACCOUNTS_DIR, { recursive: true, mode: 0o700 });
   fs.writeFileSync(path.join(ACCOUNTS_DIR, `${name}.json`), JSON.stringify({ env: { CLAUDE_CODE_OAUTH_TOKEN: token } }), { mode: 0o600 });
+  for (const meta of Object.values(state.sessions)) if (meta.account === name && meta.settingsFile && fs.existsSync(meta.settingsFile)) writeSettings(meta.settingsFile, readJson<object>(meta.settingsFile) ?? {}, name);
   touch();
 };
 
-/** 消したアカウントで動いていたセッションは、再開するとファイルを読めずに失敗する。 */
+/** 消したアカウントで動いていたセッションは、settings に写したトークンで動き続ける。 */
 export const removeAccount = (name: string): void => {
   fs.rmSync(path.join(ACCOUNTS_DIR, `${name}.json`), { force: true });
   touch();
 };
 
-// --settings を複数渡すと後のものだけが効くので、ほかの設定と追加アカウントを 1 つのファイルにまとめて渡す。
-const MERGED_DIR = path.join(DATA_DIR, 'launch-settings');
+// セッションごとの settings。ダッシュボードが起動するセッションには、起動ごとに新しいファイルを --settings のパスで渡す。
+// 再開したセッションはこのファイルを読み直すので、env のトークンを書き換えてフラグを付けずに再開すれば、複製を作らずに同じ id のままアカウントを切り替えられる。
+// --settings を複数渡すと後のものだけが効くので、ほかの設定もこのファイルにまとめる。
+const SESSION_SETTINGS_DIR = path.join(DATA_DIR, 'session-settings');
 
-/**
- * settings と account を 1 つの --settings にする。account だけならアカウントのファイルを、settings だけならその JSON を渡す。
- * 両方あれば、トークンを含むので本人だけが読めるファイルに書く。名前を中身から決めるので、同じ組み合わせは同じファイルを使い回す。
- */
-const settingsFlags = (settings?: object, account?: string): string[] => {
+type Settings = { env?: Record<string, string> };
+
+/** base の設定に、account のトークンを入れて書く。account が空ならトークンを外し、プライマリアカウントで動かす。 */
+const writeSettings = (file: string, base: object, account?: string): void => {
   if (account && !accountNames().includes(account)) throw new Error(`追加アカウントがありません: ${account}`);
-  const accountFile = account ? path.join(ACCOUNTS_DIR, `${account}.json`) : undefined;
-  if (!settings) return accountFile ? ['--settings', accountFile] : [];
-  if (!accountFile) return ['--settings', JSON.stringify(settings)];
-  const accountEnv = (readJson<{ env?: object }>(accountFile)?.env ?? {}) as object;
-  const merged = JSON.stringify({ ...settings, env: { ...(settings as { env?: object }).env, ...accountEnv } });
-  const file = path.join(MERGED_DIR, `${createHash('sha256').update(merged).digest('hex').slice(0, 16)}.json`);
-  fs.mkdirSync(MERGED_DIR, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(file, merged, { mode: 0o600 });
-  return ['--settings', file];
+  const { CLAUDE_CODE_OAUTH_TOKEN: _, ...env } = (base as Settings).env ?? {};
+  const token = account ? readJson<Settings>(path.join(ACCOUNTS_DIR, `${account}.json`))?.env?.CLAUDE_CODE_OAUTH_TOKEN : undefined;
+  fs.mkdirSync(SESSION_SETTINGS_DIR, { recursive: true, mode: 0o700 });
+  fs.writeFileSync(file, JSON.stringify({ ...base, env: token ? { ...env, CLAUDE_CODE_OAUTH_TOKEN: token } : env }), { mode: 0o600 });
+};
+
+/** 新しい settings のファイルを作り、そのパスを返す。 */
+// ponytail: セッションを消してもファイルは残る。数が問題になったら removeSession で消す。
+const newSettings = (base: object = {}, account?: string): string => {
+  const file = path.join(SESSION_SETTINGS_DIR, `${newId()}.json`);
+  writeSettings(file, base, account);
+  return file;
 };
 
 /**
@@ -190,13 +194,13 @@ const settingsFlags = (settings?: object, account?: string): string[] => {
  * theme を渡すと、起動したセッションに付ける。parent を渡すと、そのセッションの子として記録する。
  */
 export const startSession = async (cwd: string, prompt: string, model?: string, effort?: string, theme?: string, parent?: string, account?: string): Promise<void> => {
-  const output = await claudeOutput(['--bg', ...modelFlags(model, effort), ...settingsFlags(undefined, account), '--', prompt], cwd);
+  const settingsFile = newSettings({}, account);
+  const output = await claudeOutput(['--bg', ...modelFlags(model, effort), '--settings', settingsFile, '--', prompt], cwd);
   // 空のテーマを付けると、リポジトリ名にならず未分類になる。
   const known = parent && state.sessions[parent] ? parent : undefined;
-  if (!theme && !known && !account) return;
   // 起動は済んでいるので、テーマや親を付けられなくても失敗にしない。
   try {
-    Object.assign(await trackedSession(output, cwd), theme ? { theme } : {}, known ? { parent: known } : {}, account ? { account } : {});
+    Object.assign(await trackedSession(output, cwd), { settingsFile }, theme ? { theme } : {}, known ? { parent: known } : {}, account ? { account } : {});
     touch();
   } catch (e) {
     console.error(`起動したセッションにテーマや親を付けられません: ${(e as Error).message}`);
@@ -215,8 +219,9 @@ const trackedSession = async (output: string, cwd: string): Promise<SessionMeta>
  * account が空ならプライマリアカウントで動く。
  */
 export const startTrackedSession = async (cwd: string, prompt: string, model?: string, effort?: string, name?: string, settings?: object, account?: string): Promise<SessionMeta> => {
-  const meta = await trackedSession(await claudeOutput(['--bg', ...(name ? ['--name', name] : []), ...modelFlags(model, effort), ...settingsFlags(settings, account), '--', prompt], cwd), cwd);
-  meta.account = account;
+  const settingsFile = newSettings(settings, account);
+  const meta = await trackedSession(await claudeOutput(['--bg', ...(name ? ['--name', name] : []), ...modelFlags(model, effort), '--settings', settingsFile, '--', prompt], cwd), cwd);
+  Object.assign(meta, { account, settingsFile });
   return meta;
 };
 
@@ -784,15 +789,22 @@ export const continueStopped = async (sessionId: string, cwd: string): Promise<v
  * フラグを付けて --resume すると、Claude Code は会話を引き継いだ複製を別の id で起動するので、ダッシュボードの設定を複製へ移し、元のセッションはアーカイブする。
  * 端末で始めて終わったセッションは保存したオプションを持たないので、同じ id のまま続く。
  * 止めて再開するので、作業中のセッションと端末で開いているセッションでは失敗する。
- * 複製は渡したフラグだけで動き、元の --settings を引き継がない。account を省くと今のアカウントのファイルを渡し直し、空文字ならプライマリアカウントで動かす。
+ * 複製は渡したフラグだけで動き、元の --settings を引き継がないので、settings のファイルも渡し直す。account を省くと今のアカウントのまま、空文字ならプライマリアカウントで動かす。
+ * accountOnly なら、アカウントだけを変える。settings のファイルを持つセッションは、ファイルを書き換えてフラグを付けずに再開し、複製を作らない。
  */
-export const switchSession = async (sessionId: string, text: string, model?: string, effort?: string, permissionMode?: string, account?: string): Promise<string> => {
+export const switchSession = async (sessionId: string, text: string, model?: string, effort?: string, permissionMode?: string, account?: string, accountOnly = false): Promise<string> => {
   const meta = state.sessions[sessionId];
   if (!meta) throw new Error(`unknown session: ${sessionId}`);
   const live = readLiveSessions().get(sessionId);
   if (live && !restartable(live)) throw new SessionStateError('作業中のセッションと端末で開いているセッションは、モデルと effort を変えられません');
   const nextAccount = (account ?? meta.account) || undefined;
-  const flags = [...modelFlags(model, effort, permissionMode), ...settingsFlags(undefined, nextAccount)];
+  const file = meta.settingsFile && fs.existsSync(meta.settingsFile) ? meta.settingsFile : undefined;
+  const inPlace = accountOnly && !!file;
+  // 複製へ移る元のセッションはアーカイブするので、同じファイルを複製に渡して使い回す。
+  const settingsFile = file ?? newSettings({}, nextAccount);
+  if (file) writeSettings(file, readJson<object>(file) ?? {}, nextAccount);
+  Object.assign(meta, { account: nextAccount, settingsFile });
+  const flags = inPlace ? [] : [...modelFlags(model, effort, permissionMode), '--settings', settingsFile];
   state.outbox.push({ id: newId(), sessionId, text, createdAt: Date.now() });
   const pending = undelivered(sessionId);
   // 届け直すと複製がもう 1 つできるので、巻き戻しと同じく sending を付けない。
@@ -808,11 +820,7 @@ export const switchSession = async (sessionId: string, text: string, model?: str
     touch();
     throw e;
   }
-  const next = await follow(sessionId, output);
-  const moved = state.sessions[next];
-  if (moved) moved.account = nextAccount;
-  touch();
-  return next;
+  return follow(sessionId, output);
 };
 
 /**
@@ -842,10 +850,13 @@ export const forkSession = async (sessionId: string, text: string, model?: strin
   const meta = state.sessions[sessionId];
   if (!meta) throw new Error(`unknown session: ${sessionId}`);
   const nextAccount = (account ?? meta.account) || undefined;
-  const output = await claudeOutput(['--bg', '--resume', sessionId, '--fork-session', ...modelFlags(model, effort, permissionMode), ...settingsFlags(undefined, nextAccount), '--', text], meta.cwd);
+  // 元のセッションも動き続けるので、元の設定を写した別のファイルを渡す。
+  const base = meta.settingsFile ? (readJson<object>(meta.settingsFile) ?? {}) : {};
+  const settingsFile = newSettings(base, nextAccount);
+  const output = await claudeOutput(['--bg', '--resume', sessionId, '--fork-session', ...modelFlags(model, effort, permissionMode), '--settings', settingsFile, '--', text], meta.cwd);
   const fork = await backgroundedSession(output);
   if (!fork) throw new Error('分岐したセッションの id を引けません');
-  Object.assign(ensureSession(fork, meta.cwd), { theme: meta.theme, jira: [...meta.jira], badges: meta.badges, hiddenBadges: meta.hiddenBadges, slack: meta.slack, hiddenSlack: meta.hiddenSlack, account: nextAccount });
+  Object.assign(ensureSession(fork, meta.cwd), { theme: meta.theme, jira: [...meta.jira], badges: meta.badges, hiddenBadges: meta.hiddenBadges, slack: meta.slack, hiddenSlack: meta.hiddenSlack, account: nextAccount, settingsFile });
   state.outbox.push({ id: newId(), sessionId: fork, text, createdAt: Date.now(), deliveredAt: Date.now(), via: 'resume' });
   touch();
   return fork;

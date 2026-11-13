@@ -21,6 +21,14 @@ fs.mkdirSync(path.join(tmp, 'claude', 'sessions'), { recursive: true });
 // 受信ソケットに認証の要る OS が読む、このプロセスに見立てたセッションの鍵。要らない OS では読まれない。
 fs.writeFileSync(path.join(tmp, 'claude', 'sessions', `${process.pid}.test.key`), JSON.stringify({ peerToken: 'test-token' }));
 
+/** ダッシュボードが起動するセッションには、起動ごとの settings のファイルを渡す。その --settings とファイルを外した引数と、ファイルの中身を返す。 */
+const splitSettings = (args: string[]): { args: string[]; settings?: { env?: Record<string, string> } } => {
+  const i = args.indexOf('--settings');
+  if (i < 0) return { args };
+  return { args: [...args.slice(0, i), ...args.slice(i + 2)], settings: JSON.parse(fs.readFileSync(args[i + 1] ?? '', 'utf8')) as { env?: Record<string, string> } };
+};
+const readArgs = (file: string): string[] => fs.readFileSync(file, 'utf8').split('\n').slice(0, -1);
+
 type InboxLine = { type: string; token?: string; message?: { role?: string; content: string } };
 
 /** supervisor が名簿から動いているジョブを消すコード。書きかけを読ませないよう、別名で書いてから置き換える。 */
@@ -442,12 +450,12 @@ test('新しいセッションは依頼を -- の後に置いて claude --bg で
   // 受け取った引数を書き出し、依頼が fail なら失敗する偽の claude を置く。
   const bin = path.join(tmp, 'bin');
   const argsFile = path.join(tmp, 'args');
-  useFakeClaude(bin, `fs.writeFileSync(${js(argsFile)}, lines(args)); if (args[2] === 'fail') { console.error('起動できません'); process.exitCode = 1; }`);
+  useFakeClaude(bin, `fs.writeFileSync(${js(argsFile)}, lines(args)); if (args.at(-1) === 'fail') { console.error('起動できません'); process.exitCode = 1; }`);
 
   await startSession(tmp, '- 箇条書きの依頼');
-  assert.deepEqual(fs.readFileSync(argsFile, 'utf8').split('\n').slice(0, -1), ['--bg', '--', '- 箇条書きの依頼']);
+  assert.deepEqual(splitSettings(readArgs(argsFile)), { args: ['--bg', '--', '- 箇条書きの依頼'], settings: { env: {} } });
   await startSession(tmp, '依頼', 'opus', 'max');
-  assert.deepEqual(fs.readFileSync(argsFile, 'utf8').split('\n').slice(0, -1), ['--bg', '--model', 'opus', '--effort', 'max', '--', '依頼']);
+  assert.deepEqual(splitSettings(readArgs(argsFile)).args, ['--bg', '--model', 'opus', '--effort', 'max', '--', '依頼']);
   await assert.rejects(startSession(tmp, 'fail'), (e) => e instanceof UpstreamError && /起動できません/.test(e.message));
 });
 
@@ -485,7 +493,7 @@ if (args[0] === '--bg') { fs.writeFileSync(${js(argsFile)}, lines(args)); consol
   Object.assign(ensureSession('p30', tmp), { theme: '親のテーマ' });
 
   const child = await startChildSession('p30', '依頼', 'mention-x', 'opus', 'medium');
-  assert.deepEqual(fs.readFileSync(argsFile, 'utf8').split('\n').slice(0, -1), ['--bg', '--name', 'mention-x', '--model', 'opus', '--effort', 'medium', '--', '依頼']);
+  assert.deepEqual(splitSettings(readArgs(argsFile)).args, ['--bg', '--name', 'mention-x', '--model', 'opus', '--effort', 'medium', '--', '依頼']);
   assert.deepEqual([child.id, child.cwd, child.parent, child.title, child.theme], ['s30', tmp, 'p30', 'mention-x', '親のテーマ']);
 });
 
@@ -498,7 +506,7 @@ test('追加アカウントはトークンを settings の env に書き、外�
   assert.ok(!accountNames().includes('extra'));
 });
 
-test('子セッションは、アカウントを省くと親の追加アカウントを受け継ぎ、primary を渡すとプライマリアカウントで動く', async () => {
+test('子セッションは、アカウントを省くと親の追加アカウントを受け継ぎ、primary を渡すとプライマリアカウントで動く。設定とトークンは起動ごとの settings のファイルにまとめる', async () => {
   const bin = path.join(tmp, 'bin-account');
   const argsFile = path.join(tmp, 'account-args');
   const jobs = [{ id: 'j31', sessionId: 's31', kind: 'background', pid: 1 }];
@@ -509,28 +517,28 @@ if (args[0] === '--bg') { fs.writeFileSync(${js(argsFile)}, lines(args)); consol
   );
   const accounts = path.join(tmp, 'data', 'accounts');
   fs.mkdirSync(accounts, { recursive: true });
-  fs.writeFileSync(path.join(accounts, 'sub.json'), '{}');
+  fs.writeFileSync(path.join(accounts, 'sub.json'), JSON.stringify({ env: { CLAUDE_CODE_OAUTH_TOKEN: 't' } }));
   Object.assign(ensureSession('p31', tmp), { account: 'sub' });
-  const argsOf = (): string[] => fs.readFileSync(argsFile, 'utf8').split('\n').slice(0, -1);
 
   const inherited = await startChildSession('p31', '依頼');
-  assert.deepEqual(argsOf(), ['--bg', '--settings', path.join(accounts, 'sub.json'), '--', '依頼']);
+  assert.deepEqual(splitSettings(readArgs(argsFile)), { args: ['--bg', '--', '依頼'], settings: { env: { CLAUDE_CODE_OAUTH_TOKEN: 't' } } });
   assert.equal(inherited.account, 'sub');
+  assert.equal(readArgs(argsFile)[2], inherited.settingsFile);
+  assert.equal(fs.statSync(inherited.settingsFile ?? '').mode & 0o777, 0o600);
 
   const primary = await startChildSession('p31', '依頼', undefined, undefined, undefined, '');
-  assert.deepEqual(argsOf(), ['--bg', '--', '依頼']);
+  assert.deepEqual(splitSettings(readArgs(argsFile)), { args: ['--bg', '--', '依頼'], settings: { env: {} } });
   assert.equal(primary.account, undefined);
 
   await assert.rejects(startChildSession('p31', '依頼', undefined, undefined, undefined, 'none'), /追加アカウントがありません/);
 
-  // --settings は後のものだけが効くので、ほかの設定と追加アカウントは 1 つのファイルにまとめて渡す。
-  fs.writeFileSync(path.join(accounts, 'sub.json'), JSON.stringify({ env: { CLAUDE_CODE_OAUTH_TOKEN: 't' } }));
   const merged = await startTrackedSession(tmp, '依頼', undefined, undefined, undefined, { autoCompactWindow: 100_000, env: { A: '1' } }, 'sub');
-  const [, flag, file = ''] = argsOf();
-  assert.equal(flag, '--settings');
-  assert.equal(path.dirname(file), path.join(tmp, 'data', 'launch-settings'));
-  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { autoCompactWindow: 100_000, env: { A: '1', CLAUDE_CODE_OAUTH_TOKEN: 't' } });
+  assert.deepEqual(splitSettings(readArgs(argsFile)).settings, { autoCompactWindow: 100_000, env: { A: '1', CLAUDE_CODE_OAUTH_TOKEN: 't' } });
   assert.equal(merged.account, 'sub');
+
+  // トークンを入れ直すと、そのアカウントで動くセッションの settings にも書き直す。
+  saveAccount('sub', 't2');
+  assert.deepEqual(JSON.parse(fs.readFileSync(merged.settingsFile ?? '', 'utf8')), { autoCompactWindow: 100_000, env: { A: '1', CLAUDE_CODE_OAUTH_TOKEN: 't2' } });
 });
 
 test('アーカイブで消すときは、動いているバックグラウンドのセッションを止めてから claude rm し、端末のセッションは消さない。アーカイブは消し終わるのを待たずに返り、消せなければ理由を残す', async () => {
@@ -741,7 +749,7 @@ if (args[0] === '--bg') console.log('note: the flags you passed started a copy a
   state.sessionOrder = ['s8'];
 
   assert.equal(await switchSession('s8', '続けて', 'opus', 'high', 'acceptEdits'), 's9');
-  const calls = fs.readFileSync(callsFile, 'utf8').split('\n\n').slice(0, -1).map((c) => c.split('\n'));
+  const calls = fs.readFileSync(callsFile, 'utf8').split('\n\n').slice(0, -1).map((c) => splitSettings(c.split('\n')).args);
   assert.deepEqual(calls, [
     ['stop', 'j8'],
     ['--bg', '--resume', 's8', '--model', 'opus', '--effort', 'high', '--permission-mode', 'acceptEdits', '--', '続けて'],
@@ -765,28 +773,36 @@ if (args[0] === '--bg') console.log('note: the flags you passed started a copy a
   assert.equal(state.outbox.some((m) => m.sessionId === 's10'), false);
 });
 
-test('モデルを変えるときは今の追加アカウントを渡し直し、アカウントを選び直すとそのアカウントで、空文字ならプライマリアカウントで再開する', async () => {
-  // 複製は渡したフラグだけで動くので、--settings を渡さないとプライマリアカウントに戻る。
+test('アカウントだけを変えるときは、settings のファイルのトークンを書き換えてフラグを付けずに再開し、ファイルが無ければ複製に新しいファイルを渡す。モデルを変えるときは今のアカウントのまま', async () => {
+  // 複製は渡したフラグだけで動くので、--settings を渡し直さないとプライマリアカウントに戻る。
   const bin = path.join(tmp, 'bin-switch-account');
   const argsFile = path.join(tmp, 'switch-account-args');
   useFakeClaude(bin, `if (args[0] === '--bg') { fs.writeFileSync(${js(argsFile)}, lines(args)); console.log('backgrounded · s40'); }`);
   const accounts = path.join(tmp, 'data', 'accounts');
   fs.mkdirSync(accounts, { recursive: true });
-  for (const name of ['sub', 'other']) fs.writeFileSync(path.join(accounts, `${name}.json`), '{}');
+  for (const name of ['sub', 'other']) fs.writeFileSync(path.join(accounts, `${name}.json`), JSON.stringify({ env: { CLAUDE_CODE_OAUTH_TOKEN: name } }));
   Object.assign(ensureSession('s40', tmp), { account: 'sub' });
-  const argsOf = (): string[] => fs.readFileSync(argsFile, 'utf8').split('\n').slice(0, -1);
+  const tokenOf = (): string | undefined => splitSettings(readArgs(argsFile)).settings?.env?.CLAUDE_CODE_OAUTH_TOKEN;
 
-  await switchSession('s40', '続けて', 'opus');
-  assert.deepEqual(argsOf(), ['--bg', '--resume', 's40', '--model', 'opus', '--settings', path.join(accounts, 'sub.json'), '--', '続けて']);
-  assert.equal(state.sessions.s40?.account, 'sub');
+  // 端末で始めたセッションなどは settings のファイルを持たないので、最初の 1 回は複製に新しいファイルを渡す。
+  await switchSession('s40', '続けて', 'opus', undefined, undefined, 'other', true);
+  assert.deepEqual(splitSettings(readArgs(argsFile)).args, ['--bg', '--resume', 's40', '--model', 'opus', '--', '続けて']);
+  assert.equal(tokenOf(), 'other');
+  const file = state.sessions.s40?.settingsFile ?? '';
+  assert.equal(readArgs(argsFile)[6], file);
 
-  await switchSession('s40', '続けて', 'opus', undefined, undefined, 'other');
-  assert.deepEqual(argsOf(), ['--bg', '--resume', 's40', '--model', 'opus', '--settings', path.join(accounts, 'other.json'), '--', '続けて']);
-  assert.equal(state.sessions.s40?.account, 'other');
-
-  await switchSession('s40', '続けて', 'opus', undefined, undefined, '');
-  assert.deepEqual(argsOf(), ['--bg', '--resume', 's40', '--model', 'opus', '--', '続けて']);
+  await switchSession('s40', '続けて', 'opus', undefined, undefined, '', true);
+  assert.deepEqual(readArgs(argsFile), ['--bg', '--resume', 's40', '--', '続けて']);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { env: {} });
   assert.equal(state.sessions.s40?.account, undefined);
+
+  await switchSession('s40', '続けて', 'opus', undefined, undefined, 'sub', true);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { env: { CLAUDE_CODE_OAUTH_TOKEN: 'sub' } });
+
+  await switchSession('s40', '続けて', 'sonnet');
+  assert.deepEqual(readArgs(argsFile), ['--bg', '--resume', 's40', '--model', 'sonnet', '--settings', file, '--', '続けて']);
+  assert.equal(tokenOf(), 'sub');
+  assert.equal(state.sessions.s40?.account, 'sub');
 });
 
 test('再開して渡したら複製ができたとき、設定とやり取りを複製へ移し、覚えた概要などを写して元をアーカイブし、元に移った先を残す。同じ id のまま続いたら、claude agents を動かさない', async () => {
@@ -863,7 +879,7 @@ if (args[0] === '--bg') console.log('backgrounded · j12');`,
   Object.assign(ensureSession('s11', tmp), { title: '調査', theme: 'テーマ', jira: ['PROJ-1'], pinned: true });
 
   assert.equal(await forkSession('s11', '別の案で', 'opus', 'high'), 's12');
-  const calls = fs.readFileSync(callsFile, 'utf8').split('\n\n').slice(0, -1).map((c) => c.split('\n'));
+  const calls = fs.readFileSync(callsFile, 'utf8').split('\n\n').slice(0, -1).map((c) => splitSettings(c.split('\n')).args);
   assert.deepEqual(calls, [
     ['--bg', '--resume', 's11', '--fork-session', '--model', 'opus', '--effort', 'high', '--', '別の案で'],
     ['agents', '--json', '--all'],

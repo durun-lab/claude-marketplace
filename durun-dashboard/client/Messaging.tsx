@@ -335,6 +335,8 @@ const useModelChoice = (s: Session) => {
     /** 起動に渡す値。選び直していないモデルは、今の正式な名前で引き継ぐ。 */
     launch: { ...chosen, model: chosen.model || (s.usage.model ?? '') },
     changed: enabled && (Object.keys(current) as (keyof Launch)[]).some((k) => chosen[k] !== current[k]),
+    /** アカウントだけを選び直した。サーバーは複製を作らずに同じセッションのまま切り替えられる。 */
+    accountOnly: (Object.keys(current) as (keyof Launch)[]).every((k) => (k === 'account') !== (chosen[k] === current[k])),
     reset: () => setPicked({}),
     fields: (
       <>
@@ -378,7 +380,7 @@ const MessageForm = ({ s }: { s: Session }) => {
     return !!res;
   };
   const switchAndSend = async () => {
-    const res = await attempt('モデルと effort とモードとアカウントの切り替え', () => api.switchModel(s.id, text, choice.launch));
+    const res = await attempt('モデルと effort とモードとアカウントの切り替え', () => api.switchModel(s.id, text, choice.launch, choice.accountOnly));
     if (!res) return false;
     choice.reset();
     toast(res.sessionId === s.id ? '設定を変えて届けました' : '設定を変えた複製に乗り換えて届けました');
