@@ -1,5 +1,5 @@
 // 改善要望を保存し、対応を終えた要望を済みにする。要望への対応は、「改善要望が届いたとき」のトリガーを持つワークフローが動かす。
-// ウェーブの区切りは、セッションの最後の発言の「対応した要望:」で読む。読み方の約束はここに置き、ワークフローの prompt は人間が直せるようにする。
+// ウェーブの区切りは、セッションの最後の発言の「対応した要望:」で読む。
 import fs from 'node:fs';
 import path from 'node:path';
 import { listDir, readJson } from './claude.ts';
@@ -22,13 +22,12 @@ export const pendingItems = (): string[] => listDir(FEEDBACK_DIR).filter((f) => 
 const summaryOf = (item: string): string =>
   String(readJson<{ text: string }>(path.join(FEEDBACK_DIR, item))?.text ?? '').replace(/\s+/g, ' ').slice(0, SUMMARY_CHARS);
 
-/** ワークフローのイベントとして渡す、たまった要望の一覧と、ウェーブを区切る印の書き方。 */
-export const feedbackEvent = (items: string[]): string => `人間がダッシュボードの画面から送った改善要望が ${items.length} 件たまっています。
-- 要望は次のファイルです（古い順）。text が要望で、targets は人間が画面上で指した要素です。selector のクラス名から、描画しているコンポーネントを探せます。context は送ったときの画面の状態です。context.snapshot は大きいので、必要なところだけ読んでください。
-${items.map((item) => `  - ${path.join(FEEDBACK_DIR, item)}: ${summaryOf(item)}`).join('\n')}
-- 終えたら、最後に「${DONE_MARK}」の行を置き、続けて対応を終えた要望のファイル名を 1 行に 1 つずつ書いて止まってください。残りの要望は、次のウェーブで計画し直します。`;
+/** ワークフローのイベントとして渡す、たまった要望の一覧。読み方とウェーブを区切る印の書き方は、ワークフローの指示に書く。 */
+export const feedbackEvent = (items: string[]): string => `改善要望が ${items.length} 件たまっています（古い順）。
+${items.map((item) => `- ${path.join(FEEDBACK_DIR, item)}: ${summaryOf(item)}`).join('\n')}`;
 
 const IMPROVE_PROMPT = `全体を見て作業計画を立て、1 つのウェーブとして実装してください。
+- 要望のファイルの text が要望で、targets は人間が画面上で指した要素です。selector のクラス名から、描画しているコンポーネントを探せます。context は送ったときの画面の状態です。context.snapshot は大きいので、必要なところだけ読んでください。
 - まず全体を読み、似た作業や同じ場所を触る要望をまとめて、このウェーブで対応する要望と順番を決めてください。一度に仕上げられる量にとどめ、残りは次のウェーブに回してください。
 - ダッシュボードは起動済みで、${LOCAL_BRANCH} のコードが変わると画面とサーバーに自動で反映されます。pnpm start は実行しないでください。
 - ダッシュボードは手元専用のブランチ ${LOCAL_BRANCH} のチェックアウト（${ROOT}）で動いています。ここには並行するセッションの書きかけがあるので、このチェックアウトでは実装せず、書きかけにも触らないでください。
@@ -37,7 +36,8 @@ const IMPROVE_PROMPT = `全体を見て作業計画を立て、1 つのウェー
 - main は直接 push できません。すべてのまとまりを終えたら、ブランチを push -u し、PR を作って gh pr merge --auto でマージキューに載せてください。
 - 続けて、${ROOT} で ${LOCAL_BRANCH} にいることを確かめ、git merge --no-edit fix/dashboard-improve-<日時> でこのウェーブを取り込んでください。衝突したら両方の意図を残して解消してください。${LOCAL_BRANCH} は push しないでください。取り込んだら git worktree remove で worktree を片付けてください。
 - 判断に迷う点は ask_human で人間に聞いてください。
-- 終えたら、まとまりごとに何をどう変えたかを 2、3 行で書いてください。`;
+- 終えたら、まとまりごとに何をどう変えたかを 2、3 行で書いてください。
+- 最後に「${DONE_MARK}」の行を置き、続けて対応を終えた要望のファイル名を 1 行に 1 つずつ書いて止まってください。残りの要望は、次のウェーブで計画し直します。`;
 
 /** 自動実装の設定から、同じ動きをするワークフローの定義を作る。ワークフローのフォルダーにそのまま書く。 */
 export const improveWorkflow = (id: string, legacy: LegacyImprove) => ({

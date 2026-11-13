@@ -42,7 +42,7 @@ test('自動実装の設定を、改善要望のトリガーを持つワーク�
   assert.equal(state.improve, undefined);
 });
 
-test('要望が届くと、たまった要望と区切りの印の書き方を 1 つのウェーブとして渡し、起動できなければ「実行」まで待つ', async () => {
+test('要望が届くと、たまった要望の一覧を 1 つのウェーブとして渡し、起動できなければ「実行」まで待つ', async () => {
   let failed = launchFailed();
   saveFeedback('一つ目', [], {});
   await failed;
@@ -52,9 +52,9 @@ test('要望が届くと、たまった要望と区切りの印の書き方を 1
   const [args = ''] = calls();
   assert.match(args, /^--bg$/m);
   assert.match(args, /^opus$/m);
-  // 指示の本文は写さず、agent のファイルを指す。
-  assert.match(args, new RegExp(`1 件たまっています[\\s\\S]*${first}: 一つ目[\\s\\S]*対応した要望:[\\s\\S]*improve\\.md の指示に従って`));
-  assert.doesNotMatch(args, /worktree/);
+  // 依頼は要望の一覧だけにし、読み方や進め方は agent のファイルを指す。
+  assert.match(args, new RegExp(`1 件たまっています[\\s\\S]*${first}: 一つ目[\\s\\S]*improve\\.md の指示に従って`));
+  assert.doesNotMatch(args, /worktree|targets|対応した要望/);
   assert.equal(state.workflowRuns?.improve?.feedback?.stalled, 'unmarked');
 
   // 待機中は、新しい要望が届いてもウェーブを始めない。
