@@ -165,11 +165,11 @@ URL は http と https に限り、ほかは尋ねずに失敗を返す。
 
 改善要望への対応は、「ワークフロー」アプリで、トリガーに「改善要望」（`{ "kind": "feedback" }`）を持つワークフローが動かす。
 改善要望がたまっていると、ワークフローはセッションを起動し、たまっている要望をまとめて 1 つのウェーブとして渡す。
-セッションへの依頼、モデル、effort は、ほかのワークフローと同じく agent の `~/.claude/agents/<id>/<id>.md` に書き、相談かメモ帳で変える。
+セッションへの依頼、モデル、effort は、plugin に同梱した agent（`plugins/durun-dashboard/agents/improve.md`）を使う。手元で変えるときは、`~/.claude/agents/improve/improve.md` を置くとそちらを使う。
 
 1 つのワークフローは `~/.claude/agents/<id>/` の 1 つのフォルダーにまとまり、フォルダーを写せばほかの手元でも動く。
 
-- `<id>.md`: Claude Code の agent。フロントマターに model と effort、本文に依頼を書く。普段のセッションからもサブエージェントとして呼べる
+- `<id>.md`: Claude Code の agent。フロントマターに model と effort、本文に依頼を書く。普段のセッションからもサブエージェントとして呼べる。無ければ plugin の `agents/<id>.md` を使う
 - `workflow.json`: トリガー、作業ディレクトリ、テーマ、動かし方
 - 補助のスクリプトなど: 同じフォルダーに置ける。依頼の最後にフォルダーの場所が付く
 - `~/.durun-dashboard/workflows.json` に並べていた定義は、起動したときにフォルダーへ移し、元のファイルは `workflows.json.migrated` に名前を変える

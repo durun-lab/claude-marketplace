@@ -450,6 +450,8 @@ export type WorkflowDef = {
   id: string;
   /** ワークフローのフォルダー。指示は <id>.md の agent、ほかの設定は workflow.json にある。 */
   dir: string;
+  /** 指示の agent のファイル。フォルダーに <id>.md が無ければ、plugin に同梱した agent を使う。 */
+  agentFile: string;
   name: string;
   enabled: boolean;
   cwd: string;
@@ -471,7 +473,7 @@ export type WorkflowDef = {
 };
 
 /** 画面の「設定」で直す項目。 */
-export type WorkflowSettings = Omit<WorkflowDef, 'id' | 'dir' | 'enabled'>;
+export type WorkflowSettings = Omit<WorkflowDef, 'id' | 'dir' | 'agentFile' | 'enabled'>;
 
 export type WorkflowInfo = WorkflowDef & {
   /** 動いているセッションの数 */
