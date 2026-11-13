@@ -15,7 +15,7 @@ import { type Float, floatUp, useFloats } from './Float.tsx';
 import { Header } from './Header.tsx';
 import { HOME_KEY, receiveDashboards } from './dashboards.ts';
 import { Home, HomeFloat, NEW_SESSION_KEY, NewSessionFloat } from './Home.tsx';
-import { CacheVersionContext, NowContext, pickInWidget, useNow, useSnapshot } from './hooks.ts';
+import { AccountsContext, CacheVersionContext, NowContext, pickInWidget, useNow, useSnapshot } from './hooks.ts';
 import { useDeliveryFailureEffects } from './deliveryEffects.ts';
 import { useLightMode } from './lightMode.ts';
 import { useAttentionEffects } from './notify.ts';
@@ -70,6 +70,8 @@ const Page = ({ route, snapshot, editing, onEditDone }: PageProps) => {
 const BookmarksWindow = (props: { f: Float; snapshot: Snapshot }) => <BookmarksFloat {...props} onOpen={openChatAt} />;
 
 // 浮かべたウィジェットを、元のダッシュボードの保存キーごとに描く部品。
+const NO_ACCOUNTS: string[] = [];
+
 const FLOATS: Record<string, ComponentType<{ f: Float; snapshot: Snapshot }>> = { [HOME_KEY]: HomeFloat, [SESSION_KEY]: SessionFloat, [FILE_KEY]: FileFloat, [DOC_KEY]: DocFloat, [NEW_SESSION_KEY]: NewSessionFloat, [PR_KEY]: PrFloat, [JIRA_KEY]: JiraFloat, [NOTION_KEY]: NotionFloat, [WALLPAPER_KEY]: WallpaperFloat, [ACCOUNTS_KEY]: AccountsFloat, [CONTROL_PANEL_KEY]: ControlPanelFloat, [EXPLORER_KEY]: ExplorerFloat, [NOTEPAD_KEY]: NotepadFloat, [PROOFREAD_KEY]: ProofreadFloat, [TERMINAL_KEY]: TerminalFloat, [FL_KEY]: FlConnectFloat, [MM_KEY]: MovieMakerFloat, [CDRIP_KEY]: CdRipFloat, [TRANSLATE_KEY]: TranslateFloat, [MINESWEEPER_KEY]: MinesweeperFloat, [SOLITAIRE_KEY]: SolitaireFloat, [IE_KEY]: InternetExplorerFloat, [DIAGRAM_PROMPT_KEY]: DiagramPromptFloat, [BOOKMARKS_KEY]: BookmarksWindow, [ATTACHMENT_KEY]: AttachmentFloat, [RECYCLE_BIN_KEY]: RecycleBinFloat, [LEARN_KEY]: LearnFloat, [WORKFLOW_KEY]: WorkflowFloat };
 
 const floatId = (f: Float): string => `${f.key} ${f.scope} ${f.tab.id}`;
@@ -182,29 +184,31 @@ const App = () => {
   useDeliveryFailureEffects(fresh);
   useLinks(route, snapshot);
   return (
-    <CacheVersionContext.Provider value={snapshot?.cacheVersion ?? 0}>
-      <Header
-        snapshot={snapshot}
-        assets={fresh?.assets}
-        connected={connected}
-        home={route.page === 'home'}
-        onSearch={() => setSearching(true)}
-        onEdit={hasDashboard ? () => setEditing(true) : undefined}
-        onFeedback={() => setFeedbackOpen((v) => !v)}
-      />
-      <main class="app">
-        {snapshot ? <Page route={route} snapshot={snapshot} editing={editing} onEditDone={() => setEditing(false)} /> : <Loading />}
-      </main>
-      {snapshot && <Floats snapshot={snapshot} />}
-      {/* 前に受け取ったスナップショットから描くと、もう答えた停止や認証を尋ねかねないので、サーバーから受け取ったものだけで出す。 */}
-      <OfflineDialog snapshot={fresh} />
-      <AuthDialog snapshot={fresh} />
-      <Toasts />
-      <Feedback snapshot={snapshot} open={feedbackOpen} setOpen={setFeedbackOpen} />
-      {/* 軽量モードでは、毎フレーム描くイルカを出さず、3D の描画のコードも読み込まない。 */}
-      {!light && <Dolphin jev={snapshot?.jev} />}
-      <QuickSearch snapshot={snapshot} open={searching} setOpen={setSearching} />
-    </CacheVersionContext.Provider>
+    <AccountsContext.Provider value={snapshot?.accounts ?? NO_ACCOUNTS}>
+      <CacheVersionContext.Provider value={snapshot?.cacheVersion ?? 0}>
+        <Header
+          snapshot={snapshot}
+          assets={fresh?.assets}
+          connected={connected}
+          home={route.page === 'home'}
+          onSearch={() => setSearching(true)}
+          onEdit={hasDashboard ? () => setEditing(true) : undefined}
+          onFeedback={() => setFeedbackOpen((v) => !v)}
+        />
+        <main class="app">
+          {snapshot ? <Page route={route} snapshot={snapshot} editing={editing} onEditDone={() => setEditing(false)} /> : <Loading />}
+        </main>
+        {snapshot && <Floats snapshot={snapshot} />}
+        {/* 前に受け取ったスナップショットから描くと、もう答えた停止や認証を尋ねかねないので、サーバーから受け取ったものだけで出す。 */}
+        <OfflineDialog snapshot={fresh} />
+        <AuthDialog snapshot={fresh} />
+        <Toasts />
+        <Feedback snapshot={snapshot} open={feedbackOpen} setOpen={setFeedbackOpen} />
+        {/* 軽量モードでは、毎フレーム描くイルカを出さず、3D の描画のコードも読み込まない。 */}
+        {!light && <Dolphin jev={snapshot?.jev} />}
+        <QuickSearch snapshot={snapshot} open={searching} setOpen={setSearching} />
+      </CacheVersionContext.Provider>
+    </AccountsContext.Provider>
   );
 };
 

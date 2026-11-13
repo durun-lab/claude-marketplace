@@ -765,6 +765,30 @@ if (args[0] === '--bg') console.log('note: the flags you passed started a copy a
   assert.equal(state.outbox.some((m) => m.sessionId === 's10'), false);
 });
 
+test('モデルを変えるときは今の追加アカウントを渡し直し、アカウントを選び直すとそのアカウントで、空文字ならプライマリアカウントで再開する', async () => {
+  // 複製は渡したフラグだけで動くので、--settings を渡さないとプライマリアカウントに戻る。
+  const bin = path.join(tmp, 'bin-switch-account');
+  const argsFile = path.join(tmp, 'switch-account-args');
+  useFakeClaude(bin, `if (args[0] === '--bg') { fs.writeFileSync(${js(argsFile)}, lines(args)); console.log('backgrounded · s40'); }`);
+  const accounts = path.join(tmp, 'data', 'accounts');
+  fs.mkdirSync(accounts, { recursive: true });
+  for (const name of ['sub', 'other']) fs.writeFileSync(path.join(accounts, `${name}.json`), '{}');
+  Object.assign(ensureSession('s40', tmp), { account: 'sub' });
+  const argsOf = (): string[] => fs.readFileSync(argsFile, 'utf8').split('\n').slice(0, -1);
+
+  await switchSession('s40', '続けて', 'opus');
+  assert.deepEqual(argsOf(), ['--bg', '--resume', 's40', '--model', 'opus', '--settings', path.join(accounts, 'sub.json'), '--', '続けて']);
+  assert.equal(state.sessions.s40?.account, 'sub');
+
+  await switchSession('s40', '続けて', 'opus', undefined, undefined, 'other');
+  assert.deepEqual(argsOf(), ['--bg', '--resume', 's40', '--model', 'opus', '--settings', path.join(accounts, 'other.json'), '--', '続けて']);
+  assert.equal(state.sessions.s40?.account, 'other');
+
+  await switchSession('s40', '続けて', 'opus', undefined, undefined, '');
+  assert.deepEqual(argsOf(), ['--bg', '--resume', 's40', '--model', 'opus', '--', '続けて']);
+  assert.equal(state.sessions.s40?.account, undefined);
+});
+
 test('再開して渡したら複製ができたとき、設定とやり取りを複製へ移し、覚えた概要などを写して元をアーカイブし、元に移った先を残す。同じ id のまま続いたら、claude agents を動かさない', async () => {
   // 偽の claude は呼ばれた引数を書き足す。aaaaaaaa-1 の再開は、本物と同じく複製のジョブ bbbbbbbb を起動したと書き、複製の再開は同じジョブで続けたと書く。
   const bin = path.join(tmp, 'bin-follow');

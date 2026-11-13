@@ -192,6 +192,9 @@ export const useFetch = <T,>(load: (fresh: boolean) => Promise<T>, deps: unknown
   return { ...state, reload };
 };
 
+/** 追加アカウントの名前。スナップショットから受け取る。 */
+export const AccountsContext = createContext<string[]>([]);
+
 /** サーバーが外部の情報源から裏で読み直した値が変わるたびに増える数。スナップショットから受け取る。 */
 export const CacheVersionContext = createContext(0);
 
