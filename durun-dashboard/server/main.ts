@@ -1186,20 +1186,20 @@ const flag = (body: unknown, key: string): boolean | undefined => {
 const MODEL_ID = /^claude-[a-z0-9-]+$/;
 
 /** 依頼と、起動に渡すモデルと effort と権限モード。 */
-const launchOf = (body: unknown): { text: string; model: string; effort?: string; permissionMode?: string; account?: string } => {
+const launchOf = (body: unknown): { text: string; model: string; effort?: string; permissionMode?: string; account?: string; accountOnly: boolean } => {
   const text = field<string>(body, 'text', 'string');
   if (!text.trim()) throw new HttpError(400, 'text is required');
   const model = field<string>(body, 'model', 'string');
   if (model && !(MODELS as readonly string[]).includes(model) && !MODEL_ID.test(model)) throw new HttpError(400, 'model must be alias or model id');
   // 省くと今のアカウントのまま、空文字ならプライマリアカウントで動かす。
   const { account } = body as { account?: unknown };
-  return { text, model, effort: oneOf(body, 'effort', EFFORT_LEVELS), permissionMode: oneOf(body, 'permissionMode', PERMISSION_MODES), account: typeof account === 'string' ? account : undefined };
+  return { text, model, effort: oneOf(body, 'effort', EFFORT_LEVELS), permissionMode: oneOf(body, 'permissionMode', PERMISSION_MODES), account: typeof account === 'string' ? account : undefined, accountOnly: (body as { accountOnly?: unknown }).accountOnly === true };
 };
 
 /** モデルと effort と権限モードを変えて依頼を渡す。 */
 const switchModel = async (id: string, body: unknown): Promise<{ sessionId: string }> => {
-  const { text, model, effort, permissionMode, account } = launchOf(body);
-  return { sessionId: await switchSession(sessionMeta(id).id, text, model, effort, permissionMode, account) };
+  const { text, model, effort, permissionMode, account, accountOnly } = launchOf(body);
+  return { sessionId: await switchSession(sessionMeta(id).id, text, model, effort, permissionMode, account, accountOnly) };
 };
 
 /** 会話を引き継いだ別のセッションを起動して依頼を渡し、元のセッションは残す。起動できないのは claude の失敗なので 502 にする。 */

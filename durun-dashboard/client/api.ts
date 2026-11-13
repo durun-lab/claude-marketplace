@@ -168,7 +168,7 @@ export const api = {
   rewind: (id: string, rewindTo: string, text: string) =>
     postJson<{ message: OutboxMessage; delivery: Delivery }>(`${session(id)}/rewind`, { rewindTo, text }),
   /** モデルと effort と権限モードを変えて送る。会話が続くセッションの id が返る。複製に乗り換えたときは、元とは別の id になる。 */
-  switchModel: (id: string, text: string, launch: Launch) => postJson<{ sessionId: string }>(`${session(id)}/switch`, { text, ...launch }),
+  switchModel: (id: string, text: string, launch: Launch, accountOnly: boolean) => postJson<{ sessionId: string }>(`${session(id)}/switch`, { text, ...launch, accountOnly }),
   /** 会話を引き継いだ別のセッションを起動して送る。分岐したセッションの id が返る。 */
   fork: (id: string, text: string, launch: Launch) => postJson<{ sessionId: string }>(`${session(id)}/fork`, { text, ...launch }),
   suggestions: (id: string) => postJson<Replies>(`${session(id)}/suggestions`),
