@@ -51,3 +51,24 @@ test('切り替えは無効のときだけ settings.json にキーを残し、�
   await setHarnessToggle(dir, { setting: 'claudeMdExcludes', key: '/r/CLAUDE.md' }, true);
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { model: 'opus', skillOverrides: { other: 'off' }, enabledPlugins: { 'p@m': false } });
 });
+
+test('ローカルのディレクトリから入れたマーケットプレイスのスキルは、キャッシュではなく元のディレクトリから読む', async () => {
+  const dir = tempDir('durun-dashboard-harness-');
+  const market = path.join(dir, 'market');
+  const write = (file: string, text: string) => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text);
+  };
+  const skill = (description: string) => `---\nname: s\ndescription: ${description}\n---\n`;
+  write(path.join(market, '.claude-plugin/marketplace.json'), JSON.stringify({ plugins: [{ name: 'p', source: './plugins/p' }] }));
+  write(path.join(market, 'plugins/p/skills/s/SKILL.md'), skill('元'));
+  write(path.join(dir, 'cache/p/skills/s/SKILL.md'), skill('古い写し'));
+  write(path.join(dir, 'cache/q/skills/s/SKILL.md'), skill('写し'));
+  write(path.join(dir, 'plugins/known_marketplaces.json'), JSON.stringify({ m: { source: { source: 'directory', path: market } }, g: { source: { source: 'github', repo: 'o/r' } } }));
+  write(path.join(dir, 'plugins/installed_plugins.json'), JSON.stringify({ plugins: { 'p@m': [{ installPath: path.join(dir, 'cache/p') }], 'q@g': [{ installPath: path.join(dir, 'cache/q') }] } }));
+  const skills = (await harness(dir, [os.tmpdir()])).items.filter((h) => h.kind === 'skill').map(({ group, trigger, path: file }) => ({ group, trigger, file }));
+  assert.deepEqual(skills, [
+    { group: 'p', trigger: '元', file: path.join(market, 'plugins/p/skills/s/SKILL.md') },
+    { group: 'q', trigger: '写し', file: path.join(dir, 'cache/q/skills/s/SKILL.md') },
+  ]);
+});
