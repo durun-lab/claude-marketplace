@@ -7,7 +7,6 @@ import { cacheVersion } from './cache.ts';
 import * as claude from './claude.ts';
 import { accountNames, autoActionOf, isAllowable, trashOf } from './deliver.ts';
 import { isHelperSession } from './haiku.ts';
-import { learnState } from './reflect.ts';
 import { improveState, workflowNameOf, workflowState } from './workflow.ts';
 import { slackKeyOf, slackLinksIn } from './slack.ts';
 import { badgeIssue, badgeOf, badgePr, cachedPr, findJiraKeys, jiraBase, jiraIssue, jiraKeyOfUrl, jiraRefreshedAt, mentionedBadges, prPending } from './integrations.ts';
@@ -445,7 +444,6 @@ export const buildSnapshot = (): Snapshot => {
     themes,
     sessionOrder: state.sessionOrder,
     improve: improveState(),
-    learn: learnState(),
     workflows: workflowState(),
     autoContinue: !!state.autoContinue,
     agentPriority: state.agentPriority ?? 'normal',

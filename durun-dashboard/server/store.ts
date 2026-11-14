@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { type AgentPriority, type AskedQuestion, type Bookmark, type BranchView, type Dashboards, type DiffRange, type DocFormat, type LearnRun, type LearnSettings, MEDIA_TYPES, type BurstKind, type OutboxMessage, type PrThreadNote, type QueuedMessage, type RatePoint, type SavedDoc, type SavedFile, type SavedLink, type SavedProof, type SavedTerm } from '../shared/types.ts';
+import { type AgentPriority, type AskedQuestion, type Bookmark, type BranchView, type Dashboards, type DiffRange, type DocFormat, MEDIA_TYPES, type BurstKind, type OutboxMessage, type PrThreadNote, type QueuedMessage, type RatePoint, type SavedDoc, type SavedFile, type SavedLink, type SavedProof, type SavedTerm } from '../shared/types.ts';
 
 // 利用者ごとのデータはツールのリポジトリと分けてホームに置く。テストでは一時ディレクトリに向けて、実際の状態に触れないようにする。
 export const DATA_DIR = process.env.DURUN_DASHBOARD_DATA_DIR ?? path.join(os.homedir(), '.durun-dashboard');
@@ -178,8 +178,11 @@ type State = {
   agentPriority?: AgentPriority;
   /** ムービーメーカーで最近開いたプロジェクトのフォルダー。新しい順。 */
   mmRecentProjects?: string[];
-  /** 学習アプリ。pid は提案を作っている学習のセッションのもの。 */
-  learn: LearnSettings & { runs: LearnRun[]; pid?: number; error?: string };
+  /**
+   * 学習。digestedAt は learn_digest で前回人間の発言を集めた時刻。
+   * scheduled と runs は、学習アプリが自分で学習していたころの設定と記録で、起動したときにワークフローへ移す。
+   */
+  learn?: { digestedAt?: number; scheduled?: boolean; runs?: { at: number }[] };
   /** ワークフローごとの動き。定義はワークフローのフォルダーにある。 */
   workflowRuns?: Record<string, WorkflowRun>;
   /** ワークフローの時刻のトリガーを最後に確かめた時刻。これより後に過ぎた時刻で動かす。 */
@@ -200,7 +203,7 @@ type State = {
   rateWindows: { fiveHour?: RateWindow; sevenDay?: RateWindow };
 };
 
-const empty = (): State => ({ sessions: {}, attention: [], docs: [], outbox: [], queue: [], dismissed: [], learn: { scheduled: false, runs: [] }, errors: {}, prNotes: {}, sessionOrder: [], themeOrder: [], rateWindows: {} });
+const empty = (): State => ({ sessions: {}, attention: [], docs: [], outbox: [], queue: [], dismissed: [], errors: {}, prNotes: {}, sessionOrder: [], themeOrder: [], rateWindows: {} });
 
 const DOCS_DIR = path.resolve(DATA_DIR, 'docs');
 // 画像と動画の資料はファイルを指すだけで、本文を書かない。

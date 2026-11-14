@@ -13,6 +13,7 @@ import { CLAUDE_DIR, isAlive, readLiveSessions } from './claude.ts';
 import { COMPACT_COMMAND, compactSession, sendMessage, startTrackedSession } from './deliver.ts';
 import { DONE_MARK, feedbackEvent, finishItems, improveWorkflow, onFeedback, pendingItems } from './improve.ts';
 import { githubInbox, jiraMentions } from './integrations.ts';
+import { LEARN_DIR } from './reflect.ts';
 import { slackMentions } from './slack.ts';
 import { DATA_DIR, type FeedbackWave, newId, persist, state, touch, type WorkflowRun } from './store.ts';
 
@@ -522,10 +523,29 @@ const migrateImprove = (): void => {
   persist();
 };
 
+/**
+ * 学習アプリが自分で学習していたころの設定を、plugin に同梱した learn の agent を使うワークフローの定義へ移す。
+ * 定期実行の ON と OFF は、時刻のトリガーを持つワークフローの ON と OFF に引き継ぐ。前回の学習の時刻は、learn_digest が集め始める時刻にする。
+ */
+const migrateLearn = (): void => {
+  const legacy = state.learn;
+  if (!legacy || (legacy.scheduled === undefined && !legacy.runs)) return;
+  const { workflows, error } = readWorkflows();
+  if (error) return;
+  if (!workflows.some((w) => w.id === 'learn')) {
+    // 人間が作業を止めた夜のうちに動かす。
+    writeWorkflowDir({ id: 'learn', name: '人間の指示から学習', enabled: legacy.scheduled === true, cwd: LEARN_DIR, triggers: [{ kind: 'schedule', at: '05:00' }], mode: 'new' });
+  }
+  fs.mkdirSync(LEARN_DIR, { recursive: true });
+  state.learn = { digestedAt: legacy.digestedAt ?? legacy.runs?.[0]?.at };
+  persist();
+};
+
 /** サーバーを起動したときに呼ぶ。止まっていた間に過ぎた時刻のトリガーも、丸 1 日前の分まで拾う。 */
 export const startWorkflows = (): void => {
   migrateLegacyFile();
   migrateImprove();
+  migrateLearn();
   onFeedback(feedbackArrived);
   void tick();
   setInterval(() => void tick(), TICK_MS).unref();
