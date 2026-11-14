@@ -620,35 +620,10 @@ export const updateWorkflow = (id: string, body: unknown): void => {
   writeSettings(settingsFile, next);
 };
 
-const consultPrompt = (target: WorkflowDef | undefined): string => `${MARK} 人間と相談して、${target ? `ワークフロー「${target.name}」（id: ${target.id}）を変えて` : '新しいワークフローを作って'}ください。
-ワークフローは、トリガーで Claude Code のセッションを動かす、手元で動くルーティンです。1 つのワークフローは ${WORKFLOWS_DIR}/<id>/ の 1 つのフォルダーにまとめます。ダッシュボードは書き換えを読み直して、すぐに使います。
+// 相談の指示は plugin のスキルにあり、人間が明示的に呼んだときだけ読まれる。普段のセッションの文脈を使わないため。
+const CONSULT_SKILL = '/durun-dashboard:workflow-consult';
 
-## 形
-フォルダー名が id です。英数字とハイフンで、ほかのフォルダーと重ならないものにしてください。ほかのワークフローは変えないでください。
-- <id>.md: Claude Code の agent として書く、セッションへの指示。普段のセッションからもサブエージェントとして呼べる
-  - フロントマター: name（id と同じ）、description（どんなときに使う agent か）、model（${MODELS.join(' / ')}）、effort（${EFFORT_LEVELS.join(' / ')}）。model と effort は省くと Claude Code の設定に従う
-  - 本文: セッションへの依頼。ダッシュボードはイベントの内容だけを送り、本文はこのファイルの場所で指す
-- 補助のスクリプトなど: 同じフォルダーに置ける。セッションは <id>.md の場所から辿る
-- workflow.json: 次の項目を持つ JSON
-- name: 画面とセッションのバッジに出す名前
-- enabled: true で動く。新しく作るときは、人間が良いと言うまで false にする
-- cwd: セッションを動かす作業ディレクトリ（絶対パス）
-- theme: 起動したセッションを入れるテーマ。省くと作業ディレクトリのリポジトリ名になる
-- triggers: 次の配列
-  - { "kind": "schedule", "at": "09:00", "days": [1, 2, 3, 4, 5] }: 時刻で動く。days は 0 が日曜で、省くと毎日
-  - { "kind": "github-review" }: GitHub で自分へのレビュー依頼が新しく届いたときに動く
-  - { "kind": "slack-mention" }: Slack で自分へのメンションが新しく届いたときに動く。Claude Code の /mcp で Slack に接続している必要がある
-  - { "kind": "jira-mention" }: JIRA のコメントで自分へのメンションが新しく届いたときに動く
-  - { "kind": "feedback" }: ダッシュボードへの改善要望がたまっているときに動く。前のウェーブを終えてから、たまった要望を 1 つのウェーブとして渡す。要望の一覧と、最後に「${DONE_MARK}」の行に対応を終えた要望を書く約束は、ダッシュボードが依頼の前に書き足す
-- burstMinutes: レビュー依頼とメンションが続けて届いたとき、最後のものからこの分数だけ次が届かなくなるまで待って、トリガーの種類ごとに 1 つの依頼にまとめる。省くと 1 件ずつ動く
-- mode: "new" はイベントごとに新しいセッションを起動する。"continue" は 1 つのセッションを引き継いでイベントをチャットに送り、セッションが無いかアーカイブされていたら新しく起動する
-- compact: mode が "continue" のとき、true なら、イベントを送る前に毎回前回までの会話を compact する
-- account: セッションを動かす追加アカウントの名前（${DATA_DIR}/accounts/<名前>.json）。省くとプライマリアカウントで動く。追加アカウントには claude.ai のコネクタが無いので、コネクタを使うワークフローでは省く
-- compactWindow: mode が "continue" のとき、会話がこのトークン数（${COMPACT_WINDOW_MIN}〜${COMPACT_WINDOW_MAX}）に達したら自動で compact する。省くと Claude Code の設定に従う。次にセッションを起動したときから効く
-- maxSessions: mode が "new" のとき、同時に動かすセッションの上限（既定 1）。上限を超えたイベントは、空くまで待たせる
-
-## 進め方
-まず、何をいつ動かしたいかを人間に聞いてください。決まったらフォルダーにファイルを書き、書いた内容を短く伝えて止まってください。`;
+const consultPrompt = (target: WorkflowDef | undefined): string => (target ? `${CONSULT_SKILL} ${target.id}` : CONSULT_SKILL);
 
 /** エージェントと相談してワークフローを作るか変えるセッションを起動し、その id を返す。id を渡すと、そのワークフローを変える相談にする。 */
 export const consultWorkflow = async (id?: string): Promise<{ sessionId: string }> => {
