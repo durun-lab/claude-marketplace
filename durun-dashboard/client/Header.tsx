@@ -258,7 +258,12 @@ const AppMenu = ({ onSearch, onEdit, docs, autoContinue }: MenuProps & { docs: D
     return () => document.removeEventListener('fullscreenchange', sync);
   }, []);
   const toggleFullscreen = () => {
-    void (document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()).catch(() => {});
+    if (document.fullscreenElement) return void document.exitFullscreen().catch(() => {});
+    // 全画面の間は ⌘N をブラウザに渡さず、新規セッションのショートカットとして受ける。Keyboard Lock は全画面を抜けると自動で解ける。
+    void document.documentElement
+      .requestFullscreen()
+      .then(() => (navigator as Navigator & { keyboard?: { lock: (codes: string[]) => Promise<void> } }).keyboard?.lock(['KeyN']))
+      .catch(() => {});
   };
   // Cmd/Ctrl + F はブラウザのページ内検索の代わりに画面全体を切り替え、Cmd/Ctrl を 2 回叩くとメニューを開く。
   useEffect(() => {
