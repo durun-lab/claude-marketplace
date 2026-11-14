@@ -1,5 +1,5 @@
 import type { RateLimit, RatePoint } from '../shared/types.ts';
-import { isOffDay } from './holidays.ts';
+import { isOffDay } from '../shared/holidays.ts';
 
 const HOUR_MS = 60 * 60 * 1000;
 export const FIVE_HOURS_MS = 5 * HOUR_MS;

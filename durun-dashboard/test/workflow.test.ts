@@ -7,7 +7,7 @@ import { tempDir } from './tmp.ts';
 // 実際の定義と状態に触れないよう、データとワークフローの置き場所を一時ディレクトリに向けてから読み込む。
 process.env.DURUN_DASHBOARD_DATA_DIR = tempDir('durun-dashboard-workflow-');
 process.env.CLAUDE_CONFIG_DIR = tempDir('durun-dashboard-workflow-claude-');
-const { flushBursts, scanWorkflows, scheduleDue, setWorkflowEnabled, startWorkflows, updateWorkflow, WORKFLOWS_DIR } = await import('../server/workflow.ts');
+const { dayMatches, flushBursts, scanWorkflows, scheduleDue, setWorkflowEnabled, startWorkflows, updateWorkflow, WORKFLOWS_DIR } = await import('../server/workflow.ts');
 
 const cwd = path.resolve('work');
 type Def = { id?: string; prompt?: string; model?: string; effort?: string; [key: string]: unknown };
@@ -146,4 +146,22 @@ test('compactWindow は引き継ぐモードで、Claude Code が受け付ける
   assert.equal(window({ mode: 'continue', compactWindow: 200_000 }), 200_000);
   assert.equal(window({ mode: 'new', compactWindow: 200_000 }), undefined);
   assert.equal(window({ mode: 'continue', compactWindow: 50_000 }), undefined);
+});
+
+test('日付と営業日を指定したトリガーは、月の前と後ろから数えた日で動き、営業日は土日と祝日を除いて数える', () => {
+  const day = (y: number, mo: number, d: number) => new Date(y, mo - 1, d, 9, 0);
+  const t = { kind: 'schedule' as const, at: '09:00' };
+  // 2026-11-01 は日曜、11-02 は月曜、11-03 は文化の日、11-30 は月曜。
+  assert.equal(dayMatches({ ...t, dates: [1] }, day(2026, 11, 1)), true);
+  assert.equal(dayMatches({ ...t, dates: [-1] }, day(2026, 11, 30)), true);
+  assert.equal(dayMatches({ ...t, dates: [-1] }, day(2026, 11, 29)), false);
+  assert.equal(dayMatches({ ...t, businessDays: [1] }, day(2026, 11, 1)), false);
+  assert.equal(dayMatches({ ...t, businessDays: [1] }, day(2026, 11, 2)), true);
+  assert.equal(dayMatches({ ...t, businessDays: [2] }, day(2026, 11, 4)), true);
+  assert.equal(dayMatches({ ...t, businessDays: [-1] }, day(2026, 11, 30)), true);
+  // 2027-01-01 は元日、01-02 と 01-03 は土日、01-04 は月曜。
+  assert.equal(dayMatches({ ...t, businessDays: [1] }, day(2027, 1, 4)), true);
+  // 曜日と合わせると、どちらにも合う日だけ。
+  assert.equal(dayMatches({ ...t, days: [1], businessDays: [1] }, day(2026, 11, 2)), true);
+  assert.equal(dayMatches({ ...t, days: [2], businessDays: [1] }, day(2026, 11, 2)), false);
 });
