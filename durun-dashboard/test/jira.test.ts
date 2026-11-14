@@ -185,12 +185,23 @@ test('badgeOf は、JIRA の課題、GitHub の PR と Issue の URL と課題�
 
 test('mentionedBadges は、依頼に出た PR、Issue、課題のキーをバッジの URL にし、登録していないプロジェクトのキーは JIRA で課題を読めたものだけを返す', async (t) => {
   t.mock.method(console, 'error', () => {});
-  t.mock.method(globalThis, 'fetch', async (url: string) =>
-    url.includes('/issue/OTHER-5?') ? Response.json({ fields: { summary: '直す' } }) : Response.json({ errorMessages: ['課題がありません'] }, { status: 404 }),
-  );
+  const called: string[] = [];
+  t.mock.method(globalThis, 'fetch', async (url: string) => {
+    called.push(url);
+    if (url.endsWith('/rest/api/3/project')) return Response.json([{ key: 'PROJ' }, { key: 'OTHER' }]);
+    return url.includes('/issue/OTHER-5?') ? Response.json({ fields: { summary: '直す' } }) : Response.json({ errorMessages: ['課題がありません'] }, { status: 404 });
+  });
   const texts = ['proj-2 の続き。OTHER-5 と UTF-8 も見て', 'https://github.com/o/r/pull/12/files と https://github.com/o/r/issues/3を見て'];
   const found = ['https://github.com/o/r/pull/12', 'https://github.com/o/r/issues/3', 'https://jira.example/browse/PROJ-2'];
+  const settle = async () => {
+    for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
+  };
+  // プロジェクトの一覧を読み終えてから、課題を読みに行く。
   assert.deepEqual(mentionedBadges(texts, '/repo'), found);
-  for (let i = 0; i < 10; i++) await new Promise((resolve) => setImmediate(resolve));
+  await settle();
+  assert.deepEqual(mentionedBadges(texts, '/repo'), found);
+  await settle();
   assert.deepEqual(mentionedBadges(texts, '/repo'), [...found, 'https://jira.example/browse/OTHER-5']);
+  // JIRA に無いプロジェクトの UTF-8 は、課題を読みに行かない。
+  assert.equal(called.filter((u) => u.includes('/issue/UTF-8')).length, 0);
 });
