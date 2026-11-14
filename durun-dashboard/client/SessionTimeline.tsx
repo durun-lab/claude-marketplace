@@ -114,20 +114,23 @@ export const SessionTimeline = ({ snapshot, settings, onSettings }: WidgetProps<
   const from = now - hours * HOUR_MS;
   const rows = (data ?? []).filter((r) => movedSince(r, from)).sort((a, b) => lastPrompt(b) - lastPrompt(a) || lastAt(b) - lastAt(a));
   return (
-    <div class="widget-body session-timeline">
-      <div class="session-timeline-bar">
-        <select class="input input-sm" aria-label="描く長さ" value={hours} onChange={(e) => onSettings({ ...settings, hours: e.currentTarget.value })}>
-          {HOURS.map((h) => <option key={h} value={h}>{h} 時間</option>)}
-        </select>
-        <span class="session-timeline-legend">
-          {(['busy', 'event', 'idle'] as const).map((k) => (
-            <span key={k}><i style={{ background: LINE[k].color, height: `${LINE[k].width}px` }} />{k === 'idle' ? 'ほか（状態の色）' : LINE[k].label}</span>
-          ))}
-          {Object.entries(MARK).map(([k, m]) => <span key={k}><b class={`session-timeline-mark is-${k}`}>{m.glyph}</b>{m.label}</span>)}
-        </span>
+    <>
+      <h2 class="section-title">{TIMELINE_TITLE}</h2>
+      <div class="widget-body session-timeline">
+        <div class="session-timeline-bar">
+          <select class="input input-sm" aria-label="描く長さ" value={hours} onChange={(e) => onSettings({ ...settings, hours: e.currentTarget.value })}>
+            {HOURS.map((h) => <option key={h} value={h}>{h} 時間</option>)}
+          </select>
+          <span class="session-timeline-legend">
+            {(['busy', 'event', 'idle'] as const).map((k) => (
+              <span key={k}><i style={{ background: LINE[k].color, height: `${LINE[k].width}px` }} />{k === 'idle' ? 'ほか（状態の色）' : LINE[k].label}</span>
+            ))}
+            {Object.entries(MARK).map(([k, m]) => <span key={k}><b class={`session-timeline-mark is-${k}`}>{m.glyph}</b>{m.label}</span>)}
+          </span>
+        </div>
+        {error && <Empty>{error}</Empty>}
+        {!data && !error ? <Loading /> : rows.length ? <Chart rows={rows} from={from} now={now} /> : !error && <Empty>この {hours} 時間に動いたセッションはありません。</Empty>}
       </div>
-      {error && <Empty>{error}</Empty>}
-      {!data && !error ? <Loading /> : rows.length ? <Chart rows={rows} from={from} now={now} /> : !error && <Empty>この {hours} 時間に動いたセッションはありません。</Empty>}
-    </div>
+    </>
   );
 };
