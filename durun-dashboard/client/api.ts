@@ -212,8 +212,6 @@ export const api = {
   prComment: (url: string, body: string) => postJson<{ url: string }>('/api/pr/comment', { url, body }),
   feedback: (text: string, targets: FeedbackTarget[], context: FeedbackContext) =>
     postJson<{ path: string }>('/api/feedback', { text, targets, context }),
-  learn: (scheduled: boolean) => postJson('/api/learn', { scheduled }),
-  learnNow: () => postJson('/api/learn/run', {}),
   workflowConsult: (id?: string) => postJson<{ sessionId: string }>('/api/workflows/consult', { id }),
   workflowRun: (id: string) => postJson(`/api/workflows/${seg(id)}/run`),
   workflowEnabled: (id: string, enabled: boolean) => postJson(`/api/workflows/${seg(id)}/enabled`, { enabled }),

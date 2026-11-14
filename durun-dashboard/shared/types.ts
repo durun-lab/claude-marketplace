@@ -489,21 +489,6 @@ export type WorkflowInfo = WorkflowDef & {
 /** dir はワークフローのフォルダーを置く場所。error は定義を読めなかった理由。 */
 export type WorkflowState = { dir: string; workflows: WorkflowInfo[]; error?: string };
 
-/** 学習アプリの設定。scheduled なら、人間が作業を止めてしばらくたったら 1 日 1 回まで学習する。 */
-export type LearnSettings = { scheduled: boolean };
-
-/** 学習を 1 回動かした記録。sessionId は提案を見せて承認を待つセッション。 */
-export type LearnRun = { at: number; sessionId: string };
-
-export type LearnState = LearnSettings & {
-  /** 学習のセッションが提案を作っている */
-  running: boolean;
-  /** 新しい順 */
-  runs: LearnRun[];
-  /** 前回、学習を始められなかった理由 */
-  error?: string;
-};
-
 /**
  * 改善要望への対応の様子。workflow は改善要望のトリガーを持つワークフローで、無ければ要望はたまるだけになる。
  * running はウェーブが動いていること、sessionId はそのセッション、current はその説明、error は待機している理由。
@@ -548,8 +533,6 @@ export type Snapshot = {
   /** 人間がホームで並べ替えたセッションの順。並べ替えた後に現れたセッションは入っていない。 */
   sessionOrder: string[];
   improve: ImproveState;
-  /** 学習アプリの設定と記録。前に受け取ったスナップショットには無いことがある。 */
-  learn?: LearnState;
   /** ワークフローの定義と動き。前に受け取ったスナップショットには無いことがある。 */
   workflows?: WorkflowState;
   /** 自動継続モード。スリープや通信の途切れで止まったセッションを、確認のダイアログを出さずに続けさせる。Claude のログインが切れて止まったセッションも、ログインが戻ったら続けさせる。前に受け取ったスナップショットには無いことがある。 */

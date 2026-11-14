@@ -27,7 +27,6 @@ import { UpstreamError } from './haiku.ts';
 import { handleHook, holdPermission, type HookInput } from './hooks.ts';
 import { saveFeedback } from './improve.ts';
 import { applyAgentPriority, setAgentPriority } from './agentPriority.ts';
-import { learnNow, noteActivity, updateLearn } from './reflect.ts';
 import { consultWorkflow, runWorkflow, setWorkflowEnabled, startWorkflows, updateWorkflow } from './workflow.ts';
 import { harness, setHarnessToggle } from './harness.ts';
 import { readEnvValues, writeEnvValue } from './envFile.ts';
@@ -1435,8 +1434,6 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/translate\/install$/, () => installTranslate(), 10 * 60_000],
   [/^\/api\/translate$/, (_, b) => translate(field<string>(b, 'text', 'string'), field<string>(b, 'target', 'string')), READER_MS],
   [/^\/api\/assistant$/, async (_, b) => askDolphin(await logsReady.then(buildSnapshot), toMessages(b), await focusOf(b)), HAIKU_MS],
-  [/^\/api\/learn$/, (_, b) => updateLearn({ scheduled: field<boolean>(b, 'scheduled', 'boolean') })],
-  [/^\/api\/learn\/run$/, () => learnNow()],
   [/^\/api\/workflows\/consult$/, (_, b) => consultWorkflow(optionalString(b, 'id')), CLAUDE_MS],
   [/^\/api\/workflows\/([\w-]+)\/run$/, ([, id = '']) => runWorkflow(id)],
   [/^\/api\/workflows\/([\w-]+)\/settings$/, ([, id = ''], b) => updateWorkflow(id, b)],
@@ -1697,7 +1694,6 @@ watch(PROJECTS_DIR, true, (file) => {
   scheduleBroadcast();
   flushQueue();
   if (file) onTranscriptChange(file);
-  noteActivity();
 });
 // 画面のファイルが作り直されたら、開いている画面に新しい更新時刻を配って読み込み直させる。
 watch(path.join(ROOT, 'public'), false, scheduleBroadcast);
@@ -1705,8 +1701,6 @@ watch(path.join(ROOT, 'public'), false, scheduleBroadcast);
 mergeClaudePrCache(path.join(CLAUDE_DIR, PR_CACHE_FILE));
 watch(CLAUDE_DIR, false, (file) => file === PR_CACHE_FILE && mergeClaudePrCache(path.join(CLAUDE_DIR, PR_CACHE_FILE)));
 startWorkflows();
-// 作業の無いまま再起動しても、前の作業の振り返りを逃さない。
-noteActivity();
 redeliverInterrupted();
 flushQueue();
 flushArchives();
