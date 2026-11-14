@@ -4,6 +4,7 @@ import { useState } from 'preact/hooks';
 import { ENV_GROUPS, type EnvGroup, type EnvSetting, type EnvValues } from '../shared/envSettings.ts';
 import { AGENT_PRIORITIES, type AgentPriority, type Snapshot } from '../shared/types.ts';
 import { openAccounts } from './Accounts.tsx';
+import { ClaudeSettingsView } from './ClaudeSettingsView.tsx';
 import { api, attempt } from './api.ts';
 import { AppIcon } from './apps.tsx';
 import { type Float, FloatFrame, dock, floatUp, latestFloat, setFloatSettings } from './Float.tsx';
@@ -29,6 +30,7 @@ type Category = { id: string; title: string; icon: string; help: string; open?: 
 export const CATEGORIES: Category[] = [
   { id: 'display', title: 'デスクトップの表示', icon: '🎨', help: 'スキン、壁紙、軽量モードを変える' },
   { id: 'performance', title: 'パフォーマンス', icon: '⚙️', help: 'エージェントの CPU の優先度と、止まったセッションの自動継続を変える' },
+  { id: 'claude', title: 'Claude Code の設定', icon: '🧩', help: '~/.claude/settings.json の項目を直す' },
   ...ENV_GROUPS,
   { id: 'accounts', title: 'Claude アカウント', icon: '👥', help: '推論にだけ使う追加の Claude アカウントを登録する', open: openAccounts },
 ];
@@ -192,6 +194,7 @@ export const ControlPanelFloat = ({ f, snapshot }: { f: Float; snapshot: Snapsho
                 <p class="help">{group.help}</p>
                 {group.id === 'display' && <DisplayView />}
                 {group.id === 'performance' && <PerformanceView snapshot={snapshot} />}
+                {group.id === 'claude' && <ClaudeSettingsView />}
                 {env && <EnvItems g={env} values={values.data} onSaved={values.reload} />}
               </div>
             ) : (

@@ -31,6 +31,8 @@ import { learnNow, noteActivity, updateLearn } from './reflect.ts';
 import { consultWorkflow, runWorkflow, setWorkflowEnabled, startWorkflows, updateWorkflow } from './workflow.ts';
 import { harness, setHarnessToggle } from './harness.ts';
 import { readEnvValues, writeEnvValue } from './envFile.ts';
+import { claudeSettingsFields, readClaudeSettings, writeClaudeSetting } from './claudeSettings.ts';
+import type { ClaudeSettings } from '../shared/claudeSettings.ts';
 import { fileCandidates, listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
 import { channelIdOf, onSlackAuthExpired, slackChannels, slackConversation, slackKeyOf, slackTargetOf } from './slack.ts';
@@ -1082,6 +1084,28 @@ const setEnvValue = (body: unknown): void => {
   }
 };
 
+/** settings.json と、書ける項目。スキーマを読めないときは、Claude Code の設定の分類だけが使えない。 */
+const claudeSettings = async (fresh: boolean): Promise<ClaudeSettings> => {
+  const fields = await viaGh('settings.json の項目を読めません', () => claudeSettingsFields(fresh));
+  return { fields, values: settingsFile(readClaudeSettings) };
+};
+
+/** settings.json の 1 つの項目を書く。value を渡さなければ、項目を消して既定に戻す。 */
+const setClaudeSetting = async (body: unknown): Promise<void> => {
+  const key = field<string>(body, 'key', 'string');
+  if (!(await claudeSettingsFields()).some((f) => f.key === key)) throw new HttpError(400, `${key} はコントロール パネルで設定できません`);
+  settingsFile(() => writeClaudeSetting(key, (body as { value?: unknown }).value));
+};
+
+/** 人間が手で書いた settings.json が JSON として読めないときは、書き換えて壊さず、理由を返す。 */
+const settingsFile = <T,>(run: () => T): T => {
+  try {
+    return run();
+  } catch (e) {
+    throw new HttpError(400, `~/.claude/settings.json を読めません（${(e as Error).message}）`);
+  }
+};
+
 const addAccount = (body: unknown): void => {
   const token = field<string>(body, 'token', 'string').trim();
   if (!token) throw new HttpError(400, 'token is required');
@@ -1312,6 +1336,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/accounts$/, (_, b) => addAccount(b)],
   [/^\/api\/accounts\/remove$/, (_, b) => removeAccount(accountName(b))],
   [/^\/api\/settings\/env$/, (_, b) => setEnvValue(b)],
+  [/^\/api\/settings\/claude$/, (_, b) => setClaudeSetting(b), WEB_API_MS],
   [/^\/api\/sessions$/, (_, b) => newSession(b), CLAUDE_MS],
   [/^\/api\/sessions\/order$/, (_, b) => orderSessions(b)],
   [/^\/api\/sessions\/([^/]+)\/theme$/, ([, id = ''], b) => setTheme(id, b)],
@@ -1430,6 +1455,7 @@ const memoryNow = latestMemory(() => platform.readMemory());
 const GET_ROUTES: Route[] = [
   [/^\/api\/snapshot$/, () => buildSnapshot()],
   [/^\/api\/settings\/env$/, () => readEnvValues(ENV_FILE)],
+  [/^\/api\/settings\/claude$/, (_, __, url) => claudeSettings(wantsFresh(url)), WEB_API_MS],
   // アーカイブしていないセッションの作業ディレクトリの CLAUDE.md も並べる。
   [/^\/api\/learn\/harness$/, () => harness(CLAUDE_DIR, [...new Set(Object.values(state.sessions).filter((m) => !m.archived).map((m) => m.cwd))])],
   [/^\/api\/translate\/status$/, () => translateStatus()],
