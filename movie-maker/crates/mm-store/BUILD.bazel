@@ -1,0 +1,44 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+DEPS = [
+    "//crates/mm-doc:mm_doc",
+    "//crates/mm-ops:mm_ops",
+    "//crates/mm-types:mm_types",
+    "@crates//:rusqlite",
+    "@crates//:serde",
+    "@crates//:serde_json",
+    "@crates//:sha2",
+]
+
+DEV_DEPS = [
+    "@crates//:proptest",
+    "@crates//:tempfile",
+]
+
+# rusqlite の bundled は libsqlite3-sys の build script が SQLite の C を cc クレート（MSVC の cl.exe）でビルドする。
+rust_library(
+    name = "mm_store",
+    srcs = glob(["src/**/*.rs"]),
+    visibility = ["//visibility:public"],
+    deps = DEPS,
+)
+
+rust_test(
+    name = "mm_store_test",
+    crate = ":mm_store",
+    data = ["//:fixtures"],
+    deps = DEV_DEPS,
+)
+
+rust_test(
+    name = "store",
+    srcs = glob(["tests/store/**/*.rs"]),
+    crate_root = "tests/store/main.rs",
+    data = ["//:fixtures"],
+    # 書き手の合い言葉のファイルを LOCALAPPDATA の下に置き、USERNAME で持ち主だけに絞る。Bazel の試験は既定で環境を引き継がない。
+    env_inherit = [
+        "LOCALAPPDATA",
+        "USERNAME",
+    ],
+    deps = DEPS + DEV_DEPS + [":mm_store"],
+)

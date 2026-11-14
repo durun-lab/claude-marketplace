@@ -1,0 +1,20 @@
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+# workspace のテストのビルドでは mm-ops が schema を足すので、いつも付ける（cargo の feature の統合と同じ形）。
+rust_library(
+    name = "mm_types",
+    srcs = glob(["src/**/*.rs"]),
+    crate_features = ["schema"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@crates//:schemars",
+        "@crates//:serde",
+        "@crates//:serde_json",
+        "@crates//:thiserror",
+    ],
+)
+
+rust_test(
+    name = "mm_types_test",
+    crate = ":mm_types",
+)
