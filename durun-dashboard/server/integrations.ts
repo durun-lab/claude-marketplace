@@ -857,14 +857,25 @@ const ISSUE_KEY = /\b[A-Z][A-Z0-9_]*-\d+\b/g;
 // #番号が指す PR か Issue は変わらないので、間隔を長く空けて読み直す。無い番号を試し直すのも、この間隔に抑える。
 const REF_URL_POLICY = { maxAge: 24 * 60 * 60_000 };
 
+// プロジェクトが増えるのはまれなので、1 時間ごとに読み直す。
+const JIRA_PROJECTS_MAX_AGE = 60 * 60_000;
+
+/** JIRA で見えるプロジェクトのキー。読み終えるまでは undefined。 */
+const jiraProjectKeys = (): Set<string> | undefined => {
+  const keys = JIRA_AUTH ? peekCached('jira-project-keys-v1', { maxAge: JIRA_PROJECTS_MAX_AGE }, async () => (await jiraFetch<{ key: string }[]>('project')).map((p) => p.key)) : undefined;
+  return keys && new Set(keys);
+};
+
 /**
  * 人間が依頼で触れた PR、Issue、JIRA の課題の、バッジにする URL。#番号は cwd のリポジトリのものとして読み、読み終えたものだけを返す。
  * 登録したプロジェクトの外のキーは、JIRA で課題を読めたものに限る。UTF-8 のような、課題ではない語をバッジにしないため。keep なら、覚えた後は読み直さない。
+ * JIRA に無いプロジェクトのキーは、課題を読みに行かない。課題ではない語の分だけ、JIRA を呼ぶのを避けるため。
  */
 export const mentionedBadges = (texts: string[], cwd: string, keep = false): string[] => {
   const text = texts.join('\n');
   const refs = [...new Set(text.match(REF_NUMBER))].flatMap((ref) => peekCached(`ref-url:${cwd} ${ref}`, { ...REF_URL_POLICY, keep }, async () => (await ghIssue(ref, cwd)).url) ?? []);
-  const keys = [...new Set(text.match(ISSUE_KEY))].filter((key) => jiraIssue(key, keep).summary !== undefined);
+  const projects = jiraProjectKeys();
+  const keys = [...new Set(text.match(ISSUE_KEY))].filter((key) => projects?.has(key.replace(/-\d+$/, '')) && jiraIssue(key, keep).summary !== undefined);
   return [...(text.match(GITHUB_ITEM_URL) ?? []), ...refs, ...[...findJiraKeys(texts), ...keys].map(browseUrl)];
 };
 
