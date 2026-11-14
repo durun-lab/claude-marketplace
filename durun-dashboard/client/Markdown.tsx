@@ -3,6 +3,7 @@ import { type ComponentChildren, type ComponentType, createContext } from 'preac
 import { memo } from 'preact/compat';
 import { useContext, useEffect, useRef, useState } from 'preact/hooks';
 import { imgOf } from '../shared/html.ts';
+import { type DetailsBlock, groupDetails } from '../shared/markdown.ts';
 import { GITHUB_ATTACHMENT } from '../shared/types.ts';
 import { attachmentSrc, openAttachment } from './Attachment.tsx';
 import { lexMarkdown } from './chatLinks.ts';
@@ -117,10 +118,11 @@ const Diagram = ({ source }: { source: string }) => {
   return <iframe ref={frame} class="md-diagram" title="図" sandbox="allow-scripts" style={height ? { height: `${height}px` } : undefined} srcdoc={buildSrcdoc({ format: 'mermaid', content: source }, skin, true)} />;
 };
 
-const Blocks = ({ tokens }: { tokens: Token[] }) => <>{tokens.map((t, i) => <Block key={i} t={t as MarkedToken} />)}</>;
+const Blocks = ({ tokens }: { tokens: Token[] }) => <>{groupDetails(tokens, lexMarkdown).map((t, i) => <Block key={i} t={t as MarkedToken | DetailsBlock} />)}</>;
 
-const Block = ({ t }: { t: MarkedToken }) => {
+const Block = ({ t }: { t: MarkedToken | DetailsBlock }) => {
   switch (t.type) {
+    case 'details': return <details open={t.open}><summary>{t.summary}</summary><Blocks tokens={t.tokens} /></details>;
     case 'paragraph': {
       const video = bareAttachment(t);
       return <p>{video ? <AttachmentVideo url={video} /> : <Inline tokens={t.tokens} />}</p>;
