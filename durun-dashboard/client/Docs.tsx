@@ -419,6 +419,8 @@ export const SessionDocs = ({ s, docs, entries, notion, snapshotAt }: { s: Sessi
   const { state, edit } = useDocEdits(s, snapshotAt);
   // 前に開いていたときのデータには、足したファイルが無いことがある。
   const savedFiles = s.files ?? [];
+  // present で出した資料と同じファイルは、発言に出たものや足したものとして重ねて並べない。
+  const presented = new Set(docs.flatMap((d) => (d.path ? [d.path] : [])));
   const savedPaths = new Set(savedFiles.map((f) => f.path));
   const links = useMemo(() => chatLinks(entries ?? [], location.port), [entries]);
   const files = useOpenableFiles(s.id, useMemo(() => chatMarkdownFiles(entries ?? []), [entries]));
@@ -444,8 +446,8 @@ export const SessionDocs = ({ s, docs, entries, notion, snapshotAt }: { s: Sessi
     // 校正した文章と足したファイルは、外すとサーバーが覚えたものから消す。消したものが届くまでの間も並べないよう、外した資料と比べる。
     ...(s.proofFiles ?? []).filter((p) => !hidden.has(p.id)).map(proofDoc),
     ...mergeLinks(withTitles(shown, titles)).map((l) => linkDoc(s.id, l, artifacts.get(l.url))),
-    ...files.filter((f) => !hidden.has(f.ref) && !savedPaths.has(f.ref)).map((f) => fileDoc(s.id, f)),
-    ...savedFiles.filter((f) => !hidden.has(f.path)).map((f) => savedFileDoc(s.id, f)),
+    ...files.filter((f) => !hidden.has(f.ref) && !savedPaths.has(f.ref) && !presented.has(f.path ?? f.ref)).map((f) => fileDoc(s.id, f)),
+    ...savedFiles.filter((f) => !hidden.has(f.path) && !presented.has(f.path)).map((f) => savedFileDoc(s.id, f)),
   ].map(customized));
   return (
     <>
