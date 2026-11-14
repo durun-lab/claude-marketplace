@@ -15,8 +15,8 @@ const REPLY_CHARS = 400;
 const PROMPT_CHARS = 1500;
 // 1 回に読ませる量の上限。超えた分は古い発言から落とす。
 const DIGEST_CHARS = 300_000;
-// ダッシュボードがセッションに渡す依頼の書き出し。人間が教えたことではないので拾わない。
-const DASHBOARD_MARK = '[durun-dashboard';
+// ダッシュボードがセッションに渡す依頼の書き出しと、plugin のスキルの呼び出し。人間が教えたことではないので拾わない。
+const DASHBOARD_MARKS = ['[durun-dashboard', '/durun-dashboard:'];
 
 export type DigestSession = { title: string; cwd: string; texts: ChatEntry[] };
 
@@ -36,7 +36,7 @@ export const digestOf = (sessions: DigestSession[], since: number): string => {
     let reply: string | undefined;
     for (const e of s.texts) {
       if (e.kind === 'message') reply = e.text;
-      if (e.kind !== 'prompt' || (e.at ?? 0) <= since || e.text.startsWith(DASHBOARD_MARK)) continue;
+      if (e.kind !== 'prompt' || (e.at ?? 0) <= since || DASHBOARD_MARKS.some((m) => e.text.startsWith(m))) continue;
       if (reply) lines.push(`Claude: ${clip(reply, REPLY_CHARS)}`);
       lines.push(`人間: ${clip(e.text, PROMPT_CHARS)}`, '');
       reply = undefined;
