@@ -4,9 +4,8 @@ import { tempDir } from './tmp.ts';
 
 // 実際の状態に触れないよう、データの置き場所を一時ディレクトリに向けてから読み込む。
 process.env.DURUN_DASHBOARD_DATA_DIR = tempDir('durun-dashboard-reflect-');
-const { digestOf, isDue } = await import('../server/reflect.ts');
+const { digestOf } = await import('../server/reflect.ts');
 
-const HOUR = 60 * 60_000;
 
 test('前回より後の人間の発言を、直前の Claude の発言と組にして並べる', () => {
   const digest = digestOf(
@@ -32,14 +31,9 @@ test('前回より後に人間の発言が無いセッションと、学習の�
   const digest = digestOf(
     [
       { title: '古い', cwd: '/a', texts: [{ kind: 'prompt', text: '前の発言', at: 1 }] },
-      { title: '学習', cwd: '/b', texts: [{ kind: 'prompt', text: '[durun-dashboard 学習] 人間が会話で教えたことを', at: 10 }] },
+      { title: '学習', cwd: '/b', texts: [{ kind: 'prompt', text: '[durun-dashboard ワークフロー]「人間の指示から学習」 時刻のトリガーで動きました。', at: 10 }] },
     ],
     5,
   );
   assert.equal(digest, '');
-});
-
-test('定期実行は、前回から 20 時間たったときだけ学習する', () => {
-  assert.equal(isDue(21 * HOUR, 0), true);
-  assert.equal(isDue(19 * HOUR, 0), false);
 });

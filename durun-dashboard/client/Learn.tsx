@@ -1,48 +1,27 @@
-// 人間が会話で教えたことから、Claude の指示への差分を提案させる「学習」アプリ。
-// 提案と承認は、学習のセッションのチャットで行う。「知見の一覧」では、Claude Code が読む指示を、いつ効くかとともに並べ、メモ帳で開いて直せる。
+// Claude Code が読む指示を、いつ効くかとともに並べ、メモ帳で開いて直せる「学習」アプリ。
+// 人間が会話で教えたことから差分を提案させる学習は、ワークフロー「人間の指示から学習」が受け持つ。
 import { useState } from 'preact/hooks';
-import type { HarnessItem, HarnessToggle, LearnState, Snapshot } from '../shared/types.ts';
+import type { HarnessItem, HarnessToggle, Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { AppIcon, DesktopIcon } from './apps.tsx';
 import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
-import { shortDateTime } from './format.ts';
 import { useFetch } from './hooks.ts';
 import { NOTEPAD_ICON, openNotepadFile } from './Notepad.tsx';
-import { href } from './router.ts';
+import { WORKFLOW_ICON, openWorkflow } from './Workflow.tsx';
 
 /** ウィンドウの保存キーで、ダッシュボードに置くアプリの種類の名前でもある。ウィンドウは 1 つだけ開くので、タブの id にもこのキーを入れる。 */
 export const LEARN_KEY = 'learn';
 export const LEARN_TITLE = '学習';
 export const LEARN_ICON = '/learn.svg';
 const SIZE = { w: 860, h: 480 };
-const OFF: LearnState = { scheduled: false, running: false, runs: [] };
 const KINDS: Record<HarnessItem['kind'], string> = { instructions: 'CLAUDE.md', skill: 'スキル', memory: '記憶', hook: 'フック' };
 
-type View = 'runs' | HarnessItem['kind'];
+type View = HarnessItem['kind'];
 
 export const openLearn = (): void => floatUp(LEARN_KEY, '', { id: LEARN_KEY }, SIZE);
 const close = () => dock(LEARN_KEY, '', LEARN_KEY);
 
-export const LearnIcon = () => <DesktopIcon icon={LEARN_ICON} title={LEARN_TITLE} hint="人間が会話で教えたことから、Claude の指示への改善を提案させます。ダブルクリックで開きます" onLaunch={openLearn} />;
-
-const learnNow = () => void attempt('学習の開始', () => api.learnNow());
-const schedule = (on: boolean) => void attempt('学習の設定の変更', () => api.learn(on));
-
-const Runs = ({ learn, now }: { learn: LearnState; now: number }) => (
-  <table class="recycle-table">
-    <thead>
-      <tr><th>学習した日時</th><th>提案</th></tr>
-    </thead>
-    <tbody>
-      {learn.runs.map((r) => (
-        <tr key={r.sessionId}>
-          <td><AppIcon icon={LEARN_ICON} />{shortDateTime(r.at, now)}</td>
-          <td><a href={href.session(r.sessionId)}>セッションで見る</a></td>
-        </tr>
-      ))}
-    </tbody>
-  </table>
-);
+export const LearnIcon = () => <DesktopIcon icon={LEARN_ICON} title={LEARN_TITLE} hint="Claude Code が読む指示を一覧して直します。ダブルクリックで開きます" onLaunch={openLearn} />;
 
 type Toggle = (t: HarnessToggle, on: boolean) => void;
 
@@ -88,9 +67,8 @@ const Harness = ({ items, opened, flip, onToggle }: { items: HarnessItem[]; open
   );
 };
 
-export const LearnFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }) => {
-  const learn = snapshot.learn ?? OFF;
-  const [view, setView] = useState<View>('runs');
+export const LearnFloat = ({ f }: { f: Float; snapshot: Snapshot }) => {
+  const [view, setView] = useState<View>('instructions');
   // 人間が開閉した枝だけを覚える。覚えていない枝は、有効なら開き、無効なら畳む。
   const [opened, setOpened] = useState(new Map<string, boolean>());
   const harness = useFetch(() => api.harness(), []);
@@ -99,7 +77,7 @@ export const LearnFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }) =>
   const count = (kind: HarnessItem['kind']) => all.filter((h) => h.kind === kind).length;
   const flip = (group: string, open: boolean) => setOpened((m) => new Map(m).set(group, open));
   const onToggle: Toggle = (t, on) => void attempt('有効・無効の切り替え', () => api.harnessToggle(t, on)).then(harness.reload);
-  const kindToggle = view === 'runs' ? undefined : harness.data?.kindToggles[view];
+  const kindToggle = harness.data?.kindToggles[view];
   return (
     <FloatFrame f={f} title={LEARN_TITLE} icon={LEARN_ICON} controls={[{ kind: 'close', label: '閉じる', onClick: close }]}>
       <div class="recycle">
@@ -108,12 +86,7 @@ export const LearnFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }) =>
             <section class="xp-task">
               <h3 class="xp-task-title">学習のタスク</h3>
               <div class="xp-task-body">
-                <button class="xp-task-link" disabled={learn.running} onClick={learnNow}><AppIcon icon={LEARN_ICON} />今すぐ学習する</button>
-                <label class="check">
-                  <input type="checkbox" role="switch" checked={learn.scheduled} onChange={(e) => schedule(e.currentTarget.checked)} />
-                  定期的に学習する
-                </label>
-                <button class="xp-task-link" aria-pressed={view === 'runs'} onClick={() => setView('runs')}>学習の履歴</button>
+                <button class="xp-task-link" title="ワークフロー「人間の指示から学習」で、動かす時刻を決めたり今すぐ動かしたりします" onClick={openWorkflow}><AppIcon icon={WORKFLOW_ICON} />学習のワークフローを開く</button>
               </div>
             </section>
             <section class="xp-task">
@@ -129,30 +102,18 @@ export const LearnFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }) =>
             <section class="xp-task">
               <h3 class="xp-task-title">詳細</h3>
               <div class="xp-task-body">
-                {learn.running && <p>提案を作っています…</p>}
-                {learn.error && <p class="recycle-error">{learn.error}</p>}
-                {view === 'runs' ? (
-                  <>
-                    <p>前回より後の人間の発言から、人間が教えたことを拾い、CLAUDE.md・スキル・記憶・フックへの差分を提案させます。</p>
-                    <p>定期的に学習するときは、作業が止まって 90 分たったら、1 日 1 回まで動きます。</p>
-                    <p>提案はセッションのチャットに届きます。承認した提案だけが書き込まれます。</p>
-                  </>
-                ) : (
-                  <>
-                    {kindToggle && (
-                      <label class="check">
-                        <input type="checkbox" role="switch" checked={kindToggle.enabled} onChange={(e) => onToggle(kindToggle, e.currentTarget.checked)} />
-                        {KINDS[view as HarnessItem['kind']]}を使う
-                      </label>
-                    )}
-                    <p>Claude Code が読む指示です。行をダブルクリックすると、メモ帳で開いて直せます。スキルの「いつ効くか」は SKILL.md の description です。</p>
-                    <p>スイッチは ~/.claude/settings.json に書き、次に始めるセッションから効きます。{view === 'hook' && 'フックは 1 つずつは止められず、まとめて止めます。'}</p>
-                  </>
+                {kindToggle && (
+                  <label class="check">
+                    <input type="checkbox" role="switch" checked={kindToggle.enabled} onChange={(e) => onToggle(kindToggle, e.currentTarget.checked)} />
+                    {KINDS[view]}を使う
+                  </label>
                 )}
+                <p>Claude Code が読む指示です。行をダブルクリックすると、メモ帳で開いて直せます。スキルの「いつ効くか」は SKILL.md の description です。</p>
+                <p>スイッチは ~/.claude/settings.json に書き、次に始めるセッションから効きます。{view === 'hook' && 'フックは 1 つずつは止められず、まとめて止めます。'}</p>
               </div>
             </section>
           </aside>
-          <div class="recycle-list">{view === 'runs' ? <Runs learn={learn} now={snapshot.now} /> : <Harness items={items} opened={opened} flip={flip} onToggle={onToggle} />}</div>
+          <div class="recycle-list"><Harness items={items} opened={opened} flip={flip} onToggle={onToggle} /></div>
         </div>
       </div>
     </FloatFrame>

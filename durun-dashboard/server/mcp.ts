@@ -13,6 +13,7 @@ import { sessionIdForPid } from './hooks.ts';
 import { resolveCommit, resolveRange } from './integrations.ts';
 import { proofCommentedAt, readProofFile, writeProofFile } from './proofFiles.ts';
 import { MAX_SENTENCES, commentFindings, proofReport, proofread, revise } from './proofread.ts';
+import { learnDigest } from './reflect.ts';
 import { type ProofSentence, parseProof } from './proofText.ts';
 import { changed, inferFormat, newId, state, touch, writeDocFile, type StoredAttention } from './store.ts';
 
@@ -124,6 +125,11 @@ const TOOLS = [
       },
       required: ['views'],
     },
+  },
+  {
+    name: 'learn_digest',
+    description: '学習のワークフローで使う。前に呼んだときより後の人間の発言を、直前の Claude の発言と組にしてファイルに書き、そのパスと、発言があった作業ディレクトリを返す。初めて呼ぶときは 1 日前から集める。',
+    inputSchema: { type: 'object', properties: {} },
   },
   {
     name: 'set_task',
@@ -641,6 +647,12 @@ const reviewRange = async (sessionId: string, args: ToolArgs): Promise<DiffRange
   return resolveRange(cwd, from, str(args.to) ?? 'HEAD');
 };
 
+const learnDigestResult = () => {
+  const digest = learnDigest();
+  if (!digest) return textResult('前回より後に、人間の発言がありません。');
+  return textResult(`人間の発言: ${digest.file}\n集め始めた時刻: ${new Date(digest.since).toISOString()}\n発言があった作業ディレクトリ: ${digest.cwds.join('、')}`);
+};
+
 const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, params: RpcParams = {}): void => {
   const sessionId = sessionIdOf(req);
   const args = (params.arguments ?? {}) as ToolArgs;
@@ -679,6 +691,8 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
       return void showBranches(req, sessionId, args).then((result) => send(res, { id: rpcId, result }));
     case 'set_task':
       return send(res, { id: rpcId, result: setTask(sessionId, args) });
+    case 'learn_digest':
+      return send(res, { id: rpcId, result: learnDigestResult() });
     case 'start_session':
       return startSessionTool(res, rpcId, params, sessionId, args);
     case 'send_to_session':
