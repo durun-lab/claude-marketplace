@@ -2076,7 +2076,12 @@ table.data { width: 100%; border-collapse: collapse; }
 .session-timeline-chart { flex: 1; min-height: 0; overflow-y: auto; }
 .session-timeline-grid { stroke: var(--border, #ddd); stroke-width: 1; }
 .session-timeline-tick { font-size: 10px; fill: var(--muted); }
-.session-timeline-name { font-size: 11px; fill: currentColor; }
+.session-timeline-axis { position: sticky; top: 0; z-index: 1; display: flex; background: var(--surface); border-bottom: 1px solid var(--border); }
+.session-timeline-count { flex: 0 0 var(--label-w); font-size: 10px; color: var(--muted); align-self: center; }
+.session-timeline-row { display: flex; align-items: center; content-visibility: auto; contain-intrinsic-size: auto 22px; }
+.session-timeline-row:hover { background: var(--hover, rgba(127, 127, 127, .12)); }
+.session-timeline-row svg { flex: none; }
+.session-timeline-name { flex: 0 0 var(--label-w); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; padding-right: 6px; }
 .session-timeline-mark { font-size: 10px; fill: currentColor; color: var(--text, #222); }
 .session-timeline-mark.is-question, .session-timeline-mark.is-answer { fill: var(--idle); color: var(--idle); font-weight: 700; }
 .session-timeline-mark.is-compact { fill: var(--muted); color: var(--muted); }
