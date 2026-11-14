@@ -24,8 +24,20 @@ const close = () => dock(WORKFLOW_KEY, '', WORKFLOW_KEY);
 
 export const WorkflowIcon = () => <DesktopIcon icon={WORKFLOW_ICON} title={WORKFLOW_TITLE} hint="時刻やレビュー依頼、改善要望をきっかけに、セッションを動かします。ダブルクリックで開きます" onLaunch={openWorkflow} />;
 
+/** 月の何日目か。負の数は月末から数える。 */
+const nthText = (n: number, unit: string): string => (n === -1 ? `最終${unit}` : n < 0 ? `最後から ${-n} ${unit}目` : `${n} ${unit}目`);
+
+const scheduleText = (t: Extract<WorkflowTrigger, { kind: 'schedule' }>): string => {
+  const parts = [
+    ...(t.days ? [t.days.map((d) => DAYS[d]).join('')] : []),
+    ...(t.dates ? [`毎月 ${t.dates.map((d) => (d === -1 ? '末日' : d < 0 ? `末日の ${-d - 1} 日前` : `${d} 日`)).join('・')}`] : []),
+    ...(t.businessDays ? [`毎月 ${t.businessDays.map((d) => nthText(d, '営業日')).join('・')}`] : []),
+  ];
+  return `${parts.length ? parts.join(' ') : '毎日'} ${t.at}`;
+};
+
 const triggerText = (t: WorkflowTrigger): string =>
-  t.kind === 'github-review' ? 'レビュー依頼' : t.kind === 'slack-mention' ? 'Slack のメンション' : t.kind === 'jira-mention' ? 'JIRA のメンション' : t.kind === 'feedback' ? '改善要望' : `${t.days ? `${t.days.map((d) => DAYS[d]).join('')} ` : '毎日 '}${t.at}`;
+  t.kind === 'github-review' ? 'レビュー依頼' : t.kind === 'slack-mention' ? 'Slack のメンション' : t.kind === 'jira-mention' ? 'JIRA のメンション' : t.kind === 'feedback' ? '改善要望' : scheduleText(t);
 
 const actionText = (w: WorkflowInfo): string => (w.mode === 'continue' ? `1 つのセッションを引き継ぐ${w.compact ? '（毎回 compact）' : ''}${w.compactWindow ? `（${w.compactWindow / 1000} 千トークンで自動 compact）` : ''}` : `新しいセッション（同時 ${w.maxSessions ?? 1} まで）`);
 

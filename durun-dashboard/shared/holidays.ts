@@ -19,7 +19,7 @@ const isNationalHoliday = (date: Date): boolean =>
 
 const addDays = (date: Date, days: number): Date => new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 
-/** 土日と国民の祝日に加え、祝日に挟まれた日（国民の休日）と、日曜の祝日の後で最初の祝日でない日（振替休日）を休みとする。日付は画面の時刻で見る。 */
+/** 土日と国民の祝日に加え、祝日に挟まれた日（国民の休日）と、日曜の祝日の後で最初の祝日でない日（振替休日）を休みとする。日付は動いている環境の時刻で見る。 */
 export const isOffDay = (date: Date): boolean => {
   if (date.getDay() === 0 || date.getDay() === 6 || isNationalHoliday(date)) return true;
   if (isNationalHoliday(addDays(date, -1)) && isNationalHoliday(addDays(date, 1))) return true;

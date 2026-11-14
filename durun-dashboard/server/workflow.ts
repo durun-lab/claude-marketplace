@@ -12,6 +12,7 @@ import { COMPACT_WINDOW_MAX, COMPACT_WINDOW_MIN, EFFORT_LEVELS, type BurstKind, 
 import { CLAUDE_DIR, isAlive, readLiveSessions } from './claude.ts';
 import { COMPACT_COMMAND, compactSession, sendMessage, startTrackedSession } from './deliver.ts';
 import { DONE_MARK, feedbackEvent, finishItems, improveWorkflow, onFeedback, pendingItems } from './improve.ts';
+import { isOffDay } from '../shared/holidays.ts';
 import { githubInbox, jiraMentions } from './integrations.ts';
 import { LEARN_DIR } from './reflect.ts';
 import { slackMentions } from './slack.ts';
@@ -47,12 +48,16 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 
 const positiveInt = (v: unknown): number | undefined => (Number.isInteger(v) && (v as number) > 0 ? (v as number) : undefined);
 
+const intsOf = (v: unknown, ok: (n: number) => boolean): number[] | undefined => (Array.isArray(v) ? v.filter((n): n is number => Number.isInteger(n) && ok(n)) : undefined);
+
 const triggerOf = (raw: unknown): WorkflowTrigger => {
   if (isObject(raw) && (raw.kind === 'github-review' || raw.kind === 'slack-mention' || raw.kind === 'jira-mention')) return { kind: raw.kind };
   if (isObject(raw) && raw.kind === 'feedback') return { kind: 'feedback' };
   if (isObject(raw) && raw.kind === 'schedule' && typeof raw.at === 'string' && TIME_PATTERN.test(raw.at)) {
-    const days = Array.isArray(raw.days) ? raw.days.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6) : undefined;
-    return { kind: 'schedule', at: raw.at, ...(days?.length ? { days } : {}) };
+    const days = intsOf(raw.days, (d) => d >= 0 && d <= 6);
+    const dates = intsOf(raw.dates, (d) => d !== 0 && Math.abs(d) <= 31);
+    const businessDays = intsOf(raw.businessDays, (d) => d !== 0 && Math.abs(d) <= 23);
+    return { kind: 'schedule', at: raw.at, ...(days?.length ? { days } : {}), ...(dates?.length ? { dates } : {}), ...(businessDays?.length ? { businessDays } : {}) };
   }
   throw new Error(`トリガー ${JSON.stringify(raw)} を読めません`);
 };
@@ -206,7 +211,24 @@ const migrateLegacyFile = (): void => {
 };
 
 /** 時刻のトリガーの時刻のうち、from より後で to までに過ぎたものがあるか。時刻と曜日は、このマシンの時間帯で数える。 */
-export const scheduleDue = (t: Extract<WorkflowTrigger, { kind: 'schedule' }>, from: number, to: number): boolean => {
+type Schedule = Extract<WorkflowTrigger, { kind: 'schedule' }>;
+
+/** 月の中で、前から数えた番号（1 始まり）と、後ろから数えた番号（-1 始まり）の両方で合うか。 */
+const nthMatches = (list: number[], index: number, count: number): boolean => list.includes(index + 1) || list.includes(index - count);
+
+/** その日が、曜日と日付と営業日の指定にすべて合うか。 */
+export const dayMatches = (t: Schedule, d: Date): boolean => {
+  if (t.days && !t.days.includes(d.getDay())) return false;
+  const [y, m] = [d.getFullYear(), d.getMonth()];
+  const length = new Date(y, m + 1, 0).getDate();
+  if (t.dates && !nthMatches(t.dates, d.getDate() - 1, length)) return false;
+  if (!t.businessDays) return true;
+  const business = Array.from({ length }, (_, i) => i + 1).filter((date) => !isOffDay(new Date(y, m, date)));
+  const index = business.indexOf(d.getDate());
+  return index >= 0 && nthMatches(t.businessDays, index, business.length);
+};
+
+export const scheduleDue = (t: Schedule, from: number, to: number): boolean => {
   const [h = 0, m = 0] = t.at.split(':').map(Number);
   const since = Math.max(from, to - LOOKBACK_MS);
   const day = new Date(since);
@@ -214,7 +236,7 @@ export const scheduleDue = (t: Extract<WorkflowTrigger, { kind: 'schedule' }>, f
   for (let at = day.getTime(); at <= to; at += DAY_MS) {
     const d = new Date(at);
     d.setHours(h, m, 0, 0);
-    if (d.getTime() > since && d.getTime() <= to && (!t.days || t.days.includes(d.getDay()))) return true;
+    if (d.getTime() > since && d.getTime() <= to && dayMatches(t, d)) return true;
   }
   return false;
 };

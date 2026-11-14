@@ -430,10 +430,11 @@ export type Harness = { items: HarnessItem[]; kindToggles: Partial<Record<Harnes
 
 /**
  * ワークフローのトリガー。schedule は at（HH:MM）に動き、days（0 が日曜）があればその曜日だけ動く。
+ * dates があればその日付だけ、businessDays があれば月の何営業日目かが合う日だけ動く。どちらも負の数は月末から数え、-1 が最後の日。営業日は土日と日本の祝日を除いた日。
  * github-review は、自分へのレビュー依頼が新しく届いたときに動く。slack-mention と jira-mention は、Slack と JIRA のコメントで自分へのメンションが新しく届いたときに動く。
  * feedback は、ダッシュボードへの改善要望がたまっているときに、前のウェーブを終えてから、たまった要望を 1 つのウェーブとして渡す。
  */
-export type WorkflowTrigger = { kind: 'schedule'; at: string; days?: number[] } | { kind: 'github-review' } | { kind: 'slack-mention' } | { kind: 'jira-mention' } | { kind: 'feedback' };
+export type WorkflowTrigger = { kind: 'schedule'; at: string; days?: number[]; dates?: number[]; businessDays?: number[] } | { kind: 'github-review' } | { kind: 'slack-mention' } | { kind: 'jira-mention' } | { kind: 'feedback' };
 /** バースト制御でまとめるトリガー。時刻と改善要望は、それぞれ 1 回で 1 つの依頼になるので含めない。 */
 /** Claude Code の autoCompactWindow が受け付けるトークン数。 */
 export const COMPACT_WINDOW_MIN = 100_000;
