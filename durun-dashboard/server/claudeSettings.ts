@@ -1,7 +1,7 @@
 // コントロール パネルから ~/.claude/settings.json を読み書きする。直した項目のほかは、書いてあったまま残す。
 import fs from 'node:fs';
 import path from 'node:path';
-import { type ClaudeSettingField, claudeSettingFields } from '../shared/claudeSettings.ts';
+import { type ClaudeSettingField, claudeSettingFields, parseClaudeSettings } from '../shared/claudeSettings.ts';
 import { cached } from './cache.ts';
 import { CLAUDE_DIR } from './claude.ts';
 
@@ -21,7 +21,7 @@ export const claudeSettingsFields = (fresh = false): Promise<ClaudeSettingField[
 
 /** 今の中身。読めない JSON は、書き換えて壊さないよう、理由を返す。 */
 export const readClaudeSettings = (): Record<string, unknown> =>
-  fs.existsSync(FILE) ? (JSON.parse(fs.readFileSync(FILE, 'utf8')) as Record<string, unknown>) : {};
+  fs.existsSync(FILE) ? parseClaudeSettings(fs.readFileSync(FILE, 'utf8')) : {};
 
 /** key の値を value にする。value が undefined なら、項目を消して既定に戻す。 */
 export const writeClaudeSetting = (key: string, value: unknown): void => {

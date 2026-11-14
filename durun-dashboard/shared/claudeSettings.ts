@@ -25,3 +25,10 @@ export const claudeSettingFields = (schema: { properties?: Record<string, Schema
     .filter(([key, p]) => key !== '$schema' && !NOT_FOR_USER.test(p.description ?? ''))
     .map(([key, p]) => ({ key, description: p.description ?? '', kind: kindOf(p), ...(kindOf(p) === 'enum' ? { options: p.enum as string[] } : {}) }))
     .sort((a, b) => a.key.localeCompare(b.key));
+
+/**
+ * settings.json の中身を読む。Claude Code は ] と } の手前のカンマを許すので、文字列の外にあるものは外してから読む。
+ * 読めなければ、書き換えて壊さないよう投げる。
+ */
+export const parseClaudeSettings = (text: string): Record<string, unknown> =>
+  JSON.parse(text.replace(/("(?:\\.|[^"\\])*")|,(\s*[\]}])/g, (_, str: string | undefined, close: string) => str ?? close)) as Record<string, unknown>;
