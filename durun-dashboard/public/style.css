@@ -2069,6 +2069,7 @@ table.data { width: 100%; border-collapse: collapse; }
 /* ウィジェット「タイムライン」 */
 .session-timeline { display: flex; flex-direction: column; gap: 6px; }
 .session-timeline-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.session-timeline-bar select { width: auto; }
 .session-timeline-legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
 .session-timeline-legend span { display: inline-flex; align-items: center; gap: 4px; }
 .session-timeline-legend i { display: inline-block; width: 16px; }

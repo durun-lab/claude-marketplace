@@ -45,6 +45,10 @@ const MARK: Record<TimelineEventKind, { glyph: string; label: string }> = {
 
 const lastAt = (r: TimelineRow): number => Math.max(r.states.at(-1)?.[0] ?? 0, r.events.at(-1)?.[0] ?? 0);
 
+/** from より後に、出来事があったか、作業中か実行中の区間が重なる行だけを描く。止まったままのセッションで行を埋めないため。 */
+const movedSince = (r: TimelineRow, from: number): boolean =>
+  r.events.some(([at]) => at >= from) || r.states.some(([, state], i) => (state === 'busy' || state === 'work') && (r.states[i + 1]?.[0] ?? Infinity) > from);
+
 const Chart = ({ rows, from, now }: { rows: TimelineRow[]; from: number; now: number }) => {
   const box = useRef<HTMLDivElement>(null);
   const width = useWidth(box);
@@ -95,14 +99,14 @@ const Chart = ({ rows, from, now }: { rows: TimelineRow[]; from: number; now: nu
   );
 };
 
-/** 描く長さの中に記録がある行を、最後に動いたものから並べる。 */
+/** 描く長さの中で動いた行を、最後に動いたものから並べる。 */
 export const SessionTimeline = ({ snapshot, settings, onSettings }: WidgetProps<{ snapshot: Snapshot }>) => {
   const hours = HOURS.includes(Number(settings.hours)) ? Number(settings.hours) : DEFAULT_HOURS;
   const tick = Math.floor(snapshot.now / REFRESH_MS);
   const { data, error } = useFetch(() => api.timeline(), [tick]);
   const now = snapshot.now;
   const from = now - hours * HOUR_MS;
-  const rows = (data ?? []).filter((r) => lastAt(r) >= from || r.states.at(-1)?.[1] !== 'gone').filter((r) => r.states.length).sort((a, b) => lastAt(b) - lastAt(a));
+  const rows = (data ?? []).filter((r) => movedSince(r, from)).sort((a, b) => lastAt(b) - lastAt(a));
   return (
     <div class="widget-body session-timeline">
       <div class="session-timeline-bar">
