@@ -51,8 +51,8 @@ const Switch = ({ t, label, onToggle }: { t: HarnessToggle; label: string; onTog
   <input type="checkbox" role="switch" class="learn-switch" checked={t.enabled} aria-label={`${label}を使う`} title={t.enabled ? '使う（クリックで止める）' : '止めている（クリックで使う）'} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} onChange={(e) => onToggle(t, e.currentTarget.checked)} />
 );
 
-/** 置き場所ごとの枝に分けて並べる。枝の行をクリックすると開閉する。行をダブルクリックするか Enter で、その指示のファイルをメモ帳で開く。 */
-const Harness = ({ items, closed, flip, onToggle }: { items: HarnessItem[]; closed: Set<string>; flip: (group: string) => void; onToggle: Toggle }) => {
+/** 置き場所ごとの枝に分けて並べる。枝の行をクリックすると開閉する。止めているプラグインの枝は、開くまで畳んでおく。行をダブルクリックするか Enter で、その指示のファイルをメモ帳で開く。 */
+const Harness = ({ items, opened, flip, onToggle }: { items: HarnessItem[]; opened: Map<string, boolean>; flip: (group: string, open: boolean) => void; onToggle: Toggle }) => {
   const groups = Map.groupBy(items, (h) => h.group);
   return (
     <table class="recycle-table learn-harness">
@@ -61,10 +61,10 @@ const Harness = ({ items, closed, flip, onToggle }: { items: HarnessItem[]; clos
       </thead>
       <tbody>
         {[...groups].map(([group, list]) => {
-          const open = !closed.has(group);
           const toggle = list[0]?.groupToggle;
+          const open = opened.get(group) ?? toggle?.enabled !== false;
           return [
-            <tr key={`group\n${group}`} class="learn-group" tabIndex={0} aria-expanded={open} onClick={() => flip(group)} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && flip(group)}>
+            <tr key={`group\n${group}`} class="learn-group" tabIndex={0} aria-expanded={open} onClick={() => flip(group, !open)} onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && flip(group, !open)}>
               <td colSpan={4}>
                 <span class="learn-twisty">{open ? '−' : '+'}</span>
                 {toggle && <Switch t={toggle} label={group} onToggle={onToggle} />}
@@ -91,12 +91,13 @@ const Harness = ({ items, closed, flip, onToggle }: { items: HarnessItem[]; clos
 export const LearnFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }) => {
   const learn = snapshot.learn ?? OFF;
   const [view, setView] = useState<View>('runs');
-  const [closed, setClosed] = useState(new Set<string>());
+  // 人間が開閉した枝だけを覚える。覚えていない枝は、有効なら開き、無効なら畳む。
+  const [opened, setOpened] = useState(new Map<string, boolean>());
   const harness = useFetch(() => api.harness(), []);
   const all = harness.data?.items ?? [];
   const items = all.filter((h) => h.kind === view);
   const count = (kind: HarnessItem['kind']) => all.filter((h) => h.kind === kind).length;
-  const flip = (group: string) => setClosed((c) => (c.delete(group) ? new Set(c) : new Set(c).add(group)));
+  const flip = (group: string, open: boolean) => setOpened((m) => new Map(m).set(group, open));
   const onToggle: Toggle = (t, on) => void attempt('有効・無効の切り替え', () => api.harnessToggle(t, on)).then(harness.reload);
   const kindToggle = view === 'runs' ? undefined : harness.data?.kindToggles[view];
   return (
@@ -151,7 +152,7 @@ export const LearnFloat = ({ f, snapshot }: { f: Float; snapshot: Snapshot }) =>
               </div>
             </section>
           </aside>
-          <div class="recycle-list">{view === 'runs' ? <Runs learn={learn} now={snapshot.now} /> : <Harness items={items} closed={closed} flip={flip} onToggle={onToggle} />}</div>
+          <div class="recycle-list">{view === 'runs' ? <Runs learn={learn} now={snapshot.now} /> : <Harness items={items} opened={opened} flip={flip} onToggle={onToggle} />}</div>
         </div>
       </div>
     </FloatFrame>
