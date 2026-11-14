@@ -1,4 +1,5 @@
 import type { ComponentChildren } from 'preact';
+import { SessionTimeline, TIMELINE_TITLE } from './SessionTimeline.tsx';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { type Attention, type ChatEntry, type DocMeta, type OutboxMessage, type Session, type Snapshot, bookmarkKey } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
@@ -368,6 +369,7 @@ const WIDGETS: Record<string, Widget<SessionData>> = {
   [JIRA_WIDGET]: { title: JIRA_VIEW_TITLE, icon: JIRA_ICON, Body: JiraWidget, size: { w: 12, h: ROWS - 6 }, sketch: 'text' },
   [SLACK_WIDGET]: { title: SLACK_THREAD_TITLE, icon: '💬', Body: SessionSlack, size: { w: 12, h: ROWS - 6 }, sketch: 'chat', controls: slackThreadControls },
   pr: { title: PR_REVIEW_TITLE, icon: '🔍', Body: PrReview, size: { w: 12, h: ROWS - 6 }, sketch: 'chat' },
+  timeline: { title: TIMELINE_TITLE, icon: '📊', Body: ({ s, snapshotAt, settings, onSettings }) => <SessionTimeline now={snapshotAt} current={s.id} settings={settings} onSettings={onSettings} />, size: { w: 12, h: 8 }, sketch: 'chart' },
   usage: { title: '使用量', icon: '📊', Body: UsageWidget, size: { w: COLS, h: ROWS }, sketch: 'chart' },
 };
 

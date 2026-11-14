@@ -235,7 +235,7 @@ const WIDGETS: Record<string, Widget<HomeData>> = {
   sessions: { title: 'セッション', icon: '🗂️', Body: SessionsWidget, size: { w: 14, h: ROWS }, sketch: 'cards' },
   jira: { title: JIRA_TITLE, icon: JIRA_ICON, Body: JiraIssues, size: { w: 8, h: ROWS / 2 }, sketch: 'list', controls: jiraControls },
   slack: { title: SLACK_THREAD_TITLE, icon: '💬', Body: SlackThread, size: { w: 8, h: ROWS / 2 }, sketch: 'chat', controls: slackThreadControls },
-  timeline: { title: TIMELINE_TITLE, icon: '📊', Body: SessionTimeline, size: { w: 12, h: ROWS / 2 }, sketch: 'chart' },
+  timeline: { title: TIMELINE_TITLE, icon: '📊', Body: ({ snapshot, settings, onSettings }) => <SessionTimeline now={snapshot.now} settings={settings} onSettings={onSettings} />, size: { w: 12, h: ROWS / 2 }, sketch: 'chart' },
   github: { title: GITHUB_INBOX_TITLE, icon: GITHUB_ICON, Body: GithubInbox, size: { w: 8, h: ROWS / 2 }, sketch: 'list', controls: githubInboxControls },
   [EXPLORER_KEY]: { title: EXPLORER_TITLE, icon: EXPLORER_ICON, Body: () => <ExplorerIcon />, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openExplorer() },
   [IE_KEY]: { title: IE_TITLE, icon: IE_ICON, Body: InternetExplorerIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: () => openInternetExplorer() },

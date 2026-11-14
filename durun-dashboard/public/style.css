@@ -2082,6 +2082,7 @@ table.data { width: 100%; border-collapse: collapse; }
 .session-timeline-axis { position: sticky; top: 0; z-index: 1; display: flex; background: var(--surface); border-bottom: 1px solid var(--border); }
 .session-timeline-count { flex: 0 0 var(--label-w); font-size: 10px; color: var(--muted); align-self: center; }
 .session-timeline-row { display: flex; align-items: center; content-visibility: auto; contain-intrinsic-size: auto 22px; }
+.session-timeline-row.is-current { background: color-mix(in srgb, var(--accent) 12%, transparent); }
 .session-timeline-row:hover { background: var(--hover, rgba(127, 127, 127, .12)); }
 .session-timeline-row svg { flex: none; }
 .session-timeline-name { flex: 0 0 var(--label-w); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; padding-right: 6px; }
