@@ -14,7 +14,7 @@ import { Feedback } from './Feedback.tsx';
 import { type Float, floatUp, useFloats } from './Float.tsx';
 import { Header } from './Header.tsx';
 import { HOME_KEY, receiveDashboards } from './dashboards.ts';
-import { Home, HomeFloat, NEW_SESSION_KEY, NewSessionFloat } from './Home.tsx';
+import { Home, HomeFloat, NEW_SESSION_KEY, NewSessionFloat, openNewSession } from './Home.tsx';
 import { AccountsContext, CacheVersionContext, NowContext, pickInWidget, useNow, useSnapshot } from './hooks.ts';
 import { useDeliveryFailureEffects } from './deliveryEffects.ts';
 import { useLightMode } from './lightMode.ts';
@@ -36,7 +36,7 @@ import { type Route, currentPage, href, useRoute } from './router.ts';
 import { SearchPage } from './Search.tsx';
 import { useSessionToasts } from './sessionEffects.ts';
 import { SESSION_KEY, SessionFloat, SessionPage, openChatAt } from './SessionPage.tsx';
-import { EDIT_SHORTCUT, HOME_SHORTCUT, isShortcut } from './shortcut.ts';
+import { EDIT_SHORTCUT, HOME_SHORTCUT, NEW_SESSION_ALT_SHORTCUT, NEW_SESSION_SHORTCUT, isShortcut } from './shortcut.ts';
 import { TERMINAL_KEY, TerminalFloat } from './Terminal.tsx';
 import { FL_KEY, FlConnectFloat } from './FlConnect.tsx';
 import { MM_KEY, MovieMakerFloat } from './MovieMaker.tsx';
@@ -177,6 +177,15 @@ const App = () => {
     addEventListener('keydown', onKey);
     return () => removeEventListener('keydown', onKey);
   }, [route.page]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!isShortcut(e, NEW_SESSION_SHORTCUT) && !isShortcut(e, NEW_SESSION_ALT_SHORTCUT)) return;
+      e.preventDefault();
+      openNewSession();
+    };
+    addEventListener('keydown', onKey);
+    return () => removeEventListener('keydown', onKey);
+  }, []);
   // セッションの画面をいくつものタブで開いても見分けられるよう、タブ名をセッション名にする。
   const here = route.page === 'session' ? snapshot?.sessions.find((s) => s.id === route.id) : undefined;
   useAttentionEffects(fresh, here?.name);

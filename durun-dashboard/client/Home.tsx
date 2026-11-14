@@ -7,6 +7,7 @@ import { Dashboard, type EditProps, type Widget, type WidgetProps } from './Dash
 import { DesktopIcon } from './apps.tsx';
 import { BOOKMARKS_ICON, BOOKMARKS_KEY, BOOKMARKS_TITLE, BookmarksIcon, openBookmarks } from './Bookmarks.tsx';
 import { jiraSpaces } from './completion.ts';
+import { NEW_SESSION_ALT_SHORTCUT, NEW_SESSION_SHORTCUT, shortcutLabel } from './shortcut.ts';
 import { EXPLORER_ICON, EXPLORER_KEY, EXPLORER_TITLE, ExplorerIcon, openExplorer } from './Explorer.tsx';
 import { IE_ICON, IE_KEY, IE_TITLE, InternetExplorerIcon, openInternetExplorer } from './InternetExplorer.tsx';
 import { NOTEPAD_ICON, NOTEPAD_KEY, NOTEPAD_TITLE, NotepadIcon, openNotepad } from './Notepad.tsx';
@@ -217,7 +218,7 @@ const SessionsWidget = ({ snapshot }: HomeWidgetProps) => {
       <div class="section-head">
         <h2 class="section-title">セッション</h2>
         <div class="actions">
-          <button class="btn btn-sm btn-primary" data-icon="add" aria-expanded={creating} onClick={() => openNewSession()}>新規セッション</button>
+          <button class="btn btn-sm btn-primary" data-icon="add" aria-expanded={creating} title={`新しいセッションを開く（${shortcutLabel(NEW_SESSION_ALT_SHORTCUT)}。全画面では ${shortcutLabel(NEW_SESSION_SHORTCUT)}）`} onClick={() => openNewSession()}>新規セッション</button>
         </div>
       </div>
       <div class={`widget-body${ids.length ? ' is-selecting' : ''}`}>
