@@ -17,7 +17,7 @@ const LABEL_ABOVE = -10;
 const LABEL_BELOW = 18;
 const LIMIT_LABEL_RISE = 6;
 
-const useWidth = (ref: RefObject<HTMLElement>): number => {
+export const useWidth = (ref: RefObject<HTMLElement>): number => {
   const [width, setWidth] = useState(0);
   useEffect(() => {
     const el = ref.current;

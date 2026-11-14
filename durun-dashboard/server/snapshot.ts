@@ -1,7 +1,7 @@
 // 画面に出す全体像を、Claude Code のファイル、外部の情報源、ダッシュボードの状態から組み立てる。
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Attention, BgTask, Session, SessionStatus, Snapshot, Subagent, Usage } from '../shared/types.ts';
+import type { Attention, BgTask, Session, SessionStatus, Snapshot, Subagent, TimelineRow, Usage } from '../shared/types.ts';
 import { authRequests, claudeLoginState } from './auth.ts';
 import { cacheVersion } from './cache.ts';
 import * as claude from './claude.ts';
@@ -15,6 +15,7 @@ import { notionEnabled } from './notion.ts';
 import { proofCommentedAt } from './proofFiles.ts';
 import { accountRateLimits, currentRateLimits } from './rateLimits.ts';
 import { ensureSession, newId, persist, state, type SessionMeta } from './store.ts';
+import { TIMELINE_KEEP_MS, noteTimeline } from './timeline.ts';
 import { type Conversation, peekReplies, peekSummary, peekTasks, peekWaiting } from './suggest.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -433,10 +434,12 @@ export const buildSnapshot = (): Snapshot => {
   const sessions = listedSessions(live, now).map((m) => buildSession(m, live.get(m.id)));
   // 画面はテーマの前後の空白を除いてまとめるので、並べ替えた順と突き合わせられるよう、ここでも除く。
   const themes = arrangeThemes([...new Set(sessions.flatMap((s) => [s.theme.trim(), s.repo]))], state.themeOrder);
+  const attention = deriveAttention(sessions);
+  noteTimeline((state.timeline ??= { sessions: {}, asking: {} }), sessions, attention, now);
   return {
     now,
     sessions,
-    attention: deriveAttention(sessions),
+    attention,
     docs: state.docs.map(({ content: _content, ...meta }) => meta).reverse(),
     outbox: state.outbox,
     rateLimits: currentRateLimits(now),
@@ -464,4 +467,21 @@ export const buildSnapshot = (): Snapshot => {
     }),
     dashboards: state.dashboards,
   };
+};
+
+const noop = (): void => {};
+
+/**
+ * タイムラインのウィジェットの行。状態と質問はスナップショットごとの記録から、チャットの指示と compact は会話ログから読む。
+ * 会話ログは覚えた要約を読み、まだ読んでいない大きなログは裏で読ませて、読み終えたものから出す。
+ */
+export const timelineRows = (now = Date.now()): TimelineRow[] => {
+  const cutoff = now - TIMELINE_KEEP_MS;
+  return Object.entries(state.timeline?.sessions ?? {}).flatMap(([id, r]) => {
+    const meta = state.sessions[id];
+    if (!meta) return [];
+    const log = meta.transcriptPath ? claude.peekLog(meta.transcriptPath, false, noop).summary : undefined;
+    const said = (log?.texts ?? []).flatMap((e): TimelineRow['events'] => (e.kind === 'prompt' && e.at && e.at >= cutoff ? [[e.at, e.text.startsWith('/compact') ? 'compact' : 'prompt']] : []));
+    return [{ id, name: displayName(meta, log), states: r.states, events: [...said, ...r.events].sort((a, b) => a[0] - b[0]) }];
+  });
 };
