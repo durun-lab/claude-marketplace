@@ -2085,3 +2085,5 @@ table.data { width: 100%; border-collapse: collapse; }
 .session-timeline-mark { font-size: 10px; fill: currentColor; color: var(--text, #222); }
 .session-timeline-mark.is-question, .session-timeline-mark.is-answer { fill: var(--idle); color: var(--idle); font-weight: 700; }
 .session-timeline-mark.is-compact { fill: var(--muted); color: var(--muted); }
+.workflow-days-input { width: 9em; }
+.workflow-schedule select { width: auto; }
