@@ -43,70 +43,76 @@ const MARK: Record<TimelineEventKind, { glyph: string; label: string }> = {
   compact: { glyph: '◆', label: 'compact' },
 };
 
+const lastPrompt = (r: TimelineRow): number => r.events.findLast(([, kind]) => kind === 'prompt')?.[0] ?? 0;
+
 const lastAt = (r: TimelineRow): number => Math.max(r.states.at(-1)?.[0] ?? 0, r.events.at(-1)?.[0] ?? 0);
 
 /** from より後に、出来事があったか、作業中か実行中の区間が重なる行だけを描く。止まったままのセッションで行を埋めないため。 */
 const movedSince = (r: TimelineRow, from: number): boolean =>
   r.events.some(([at]) => at >= from) || r.states.some(([, state], i) => (state === 'busy' || state === 'work') && (r.states[i + 1]?.[0] ?? Infinity) > from);
 
+/** 1 つのセッションの行。名前は HTML で省略して出し、線と印は SVG で描く。 */
+const Lane = ({ r, x, ticks, from, now, plot }: { r: TimelineRow; x: (at: number) => number; ticks: number[]; from: number; now: number; plot: number }) => {
+  const y = ROW_H / 2;
+  return (
+    <div class="session-timeline-row">
+      <a class="session-timeline-name" href={href.session(r.id)} title={r.name}>{r.name}</a>
+      <svg width={plot + RIGHT} height={ROW_H} aria-hidden="true">
+        {ticks.map((t) => <line key={t} x1={x(t)} x2={x(t)} y1={0} y2={ROW_H} class="session-timeline-grid" />)}
+        {r.states.map(([at, state], j) => {
+          const end = r.states[j + 1]?.[0] ?? now;
+          if (state === 'gone' || end <= from) return null;
+          const line = LINE[state];
+          return (
+            <line key={at} x1={x(at)} x2={x(end)} y1={y} y2={y} stroke={line.color} stroke-width={line.width}>
+              <title>{`${line.label} ${clock(Math.max(at, from))}〜${clock(end)}`}</title>
+            </line>
+          );
+        })}
+        {r.events.filter(([at]) => at >= from).map(([at, kind], j) => (
+          <text key={`${at}-${j}`} x={x(at)} y={y - THICK / 2 - 1} text-anchor="middle" class={`session-timeline-mark is-${kind}`}>
+            <title>{`${MARK[kind].label} ${dateTime(at)}`}</title>
+            {MARK[kind].glyph}
+          </text>
+        ))}
+      </svg>
+    </div>
+  );
+};
+
+/** セッションが多くても時刻が読めるよう、時刻の目盛りは行を送っても上に残す。 */
 const Chart = ({ rows, from, now }: { rows: TimelineRow[]; from: number; now: number }) => {
   const box = useRef<HTMLDivElement>(null);
   const width = useWidth(box);
   const plot = Math.max(width - LABEL_W - RIGHT, 1);
-  const x = (at: number) => LABEL_W + ((Math.max(at, from) - from) / (now - from)) * plot;
+  const x = (at: number) => ((Math.max(at, from) - from) / (now - from)) * plot;
   const step = TICK_MS.find((ms) => (now - from) / ms <= 8) ?? (TICK_MS.at(-1) as number);
   const ticks = Array.from({ length: Math.floor((now - from) / step) + 1 }, (_, i) => Math.ceil(from / step) * step + i * step).filter((t) => t <= now);
-  const height = AXIS_H + rows.length * ROW_H;
   return (
-    <div ref={box} class="session-timeline-chart">
+    <div ref={box} class="session-timeline-chart" style={{ '--label-w': `${LABEL_W}px` }}>
       {width > 0 && (
-        <svg width={width} height={height} role="img" aria-label="セッションのタイムライン">
-          {ticks.map((t) => (
-            <g key={t}>
-              <line x1={x(t)} x2={x(t)} y1={AXIS_H - 4} y2={height} class="session-timeline-grid" />
-              <text x={x(t)} y={AXIS_H - 6} text-anchor="middle" class="session-timeline-tick">{clock(t)}</text>
-            </g>
-          ))}
-          {rows.map((r, i) => {
-            const y = AXIS_H + i * ROW_H + ROW_H / 2;
-            return (
-              <g key={r.id}>
-                <a href={href.session(r.id)}>
-                  <text x={4} y={y + 4} class="session-timeline-name"><title>{r.name}</title>{r.name.length > 12 ? `${r.name.slice(0, 12)}…` : r.name}</text>
-                </a>
-                {r.states.map(([at, state], j) => {
-                  const end = r.states[j + 1]?.[0] ?? now;
-                  if (state === 'gone' || end <= from) return null;
-                  const line = LINE[state];
-                  return (
-                    <line key={at} x1={x(at)} x2={x(end)} y1={y} y2={y} stroke={line.color} stroke-width={line.width}>
-                      <title>{`${line.label} ${clock(Math.max(at, from))}〜${clock(end)}`}</title>
-                    </line>
-                  );
-                })}
-                {r.events.filter(([at]) => at >= from).map(([at, kind], j) => (
-                  <text key={`${at}-${j}`} x={x(at)} y={y - THICK / 2 - 1} text-anchor="middle" class={`session-timeline-mark is-${kind}`}>
-                    <title>{`${MARK[kind].label} ${dateTime(at)}`}</title>
-                    {MARK[kind].glyph}
-                  </text>
-                ))}
-              </g>
-            );
-          })}
-        </svg>
+        <>
+          <div class="session-timeline-axis">
+            <span class="session-timeline-count">{rows.length} セッション</span>
+            <svg width={plot + RIGHT} height={AXIS_H} aria-hidden="true">
+              {ticks.map((t) => <text key={t} x={x(t)} y={AXIS_H - 5} text-anchor="middle" class="session-timeline-tick">{clock(t)}</text>)}
+            </svg>
+          </div>
+          {rows.map((r) => <Lane key={r.id} r={r} x={x} ticks={ticks} from={from} now={now} plot={plot} />)}
+        </>
       )}
     </div>
   );
 };
 
-/** 描く長さの中で動いた行を、最後に動いたものから並べる。 */
+/** 描く長さの中で動いた行を、最後にチャットで指示したものから並べ、指示の無い行は最後に動いたものから後ろに続ける。 */
 export const SessionTimeline = ({ snapshot, settings, onSettings }: WidgetProps<{ snapshot: Snapshot }>) => {
   const hours = HOURS.includes(Number(settings.hours)) ? Number(settings.hours) : DEFAULT_HOURS;
   const tick = Math.floor(snapshot.now / REFRESH_MS);
   const { data, error } = useFetch(() => api.timeline(), [tick]);
   const now = snapshot.now;
   const from = now - hours * HOUR_MS;
-  const rows = (data ?? []).filter((r) => movedSince(r, from)).sort((a, b) => lastAt(b) - lastAt(a));
+  const rows = (data ?? []).filter((r) => movedSince(r, from)).sort((a, b) => lastPrompt(b) - lastPrompt(a) || lastAt(b) - lastAt(a));
   return (
     <div class="widget-body session-timeline">
       <div class="session-timeline-bar">
