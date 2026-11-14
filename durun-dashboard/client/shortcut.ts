@@ -3,7 +3,7 @@
 const IS_MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
 
 /** key は小文字で書く。 */
-export type Shortcut = { key: string; shift?: boolean };
+export type Shortcut = { key: string; shift?: boolean; alt?: boolean };
 
 export const SEARCH_SHORTCUT: Shortcut = { key: 'k' };
 export const EDIT_SHORTCUT: Shortcut = { key: 'e', shift: true };
@@ -11,13 +11,19 @@ export const OPEN_SHORTCUT: Shortcut = { key: 'o' };
 export const SAVE_SHORTCUT: Shortcut = { key: 's' };
 export const HOME_SHORTCUT: Shortcut = { key: 'h' };
 export const FULLSCREEN_SHORTCUT: Shortcut = { key: 'f' };
+// Chrome は ⌘N を新しいウィンドウに予約していて、全画面で Keyboard Lock を掛けたときしかページに届かない。それ以外の画面では ⌥⌘N で受ける。
+export const NEW_SESSION_SHORTCUT: Shortcut = { key: 'n' };
+export const NEW_SESSION_ALT_SHORTCUT: Shortcut = { key: 'n', alt: true };
 
-export const shortcutLabel = ({ key, shift }: Shortcut): string =>
-  IS_MAC ? `${shift ? '⇧' : ''}⌘${key.toUpperCase()}` : `Ctrl+${shift ? 'Shift+' : ''}${key.toUpperCase()}`;
+export const shortcutLabel = ({ key, shift, alt }: Shortcut): string =>
+  IS_MAC ? `${alt ? '⌥' : ''}${shift ? '⇧' : ''}⌘${key.toUpperCase()}` : `Ctrl+${alt ? 'Alt+' : ''}${shift ? 'Shift+' : ''}${key.toUpperCase()}`;
 
-/** Chrome は、自動入力や datalist の候補を選んだときに、key の無い keydown を送る。 */
-export const isShortcut = (e: KeyboardEvent, { key, shift = false }: Shortcut): boolean =>
-  e.key?.toLowerCase() === key && (IS_MAC ? e.metaKey : e.ctrlKey) && e.shiftKey === shift && !e.isComposing;
+/**
+ * Chrome は、自動入力や datalist の候補を選んだときに、key の無い keydown を送る。
+ * Mac の Option は key を別の文字に変えるので、alt の組み合わせはキーの位置（code）で見る。
+ */
+export const isShortcut = (e: KeyboardEvent, { key, shift = false, alt = false }: Shortcut): boolean =>
+  (alt ? e.code === `Key${key.toUpperCase()}` && e.altKey : e.key?.toLowerCase() === key) && (IS_MAC ? e.metaKey : e.ctrlKey) && e.shiftKey === shift && !e.isComposing;
 
 // 修飾キーを素早く 2 回叩いたときだけ受ける。押し続けたときと、間にほかのキーやクリックを挟んだときは数えず、ショートカットの打ち始めと見分ける。
 const TAP_MS = 300;
