@@ -86,11 +86,31 @@ const skillsIn = async (dir: string, source: string, settings: Settings, plugin?
 };
 
 type InstalledPlugins = { plugins?: Record<string, { installPath?: string }[]> };
+type KnownMarketplaces = Record<string, { source?: { source?: string; path?: string } }>;
+type Marketplace = { plugins?: { name: string; source?: unknown }[] };
+
+/**
+ * ローカルのディレクトリから入れたマーケットプレイスの、プラグインごとの元のディレクトリ。
+ * キャッシュはインストールしたときの写しで、元のディレクトリで直したスキルが映らないので、元を読んで直せるようにする。
+ */
+const pluginSources = async (claudeDir: string): Promise<Map<string, string>> => {
+  const known = JSON.parse((await read(path.join(claudeDir, 'plugins', 'known_marketplaces.json'))) ?? '{}') as KnownMarketplaces;
+  const sources = await Promise.all(
+    Object.entries(known).map(async ([market, { source }]) => {
+      if (source?.source !== 'directory' || !source.path) return [];
+      const root = source.path;
+      const manifest = JSON.parse((await read(path.join(root, '.claude-plugin', 'marketplace.json'))) ?? '{}') as Marketplace;
+      return (manifest.plugins ?? []).flatMap((p) => (typeof p.source === 'string' ? [[`${p.name}@${market}`, path.resolve(root, p.source)] as const] : []));
+    }),
+  );
+  return new Map(sources.flat());
+};
 
 const skillsOf = async (claudeDir: string, settings: Settings): Promise<HarnessItem[]> => {
   const installed = JSON.parse((await read(path.join(claudeDir, 'plugins', 'installed_plugins.json'))) ?? '{}') as InstalledPlugins;
+  const sources = await pluginSources(claudeDir);
   const plugins = Object.entries(installed.plugins ?? {}).map(([id, list]) => {
-    const dir = list[0]?.installPath;
+    const dir = sources.get(id) ?? list[0]?.installPath;
     return dir ? skillsIn(path.join(dir, 'skills'), id.split('@')[0] ?? id, settings, id) : [];
   });
   return (await Promise.all([skillsIn(path.join(claudeDir, 'skills'), 'ユーザー', settings), ...plugins])).flat();
