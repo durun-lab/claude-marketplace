@@ -33,25 +33,73 @@ const cleaned = (s: WorkflowSettings): WorkflowSettings => ({
   effort: s.effort || undefined,
 });
 
-const ScheduleRow = ({ t, onChange, onRemove }: { t: Schedule; onChange: (t: Schedule) => void; onRemove: () => void }) => {
-  const toggle = (d: number) => {
-    const days = (t.days ?? []).includes(d) ? (t.days ?? []).filter((x) => x !== d) : [...(t.days ?? []), d].sort();
-    onChange({ kind: 'schedule', at: t.at, ...(days.length ? { days } : {}) });
+type MonthKey = 'dates' | 'businessDays';
+const MONTH: { key: MonthKey | ''; label: string }[] = [
+  { key: '', label: '毎月の指定なし' },
+  { key: 'dates', label: '毎月の日付' },
+  { key: 'businessDays', label: '毎月の営業日' },
+];
+
+/** 「1, 15, -1」のような打った文字を、日の番号の並びにする。0 と数でないものは捨てる。 */
+const parseDayList = (text: string): number[] => text.split(/[\s,、]+/).map(Number).filter((n) => Number.isInteger(n) && n !== 0);
+
+/** 曜日は何も選ばなければ毎日。毎月の日付と営業日は、どちらか 1 つを合わせて絞れる。曜日を切り替えても、日付と営業日の指定は残す。 */
+const ScheduleFields = ({ t, onChange }: { t: Schedule; onChange: (t: Schedule) => void }) => {
+  const month: MonthKey | '' = t.businessDays ? 'businessDays' : t.dates ? 'dates' : '';
+  // 「-」だけ打った途中の文字も消さないよう、打った文字は手元に持つ。
+  const [text, setText] = useState((month ? t[month] : undefined)?.join(', ') ?? '');
+  const withDays = (days: number[]): Schedule => {
+    const { days: _days, ...rest } = t;
+    return days.length ? { ...rest, days } : rest;
   };
+  const withMonth = (key: MonthKey | '', list: number[]): Schedule => {
+    const { dates: _dates, businessDays: _business, ...rest } = t;
+    return key && list.length ? { ...rest, [key]: list } : rest;
+  };
+  const toggle = (d: number) => onChange(withDays((t.days ?? []).includes(d) ? (t.days ?? []).filter((x) => x !== d) : [...(t.days ?? []), d].sort()));
   return (
-    <div class="workflow-schedule">
-      <input type="time" class="input input-sm input-auto" value={t.at} onInput={(e) => onChange({ ...t, at: e.currentTarget.value })} />
+    <>
+      <input type="time" class="input input-sm input-auto" aria-label="時刻" value={t.at} onInput={(e) => onChange({ ...t, at: e.currentTarget.value })} />
       {DAYS.map((label, d) => (
         <label key={label} class="workflow-day">
           <input type="checkbox" checked={!!t.days?.includes(d)} onChange={() => toggle(d)} />
           {label}
         </label>
       ))}
-      <span class="help">{t.days?.length ? '' : '毎日'}</span>
-      <button class="xp-task-link" onClick={onRemove}>消す</button>
-    </div>
+      <select class="input input-sm input-auto" aria-label="毎月の指定" value={month} onChange={(e) => onChange(withMonth(e.currentTarget.value as MonthKey | '', parseDayList(text).length ? parseDayList(text) : [1]))}>
+        {MONTH.map((m) => <option key={m.key} value={m.key}>{m.label}</option>)}
+      </select>
+      {month && (
+        <input
+          class="input input-sm workflow-days-input"
+          aria-label={month === 'dates' ? '日付' : '何営業日目'}
+          placeholder="1, 15, -1"
+          title={month === 'dates' ? '月の日付をカンマで区切って書きます。負の数は月末から数え、-1 が末日です' : '月の何営業日目かをカンマで区切って書きます。営業日は土日と日本の祝日を除いた日で、負の数は月末から数え、-1 が最終営業日です'}
+          value={text}
+          onInput={(e) => {
+            setText(e.currentTarget.value);
+            const list = parseDayList(e.currentTarget.value);
+            if (list.length) onChange(withMonth(month, list));
+          }}
+        />
+      )}
+      <span class="help">{month === 'businessDays' ? '営業日目（-1 は最終営業日）' : month === 'dates' ? '日（-1 は末日）' : t.days?.length ? '' : '毎日'}</span>
+    </>
   );
 };
+
+const KIND_LABEL: Record<WorkflowTrigger['kind'], string> = { schedule: '時刻', ...Object.fromEntries(EVENTS.map((e) => [e.kind, e.label])) } as Record<WorkflowTrigger['kind'], string>;
+
+/** 1 つのトリガー。種類を選び、時刻なら日の指定を続ける。同じイベントのトリガーは 1 つまでなので、ほかの行で使っている種類は選べない。 */
+const TriggerRow = ({ t, used, onChange, onRemove }: { t: WorkflowTrigger; used: Set<string>; onChange: (t: WorkflowTrigger) => void; onRemove: () => void }) => (
+  <div class="workflow-schedule">
+    <select class="input input-sm input-auto" aria-label="トリガーの種類" value={t.kind} onChange={(e) => onChange(e.currentTarget.value === 'schedule' ? NEW_SCHEDULE : ({ kind: e.currentTarget.value } as WorkflowTrigger))}>
+      {(Object.keys(KIND_LABEL) as WorkflowTrigger['kind'][]).map((k) => <option key={k} value={k} disabled={k !== 'schedule' && k !== t.kind && used.has(k)}>{KIND_LABEL[k]}</option>)}
+    </select>
+    {t.kind === 'schedule' && <ScheduleFields t={t} onChange={onChange} />}
+    <button type="button" class="btn btn-sm" title="このトリガーを消す" aria-label="このトリガーを消す" onClick={onRemove}>×</button>
+  </div>
+);
 
 const BurstField = ({ minutes, onChange }: { minutes?: number; onChange: (minutes?: number) => void }) => (
   <fieldset class="workflow-fieldset">
@@ -66,22 +114,15 @@ const BurstField = ({ minutes, onChange }: { minutes?: number; onChange: (minute
 );
 
 const TriggersField = ({ triggers, onChange }: { triggers: WorkflowTrigger[]; onChange: (t: WorkflowTrigger[]) => void }) => {
-  const has = (kind: EventKind) => triggers.some((t) => t.kind === kind);
-  const setEvent = (kind: EventKind, on: boolean) => onChange(on ? [...triggers, { kind } as WorkflowTrigger] : triggers.filter((t) => t.kind !== kind));
-  const setAt = (i: number, next?: Schedule) => onChange(triggers.flatMap((t, j) => (j !== i ? [t] : next ? [next] : [])));
+  const used = new Set(triggers.map((t) => t.kind));
+  const setAt = (i: number, next?: WorkflowTrigger) => onChange(triggers.flatMap((t, j) => (j !== i ? [t] : next ? [next] : [])));
   return (
     <fieldset class="workflow-fieldset">
       <legend>トリガー</legend>
-      <div class="workflow-events">
-        {EVENTS.map(({ kind, label }) => (
-          <label key={kind} class="workflow-day">
-            <input type="checkbox" checked={has(kind)} onChange={(e) => setEvent(kind, e.currentTarget.checked)} />
-            {label}
-          </label>
-        ))}
-      </div>
-      {triggers.map((t, i) => t.kind === 'schedule' && <ScheduleRow key={i} t={t} onChange={(n) => setAt(i, n)} onRemove={() => setAt(i)} />)}
-      <button class="xp-task-link" onClick={() => onChange([...triggers, NEW_SCHEDULE])}>時刻を足す</button>
+      {/* 種類を変えると欄の中身が変わるので、種類も key に入れて作り直す。 */}
+      {triggers.map((t, i) => <TriggerRow key={`${i}-${t.kind}`} t={t} used={used} onChange={(n) => setAt(i, n)} onRemove={() => setAt(i)} />)}
+      {!triggers.length && <span class="help">トリガーがありません。「今すぐ実行」でだけ動きます。</span>}
+      <div><button type="button" class="btn btn-sm" title="トリガーを足す" aria-label="トリガーを足す" onClick={() => onChange([...triggers, NEW_SCHEDULE])}>+</button></div>
     </fieldset>
   );
 };
