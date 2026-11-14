@@ -3,6 +3,7 @@ import type {
 } from '../shared/types.ts';
 import { toast } from './toast.tsx';
 import type { EnvValues } from '../shared/envSettings.ts';
+import type { ClaudeSettings } from '../shared/claudeSettings.ts';
 
 export const DELIVERY_TOAST: Record<Delivery, string> = {
   mcp: 'Claude に届けました',
@@ -220,6 +221,9 @@ export const api = {
   harness: () => getJson<Harness>('/api/learn/harness'),
   envValues: () => getJson<EnvValues>('/api/settings/env'),
   setEnvValue: (key: string, value: string) => postJson('/api/settings/env', { key, value }),
+  claudeSettings: (fresh?: boolean) => getJson<ClaudeSettings>(`/api/settings/claude?${query({ fresh: flag(fresh) })}`),
+  /** value が undefined なら、項目を消して既定に戻す。 */
+  setClaudeSetting: (key: string, value: unknown) => postJson('/api/settings/claude', { key, value }),
   harnessToggle: ({ setting, key }: HarnessToggle, on: boolean) => postJson('/api/learn/toggle', { setting, key, on }),
   autoContinue: (enabled: boolean) => postJson<void>('/api/auto-continue', { enabled }),
   agentPriority: (priority: AgentPriority) => postJson<void>('/api/agent-priority', { priority }),
