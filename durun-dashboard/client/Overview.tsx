@@ -2,7 +2,7 @@
 import { type ComponentChildren, Fragment } from 'preact';
 import { memo } from 'preact/compat';
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { type Attention, type BgTask, type Bookmark, type ChatEntry, JIRA_ISSUE_KEY, type ObservedTask, type OutboxMessage, PR_URL, type RepoRef, type Session, type Snapshot, type Subagent, bookmarkKey } from '../shared/types.ts';
+import { type Attention, type BgTask, type Bookmark, type ChatEntry, JIRA_ISSUE_KEY, type ObservedTask, type OutboxMessage, PR_URL, REF_NUMBER, type RepoRef, type Session, type Snapshot, type Subagent, bookmarkKey } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
 import { jiraSplitter, refSplitter } from './chatLinks.ts';
@@ -383,8 +383,11 @@ export const Summary = ({ s }: { s: Session }) => {
  * PR と課題はイルカが吹き出しで説明するので、題名はイルカのいない軽量モードでだけ出す。
  * PR と課題へのリンクは、押すとダッシュボードの中で開く。
  */
-const useRefMarks = (s: Session, mark?: MarkText): MarkText => {
-  const { data } = useCached((fresh) => api.repoRefs({ sessionId: s.id }, fresh), [s.id]);
+const useRefMarks = (s: Session, entries: ChatEntry[], mark?: MarkText): MarkText => {
+  // 新しい PR と Issue に入らない古い番号もリンクにするため、発言に出た番号を渡して番号でも探させる。
+  const numbers = [...new Set(entries.flatMap((e) => e.kind === 'tool' ? [] : [...e.text.matchAll(REF_NUMBER)].map((m) => Number(m[1]?.slice(1)))))];
+  const numbersKey = numbers.join(',');
+  const { data } = useCached((fresh) => api.repoRefs({ sessionId: s.id, numbers }, fresh), [s.id, numbersKey]);
   const { data: issues } = useCached(api.jiraRefs, []);
   const light = useLightMode();
   return useMemo(() => {
@@ -615,7 +618,7 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
   // スナップショットは届くたびに作り直されるので、中身が同じ間は同じものを渡し、吹き出しを描き直させない。
   const badgesKey = JSON.stringify([s.prs, s.issues, s.jira]);
   const badges = useMemo<Badges>(() => ({ prs: s.prs, issues: s.issues, jira: s.jira }), [badgesKey]);
-  const markText = useRefMarks(s, useTermMarks(s));
+  const markText = useRefMarks(s, list, useTermMarks(s));
   const marked = new Set(s.bookmarks?.map(bookmarkKey));
   const [badgeMenu, setBadgeMenu] = useState<BadgeMenu>();
   // 発言の右クリックの「翻訳」より先に受け取り、PR と課題のリンクでは、PR と JIRA のウィジェットに並べるバッジに足すメニューを出す。
