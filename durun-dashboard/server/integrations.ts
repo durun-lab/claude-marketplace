@@ -200,7 +200,7 @@ const repoOf = (pr: PrInfo): { host: string; owner: string; name: string; number
 };
 
 /** gh を呼び、標準出力を返す。input は標準入力に渡す本文で、cwd は gh がリポジトリを決めるディレクトリ。gh が失敗したときは、gh が標準エラーに書いた理由で投げる。 */
-const gh = async (args: string[], input?: string, cwd?: string): Promise<string> => {
+export const gh = async (args: string[], input?: string, cwd?: string): Promise<string> => {
   const { stdout } = await run('gh', args, { maxBuffer: MAX_BUFFER, cwd, input }).catch((e: { stderr?: string; message: string }) => {
     throw new Error(e.stderr?.trim() || e.message);
   });
