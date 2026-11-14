@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { claudeSettingFields } from '../shared/claudeSettings.ts';
+import { claudeSettingFields, parseClaudeSettings } from '../shared/claudeSettings.ts';
 
 test('スキーマの型から入力欄の種類を決め、管理者向けと使わなくなった項目を並べない', () => {
   const fields = claudeSettingFields({
@@ -27,4 +27,9 @@ test('スキーマの型から入力欄の種類を決め、管理者向けと�
       ['verbose', 'boolean', undefined],
     ],
   );
+});
+
+test('settings.json の ] と } の手前のカンマを許し、文字列の中のカンマは残す', () => {
+  assert.deepEqual(parseClaudeSettings('{"allow": ["Bash(a,]:*)", "x",\n  ],\n  "s": "\\",}",\n}'), { allow: ['Bash(a,]:*)', 'x'], s: '",}' });
+  assert.throws(() => parseClaudeSettings('{"a": }'));
 });
