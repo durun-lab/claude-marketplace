@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { type AgentPriority, type AskedQuestion, type Bookmark, type BranchView, type Dashboards, type DiffRange, type DocFormat, MEDIA_TYPES, type BurstKind, type OutboxMessage, type PrThreadNote, type QueuedMessage, type RatePoint, type SavedDoc, type SavedFile, type SavedLink, type SavedProof, type SavedTerm } from '../shared/types.ts';
+import type { TimelineLog } from './timeline.ts';
 
 // 利用者ごとのデータはツールのリポジトリと分けてホームに置く。テストでは一時ディレクトリに向けて、実際の状態に触れないようにする。
 export const DATA_DIR = process.env.DURUN_DASHBOARD_DATA_DIR ?? path.join(os.homedir(), '.durun-dashboard');
@@ -183,6 +184,8 @@ type State = {
    * scheduled と runs は、学習アプリが自分で学習していたころの設定と記録で、起動したときにワークフローへ移す。
    */
   learn?: { digestedAt?: number; scheduled?: boolean; runs?: { at: number }[] };
+  /** タイムラインのウィジェットに描く、状態の移り変わりと質問の記録。 */
+  timeline?: TimelineLog;
   /** ワークフローごとの動き。定義はワークフローのフォルダーにある。 */
   workflowRuns?: Record<string, WorkflowRun>;
   /** ワークフローの時刻のトリガーを最後に確かめた時刻。これより後に過ぎた時刻で動かす。 */

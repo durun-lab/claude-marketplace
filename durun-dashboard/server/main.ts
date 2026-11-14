@@ -47,7 +47,7 @@ import { MAX_SENTENCES, priorReadings, proofread, revise, summarizeProof } from 
 import { parseProof } from './proofText.ts';
 import { recordRateLimits } from './rateLimits.ts';
 import { searchSessions, warmSearch } from './search.ts';
-import { badgeUrls, buildSnapshot, conversationOf, moveToTheme, onLogWarmed, renameTheme, warmLogs } from './snapshot.ts';
+import { badgeUrls, buildSnapshot, timelineRows, conversationOf, moveToTheme, onLogWarmed, renameTheme, warmLogs } from './snapshot.ts';
 import { DATA_DIR, newId, onChange, save, state, touch } from './store.ts';
 import { type Conversation, explainTerm, peekReplies, sessionGlossary, suggestTitle, summarize, summaryText, termKey } from './suggest.ts';
 import { hasJev } from './jev.ts';
@@ -1451,6 +1451,7 @@ const memoryNow = latestMemory(() => platform.readMemory());
 
 const GET_ROUTES: Route[] = [
   [/^\/api\/snapshot$/, () => buildSnapshot()],
+  [/^\/api\/timeline$/, () => timelineRows()],
   [/^\/api\/settings\/env$/, () => readEnvValues(ENV_FILE)],
   [/^\/api\/settings\/claude$/, (_, __, url) => claudeSettings(wantsFresh(url)), WEB_API_MS],
   // アーカイブしていないセッションの作業ディレクトリの CLAUDE.md も並べる。
