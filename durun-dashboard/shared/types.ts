@@ -1063,3 +1063,10 @@ export type MovieMakerView = {
   log: MmLogEntry[];
   logFile?: string;
 };
+
+/** タイムラインの状態の鍵。StatusBadge と同じ見出しの鍵で、gone は一覧から消えて線を引かない区間。 */
+export type TimelineState = SessionStatus | WaitingFor | 'gone';
+/** タイムラインに置く出来事。prompt はチャットの指示、question と answer は人間への質問とその回答、compact は会話の compact。 */
+export type TimelineEventKind = 'prompt' | 'question' | 'answer' | 'compact';
+/** タイムラインの 1 行。states は状態が変わった時刻とその状態を古い順に並べ、events は出来事を古い順に並べる。 */
+export type TimelineRow = { id: string; name: string; states: [number, TimelineState][]; events: [number, TimelineEventKind][] };

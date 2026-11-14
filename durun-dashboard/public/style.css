@@ -2065,3 +2065,18 @@ table.data { width: 100%; border-collapse: collapse; }
 .cpl-key { color: #777; font-weight: 400; }
 .cpl-setting .actions { flex-wrap: nowrap; }
 .cpl-setting .input { flex: 1; min-width: 0; }
+
+/* ウィジェット「タイムライン」 */
+.session-timeline { display: flex; flex-direction: column; gap: 6px; }
+.session-timeline-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.session-timeline-bar select { width: auto; }
+.session-timeline-legend { display: flex; gap: 10px; flex-wrap: wrap; font-size: 11px; color: var(--muted); }
+.session-timeline-legend span { display: inline-flex; align-items: center; gap: 4px; }
+.session-timeline-legend i { display: inline-block; width: 16px; }
+.session-timeline-chart { flex: 1; min-height: 0; overflow-y: auto; }
+.session-timeline-grid { stroke: var(--border, #ddd); stroke-width: 1; }
+.session-timeline-tick { font-size: 10px; fill: var(--muted); }
+.session-timeline-name { font-size: 11px; fill: currentColor; }
+.session-timeline-mark { font-size: 10px; fill: currentColor; color: var(--text, #222); }
+.session-timeline-mark.is-question, .session-timeline-mark.is-answer { fill: var(--idle); color: var(--idle); font-weight: 700; }
+.session-timeline-mark.is-compact { fill: var(--muted); color: var(--muted); }
