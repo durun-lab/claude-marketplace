@@ -36,7 +36,7 @@ import { fileCandidates, listDir, saveText } from './explorer.ts';
 import { notionPage, notionTitle } from './notion.ts';
 import { channelIdOf, onSlackAuthExpired, slackChannels, slackConversation, slackKeyOf, slackTargetOf } from './slack.ts';
 import { findTitle, pageTitleOf } from './pageTitle.ts';
-import { badgeOf, badgePr, cachedPr, gitDiff, githubAttachment, githubInbox, githubSearch, inRepo, jiraBase, jiraDetail, jiraList, jiraRefs, loadBadge, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, repoFile, repoRefs, setPrViewed, transitionJira, treeOf } from './integrations.ts';
+import { badgeOf, badgePr, cachedPr, gitDiff, githubAttachment, githubInbox, githubSearch, inRepo, jiraBase, jiraDetail, jiraList, jiraRefs, loadBadge, mergeClaudePrCache, postJiraComment, postPrComment, postPrReview, prDetail, prThreads, prViewed, refreshJira, refsByNumber, REF_NUMBERS_LIMIT, repoFile, repoRefs, setPrViewed, transitionJira, treeOf } from './integrations.ts';
 import { answerOffline, checkLimits, onTranscriptChange, setAutoContinue } from './limitResume.ts';
 import { handleMcp } from './mcp.ts';
 import { latestMemory } from './memory.ts';
@@ -607,7 +607,15 @@ const completionCwd = (body: unknown): string => {
 const githubRefs = (body: unknown) => {
   const cwd = completionCwd(body);
   const { fresh } = body as { fresh?: unknown };
-  return viaGh('PR と Issue を読めません', () => repoRefs(cwd, fresh === true));
+  // numbers はチャットに出た #番号。新しい PR と Issue に無い番号は、番号で探して足す。
+  const { numbers } = body as { numbers?: unknown };
+  const wanted = Array.isArray(numbers) ? numbers.filter((n): n is number => Number.isSafeInteger(n) && n > 0).slice(-REF_NUMBERS_LIMIT) : [];
+  return viaGh('PR と Issue を読めません', async () => {
+    const refs = await repoRefs(cwd, fresh === true);
+    const known = new Set(refs.map((r) => r.number));
+    const missing = [...new Set(wanted.filter((n) => !known.has(n)))].sort((a, b) => a - b);
+    return [...refs, ...(await refsByNumber(cwd, missing, fresh === true))];
+  });
 };
 
 const setViewed = (id: string, body: unknown): Promise<object> => {

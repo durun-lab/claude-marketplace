@@ -541,6 +541,25 @@ export const repoRefs = (cwd: string, fresh = false): Promise<RepoRef[]> =>
     return toRefs((await ghApi<{ data: GhRefs }>(args, undefined, cwd)).data);
   });
 
+/** 番号で探す PR と Issue の上限。チャットに出た番号のうち、新しいものからこの件数だけ探す。 */
+export const REF_NUMBERS_LIMIT = 30;
+
+/** cwd のリポジトリの、番号で指した PR と Issue。新しい PR と Issue（repoRefs）に入らない古い番号をチャットでリンクにするために読む。無い番号は返さない。 */
+export const refsByNumber = (cwd: string, numbers: number[], fresh = false): Promise<RepoRef[]> =>
+  numbers.length === 0
+    ? Promise.resolve([])
+    : cached(`repo-refs-by-number-v1:${cwd}:${numbers.join(',')}`, { maxAge: REFS_MAX_AGE, fresh }, async () => {
+        const fields = numbers.map((n) => `n${n}: issueOrPullRequest(number: ${n}) { __typename ... on PullRequest { ${PR_REF_FIELDS} } ... on Issue { ${ISSUE_REF_FIELDS} } }`);
+        const query = `query($owner: String!, $name: String!) { repository(owner: $owner, name: $name) { ${fields.join(' ')} } }`;
+        // 無い番号は null とエラーで返り、gh は失敗で終わるので、失敗でも標準出力に読めた番号があれば使う。
+        const { stdout } = await run('gh', ['api', 'graphql', '-F', 'owner={owner}', '-F', 'name={repo}', '-f', `query=${query}`], { maxBuffer: MAX_BUFFER, cwd }).catch((e: { stdout?: string; stderr?: string; message: string }) => {
+          if (e.stdout?.trim()) return { stdout: e.stdout };
+          throw new Error(e.stderr?.trim() || e.message);
+        });
+        const { data } = JSON.parse(stdout) as { data?: { repository?: Record<string, (GhRef & { __typename: 'PullRequest' | 'Issue' }) | null> } };
+        return Object.values(data?.repository ?? {}).flatMap((n) => (n ? [toRef(n.__typename === 'PullRequest' ? 'pr' : 'issue', n, false)] : []));
+      });
+
 const JIRA_BASE = process.env.JIRA_BASE_URL?.replace(/\/$/, '');
 const JIRA_PROJECTS = (process.env.JIRA_PROJECT_KEYS ?? '').split(',').map((k) => k.trim()).filter(Boolean);
 // ブランチ名は小文字で書かれることが多い（proj-1102）ため、登録したプロジェクトキーに限って大文字小文字を区別せずに拾う。
