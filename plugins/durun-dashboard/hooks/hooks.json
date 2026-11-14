@@ -32,6 +32,16 @@
             "timeout": 5
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "input=$(cat); case \"$input\" in *'gh pr edit'*) printf '%s' \"$input\" | curl -sf -m 2 -X POST -H 'content-type: application/json' -H \"X-Claude-Pid: ${CLAUDE_PID:-$PPID}\" --data-binary @- \"http://127.0.0.1:${DURUN_DASHBOARD_PORT:-7337}/api/hook\" 2>/dev/null || true ;; esac",
+            "timeout": 5
+          }
+        ]
       }
     ],
     "PostToolUse": [

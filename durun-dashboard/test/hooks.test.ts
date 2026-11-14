@@ -196,6 +196,19 @@ test('EnterWorktree は、ほかのセッションがいない worktree なら�
   assert.equal(enter('wt-c', tmp, { name: 'x' }), undefined);
 });
 
+test('Bash の gh pr edit は、タイトルか本文を書き換えるものだけ断る', () => {
+  const bash = (command: string) => {
+    const out = handleHook({ session_id: 'pr-edit', cwd: tmp, hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command } }, 0)?.hookSpecificOutput;
+    return out && 'permissionDecision' in out ? out.permissionDecision : undefined;
+  };
+  for (const command of ['gh pr edit 12 --body "x"', 'gh pr edit 12 --body-file body.md', 'cd repo && gh pr edit -t "題名"', 'gh pr edit 12 --add-label bug -F -', 'gh pr edit 12 --title=x']) {
+    assert.equal(bash(command), 'deny', command);
+  }
+  for (const command of ['gh pr edit 12 --add-label bug', 'gh pr view 12 --json title,body', 'gh pr edit 12 --add-reviewer a && gh pr comment 12 --body "x"', 'gh pr create --title x --body y']) {
+    assert.equal(bash(command), undefined, command);
+  }
+});
+
 test('PermissionRequest のフックは、端末とバックグラウンドのセッションの本体の確認だけを要対応にして待たせ、人間が許可したら許可を返し、ほかで答え終えたら何も返さずに片付ける', { timeout: 10_000 }, async (t) => {
   const { allowPermission } = await import('../server/deliver.ts');
   const { buildSnapshot } = await import('../server/snapshot.ts');
