@@ -1,4 +1,4 @@
-// Claude 向けの MCP サーバー（Streamable HTTP）。人間への質問、資料の表示、レビュー依頼、コマンドの実行の依頼、PR の本文の読み書き、コードに表示するブランチ、テーマの登録、子セッションの起動と依頼、文章校正、認証の依頼、FL Connect での FL Studio の読み書き、ムービーメーカーでの movie-maker の操作を受ける。
+// Claude 向けの MCP サーバー（Streamable HTTP）。人間への質問、資料の表示、レビュー依頼、コマンドの実行の依頼、PR のタイトルと本文の読み書き、コードに表示するブランチ、テーマの登録、子セッションの起動と依頼、文章校正、認証の依頼、FL Connect での FL Studio の読み書き、ムービーメーカーでの movie-maker の操作を受ける。
 import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
@@ -11,7 +11,7 @@ import { callFlTool, FL_TOOL_NAMES } from './flconnect.ts';
 import { callMmTool, MM_TOOL_NAMES } from './movieMaker.ts';
 import { sessionIdForPid } from './hooks.ts';
 import { resolveCommit, resolveRange } from './integrations.ts';
-import { readPrBody, writePrBody } from './prBody.ts';
+import { readPr, writePr } from './prText.ts';
 import { proofCommentedAt, readProofFile, writeProofFile } from './proofFiles.ts';
 import { MAX_SENTENCES, commentFindings, proofReport, proofread, revise } from './proofread.ts';
 import { learnDigest } from './reflect.ts';
@@ -31,7 +31,7 @@ const INSTRUCTIONS = `durun-dashboard は、人間が複数の Claude Code セ�
 - 権限の確認や auto モードに止められて自分では実行できないコマンドを人間に実行してほしいときは、\`! コマンド\` を打つよう頼まずに request_command で頼んでください。実行を選んだと返ったらターンを終えてください。出力は次のターンに届きます。
 - レビューする PR など、作業ツリーに無いブランチを人間に見せたいときは、show_branches でコードの表示をそのブランチに切り替えてください。
 - 作業のテーマや関連する JIRA 課題が分かったら set_task で登録してください。
-- PR の本文を書き換えるときは、gh pr edit --body を打たずに、read_pr_body で読んでから write_pr_body で書いてください。人間が GitHub 上で足した変更を上書きしないためです。
+- PR のタイトルと本文は write_pr で書き換えてください。読んでいない PR は、先に read_pr で読んでください。
 - 仕事を別のセッションに任せるときは、claude --bg を Bash で打たずに start_session で子セッションを起動してください。子セッションへの追加の依頼は send_to_session で送ってください。子セッションの状態は list_sessions で見て、仕事を終えた子セッションは archive_session で片付けてください。
 - Google Cloud（gcloud）や、Slack、Notion などの MCP サーバーの認証やログインが必要になったら、authenticate で人間に頼んでください。人間が認証を終えると結果が返ります。認証済みなら、尋ねずにすぐ返ります。
 - Web サービスにブラウザでログインしてほしいときは、authenticate の provider に browser を、url にログイン画面の URL を渡してください。人間がブラウザでログインを終えると結果が返ります。
@@ -146,8 +146,8 @@ const TOOLS = [
     },
   },
   {
-    name: 'read_pr_body',
-    description: 'GitHub の PR の本文を読む。write_pr_body で書き換える前に、これで読む。',
+    name: 'read_pr',
+    description: 'GitHub の PR のタイトルと本文を読む。',
     inputSchema: {
       type: 'object',
       properties: { pr: { type: 'string', description: 'PR の URL か番号。番号は、このセッションの作業ディレクトリのリポジトリで探す。' } },
@@ -155,16 +155,16 @@ const TOOLS = [
     },
   },
   {
-    name: 'write_pr_body',
-    description:
-      'GitHub の PR の本文を、渡した body に丸ごと書き換える。このセッションが read_pr_body で読んでいない本文と、読んだ後に GitHub 上で変わった本文は書き換えず、エラーを返す。エラーが返ったら read_pr_body で読み直し、いまの本文に変更を当て直す。',
+    name: 'write_pr',
+    description: 'GitHub の PR のタイトルと本文を書き換える。title と body は、省いたほうを変えない。このセッションが read_pr で読んでいない PR と、読んだ後に GitHub 上で変わった PR は書き換えず、エラーを返す。',
     inputSchema: {
       type: 'object',
       properties: {
         pr: { type: 'string', description: 'PR の URL か番号。番号は、このセッションの作業ディレクトリのリポジトリで探す。' },
+        title: { type: 'string', description: '書き換えた後のタイトル。' },
         body: { type: 'string', description: '書き換えた後の本文の全体。' },
       },
-      required: ['pr', 'body'],
+      required: ['pr'],
     },
   },
   {
@@ -671,17 +671,17 @@ const reviewRange = async (sessionId: string, args: ToolArgs): Promise<DiffRange
   return resolveRange(cwd, from, str(args.to) ?? 'HEAD');
 };
 
-const prBody = async (sessionId: string, name: string, args: ToolArgs): Promise<object> => {
+const prText = async (sessionId: string, write: boolean, args: ToolArgs): Promise<object> => {
   const pr = str(args.pr);
-  const body = str(args.body);
+  const next = { title: str(args.title), body: str(args.body) };
   if (!pr) return textResult('pr に、PR の URL か番号を渡してください。', true);
-  if (name === 'write_pr_body' && !body) return textResult('body に、書き換えた後の本文の全体を渡してください。', true);
+  if (write && !next.title && !next.body) return textResult('title か body を渡してください。', true);
   const cwd = state.sessions[sessionId]?.cwd;
   try {
-    const { text, isError } = body && name === 'write_pr_body' ? await writePrBody(sessionId, pr, body, cwd) : await readPrBody(sessionId, pr, cwd);
+    const { text, isError } = write ? await writePr(sessionId, pr, next, cwd) : await readPr(sessionId, pr, cwd);
     return textResult(text, isError);
   } catch (e) {
-    return textResult(`PR の本文を${name === 'write_pr_body' ? '書き換えられ' : '読め'}ませんでした。${(e as Error).message}`, true);
+    return textResult(`PR を${write ? '書き換えられ' : '読め'}ませんでした。${(e as Error).message}`, true);
   }
 };
 
@@ -731,9 +731,9 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
       return send(res, { id: rpcId, result: setTask(sessionId, args) });
     case 'learn_digest':
       return send(res, { id: rpcId, result: learnDigestResult() });
-    case 'read_pr_body':
-    case 'write_pr_body':
-      return void prBody(sessionId, params.name, args).then((result) => send(res, { id: rpcId, result }));
+    case 'read_pr':
+    case 'write_pr':
+      return void prText(sessionId, params.name === 'write_pr', args).then((result) => send(res, { id: rpcId, result }));
     case 'start_session':
       return startSessionTool(res, rpcId, params, sessionId, args);
     case 'send_to_session':

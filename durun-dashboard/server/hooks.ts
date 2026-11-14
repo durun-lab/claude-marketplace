@@ -280,8 +280,15 @@ const enterWorktree = (sessionId: string, cwd: string, input: HookInput['tool_in
   return decide('allow', 'ほかのセッションがいない worktree なので、durun-dashboard が許可しました。');
 };
 
+/** gh pr edit でタイトルか本文を書き換えるコマンド。ラベルやレビュアーだけを変えるものは通す。 */
+const PR_TEXT_EDIT = /\bgh\s+pr\s+edit\b[^\n;|&]*?\s(?:--body(?:-file)?|--title|-[bFt])(?=[\s=]|$)/;
+
+/** PR のタイトルと本文を、読まずに上書きさせない。read_pr と write_pr は、読んだ後に人間が GitHub 上で足した変更を見つけて断る。 */
+const prTextEdit = (command: unknown): HookOutput | undefined =>
+  typeof command === 'string' && PR_TEXT_EDIT.test(command) ? decide('deny', 'PR のタイトルと本文は、durun-dashboard の write_pr で書き換えてください。読んでいない PR は、先に read_pr で読んでください。') : undefined;
+
 /**
- * EnterWorktree の PreToolUse には、使ってよいかを返す。
+ * EnterWorktree の PreToolUse には、使ってよいかを返す。Bash の PreToolUse は、PR のタイトルか本文を書き換える gh pr edit を断る。
  * FL Connect とムービーメーカーでつないだセッションの UserPromptSubmit と PostToolUse には、前に知らせてから人間がそのアプリでした操作を添える。
  * サブエージェントに渡すと、本体のセッションに届かないまま読んだことになるので、本体にだけ渡す。
  */
@@ -296,6 +303,7 @@ export const handleHook = (input: HookInput, pid: number): HookOutput | undefine
   nameUntitled(meta, input, responded);
   if (responded) endFeedbackWave(input.session_id, input.last_assistant_message);
   if (event === 'PreToolUse' && input.tool_name === ENTER_WORKTREE) return enterWorktree(input.session_id, input.cwd, input.tool_input);
+  if (event === 'PreToolUse' && input.tool_name === 'Bash') return prTextEdit(input.tool_input?.command);
   if (!input.agent_id && (event === 'UserPromptSubmit' || event === 'PostToolUse')) {
     const additionalContext = [flHookContext(input.session_id), mmHookContext(input.session_id)].filter(Boolean).join('\n\n');
     if (additionalContext) return { hookSpecificOutput: { hookEventName: event, additionalContext } };
