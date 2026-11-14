@@ -198,8 +198,8 @@ URL は http と https に限り、ほかは尋ねずに失敗を返す。
 
 プラグイン durun-dashboard が登録するもの。
 
-- フック: SessionStart、UserPromptSubmit、PreToolUse（AskUserQuestion と EnterWorktree だけ）、PostToolUse、Stop、Notification、SessionEnd。ダッシュボードが止まっていれば何もせずに終わる。
-- MCP サーバー: `ask_human`、`present`、`request_review`、`show_branches`、`set_task`、`start_session`、`send_to_session`、`list_sessions`、`archive_session`、`authenticate`、`proofread`、`comment_proofread`、`revise_proofread`、`fl_state`、`fl_changes`、`fl_python`、`fl_pianoroll`、`fl_gopher`、`fl_undo`。新しく起動したセッションから使える。`fl_` のツールは、FL Connect のウィンドウでつないだセッションからだけ使える。
+- フック: SessionStart、UserPromptSubmit、PreToolUse（AskUserQuestion、EnterWorktree、gh pr edit を含む Bash だけ）、PostToolUse、Stop、Notification、SessionEnd。ダッシュボードが止まっていれば何もせずに終わる。
+- MCP サーバー: `ask_human`、`present`、`request_review`、`show_branches`、`set_task`、`read_pr`、`write_pr`、`start_session`、`send_to_session`、`list_sessions`、`archive_session`、`authenticate`、`proofread`、`comment_proofread`、`revise_proofread`、`fl_state`、`fl_changes`、`fl_python`、`fl_pianoroll`、`fl_gopher`、`fl_undo`。新しく起動したセッションから使える。`fl_` のツールは、FL Connect のウィンドウでつないだセッションからだけ使える。
 
 `pnpm install-statusline` が登録するもの（任意）。
 
