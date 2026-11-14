@@ -367,12 +367,18 @@ const MAX_LOCAL_FILE_BYTES = 1024 * 1024;
 /** ファイルを探す起点。エクスプローラーからセッションの外で開いたファイルは id が空で、ホームディレクトリから探す。 */
 const baseDir = (id: string): string => (id ? sessionMeta(id).cwd : os.homedir());
 
-/** リポジトリの外のファイルの場所。~ はホームディレクトリにし、相対パスはセッションの作業ディレクトリから探す。行の指定は外す。 */
-const localPath = (id: string, url: URL): { ref: string; full: string; stat?: fs.Stats } => {
+type LocalPath = { ref: string; full: string; stat?: fs.Stats };
+
+/**
+ * リポジトリの外のファイルの場所。~ はホームディレクトリにし、相対パスはセッションの作業ディレクトリから探す。行の指定は外す。
+ * 作業ディレクトリから辿れなければ、末尾が一致するこのセッションの資料のファイルに読み替える。開き先を調べるときと読むときで同じファイルを指すよう、ここで読み替える。
+ */
+const localPath = (id: string, url: URL): LocalPath => {
   const ref = (url.searchParams.get('path') ?? '').replace(/:[\d-]+$/, '');
   const full = path.resolve(baseDir(id), ref.replace(/^~(?=\/|$)/, os.homedir()));
   const stat = fs.statSync(full, { throwIfNoEntry: false });
-  return { ref, full, stat: stat?.isFile() ? stat : undefined };
+  const local = { ref, full, stat: stat?.isFile() ? stat : undefined };
+  return local.stat || !id ? local : docByTail(id, local);
 };
 
 const mediaType = (full: string): string | undefined => MEDIA_TYPES[path.extname(full).toLowerCase()];
@@ -408,7 +414,7 @@ const watchLocalFile = (req: IncomingMessage, res: ServerResponse, id: string, u
  * 作業ディレクトリから辿れない Markdown のパスは、末尾が一致するこのセッションの資料のファイルに読み替える。
  * Claude は書いたファイルを、作業ディレクトリの外のものでも、そのファイルのある場所からの相対パスで書くことがある。
  */
-const docByTail = (id: string, local: ReturnType<typeof localPath>): ReturnType<typeof localPath> => {
+const docByTail = (id: string, local: LocalPath): LocalPath => {
   const tail = local.ref.replace(/^\.\//, '');
   if (!/\.md$/i.test(tail)) return local;
   const meta = sessionMeta(id);
@@ -423,8 +429,7 @@ const docByTail = (id: string, local: ReturnType<typeof localPath>): ReturnType<
  * Markdown には、資料の題名に添える最初の見出しを付けて返す。どこでも開けなければ 404 にする。
  */
 const resolveFile = async (id: string, url: URL): Promise<FileTarget> => {
-  const local = localPath(id, url);
-  const { ref, full, stat } = local.stat || !id ? local : docByTail(id, local);
+  const { ref, full, stat } = localPath(id, url);
   if (stat && /\.md$/i.test(full) && stat.size <= MAX_LOCAL_FILE_BYTES) return { where: 'local', path: full, heading: firstHeading(fs.readFileSync(full, 'utf8')) };
   if (stat && mediaType(full)) return { where: 'local', path: full };
   if (id && (await inRepo(sessionMeta(id).cwd, ref))) return { where: 'repo' };
