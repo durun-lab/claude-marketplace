@@ -118,9 +118,13 @@ const archiveLabel = (s: Session): string => {
 };
 
 /** アーカイブの切り替えは、タイトルバー右端のボタンの枠に並べる。アーカイブ待ちの間も押した状態にし、押すとアーカイブ待ちをやめる。 */
-const archiveControl = ({ s }: { s: Session }): Control[] => {
+/** タイトルバーの右端で、ピン留めとアーカイブを切り替える。ピン留めはセッションの一覧のカードのピンと同じ。 */
+const sessionControls = ({ s }: { s: Session }): Control[] => {
   const on = s.archived || !!s.archiveWhenIdle;
-  return [{ kind: 'archive', label: archiveLabel(s), pressed: on, onClick: () => void attempt('アーカイブの切り替え', () => api.archive(s.id, !on)) }];
+  return [
+    { kind: 'pin', label: s.pinned ? 'ピン留めを外す' : 'ピン留めして一覧の先頭に出す', pressed: !!s.pinned, onClick: () => void attempt('ピン留めの切り替え', () => api.pin(s.id, !s.pinned)) },
+    { kind: 'archive', label: archiveLabel(s), pressed: on, onClick: () => void attempt('アーカイブの切り替え', () => api.archive(s.id, !on)) },
+  ];
 };
 
 /**
@@ -338,7 +342,7 @@ type SessionData = {
 const CHAT_WIDGET = 'chat';
 
 const WIDGETS: Record<string, Widget<SessionData>> = {
-  head: { title: 'セッション', icon: '🖥️', Body: SessionHead, size: { w: 16, h: 6 }, sketch: 'text', controls: archiveControl },
+  head: { title: 'セッション', icon: '🖥️', Body: SessionHead, size: { w: 16, h: 6 }, sketch: 'text', controls: sessionControls },
   diagram: { title: '図解', icon: DIAGRAM_ICON, Body: DiagramIcon, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => launchDiagram(s) },
   // セッションの画面から起動した新規セッションは、そのセッションの作業ディレクトリとテーマで始める。
   newSession: { title: NEW_SESSION_TITLE, icon: NEW_SESSION_ICON, Body: ({ s }) => <NewSessionIcon cwd={s.cwd} theme={s.theme} parent={s.id} />, size: { w: 2, h: 3 }, sketch: 'cards', launch: ({ s }) => openNewSession(s.cwd, s.theme, undefined, s.id) },
