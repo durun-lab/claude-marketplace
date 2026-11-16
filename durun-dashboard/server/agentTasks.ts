@@ -6,7 +6,8 @@ export const TASK_STATUSES = ['pending', 'in_progress', 'completed'] as const;
 const TASK_LABEL: Record<AgentTask['status'], string> = { pending: '未着手', in_progress: '作業中', completed: '完了' };
 
 /** agentTaskSeq は最後に振った id。消したタスクの id を使い直さないよう、タスクとは別に覚える。 */
-type Owner = { agentTasks?: AgentTask[]; agentTaskSeq?: number };
+/** rootTask は、親セッションから任されたタスクの id。子セッションで登録するタスクは、親を省くとこの下に置く。 */
+type Owner = { agentTasks?: AgentTask[]; agentTaskSeq?: number; rootTask?: string };
 type Result = { text: string; isError?: boolean; changed?: boolean };
 /**
  * create_tasks に渡すタスク。題だけの文字列でも受け付ける。
@@ -66,7 +67,7 @@ export const addTasks = (owner: Owner, given: NewTask[], opts: { now?: number; t
     const ticket = typed ? opts.ticketOf?.(typed) : undefined;
     if (typed && !ticket) return { text: `登録しませんでした。ticket（${typed}）は、PR、Issue、JIRA の課題の URL か課題のキーではありません。`, isError: true };
     const subject = text(o.subject) ?? ticket?.label;
-    if (subject) items.push({ subject, description: text(o.description), waits: ids(o.blocked_by), parent: text(o.parent), ticket: ticket?.url });
+    if (subject) items.push({ subject, description: text(o.description), waits: ids(o.blocked_by), parent: text(o.parent) ?? (owner.agentTasks?.some((u) => u.id === owner.rootTask) ? owner.rootTask : undefined), ticket: ticket?.url });
   }
   if (!items.length) return { text: 'tasks に、登録するタスクを 1 つ以上渡してください。', isError: true };
   const before = owner.agentTaskSeq ?? 0;
@@ -111,6 +112,7 @@ export const changeTask = (owner: Owner, id: string | undefined, change: TaskCha
   const removing = new Set(ids(change.removeBlockedBy));
   const blockedBy = [...new Set([...(task.blockedBy ?? []), ...adding])].filter((id) => !removing.has(id));
   task.blockedBy = blockedBy.length ? blockedBy : undefined;
+  task.updatedAt = now;
   if (next && next !== task.status) {
     task.status = next;
     if (next === 'pending') Object.assign(task, { startedAt: undefined, completedAt: undefined });
@@ -120,6 +122,29 @@ export const changeTask = (owner: Owner, id: string | undefined, change: TaskCha
   task.subject = text(change.subject) ?? task.subject;
   if (change.description !== undefined) task.description = text(change.description);
   return { text: '更新しました。', changed: true };
+};
+
+/**
+ * 親セッションのタスクを子セッションに任せる。タスクに子セッションを結び、子セッションにはそのタスクを写したルートのタスクを作る。
+ * 子セッションがルートのタスクの状態を変えると、mirrorRoot が親のタスクに写す。
+ */
+export const delegateTask = (parent: Owner & { id: string }, taskId: string, child: Owner & { id: string }, now = Date.now()): Result => {
+  const task = parent.agentTasks?.find((t) => t.id === taskId);
+  if (!task) return { text: 'task に、create_tasks か list_tasks が返したタスクの id を渡してください。', isError: true };
+  const { subject, description, ticket } = task;
+  const root: AgentTask = { id: '1', subject, description, ticket, status: 'in_progress', createdAt: now, startedAt: now, delegatedFrom: { session: parent.id, task: taskId } };
+  Object.assign(child, { agentTasks: [root], agentTaskSeq: 1, rootTask: root.id });
+  Object.assign(task, { delegatedTo: child.id, updatedAt: now });
+  if (task.status === 'pending') Object.assign(task, { status: 'in_progress', startedAt: now });
+  return { text: '任せました。', changed: true };
+};
+
+/** 子セッションのルートのタスクの状態を、任せた親セッションのタスクに写す。 */
+export const mirrorRoot = (child: Owner, parentOf: (id: string) => Owner | undefined, now = Date.now()): void => {
+  const root = child.agentTasks?.find((t) => t.id === child.rootTask);
+  const from = root?.delegatedFrom;
+  const parent = from && parentOf(from.session);
+  if (root && from && parent) changeTask(parent, from.task, { status: root.status }, now);
 };
 
 /** 既定では完了していないタスクだけを返す。説明は返さない。 */
