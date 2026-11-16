@@ -1224,14 +1224,21 @@ a.skype-time:hover { color: #0078ca; text-decoration: underline; }
 .task-in_progress > details .task-icon { border-color: var(--accent); background: conic-gradient(var(--accent) 0 50%, transparent 0 100%); }
 .task-completed > details .task-icon { border-color: var(--good); background: var(--good); }
 .task-completed > details .task-icon::after { content: ""; position: absolute; left: 2.5px; top: -0.5px; width: 3px; height: 6px; border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
-.task { flex-wrap: wrap; }
+/* 子の並びは折り返して行の下に置く。行と子の並びの間は、子の並びの上の余白だけにし、枝の線が途切れないようにする。 */
+.task { flex-wrap: wrap; row-gap: 0; }
 .task > details { flex: 1; min-width: 0; }
 /* 待っているタスクは、待つタスクの下に、縦の線から枝を出して並べる。 */
 .task-children { flex-basis: 100%; margin: 4px 0 0 6px; padding-left: 14px; }
 .task-children > .task { position: relative; }
-/* 枝は行ごとに └ の形で引き、次の兄弟がある行だけ、縦の線を次の行まで延ばして ├ にする。最後の子の下へ線を延ばさない。 */
-.task-children > .task::before { content: ""; position: absolute; left: -14px; top: -4px; width: 10px; height: 14px; border-left: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }
-.task-children > .task:not(:last-child)::after { content: ""; position: absolute; left: -14px; top: -4px; bottom: -7px; border-left: 1px solid var(--border-strong); }
+/*
+ * 枝は罫線で引く。丸（14px、上に 3px）の中心は行の左から 7px、上から 10px。
+ * 子を持つ行は、自分の丸の下から子の並びの手前まで縦の線を引く。行の高さはチケットのチップや開いた説明で変わるので、行の側から引く。
+ * 子は、行の頭から自分の丸の中心の高さまで └ を引き、次の兄弟がある子だけ、縦の線を次の行まで延ばして ├ にする。最後の子の下へは延ばさない。
+ */
+.task:has(> .task-children) > details { position: relative; }
+.task:has(> .task-children) > details::after { content: ""; position: absolute; left: 6px; top: 17px; bottom: -4px; border-left: 1px solid var(--border-strong); }
+.task-children > .task::before { content: ""; position: absolute; left: -14px; top: 0; width: 10px; height: 10px; border-left: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }
+.task-children > .task:not(:last-child)::after { content: ""; position: absolute; left: -14px; top: 10px; bottom: -7px; border-left: 1px solid var(--border-strong); }
 .task summary { display: flex; align-items: flex-start; gap: 8px; list-style: none; cursor: pointer; }
 .task summary::-webkit-details-marker { display: none; }
 .task-detail { margin: 4px 0 2px 22px; font-size: 12px; }
