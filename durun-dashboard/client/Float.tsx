@@ -122,7 +122,7 @@ const toggleTask = (f: Float): void => (isActive(f) ? update(f, { min: true }) :
  * タイトルバー右端のボタン。kind で見た目を決める。refresh は取り直し、archive はアーカイブ、close は外す、restore はウィンドウ化、max は最大化、min は最小化。
  * pressed を渡すと、切り替えのボタンとして押した状態を示す。
  */
-export type Control = { kind: 'refresh' | 'archive' | 'close' | 'restore' | 'max' | 'min'; label: string; pressed?: boolean; onClick: (e: MouseEvent) => void };
+export type Control = { kind: 'refresh' | 'pin' | 'archive' | 'close' | 'restore' | 'max' | 'min'; label: string; pressed?: boolean; onClick: (e: MouseEvent) => void };
 
 /**
  * タイトルバー右端のボタンを、決まった枠に並べる。ボタンの大きさと間隔は CSS の --ctl と --ctl-gap で決める。
