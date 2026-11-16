@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addTasks, changeTask, listTasks } from '../server/agentTasks.ts';
+import { addTasks, changeTask, delegateTask, listTasks, mirrorRoot } from '../server/agentTasks.ts';
 import type { AgentTask } from '../shared/types.ts';
 
 test('タスクは通し番号で登録し、状態と内容を変えて消せ、一覧は既定で完了していないものだけを返す', () => {
@@ -68,4 +68,23 @@ test('チケットのタスクは題を省くとチケットの名前にし、�
   changeTask(owner, '3', { parent: '' });
   changeTask(owner, '1', { status: 'deleted' });
   assert.deepEqual(owner.agentTasks?.map((t) => [t.id, t.parent]), [['2', undefined], ['3', undefined]]);
+});
+
+test('タスクを子セッションに任せると、子セッションのルートのタスクになり、子の登録はその下に入り、ルートの状態は親のタスクに写る', () => {
+  const parent: { id: string; agentTasks?: AgentTask[]; agentTaskSeq?: number } = { id: 'p' };
+  const child: { id: string; agentTasks?: AgentTask[]; agentTaskSeq?: number; rootTask?: string } = { id: 'c' };
+  addTasks(parent, [{ subject: '移行する', description: '手順書どおりに' }], { now: 100 });
+  assert.equal(delegateTask(parent, '9', child).isError, true);
+  delegateTask(parent, '1', child, 200);
+  assert.deepEqual(parent.agentTasks?.[0], { id: '1', subject: '移行する', description: '手順書どおりに', status: 'in_progress', createdAt: 100, updatedAt: 200, startedAt: 200, delegatedTo: 'c' });
+  assert.deepEqual(child.agentTasks?.[0]?.delegatedFrom, { session: 'p', task: '1' });
+  addTasks(child, ['準備する', { subject: '外に置く', parent: '' }]);
+  assert.deepEqual(child.agentTasks?.map((t) => t.parent), [undefined, '1', '1']);
+  changeTask(child, '1', { status: 'completed' }, 300);
+  mirrorRoot(child, (id) => (id === 'p' ? parent : undefined), 300);
+  assert.deepEqual([parent.agentTasks?.[0]?.status, parent.agentTasks?.[0]?.completedAt, parent.agentTasks?.[0]?.updatedAt], ['completed', 300, 300]);
+  // ルートを消した後の登録は、いちばん外に置く。
+  changeTask(child, '1', { status: 'deleted' });
+  addTasks(child, ['後片付け']);
+  assert.equal(child.agentTasks?.at(-1)?.parent, undefined);
 });

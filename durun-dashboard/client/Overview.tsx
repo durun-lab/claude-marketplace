@@ -60,17 +60,20 @@ const TaskRow = ({ t, s, children, seen = new Set() }: { t: AgentTask; s: Sessio
   const waits = t.blockedBy ?? [];
   const below = seen.has(t.id) ? [] : (children.get(t.id) ?? []);
   const inner = new Set([...seen, t.id]);
-  const times = ([['登録', t.createdAt], ['着手', t.startedAt], ['完了', t.completedAt]] as const).flatMap(([label, at]) => (at ? [`${label} ${dateTime(at)}`] : []));
+  const times = ([['登録', t.createdAt], ['編集', t.updatedAt], ['着手', t.startedAt], ['完了', t.completedAt]] as const).flatMap(([label, at]) => (at ? [`${label} ${dateTime(at)}`] : []));
   return (
     <li class={`task task-${t.status}`}>
       <details>
         <summary>
           <span class="task-icon" role="img" aria-label={TASK_LABEL[t.status]} />
           <span class="task-text"><TaskTitle t={t} s={s} /></span>
+          {t.delegatedTo && <a class="task-session" href={href.session(t.delegatedTo)} title="任せた子セッションを開く" onClick={(e) => e.stopPropagation()}>子セッション</a>}
         </summary>
         <div class="task-detail">
           {t.description ? <Markdown text={t.description} /> : <p class="muted">説明はありません。</p>}
           {waits.length > 1 && <p class="task-times">{waits.join('・')} の完了を待つ</p>}
+          {t.delegatedTo && <p class="task-times"><a href={href.session(t.delegatedTo)}>任せた子セッションを開く</a></p>}
+          {t.delegatedFrom && <p class="task-times"><a href={href.session(t.delegatedFrom.session)}>任せた親セッションを開く</a></p>}
           {times.length > 0 && <p class="task-times">{times.join('・')}</p>}
         </div>
       </details>

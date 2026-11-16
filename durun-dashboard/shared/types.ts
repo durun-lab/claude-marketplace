@@ -28,8 +28,13 @@ export type AgentTask = Pick<TaskItem, 'id' | 'subject' | 'status'> & {
   parent?: string;
   /** チケットのタスクが指す PR、Issue、JIRA の課題の URL。バッジの URL と同じ形にそろえる。 */
   ticket?: string;
-  /** 登録した時刻と、着手と完了に変えた時刻。この形にする前に登録したタスクには無い。 */
+  /** このタスクを任せた子セッションの id。 */
+  delegatedTo?: string;
+  /** 親セッションから任されたタスクなら、親セッションの id とそのタスクの id。子セッションのルートのタスクになる。 */
+  delegatedFrom?: { session: string; task: string };
+  /** 登録した時刻と、最後に変えた時刻と、着手と完了に変えた時刻。この形にする前に登録したタスクには無い。 */
   createdAt?: number;
+  updatedAt?: number;
   startedAt?: number;
   completedAt?: number;
 };
