@@ -1224,6 +1224,11 @@ a.skype-time:hover { color: #0078ca; text-decoration: underline; }
 .task-in_progress .task-icon { border-color: var(--accent); background: conic-gradient(var(--accent) 0 50%, transparent 0 100%); }
 .task-completed .task-icon { border-color: var(--good); background: var(--good); }
 .task-completed .task-icon::after { content: ""; position: absolute; left: 2.5px; top: -0.5px; width: 3px; height: 6px; border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+.task > details { flex: 1; min-width: 0; }
+.task summary { display: flex; align-items: flex-start; gap: 8px; list-style: none; cursor: pointer; }
+.task summary::-webkit-details-marker { display: none; }
+.task-detail { margin: 4px 0 2px 22px; font-size: 12px; }
+.task-times { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
 .task-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .task-in_progress .task-text { font-weight: 600; }
 .task-completed .task-text { color: var(--muted); text-decoration: line-through; }

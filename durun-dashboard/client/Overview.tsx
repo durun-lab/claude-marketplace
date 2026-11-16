@@ -28,12 +28,24 @@ import { XpContextMenu } from './XpMenu.tsx';
 
 const TASK_LABEL: Record<AgentTask['status'], string> = { pending: '未着手', in_progress: '作業中', completed: '完了' };
 
-const TaskRow = ({ t }: { t: AgentTask }) => (
-  <li class={`task task-${t.status}`}>
-    <span class="task-icon" role="img" aria-label={TASK_LABEL[t.status]} />
-    <span class="task-text" title={t.subject}>{t.subject}</span>
-  </li>
-);
+/** 押すと、エージェントが書いた説明と、登録・着手・完了の時刻を開く。 */
+const TaskRow = ({ t }: { t: AgentTask }) => {
+  const times = ([['登録', t.createdAt], ['着手', t.startedAt], ['完了', t.completedAt]] as const).flatMap(([label, at]) => (at ? [`${label} ${dateTime(at)}`] : []));
+  return (
+    <li class={`task task-${t.status}`}>
+      <details>
+        <summary>
+          <span class="task-icon" role="img" aria-label={TASK_LABEL[t.status]} />
+          <span class="task-text">{t.subject}</span>
+        </summary>
+        <div class="task-detail">
+          {t.description ? <Markdown text={t.description} /> : <p class="muted">説明はありません。</p>}
+          {times.length > 0 && <p class="task-times">{times.join('・')}</p>}
+        </div>
+      </details>
+    </li>
+  );
+};
 
 export const TaskList = ({ s }: { s: Session }) => {
   const tasks = s.agentTasks ?? [];

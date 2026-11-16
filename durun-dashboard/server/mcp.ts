@@ -16,7 +16,7 @@ import { proofCommentedAt, readProofFile, writeProofFile } from './proofFiles.ts
 import { MAX_SENTENCES, commentFindings, proofReport, proofread, revise } from './proofread.ts';
 import { learnDigest } from './reflect.ts';
 import { type ProofSentence, parseProof } from './proofText.ts';
-import { addTasks, changeTask, listTasks, TASK_STATUSES } from './agentTasks.ts';
+import { addTasks, changeTask, listTasks, type NewTask, TASK_STATUSES } from './agentTasks.ts';
 import { changed, inferFormat, newId, type SessionMeta, state, touch, writeDocFile, type StoredAttention } from './store.ts';
 
 const FALLBACK_PROTOCOL = '2025-06-18';
@@ -153,7 +153,18 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        tasks: { type: 'array', items: { type: 'string' }, description: '取りかかる順に並べたタスク。何をするかを 30 文字以内で書く' },
+        tasks: {
+          type: 'array',
+          description: '取りかかる順に並べたタスク',
+          items: {
+            type: 'object',
+            properties: {
+              subject: { type: 'string', description: '何をするかを 30 文字以内で書く' },
+              description: { type: 'string', description: '人間がタスクを開いたときに読む説明。何をするか、何をもって終えたとするか' },
+            },
+            required: ['subject'],
+          },
+        },
       },
       required: ['tasks'],
     },
@@ -167,6 +178,7 @@ const TOOLS = [
         id: { type: 'string', description: 'create_tasks か list_tasks が返したタスクの id' },
         status: { type: 'string', enum: [...TASK_STATUSES, 'deleted'] },
         subject: { type: 'string', description: '書き直した後のタスク' },
+        description: { type: 'string', description: '書き直した後の説明' },
       },
       required: ['id'],
     },
@@ -773,9 +785,9 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
     case 'set_task':
       return send(res, { id: rpcId, result: setTask(sessionId, args) });
     case 'create_tasks':
-      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => addTasks(m, strList(args.tasks) ?? [])) });
+      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => addTasks(m, Array.isArray(args.tasks) ? (args.tasks as NewTask[]) : [])) });
     case 'update_task':
-      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => changeTask(m, str(args.id), str(args.status), str(args.subject))) });
+      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => changeTask(m, str(args.id), { status: str(args.status), subject: str(args.subject), description: typeof args.description === 'string' ? args.description : undefined })) });
     case 'list_tasks':
       return send(res, { id: rpcId, result: taskTool(sessionId, (m) => listTasks(m, args.include_completed === true)) });
     case 'learn_digest':
