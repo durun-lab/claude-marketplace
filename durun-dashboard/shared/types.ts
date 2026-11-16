@@ -19,7 +19,14 @@ export type TaskItem = {
 };
 
 /** エージェントが create_tasks で登録し、update_task で進めたタスク。id はセッションの中で振る通し番号。 */
-export type AgentTask = Pick<TaskItem, 'id' | 'subject' | 'status'>;
+export type AgentTask = Pick<TaskItem, 'id' | 'subject' | 'status'> & {
+  /** 何をするか、何をもって終えたとするかの説明。 */
+  description?: string;
+  /** 登録した時刻と、着手と完了に変えた時刻。この形にする前に登録したタスクには無い。 */
+  createdAt?: number;
+  startedAt?: number;
+  completedAt?: number;
+};
 
 export type Subagent = {
   id: string;
