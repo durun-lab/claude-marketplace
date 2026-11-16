@@ -161,6 +161,7 @@ const TOOLS = [
             properties: {
               subject: { type: 'string', description: '何をするかを 30 文字以内で書く' },
               description: { type: 'string', description: '人間がタスクを開いたときに読む説明。何をするか、何をもって終えたとするか' },
+              blocked_by: { type: 'array', items: { type: 'string' }, description: '終わるのを待つタスクの id。同じ呼び出しで登録するタスクは、tasks の何番目かを 1 から数えて #1 のように書く' },
             },
             required: ['subject'],
           },
@@ -171,7 +172,7 @@ const TOOLS = [
   },
   {
     name: 'update_task',
-    description: 'create_tasks で登録したタスクの状態か内容を変える。取りかかるときに in_progress、終えたときに completed にする。要らなくなったタスクは deleted で消す。',
+    description: 'create_tasks で登録したタスクの状態、内容、待つタスクを変える。取りかかるときに in_progress、終えたときに completed にする。要らなくなったタスクは deleted で消す。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -179,6 +180,8 @@ const TOOLS = [
         status: { type: 'string', enum: [...TASK_STATUSES, 'deleted'] },
         subject: { type: 'string', description: '書き直した後のタスク' },
         description: { type: 'string', description: '書き直した後の説明' },
+        add_blocked_by: { type: 'array', items: { type: 'string' }, description: '新たに終わるのを待つタスクの id' },
+        remove_blocked_by: { type: 'array', items: { type: 'string' }, description: '待つのをやめるタスクの id' },
       },
       required: ['id'],
     },
@@ -787,7 +790,7 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
     case 'create_tasks':
       return send(res, { id: rpcId, result: taskTool(sessionId, (m) => addTasks(m, Array.isArray(args.tasks) ? (args.tasks as NewTask[]) : [])) });
     case 'update_task':
-      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => changeTask(m, str(args.id), { status: str(args.status), subject: str(args.subject), description: typeof args.description === 'string' ? args.description : undefined })) });
+      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => changeTask(m, str(args.id), { status: str(args.status), subject: str(args.subject), description: typeof args.description === 'string' ? args.description : undefined, addBlockedBy: args.add_blocked_by, removeBlockedBy: args.remove_blocked_by })) });
     case 'list_tasks':
       return send(res, { id: rpcId, result: taskTool(sessionId, (m) => listTasks(m, args.include_completed === true)) });
     case 'learn_digest':
