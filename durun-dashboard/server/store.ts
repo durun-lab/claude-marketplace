@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { type AgentPriority, type AskedQuestion, type Bookmark, type BranchView, type Dashboards, type DiffRange, type DocFormat, MEDIA_TYPES, type BurstKind, type OutboxMessage, type PrThreadNote, type QueuedMessage, type RatePoint, type SavedDoc, type SavedFile, type SavedLink, type SavedProof, type SavedTerm } from '../shared/types.ts';
+import { type AgentPriority, type AgentTask, type AskedQuestion, type Bookmark, type BranchView, type Dashboards, type DiffRange, type DocFormat, MEDIA_TYPES, type BurstKind, type OutboxMessage, type PrThreadNote, type QueuedMessage, type RatePoint, type SavedDoc, type SavedFile, type SavedLink, type SavedProof, type SavedTerm } from '../shared/types.ts';
 import type { TimelineLog } from './timeline.ts';
 
 // 利用者ごとのデータはツールのリポジトリと分けてホームに置く。テストでは一時ディレクトリに向けて、実際の状態に触れないようにする。
@@ -15,6 +15,10 @@ const KEEP_DELIVERED = 200;
 export type SessionMeta = {
   id: string;
   cwd: string;
+  /** エージェントが MCP の create_tasks で登録したタスク。 */
+  agentTasks?: AgentTask[];
+  /** agentTasks に最後に振った id。消したタスクの id を使い直さない。 */
+  agentTaskSeq?: number;
   transcriptPath?: string;
   theme?: string;
   title?: string;
@@ -293,8 +297,8 @@ export const newId = (): string => randomUUID().slice(0, 8);
 export const moveSession = (from: string, to: string): void => {
   const old = state.sessions[from];
   if (!old || from === to) return;
-  const { parent, account, settingsFile, theme, title, jira, pinned, dangerous, badges, hiddenBadges, slack, hiddenSlack, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews } = old;
-  Object.assign(ensureSession(to, old.cwd), { parent, account, settingsFile, theme, title, jira, pinned, dangerous, badges, hiddenBadges, slack, hiddenSlack, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews });
+  const { parent, account, settingsFile, agentTasks, agentTaskSeq, theme, title, jira, pinned, dangerous, badges, hiddenBadges, slack, hiddenSlack, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews } = old;
+  Object.assign(ensureSession(to, old.cwd), { parent, account, settingsFile, agentTasks, agentTaskSeq, theme, title, jira, pinned, dangerous, badges, hiddenBadges, slack, hiddenSlack, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews });
   Object.assign(old, { archived: true, movedTo: to, pinned: undefined, dangerous: undefined, bookmarks: undefined, jobId: undefined });
   for (const items of [state.attention, state.docs, state.outbox]) {
     for (const item of items) if (item.sessionId === from) item.sessionId = to;

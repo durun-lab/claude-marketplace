@@ -16,7 +16,7 @@ import { proofCommentedAt } from './proofFiles.ts';
 import { accountRateLimits, currentRateLimits } from './rateLimits.ts';
 import { ensureSession, newId, persist, state, type SessionMeta } from './store.ts';
 import { TIMELINE_KEEP_MS, noteTimeline } from './timeline.ts';
-import { type Conversation, peekReplies, peekSummary, peekTasks, peekWaiting } from './suggest.ts';
+import { type Conversation, peekReplies, peekSummary, peekWaiting } from './suggest.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** 終了してからこの期間を過ぎたセッションは会話ログを読まない。 */
@@ -290,15 +290,13 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     awaitingReview: !!review,
     reviewRange: review?.range,
     branchViews: meta.branchViews,
+    agentTasks: meta.agentTasks,
   };
   // 概要の材料には画面に出す名前とテーマを渡すので、組み立てたセッションから作る。やり取りが無ければ作れない。
   // アーカイブしたセッションは数百件たまるので、作らない。
   const summarizable = !session.archived && !!(session.lastPrompt || session.lastMessage);
   const conversation = { ...session, firstPrompt: firstPromptOf(log) };
-  if (summarizable) {
-    session.summary = peekSummary(conversation);
-    session.observedTasks = peekTasks({ ...conversation, entries: log?.texts ?? [] });
-  }
+  if (summarizable) session.summary = peekSummary(conversation);
   // 質問や権限の確認に答えていないセッションと、発言の無いセッションは、人間を待っている。
   // スリープや通信の途切れで止まったセッションは、確認のダイアログへの人間の答えか、自動継続モードなら通信が戻るのを待っている。答えはダイアログで尋ねるので、要対応には出さない。
   if (session.status === 'idle' && !session.archived) {
