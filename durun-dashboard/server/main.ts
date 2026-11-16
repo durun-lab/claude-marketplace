@@ -27,7 +27,7 @@ import { UpstreamError } from './haiku.ts';
 import { handleHook, holdPermission, type HookInput } from './hooks.ts';
 import { saveFeedback } from './improve.ts';
 import { applyAgentPriority, setAgentPriority } from './agentPriority.ts';
-import { consultWorkflow, runWorkflow, setWorkflowEnabled, startWorkflows, updateWorkflow } from './workflow.ts';
+import { consultWorkflow, renewWorkflowSession, runWorkflow, setWorkflowEnabled, startWorkflows, updateWorkflow } from './workflow.ts';
 import { harness, setHarnessToggle } from './harness.ts';
 import { readEnvValues, writeEnvValue } from './envFile.ts';
 import { claudeSettingsFields, readClaudeSettings, writeClaudeSetting } from './claudeSettings.ts';
@@ -1449,6 +1449,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/assistant$/, async (_, b) => askDolphin(await logsReady.then(buildSnapshot), toMessages(b), await focusOf(b)), HAIKU_MS],
   [/^\/api\/workflows\/consult$/, (_, b) => consultWorkflow(optionalString(b, 'id')), CLAUDE_MS],
   [/^\/api\/workflows\/([\w-]+)\/run$/, ([, id = '']) => runWorkflow(id)],
+  [/^\/api\/workflows\/([\w-]+)\/renew$/, ([, id = '']) => renewWorkflowSession(id)],
   [/^\/api\/workflows\/([\w-]+)\/settings$/, ([, id = ''], b) => updateWorkflow(id, b)],
   [/^\/api\/workflows\/([\w-]+)\/enabled$/, ([, id = ''], b) => setWorkflowEnabled(id, field<boolean>(b, 'enabled', 'boolean'))],
   [/^\/api\/learn\/toggle$/, (_, b) => setHarnessToggle(CLAUDE_DIR, harnessToggleOf(b), field<boolean>(b, 'on', 'boolean'))],
