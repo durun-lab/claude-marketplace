@@ -10,13 +10,13 @@ import { archiveSession, autoRunCommand, dropStaleRequests, sendMessage, startCh
 import { callFlTool, FL_TOOL_NAMES } from './flconnect.ts';
 import { callMmTool, MM_TOOL_NAMES } from './movieMaker.ts';
 import { sessionIdForPid } from './hooks.ts';
-import { resolveCommit, resolveRange } from './integrations.ts';
+import { badgeOf, jiraKeyOfUrl, resolveCommit, resolveRange } from './integrations.ts';
 import { readPr, writePr } from './prText.ts';
 import { proofCommentedAt, readProofFile, writeProofFile } from './proofFiles.ts';
 import { MAX_SENTENCES, commentFindings, proofReport, proofread, revise } from './proofread.ts';
 import { learnDigest } from './reflect.ts';
 import { type ProofSentence, parseProof } from './proofText.ts';
-import { addTasks, changeTask, listTasks, type NewTask, TASK_STATUSES } from './agentTasks.ts';
+import { addTasks, changeTask, listTasks, type NewTask, TASK_STATUSES, type TicketOf } from './agentTasks.ts';
 import { changed, inferFormat, newId, type SessionMeta, state, touch, writeDocFile, type StoredAttention } from './store.ts';
 
 const FALLBACK_PROTOCOL = '2025-06-18';
@@ -159,11 +159,12 @@ const TOOLS = [
           items: {
             type: 'object',
             properties: {
-              subject: { type: 'string', description: '何をするかを 30 文字以内で書く' },
+              subject: { type: 'string', description: '何をするかを 30 文字以内で書く。チケットのタスクは省くと、チケットの番号かキーにする' },
+              ticket: { type: 'string', description: 'このタスクが PR、Issue、JIRA の課題そのものなら、その URL か課題のキー。人間はバッジとしてチケットとタスクの状態を見る。手順や説明は、parent にこのタスクを指した子のタスクに置く' },
+              parent: { type: 'string', description: '手順として下に置く親のタスクの id。同じ呼び出しで登録するタスクは #1 のように書く' },
               description: { type: 'string', description: '人間がタスクを開いたときに読む説明。何をするか、何をもって終えたとするか' },
               blocked_by: { type: 'array', items: { type: 'string' }, description: '終わるのを待つタスクの id。同じ呼び出しで登録するタスクは、tasks の何番目かを 1 から数えて #1 のように書く' },
             },
-            required: ['subject'],
           },
         },
       },
@@ -182,6 +183,7 @@ const TOOLS = [
         description: { type: 'string', description: '書き直した後の説明' },
         add_blocked_by: { type: 'array', items: { type: 'string' }, description: '新たに終わるのを待つタスクの id' },
         remove_blocked_by: { type: 'array', items: { type: 'string' }, description: '待つのをやめるタスクの id' },
+        parent: { type: 'string', description: '手順として下に置く親のタスクの id。空の文字列で親から外す' },
       },
       required: ['id'],
     },
@@ -521,6 +523,14 @@ const setTask = (sessionId: string, args: ToolArgs): object => {
   return textResult(meta.parent && str(args.theme) ? '登録しました。子セッションなので、テーマは親のテーマのままにしました。' : '登録しました。');
 };
 
+/** チケットはバッジと同じ URL にそろえ、題を省いたときは JIRA の課題のキーか、PR と Issue の #番号を出す。 */
+const ticketOf: TicketOf = (text) => {
+  const badge = badgeOf(text);
+  if (!badge) return undefined;
+  const u = new URL(badge.url);
+  return { url: badge.url, label: badge.kind === 'jira' ? (jiraKeyOfUrl(u) ?? badge.url) : `#${u.pathname.split('/').at(-1)}` };
+};
+
 /** 登録と更新では一覧を返さない。タスクの一覧で Claude のコンテキストを占めないため。 */
 const taskTool = (sessionId: string, run: (meta: SessionMeta) => { text: string; isError?: boolean; changed?: boolean }): object => {
   const meta = state.sessions[sessionId];
@@ -788,9 +798,9 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
     case 'set_task':
       return send(res, { id: rpcId, result: setTask(sessionId, args) });
     case 'create_tasks':
-      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => addTasks(m, Array.isArray(args.tasks) ? (args.tasks as NewTask[]) : [])) });
+      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => addTasks(m, Array.isArray(args.tasks) ? (args.tasks as NewTask[]) : [], { ticketOf })) });
     case 'update_task':
-      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => changeTask(m, str(args.id), { status: str(args.status), subject: str(args.subject), description: typeof args.description === 'string' ? args.description : undefined, addBlockedBy: args.add_blocked_by, removeBlockedBy: args.remove_blocked_by })) });
+      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => changeTask(m, str(args.id), { status: str(args.status), subject: str(args.subject), description: typeof args.description === 'string' ? args.description : undefined, addBlockedBy: args.add_blocked_by, removeBlockedBy: args.remove_blocked_by, parent: typeof args.parent === 'string' ? args.parent : undefined })) });
     case 'list_tasks':
       return send(res, { id: rpcId, result: taskTool(sessionId, (m) => listTasks(m, args.include_completed === true)) });
     case 'learn_digest':

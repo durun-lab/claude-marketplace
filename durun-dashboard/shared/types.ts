@@ -24,6 +24,10 @@ export type AgentTask = Pick<TaskItem, 'id' | 'subject' | 'status'> & {
   description?: string;
   /** 終わるのを待つタスクの id。画面では、待つタスクの下に並べる。 */
   blockedBy?: string[];
+  /** 手順として下に置く親のタスクの id。画面では、待つタスクより優先して親の下に並べる。 */
+  parent?: string;
+  /** チケットのタスクが指す PR、Issue、JIRA の課題の URL。バッジの URL と同じ形にそろえる。 */
+  ticket?: string;
   /** 登録した時刻と、着手と完了に変えた時刻。この形にする前に登録したタスクには無い。 */
   createdAt?: number;
   startedAt?: number;

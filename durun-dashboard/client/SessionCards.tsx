@@ -8,7 +8,7 @@ import { useCollapsed } from './hooks.ts';
 import { ARROW_STEP, arrangeSessions, gatherAfter, moveTo } from './order.ts';
 import { href } from './router.ts';
 import { WORKFLOW_ICON } from './Workflow.tsx';
-import { Chip, Empty, IssueChip, JiraChips, PinIcon, PrChips, StatusBadge, StatusCounts, StatusDot, Time } from './ui.tsx';
+import { Chip, Empty, IssueChip, JiraChips, PinIcon, PrChips, StatusBadge, StatusCounts, StatusDot, ticketStatus, Time } from './ui.tsx';
 
 const UNCLASSIFIED = '未分類';
 // テーマの名前は空にならない（空のテーマは未分類にまとめる）ので、空の名前をピン留めのまとまりに使う。
@@ -132,9 +132,9 @@ const SessionCard = ({ s, sel, dragging, drag }: { s: Session; sel: Selection; d
             <div class="chips">
               {s.workflow && <Chip tone="info" title="このセッションを起動したワークフロー"><AppIcon icon={WORKFLOW_ICON} size={14} />{s.workflow}</Chip>}
               {/* 一覧のまま PR や課題を見られるよう、session を渡さず、セッションの画面へ移らずにウィンドウに浮かべて開く。 */}
-              {s.prs?.map((pr) => <PrChips key={pr.url} pr={pr} />)}
-              <JiraChips issues={s.jira} />
-              {s.issues?.map((i) => <IssueChip key={i.url} issue={i} />)}
+              {s.prs?.map((pr) => <PrChips key={pr.url} pr={pr} task={ticketStatus(s, pr.url)} />)}
+              <JiraChips issues={s.jira} taskOf={(url) => ticketStatus(s, url)} />
+              {s.issues?.map((i) => <IssueChip key={i.url} issue={i} task={ticketStatus(s, i.url)} />)}
             </div>
           )}
         </div>

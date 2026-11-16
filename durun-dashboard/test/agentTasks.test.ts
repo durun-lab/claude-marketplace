@@ -23,7 +23,7 @@ test('タスクは通し番号で登録し、状態と内容を変えて消せ�
 
 test('タスクの詳細は、説明と、登録・着手・完了の時刻を覚え、未着手に戻すと着手と完了の時刻を忘れる', () => {
   const owner: { agentTasks?: AgentTask[]; agentTaskSeq?: number } = {};
-  addTasks(owner, [{ subject: '直す', description: 'テストが通るまで' }], 100);
+  addTasks(owner, [{ subject: '直す', description: 'テストが通るまで' }], { now: 100 });
   const task = (): AgentTask | undefined => owner.agentTasks?.[0];
   assert.deepEqual(task(), { id: '1', subject: '直す', description: 'テストが通るまで', status: 'pending', createdAt: 100 });
   // 一覧には説明を載せない。
@@ -52,4 +52,20 @@ test('待つタスクは、同じ呼び出しの #n と既存の id で登録し
   changeTask(owner, '4', { removeBlockedBy: ['2'] });
   changeTask(owner, '3', { status: 'deleted' });
   assert.deepEqual(owner.agentTasks?.map((t) => [t.id, t.blockedBy]), [['1', undefined], ['2', ['1']], ['4', []]]);
+});
+
+test('チケットのタスクは題を省くとチケットの名前にし、手順は parent で親の下に置き、輪になる親子と無い親を断る', () => {
+  const owner: { agentTasks?: AgentTask[]; agentTaskSeq?: number } = {};
+  const ticketOf = (t: string) => (/^CATS-\d+$/.test(t) ? { url: `https://jira.example.com/browse/${t}`, label: t } : undefined);
+  assert.match(addTasks(owner, [{ ticket: 'not a ticket' }], { ticketOf }).text, /ticket（not a ticket）は/);
+  assert.equal(
+    addTasks(owner, [{ ticket: 'CATS-1' }, { subject: '調べる', parent: '#1' }, { subject: '直す', parent: '#1', blocked_by: ['#2'] }], { ticketOf }).text,
+    '登録しました。\n- 1 [未着手] CATS-1\n- 2 [未着手] 調べる\n- 3 [未着手] 直す（2 を待つ）',
+  );
+  assert.deepEqual(owner.agentTasks?.map((t) => [t.id, t.ticket, t.parent]), [['1', 'https://jira.example.com/browse/CATS-1', undefined], ['2', undefined, '1'], ['3', undefined, '1']]);
+  assert.match(changeTask(owner, '1', { parent: '3' }).text, /輪になります/);
+  assert.match(changeTask(owner, '2', { parent: '9' }).text, /見つかりません/);
+  changeTask(owner, '3', { parent: '' });
+  changeTask(owner, '1', { status: 'deleted' });
+  assert.deepEqual(owner.agentTasks?.map((t) => [t.id, t.parent]), [['2', undefined], ['3', undefined]]);
 });

@@ -8,9 +8,14 @@ const TASK_LABEL: Record<AgentTask['status'], string> = { pending: '未着手', 
 /** agentTaskSeq は最後に振った id。消したタスクの id を使い直さないよう、タスクとは別に覚える。 */
 type Owner = { agentTasks?: AgentTask[]; agentTaskSeq?: number };
 type Result = { text: string; isError?: boolean; changed?: boolean };
-/** create_tasks に渡すタスク。題だけの文字列でも受け付ける。 */
-/** blocked_by は待つタスクの id。同じ呼び出しで登録するタスクは、tasks の何番目かを 1 から数えて #2 のように書く。 */
-export type NewTask = string | { subject?: unknown; description?: unknown; blocked_by?: unknown };
+/**
+ * create_tasks に渡すタスク。題だけの文字列でも受け付ける。
+ * blocked_by は待つタスクの id、parent は手順として下に置く親のタスクの id。同じ呼び出しで登録するタスクは、tasks の何番目かを 1 から数えて #2 のように書く。
+ * ticket は PR、Issue、JIRA の課題の URL か課題のキー。チケットのタスクは subject を省ける。
+ */
+export type NewTask = string | { subject?: unknown; description?: unknown; blocked_by?: unknown; parent?: unknown; ticket?: unknown };
+/** チケットを、バッジと同じ URL と、題を省いたときに出す名前にそろえる。チケットでなければ undefined。 */
+export type TicketOf = (text: string) => { url: string; label: string } | undefined;
 
 const ids = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string' && !!x.trim()).map((x) => x.trim()) : []);
 
@@ -28,6 +33,20 @@ const reaches = (tasks: AgentTask[], from: string, to: string, seen = new Set<st
   return (tasks.find((t) => t.id === from)?.blockedBy ?? []).some((id) => reaches(tasks, id, to, seen));
 };
 
+/** task の親を parent にすると、親を辿って task に戻るなら、輪になる。 */
+const parentLoops = (tasks: AgentTask[], task: string, parent: string): boolean => {
+  const seen = new Set<string>();
+  for (let id: string | undefined = parent; id; id = tasks.find((t) => t.id === id)?.parent) {
+    if (id === task) return true;
+    if (seen.has(id)) return false;
+    seen.add(id);
+  }
+  return false;
+};
+
+const parentError = (tasks: AgentTask[], task: string, parent: string): string | undefined =>
+  !tasks.some((t) => t.id === parent) ? `親のタスクの id（${parent}）が見つかりません。` : parentLoops(tasks, task, parent) ? `タスク ${task} の親を ${parent} にすると、親子が輪になります。` : undefined;
+
 /** task が waits を待つようにできないなら、その理由を返す。 */
 const blockError = (tasks: AgentTask[], task: string, waits: string[]): string | undefined => {
   const unknown = waits.filter((id) => !tasks.some((t) => t.id === id));
@@ -38,29 +57,36 @@ const blockError = (tasks: AgentTask[], task: string, waits: string[]): string |
 const text = (v: unknown): string | undefined => (typeof v === 'string' && v.trim() ? v.trim() : undefined);
 
 /** 登録したタスクの id を返す。id はセッションの中の通し番号で、消したタスクの番号は使い直さない。 */
-export const addTasks = (owner: Owner, given: NewTask[], now = Date.now()): Result => {
-  const items = given.flatMap((t) => {
-    const subject = text(typeof t === 'string' ? t : t?.subject);
-    return subject ? [{ subject, description: typeof t === 'string' ? undefined : text(t?.description), waits: typeof t === 'string' ? [] : ids(t?.blocked_by) }] : [];
-  });
+export const addTasks = (owner: Owner, given: NewTask[], opts: { now?: number; ticketOf?: TicketOf } = {}): Result => {
+  const now = opts.now ?? Date.now();
+  const items: { subject: string; description?: string; waits: string[]; parent?: string; ticket?: string }[] = [];
+  for (const t of given) {
+    const o = typeof t === 'string' ? { subject: t } : (t ?? {});
+    const typed = text(o.ticket);
+    const ticket = typed ? opts.ticketOf?.(typed) : undefined;
+    if (typed && !ticket) return { text: `登録しませんでした。ticket（${typed}）は、PR、Issue、JIRA の課題の URL か課題のキーではありません。`, isError: true };
+    const subject = text(o.subject) ?? ticket?.label;
+    if (subject) items.push({ subject, description: text(o.description), waits: ids(o.blocked_by), parent: text(o.parent), ticket: ticket?.url });
+  }
   if (!items.length) return { text: 'tasks に、登録するタスクを 1 つ以上渡してください。', isError: true };
   const before = owner.agentTaskSeq ?? 0;
   // #n は、この呼び出しで n 番目に登録するタスクの id に読み替える。
   const resolve = (id: string): string => (/^#\d+$/.test(id) && Number(id.slice(1)) <= items.length ? String(before + Number(id.slice(1))) : id);
-  const added = items.map(({ subject, description, waits }, i): AgentTask => {
+  const added = items.map(({ subject, description, waits, parent, ticket }, i): AgentTask => {
     const blockedBy = [...new Set(waits.map(resolve))];
-    return { id: String(before + i + 1), subject, description, status: 'pending', createdAt: now, ...(blockedBy.length ? { blockedBy } : {}) };
+    return { id: String(before + i + 1), subject, description, status: 'pending', createdAt: now, ...(blockedBy.length ? { blockedBy } : {}), ...(parent ? { parent: resolve(parent) } : {}), ...(ticket ? { ticket } : {}) };
   });
   const tasks = [...(owner.agentTasks ?? []), ...added];
   for (const t of added) {
-    const error = t.blockedBy && blockError(tasks.filter((u) => u !== t), t.id, t.blockedBy);
+    const error = (t.blockedBy && blockError(tasks.filter((u) => u !== t), t.id, t.blockedBy)) || (t.parent && parentError(tasks, t.id, t.parent));
     if (error) return { text: `登録しませんでした。${error}`, isError: true };
   }
   Object.assign(owner, { agentTasks: tasks, agentTaskSeq: before + added.length });
   return { text: `登録しました。\n${added.map((t) => line(t, tasks)).join('\n')}`, changed: true };
 };
 
-export type TaskChange = { status?: string; subject?: string; description?: string; addBlockedBy?: unknown; removeBlockedBy?: unknown };
+/** parent に空の文字列を渡すと、親から外していちばん外に出す。 */
+export type TaskChange = { status?: string; subject?: string; description?: string; addBlockedBy?: unknown; removeBlockedBy?: unknown; parent?: string };
 
 /** status に deleted を渡すと消す。着手と完了の時刻は、その状態に変えた時刻を覚え、未着手に戻したら忘れる。 */
 export const changeTask = (owner: Owner, id: string | undefined, change: TaskChange, now = Date.now()): Result => {
@@ -68,16 +94,20 @@ export const changeTask = (owner: Owner, id: string | undefined, change: TaskCha
   if (!task) return { text: 'id に、create_tasks か list_tasks が返したタスクの id を渡してください。', isError: true };
   const { status } = change;
   if (status === 'deleted') {
-    // 消したタスクを待っていたタスクは、待つのをやめる。
-    owner.agentTasks = owner.agentTasks?.filter((t) => t !== task).map((t) => (t.blockedBy?.includes(task.id) ? { ...t, blockedBy: t.blockedBy.filter((id) => id !== task.id) } : t));
+    // 消したタスクを待っていたタスクは待つのをやめ、その手順だったタスクは親から外す。
+    owner.agentTasks = owner.agentTasks
+      ?.filter((t) => t !== task)
+      .map((t) => ({ ...t, blockedBy: t.blockedBy?.filter((id) => id !== task.id), parent: t.parent === task.id ? undefined : t.parent }));
     return { text: '消しました。', changed: true };
   }
   const isStatus = (v: string): v is AgentTask['status'] => (TASK_STATUSES as readonly string[]).includes(v);
   const next = status && isStatus(status) ? status : undefined;
   if (status && !next) return { text: `status には ${[...TASK_STATUSES, 'deleted'].join('、')} のどれかを渡してください。`, isError: true };
   const adding = ids(change.addBlockedBy);
-  const error = adding.length ? blockError(owner.agentTasks ?? [], task.id, adding) : undefined;
+  const parent = change.parent?.trim();
+  const error = (adding.length ? blockError(owner.agentTasks ?? [], task.id, adding) : undefined) || (parent ? parentError(owner.agentTasks ?? [], task.id, parent) : undefined);
   if (error) return { text: `更新しませんでした。${error}`, isError: true };
+  if (change.parent !== undefined) task.parent = parent || undefined;
   const removing = new Set(ids(change.removeBlockedBy));
   const blockedBy = [...new Set([...(task.blockedBy ?? []), ...adding])].filter((id) => !removing.has(id));
   task.blockedBy = blockedBy.length ? blockedBy : undefined;
