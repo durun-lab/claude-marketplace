@@ -56,7 +56,7 @@ const Lane = ({ r, x, ticks, from, now, plot, current }: { r: TimelineRow; x: (a
   const y = ROW_H / 2;
   return (
     <div class={`session-timeline-row${current ? ' is-current' : ''}`}>
-      <a class="session-timeline-name" href={href.session(r.id)} title={r.name}>{r.name}</a>
+      <a class={`session-timeline-name${r.archived ? ' is-archived' : ''}`} href={href.session(r.id)} title={r.archived ? `${r.name}（アーカイブ済み）` : r.name}>{r.name}</a>
       <svg width={plot + RIGHT} height={ROW_H} aria-hidden="true">
         {ticks.map((t) => <line key={t} x1={x(t)} x2={x(t)} y1={0} y2={ROW_H} class="session-timeline-grid" />)}
         {r.states.map(([at, state], j) => {
@@ -109,6 +109,7 @@ type Props = { now: number; current?: string; settings: WidgetSettings; onSettin
 
 /**
  * 描く長さの中で動いた行を、最後にチャットで指示したものから並べ、指示の無い行は最後に動いたものから後ろに続ける。
+ * アーカイブ済みのセッションは、その下にまとめる。
  * セッションの画面では current にそのセッションを渡し、動いていなくても先頭に置いて背景で見分ける。
  */
 export const SessionTimeline = ({ now, current, settings, onSettings }: Props) => {
@@ -116,7 +117,7 @@ export const SessionTimeline = ({ now, current, settings, onSettings }: Props) =
   const tick = Math.floor(now / REFRESH_MS);
   const { data, error } = useFetch(() => api.timeline(), [tick]);
   const from = now - hours * HOUR_MS;
-  const rows = (data ?? []).filter((r) => r.id === current || movedSince(r, from)).sort((a, b) => Number(b.id === current) - Number(a.id === current) || lastPrompt(b) - lastPrompt(a) || lastAt(b) - lastAt(a));
+  const rows = (data ?? []).filter((r) => r.id === current || movedSince(r, from)).sort((a, b) => Number(b.id === current) - Number(a.id === current) || Number(a.archived) - Number(b.archived) || lastPrompt(b) - lastPrompt(a) || lastAt(b) - lastAt(a));
   return (
     <>
       <h2 class="section-title">{TIMELINE_TITLE}</h2>

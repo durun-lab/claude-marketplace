@@ -482,6 +482,6 @@ export const timelineRows = (now = Date.now()): TimelineRow[] => {
     if (!meta) return [];
     const log = meta.transcriptPath ? claude.peekLog(meta.transcriptPath, false, noop).summary : undefined;
     const said = (log?.texts ?? []).flatMap((e): TimelineRow['events'] => (e.kind === 'prompt' && e.at && e.at >= cutoff ? [[e.at, e.text.startsWith('/compact') ? 'compact' : 'prompt']] : []));
-    return [{ id, name: displayName(meta, log), states: r.states, events: [...said, ...r.events].sort((a, b) => a[0] - b[0]) }];
+    return [{ id, name: displayName(meta, log), archived: meta.archived, states: r.states, events: [...said, ...r.events].sort((a, b) => a[0] - b[0]) }];
   });
 };
