@@ -1070,4 +1070,5 @@ export type TimelineState = SessionStatus | WaitingFor | 'gone';
 /** タイムラインに置く出来事。prompt はチャットの指示、question と answer は人間への質問とその回答、compact は会話の compact。 */
 export type TimelineEventKind = 'prompt' | 'question' | 'answer' | 'compact';
 /** タイムラインの 1 行。states は状態が変わった時刻とその状態を古い順に並べ、events は出来事を古い順に並べる。 */
-export type TimelineRow = { id: string; name: string; states: [number, TimelineState][]; events: [number, TimelineEventKind][] };
+/** archived はアーカイブ済みのセッション。行の並びで下にまとめる。 */
+export type TimelineRow = { id: string; name: string; archived: boolean; states: [number, TimelineState][]; events: [number, TimelineEventKind][] };
