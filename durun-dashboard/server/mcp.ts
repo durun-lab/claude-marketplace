@@ -16,7 +16,7 @@ import { proofCommentedAt, readProofFile, writeProofFile } from './proofFiles.ts
 import { MAX_SENTENCES, commentFindings, proofReport, proofread, revise } from './proofread.ts';
 import { learnDigest } from './reflect.ts';
 import { type ProofSentence, parseProof } from './proofText.ts';
-import { addTasks, changeTask, listTasks, type NewTask, TASK_STATUSES, type TicketOf } from './agentTasks.ts';
+import { addTasks, changeTask, delegateTask, listTasks, mirrorRoot, type NewTask, TASK_STATUSES, type TicketOf } from './agentTasks.ts';
 import { changed, inferFormat, newId, type SessionMeta, state, touch, writeDocFile, type StoredAttention } from './store.ts';
 
 const FALLBACK_PROTOCOL = '2025-06-18';
@@ -230,6 +230,7 @@ const TOOLS = [
         model: { type: 'string', enum: [...MODELS], description: '省くと Claude Code の設定に従う' },
         effort: { type: 'string', enum: [...EFFORT_LEVELS], description: '省くと Claude Code の設定に従う' },
         account: { type: 'string', description: '省くとこのセッションと同じ Claude のアカウントで動く。人間に頼まれたときだけ、primary か追加アカウントの名前を渡す' },
+        task: { type: 'string', description: 'create_tasks で登録したタスクのうち、子セッションに任せるタスクの id。タスクに子セッションを結び、子セッションではそのタスクがルートのタスクになる。子セッションがルートのタスクの状態を変えると、このタスクにも写る' },
       },
       required: ['prompt'],
     },
@@ -531,6 +532,12 @@ const ticketOf: TicketOf = (text) => {
   return { url: badge.url, label: badge.kind === 'jira' ? (jiraKeyOfUrl(u) ?? badge.url) : `#${u.pathname.split('/').at(-1)}` };
 };
 
+/** 子セッションが任されたルートのタスクを変えたら、親セッションのタスクにも写す。 */
+const withMirror = <T extends { changed?: boolean }>(meta: SessionMeta, id: string | undefined, result: T): T => {
+  if (result.changed && id && id === meta.rootTask) mirrorRoot(meta, (session) => state.sessions[session]);
+  return result;
+};
+
 /** 登録と更新では一覧を返さない。タスクの一覧で Claude のコンテキストを占めないため。 */
 const taskTool = (sessionId: string, run: (meta: SessionMeta) => { text: string; isError?: boolean; changed?: boolean }): object => {
   const meta = state.sessions[sessionId];
@@ -694,10 +701,19 @@ const startSessionTool = (res: ServerResponse, rpcId: RpcId, params: RpcParams, 
   if (!prompt) return send(res, { id: rpcId, result: textResult('prompt を渡してください。', true) });
   const model = (MODELS as readonly unknown[]).includes(args.model) ? String(args.model) : undefined;
   const effort = (EFFORT_LEVELS as readonly unknown[]).includes(args.effort) ? String(args.effort) : undefined;
+  const task = str(args.task);
+  const parent = state.sessions[sessionId];
+  if (task && !parent?.agentTasks?.some((t) => t.id === task)) return send(res, { id: rpcId, result: textResult('task に、create_tasks か list_tasks が返したタスクの id を渡してください。', true) });
   const finish = openStream(res, rpcId, params, () => '子セッションを起動しています');
   const account = str(args.account);
   startChildSession(sessionId, prompt, str(args.name), model, effort, account === 'primary' ? '' : account).then(
-    (child) => finish(textResult(`子セッションを起動しました。session_id: ${child.id}`)),
+    (child) => {
+      if (task && parent) {
+        delegateTask(parent, task, child);
+        touch();
+      }
+      finish(textResult(`子セッションを起動しました。session_id: ${child.id}${task ? `。タスク ${task} を任せました` : ''}`));
+    },
     (e: Error) => finish(textResult(`子セッションを起動できませんでした。${e.message}`, true)),
   );
 };
@@ -800,7 +816,7 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
     case 'create_tasks':
       return send(res, { id: rpcId, result: taskTool(sessionId, (m) => addTasks(m, Array.isArray(args.tasks) ? (args.tasks as NewTask[]) : [], { ticketOf })) });
     case 'update_task':
-      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => changeTask(m, str(args.id), { status: str(args.status), subject: str(args.subject), description: typeof args.description === 'string' ? args.description : undefined, addBlockedBy: args.add_blocked_by, removeBlockedBy: args.remove_blocked_by, parent: typeof args.parent === 'string' ? args.parent : undefined })) });
+      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => withMirror(m, str(args.id), changeTask(m, str(args.id), { status: str(args.status), subject: str(args.subject), description: typeof args.description === 'string' ? args.description : undefined, addBlockedBy: args.add_blocked_by, removeBlockedBy: args.remove_blocked_by, parent: typeof args.parent === 'string' ? args.parent : undefined }))) });
     case 'list_tasks':
       return send(res, { id: rpcId, result: taskTool(sessionId, (m) => listTasks(m, args.include_completed === true)) });
     case 'learn_digest':
