@@ -1,6 +1,6 @@
 // セッションのやり取りから、概要と、タスクと、人間が Claude に送る返答の候補と、セッション名の候補と、用語集を haiku に作らせる。
 // 入力待ちのセッションが何を待っているかは、Jev があれば Jev に、無ければ haiku に分類させる。
-import type { ChatEntry, Glossary, GlossaryTerm, ObservedTask, Replies, SavedTerm, Session, SessionStatus, SessionSummary, TaskItem, WaitingFor } from '../shared/types.ts';
+import type { ChatEntry, Glossary, GlossaryTerm, Replies, SavedTerm, Session, SessionStatus, SessionSummary, TaskItem, WaitingFor } from '../shared/types.ts';
 import { cached, peekCached, refreshing } from './cache.ts';
 import { UpstreamError, askHaiku, objectSchema } from './haiku.ts';
 import { type ChoiceQuestion, askChoice, hasJev } from './jev.ts';
@@ -18,19 +18,6 @@ const SUMMARY_INSTRUCTIONS = `この Claude Code のセッションの概要を�
 - doing: セッション全体の目的。何のために何をしているかを、終わったことの報告ではなく取り組みとして 1 文で書く。
 - now: いまの状況。作業中なら何をしているか、止まっているなら何を終えて人間の何を待っているか。1〜2 文で書く。
 - 主語の Claude は省き、短く書く。`;
-
-// 一覧のカードにも収まるよう、タスクはこの数までにする。
-const MAX_TASKS = 10;
-// 長い依頼を貼り付けたセッションでも、その後の依頼を多く渡せるよう、依頼の一覧には頭だけを載せる。
-const MAX_PROMPT_CHARS = 200;
-// 作業中は発言のたびに材料が変わる。一覧のすべてのセッションで判定し直して haiku を動かし続けないよう、この間隔を空ける。
-const TASKS_REFRESH_MS = 3 * 60_000;
-
-const TASKS_INSTRUCTIONS = `この Claude Code のセッションで人間が頼んだ作業を、進み具合が分かるタスクの一覧にしてください。
-- <first_prompt> は最初の依頼、<prompts> はその後の依頼、<claude_tasks> は Claude が自分で作ったタスク、<conversation> は最近のやり取り。
-- 依頼を、終えたかどうかを見分けられる作業に分け、取りかかる順に ${MAX_TASKS} 件まで並べる。
-- status は Claude の発言から判定する。終えたと報告したものは completed、取りかかっているものは in_progress、まだ取りかかっていないものは pending にする。
-- subject は、何をするかを 30 文字以内で書く。`;
 
 const REPLY_INSTRUCTIONS = `Claude が最後にした発言に対して、人間が次に送りそうな返答の候補を ${MAX_REPLIES} つ作ってください。
 - Claude に次にしてほしいことを頼む指示か、発言の中の質問への回答にする。
@@ -130,62 +117,6 @@ const oneOfFew = <T,>(load: () => Promise<T>) => async (): Promise<T> => {
 export const peekSummary = (c: Conversation): SessionSummary | undefined => {
   const prompt = summaryPrompt(c);
   return peekCached(summaryKey(c.id), { input: prompt, keep: c.status === 'busy' }, oneOfFew(loadSummary(prompt)));
-};
-
-/** タスクを判定する材料。entries は会話ログの依頼と発言で、巻き戻して捨てた分岐の発言は含まない。 */
-export type TaskConversation = Conversation & { entries: ChatEntry[] };
-
-/** やり取りの終わりから max 文字に届くまでをつなぐ。長いセッションでも、スナップショットのたびにやり取り全体をつながない。 */
-const recentTranscript = (entries: ChatEntry[], max: number): string => {
-  let from = entries.length;
-  let size = 0;
-  while (from > 0 && size < max) {
-    const e = entries[--from];
-    if (e && e.kind !== 'tool') size += e.text.length;
-  }
-  return transcriptOf(entries.slice(from)).slice(-max);
-};
-
-const tasksPrompt = (c: TaskConversation): string => {
-  const prompts = c.entries.filter((e) => e.kind === 'prompt').slice(1).map((e) => `- ${e.text.slice(0, MAX_PROMPT_CHARS)}`);
-  return promptOf(TASKS_INSTRUCTIONS, {
-    status: STATUS_TEXT[c.status],
-    first_prompt: c.firstPrompt,
-    prompts: prompts.join('\n').slice(-MAX_BLOCK_CHARS),
-    claude_tasks: claudeTasksOf(c),
-    conversation: recentTranscript(c.entries, MAX_BLOCK_CHARS),
-  });
-};
-
-const TASKS_SCHEMA = objectSchema({
-  tasks: { type: 'array', items: objectSchema({ subject: { type: 'string' }, status: { type: 'string', enum: Object.keys(TASK_TEXT) } }) },
-});
-
-const isTaskStatus = (v: unknown): v is ObservedTask['status'] => typeof v === 'string' && Object.hasOwn(TASK_TEXT, v);
-
-const loadTasks = (prompt: string) => async (): Promise<ObservedTask[]> => {
-  const { tasks } = await askHaiku(prompt, TASKS_SCHEMA);
-  if (!Array.isArray(tasks)) throw new UpstreamError('タスクが返りませんでした');
-  return tasks
-    .flatMap((t) => {
-      const { subject, status } = (t ?? {}) as Record<string, unknown>;
-      return typeof subject === 'string' && subject.trim() && isTaskStatus(status) ? [{ subject: subject.trim(), status }] : [];
-    })
-    .slice(0, MAX_TASKS);
-};
-
-// セッションごとの、判定に使っている材料と、その材料に変えた時刻。
-const taskMaterials = new Map<string, { prompt: string; at: number }>();
-
-/**
- * 一覧のカードとタスクのウィジェットに出すタスク。覚えたタスクをすぐ返し、無いか古ければ裏で判定する。
- * 作業中は、材料を変えてから TASKS_REFRESH_MS が経つまで同じ材料を使う。判定している間に発言が増えるたびに、判定を積み増さないためでもある。
- */
-export const peekTasks = (c: TaskConversation): ObservedTask[] | undefined => {
-  const last = taskMaterials.get(c.id);
-  const prompt = last && c.status === 'busy' && Date.now() - last.at < TASKS_REFRESH_MS ? last.prompt : tasksPrompt(c);
-  if (prompt !== last?.prompt) taskMaterials.set(c.id, { prompt, at: Date.now() });
-  return peekCached(`observed-tasks:${c.id}`, { input: prompt }, oneOfFew(loadTasks(prompt)));
 };
 
 /** 何を待っているかの材料。lastMessage は、画面に出すために切る前の全文を渡す。 */

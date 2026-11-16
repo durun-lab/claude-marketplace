@@ -1,6 +1,6 @@
 import { Fragment, type JSX } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
-import type { BgTask, ObservedTask, Session, SessionSummary, Snapshot } from '../shared/types.ts';
+import type { AgentTask, BgTask, Session, SessionSummary, Snapshot } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { AppIcon } from './apps.tsx';
 import { hasDraft } from './drafts.ts';
@@ -35,7 +35,7 @@ const groupSessions = (sessions: Session[], themeOrder: string[], order: string[
     .map(([theme, list]) => ({ theme, sessions: arrangeSessions(list, order) }));
 };
 
-const TaskLine = ({ tasks }: { tasks: ObservedTask[] }) => {
+const TaskLine = ({ tasks }: { tasks: AgentTask[] }) => {
   if (tasks.length === 0) return null;
   const done = tasks.filter((t) => t.status === 'completed').length;
   const active = tasks.find((t) => t.status === 'in_progress');
@@ -55,7 +55,7 @@ const Activity = ({ s }: { s: Session }) => {
   const monitors = runningTools(s, 'monitor');
   return (
     <div class="activity">
-      <TaskLine tasks={s.observedTasks ?? []} />
+      <TaskLine tasks={s.agentTasks ?? []} />
       {running > 0 && <Chip tone="info">サブエージェント {running} 実行中</Chip>}
       {shells > 0 && <Chip tone="info">shell {shells} 実行中</Chip>}
       {monitors > 0 && <Chip tone="info">Monitor {monitors} 実行中</Chip>}
