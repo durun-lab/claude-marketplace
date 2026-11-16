@@ -28,8 +28,27 @@ import { XpContextMenu } from './XpMenu.tsx';
 
 const TASK_LABEL: Record<AgentTask['status'], string> = { pending: '未着手', in_progress: '作業中', completed: '完了' };
 
-/** 押すと、エージェントが書いた説明と、登録・着手・完了の時刻を開く。 */
-const TaskRow = ({ t }: { t: AgentTask }) => {
+/**
+ * 待つタスクの下に、待っているタスクを並べる木。待つタスクが複数あれば、最初のものの下に置く。
+ * 待つタスクが無いか、消えているタスクは、いちばん外に置く。
+ */
+const taskTree = (tasks: AgentTask[]): { roots: AgentTask[]; children: Map<string, AgentTask[]> } => {
+  const ids = new Set(tasks.map((t) => t.id));
+  const children = new Map<string, AgentTask[]>();
+  const roots: AgentTask[] = [];
+  for (const t of tasks) {
+    const parent = t.blockedBy?.find((id) => ids.has(id) && id !== t.id);
+    if (parent) children.set(parent, [...(children.get(parent) ?? []), t]);
+    else roots.push(t);
+  }
+  return { roots, children };
+};
+
+/** 押すと、エージェントが書いた説明と、登録・着手・完了の時刻を開く。待っているタスクは、その下に字下げして並べる。 */
+const TaskRow = ({ t, children, seen = new Set() }: { t: AgentTask; children: Map<string, AgentTask[]>; seen?: Set<string> }) => {
+  const waits = t.blockedBy ?? [];
+  const below = seen.has(t.id) ? [] : (children.get(t.id) ?? []);
+  const inner = new Set([...seen, t.id]);
   const times = ([['登録', t.createdAt], ['着手', t.startedAt], ['完了', t.completedAt]] as const).flatMap(([label, at]) => (at ? [`${label} ${dateTime(at)}`] : []));
   return (
     <li class={`task task-${t.status}`}>
@@ -40,9 +59,11 @@ const TaskRow = ({ t }: { t: AgentTask }) => {
         </summary>
         <div class="task-detail">
           {t.description ? <Markdown text={t.description} /> : <p class="muted">説明はありません。</p>}
+          {waits.length > 1 && <p class="task-times">{waits.join('・')} の完了を待つ</p>}
           {times.length > 0 && <p class="task-times">{times.join('・')}</p>}
         </div>
       </details>
+      {below.length > 0 && <ul class="tasks task-children">{below.map((c) => <TaskRow key={c.id} t={c} children={children} seen={inner} />)}</ul>}
     </li>
   );
 };
@@ -50,12 +71,13 @@ const TaskRow = ({ t }: { t: AgentTask }) => {
 export const TaskList = ({ s }: { s: Session }) => {
   const tasks = s.agentTasks ?? [];
   const done = tasks.filter((t) => t.status === 'completed').length;
+  const { roots, children } = taskTree(tasks);
   return (
     <WidgetPanel title="タスク" count={tasks.length}>
       {tasks.length === 0 ? <Empty>エージェントが登録したタスクはありません。</Empty> : (
         <>
           <p class="help">{done} / {tasks.length} 完了</p>
-          <ul class="tasks">{tasks.map((t) => <TaskRow key={t.id} t={t} />)}</ul>
+          <ul class="tasks">{roots.map((t) => <TaskRow key={t.id} t={t} children={children} />)}</ul>
         </>
       )}
     </WidgetPanel>

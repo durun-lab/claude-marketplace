@@ -1221,17 +1221,22 @@ a.skype-time:hover { color: #0078ca; text-decoration: underline; }
 .tasks { display: grid; gap: 7px; }
 .task { display: flex; align-items: flex-start; gap: 8px; }
 .task-icon { position: relative; flex: none; width: 14px; height: 14px; margin-top: 3px; border: 2px solid var(--muted); border-radius: 50%; }
-.task-in_progress .task-icon { border-color: var(--accent); background: conic-gradient(var(--accent) 0 50%, transparent 0 100%); }
-.task-completed .task-icon { border-color: var(--good); background: var(--good); }
-.task-completed .task-icon::after { content: ""; position: absolute; left: 2.5px; top: -0.5px; width: 3px; height: 6px; border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+.task-in_progress > details .task-icon { border-color: var(--accent); background: conic-gradient(var(--accent) 0 50%, transparent 0 100%); }
+.task-completed > details .task-icon { border-color: var(--good); background: var(--good); }
+.task-completed > details .task-icon::after { content: ""; position: absolute; left: 2.5px; top: -0.5px; width: 3px; height: 6px; border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+.task { flex-wrap: wrap; }
 .task > details { flex: 1; min-width: 0; }
+/* 待っているタスクは、待つタスクの下に、縦の線から枝を出して並べる。 */
+.task-children { flex-basis: 100%; margin: 4px 0 0 6px; padding-left: 14px; border-left: 1px solid var(--border-strong); }
+.task-children > .task { position: relative; }
+.task-children > .task::before { content: ""; position: absolute; left: -14px; top: 10px; width: 10px; border-top: 1px solid var(--border-strong); }
 .task summary { display: flex; align-items: flex-start; gap: 8px; list-style: none; cursor: pointer; }
 .task summary::-webkit-details-marker { display: none; }
 .task-detail { margin: 4px 0 2px 22px; font-size: 12px; }
 .task-times { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
 .task-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
-.task-in_progress .task-text { font-weight: 600; }
-.task-completed .task-text { color: var(--muted); text-decoration: line-through; }
+.task-in_progress > details .task-text { font-weight: 600; }
+.task-completed > details .task-text { color: var(--muted); text-decoration: line-through; }
 
 .subagent { padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
 .subagent-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; list-style: none; cursor: pointer; }

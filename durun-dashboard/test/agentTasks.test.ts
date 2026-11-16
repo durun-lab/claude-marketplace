@@ -35,3 +35,21 @@ test('タスクの詳細は、説明と、登録・着手・完了の時刻を�
   changeTask(owner, '1', { status: 'pending', description: '' }, 400);
   assert.deepEqual([task()?.startedAt, task()?.completedAt, task()?.description], [undefined, undefined, undefined]);
 });
+
+test('待つタスクは、同じ呼び出しの #n と既存の id で登録し、輪になる待ち合いと無い id を断り、消したタスクは待つのをやめる', () => {
+  const owner: { agentTasks?: AgentTask[]; agentTaskSeq?: number } = {};
+  addTasks(owner, ['設計する']);
+  assert.equal(
+    addTasks(owner, [{ subject: '実装する', blocked_by: ['1'] }, { subject: 'テストする', blocked_by: ['#1'] }, { subject: '見直す', blocked_by: ['#1', '#2'] }]).text,
+    '登録しました。\n- 2 [未着手] 実装する（1 を待つ）\n- 3 [未着手] テストする（2 を待つ）\n- 4 [未着手] 見直す（2・3 を待つ）',
+  );
+  assert.equal(addTasks(owner, [{ subject: 'x', blocked_by: ['9'] }]).isError, true);
+  assert.equal(owner.agentTasks?.length, 4);
+  // 1 が 4 を待つと、4 → 3 → 2 → 1 → 4 の輪になる。
+  assert.match(changeTask(owner, '1', { addBlockedBy: ['4'] }).text, /輪になります/);
+  changeTask(owner, '1', { status: 'completed' });
+  assert.equal(listTasks(owner, false).text, '- 2 [未着手] 実装する\n- 3 [未着手] テストする（2 を待つ）\n- 4 [未着手] 見直す（2・3 を待つ）');
+  changeTask(owner, '4', { removeBlockedBy: ['2'] });
+  changeTask(owner, '3', { status: 'deleted' });
+  assert.deepEqual(owner.agentTasks?.map((t) => [t.id, t.blockedBy]), [['1', undefined], ['2', ['1']], ['4', []]]);
+});
