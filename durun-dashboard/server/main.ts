@@ -1087,6 +1087,15 @@ const accountName = (body: unknown): string => {
 // start.ts が node --env-file-if-exists で読ませるファイル。書き換えると、node --watch がサーバーを起動し直す。
 const ENV_FILE = path.join(DATA_DIR, '.env.local');
 
+/** ワークフローの操作が断った理由（無い id、読めない設定、前提を満たさない操作）は、ダッシュボードの不具合ではないので 400 で返す。 */
+const workflowCall = (call: () => void): void => {
+  try {
+    call();
+  } catch (e) {
+    throw e instanceof HttpError ? e : new HttpError(400, (e as Error).message);
+  }
+};
+
 /** コントロール パネルで直した値を .env.local に書く。書けない値は、理由を添えて断る。 */
 const setEnvValue = (body: unknown): void => {
   try {
@@ -1448,10 +1457,10 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/translate$/, (_, b) => translate(field<string>(b, 'text', 'string'), field<string>(b, 'target', 'string')), READER_MS],
   [/^\/api\/assistant$/, async (_, b) => askDolphin(await logsReady.then(buildSnapshot), toMessages(b), await focusOf(b)), HAIKU_MS],
   [/^\/api\/workflows\/consult$/, (_, b) => consultWorkflow(optionalString(b, 'id')), CLAUDE_MS],
-  [/^\/api\/workflows\/([\w-]+)\/run$/, ([, id = '']) => runWorkflow(id)],
-  [/^\/api\/workflows\/([\w-]+)\/renew$/, ([, id = '']) => renewWorkflowSession(id)],
-  [/^\/api\/workflows\/([\w-]+)\/settings$/, ([, id = ''], b) => updateWorkflow(id, b)],
-  [/^\/api\/workflows\/([\w-]+)\/enabled$/, ([, id = ''], b) => setWorkflowEnabled(id, field<boolean>(b, 'enabled', 'boolean'))],
+  [/^\/api\/workflows\/([\w-]+)\/run$/, ([, id = '']) => workflowCall(() => runWorkflow(id))],
+  [/^\/api\/workflows\/([\w-]+)\/renew$/, ([, id = '']) => workflowCall(() => renewWorkflowSession(id))],
+  [/^\/api\/workflows\/([\w-]+)\/settings$/, ([, id = ''], b) => workflowCall(() => updateWorkflow(id, b))],
+  [/^\/api\/workflows\/([\w-]+)\/enabled$/, ([, id = ''], b) => workflowCall(() => setWorkflowEnabled(id, field<boolean>(b, 'enabled', 'boolean')))],
   [/^\/api\/learn\/toggle$/, (_, b) => setHarnessToggle(CLAUDE_DIR, harnessToggleOf(b), field<boolean>(b, 'on', 'boolean'))],
   [/^\/api\/auto-continue$/, (_, b) => setAutoContinue(field<boolean>(b, 'enabled', 'boolean'))],
   [/^\/api\/agent-priority$/, (_, b) => setAgentPriority((oneOf(b, 'priority', AGENT_PRIORITIES) || 'normal') as AgentPriority)],
