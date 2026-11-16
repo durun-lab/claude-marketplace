@@ -2,7 +2,7 @@
 import { type ComponentChildren, Fragment } from 'preact';
 import { memo } from 'preact/compat';
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
-import { type Attention, type BgTask, type Bookmark, type ChatEntry, JIRA_ISSUE_KEY, type ObservedTask, type OutboxMessage, PR_URL, REF_NUMBER, type RepoRef, type Session, type Snapshot, type Subagent, bookmarkKey } from '../shared/types.ts';
+import { type Attention, type BgTask, type Bookmark, type ChatEntry, JIRA_ISSUE_KEY, type AgentTask, type OutboxMessage, PR_URL, REF_NUMBER, type RepoRef, type Session, type Snapshot, type Subagent, bookmarkKey } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
 import { jiraSplitter, refSplitter } from './chatLinks.ts';
@@ -26,28 +26,24 @@ import { Translatable } from './TranslateTray.tsx';
 import { useTypewriter } from './typewriter.ts';
 import { XpContextMenu } from './XpMenu.tsx';
 
-const TASK_LABEL: Record<ObservedTask['status'], string> = { pending: '未着手', in_progress: '作業中', completed: '完了' };
+const TASK_LABEL: Record<AgentTask['status'], string> = { pending: '未着手', in_progress: '作業中', completed: '完了' };
 
-const TaskRow = ({ t }: { t: ObservedTask }) => (
+const TaskRow = ({ t }: { t: AgentTask }) => (
   <li class={`task task-${t.status}`}>
     <span class="task-icon" role="img" aria-label={TASK_LABEL[t.status]} />
     <span class="task-text" title={t.subject}>{t.subject}</span>
   </li>
 );
 
-/** タスクがまだ無いときの説明。サーバーが判定するのは、アーカイブしていない、やり取りのあるセッションだけ。 */
-const noTasks = (s: Session): string =>
-  s.archived ? 'アーカイブしたセッションでは、タスクをまとめません。' : !(s.lastPrompt || s.lastMessage) ? 'まだやり取りがありません。' : 'タスクをまとめています…';
-
 export const TaskList = ({ s }: { s: Session }) => {
-  const tasks = s.observedTasks;
-  const done = tasks?.filter((t) => t.status === 'completed').length;
+  const tasks = s.agentTasks ?? [];
+  const done = tasks.filter((t) => t.status === 'completed').length;
   return (
-    <WidgetPanel title="タスク" count={tasks?.length}>
-      {!tasks ? <Empty>{noTasks(s)}</Empty> : tasks.length === 0 ? <Empty>タスクはありません。</Empty> : (
+    <WidgetPanel title="タスク" count={tasks.length}>
+      {tasks.length === 0 ? <Empty>エージェントが登録したタスクはありません。</Empty> : (
         <>
           <p class="help">{done} / {tasks.length} 完了</p>
-          <ul class="tasks">{tasks.map((t, i) => <TaskRow key={i} t={t} />)}</ul>
+          <ul class="tasks">{tasks.map((t) => <TaskRow key={t.id} t={t} />)}</ul>
         </>
       )}
     </WidgetPanel>
@@ -132,7 +128,7 @@ const BgRow = ({ sessionId, t }: { sessionId: string; t: BgTask }) => {
 
 /** メインエージェントの状態。いま進めているタスクがあれば、それを添える。 */
 const MainAgent = ({ s }: { s: Session }) => {
-  const active = s.observedTasks?.find((t) => t.status === 'in_progress');
+  const active = s.agentTasks?.find((t) => t.status === 'in_progress');
   return (
     <div class="subagent agent-main">
       <StatusBadge status={s.status} waitingFor={s.waitingFor} />

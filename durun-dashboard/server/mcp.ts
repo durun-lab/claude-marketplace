@@ -16,7 +16,8 @@ import { proofCommentedAt, readProofFile, writeProofFile } from './proofFiles.ts
 import { MAX_SENTENCES, commentFindings, proofReport, proofread, revise } from './proofread.ts';
 import { learnDigest } from './reflect.ts';
 import { type ProofSentence, parseProof } from './proofText.ts';
-import { changed, inferFormat, newId, state, touch, writeDocFile, type StoredAttention } from './store.ts';
+import { addTasks, changeTask, listTasks, TASK_STATUSES } from './agentTasks.ts';
+import { changed, inferFormat, newId, type SessionMeta, state, touch, writeDocFile, type StoredAttention } from './store.ts';
 
 const FALLBACK_PROTOCOL = '2025-06-18';
 // Claude Code は無通信が 300 秒続いたツール呼び出しを打ち切る。人間の回答を待つ間は、それより短い間隔で進捗を通知する。
@@ -31,6 +32,7 @@ const INSTRUCTIONS = `durun-dashboard は、人間が複数の Claude Code セ�
 - 権限の確認や auto モードに止められて自分では実行できないコマンドを人間に実行してほしいときは、\`! コマンド\` を打つよう頼まずに request_command で頼んでください。実行を選んだと返ったらターンを終えてください。出力は次のターンに届きます。
 - レビューする PR など、作業ツリーに無いブランチを人間に見せたいときは、show_branches でコードの表示をそのブランチに切り替えてください。
 - 作業のテーマや関連する JIRA 課題が分かったら set_task で登録してください。
+- 手順が 3 つ以上ある作業は、取りかかる前に create_tasks でタスクに分けて登録し、取りかかるときと終えたときに update_task で状態を変えてください。人間はダッシュボードで進み具合を見ています。登録したタスクは、list_tasks で読んだときだけ返ります。
 - PR のタイトルと本文は write_pr で書き換えてください。読んでいない PR は、先に read_pr で読んでください。
 - 仕事を別のセッションに任せるときは、claude --bg を Bash で打たずに start_session で子セッションを起動してください。子セッションへの追加の依頼は send_to_session で送ってください。子セッションの状態は list_sessions で見て、仕事を終えた子セッションは archive_session で片付けてください。
 - Google Cloud（gcloud）や、Slack、Notion などの MCP サーバーの認証やログインが必要になったら、authenticate で人間に頼んでください。人間が認証を終えると結果が返ります。認証済みなら、尋ねずにすぐ返ります。
@@ -143,6 +145,38 @@ const TOOLS = [
         title: { type: 'string', description: 'このセッションの作業名' },
         jira: { type: 'array', items: { type: 'string' }, description: '関連する JIRA の課題キー（例: PROJ-1102）' },
       },
+    },
+  },
+  {
+    name: 'create_tasks',
+    description: 'このセッションの作業をタスクに分けて、ダッシュボードに登録する。人間はダッシュボードで進み具合を見ている。登録したタスクの id が返るので、update_task で状態を変えるときに使う。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tasks: { type: 'array', items: { type: 'string' }, description: '取りかかる順に並べたタスク。何をするかを 30 文字以内で書く' },
+      },
+      required: ['tasks'],
+    },
+  },
+  {
+    name: 'update_task',
+    description: 'create_tasks で登録したタスクの状態か内容を変える。取りかかるときに in_progress、終えたときに completed にする。要らなくなったタスクは deleted で消す。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'create_tasks か list_tasks が返したタスクの id' },
+        status: { type: 'string', enum: [...TASK_STATUSES, 'deleted'] },
+        subject: { type: 'string', description: '書き直した後のタスク' },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'list_tasks',
+    description: 'create_tasks で登録したこのセッションのタスクを、id と状態を添えて返す。既定では完了していないタスクだけを返す。',
+    inputSchema: {
+      type: 'object',
+      properties: { include_completed: { type: 'boolean', description: 'true なら完了したタスクも返す' } },
     },
   },
   {
@@ -472,6 +506,15 @@ const setTask = (sessionId: string, args: ToolArgs): object => {
   return textResult(meta.parent && str(args.theme) ? '登録しました。子セッションなので、テーマは親のテーマのままにしました。' : '登録しました。');
 };
 
+/** 登録と更新では一覧を返さない。タスクの一覧で Claude のコンテキストを占めないため。 */
+const taskTool = (sessionId: string, run: (meta: SessionMeta) => { text: string; isError?: boolean; changed?: boolean }): object => {
+  const meta = state.sessions[sessionId];
+  if (!meta) return textResult('このセッションはまだダッシュボードに登録されていません。', true);
+  const { text, isError, changed } = run(meta);
+  if (changed) touch();
+  return textResult(text, isError);
+};
+
 const toView = (v: unknown): BranchView | undefined => {
   const { branch, base, label } = (v ?? {}) as ToolArgs;
   const name = str(branch);
@@ -729,6 +772,12 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
       return void showBranches(req, sessionId, args).then((result) => send(res, { id: rpcId, result }));
     case 'set_task':
       return send(res, { id: rpcId, result: setTask(sessionId, args) });
+    case 'create_tasks':
+      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => addTasks(m, strList(args.tasks) ?? [])) });
+    case 'update_task':
+      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => changeTask(m, str(args.id), str(args.status), str(args.subject))) });
+    case 'list_tasks':
+      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => listTasks(m, args.include_completed === true)) });
     case 'learn_digest':
       return send(res, { id: rpcId, result: learnDigestResult() });
     case 'read_pr':
