@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { tempDir } from './tmp.ts';
@@ -11,6 +12,9 @@ const { recordError, recordSlow } = await import('../server/errors.ts');
 const { finishItems } = await import('../server/improve.ts');
 const { state } = await import('../server/store.ts');
 const { platform } = await import('../server/platform.ts');
+// テストを走らせるマシンの負荷で結果が変わらないよう、負荷は決めた値を返す。
+let load: number | undefined = 1;
+platform.loadAverage = () => load;
 
 const feedbackDir = path.join(dataDir, 'feedback');
 const pending = (): string[] => fs.readdirSync(feedbackDir).filter((f) => f.endsWith('.json')).sort();
@@ -74,4 +78,17 @@ test('要望に対応した後に再発したら、回数と最長をその後�
   const [refiled = ''] = pending();
   assert.match(JSON.parse(fs.readFileSync(path.join(feedbackDir, refiled), 'utf8')).text, new RegExp(`1 回（最長 0\\.8 秒.*前回の要望（${item}）`, 's'));
   assert.ok((Object.values(state.errors).find((e) => e.item === refiled)?.firstAt ?? 0) >= since);
+});
+
+test('マシンが過負荷だった回は遅い処理として数えず、負荷を測れない OS では数える', () => {
+  for (const item of pending()) finish(item);
+  const message = 'GET ^/api/overload$ の応答（見込み 1 秒）';
+  load = 4 * os.availableParallelism() + 1;
+  recordSlow('server', message, 5000);
+  assert.equal(pending().length, 0);
+  assert.ok(!Object.values(state.errors).some((e) => e.message === message));
+  load = undefined;
+  recordSlow('server', message, 5000);
+  assert.equal(pending().length, 1);
+  load = 1;
 });

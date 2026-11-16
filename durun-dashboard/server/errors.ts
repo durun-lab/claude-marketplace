@@ -12,6 +12,10 @@ const MAX_FILINGS = 2;
 const MAX_RECORDS = 100;
 const MAX_MESSAGE_CHARS = 500;
 const STACK_LINES = 12;
+// load average（直近 1 分）が CPU 1 個あたりこの値を超えていたら、マシンの過負荷とみなす。
+// 過負荷のときの遅れはダッシュボードのコードでは直せないので、遅い処理として数えない。
+// 2026-10〜11 の遅い処理の要望は、CPU 8 個で load average 37〜254 のときに起きたものが半分を占め、どれも負荷のほかに原因が無かった。
+const OVERLOAD_PER_CPU = 4;
 
 const SOURCE_LABEL: Record<ErrorRecord['source'], string> = { server: 'サーバー', client: '画面' };
 
@@ -75,5 +79,10 @@ const record = (source: ErrorRecord['source'], message: string, stack: string | 
 
 export const recordError = (source: ErrorRecord['source'], message: string, stack?: string, where?: string): void => record(source, message, stack, where);
 
-/** 見込みより時間のかかった処理。同じ処理は message でまとめる。detail には、どこに時間がかかったかの内訳を渡す。 */
-export const recordSlow = (source: ErrorRecord['source'], message: string, ms: number, where?: string, detail?: string): void => record(source, message, detail, where, ms);
+/** マシンが過負荷か。負荷を測れない OS（Windows）では、過負荷とみなさない。 */
+const overloaded = (): boolean => (platform.loadAverage() ?? 0) > OVERLOAD_PER_CPU * os.availableParallelism();
+
+/** 見込みより時間のかかった処理。同じ処理は message でまとめる。detail には、どこに時間がかかったかの内訳を渡す。マシンが過負荷だった回は数えない。 */
+export const recordSlow = (source: ErrorRecord['source'], message: string, ms: number, where?: string, detail?: string): void => {
+  if (!overloaded()) record(source, message, detail, where, ms);
+};
