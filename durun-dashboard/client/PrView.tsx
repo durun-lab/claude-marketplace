@@ -12,7 +12,7 @@ import { moveTo } from './order.ts';
 import { Markdown } from './Markdown.tsx';
 import { href } from './router.ts';
 import { toast } from './toast.tsx';
-import { Chip, Empty, Ext, Loading, PrIcon, StatusDot, Time, onSubmitKey, PrChips, prState, ticketFirst } from './ui.tsx';
+import { Chip, Empty, Ext, Loading, PrIcon, StatusDot, Time, onSubmitKey, PrChips, prState, TaskMark, ticketFirst, ticketStatus } from './ui.tsx';
 import { Translatable } from './TranslateTray.tsx';
 
 export const PR_TITLE = 'PR';
@@ -104,33 +104,43 @@ const Detail = ({ pr, loading, reload }: { pr: PrDetail; loading: boolean; reloa
   </div>
 );
 
-const RelatedLink = ({ s }: { s: Session }) => (
-  <li class="family-link">
+const RelatedLink = ({ s, url, faded }: { s: Session; url: string; faded?: boolean }) => (
+  <li class={`family-link${faded ? ' related-archived' : ''}`}>
     <StatusDot status={s.status} waitingFor={s.waitingFor} />
+    <TaskMark status={ticketStatus(s, url)} />
     <a href={href.session(s.id)}>{s.name}</a>
   </li>
 );
 
+/** 終わったセッションの組。1 件なら薄く並べ、2 件以上なら畳む。 */
+const DoneGroup = ({ label, sessions, url, className }: { label: string; sessions: Session[]; url: string; className: string }) =>
+  sessions.length === 0 ? null : sessions.length === 1 ? (
+    <RelatedLink s={sessions[0] as Session} url={url} faded />
+  ) : (
+    <li class={className}>
+      <details>
+        <summary>{label} {sessions.length} 件</summary>
+        <ul>{sessions.map((s) => <RelatedLink key={s.id} s={s} url={url} />)}</ul>
+      </details>
+    </li>
+  );
+
 /**
  * PR や課題をバッジにしているセッションの名前。押すと、そのセッションの画面へ移る。JIRA の課題の画面でも使う。セッションの見出しの親と子と同じく、状態の丸を付けて縦に並べる。
- * アーカイブ済みのセッションは、終わった作業なので畳んで後ろに薄く出す。
+ * url はその PR か課題。そのセッションがチケットのタスクにしていれば、バッジと同じくタスクの状態の印を添える。
+ * タスクを完了したセッションと、アーカイブ済みのセッションは、終わった作業なので後ろに薄く出し、2 件以上なら畳む。
  */
-export const RelatedSessions = ({ sessions }: { sessions: Session[] }) => {
+export const RelatedSessions = ({ sessions, url }: { sessions: Session[]; url: string }) => {
   if (!sessions.length) return null;
-  const archived = sessions.filter((s) => s.archived);
+  const done = sessions.filter((s) => ticketStatus(s, url) === 'completed');
+  const archived = sessions.filter((s) => s.archived && !done.includes(s));
   return (
     <div class="family-children related-sessions">
       <span class="muted">関連セッション</span>
       <ul>
-        {sessions.filter((s) => !s.archived).map((s) => <RelatedLink key={s.id} s={s} />)}
-        {archived.length > 0 && (
-          <li class="related-archived">
-            <details>
-              <summary>アーカイブ済み {archived.length} 件</summary>
-              <ul>{archived.map((s) => <RelatedLink key={s.id} s={s} />)}</ul>
-            </details>
-          </li>
-        )}
+        {sessions.filter((s) => !s.archived && !done.includes(s)).map((s) => <RelatedLink key={s.id} s={s} url={url} />)}
+        <DoneGroup label="完了済み" sessions={done} url={url} className="related-archived" />
+        <DoneGroup label="アーカイブ済み" sessions={archived} url={url} className="related-archived" />
       </ul>
     </div>
   );
@@ -141,7 +151,7 @@ const PrView = ({ url, version, related }: { url: string; version?: string; rela
   const pr = useCached((fresh) => api.prDetail(url, fresh), [url, version]);
   return (
     <>
-      <RelatedSessions sessions={related} />
+      <RelatedSessions sessions={related} url={url} />
       {pr.data ? <Detail pr={pr.data} loading={pr.loading} reload={pr.reload} /> : pr.error ? <Empty>PR を読めませんでした（{pr.error}）</Empty> : <Loading />}
     </>
   );
