@@ -118,7 +118,7 @@ const JiraView = ({ issueKey, version, related }: { issueKey: string; version?: 
   const issue = useCached((fresh) => api.jiraIssue(issueKey, fresh), [issueKey, version]);
   return (
     <>
-      <RelatedSessions sessions={related} />
+      <RelatedSessions sessions={related} url={related.flatMap((s) => s.jira).find((j) => j.key === issueKey)?.url ?? ''} />
       {issue.data ? <Detail issue={issue.data} loading={issue.loading} reload={issue.reload} /> : issue.error ? <Empty>課題を読めませんでした（{issue.error}）</Empty> : <Loading />}
     </>
   );
