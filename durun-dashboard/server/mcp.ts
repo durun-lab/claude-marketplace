@@ -184,6 +184,7 @@ const TOOLS = [
         add_blocked_by: { type: 'array', items: { type: 'string' }, description: '新たに終わるのを待つタスクの id' },
         remove_blocked_by: { type: 'array', items: { type: 'string' }, description: '待つのをやめるタスクの id' },
         parent: { type: 'string', description: '手順として下に置く親のタスクの id。空の文字列で親から外す' },
+        session: { type: 'string', description: 'このタスクを任せる、start_session で起動済みの自分の子セッションの id。タスクに子セッションを結び、子セッションではこのタスクがルートのタスクになる' },
       },
       required: ['id'],
     },
@@ -532,6 +533,17 @@ const ticketOf: TicketOf = (text) => {
   return { url: badge.url, label: badge.kind === 'jira' ? (jiraKeyOfUrl(u) ?? badge.url) : `#${u.pathname.split('/').at(-1)}` };
 };
 
+/** 起動済みの自分の子セッションに、タスクを後から任せる。会話を引き継いだ複製へ移っていたら、複製に任せる。 */
+const linkChild = (sessionId: string, task: string | undefined, childId: string): { text: string; isError?: boolean } => {
+  let child = state.sessions[childId];
+  while (child?.movedTo && state.sessions[child.movedTo]) child = state.sessions[child.movedTo];
+  const parent = state.sessions[sessionId];
+  if (!parent || child?.parent !== sessionId) return { text: 'session に、start_session で起動した自分の子セッションの id を渡してください。', isError: true };
+  const result = delegateTask(parent, task ?? '', child);
+  if (!result.isError) touch();
+  return result;
+};
+
 /** 子セッションが任されたルートのタスクを変えたら、親セッションのタスクにも写す。 */
 const withMirror = <T extends { changed?: boolean }>(meta: SessionMeta, id: string | undefined, result: T): T => {
   if (result.changed && id && id === meta.rootTask) mirrorRoot(meta, (session) => state.sessions[session]);
@@ -816,6 +828,10 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
     case 'create_tasks':
       return send(res, { id: rpcId, result: taskTool(sessionId, (m) => addTasks(m, Array.isArray(args.tasks) ? (args.tasks as NewTask[]) : [], { ticketOf })) });
     case 'update_task':
+      if (str(args.session)) {
+        const linked = linkChild(sessionId, str(args.id), str(args.session) ?? '');
+        if (linked.isError) return send(res, { id: rpcId, result: textResult(linked.text, true) });
+      }
       return send(res, { id: rpcId, result: taskTool(sessionId, (m) => withMirror(m, str(args.id), changeTask(m, str(args.id), { status: str(args.status), subject: str(args.subject), description: typeof args.description === 'string' ? args.description : undefined, addBlockedBy: args.add_blocked_by, removeBlockedBy: args.remove_blocked_by, parent: typeof args.parent === 'string' ? args.parent : undefined }))) });
     case 'list_tasks':
       return send(res, { id: rpcId, result: taskTool(sessionId, (m) => listTasks(m, args.include_completed === true)) });

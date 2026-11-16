@@ -126,14 +126,20 @@ export const changeTask = (owner: Owner, id: string | undefined, change: TaskCha
 
 /**
  * 親セッションのタスクを子セッションに任せる。タスクに子セッションを結び、子セッションにはそのタスクを写したルートのタスクを作る。
+ * 起動するときにも、起動した後にも結べる。子セッションが 1 つ任されたタスクを持つ間は、ほかのタスクを結ばない。
  * 子セッションがルートのタスクの状態を変えると、mirrorRoot が親のタスクに写す。
  */
 export const delegateTask = (parent: Owner & { id: string }, taskId: string, child: Owner & { id: string }, now = Date.now()): Result => {
   const task = parent.agentTasks?.find((t) => t.id === taskId);
   if (!task) return { text: 'task に、create_tasks か list_tasks が返したタスクの id を渡してください。', isError: true };
+  const held = child.agentTasks?.find((t) => t.id === child.rootTask);
+  if (held) return { text: `その子セッションは、すでに「${held.subject}」を任されています。`, isError: true };
+  // 後から結ぶときは、子セッションが登録していたタスクのうち、親の無いものをルートの下に入れる。
+  const id = String((child.agentTaskSeq ?? 0) + 1);
   const { subject, description, ticket } = task;
-  const root: AgentTask = { id: '1', subject, description, ticket, status: 'in_progress', createdAt: now, startedAt: now, delegatedFrom: { session: parent.id, task: taskId } };
-  Object.assign(child, { agentTasks: [root], agentTaskSeq: 1, rootTask: root.id });
+  const root: AgentTask = { id, subject, description, ticket, status: 'in_progress', createdAt: now, startedAt: now, delegatedFrom: { session: parent.id, task: taskId } };
+  const tasks = (child.agentTasks ?? []).map((t) => (t.parent ? t : { ...t, parent: id }));
+  Object.assign(child, { agentTasks: [root, ...tasks], agentTaskSeq: Number(id), rootTask: id });
   Object.assign(task, { delegatedTo: child.id, updatedAt: now });
   if (task.status === 'pending') Object.assign(task, { status: 'in_progress', startedAt: now });
   return { text: '任せました。', changed: true };
