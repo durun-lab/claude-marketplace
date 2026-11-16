@@ -12,7 +12,7 @@ import { moveTo } from './order.ts';
 import { Markdown } from './Markdown.tsx';
 import { href } from './router.ts';
 import { toast } from './toast.tsx';
-import { Chip, Empty, Ext, Loading, PrIcon, StatusDot, Time, onSubmitKey, PrChips, prState } from './ui.tsx';
+import { Chip, Empty, Ext, Loading, PrIcon, StatusDot, Time, onSubmitKey, PrChips, prState, ticketFirst } from './ui.tsx';
 import { Translatable } from './TranslateTray.tsx';
 
 export const PR_TITLE = 'PR';
@@ -163,7 +163,7 @@ export const PrTip = ({ url }: { url: string }) => {
 
 /** url の PR をバッジにしているセッション。here はウィジェットを出しているセッションで、今開いている画面なので並べない。 */
 const prSessions = (sessions: Session[], url: string, here?: string): Session[] =>
-  sessions.filter((s) => s.id !== here && s.prs?.some((p) => p.url === url));
+  ticketFirst(sessions.filter((s) => s.id !== here && s.prs?.some((p) => p.url === url)), url);
 
 export type PickTab = { key: string; title?: string; label: ComponentChildren };
 
