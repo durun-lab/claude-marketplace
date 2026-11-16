@@ -10,6 +10,8 @@ const MAX_HITS = 3;
 const SNIPPET_BEFORE = 40;
 const SNIPPET_AFTER = 120;
 const UNTITLED_CHARS = 80;
+// この時間だけ続けて探したら、ほかの要求に処理を譲る。ファイルごとに譲ると、負荷が高いときに譲るたびに待たされ、数百のファイルで数秒かかる。
+const SLICE_MS = 30;
 
 const transcripts = (): string[] =>
   listDir(PROJECTS_DIR).flatMap((dir) =>
@@ -57,9 +59,13 @@ export const searchSessions = async (query: string): Promise<SearchResponse> => 
   const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
   const results: SearchResult[] = [];
   if (!terms.length) return { results, total: 0 };
+  let sliceStart = performance.now();
   for (const file of transcripts()) {
-    // warmSearch が読み終える前は、残りの会話ログを読むので数秒かかる。その間もフックに応えられるよう、1 ファイルごとに処理を譲る。
-    await setImmediate();
+    // warmSearch が読み終える前は、残りの会話ログを読むので数秒かかる。その間もフックに応えられるよう、SLICE_MS ごとに処理を譲る。
+    if (performance.now() - sliceStart > SLICE_MS) {
+      await setImmediate();
+      sliceStart = performance.now();
+    }
     const result = searchLog(file, terms);
     if (result) results.push(result);
   }
