@@ -1227,9 +1227,11 @@ a.skype-time:hover { color: #0078ca; text-decoration: underline; }
 .task { flex-wrap: wrap; }
 .task > details { flex: 1; min-width: 0; }
 /* 待っているタスクは、待つタスクの下に、縦の線から枝を出して並べる。 */
-.task-children { flex-basis: 100%; margin: 4px 0 0 6px; padding-left: 14px; border-left: 1px solid var(--border-strong); }
+.task-children { flex-basis: 100%; margin: 4px 0 0 6px; padding-left: 14px; }
 .task-children > .task { position: relative; }
-.task-children > .task::before { content: ""; position: absolute; left: -14px; top: 10px; width: 10px; border-top: 1px solid var(--border-strong); }
+/* 枝は行ごとに └ の形で引き、次の兄弟がある行だけ、縦の線を次の行まで延ばして ├ にする。最後の子の下へ線を延ばさない。 */
+.task-children > .task::before { content: ""; position: absolute; left: -14px; top: -4px; width: 10px; height: 14px; border-left: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }
+.task-children > .task:not(:last-child)::after { content: ""; position: absolute; left: -14px; top: -4px; bottom: -7px; border-left: 1px solid var(--border-strong); }
 .task summary { display: flex; align-items: flex-start; gap: 8px; list-style: none; cursor: pointer; }
 .task summary::-webkit-details-marker { display: none; }
 .task-detail { margin: 4px 0 2px 22px; font-size: 12px; }
