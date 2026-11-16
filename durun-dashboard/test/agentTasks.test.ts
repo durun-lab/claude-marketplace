@@ -88,3 +88,17 @@ test('タスクを子セッションに任せると、子セッションのル�
   addTasks(child, ['後片付け']);
   assert.equal(child.agentTasks?.at(-1)?.parent, undefined);
 });
+
+test('起動済みの子セッションにも後からタスクを任せられ、子が登録していた親の無いタスクはルートの下に入り、任されたタスクを持つ子にはほかを結ばない', () => {
+  const parent: { id: string; agentTasks?: AgentTask[]; agentTaskSeq?: number } = { id: 'p' };
+  const child: { id: string; agentTasks?: AgentTask[]; agentTaskSeq?: number; rootTask?: string } = { id: 'c' };
+  addTasks(parent, ['調べる', '直す']);
+  addTasks(child, ['読む', { subject: '細かく読む', parent: '#1' }]);
+  assert.equal(delegateTask(parent, '1', child).text, '任せました。');
+  assert.deepEqual(child.agentTasks?.map((t) => [t.id, t.parent]), [['3', undefined], ['1', '3'], ['2', '1']]);
+  assert.equal(child.rootTask, '3');
+  assert.equal(parent.agentTasks?.[0]?.delegatedTo, 'c');
+  assert.match(delegateTask(parent, '2', child).text, /すでに「調べる」を任されています/);
+  addTasks(child, ['まとめる']);
+  assert.equal(child.agentTasks?.at(-1)?.parent, '3');
+});
