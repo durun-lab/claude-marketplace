@@ -214,6 +214,7 @@ export const api = {
     postJson<{ path: string }>('/api/feedback', { text, targets, context }),
   workflowConsult: (id?: string) => postJson<{ sessionId: string }>('/api/workflows/consult', { id }),
   workflowRun: (id: string) => postJson(`/api/workflows/${seg(id)}/run`),
+  workflowRenew: (id: string) => postJson(`/api/workflows/${seg(id)}/renew`),
   workflowEnabled: (id: string, enabled: boolean) => postJson(`/api/workflows/${seg(id)}/enabled`, { enabled }),
   workflowSettings: (id: string, settings: WorkflowSettings) => postJson(`/api/workflows/${seg(id)}/settings`, settings),
   harness: () => getJson<Harness>('/api/learn/harness'),
