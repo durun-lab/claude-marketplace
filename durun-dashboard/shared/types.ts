@@ -22,6 +22,8 @@ export type TaskItem = {
 export type AgentTask = Pick<TaskItem, 'id' | 'subject' | 'status'> & {
   /** 何をするか、何をもって終えたとするかの説明。 */
   description?: string;
+  /** 終わるのを待つタスクの id。画面では、待つタスクの下に並べる。 */
+  blockedBy?: string[];
   /** 登録した時刻と、着手と完了に変えた時刻。この形にする前に登録したタスクには無い。 */
   createdAt?: number;
   startedAt?: number;
