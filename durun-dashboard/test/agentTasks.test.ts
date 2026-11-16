@@ -5,18 +5,33 @@ import type { AgentTask } from '../shared/types.ts';
 
 test('タスクは通し番号で登録し、状態と内容を変えて消せ、一覧は既定で完了していないものだけを返す', () => {
   const owner: { agentTasks?: AgentTask[]; agentTaskSeq?: number } = {};
-  assert.equal(addTasks(owner, ['  ']).isError, true);
-  assert.equal(addTasks(owner, ['調べる', '直す', '確かめる']).text, '登録しました。\n- 1 [未着手] 調べる\n- 2 [未着手] 直す\n- 3 [未着手] 確かめる');
-  assert.equal(changeTask(owner, '1', 'completed', undefined).text, '更新しました。');
-  changeTask(owner, '2', 'in_progress', 'テストを足して直す');
-  assert.equal(changeTask(owner, '2', 'done', undefined).isError, true);
-  assert.equal(changeTask(owner, '9', 'completed', undefined).isError, true);
+  assert.equal(addTasks(owner, ['  ', { subject: '' }]).isError, true);
+  assert.equal(addTasks(owner, ['調べる', { subject: '直す' }, { subject: '確かめる' }]).text, '登録しました。\n- 1 [未着手] 調べる\n- 2 [未着手] 直す\n- 3 [未着手] 確かめる');
+  assert.equal(changeTask(owner, '1', { status: 'completed' }).text, '更新しました。');
+  changeTask(owner, '2', { status: 'in_progress', subject: 'テストを足して直す' });
+  assert.equal(changeTask(owner, '2', { status: 'done' }).isError, true);
+  assert.equal(changeTask(owner, '9', { status: 'completed' }).isError, true);
   assert.equal(listTasks(owner, false).text, '- 2 [作業中] テストを足して直す\n- 3 [未着手] 確かめる');
   assert.equal(listTasks(owner, true).text.split('\n').length, 3);
   // 消したタスクの番号は使い直さない。
-  changeTask(owner, '3', 'deleted', undefined);
+  changeTask(owner, '3', { status: 'deleted' });
   assert.equal(addTasks(owner, ['見直す']).text, '登録しました。\n- 4 [未着手] 見直す');
-  changeTask(owner, '2', 'completed', undefined);
-  changeTask(owner, '4', 'completed', undefined);
+  changeTask(owner, '2', { status: 'completed' });
+  changeTask(owner, '4', { status: 'completed' });
   assert.equal(listTasks(owner, false).text, '完了していないタスクはありません。');
+});
+
+test('タスクの詳細は、説明と、登録・着手・完了の時刻を覚え、未着手に戻すと着手と完了の時刻を忘れる', () => {
+  const owner: { agentTasks?: AgentTask[]; agentTaskSeq?: number } = {};
+  addTasks(owner, [{ subject: '直す', description: 'テストが通るまで' }], 100);
+  const task = (): AgentTask | undefined => owner.agentTasks?.[0];
+  assert.deepEqual(task(), { id: '1', subject: '直す', description: 'テストが通るまで', status: 'pending', createdAt: 100 });
+  // 一覧には説明を載せない。
+  assert.equal(listTasks(owner, false).text, '- 1 [未着手] 直す');
+  changeTask(owner, '1', { status: 'in_progress' }, 200);
+  changeTask(owner, '1', { status: 'in_progress', description: '型も直す' }, 250);
+  changeTask(owner, '1', { status: 'completed' }, 300);
+  assert.deepEqual([task()?.startedAt, task()?.completedAt, task()?.description], [200, 300, '型も直す']);
+  changeTask(owner, '1', { status: 'pending', description: '' }, 400);
+  assert.deepEqual([task()?.startedAt, task()?.completedAt, task()?.description], [undefined, undefined, undefined]);
 });
