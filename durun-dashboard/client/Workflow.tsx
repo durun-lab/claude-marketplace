@@ -68,6 +68,11 @@ const Row = ({ w, now, onEdit }: { w: WorkflowInfo; now: number; onEdit: () => v
       <button class="xp-task-link" title={w.agentFile} onClick={() => openNotepadFile(w.agentFile)}>指示</button>
       <button class="xp-task-link" onClick={() => consult(w.id)}>相談</button>
       {w.sessionId && <a href={href.session(w.sessionId)}>セッション</a>}
+      {w.mode === 'continue' && w.sessionId && (
+        <button class="xp-task-link" title="指示を書き換えた後に使います。新しいセッションを起動し、子セッションとタスクを引き継いでから、今のセッションをアーカイブします" onClick={() => void attempt('親セッションの作り直し', () => api.workflowRenew(w.id))}>
+          セッションを新しく
+        </button>
+      )}
     </td>
   </tr>
 );

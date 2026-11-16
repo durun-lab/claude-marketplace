@@ -10,13 +10,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { COMPACT_WINDOW_MAX, COMPACT_WINDOW_MIN, EFFORT_LEVELS, type BurstKind, type ImproveState, MODELS, type WorkflowDef, type WorkflowInfo, type WorkflowState, type WorkflowTrigger } from '../shared/types.ts';
 import { CLAUDE_DIR, isAlive, readLiveSessions } from './claude.ts';
-import { COMPACT_COMMAND, compactSession, sendMessage, startTrackedSession } from './deliver.ts';
+import { archiveSession, COMPACT_COMMAND, compactSession, sendMessage, startTrackedSession } from './deliver.ts';
+import { handOverChildren } from './handover.ts';
 import { DONE_MARK, feedbackEvent, finishItems, improveWorkflow, onFeedback, pendingItems } from './improve.ts';
 import { isOffDay } from '../shared/holidays.ts';
 import { githubInbox, jiraMentions } from './integrations.ts';
 import { LEARN_DIR } from './reflect.ts';
 import { slackMentions } from './slack.ts';
-import { DATA_DIR, type FeedbackWave, newId, persist, state, touch, type WorkflowRun } from './store.ts';
+import { DATA_DIR, type FeedbackWave, newId, persist, type SessionMeta, state, touch, type WorkflowRun } from './store.ts';
 
 export const WORKFLOWS_DIR = path.join(CLAUDE_DIR, 'agents');
 // ダッシュボードと同じチェックアウトにある plugin の agent。コードと指示の版をそろえるため、インストールした plugin ではなくこちらを読む。
@@ -264,7 +265,8 @@ const runningCount = (id: string, live = readLiveSessions()): number =>
 /** セッションをまだ受け取っていない改善要望のウェーブ。改善要望はキューが空のときだけ積むので、次に渡す本文に入っている。 */
 const unassignedWave = (run: WorkflowRun): FeedbackWave | undefined => (run.feedback && !run.feedback.sessionId ? run.feedback : undefined);
 
-const launch = (w: WorkflowDef, run: WorkflowRun, text: string): void => {
+/** onStarted は、起動したセッションを受け取った後に呼ぶ。 */
+const launch = (w: WorkflowDef, run: WorkflowRun, text: string, onStarted?: (meta: SessionMeta) => void): void => {
   launching.set(w.id, (launching.get(w.id) ?? 0) + 1);
   run.lastRunAt = Date.now();
   const wave = unassignedWave(run);
@@ -274,6 +276,7 @@ const launch = (w: WorkflowDef, run: WorkflowRun, text: string): void => {
       if (w.mode === 'continue') run.sessionId = meta.id;
       if (wave) wave.sessionId = meta.id;
       run.error = undefined;
+      onStarted?.(meta);
     })
     .catch((e: Error) => {
       run.error = `セッションを起動できません: ${e.message}`;
@@ -593,6 +596,28 @@ export const runWorkflow = (id: string): void => {
   if (!started) enqueue(w, '人間が「今すぐ実行」で動かしました。');
   dispatch(w);
   persist();
+};
+
+/**
+ * 引き継ぐセッションのワークフローで、親セッションだけを新しくする。指示を書き換えた後に、子セッションとのつながりを保ったまま新しい指示で始め直すために使う。
+ * 新しいセッションを起動し、前のセッションの子セッションと登録したタスクを付け替えてから、前のセッションをアーカイブする。待たせているイベントは新しいセッションに渡す。
+ */
+export const renewWorkflowSession = (id: string): void => {
+  const w = findDef(id);
+  if (w.mode !== 'continue') throw new Error('親セッションを新しくできるのは、1 つのセッションを引き継ぐワークフローだけです');
+  const run = runOf(w.id);
+  const old = continuedSession(run);
+  if (!old) throw new Error('引き継いでいるセッションがありません。「実行」で新しく起動します');
+  if (launching.get(w.id)) throw new Error('セッションを起動しているところです');
+  const children = Object.values(state.sessions).filter((m) => m.parent === old && !m.movedTo && !m.archived).length;
+  const note = `指示を新しくするため、親セッションを新しくしました。前の親セッションが起動した子セッション ${children} 件と、前の親が登録したタスクを引き継いでいます。子セッションは list_sessions で確かめ、これまでどおり send_to_session と archive_session で扱ってください。`;
+  launch(w, run, promptFor(w, [note, ...run.queue.splice(0)].join(SEPARATOR)), (meta) => {
+    const from = state.sessions[old];
+    if (!from) return;
+    handOverChildren(state.sessions, from, meta);
+    archiveSession(from);
+  });
+  touch();
 };
 
 /** 書き換える前の workflow.json と agent。 */
