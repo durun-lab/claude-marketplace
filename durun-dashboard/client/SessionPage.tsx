@@ -33,7 +33,7 @@ import { JIRA_VIEW_TITLE, JIRA_WIDGET, JiraWidget } from './JiraView.tsx';
 import { SLACK_THREAD_TITLE, SLACK_WIDGET, SessionSlack, slackThreadControls } from './SlackThread.tsx';
 import { PR_TITLE, PR_WIDGET, PrWidget } from './PrView.tsx';
 import { type SessionTab, currentSessionId, href } from './router.ts';
-import { Chip, CopyButton, CopyText, Empty, IssueChip, JiraChips, Loading, PrChips, StatusBadge, StatusDot } from './ui.tsx';
+import { Chip, CopyButton, CopyText, Empty, IssueChip, JiraChips, Loading, PrChips, StatusBadge, StatusDot, ticketStatus } from './ui.tsx';
 import { UsageView } from './Usage.tsx';
 
 const ThemeEditor = ({ s, themes }: { s: Session; themes: string[] }) => {
@@ -271,9 +271,9 @@ const SessionHead = ({ s, themes, sessions }: { s: Session; themes: string[]; se
           {s.branch && <> · <CopyText text={s.branch} title="押すとブランチ名をコピー">{s.branch}</CopyText></>}
         </span>
         {/* 前に開いていたときのデータには、PR の一覧が無いことがある。 */}
-        {s.prs?.map((pr) => <Removable key={pr.url} s={s} url={pr.url}><PrChips pr={pr} session={s.id} /></Removable>)}
-        {s.jira.map((j) => <Removable key={j.key} s={s} url={j.url}><JiraChips issues={[j]} session={s.id} /></Removable>)}
-        {s.issues?.map((i) => <Removable key={i.url} s={s} url={i.url}><IssueChip issue={i} /></Removable>)}
+        {s.prs?.map((pr) => <Removable key={pr.url} s={s} url={pr.url}><PrChips pr={pr} session={s.id} task={ticketStatus(s, pr.url)} /></Removable>)}
+        {s.jira.map((j) => <Removable key={j.key} s={s} url={j.url}><JiraChips issues={[j]} session={s.id} taskOf={(url) => ticketStatus(s, url)} /></Removable>)}
+        {s.issues?.map((i) => <Removable key={i.url} s={s} url={i.url}><IssueChip issue={i} task={ticketStatus(s, i.url)} /></Removable>)}
         <RemoveFinished s={s} />
         <BadgeInput s={s} />
         {s.attachCommand && (

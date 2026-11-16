@@ -21,7 +21,7 @@ import { ARROW_STEP } from './order.ts';
 import { href } from './router.ts';
 import { SESSION_KEY } from './SessionPage.tsx';
 import { toast } from './toast.tsx';
-import { Chip, Empty, Ext, Loading, StatusBadge, copyText, onSubmitKey } from './ui.tsx';
+import { Chip, Empty, Ext, IssueChip, JiraChips, Loading, PrChips, StatusBadge, copyText, onSubmitKey } from './ui.tsx';
 import { Translatable } from './TranslateTray.tsx';
 import { useTypewriter } from './typewriter.ts';
 import { XpContextMenu } from './XpMenu.tsx';
@@ -29,23 +29,34 @@ import { XpContextMenu } from './XpMenu.tsx';
 const TASK_LABEL: Record<AgentTask['status'], string> = { pending: '未着手', in_progress: '作業中', completed: '完了' };
 
 /**
- * 待つタスクの下に、待っているタスクを並べる木。待つタスクが複数あれば、最初のものの下に置く。
- * 待つタスクが無いか、消えているタスクは、いちばん外に置く。
+ * 親のタスクの下に手順のタスクを、親が無ければ待つタスクの下に待っているタスクを並べる木。待つタスクが複数あれば、最初のものの下に置く。
+ * 親も待つタスクも無いか、消えているタスクは、いちばん外に置く。
  */
 const taskTree = (tasks: AgentTask[]): { roots: AgentTask[]; children: Map<string, AgentTask[]> } => {
   const ids = new Set(tasks.map((t) => t.id));
   const children = new Map<string, AgentTask[]>();
   const roots: AgentTask[] = [];
   for (const t of tasks) {
-    const parent = t.blockedBy?.find((id) => ids.has(id) && id !== t.id);
+    const parent = [t.parent, ...(t.blockedBy ?? [])].find((id) => id && ids.has(id) && id !== t.id);
     if (parent) children.set(parent, [...(children.get(parent) ?? []), t]);
     else roots.push(t);
   }
   return { roots, children };
 };
 
-/** 押すと、エージェントが書いた説明と、登録・着手・完了の時刻を開く。待っているタスクは、その下に字下げして並べる。 */
-const TaskRow = ({ t, children, seen = new Set() }: { t: AgentTask; children: Map<string, AgentTask[]>; seen?: Set<string> }) => {
+/** チケットのタスクは、題の代わりにバッジと同じチップでチケットそのものを出す。まだ読めていなければ題を出す。 */
+const TaskTitle = ({ t, s }: { t: AgentTask; s: Session }) => {
+  const pr = t.ticket ? s.prs?.find((p) => p.url === t.ticket) : undefined;
+  const issue = t.ticket ? s.issues?.find((i) => i.url === t.ticket) : undefined;
+  const jira = t.ticket ? s.jira.find((j) => j.url === t.ticket) : undefined;
+  if (pr) return <PrChips pr={pr} session={s.id} />;
+  if (issue) return <IssueChip issue={issue} />;
+  if (jira) return <JiraChips issues={[jira]} session={s.id} />;
+  return <>{t.subject}</>;
+};
+
+/** 押すと、エージェントが書いた説明と、登録・着手・完了の時刻を開く。手順と待っているタスクは、その下に字下げして並べる。 */
+const TaskRow = ({ t, s, children, seen = new Set() }: { t: AgentTask; s: Session; children: Map<string, AgentTask[]>; seen?: Set<string> }) => {
   const waits = t.blockedBy ?? [];
   const below = seen.has(t.id) ? [] : (children.get(t.id) ?? []);
   const inner = new Set([...seen, t.id]);
@@ -55,7 +66,7 @@ const TaskRow = ({ t, children, seen = new Set() }: { t: AgentTask; children: Ma
       <details>
         <summary>
           <span class="task-icon" role="img" aria-label={TASK_LABEL[t.status]} />
-          <span class="task-text">{t.subject}</span>
+          <span class="task-text"><TaskTitle t={t} s={s} /></span>
         </summary>
         <div class="task-detail">
           {t.description ? <Markdown text={t.description} /> : <p class="muted">説明はありません。</p>}
@@ -63,7 +74,7 @@ const TaskRow = ({ t, children, seen = new Set() }: { t: AgentTask; children: Ma
           {times.length > 0 && <p class="task-times">{times.join('・')}</p>}
         </div>
       </details>
-      {below.length > 0 && <ul class="tasks task-children">{below.map((c) => <TaskRow key={c.id} t={c} children={children} seen={inner} />)}</ul>}
+      {below.length > 0 && <ul class="tasks task-children">{below.map((c) => <TaskRow key={c.id} t={c} s={s} children={children} seen={inner} />)}</ul>}
     </li>
   );
 };
@@ -77,7 +88,7 @@ export const TaskList = ({ s }: { s: Session }) => {
       {tasks.length === 0 ? <Empty>エージェントが登録したタスクはありません。</Empty> : (
         <>
           <p class="help">{done} / {tasks.length} 完了</p>
-          <ul class="tasks">{roots.map((t) => <TaskRow key={t.id} t={t} children={children} />)}</ul>
+          <ul class="tasks">{roots.map((t) => <TaskRow key={t.id} t={t} s={s} children={children} />)}</ul>
         </>
       )}
     </WidgetPanel>

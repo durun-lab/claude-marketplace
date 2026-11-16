@@ -224,10 +224,13 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
   const keep = meta.archived;
   const pr = cachedPr(meta.cwd, log?.branch, keep);
   const branches = [...(log?.branches ?? [])].reverse();
-  const badges = badgeUrls(meta, log).flatMap((u) => badgeOf(u) ?? []);
+  // エージェントがチケットのタスクにした PR、Issue、JIRA の課題は、バッジにして、タスクの順に先頭へ並べる。
+  const tickets = (meta.agentTasks ?? []).flatMap((t) => (t.ticket ? [t.ticket] : []));
+  const ticketRank = (url: string): number => (tickets.includes(url) ? tickets.indexOf(url) : tickets.length);
+  const badges = [...tickets, ...badgeUrls(meta, log)].flatMap((u) => badgeOf(u) ?? []);
   const shown = <T extends { url: string }>(items: T[]): T[] => {
     const hidden = new Set(meta.hiddenBadges);
-    return [...new Map(items.map((x) => [x.url, x])).values()].filter((x) => !hidden.has(x.url));
+    return [...new Map(items.map((x) => [x.url, x])).values()].filter((x) => !hidden.has(x.url)).sort((a, b) => ticketRank(a.url) - ticketRank(b.url));
   };
   const branchPrs = branches.flatMap((b) => cachedPr(meta.cwd, b, keep) ?? []);
   const prs = shown([...branchPrs, ...badges.flatMap((b) => (b.kind === 'pr' && badgePr(b.url, keep)) || [])]);

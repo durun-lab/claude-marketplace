@@ -11,7 +11,7 @@ import { IssueRow } from './JiraIssues.tsx';
 import { Markdown } from './Markdown.tsx';
 import { CommentForm, PickTabs, RelatedSessions } from './PrView.tsx';
 import { toast } from './toast.tsx';
-import { Chip, Empty, Loading, Time } from './ui.tsx';
+import { Chip, Empty, Loading, ticketFirst, Time } from './ui.tsx';
 import { Translatable } from './TranslateTray.tsx';
 
 export const JIRA_VIEW_TITLE = 'JIRA';
@@ -125,8 +125,10 @@ const JiraView = ({ issueKey, version, related }: { issueKey: string; version?: 
 };
 
 /** key の課題をバッジにしているセッション。here はウィジェットを出しているセッションで、今開いている画面なので並べない。 */
-const jiraSessions = (sessions: Session[], key: string, here?: string): Session[] =>
-  sessions.filter((s) => s.id !== here && s.jira.some((j) => j.key === key));
+const jiraSessions = (sessions: Session[], key: string, here?: string): Session[] => {
+  const url = sessions.flatMap((s) => s.jira).find((j) => j.key === key)?.url ?? '';
+  return ticketFirst(sessions.filter((s) => s.id !== here && s.jira.some((j) => j.key === key)), url);
+};
 
 /** セッションに課題が複数あるときは、上に並べたキーのタブで切り替える。選んでいなければ、並べ替えた順で先頭の課題を出す。キーの左には、ステータスのチップと同じ色の丸を出す。状態が変わったら読み直す。 */
 export const JiraWidget = ({ s, sessions }: { s: Session; sessions: Session[] }) => {

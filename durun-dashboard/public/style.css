@@ -1235,6 +1235,12 @@ a.skype-time:hover { color: #0078ca; text-decoration: underline; }
 .task-detail { margin: 4px 0 2px 22px; font-size: 12px; }
 .task-times { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
 .task-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.task-text > .chip { max-width: 100%; }
+/* チケットのバッジに添えるタスクの状態。タスクのウィジェットの丸を小さくしたもの。 */
+.task-mark { position: relative; flex: none; width: 10px; height: 10px; border: 1.5px solid var(--muted); border-radius: 50%; }
+.task-mark-in_progress { border-color: var(--accent); background: conic-gradient(var(--accent) 0 50%, transparent 0 100%); }
+.task-mark-completed { border-color: var(--good); background: var(--good); }
+.task-mark-completed::after { content: ""; position: absolute; left: 2px; top: 0; width: 2px; height: 4.5px; border: solid #fff; border-width: 0 1.3px 1.3px 0; transform: rotate(45deg); }
 .task-in_progress > details .task-text { font-weight: 600; }
 .task-completed > details .task-text { color: var(--muted); text-decoration: line-through; }
 

@@ -1,6 +1,6 @@
 import type { ComponentChildren } from 'preact';
 import { useContext, useRef, useState } from 'preact/hooks';
-import type { IssueInfo, JiraIssue, PrInfo, RepoRef, Session, SessionStatus, Usage, WaitingFor } from '../shared/types.ts';
+import type { AgentTask, IssueInfo, JiraIssue, PrInfo, RepoRef, Session, SessionStatus, Usage, WaitingFor } from '../shared/types.ts';
 import { fmtInt, relativeTime, totalTokens } from './format.ts';
 import { NowContext, useWaitCursor } from './hooks.ts';
 import { toast } from './toast.tsx';
@@ -181,11 +181,25 @@ const ciChip = (c: PrInfo['checks']): { text: string; tone: Tone } | undefined =
  * session を渡すと、押したときにそのセッションの「PR」ウィジェットでその PR を開く。開く処理は、PR へのリンクの横取りが data-session を読んで行う。
  * hideTitle は、すぐそばに題名を出している画面で、題名を重ねて出さないために渡す。
  */
-export const PrChips = ({ pr, session, hideTitle }: { pr: PrInfo; session?: string; hideTitle?: boolean }) => {
+const TASK_MARK_LABEL: Record<AgentTask['status'], string> = { pending: 'タスク: 未着手', in_progress: 'タスク: 作業中', completed: 'タスク: 完了' };
+
+/** チケットのタスクの状態。タスクのウィジェットと同じ丸で、作業中は半分を塗り、完了はチェックを付ける。 */
+export const TaskMark = ({ status }: { status?: AgentTask['status'] }) =>
+  status ? <span class={`task-mark task-mark-${status}`} role="img" aria-label={TASK_MARK_LABEL[status]} title={TASK_MARK_LABEL[status]} /> : null;
+
+/** url の PR、Issue、JIRA の課題を、エージェントがチケットのタスクにしていれば、その状態。 */
+export const ticketStatus = (s: Pick<Session, 'agentTasks'>, url: string): AgentTask['status'] | undefined => s.agentTasks?.find((t) => t.ticket === url)?.status;
+
+/** url のチケットをタスクにしたセッションを先に並べる。ほかの並びは変えない。 */
+export const ticketFirst = (sessions: Session[], url: string): Session[] =>
+  [...sessions].sort((a, b) => Number(ticketStatus(b, url) !== undefined) - Number(ticketStatus(a, url) !== undefined));
+
+export const PrChips = ({ pr, session, hideTitle, task }: { pr: PrInfo; session?: string; hideTitle?: boolean; task?: AgentTask['status'] }) => {
   const state = prState(pr);
   const subs = [ciChip(pr.checks), REVIEW_CHIP[pr.review]].filter((c) => c !== undefined);
   return (
     <a class={`chip chip-link pr-${state}`} href={pr.url} title={`${PR_STATE_LABEL[state]}: ${pr.title}`} data-session={session} target="_blank" rel="noopener noreferrer">
+      <TaskMark status={task} />
       <PrIcon state={state} />
       PR #{pr.number}
       {!hideTitle && pr.title && <span class="chip-title">{pr.title}</span>}
@@ -207,8 +221,9 @@ const IssueIcon = ({ state, label = ISSUE_STATE_LABEL[state] }: { state: IssueIn
 );
 
 /** PR のチップと同じく、Issue の番号の右に題名の先頭を添える。ダッシュボードに Issue の画面は無いので、押すと GitHub で開く。 */
-export const IssueChip = ({ issue }: { issue: IssueInfo }) => (
+export const IssueChip = ({ issue, task }: { issue: IssueInfo; task?: AgentTask['status'] }) => (
   <a class={`chip chip-link issue-${issue.state.toLowerCase()}`} href={issue.url} title={`${ISSUE_STATE_LABEL[issue.state]}: ${issue.title}`} target="_blank" rel="noopener noreferrer">
+    <TaskMark status={task} />
     <IssueIcon state={issue.state} />
     Issue #{issue.number}
     {issue.title && <span class="chip-title">{issue.title}</span>}
@@ -227,17 +242,19 @@ export const RefIcon = ({ kind, state }: Pick<RepoRef, 'kind' | 'state'>) => {
 };
 
 /** session を渡すと、押したときにそのセッションの「JIRA」ウィジェットでその課題を開く。PrChips と同じく、課題へのリンクの横取りが data-session を読んで開く。 */
-export const JiraChips = ({ issues, session }: { issues: JiraIssue[]; session?: string }) => (
+export const JiraChips = ({ issues, session, taskOf }: { issues: JiraIssue[]; session?: string; taskOf?: (url: string) => AgentTask['status'] | undefined }) => (
   <>
     {issues.map((j) =>
       isHttpUrl(j.url) ? (
         <a key={j.key} class="chip chip-link" href={j.url} title={j.summary} data-attach={j.key} data-session={session} target="_blank" rel="noopener noreferrer">
+          <TaskMark status={taskOf?.(j.url)} />
           {j.key}
           {j.summary && <span class="chip-title">{j.summary}</span>}
           {j.status && <span class="chip-sub">{j.status}</span>}
         </a>
       ) : (
         <span key={j.key} class="chip chip-link" title={j.summary} data-attach={j.key}>
+          <TaskMark status={taskOf?.(j.url)} />
           {j.key}
           {j.summary && <span class="chip-title">{j.summary}</span>}
           {j.status && <span class="chip-sub">{j.status}</span>}
