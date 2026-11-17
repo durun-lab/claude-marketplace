@@ -12,7 +12,8 @@ export const firstHeading = (markdown: string): string | undefined => {
 /** GitHub と同じく、<details> から </details> までを折りたたむ 1 つのブロック。 */
 export type DetailsBlock = { type: 'details'; summary: string; open: boolean; tokens: Token[] };
 
-const OPEN_DETAILS = /^\s*<details[\s>]/i;
+// 開きタグが > で閉じているものだけを折りたたむ。閉じていない <details を折りたたむと、中身として同じ文を読み直し続けるため。
+const OPEN_DETAILS = /^\s*<details(?:\s[^>]*)?>/i;
 const count = (text: string, re: RegExp): number => text.match(re)?.length ?? 0;
 
 /**
@@ -28,7 +29,7 @@ export const groupDetails = (tokens: Token[], lex: (markdown: string) => Token[]
       continue;
     }
     const summary = /<summary[^>]*>([\s\S]*?)<\/summary>/i.exec(t.text);
-    const head = summary ? t.text.slice(summary.index + summary[0].length) : t.text.replace(/^\s*<details[^>]*>/i, '');
+    const head = summary ? t.text.slice(summary.index + summary[0].length) : t.text.replace(OPEN_DETAILS, '');
     const close = head.lastIndexOf('</details>');
     const block: DetailsBlock = {
       type: 'details',
