@@ -569,10 +569,18 @@ const JIRA_AUTH =
     ? `Basic ${Buffer.from(`${process.env.JIRA_EMAIL}:${process.env.JIRA_API_TOKEN}`).toString('base64')}`
     : undefined;
 
+/**
+ * ブランチ名、作業名、PR のタイトルなどに書いた課題のキー。登録したプロジェクトのキーは小文字でも拾う。
+ * ほかのプロジェクトのキー（AN1-1652 など）は、JIRA の表記どおり大文字で書いたもののうち、JIRA にあるプロジェクトのものを拾う。
+ */
 export const findJiraKeys = (texts: (string | undefined)[]): string[] => {
-  if (!JIRA_KEY || !JIRA_BASE) return [];
+  if (!JIRA_BASE) return [];
   const keys = new Set<string>();
-  for (const t of texts) for (const m of t?.matchAll(JIRA_KEY) ?? []) keys.add(`${m[1]?.toUpperCase()}-${m[2]}`);
+  const projects = jiraProjectKeys();
+  for (const t of texts) {
+    for (const m of (JIRA_KEY && t?.matchAll(JIRA_KEY)) || []) keys.add(`${m[1]?.toUpperCase()}-${m[2]}`);
+    for (const key of t?.match(ISSUE_KEY) ?? []) if (projects?.has(key.replace(/-\d+$/, ''))) keys.add(key);
+  }
   return [...keys];
 };
 
