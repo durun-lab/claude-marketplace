@@ -1273,7 +1273,9 @@ a.skype-time:hover { color: #0078ca; text-decoration: underline; }
 
 /* 送信欄はチャットの下端に区切り線で分けて置き、スクロールするのは発言だけにする。枠を小さくしても発言が見えるよう、送信欄の高さは枠の半分までにする。 */
 .composer { flex: none; max-height: 50%; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); overflow-y: auto; }
-.reply-options { margin-bottom: 8px; }
+/* 返答の候補は送信欄の上の 1 行に横並びにし、はみ出した分は横にスクロールする。縦に積むとチャットの見える範囲を狭めるため。 */
+.reply-options { flex-wrap: nowrap; margin-bottom: 8px; overflow-x: auto; scrollbar-width: thin; }
+.reply-options > .reply-option { flex: none; white-space: nowrap; }
 /*
  * skills の候補は入力欄の下に重ね、送信ボタンの位置を動かさない。
  * ウィジェットの中のスクロールで切れないよう fixed で置き、anchor で入力欄に合わせる。下に収まらなければ上に出す。
