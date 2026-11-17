@@ -77,8 +77,28 @@ const TaskRow = ({ t, s, children, seen = new Set() }: { t: AgentTask; s: Sessio
           {times.length > 0 && <p class="task-times">{times.join('・')}</p>}
         </div>
       </details>
-      {below.length > 0 && <ul class="tasks task-children">{below.map((c) => <TaskRow key={c.id} t={c} s={s} children={children} seen={inner} />)}</ul>}
+      {below.length > 0 && <ul class="tasks task-children"><Siblings tasks={below} s={s} children={children} seen={inner} /></ul>}
     </li>
+  );
+};
+
+/** 同じ階層のタスク。完了済みが 2 件以上あれば、後ろにまとめて「完了済み n 件」に畳む。 */
+const Siblings = ({ tasks, s, children, seen }: { tasks: AgentTask[]; s: Session; children: Map<string, AgentTask[]>; seen?: Set<string> }) => {
+  const done = tasks.filter((t) => t.status === 'completed');
+  const folded = done.length >= 2;
+  const row = (t: AgentTask) => <TaskRow key={t.id} t={t} s={s} children={children} seen={seen} />;
+  return (
+    <>
+      {(folded ? tasks.filter((t) => t.status !== 'completed') : tasks).map(row)}
+      {folded && (
+        <li class="task task-done-group">
+          <details>
+            <summary>完了済み {done.length} 件</summary>
+            <ul class="tasks">{done.map(row)}</ul>
+          </details>
+        </li>
+      )}
+    </>
   );
 };
 
@@ -91,7 +111,7 @@ export const TaskList = ({ s }: { s: Session }) => {
       {tasks.length === 0 ? <Empty>エージェントが登録したタスクはありません。</Empty> : (
         <>
           <p class="help">{done} / {tasks.length} 完了</p>
-          <ul class="tasks">{roots.map((t) => <TaskRow key={t.id} t={t} s={s} children={children} />)}</ul>
+          <ul class="tasks"><Siblings tasks={roots} s={s} children={children} /></ul>
         </>
       )}
     </WidgetPanel>
