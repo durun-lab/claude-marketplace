@@ -129,6 +129,7 @@ export const api = {
   jiraRefs: (fresh?: boolean) => getJson<JiraIssue[]>(`/api/jira/refs?${query({ fresh: flag(fresh) })}`),
   memory: () => getJson<MemoryStatus | null>('/api/memory'),
   theme: (id: string, theme: string) => postJson(`${session(id)}/theme`, { theme }),
+  parent: (id: string, parent: string) => postJson(`${session(id)}/parent`, { parent }),
   renameTheme: (from: string, to: string) => postJson('/api/themes/rename', { from, to }),
   orderThemes: (themes: string[]) => postJson('/api/themes/order', { themes }),
   /** name や layout を省くと、サーバーにある値を残す。 */

@@ -225,17 +225,39 @@ const DangerousToggle = ({ s }: { s: Session }) => (
 );
 
 /** 名前の行をウィジェットの見出しにする。状態はウィンドウの中に置き、狭いウィンドウでもタイトルバーを 1 行に保つ。概要は下部に置く。 */
-/** start_session で起動した親と子のセッションへのリンク。 */
+/**
+ * 別のセッションの ID を貼って、そのセッションをこのセッションの親か子として結ぶ。ID は見出しの「ID をコピー」で写す。
+ * 親子は start_session で起動したときと同じく、子の画面に親を、親の画面に子を並べる。
+ */
+const FamilyLink = ({ s }: { s: Session }) => {
+  const [value, setValue] = useState('');
+  const link = async (as: 'parent' | 'child') => {
+    const other = value.trim();
+    if (!other) return;
+    const ok = await attempt(as === 'parent' ? '親の設定' : '子の設定', () => (as === 'parent' ? api.parent(s.id, other) : api.parent(other, s.id)));
+    if (ok !== undefined) setValue('');
+  };
+  return (
+    <span class="family-form">
+      <CopyText text={s.id} title={`${s.id}（押すとセッション ID をコピー）`}>ID をコピー</CopyText>
+      <input class="input input-sm" value={value} placeholder="セッション ID を貼る" aria-label="親か子として結ぶセッションの ID" onInput={(e) => setValue(e.currentTarget.value)} />
+      <button type="button" class="btn btn-sm" disabled={!value.trim()} onClick={() => void link('parent')}>親にする</button>
+      <button type="button" class="btn btn-sm" disabled={!value.trim()} onClick={() => void link('child')}>子にする</button>
+    </span>
+  );
+};
+
+/** 親と子のセッションへのリンク。start_session で起動したものと、人間が ID で結んだもの。親は × で外せる。 */
 const Family = ({ s, sessions }: { s: Session; sessions: Session[] }) => {
   const parent = s.parent ? sessions.find((p) => p.id === s.parent) : undefined;
   const children = sessions.filter((c) => c.parent === s.id);
-  if (!parent && !children.length) return null;
   return (
     <div class="head-row family">
       {parent && (
         <span class="family-link">
           親: <StatusDot status={parent.status} waitingFor={parent.waitingFor} />
           <a href={href.session(parent.id)}>{parent.name}</a>
+          <button type="button" class="badge-remove" aria-label="親から外す" title="親から外す" onClick={() => void attempt('親から外す', () => api.parent(s.id, ''))}>×</button>
         </span>
       )}
       {children.length > 0 && (
@@ -251,6 +273,7 @@ const Family = ({ s, sessions }: { s: Session; sessions: Session[] }) => {
           </ul>
         </div>
       )}
+      <FamilyLink s={s} />
     </div>
   );
 };
