@@ -47,6 +47,7 @@ import { MAX_SENTENCES, priorReadings, proofread, revise, summarizeProof } from 
 import { parseProof } from './proofText.ts';
 import { recordRateLimits } from './rateLimits.ts';
 import { searchSessions, warmSearch } from './search.ts';
+import { linkParent } from './handover.ts';
 import { badgeUrls, buildSnapshot, timelineRows, conversationOf, moveToTheme, onLogWarmed, renameTheme, warmLogs } from './snapshot.ts';
 import { DATA_DIR, newId, onChange, save, state, touch } from './store.ts';
 import { type Conversation, explainTerm, peekReplies, sessionGlossary, suggestTitle, summarize, summaryText, termKey } from './suggest.ts';
@@ -839,6 +840,17 @@ const updateQueue = (id: string, action: 'edit' | 'save' | 'cancel', body: unkno
 
 type Handler = (m: string[], body: unknown, url: URL, req: IncomingMessage) => unknown;
 
+/** 人間が貼ったセッション ID で、このセッションの親を決める。空なら親から外す。 */
+const setParent = (id: string, body: unknown): void => {
+  const child = sessionMeta(id);
+  const given = field<string>(body, 'parent', 'string').trim();
+  const parent = given ? state.sessions[given] : undefined;
+  if (given && !parent) throw new HttpError(400, `セッション ID（${given}）のセッションが見つかりません`);
+  const reason = linkParent(state.sessions, child, parent);
+  if (reason) throw new HttpError(400, reason);
+  touch();
+};
+
 const setTheme = (id: string, body: unknown): void => {
   moveToTheme(Object.values(state.sessions), sessionMeta(id).id, field<string>(body, 'theme', 'string').trim() || undefined);
   touch();
@@ -1361,6 +1373,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/sessions$/, (_, b) => newSession(b), CLAUDE_MS],
   [/^\/api\/sessions\/order$/, (_, b) => orderSessions(b)],
   [/^\/api\/sessions\/([^/]+)\/theme$/, ([, id = ''], b) => setTheme(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/parent$/, ([, id = ''], b) => setParent(id, b)],
   [/^\/api\/themes\/rename$/, (_, b) => setThemeName(b)],
   [/^\/api\/themes\/order$/, (_, b) => orderThemes(b)],
   [/^\/api\/dashboards$/, (_, b) => saveDashboard(b)],
