@@ -35,7 +35,8 @@ export const groupDetails = (tokens: Token[], lex: (markdown: string) => Token[]
       type: 'details',
       summary: summary?.[1]?.replace(/<[^>]+>/g, '').trim() || '詳細',
       open: /^\s*<details[^>]*\sopen[\s>=]/i.test(t.text),
-      tokens: lex(close >= 0 ? head.slice(0, close) : head),
+      // lex は読んだ結果を覚えて同じ配列を返すことがあるので、配列に書き足さずに新しく並べる。
+      tokens: [...lex(close >= 0 ? head.slice(0, close) : head)],
     };
     if (close < 0) {
       let depth = 1;
@@ -45,7 +46,7 @@ export const groupDetails = (tokens: Token[], lex: (markdown: string) => Token[]
         if (u.type === 'html') depth += count(u.text, /<details[\s>]/gi) - count(u.text, /<\/details>/gi);
         if (depth <= 0) break;
       }
-      block.tokens.push(...tokens.slice(i + 1, j));
+      block.tokens = [...block.tokens, ...tokens.slice(i + 1, j)];
       i = j;
     }
     out.push(block);

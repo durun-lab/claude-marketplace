@@ -50,3 +50,13 @@ test('groupDetails は、> で閉じていない <details を折りたたまず�
   const nested = groupDetails(lexer('<details><summary>外</summary><details><summary>内</summary>本文</details></details>\n'), lexer);
   assert.ok(isDetails(nested[0]));
 });
+
+test('groupDetails は、lex が覚えて返す配列に、後に続くトークンを書き足さない', () => {
+  // 画面の lex のように、同じ文には同じ配列を返す。
+  const memo = new Map<string, ReturnType<typeof lexer>>();
+  const lex = (text: string) => memo.get(text) ?? (memo.set(text, lexer(text)), memo.get(text) ?? lexer(text));
+  const text = '<details>\n<summary>題</summary>\n\n- 中身\n\n</details>\n';
+  const before = lex('').length;
+  for (let i = 0; i < 3; i++) groupDetails(lex(text), lex);
+  assert.equal(lex('').length, before);
+});
