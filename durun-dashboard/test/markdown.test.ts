@@ -41,3 +41,12 @@ test('groupDetails は、<details> から </details> までを、題と中の Ma
   assert.equal(nested.summary, '詳細');
   assert.equal(tail?.type, 'paragraph');
 });
+
+test('groupDetails は、> で閉じていない <details を折りたたまず、中身を読み直し続けない', () => {
+  const lexed = lexer('<details\n\n本文\n');
+  const out = groupDetails(lexed, lexer);
+  assert.ok(!out.some(isDetails));
+  // 入れ子の <details> も、中身を読むたびに文が短くなるので終わる。
+  const nested = groupDetails(lexer('<details><summary>外</summary><details><summary>内</summary>本文</details></details>\n'), lexer);
+  assert.ok(isDetails(nested[0]));
+});
