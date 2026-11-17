@@ -14,6 +14,7 @@ import { hasJev } from './jev.ts';
 import { notionEnabled } from './notion.ts';
 import { proofCommentedAt } from './proofFiles.ts';
 import { accountRateLimits, currentRateLimits } from './rateLimits.ts';
+import { viewTasks } from './agentTasks.ts';
 import { ensureSession, newId, persist, state, type SessionMeta } from './store.ts';
 import { TIMELINE_KEEP_MS, noteTimeline } from './timeline.ts';
 import { type Conversation, peekReplies, peekSummary, peekWaiting } from './suggest.ts';
@@ -293,7 +294,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     awaitingReview: !!review,
     reviewRange: review?.range,
     branchViews: meta.branchViews,
-    agentTasks: meta.agentTasks,
+    agentTasks: meta.agentTasks && viewTasks(meta, state.sessions),
   };
   // 概要の材料には画面に出す名前とテーマを渡すので、組み立てたセッションから作る。やり取りが無ければ作れない。
   // アーカイブしたセッションは数百件たまるので、作らない。

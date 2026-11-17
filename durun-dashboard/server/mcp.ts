@@ -16,7 +16,7 @@ import { proofCommentedAt, readProofFile, writeProofFile } from './proofFiles.ts
 import { MAX_SENTENCES, commentFindings, proofReport, proofread, revise } from './proofread.ts';
 import { learnDigest } from './reflect.ts';
 import { type ProofSentence, parseProof } from './proofText.ts';
-import { addTasks, changeTask, delegateTask, listTasks, mirrorRoot, type NewTask, TASK_STATUSES, type TicketOf } from './agentTasks.ts';
+import { addTasks, delegateTask, listTasks, type NewTask, updateTask, withLiveRoot, TASK_STATUSES, type TicketOf } from './agentTasks.ts';
 import { changed, inferFormat, newId, type SessionMeta, state, touch, writeDocFile, type StoredAttention } from './store.ts';
 
 const FALLBACK_PROTOCOL = '2025-06-18';
@@ -231,7 +231,7 @@ const TOOLS = [
         model: { type: 'string', enum: [...MODELS], description: '省くと Claude Code の設定に従う' },
         effort: { type: 'string', enum: [...EFFORT_LEVELS], description: '省くと Claude Code の設定に従う' },
         account: { type: 'string', description: '省くとこのセッションと同じ Claude のアカウントで動く。人間に頼まれたときだけ、primary か追加アカウントの名前を渡す' },
-        task: { type: 'string', description: 'create_tasks で登録したタスクのうち、子セッションに任せるタスクの id。タスクに子セッションを結び、子セッションではそのタスクがルートのタスクになる。子セッションがルートのタスクの状態を変えると、このタスクにも写る' },
+        task: { type: 'string', description: 'create_tasks で登録したタスクのうち、子セッションに任せるタスクの id。タスクに子セッションを結び、子セッションではそのタスクがルートのタスクになる。子セッションのルートのタスクとこのタスクは同じ 1 つのタスクで、どちらで状態を変えても両方に見える' },
       },
       required: ['prompt'],
     },
@@ -544,11 +544,6 @@ const linkChild = (sessionId: string, task: string | undefined, childId: string)
   return result;
 };
 
-/** 子セッションが任されたルートのタスクを変えたら、親セッションのタスクにも写す。 */
-const withMirror = <T extends { changed?: boolean }>(meta: SessionMeta, id: string | undefined, result: T): T => {
-  if (result.changed && id && id === meta.rootTask) mirrorRoot(meta, (session) => state.sessions[session]);
-  return result;
-};
 
 /** 登録と更新では一覧を返さない。タスクの一覧で Claude のコンテキストを占めないため。 */
 const taskTool = (sessionId: string, run: (meta: SessionMeta) => { text: string; isError?: boolean; changed?: boolean }): object => {
@@ -832,9 +827,9 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
         const linked = linkChild(sessionId, str(args.id), str(args.session) ?? '');
         if (linked.isError) return send(res, { id: rpcId, result: textResult(linked.text, true) });
       }
-      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => withMirror(m, str(args.id), changeTask(m, str(args.id), { status: str(args.status), subject: str(args.subject), description: typeof args.description === 'string' ? args.description : undefined, addBlockedBy: args.add_blocked_by, removeBlockedBy: args.remove_blocked_by, parent: typeof args.parent === 'string' ? args.parent : undefined }))) });
+      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => updateTask(m, str(args.id), state.sessions, { status: str(args.status), subject: str(args.subject), description: typeof args.description === 'string' ? args.description : undefined, addBlockedBy: args.add_blocked_by, removeBlockedBy: args.remove_blocked_by, parent: typeof args.parent === 'string' ? args.parent : undefined })) });
     case 'list_tasks':
-      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => listTasks(m, args.include_completed === true)) });
+      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => listTasks({ ...m, agentTasks: withLiveRoot(m, state.sessions) }, args.include_completed === true)) });
     case 'learn_digest':
       return send(res, { id: rpcId, result: learnDigestResult() });
     case 'read_pr':

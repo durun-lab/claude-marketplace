@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addTasks, changeTask, delegateTask, listTasks, mirrorRoot } from '../server/agentTasks.ts';
+import { addTasks, changeTask, delegateTask, listTasks, updateTask, viewTasks, withLiveRoot } from '../server/agentTasks.ts';
 import type { AgentTask } from '../shared/types.ts';
 
 test('タスクは通し番号で登録し、状態と内容を変えて消せ、一覧は既定で完了していないものだけを返す', () => {
@@ -70,7 +70,7 @@ test('チケットのタスクは題を省くとチケットの名前にし、�
   assert.deepEqual(owner.agentTasks?.map((t) => [t.id, t.parent]), [['2', undefined], ['3', undefined]]);
 });
 
-test('タスクを子セッションに任せると、子セッションのルートのタスクになり、子の登録はその下に入り、ルートの状態は親のタスクに写る', () => {
+test('タスクを子セッションに任せると、子セッションのルートのタスクになり、子の登録はその下に入り、ルートの実体は親のタスクになる', () => {
   const parent: { id: string; agentTasks?: AgentTask[]; agentTaskSeq?: number } = { id: 'p' };
   const child: { id: string; agentTasks?: AgentTask[]; agentTaskSeq?: number; rootTask?: string } = { id: 'c' };
   addTasks(parent, [{ subject: '移行する', description: '手順書どおりに' }], { now: 100 });
@@ -80,9 +80,16 @@ test('タスクを子セッションに任せると、子セッションのル�
   assert.deepEqual(child.agentTasks?.[0]?.delegatedFrom, { session: 'p', task: '1' });
   addTasks(child, ['準備する', { subject: '外に置く', parent: '' }]);
   assert.deepEqual(child.agentTasks?.map((t) => t.parent), [undefined, '1', '1']);
-  changeTask(child, '1', { status: 'completed' }, 300);
-  mirrorRoot(child, (id) => (id === 'p' ? parent : undefined), 300);
+  const sessions = { p: parent, c: child };
+  // 子がルートを完了にすると、親のタスクが完了になる。
+  updateTask(child, '1', sessions, { status: 'completed' }, 300);
   assert.deepEqual([parent.agentTasks?.[0]?.status, parent.agentTasks?.[0]?.completedAt, parent.agentTasks?.[0]?.updatedAt], ['completed', 300, 300]);
+  // 親がタスクを戻して書き直すと、子のルートにもそのまま見える。
+  changeTask(parent, '1', { status: 'in_progress', subject: '移行して確かめる' }, 400);
+  assert.deepEqual([withLiveRoot(child, sessions)[0]?.status, withLiveRoot(child, sessions)[0]?.subject], ['in_progress', '移行して確かめる']);
+  assert.equal(listTasks({ ...child, agentTasks: withLiveRoot(child, sessions) }, false).text.split('\n')[0], '- 1 [作業中] 移行して確かめる');
+  // 親の画面では、子の手順が任せたタスクの下に並ぶ。
+  assert.deepEqual(viewTasks(parent, sessions).map((t) => [t.id, t.parent, t.subject]), [['1', undefined, '移行して確かめる'], ['1/2', '1', '準備する'], ['1/3', '1', '外に置く']]);
   // ルートを消した後の登録は、いちばん外に置く。
   changeTask(child, '1', { status: 'deleted' });
   addTasks(child, ['後片付け']);

@@ -127,7 +127,7 @@ export const changeTask = (owner: Owner, id: string | undefined, change: TaskCha
 /**
  * 親セッションのタスクを子セッションに任せる。タスクに子セッションを結び、子セッションにはそのタスクを写したルートのタスクを作る。
  * 起動するときにも、起動した後にも結べる。子セッションが 1 つ任されたタスクを持つ間は、ほかのタスクを結ばない。
- * 子セッションがルートのタスクの状態を変えると、mirrorRoot が親のタスクに写す。
+ * ルートのタスクの実体は親のタスクで、子セッションが題、説明、状態を変えると親のタスクが変わる（mcp の update_task）。
  */
 export const delegateTask = (parent: Owner & { id: string }, taskId: string, child: Owner & { id: string }, now = Date.now()): Result => {
   const task = parent.agentTasks?.find((t) => t.id === taskId);
@@ -145,12 +145,59 @@ export const delegateTask = (parent: Owner & { id: string }, taskId: string, chi
   return { text: '任せました。', changed: true };
 };
 
-/** 子セッションのルートのタスクの状態を、任せた親セッションのタスクに写す。 */
-export const mirrorRoot = (child: Owner, parentOf: (id: string) => Owner | undefined, now = Date.now()): void => {
-  const root = child.agentTasks?.find((t) => t.id === child.rootTask);
-  const from = root?.delegatedFrom;
-  const parent = from && parentOf(from.session);
-  if (root && from && parent) changeTask(parent, from.task, { status: root.status }, now);
+type Sessions = Record<string, (Owner & { id: string; movedTo?: string }) | undefined>;
+
+/** 会話を引き継いだ複製へ移っていたら、複製をたどる。 */
+const follow = (sessions: Sessions, id: string): (Owner & { id: string }) | undefined => {
+  let m = sessions[id];
+  for (const seen = new Set<string>(); m?.movedTo && sessions[m.movedTo] && !seen.has(m.id); m = sessions[m.movedTo]) seen.add(m.id);
+  return m;
+};
+
+/** 子セッションが任されたタスクの実体。親セッションのタスクで、子セッションのルートのタスクは、これを写して見せる。 */
+export const delegatedSource = (child: Owner, sessions: Sessions): { owner: Owner; task: AgentTask } | undefined => {
+  const from = child.agentTasks?.find((t) => t.id === child.rootTask)?.delegatedFrom;
+  const owner = from && follow(sessions, from.session);
+  const task = from && owner?.agentTasks?.find((t) => t.id === from.task);
+  return owner && task ? { owner, task } : undefined;
+};
+
+/** 子セッションのルートのタスクを、親セッションのタスクの今の題、説明、状態、時刻、チケットで見せる。 */
+export const withLiveRoot = (child: Owner, sessions: Sessions): AgentTask[] => {
+  const source = delegatedSource(child, sessions);
+  if (!source) return child.agentTasks ?? [];
+  const { subject, description, status, ticket, createdAt, updatedAt, startedAt, completedAt } = source.task;
+  return (child.agentTasks ?? []).map((t) => (t.id === child.rootTask ? { ...t, subject, description, status, ticket, createdAt, updatedAt, startedAt, completedAt } : t));
+};
+
+/**
+ * タスクを変える。子セッションのルートのタスクの題、説明、状態は、実体である親セッションのタスクを変える。親と子で同じタスクがずれないため。
+ * 待つタスクと親のタスクは、子セッションの中の並びなので、子セッションのルートのタスクに付ける。
+ */
+export const updateTask = (owner: Owner, id: string | undefined, sessions: Sessions, change: TaskChange, now = Date.now()): Result => {
+  const source = id && id === owner.rootTask ? delegatedSource(owner, sessions) : undefined;
+  if (!source) return changeTask(owner, id, change, now);
+  const { status, subject, description, ...rest } = change;
+  const result = changeTask(source.owner, source.task.id, { status, subject, description }, now);
+  return result.isError ? result : changeTask(owner, id, rest, now);
+};
+
+/**
+ * 画面に出すタスク。ルートのタスクは親のタスクを写し、子セッションに任せたタスクの下には、子セッションが登録した手順を並べる。
+ * 子の手順の id は「任せたタスクの id/子の id」にして、親のタスクの id と重ねない。孫セッションに任せた手順も、同じく下へたどる。
+ */
+export const viewTasks = (owner: Owner & { id: string }, sessions: Sessions, seen = new Set<string>()): AgentTask[] => {
+  const own = withLiveRoot(owner, sessions);
+  seen.add(owner.id);
+  return own.flatMap((t) => {
+    const child = t.delegatedTo ? follow(sessions, t.delegatedTo) : undefined;
+    if (!child || seen.has(child.id)) return [t];
+    const prefix = (id: string): string => `${t.id}/${id}`;
+    const steps = viewTasks(child, sessions, seen)
+      .filter((c) => c.id !== child.rootTask)
+      .map((c) => ({ ...c, id: prefix(c.id), parent: !c.parent || c.parent === child.rootTask ? t.id : prefix(c.parent), blockedBy: c.blockedBy?.map(prefix) }));
+    return [t, ...steps];
+  });
 };
 
 /** 既定では完了していないタスクだけを返す。説明は返さない。 */
