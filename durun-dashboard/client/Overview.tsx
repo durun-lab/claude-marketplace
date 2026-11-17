@@ -77,7 +77,8 @@ const TaskRow = ({ t, s, children, seen = new Set() }: { t: AgentTask; s: Sessio
           {times.length > 0 && <p class="task-times">{times.join('・')}</p>}
         </div>
       </details>
-      {below.length > 0 && <ul class="tasks task-children"><Siblings tasks={below} s={s} children={children} seen={inner} /></ul>}
+      {/* 子が 1 つだけなら、順に 1 つずつ進む手順なので、字下げせずに親の丸からまっすぐ線でつなぐ。狭いウィジェットに収めるため。 */}
+      {below.length > 0 && <ul class={`tasks task-children${below.length === 1 ? ' is-chain' : ''}`}><Siblings tasks={below} s={s} children={children} seen={inner} /></ul>}
     </li>
   );
 };
