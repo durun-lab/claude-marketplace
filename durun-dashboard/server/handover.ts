@@ -22,3 +22,23 @@ export const handOverChildren = (sessions: Record<string, Meta>, from: Meta, to:
   }
   return moved;
 };
+
+/**
+ * 人間がセッション ID を貼って、child を parent の子にする。parent を省くと親から外す。
+ * 自分自身と、親をたどって child に戻る組み合わせは、親子が輪になるので断る。断る理由を返し、結べたら undefined を返す。
+ */
+export const linkParent = (sessions: Record<string, Meta>, child: Meta, parent?: Meta): string | undefined => {
+  if (!parent) {
+    child.parent = undefined;
+    return undefined;
+  }
+  if (parent.id === child.id) return '自分自身を親にはできません';
+  const seen = new Set<string>();
+  for (let m: Meta | undefined = parent; m; m = m.parent ? sessions[m.parent] : undefined) {
+    if (m.id === child.id) return '親子が輪になるので結べません';
+    if (seen.has(m.id)) break;
+    seen.add(m.id);
+  }
+  child.parent = parent.id;
+  return undefined;
+};
