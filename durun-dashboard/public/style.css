@@ -1244,6 +1244,10 @@ a.skype-time:hover { color: #0078ca; text-decoration: underline; }
 .task-detail { margin: 4px 0 2px 22px; font-size: 12px; }
 .task-times { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
 .task-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.task-done-group > details > summary { color: var(--muted); font-size: 12px; }
+.task-done-group > details > summary::before { content: "▸"; display: inline-block; width: 14px; text-align: center; }
+.task-done-group > details[open] > summary::before { content: "▾"; }
+.task-done-group > details > .tasks { margin-top: 7px; opacity: .7; }
 .task-text > .chip { max-width: 100%; }
 .task-session { flex: none; font-size: 11px; }
 /* チケットのバッジに添えるタスクの状態。タスクのウィジェットの丸を小さくしたもの。 */
