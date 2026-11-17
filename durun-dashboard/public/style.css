@@ -1239,6 +1239,9 @@ a.skype-time:hover { color: #0078ca; text-decoration: underline; }
 .task:has(> .task-children) > details::after { content: ""; position: absolute; left: 6px; top: 17px; bottom: -4px; border-left: 1px solid var(--border-strong); }
 .task-children > .task::before { content: ""; position: absolute; left: -14px; top: 0; width: 10px; height: 10px; border-left: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }
 .task-children > .task:not(:last-child)::after { content: ""; position: absolute; left: -14px; top: 10px; bottom: -7px; border-left: 1px solid var(--border-strong); }
+/* 子が 1 つだけの並びは字下げせず、親の丸の下から子の丸の上まで、まっすぐの線でつなぐ。 */
+.task-children.is-chain { margin-left: 0; padding-left: 0; }
+.task-children.is-chain > .task::before { left: 6px; width: 0; height: 3px; border-bottom: 0; }
 .task summary { display: flex; align-items: flex-start; gap: 8px; list-style: none; cursor: pointer; }
 .task summary::-webkit-details-marker { display: none; }
 .task-detail { margin: 4px 0 2px 22px; font-size: 12px; }
