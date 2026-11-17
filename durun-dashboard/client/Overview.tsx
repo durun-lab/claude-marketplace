@@ -83,14 +83,18 @@ const TaskRow = ({ t, s, children, seen = new Set() }: { t: AgentTask; s: Sessio
   );
 };
 
-/** 同じ階層のタスク。完了済みが 2 件以上あれば、後ろにまとめて「完了済み n 件」に畳む。 */
+/** t と、その下に並ぶ手順や待っているタスクが、すべて完了しているか。 */
+const allDone = (t: AgentTask, children: Map<string, AgentTask[]>, seen = new Set<string>()): boolean =>
+  t.status === 'completed' && (seen.has(t.id) || (children.get(t.id) ?? []).every((c) => allDone(c, children, new Set([...seen, t.id]))));
+
+/** 同じ階層のタスク。下まですべて完了したタスクが 2 件以上あれば、後ろにまとめて「完了済み n 件」に畳む。下に未完了のタスクが残るものは畳まない。 */
 const Siblings = ({ tasks, s, children, seen }: { tasks: AgentTask[]; s: Session; children: Map<string, AgentTask[]>; seen?: Set<string> }) => {
-  const done = tasks.filter((t) => t.status === 'completed');
+  const done = tasks.filter((t) => allDone(t, children));
   const folded = done.length >= 2;
   const row = (t: AgentTask) => <TaskRow key={t.id} t={t} s={s} children={children} seen={seen} />;
   return (
     <>
-      {(folded ? tasks.filter((t) => t.status !== 'completed') : tasks).map(row)}
+      {(folded ? tasks.filter((t) => !done.includes(t)) : tasks).map(row)}
       {folded && (
         <li class="task task-done-group">
           <details>
