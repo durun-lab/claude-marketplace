@@ -3,7 +3,7 @@ import { useContext, useEffect, useId, useLayoutEffect, useRef, useState } from 
 import { EFFORT_LEVELS, MODELS, PERMISSION_MODES, type Attention, type ChatEntry, type OutboxMessage, type QueuedMessage, type Session, type SessionStatus } from '../shared/types.ts';
 import { DELIVERY_TOAST, type Launch, api, attempt } from './api.ts';
 import { ATTACH_DRAG_TYPE, insertAt, useAttachMode } from './attach.ts';
-import { type Badges, type Candidate, type Typed, badgeTypedAt, candidates, typedAt, withFavorites } from './completion.ts';
+import { type Badges, type Candidate, type Typed, badgeTypedAt, candidates, pathTypedAt, typedAt, withFavorites } from './completion.ts';
 import { useFavorites } from './explorerFavorites.ts';
 import { WidgetPanel } from './Dashboard.tsx';
 import { chatIndexOf } from './delivery.ts';
@@ -66,27 +66,29 @@ type CompletionMenuState = { items: Candidate[]; active: number };
  * # はセッションか cwd のリポジトリの PR と Issue で、# の語を打っている間だけ読む。JIRA の課題も、キーを打っている間だけ読む。
  * @ はエクスプローラーのお気に入りのフォルダーを先に、続けてセッションか cwd のファイルを出す。ファイルは、多くても重くならないよう、サーバーに 1 文字ごとに絞らせて、上位だけを受け取る。サーバーは git の一覧を待たずに答えるので、一覧が届いたら取り直す。
  * forBadge はバッジの欄で、#番号と課題のキーだけを補完し、登録済みのバッジは候補から除く。skills は使わないので読まない。
+ * forPath は資料のパスの欄で、@ を打たずに欄の全体を @ の後ろと同じくファイルで補完し、選んだパスは @ を付けずに入れる。
  */
 export const useCompletion = (
-  { sessionId, cwd, badges, spaces, forBadge }: Pick<MessageInputProps, 'sessionId' | 'cwd' | 'badges' | 'spaces'> & { forBadge?: boolean },
+  { sessionId, cwd, badges, spaces, forBadge, forPath }: Pick<MessageInputProps, 'sessionId' | 'cwd' | 'badges' | 'spaces'> & { forBadge?: boolean; forPath?: boolean },
   input: RefObject<HTMLTextAreaElement | HTMLInputElement>,
   setText: (text: string) => void,
 ) => {
   const [typed, setTyped] = useState<Typed>();
   const [active, setActive] = useState(0);
-  const { data: skills = [] } = useFetch(() => (forBadge ? Promise.resolve([]) : api.skills({ sessionId, cwd })), [sessionId, cwd, forBadge]);
+  const { data: skills = [] } = useFetch(() => (forBadge || forPath ? Promise.resolve([]) : api.skills({ sessionId, cwd })), [sessionId, cwd, forBadge, forPath]);
   const wantsRefs = typed?.mark === '#' && !!(sessionId || cwd);
   const { data: refs = [] } = useCached((fresh) => (wantsRefs ? api.repoRefs({ sessionId, cwd }, fresh) : Promise.resolve([])), [sessionId, cwd, wantsRefs]);
   const wantsIssues = !!typed?.mark.endsWith('-');
   const { data: issues = [] } = useCached((fresh) => (wantsIssues ? api.jiraRefs(fresh) : Promise.resolve([])), [wantsIssues]);
-  const fileWord = typed?.mark === '@' && (sessionId || cwd) ? typed.word : undefined;
+  const fileWord = (typed?.mark === '@' || (forPath && typed)) && (sessionId || cwd) ? typed.word : undefined;
   const { data: files = [] } = useCached(() => (fileWord === undefined ? Promise.resolve([]) : api.files({ sessionId, cwd }, fileWord)), [sessionId, cwd, fileWord]);
   const favorites = useFavorites();
-  const items = typed ? candidates(typed, skills, refs, issues, fileWord === undefined ? files : withFavorites(files, favorites, fileWord), badges, spaces).filter((c) => !(forBadge && c.badge)) : [];
+  const fileItems = fileWord === undefined ? files : withFavorites(files, favorites, fileWord);
+  const items = !typed ? [] : forPath ? fileItems.map((p) => ({ label: p, desc: '' })) : candidates(typed, skills, refs, issues, fileItems, badges, spaces).filter((c) => !(forBadge && c.badge));
   const menu: CompletionMenuState | undefined = items.length ? { items, active: Math.min(active, items.length - 1) } : undefined;
   const update = () => {
     const el = input.current;
-    setTyped(el ? (forBadge ? badgeTypedAt : typedAt)(el.value.slice(0, el.selectionStart ?? el.value.length)) : undefined);
+    setTyped(el ? (forPath ? pathTypedAt : forBadge ? badgeTypedAt : typedAt)(el.value.slice(0, el.selectionStart ?? el.value.length)) : undefined);
     setActive(0);
   };
   const close = () => setTyped(undefined);
@@ -96,7 +98,8 @@ export const useCompletion = (
     if (!el || !typed) return;
     const dir = picked.label.endsWith('/');
     const before = el.value.slice(0, el.selectionStart ?? el.value.length);
-    const head = `${before.slice(0, before.length - typed.mark.length - typed.word.length)}${picked.label}${dir ? '' : ' '}`;
+    // パスの欄は、選んだパスをそのまま値にするので空白を足さない。
+    const head = `${before.slice(0, before.length - typed.mark.length - typed.word.length)}${picked.label}${dir || forPath ? '' : ' '}`;
     const next = head + el.value.slice(el.selectionEnd ?? el.value.length);
     el.value = next;
     el.setSelectionRange(head.length, head.length);
