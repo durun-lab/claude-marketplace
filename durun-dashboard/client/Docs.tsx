@@ -1,5 +1,6 @@
 import type { ComponentChildren, RefObject } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { COMPLETION_ID, CompletionMenu, useCompletion } from './Messaging.tsx';
 import { type Artifact, type ChatEntry, type Doc, type DocEditResult, type DocFormat, type DocMeta, type FileTarget, type FileWhere, type SavedFile, type SavedProof, type Session, type Snapshot, notionPageId } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { ATTACH_DRAG_TYPE } from './attach.ts';
@@ -178,6 +179,9 @@ const SideDocRow = ({ d, dragging, drag, onPin, onRemove, onRename }: RowProps) 
 /** 資料を足す入力欄。http(s) の URL ならリンクとして、ほかはファイルの絶対パスか ~ から始まるパスとして足す。題名はサーバーと画面が付けるので、変えたければ名前を変える。 */
 const AddDoc = ({ s, onClose }: { s: Session; onClose: () => void }) => {
   const [value, setValue] = useState('');
+  const input = useRef<HTMLInputElement>(null);
+  // ファイルのパスは、チャットの @ と同じく、セッションの作業ディレクトリのファイルで補完する。
+  const completion = useCompletion({ sessionId: s.id, forPath: true }, input, setValue);
   const save = async (e: Event) => {
     e.preventDefault();
     const target = value.trim();
@@ -186,7 +190,27 @@ const AddDoc = ({ s, onClose }: { s: Session; onClose: () => void }) => {
   };
   return (
     <form class="card panel stack add-link" onSubmit={save}>
-      <input class="input" required autoFocus aria-label="URL かファイルのパス" placeholder="https://… か /path/to/file" value={value} onInput={(e) => setValue(e.currentTarget.value)} />
+      <input
+        ref={input}
+        class="input"
+        required
+        autoFocus
+        aria-label="URL かファイルのパス"
+        placeholder="https://… か /path/to/file"
+        value={value}
+        aria-autocomplete="list"
+        aria-controls={completion.menu ? COMPLETION_ID : undefined}
+        aria-activedescendant={completion.menu ? `completion-${completion.menu.active}` : undefined}
+        onInput={(e) => {
+          setValue(e.currentTarget.value);
+          completion.update();
+        }}
+        onKeyDown={completion.onKeyDown}
+        onKeyUp={completion.onKeyUp}
+        onClick={completion.update}
+        onBlur={completion.close}
+      />
+      {completion.menu && <CompletionMenu menu={completion.menu} onPick={completion.accept} />}
       <div class="actions">
         <span class="spacer" />
         <button type="button" class="btn btn-sm" onClick={onClose}>キャンセル</button>

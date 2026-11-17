@@ -30,6 +30,9 @@ export const badgeTypedAt = (before: string): Typed | undefined => {
   return typed && typed.mark !== '/' && typed.mark !== '@' && typed.mark + typed.word === before ? typed : undefined;
 };
 
+/** 資料のパスの欄の、打ちかけの語。欄の全体をファイルのパスとして補完する。URL を打っているときは返さない。 */
+export const pathTypedAt = (before: string): Typed | undefined => (/^https?:/i.test(before) ? undefined : { mark: '', word: before });
+
 /** 名前の頭か、プラグイン名の後ろの頭に合うものを先に並べる。 */
 const matchSkills = (skills: SkillInfo[], word: string): SkillInfo[] => {
   const q = word.toLowerCase();
