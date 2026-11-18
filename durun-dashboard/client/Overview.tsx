@@ -55,12 +55,40 @@ const TaskTitle = ({ t, s }: { t: AgentTask; s: Session }) => {
   return <>{t.subject}</>;
 };
 
+/** 下のタスクを畳んだタスクの id。 */
+type TaskFolds = { has: (id: string) => boolean; toggle: (id: string) => void };
+
+const taskFoldsKey = (sessionId: string): string => `task-folds:${sessionId}`;
+
+const readTaskFolds = (sessionId: string): string[] => {
+  try {
+    return JSON.parse(localStorage.getItem(taskFoldsKey(sessionId)) ?? '[]') as string[];
+  } catch {
+    return [];
+  }
+};
+
+/** 畳んだタスクを、セッションごとにブラウザに覚える。タスクの id はセッションの中の番号なので、画面を移ったら移った先のものを読む。 */
+const useTaskFolds = (sessionId: string): TaskFolds => {
+  const [, redraw] = useState(0);
+  const ids = readTaskFolds(sessionId);
+  return {
+    has: (id) => ids.includes(id),
+    toggle: (id) => {
+      const next = ids.includes(id) ? ids.filter((x) => x !== id) : [...ids, id];
+      if (next.length) localStorage.setItem(taskFoldsKey(sessionId), JSON.stringify(next));
+      else localStorage.removeItem(taskFoldsKey(sessionId));
+      redraw((n) => n + 1);
+    },
+  };
+};
+
 /** 押すと、エージェントが書いた説明と、登録・着手・完了の時刻を開く。手順と待っているタスクは、その下に字下げして並べる。 */
-const TaskRow = ({ t, s, children, seen = new Set() }: { t: AgentTask; s: Session; children: Map<string, AgentTask[]>; seen?: Set<string> }) => {
+const TaskRow = ({ t, s, children, folds, seen = new Set() }: { t: AgentTask; s: Session; children: Map<string, AgentTask[]>; folds: TaskFolds; seen?: Set<string> }) => {
   const waits = t.blockedBy ?? [];
   const below = seen.has(t.id) ? [] : (children.get(t.id) ?? []);
   const inner = new Set([...seen, t.id]);
-  const [folded, setFolded] = useState(false);
+  const folded = folds.has(t.id);
   const times = ([['登録', t.createdAt], ['編集', t.updatedAt], ['着手', t.startedAt], ['完了', t.completedAt]] as const).flatMap(([label, at]) => (at ? [`${label} ${dateTime(at)}`] : []));
   return (
     <li class={`task task-${t.status}`}>
@@ -77,7 +105,7 @@ const TaskRow = ({ t, s, children, seen = new Set() }: { t: AgentTask; s: Sessio
                 // 題を押したときの詳細の開閉と分ける。
                 e.preventDefault();
                 e.stopPropagation();
-                setFolded((v) => !v);
+                folds.toggle(t.id);
               }}
             />
           ) : (
@@ -95,7 +123,7 @@ const TaskRow = ({ t, s, children, seen = new Set() }: { t: AgentTask; s: Sessio
         </div>
       </details>
       {/* 子が 1 つだけなら、順に 1 つずつ進む手順なので、字下げせずに親の丸からまっすぐ線でつなぐ。狭いウィジェットに収めるため。 */}
-      {below.length > 0 && !folded && <ul class={`tasks task-children${below.length === 1 ? ' is-chain' : ''}`}><Siblings tasks={below} s={s} children={children} seen={inner} /></ul>}
+      {below.length > 0 && !folded && <ul class={`tasks task-children${below.length === 1 ? ' is-chain' : ''}`}><Siblings tasks={below} s={s} children={children} folds={folds} seen={inner} /></ul>}
     </li>
   );
 };
@@ -109,10 +137,10 @@ const allDone = (t: AgentTask, children: Map<string, AgentTask[]>, seen = new Se
   t.status === 'completed' && (seen.has(t.id) || (children.get(t.id) ?? []).every((c) => allDone(c, children, new Set([...seen, t.id]))));
 
 /** 同じ階層のタスク。下まですべて完了したタスクが 2 件以上あれば、後ろにまとめて「完了済み n 件」に畳む。下に未完了のタスクが残るものは畳まない。 */
-const Siblings = ({ tasks, s, children, seen }: { tasks: AgentTask[]; s: Session; children: Map<string, AgentTask[]>; seen?: Set<string> }) => {
+const Siblings = ({ tasks, s, children, folds, seen }: { tasks: AgentTask[]; s: Session; children: Map<string, AgentTask[]>; folds: TaskFolds; seen?: Set<string> }) => {
   const done = tasks.filter((t) => allDone(t, children));
   const folded = done.length >= 2;
-  const row = (t: AgentTask) => <TaskRow key={t.id} t={t} s={s} children={children} seen={seen} />;
+  const row = (t: AgentTask) => <TaskRow key={t.id} t={t} s={s} children={children} folds={folds} seen={seen} />;
   return (
     <>
       {(folded ? tasks.filter((t) => !done.includes(t)) : tasks).map(row)}
@@ -147,13 +175,14 @@ export const TaskList = ({ s, sessions }: { s: Session; sessions: Session[] }) =
   const done = tasks.filter((t) => t.status === 'completed').length;
   const { roots, children } = taskTree(tasks);
   const delegated = tasks.find((t) => t.delegatedFrom);
+  const folds = useTaskFolds(s.id);
   return (
     <WidgetPanel title="タスク" count={tasks.length}>
       {tasks.length === 0 ? <Empty>エージェントが登録したタスクはありません。</Empty> : (
         <>
           {delegated && <ParentTask task={delegated} sessions={sessions} />}
           <p class="help">{done} / {tasks.length} 完了</p>
-          <ul class="tasks"><Siblings tasks={roots} s={s} children={children} /></ul>
+          <ul class="tasks"><Siblings tasks={roots} s={s} children={children} folds={folds} /></ul>
         </>
       )}
     </WidgetPanel>
