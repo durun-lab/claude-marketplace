@@ -1146,7 +1146,7 @@ const addAccount = (body: unknown): void => {
 };
 
 /** 起動したセッションは、セッションファイルとフックから一覧に現れる。 */
-const newSession = (body: unknown): Promise<void> => {
+const newSession = async (body: unknown): Promise<{ sessionId?: string }> => {
   const cwd = field<string>(body, 'cwd', 'string');
   const prompt = field<string>(body, 'prompt', 'string');
   if (!prompt.trim()) throw new HttpError(400, 'prompt is required');
@@ -1154,7 +1154,7 @@ const newSession = (body: unknown): Promise<void> => {
     throw new HttpError(400, `ディレクトリがありません: ${cwd}`);
   }
   const { theme, parent, account } = body as { theme?: unknown; parent?: unknown; account?: unknown };
-  return startSession(cwd, prompt, oneOf(body, 'model', MODELS), oneOf(body, 'effort', EFFORT_LEVELS), typeof theme === 'string' ? theme.trim() || undefined : undefined, typeof parent === 'string' ? parent : undefined, typeof account === 'string' ? account || undefined : undefined);
+  return { sessionId: await startSession(cwd, prompt, oneOf(body, 'model', MODELS), oneOf(body, 'effort', EFFORT_LEVELS), typeof theme === 'string' ? theme.trim() || undefined : undefined, typeof parent === 'string' ? parent : undefined, typeof account === 'string' ? account || undefined : undefined) };
 };
 
 const conversation = (id: string): Conversation => {

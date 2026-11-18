@@ -469,7 +469,7 @@ test('新しいセッションにテーマを渡すと、起動の出力のジ�
 if (args[0] === '--bg') console.log('backgrounded · ' + (args.at(-1) === 'lost' ? 'j99' : 'j20'));`,
   );
 
-  await startSession(tmp, '依頼', undefined, undefined, '起動時のテーマ');
+  assert.equal(await startSession(tmp, '依頼', undefined, undefined, '起動時のテーマ'), 's20');
   assert.deepEqual([state.sessions.s20?.cwd, state.sessions.s20?.theme], [tmp, '起動時のテーマ']);
 
   ensureSession('p20', tmp);
@@ -477,7 +477,7 @@ if (args[0] === '--bg') console.log('backgrounded · ' + (args.at(-1) === 'lost'
   assert.equal(state.sessions.s20?.parent, 'p20');
 
   const before = Object.keys(state.sessions).length;
-  await startSession(tmp, 'lost', undefined, undefined, '付かないテーマ');
+  assert.equal(await startSession(tmp, 'lost', undefined, undefined, '付かないテーマ'), undefined);
   assert.equal(Object.keys(state.sessions).length, before);
 });
 
