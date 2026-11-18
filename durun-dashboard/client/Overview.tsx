@@ -9,7 +9,7 @@ import { jiraSplitter, refSplitter } from './chatLinks.ts';
 import type { Badges } from './completion.ts';
 import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
 import { WidgetPanel, showWidget } from './Dashboard.tsx';
-import { fileLink, openDocFloat } from './Docs.tsx';
+import { fileLink, fileLinkOf, openDocFloat, openInNotepad } from './Docs.tsx';
 import { explain } from './Dolphin.tsx';
 import { dateTime, fmtTokens, shortDateTime, truncate } from './format.ts';
 import { NowContext, useCached, useFetch, useWaitCursor } from './hooks.ts';
@@ -24,7 +24,7 @@ import { toast } from './toast.tsx';
 import { Chip, Empty, Ext, IssueChip, JiraChips, Loading, PrChips, StatusBadge, copyText, onSubmitKey } from './ui.tsx';
 import { Translatable } from './TranslateTray.tsx';
 import { useTypewriter } from './typewriter.ts';
-import { XpContextMenu } from './XpMenu.tsx';
+import { type MenuItem, XpContextMenu } from './XpMenu.tsx';
 
 const TASK_LABEL: Record<AgentTask['status'], string> = { pending: '未着手', in_progress: '作業中', completed: '完了' };
 
@@ -469,7 +469,7 @@ const useRefMarks = (s: Session, entries: ChatEntry[], mark?: MarkText): MarkTex
   }, [data, issues, mark, light]);
 };
 
-type BadgeMenu = { x: number; y: number; url: string };
+type LinkMenu = { x: number; y: number; items: MenuItem[] };
 
 const BADGE_MENU_ID = 'chat-badge-menu';
 
@@ -689,21 +689,23 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
   const badges = useMemo<Badges>(() => ({ prs: s.prs, issues: s.issues, jira: s.jira }), [badgesKey]);
   const markText = useRefMarks(s, list, useTermMarks(s));
   const marked = new Set(s.bookmarks?.map(bookmarkKey));
-  const [badgeMenu, setBadgeMenu] = useState<BadgeMenu>();
-  // 発言の右クリックの「翻訳」より先に受け取り、PR と課題のリンクでは、PR と JIRA のウィジェットに並べるバッジに足すメニューを出す。
+  const [linkMenu, setLinkMenu] = useState<LinkMenu>();
+  // 発言の右クリックの「翻訳」より先に受け取り、PR と課題のリンクでは、PR と JIRA のウィジェットに並べるバッジに足すメニューを、ファイルのリンクでは、メモ帳で開くメニューを出す。
   const onContextMenu = (e: MouseEvent) => {
     const url = badgeLinkOf(e);
-    if (!url) return;
+    const file = url ? undefined : fileLinkOf(e);
+    const items: MenuItem[] = url ? [{ label: 'バッジに追加', onClick: () => void addBadge(url) }] : file ? [{ label: 'メモ帳で開く', onClick: () => void openInNotepad(s.id, s.cwd, file) }] : [];
+    if (!items.length) return;
     e.preventDefault();
     e.stopPropagation();
-    setBadgeMenu({ x: e.clientX, y: e.clientY, url });
+    setLinkMenu({ x: e.clientX, y: e.clientY, items });
   };
   // PR は GitHub から読めると確かめてから登録するので、数秒待つことがある。
   const addBadge = (url: string) => attempt('バッジの登録', async () => (await api.addBadge(s.id, url), true)).then((ok) => ok && toast('バッジに追加しました'));
   return (
     <>
       <h2 class="section-title">チャット</h2>
-      {badgeMenu && <XpContextMenu id={BADGE_MENU_ID} x={badgeMenu.x} y={badgeMenu.y} items={[{ label: 'バッジに追加', onClick: () => void addBadge(badgeMenu.url) }]} onClose={() => setBadgeMenu(undefined)} />}
+      {linkMenu && <XpContextMenu id={BADGE_MENU_ID} x={linkMenu.x} y={linkMenu.y} items={linkMenu.items} onClose={() => setLinkMenu(undefined)} />}
       <div class="widget-body chat" ref={box} tabIndex={0} onScroll={onScroll} onKeyDown={onKeyDown} onMouseOver={explainLink} onContextMenuCapture={onContextMenu}>
         {!entries ? (chatError ? <Empty>会話を読み込めません: {chatError}</Empty> : <Loading kind="chat" />)
           : list.length + unread.length === 0 ? <Empty>まだやり取りがありません。</Empty> : (
