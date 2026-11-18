@@ -497,6 +497,27 @@ if (args[0] === '--bg') { fs.writeFileSync(${js(argsFile)}, lines(args)); consol
   assert.deepEqual([child.id, child.cwd, child.parent, child.title, child.theme], ['s30', tmp, 'p30', 'mention-x', '親のテーマ']);
 });
 
+test('起動したときの最初の依頼を、起動を頼む前の時刻で送信したメッセージに残し、チャットの発言と照らせるようにする', async () => {
+  const bin = path.join(tmp, 'bin-first');
+  const launchedAt = path.join(tmp, 'first-launched-at');
+  const jobs = [{ id: 'jfirst', sessionId: 'sfirst', kind: 'background', pid: 1 }, { id: 'jchild', sessionId: 'schild', kind: 'background', pid: 1 }];
+  useFakeClaude(
+    bin,
+    `if (args[0] === 'agents') console.log(${js(JSON.stringify(jobs))});
+if (args[0] === '--bg') { fs.writeFileSync(${js(launchedAt)}, String(Date.now())); console.log('backgrounded · ' + (args.at(-1) === '子への依頼' ? 'jchild' : 'jfirst')); }`,
+  );
+  const first = (id: string) => state.outbox.filter((m) => m.sessionId === id);
+
+  await startSession(tmp, '人間の依頼');
+  assert.deepEqual(first('sfirst').map((m) => [m.text, m.via, !!m.deliveredAt]), [['人間の依頼', 'start', true]]);
+  // 会話ログの発言の時刻は、起動を頼んだ後になる。送った時刻がそれより前なら、チャットの発言と照らせる。
+  assert.ok((first('sfirst')[0]?.createdAt ?? Infinity) <= Number(fs.readFileSync(launchedAt, 'utf8')));
+
+  ensureSession('pfirst', tmp);
+  await startChildSession('pfirst', '子への依頼');
+  assert.deepEqual(first('schild').map((m) => [m.text, m.via]), [['子への依頼', 'start']]);
+});
+
 test('追加アカウントはトークンを settings の env に書き、外すと一覧から消える', () => {
   saveAccount('extra', 'sk-ant-oat01-test');
   const file = path.join(tmp, 'data', 'accounts', 'extra.json');
