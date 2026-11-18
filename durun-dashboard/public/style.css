@@ -1247,6 +1247,10 @@ a.skype-time:hover { color: #0078ca; text-decoration: underline; }
 .task-detail { margin: 4px 0 2px 22px; font-size: 12px; }
 .task-times { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
 .task-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.task-fold { appearance: none; padding: 0; background: none; cursor: pointer; }
+/* 下のタスクを畳んでいる丸は、外側に輪を重ねて、まだ下があることを示す。 */
+.task-fold[aria-expanded="false"] { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3px var(--muted); }
+.task-fold-count { flex: none; color: var(--muted); font-size: 11px; line-height: 20px; }
 .task-done-group > details > summary { color: var(--muted); font-size: 12px; }
 .task-done-group > details > summary::before { content: "▸"; display: inline-block; width: 14px; text-align: center; }
 .task-done-group > details[open] > summary::before { content: "▾"; }
