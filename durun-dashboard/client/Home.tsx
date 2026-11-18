@@ -28,7 +28,7 @@ import { JIRA_TITLE, JiraIssues, jiraControls } from './JiraIssues.tsx';
 import { SLACK_THREAD_TITLE, SlackThread, slackThreadControls } from './SlackThread.tsx';
 import { ROWS, type Layout } from './layout.ts';
 import { MessageInput } from './Messaging.tsx';
-import { currentSessionId } from './router.ts';
+import { currentSessionId, href } from './router.ts';
 import { ThemeGroups, type Selection } from './SessionCards.tsx';
 import { toast } from './toast.tsx';
 import { Choice } from './ui.tsx';
@@ -118,7 +118,9 @@ const NewSession = ({ cwds, themes, sessions, accounts, onClose }: { cwds: strin
     if (!ready) return;
     onClose();
     const child = asChild ? parent : undefined;
-    if (await attempt('セッションの起動', () => api.startSession(cwd.trim(), prompt, model, effort, theme, child, account))) toast('セッションを起動しました');
+    const started = await attempt('セッションの起動', () => api.startSession(cwd.trim(), prompt, model, effort, theme, child, account));
+    // 通知を押すと、起動したセッションの画面へ移る。
+    if (started) toast('セッションを起動しました', 'ok', started.sessionId ? href.session(started.sessionId) : undefined);
     else if (!presetListeners.size) openNewSession(cwd.trim(), theme, prompt, parent);
   };
   return (

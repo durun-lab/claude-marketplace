@@ -192,18 +192,21 @@ const newSettings = (base: object = {}, account?: string): string => {
  * 人間が画面から始めるセッション。依頼が - で始まる箇条書きでもオプションと解釈されないよう、-- の後に置く。
  * model と effort が空なら Claude Code の設定に従う。account が空ならプライマリアカウントで動く。
  * theme を渡すと、起動したセッションに付ける。parent を渡すと、そのセッションの子として記録する。
+ * 起動したセッションの id を返す。起動は済んだのに id を引けなければ undefined を返す。
  */
-export const startSession = async (cwd: string, prompt: string, model?: string, effort?: string, theme?: string, parent?: string, account?: string): Promise<void> => {
+export const startSession = async (cwd: string, prompt: string, model?: string, effort?: string, theme?: string, parent?: string, account?: string): Promise<string | undefined> => {
   const settingsFile = newSettings({}, account);
   const output = await claudeOutput(['--bg', ...modelFlags(model, effort), '--settings', settingsFile, '--', prompt], cwd);
   // 空のテーマを付けると、リポジトリ名にならず未分類になる。
   const known = parent && state.sessions[parent] ? parent : undefined;
   // 起動は済んでいるので、テーマや親を付けられなくても失敗にしない。
   try {
-    Object.assign(await trackedSession(output, cwd), { settingsFile }, theme ? { theme } : {}, known ? { parent: known } : {}, account ? { account } : {});
+    const meta = Object.assign(await trackedSession(output, cwd), { settingsFile }, theme ? { theme } : {}, known ? { parent: known } : {}, account ? { account } : {});
     touch();
+    return meta.id;
   } catch (e) {
     console.error(`起動したセッションにテーマや親を付けられません: ${(e as Error).message}`);
+    return undefined;
   }
 };
 
