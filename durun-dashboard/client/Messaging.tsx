@@ -27,6 +27,7 @@ const STATUS_HELP: Record<SessionStatus, string> = {
 };
 
 const VIA_LABEL: Record<NonNullable<OutboxMessage['via']>, string> = {
+  start: 'セッションの起動',
   socket: 'ソケット経由',
   hook: 'フック経由',
   resume: 'セッション再開',

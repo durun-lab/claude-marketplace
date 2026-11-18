@@ -196,18 +196,28 @@ const newSettings = (base: object = {}, account?: string): string => {
  */
 export const startSession = async (cwd: string, prompt: string, model?: string, effort?: string, theme?: string, parent?: string, account?: string): Promise<string | undefined> => {
   const settingsFile = newSettings({}, account);
+  const sentAt = Date.now();
   const output = await claudeOutput(['--bg', ...modelFlags(model, effort), '--settings', settingsFile, '--', prompt], cwd);
   // 空のテーマを付けると、リポジトリ名にならず未分類になる。
   const known = parent && state.sessions[parent] ? parent : undefined;
   // 起動は済んでいるので、テーマや親を付けられなくても失敗にしない。
   try {
     const meta = Object.assign(await trackedSession(output, cwd), { settingsFile }, theme ? { theme } : {}, known ? { parent: known } : {}, account ? { account } : {});
+    recordFirstMessage(meta.id, prompt, sentAt);
     touch();
     return meta.id;
   } catch (e) {
     console.error(`起動したセッションにテーマや親を付けられません: ${(e as Error).message}`);
     return undefined;
   }
+};
+
+/**
+ * 起動したときの最初の依頼を、送信したメッセージに残す。sentAt は起動を頼む前の時刻。
+ * 画面は、送った時刻より後の発言と照らしてチャットの発言を探すので、起動を終えた時刻にすると見つからず、未読のまま残る。
+ */
+const recordFirstMessage = (sessionId: string, text: string, sentAt: number): void => {
+  state.outbox.push({ id: newId(), sessionId, text, createdAt: sentAt, deliveredAt: Date.now(), via: 'start' });
 };
 
 const trackedSession = async (output: string, cwd: string): Promise<SessionMeta> => {
@@ -223,8 +233,10 @@ const trackedSession = async (output: string, cwd: string): Promise<SessionMeta>
  */
 export const startTrackedSession = async (cwd: string, prompt: string, model?: string, effort?: string, name?: string, settings?: object, account?: string): Promise<SessionMeta> => {
   const settingsFile = newSettings(settings, account);
+  const sentAt = Date.now();
   const meta = await trackedSession(await claudeOutput(['--bg', ...(name ? ['--name', name] : []), ...modelFlags(model, effort), '--settings', settingsFile, '--', prompt], cwd), cwd);
   Object.assign(meta, { account, settingsFile });
+  recordFirstMessage(meta.id, prompt, sentAt);
   return meta;
 };
 
