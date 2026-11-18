@@ -1,6 +1,8 @@
 import type { ComponentChildren, RefObject } from 'preact';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { COMPLETION_ID, CompletionMenu, useCompletion } from './Messaging.tsx';
+import { openNotepadFile } from './Notepad.tsx';
+import { XpContextMenu } from './XpMenu.tsx';
 import { type Artifact, type ChatEntry, type Doc, type DocEditResult, type DocFormat, type DocMeta, type FileTarget, type FileWhere, type SavedFile, type SavedProof, type Session, type Snapshot, notionPageId } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { ATTACH_DRAG_TYPE } from './attach.ts';
@@ -441,6 +443,15 @@ export const SessionDocs = ({ s, docs, entries, notion, snapshotAt }: { s: Sessi
   // エクスプローラーのファイルをドラッグして上に来ている間、落とせることを枠で示す。
   const [dropping, setDropping] = useState(false);
   const { state, edit } = useDocEdits(s, snapshotAt);
+  // ファイルの資料は、右クリックでメモ帳で開ける。
+  const [menu, setMenu] = useState<{ x: number; y: number; file: string }>();
+  const onContextMenu = (e: MouseEvent) => {
+    const file = fileLinkOf(e);
+    if (!file) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setMenu({ x: e.clientX, y: e.clientY, file });
+  };
   // 前に開いていたときのデータには、足したファイルが無いことがある。
   const savedFiles = s.files ?? [];
   // present で出した資料と同じファイルは、発言に出たものや足したものとして重ねて並べない。
@@ -503,10 +514,11 @@ export const SessionDocs = ({ s, docs, entries, notion, snapshotAt }: { s: Sessi
         }}
       >
         {adding && <AddDoc s={s} onClose={() => setAdding(false)} />}
+        {menu && <XpContextMenu id="docs-file-menu" x={menu.x} y={menu.y} items={[{ label: 'メモ帳で開く', onClick: () => void openInNotepad(s.id, s.cwd, menu.file) }]} onClose={() => setMenu(undefined)} />}
         {items.length === 0 ? (
           entries ? <Empty>資料はありません。</Empty> : <Loading />
         ) : (
-          <ul class="side-docs" ref={list}>
+          <ul class="side-docs" ref={list} onContextMenuCapture={onContextMenu}>
             {items.map((d) => (
               <SideDocRow key={d.key} d={d} dragging={d.key === dragging} drag={dragOf(d)} onPin={() => edit({ kind: 'pin', keys: d.keys, pinned: !d.pinned })} onRemove={() => edit({ kind: 'hide', keys: d.keys })} onRename={(title) => edit({ kind: 'rename', key: d.key, title })} />
             ))}
@@ -717,6 +729,21 @@ const targetOf = (id: string, ref: string): Promise<FileTarget | undefined> => {
   const p = api.resolveFile(id, ref).then((r) => r, () => undefined);
   resolved.set(key, p);
   return p;
+};
+
+/** 右クリックで「メモ帳で開く」を出すファイル。チャットのファイルのリンクと資料のファイルの行は、data-attach にパスを持つ。URL と課題のキーは除く。 */
+export const fileLinkOf = (e: MouseEvent): string | undefined => {
+  const el = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-attach]') : null;
+  const ref = el?.dataset.attach;
+  return ref && !/^[a-z]+:/i.test(ref) && !ref.startsWith('資料「') && /[/.]/.test(ref) ? ref : undefined;
+};
+
+/** メモ帳はパスをそのまま開くので、相対パスはチャットのリンクと同じく開き先を調べて絶対パスにする。行の指定は外す。 */
+export const openInNotepad = async (sessionId: string, cwd: string, ref: string): Promise<void> => {
+  const plain = ref.replace(/:[\d-]+$/, '');
+  if (/^[/~]/.test(plain)) return openNotepadFile(plain);
+  const t = await targetOf(sessionId, plain);
+  openNotepadFile(t?.path ?? `${cwd}/${plain}`);
 };
 
 /** チャットのファイルパスの開き先。開けないものは undefined にする。 */
