@@ -91,7 +91,6 @@ const TaskRow = ({ t, s, children, seen = new Set() }: { t: AgentTask; s: Sessio
           {t.description ? <Markdown text={t.description} /> : <p class="muted">説明はありません。</p>}
           {waits.length > 1 && <p class="task-times">{waits.join('・')} の完了を待つ</p>}
           {t.delegatedTo && <p class="task-times"><a href={href.session(t.delegatedTo)}>任せた子セッションを開く</a></p>}
-          {t.delegatedFrom && <p class="task-times"><a href={href.session(t.delegatedFrom.session)}>任せた親セッションを開く</a></p>}
           {times.length > 0 && <p class="task-times">{times.join('・')}</p>}
         </div>
       </details>
@@ -129,14 +128,30 @@ const Siblings = ({ tasks, s, children, seen }: { tasks: AgentTask[]; s: Session
   );
 };
 
-export const TaskList = ({ s }: { s: Session }) => {
+/** 親セッションから任されたタスクの題と、親セッションへのリンク。一覧に無い親セッションは、名前を省く。 */
+const ParentTask = ({ task, sessions }: { task: AgentTask; sessions: Session[] }) => {
+  const from = task.delegatedFrom;
+  if (!from) return null;
+  const parent = sessions.find((p) => p.id === from.session);
+  return (
+    <p class="task-parent">
+      <span class="muted">親のタスク</span>
+      <a href={href.session(from.session)} title="親セッションを開く">{task.subject}</a>
+      {parent && <span class="muted task-parent-session">{parent.name}</span>}
+    </p>
+  );
+};
+
+export const TaskList = ({ s, sessions }: { s: Session; sessions: Session[] }) => {
   const tasks = s.agentTasks ?? [];
   const done = tasks.filter((t) => t.status === 'completed').length;
   const { roots, children } = taskTree(tasks);
+  const delegated = tasks.find((t) => t.delegatedFrom);
   return (
     <WidgetPanel title="タスク" count={tasks.length}>
       {tasks.length === 0 ? <Empty>エージェントが登録したタスクはありません。</Empty> : (
         <>
+          {delegated && <ParentTask task={delegated} sessions={sessions} />}
           <p class="help">{done} / {tasks.length} 完了</p>
           <ul class="tasks"><Siblings tasks={roots} s={s} children={children} /></ul>
         </>
