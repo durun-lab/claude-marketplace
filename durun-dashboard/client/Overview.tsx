@@ -60,13 +60,31 @@ const TaskRow = ({ t, s, children, seen = new Set() }: { t: AgentTask; s: Sessio
   const waits = t.blockedBy ?? [];
   const below = seen.has(t.id) ? [] : (children.get(t.id) ?? []);
   const inner = new Set([...seen, t.id]);
+  const [folded, setFolded] = useState(false);
   const times = ([['登録', t.createdAt], ['編集', t.updatedAt], ['着手', t.startedAt], ['完了', t.completedAt]] as const).flatMap(([label, at]) => (at ? [`${label} ${dateTime(at)}`] : []));
   return (
     <li class={`task task-${t.status}`}>
       <details>
         <summary>
-          <span class="task-icon" role="img" aria-label={TASK_LABEL[t.status]} />
+          {below.length > 0 ? (
+            <button
+              type="button"
+              class="task-icon task-fold"
+              aria-expanded={!folded}
+              aria-label={`${TASK_LABEL[t.status]}。下のタスクを${folded ? '開く' : '畳む'}`}
+              title={`下のタスクを${folded ? '開く' : '畳む'}`}
+              onClick={(e) => {
+                // 題を押したときの詳細の開閉と分ける。
+                e.preventDefault();
+                e.stopPropagation();
+                setFolded((v) => !v);
+              }}
+            />
+          ) : (
+            <span class="task-icon" role="img" aria-label={TASK_LABEL[t.status]} />
+          )}
           <span class="task-text"><TaskTitle t={t} s={s} /></span>
+          {folded && <span class="task-fold-count" title="畳んでいる下のタスクの数">+{countBelow(t, children)}</span>}
           {t.delegatedTo && <a class="task-session" href={href.session(t.delegatedTo)} title="任せた子セッションを開く" onClick={(e) => e.stopPropagation()}>子セッション</a>}
         </summary>
         <div class="task-detail">
@@ -78,10 +96,14 @@ const TaskRow = ({ t, s, children, seen = new Set() }: { t: AgentTask; s: Sessio
         </div>
       </details>
       {/* 子が 1 つだけなら、順に 1 つずつ進む手順なので、字下げせずに親の丸からまっすぐ線でつなぐ。狭いウィジェットに収めるため。 */}
-      {below.length > 0 && <ul class={`tasks task-children${below.length === 1 ? ' is-chain' : ''}`}><Siblings tasks={below} s={s} children={children} seen={inner} /></ul>}
+      {below.length > 0 && !folded && <ul class={`tasks task-children${below.length === 1 ? ' is-chain' : ''}`}><Siblings tasks={below} s={s} children={children} seen={inner} /></ul>}
     </li>
   );
 };
+
+/** t の下に並ぶタスクの数。孫より下も数える。 */
+const countBelow = (t: AgentTask, children: Map<string, AgentTask[]>, seen = new Set<string>([t.id])): number =>
+  (children.get(t.id) ?? []).reduce((n, c) => (seen.has(c.id) ? n : n + 1 + countBelow(c, children, new Set([...seen, c.id]))), 0);
 
 /** t と、その下に並ぶ手順や待っているタスクが、すべて完了しているか。 */
 const allDone = (t: AgentTask, children: Map<string, AgentTask[]>, seen = new Set<string>()): boolean =>
