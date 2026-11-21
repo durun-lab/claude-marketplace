@@ -484,7 +484,7 @@ export type BurstKind = 'github-review' | 'slack-mention' | 'jira-mention';
  * ワークフローの定義。人間とエージェントがワークフローのフォルダーに書く。
  * mode が new ならイベントごとにセッションを起動し、動いているものを maxSessions（既定 1）までに抑える。
  * continue なら 1 つのセッションを引き継いでイベントを送り、セッションが無いかアーカイブされていたら起動する。compact なら、送る前に毎回前回までの会話を compact する。
- * oneshot ならセッションを起動せず、イベントごとに claude -p を 1 回動かす。同時に動かす数は maxSessions（既定 1）までに抑える。
+ * oneshot ならセッションを起動せず、イベントごとに claude -p を 1 回動かす。同時に動かす数は maxSessions（既定 1）までに抑える。DURUN_DASHBOARD_ANTHROPIC_API_KEY があれば、サブスクリプションでなくその API のクレジットで動かす。
  */
 export type WorkflowDef = {
   id: string;

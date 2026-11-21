@@ -17,6 +17,7 @@ import { DONE_MARK, feedbackEvent, finishItems, improveWorkflow, onFeedback, pen
 import { isOffDay } from '../shared/holidays.ts';
 import { githubInbox, jiraMentions } from './integrations.ts';
 import { LEARN_DIR } from './reflect.ts';
+import { API_KEY_ENV } from './claudeApi.ts';
 import { claudeCommand } from './platform.ts';
 import { run as runCommand, type RunError } from './run.ts';
 import { addSlackReaction, postSlackReply, slackConversation, slackMentions, slackTargetOf } from './slack.ts';
@@ -330,7 +331,10 @@ const oneshot = (w: WorkflowDef, run: WorkflowRun, event: string): void => {
     '--append-system-prompt', w.prompt,
   ];
   const claude = claudeCommand(args);
-  runCommand(claude.file, claude.args, { cwd: w.cwd, timeout: ONESHOT_TIMEOUT_MS, input: `${MARK}「${w.name}」 ${event}` })
+  // サブスクリプションの使用制限を減らさないよう、ダッシュボードの API のキーがあれば、そのクレジットで動かす。
+  const apiKey = process.env[API_KEY_ENV];
+  const env = apiKey ? { ...process.env, ANTHROPIC_API_KEY: apiKey } : undefined;
+  runCommand(claude.file, claude.args, { cwd: w.cwd, timeout: ONESHOT_TIMEOUT_MS, input: `${MARK}「${w.name}」 ${event}`, ...(env ? { env } : {}) })
     .then(() => {
       run.error = undefined;
     })

@@ -5,8 +5,8 @@ import { type ExecFileException, execFile, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import { parentPort, SHARE_ENV, Worker, workerData } from 'node:worker_threads';
 
-/** input は標準入力に渡す本文。渡さなくても標準入力は閉じ、入力を待つコマンドを待たせない。 */
-export type RunOptions = { cwd?: string; timeout?: number; maxBuffer?: number; input?: string };
+/** input は標準入力に渡す本文。渡さなくても標準入力は閉じ、入力を待つコマンドを待たせない。env を渡すと、コマンドの環境変数をそれに置き換える。 */
+export type RunOptions = { cwd?: string; timeout?: number; maxBuffer?: number; input?: string; env?: NodeJS.ProcessEnv };
 
 /** execFile と同じく、失敗の理由に終了コードと出力を添える。killed は、timeout を過ぎて止めたこと。 */
 export type RunError = Error & { code?: number | string; killed?: boolean; signal?: string; stdout: string; stderr: string };
