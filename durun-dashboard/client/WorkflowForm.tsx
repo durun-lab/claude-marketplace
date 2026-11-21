@@ -1,6 +1,6 @@
 // ワークフローの「設定」。1 つのワークフローのフォルダーの workflow.json と agent を、画面で直して書き込む。
 import { useState } from 'preact/hooks';
-import { COMPACT_WINDOW_MAX, COMPACT_WINDOW_MIN, EFFORT_LEVELS, MODELS, type WorkflowInfo, type WorkflowSettings, type WorkflowTrigger } from '../shared/types.ts';
+import { COMPACT_WINDOW_MAX, COMPACT_WINDOW_MIN, EFFORT_LEVELS, MODELS, TEXT_FILTER_OPS, type TextFilter, type WorkflowInfo, type WorkflowSettings, type WorkflowTrigger } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { Choice } from './ui.tsx';
 
@@ -94,23 +94,37 @@ const ScheduleFields = ({ t, onChange }: { t: Schedule; onChange: (t: Schedule) 
 
 const KIND_LABEL: Record<WorkflowTrigger['kind'], string> = { schedule: '時刻', 'slack-thread': 'Slack のスレッドへの投稿', ...Object.fromEntries(EVENTS.map((e) => [e.kind, e.label])) } as Record<WorkflowTrigger['kind'], string>;
 
-/** スレッドは「リンクをコピー」の URL で指す。ignorePrefix で始まる投稿では動かない。 */
-const ThreadFields = ({ t, onChange }: { t: Thread; onChange: (t: Thread) => void }) => (
-  <>
-    <input class="input input-sm" aria-label="スレッドのリンク" placeholder="https://example.slack.com/archives/C…/p…" value={t.url} onInput={(e) => onChange({ ...t, url: e.currentTarget.value.trim() })} />
-    <input
-      class="input input-sm workflow-days-input"
-      aria-label="無視する投稿の書き出し"
-      title="この文字で始まる投稿では動きません。ワークフローが自分で書いた返信で動かないよう、返信の書き出しと合わせます"
-      placeholder="無視する書き出し"
-      value={t.ignorePrefix ?? ''}
-      onInput={(e) => {
-        const { ignorePrefix: _old, ...rest } = t;
-        onChange(e.currentTarget.value ? { ...rest, ignorePrefix: e.currentTarget.value } : rest);
-      }}
-    />
-  </>
-);
+const FILTER_LABEL: Record<TextFilter['op'], string> = { 'starts-with': 'で始まる', 'not-starts-with': 'で始まらない', contains: 'を含む', 'not-contains': 'を含まない' };
+
+/**
+ * スレッドは「リンクをコピー」の URL で指す。フィルタがあれば、すべてに合う投稿だけで動く。
+ * 文字が空のフィルタは保存すると消えるので、打っている途中の行は手元に持つ。
+ */
+const ThreadFields = ({ t, onChange }: { t: Thread; onChange: (t: Thread) => void }) => {
+  const [rows, setRows] = useState<TextFilter[]>(t.filters ?? []);
+  const setFilters = (next: TextFilter[]) => {
+    setRows(next);
+    const { filters: _old, ...rest } = t;
+    onChange(next.length ? { ...rest, filters: next } : rest);
+  };
+  const setAt = (i: number, f?: TextFilter) => setFilters(rows.flatMap((r, j) => (j !== i ? [r] : f ? [f] : [])));
+  return (
+    <>
+      <input class="input input-sm" aria-label="スレッドのリンク" placeholder="https://example.slack.com/archives/C…/p…" value={t.url} onInput={(e) => onChange({ ...t, url: e.currentTarget.value.trim() })} />
+      {rows.map((f, i) => (
+        <span key={i} class="workflow-day">
+          投稿が
+          <input class="input input-sm workflow-days-input" aria-label="フィルタの文字" value={f.text} onInput={(e) => setAt(i, { ...f, text: e.currentTarget.value })} />
+          <select class="input input-sm input-auto" aria-label="フィルタの条件" value={f.op} onChange={(e) => setAt(i, { ...f, op: e.currentTarget.value as TextFilter['op'] })}>
+            {TEXT_FILTER_OPS.map((op) => <option key={op} value={op}>{FILTER_LABEL[op]}</option>)}
+          </select>
+          <button type="button" class="btn btn-sm" title="このフィルタを消す" aria-label="このフィルタを消す" onClick={() => setAt(i)}>×</button>
+        </span>
+      ))}
+      <button type="button" class="btn btn-sm" title="投稿の本文で絞るフィルタを足す。すべてに合う投稿だけで動く" onClick={() => setFilters([...rows, { op: 'not-contains', text: '' }])}>フィルタを足す</button>
+    </>
+  );
+};
 
 const triggerFor = (kind: string): WorkflowTrigger => (kind === 'schedule' ? NEW_SCHEDULE : kind === 'slack-thread' ? NEW_THREAD : ({ kind } as WorkflowTrigger));
 
