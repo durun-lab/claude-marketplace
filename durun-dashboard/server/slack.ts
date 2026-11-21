@@ -123,8 +123,10 @@ const credential = async (): Promise<Entry> => {
   const raw = await platform.claudeCredentials();
   if (!raw) throw new Error('Claude Code の認証情報を読めません');
   // キーは「<サーバー名>|<ハッシュ>」の形。サーバー名は環境で揺れるので、slack を含むものを使う。
+  // 別の名前で接続し直すと古い接続が残るので、期限のいちばん先のものを使う。期限の無いものは切れないとみなす。
   const entries = Object.entries((JSON.parse(raw) as { mcpOAuth?: Record<string, Credential> }).mcpOAuth ?? {});
-  const [key = '', entry] = entries.find(([k]) => k.split('|')[0]?.toLowerCase().includes('slack')) ?? [];
+  const until = (c: Credential): number => c.expiresAt ?? Number.MAX_SAFE_INTEGER;
+  const [key = '', entry] = entries.filter(([k]) => k.split('|')[0]?.toLowerCase().includes('slack')).sort(([, a], [, b]) => until(b) - until(a))[0] ?? [];
   if (!entry?.accessToken) throw new Error('Slack の MCP に接続していません。Claude Code の /mcp から Slack に接続してください');
   const server = key.split('|')[0] ?? '';
   if (entry.expiresAt && entry.expiresAt < Date.now()) throw expired(server);
