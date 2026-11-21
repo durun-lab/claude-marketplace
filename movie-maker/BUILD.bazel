@@ -1,0 +1,14 @@
+# Bazel の試作（docs/design/spikes/bazel.md）。cargo のビルドが正。
+
+exports_files([
+    "Cargo.toml",
+    "Cargo.bazel.lock",
+    "Cargo.lock",
+])
+
+# 試験が CARGO_MANIFEST_DIR から ../../fixtures を読む。
+filegroup(
+    name = "fixtures",
+    srcs = glob(["fixtures/**"]),
+    visibility = ["//visibility:public"],
+)

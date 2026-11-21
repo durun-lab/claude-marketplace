@@ -1,0 +1,106 @@
+"""movie-maker を Bazel（rules_rust）でビルドする試作。結果と判断は docs/design/spikes/bazel.md。
+
+cargo のビルドが正で、この試作は cargo のファイルを変えない。
+"""
+
+module(name = "movie_maker")
+
+bazel_dep(name = "rules_rust", version = "0.75.0")
+bazel_dep(name = "rules_cc", version = "0.2.28")
+bazel_dep(name = "platforms", version = "1.1.0")
+
+rust = use_extension("@rules_rust//rust:extensions.bzl", "rust")
+rust.toolchain(
+    edition = "2021",
+    # rust-toolchain.toml と同じ版。
+    versions = ["1.95.0"],
+)
+use_repo(rust, "rust_toolchains")
+
+register_toolchains("@rust_toolchains//:all")
+
+crate = use_extension("@rules_rust//crate_universe:extensions.bzl", "crate")
+
+# 依存は書き換えないので最適化する（Cargo.toml の profile.dev.package."*" と同じ）。
+crate.annotation(
+    crate = "*",
+    rustc_flags = ["-Copt-level=2"],
+)
+
+# build script と proc-macro からしか使わない依存は、ビルドの間に一度走るだけなので最適化しない（cargo の build-override の既定と同じ）。
+# 道具と build script 自体は .bazelrc の extra_exec_rustc_flags で同じにする。
+[
+    crate.annotation(
+        crate = name,
+        rustc_flags = ["-Copt-level=0"],
+    )
+    for name in [
+        "autocfg",
+        "cc",
+        "find-msvc-tools",
+        "glob",
+        "jobserver",
+        "pkg-config",
+        "proc-macro2",
+        "quote",
+        "ref-cast-impl",
+        "schemars_derive",
+        "serde_derive",
+        "serde_derive_internals",
+        "shlex",
+        "syn",
+        "thiserror-impl",
+        "unicode-ident",
+        "vcpkg",
+        "version_check",
+    ]
+]
+
+# from_cargo は workspace の根の全部のファイルを一時ディレクトリへ symlink するので、
+# symlink の特権が無い Windows（開発者モードが切）では作れない。試作の範囲の依存を spec で並べ、版は Cargo.lock に合わせる。
+crate.spec(
+    features = ["derive"],
+    package = "serde",
+    version = "=1.0.229",
+)
+crate.spec(
+    package = "serde_json",
+    version = "=1.0.154",
+)
+crate.spec(
+    package = "thiserror",
+    version = "=2.0.21",
+)
+crate.spec(
+    package = "schemars",
+    version = "=1.2.3",
+)
+crate.spec(
+    features = ["bundled"],
+    package = "rusqlite",
+    version = "=0.41.1",
+)
+crate.spec(
+    package = "sha2",
+    version = "=0.10.9",
+)
+crate.spec(
+    package = "proptest",
+    version = "=1.12.0",
+)
+crate.spec(
+    package = "tempfile",
+    version = "=3.27.0",
+)
+crate.spec(
+    package = "webp",
+    version = "=0.3.1",
+)
+
+# Cargo.lock を直に渡すと cargo-bazel が試作の範囲に刈り込んで書き戻すので、写しを渡す。
+crate.from_specs(
+    name = "crates",
+    cargo_lockfile = "//:Cargo.bazel.lock",
+    supported_platform_triples = ["x86_64-pc-windows-msvc"],
+)
+use_repo(crate, "crates")
