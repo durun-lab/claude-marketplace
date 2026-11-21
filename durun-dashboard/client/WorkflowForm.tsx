@@ -1,6 +1,6 @@
 // ワークフローの「設定」。1 つのワークフローのフォルダーの workflow.json と agent を、画面で直して書き込む。
 import { useState } from 'preact/hooks';
-import { COMPACT_WINDOW_MAX, COMPACT_WINDOW_MIN, EFFORT_LEVELS, MODELS, TEXT_FILTER_OPS, type TextFilter, type WorkflowInfo, type WorkflowSettings, type WorkflowTrigger } from '../shared/types.ts';
+import { COMPACT_WINDOW_MAX, COMPACT_WINDOW_MIN, EFFORT_LEVELS, MODELS, TEXT_FILTER_OPS, type TextFilter, THREAD_INTERVAL_DEFAULT, THREAD_INTERVAL_MIN, type WorkflowInfo, type WorkflowSettings, type WorkflowTrigger } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { Choice } from './ui.tsx';
 
@@ -111,6 +111,22 @@ const ThreadFields = ({ t, onChange }: { t: Thread; onChange: (t: Thread) => voi
   return (
     <>
       <input class="input input-sm" aria-label="スレッドのリンク" placeholder="https://example.slack.com/archives/C…/p…" value={t.url} onInput={(e) => onChange({ ...t, url: e.currentTarget.value.trim() })} />
+      <label class="workflow-day" title={`${THREAD_INTERVAL_MIN} 秒より短くはできません`}>
+        <input
+          type="number"
+          min={THREAD_INTERVAL_MIN}
+          class="input input-sm workflow-number"
+          aria-label="スレッドを読む間隔（秒）"
+          placeholder={String(THREAD_INTERVAL_DEFAULT)}
+          value={t.intervalSeconds ?? ''}
+          onInput={(e) => {
+            const { intervalSeconds: _old, ...rest } = t;
+            const n = Number(e.currentTarget.value);
+            onChange(n > 0 ? { ...rest, intervalSeconds: Math.max(Math.round(n), THREAD_INTERVAL_MIN) } : rest);
+          }}
+        />
+        秒ごとに読む
+      </label>
       {rows.map((f, i) => (
         <span key={i} class="workflow-day">
           投稿が

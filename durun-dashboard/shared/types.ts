@@ -452,6 +452,7 @@ export type Harness = { items: HarnessItem[]; kindToggles: Partial<Record<Harnes
  * github-review は、自分へのレビュー依頼が新しく届いたときに動く。slack-mention と jira-mention は、Slack と JIRA のコメントで自分へのメンションが新しく届いたときに動く。
  * feedback は、ダッシュボードへの改善要望がたまっているときに、前のウェーブを終えてから、たまった要望を 1 つのウェーブとして渡す。
  * slack-thread は、url の Slack のスレッドに新しい投稿が届いたときに、投稿ごとに動く。filters があれば、すべてに合う投稿だけで動く（ワークフローが自分で書いた返信を外すなど）。
+ * スレッドは intervalSeconds 秒ごとに読む。省くと THREAD_INTERVAL_DEFAULT 秒ごとで、THREAD_INTERVAL_MIN 秒より短くはしない。
  */
 export type WorkflowTrigger =
   | { kind: 'schedule'; at: string; days?: number[]; dates?: number[]; businessDays?: number[] }
@@ -459,7 +460,11 @@ export type WorkflowTrigger =
   | { kind: 'slack-mention' }
   | { kind: 'jira-mention' }
   | { kind: 'feedback' }
-  | { kind: 'slack-thread'; url: string; filters?: TextFilter[] };
+  | { kind: 'slack-thread'; url: string; filters?: TextFilter[]; intervalSeconds?: number };
+
+export const THREAD_INTERVAL_DEFAULT = 60;
+// Slack の MCP を読みすぎないよう、これより短い間隔では読まない。
+export const THREAD_INTERVAL_MIN = 5;
 
 export const TEXT_FILTER_OPS = ['starts-with', 'not-starts-with', 'contains', 'not-contains'] as const;
 /** 投稿の本文の条件。op は「で始まる」「で始まらない」「を含む」「を含まない」。 */
