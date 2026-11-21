@@ -19,7 +19,7 @@ import { githubInbox, jiraMentions } from './integrations.ts';
 import { LEARN_DIR } from './reflect.ts';
 import { claudeCommand } from './platform.ts';
 import { run as runCommand, type RunError } from './run.ts';
-import { slackConversation, slackMentions, slackTargetOf } from './slack.ts';
+import { postSlackReply, slackConversation, slackMentions, slackTargetOf } from './slack.ts';
 import { DATA_DIR, type FeedbackWave, newId, persist, type SessionMeta, state, touch, type WorkflowRun } from './store.ts';
 
 export const WORKFLOWS_DIR = path.join(CLAUDE_DIR, 'agents');
@@ -265,6 +265,14 @@ const runOf = (id: string): WorkflowRun => {
  */
 const promptFor = (w: WorkflowDef, event: string): string => `${MARK}「${w.name}」 ${event}\n\n進め方は ${w.agentFile} の指示に従ってください。`;
 
+/**
+ * スレッドのトリガーで積んだイベントの返信先。oneshot が失敗したら、ダッシュボードがここへ理由を返信する。
+ * ダッシュボードが書いた返信の ts は ownReplies に覚え、新しい投稿として積まない。
+ */
+// ponytail: メモリに持つだけなので、サーバーを起動し直すと、待っているイベントの返信先と覚えた返信を忘れる。
+const replyTargets = new Map<string, { channel: string; thread: string }>();
+const ownReplies = new Set<string>();
+
 /** 起動を頼み、id をまだ受け取っていないセッションの数。ワークフローごとに数える。 */
 const launching = new Map<string, number>();
 
@@ -323,8 +331,17 @@ const oneshot = (w: WorkflowDef, run: WorkflowRun, event: string): void => {
     })
     .catch((e: RunError) => {
       run.error = e.killed ? `claude -p が ${ONESHOT_TIMEOUT_MS / 60_000} 分以内に終わりませんでした` : `claude -p が失敗しました: ${(e.stderr || e.stdout || e.message).trim().slice(-300)}`;
+      const target = replyTargets.get(event);
+      if (target) {
+        postSlackReply(target.channel, target.thread, `ワークフロー「${w.name}」がこの投稿を処理できませんでした。\n理由: ${run.error}`)
+          .then((ts) => ts && ownReplies.add(ts))
+          .catch((err: Error) => {
+            run.error += `（スレッドにも返信できません: ${err.message}）`;
+          });
+      }
     })
     .finally(() => {
+      replyTargets.delete(event);
       launching.set(w.id, (launching.get(w.id) ?? 1) - 1);
       dispatch(w);
       persist();
@@ -565,8 +582,10 @@ const checkThreads = async (list: WorkflowDef[]): Promise<void> => {
       const last = run.seenThreads?.[t.url];
       const fresh = last ? messages.filter((m) => Number(m.ts) > Number(last)) : [];
       for (const m of fresh) {
-        if (t.ignorePrefix && m.text.startsWith(t.ignorePrefix)) continue;
-        enqueue(w, `Slack のスレッド ${t.url} に新しい投稿が届きました。\nチャンネル: ${channel}\nスレッドの親の ts: ${thread}\n投稿の ts: ${m.ts}\n投稿者: ${m.user}\n\n${m.text}`);
+        if (ownReplies.has(m.ts) || (t.ignorePrefix && m.text.startsWith(t.ignorePrefix))) continue;
+        const event = `Slack のスレッド ${t.url} に新しい投稿が届きました。\nチャンネル: ${channel}\nスレッドの親の ts: ${thread}\n投稿の ts: ${m.ts}\n投稿者: ${m.user}\n\n${m.text}`;
+        if (thread) replyTargets.set(event, { channel, thread });
+        enqueue(w, event);
       }
       const newest = messages.at(-1)?.ts;
       if (newest) (run.seenThreads ??= {})[t.url] = newest;
