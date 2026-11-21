@@ -143,8 +143,8 @@ const rpcResult = (type: string, body: string): { result?: unknown; error?: unkn
     .find((m) => 'result' in m || 'error' in m);
 };
 
-/** MCP のセッションを開き、ツールを 1 回呼んで、返った文字を JSON として読む。 */
-const callSlack = async (tool: string, args: Record<string, unknown>): Promise<Record<string, unknown>> => {
+/** MCP のセッションを開き、ツールを 1 回呼んで、返った文字を返す。 */
+const callSlackText = async (tool: string, args: Record<string, unknown>): Promise<string> => {
   const { serverUrl, accessToken, server } = await credential();
   let session: string | null = null;
   const send = async (payload: object): Promise<unknown> => {
@@ -169,6 +169,12 @@ const callSlack = async (tool: string, args: Record<string, unknown>): Promise<R
   const text = (result?.content ?? []).filter((c) => c.type === 'text').map((c) => c.text ?? '').join('\n');
   // ツールの失敗は JSON-RPC のエラーでなく isError で返る。
   if (result?.isError) throw new Error(`Slack を読めません: ${text.slice(0, 200)}`);
+  return text;
+};
+
+/** ツールを 1 回呼び、返った文字を JSON として読む。 */
+const callSlack = async (tool: string, args: Record<string, unknown>): Promise<Record<string, unknown>> => {
+  const text = await callSlackText(tool, args);
   try {
     return JSON.parse(text) as Record<string, unknown>;
   } catch {
@@ -283,6 +289,11 @@ export const parseSlackMentions = (text: string, userId: string): SlackMention[]
 export const postSlackReply = async (channel: string, thread: string, message: string): Promise<string | undefined> => {
   const sent = await callSlack('slack_send_message', { channel_id: channel, thread_ts: thread, message });
   return (sent.message_context as { message_ts?: string } | undefined)?.message_ts;
+};
+
+/** 発言にリアクションを付ける。emoji はコロンを外した名前。応答は JSON でないことがあるので読まない。 */
+export const addSlackReaction = async (channel: string, ts: string, emoji: string): Promise<void> => {
+  await callSlackText('slack_add_reaction', { channel_id: channel, message_ts: ts, emoji });
 };
 
 /** 自分へのメンションを、新しい方から読む。 */
