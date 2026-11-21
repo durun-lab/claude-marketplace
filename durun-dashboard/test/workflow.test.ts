@@ -70,11 +70,11 @@ test('バーストは、最後のイベントからバースト時間が過ぎ�
 
 test('ワンショットのモードと agent の tools と、Slack のスレッドのトリガーを読む', () => {
   const url = 'https://example.slack.com/archives/C0123ABCD/p1700000000123456';
-  const { workflows } = parse(def({ mode: 'oneshot', maxSessions: 2, tools: 'Bash(node x.ts:*), mcp__s__send', triggers: [{ kind: 'slack-thread', url, filters: [{ op: 'not-contains', text: ':meow_' }, { op: 'starts-with', text: '' }, { op: 'nope', text: 'x' }] }, { kind: 'slack-thread', url, filters: [] }] }));
+  const { workflows } = parse(def({ mode: 'oneshot', maxSessions: 2, tools: 'Bash(node x.ts:*), mcp__s__send', triggers: [{ kind: 'slack-thread', url, filters: [{ op: 'not-contains', text: ':meow_' }, { op: 'starts-with', text: '' }, { op: 'nope', text: 'x' }] }, { kind: 'slack-thread', url, filters: [], intervalSeconds: 2 }, { kind: 'slack-thread', url, intervalSeconds: 15 }, { kind: 'slack-thread', url, intervalSeconds: -1 }] }));
   assert.equal(workflows[0]?.mode, 'oneshot');
   assert.equal(workflows[0]?.maxSessions, 2);
   assert.equal(workflows[0]?.tools, 'Bash(node x.ts:*), mcp__s__send');
-  assert.deepEqual(workflows[0]?.triggers, [{ kind: 'slack-thread', url, filters: [{ op: 'not-contains', text: ':meow_' }] }, { kind: 'slack-thread', url }]);
+  assert.deepEqual(workflows[0]?.triggers, [{ kind: 'slack-thread', url, filters: [{ op: 'not-contains', text: ':meow_' }] }, { kind: 'slack-thread', url, intervalSeconds: 5 }, { kind: 'slack-thread', url, intervalSeconds: 15 }, { kind: 'slack-thread', url }]);
 });
 
 test('投稿の本文のフィルタは、で始まる・で始まらない・を含む・を含まないを判定する', () => {

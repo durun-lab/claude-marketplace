@@ -9,7 +9,7 @@
 // oneshot のワークフローは、セッションを起動せずに、イベントごとに claude -p を 1 回動かす。
 import fs from 'node:fs';
 import path from 'node:path';
-import { COMPACT_WINDOW_MAX, COMPACT_WINDOW_MIN, EFFORT_LEVELS, matchesFilter, TEXT_FILTER_OPS, type TextFilter, type BurstKind, type ImproveState, MODELS, type WorkflowDef, type WorkflowInfo, type WorkflowState, type WorkflowTrigger } from '../shared/types.ts';
+import { COMPACT_WINDOW_MAX, COMPACT_WINDOW_MIN, EFFORT_LEVELS, matchesFilter, TEXT_FILTER_OPS, type TextFilter, THREAD_INTERVAL_DEFAULT, THREAD_INTERVAL_MIN, type BurstKind, type ImproveState, MODELS, type WorkflowDef, type WorkflowInfo, type WorkflowState, type WorkflowTrigger } from '../shared/types.ts';
 import { CLAUDE_DIR, isAlive, readLiveSessions } from './claude.ts';
 import { archiveSession, COMPACT_COMMAND, compactSession, sendMessage, startTrackedSession } from './deliver.ts';
 import { handOverChildren } from './handover.ts';
@@ -33,6 +33,8 @@ const RESCAN_MS = 1000;
 // agent のフロントマターのうち、ワークフローが読み書きする項目。
 const AGENT_KEYS = ['model', 'effort'] as const;
 const TICK_MS = 60_000;
+// スレッドのトリガーの間隔は秒で決めるので、1 秒ごとに読む時刻が来たかを確かめる。
+const THREAD_TICK_MS = 1000;
 // スリープ明けなどで長く確かめていなかったときも、丸 1 日より前の時刻では動かさない。
 const LOOKBACK_MS = 24 * 60 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
@@ -65,7 +67,8 @@ const triggerOf = (raw: unknown): WorkflowTrigger => {
     if (!target || !('thread' in target) || !target.thread) throw new Error(`${raw.url} は Slack のスレッドのリンクではありません`);
     // 文字が空の条件は、どの投稿にも合うか合わないかに決まって意味が無いので捨てる。
     const filters = Array.isArray(raw.filters) ? raw.filters.filter((f): f is TextFilter => isObject(f) && (TEXT_FILTER_OPS as readonly unknown[]).includes(f.op) && typeof f.text === 'string' && f.text !== '').map(({ op, text }) => ({ op, text })) : [];
-    return { kind: 'slack-thread', url: raw.url, ...(filters.length ? { filters } : {}) };
+    const interval = positiveInt(raw.intervalSeconds);
+    return { kind: 'slack-thread', url: raw.url, ...(filters.length ? { filters } : {}), ...(interval ? { intervalSeconds: Math.max(interval, THREAD_INTERVAL_MIN) } : {}) };
   }
   if (isObject(raw) && raw.kind === 'schedule' && typeof raw.at === 'string' && TIME_PATTERN.test(raw.at)) {
     const days = intsOf(raw.days, (d) => d >= 0 && d <= 6);
@@ -569,34 +572,64 @@ const checkJiraMentions = async (list: WorkflowDef[], now: number): Promise<void
   }
 };
 
+type ThreadTrigger = Extract<WorkflowTrigger, { kind: 'slack-thread' }>;
+
 /**
- * スレッドのトリガーを持つワークフローに、スレッドに新しく届いた投稿を 1 つずつ積む。初めて読んだときに届いていた投稿では動かない。
+ * スレッドのトリガー 1 つについて、スレッドに新しく届いた投稿を 1 つずつ積む。初めて読んだときに届いていた投稿では動かない。
  * filters に合わない投稿は、積まずに読んだことにする。
  */
-const checkThreads = async (list: WorkflowDef[]): Promise<void> => {
-  for (const w of list) {
-    const run = runOf(w.id);
+const checkThread = async (w: WorkflowDef, t: ThreadTrigger): Promise<void> => {
+  const run = runOf(w.id);
+  const target = slackTargetOf(t.url);
+  if (!target) return;
+  const { channel, thread, messages } = await slackConversation(target, true);
+  const last = run.seenThreads?.[t.url];
+  const fresh = last ? messages.filter((m) => Number(m.ts) > Number(last)) : [];
+  for (const m of fresh) {
+    if (ownReplies.has(m.ts) || !(t.filters ?? []).every((f) => matchesFilter(m.text, f))) continue;
+    const event = `Slack のスレッド ${t.url} に新しい投稿が届きました。\nチャンネル: ${channel}\nスレッドの親の ts: ${thread}\n投稿の ts: ${m.ts}\n投稿者: ${m.user}\n\n${m.text}`;
+    if (thread) replyTargets.set(event, { channel, thread });
+    enqueue(w, event);
+    // 投稿した人に、受け取ったことを見せる。付けられなくても、イベントは動かす。
+    addSlackReaction(channel, m.ts, 'eyes').catch((e: Error) => {
+      run.error = `${THREAD_ERROR}: リアクションを付けられません: ${e.message}`;
+    });
+  }
+  const newest = messages.at(-1)?.ts;
+  if (newest) (run.seenThreads ??= {})[t.url] = newest;
+};
+
+/** ワークフローとスレッドごとの、最後に読み始めた時刻。読んでいる間は inFlight に入れ、重ねて読まない。 */
+const threadPolledAt = new Map<string, number>();
+const threadInFlight = new Set<string>();
+
+/**
+ * スレッドのトリガーは、ほかのトリガーの 1 分ごとの確認とは別に、トリガーごとの間隔で読む。
+ * 投稿を積んだら、次の 1 分を待たずにすぐ渡す。
+ */
+const threadTick = (): void => {
+  const now = Date.now();
+  for (const w of readWorkflows().workflows.filter((d) => d.enabled)) {
     for (const t of w.triggers) {
       if (t.kind !== 'slack-thread') continue;
-      const target = slackTargetOf(t.url);
-      if (!target) continue;
-      const { channel, thread, messages } = await slackConversation(target, true);
-      const last = run.seenThreads?.[t.url];
-      const fresh = last ? messages.filter((m) => Number(m.ts) > Number(last)) : [];
-      for (const m of fresh) {
-        if (ownReplies.has(m.ts) || !(t.filters ?? []).every((f) => matchesFilter(m.text, f))) continue;
-        const event = `Slack のスレッド ${t.url} に新しい投稿が届きました。\nチャンネル: ${channel}\nスレッドの親の ts: ${thread}\n投稿の ts: ${m.ts}\n投稿者: ${m.user}\n\n${m.text}`;
-        if (thread) replyTargets.set(event, { channel, thread });
-        enqueue(w, event);
-        // 投稿した人に、受け取ったことを見せる。付けられなくても、イベントは動かす。
-        addSlackReaction(channel, m.ts, 'eyes').catch((e: Error) => {
-          run.error = `${THREAD_ERROR}: リアクションを付けられません: ${e.message}`;
+      const key = `${w.id} ${t.url}`;
+      if (threadInFlight.has(key) || now - (threadPolledAt.get(key) ?? 0) < (t.intervalSeconds ?? THREAD_INTERVAL_DEFAULT) * 1000) continue;
+      threadPolledAt.set(key, now);
+      threadInFlight.add(key);
+      const run = runOf(w.id);
+      checkThread(w, t)
+        .then(() => {
+          if (run.error?.startsWith(THREAD_ERROR)) run.error = undefined;
+          dispatch(w);
+        })
+        .catch((e: Error) => {
+          run.error = `${THREAD_ERROR}: ${e.message}`;
+        })
+        .finally(() => {
+          threadInFlight.delete(key);
+          persist();
         });
-      }
-      const newest = messages.at(-1)?.ts;
-      if (newest) (run.seenThreads ??= {})[t.url] = newest;
     }
-    if (run.error?.startsWith(THREAD_ERROR)) run.error = undefined;
   }
 };
 
@@ -622,7 +655,6 @@ const tick = async (): Promise<void> => {
   await checkEvents(active, 'github-review', 'レビュー依頼を読めません', (list) => checkReviews(list, now));
   await checkEvents(active, 'slack-mention', MENTION_ERROR, (list) => checkMentions(list, now));
   await checkEvents(active, 'jira-mention', JIRA_MENTION_ERROR, (list) => checkJiraMentions(list, now));
-  await checkEvents(active, 'slack-thread', THREAD_ERROR, checkThreads);
   checkFeedback(active.filter(hasFeedback));
   for (const w of active) {
     const run = runOf(w.id);
@@ -672,6 +704,7 @@ export const startWorkflows = (): void => {
   onFeedback(feedbackArrived);
   void tick();
   setInterval(() => void tick(), TICK_MS).unref();
+  setInterval(threadTick, THREAD_TICK_MS).unref();
 };
 
 const findDef = (id: string): WorkflowDef => {
