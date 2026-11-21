@@ -140,10 +140,11 @@ export type FeedbackWave = { items: string[]; sessionId?: string; stalled?: 'unm
  * ワークフローの動き。queue はまだセッションに渡していないイベントの本文。sessionId は continue で引き継いでいるセッション。
  * seenPrs は、既に動いたレビュー依頼の PR の URL。無ければまだ一度も読んでおらず、そのとき届いている依頼では動かない。
  * seenMentions と seenJira は、既に動いた Slack と JIRA のメンションのリンク。seenPrs と同じく、初めて読んだときに届いていたものでは動かない。
+ * seenThreads は、スレッドのトリガーの url ごとに、既に読んだ最後の投稿の ts。
  * bursts は、まとめて渡すために待たせているイベントの本文と、最後に届いた時刻。トリガーの種類ごとに持つ。
  * feedback は、改善要望のトリガーで最後に渡したウェーブ。
  */
-export type WorkflowRun = { queue: string[]; sessionId?: string; lastRunAt?: number; seenPrs?: string[]; seenMentions?: string[]; seenJira?: string[]; bursts?: Partial<Record<BurstKind, { texts: string[]; lastAt: number }>>; feedback?: FeedbackWave; error?: string };
+export type WorkflowRun = { queue: string[]; sessionId?: string; lastRunAt?: number; seenPrs?: string[]; seenMentions?: string[]; seenJira?: string[]; seenThreads?: Record<string, string>; bursts?: Partial<Record<BurstKind, { texts: string[]; lastAt: number }>>; feedback?: FeedbackWave; error?: string };
 
 /** ダッシュボード自身で起きた想定外のエラー。同じエラーは 1 件にまとめて数える。item は起票した改善要望のファイル名。 */
 export type ErrorRecord = {

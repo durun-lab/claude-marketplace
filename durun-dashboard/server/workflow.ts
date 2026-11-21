@@ -5,7 +5,8 @@
 // ダッシュボードが動きを前提にする指示（改善要望の対応など）は plugin の agents/ に同梱し、フォルダーに <id>.md が無ければそれを使う。
 // 定義は人間とエージェントが書く。ダッシュボードは書き換えを読み直してすぐ使い、画面で切り替えた ON と OFF と、「設定」で直した項目を書き込む。
 // 動きは 1 分ごとに確かめる。時刻のトリガーはその間に過ぎた時刻で、レビュー依頼のトリガーは GitHub の Inbox に新しく現れた PR で、メンションのトリガーは Slack の検索と JIRA のコメントに新しく現れたメンションで動く。
-// 改善要望のトリガーは、要望が届いたときと前のウェーブを終えたときにもすぐ確かめる。
+// 改善要望のトリガーは、要望が届いたときと前のウェーブを終えたときにもすぐ確かめる。スレッドのトリガーは、登録した Slack のスレッドに新しく現れた投稿で動く。
+// oneshot のワークフローは、セッションを起動せずに、イベントごとに claude -p を 1 回動かす。
 import fs from 'node:fs';
 import path from 'node:path';
 import { COMPACT_WINDOW_MAX, COMPACT_WINDOW_MIN, EFFORT_LEVELS, type BurstKind, type ImproveState, MODELS, type WorkflowDef, type WorkflowInfo, type WorkflowState, type WorkflowTrigger } from '../shared/types.ts';
@@ -16,7 +17,9 @@ import { DONE_MARK, feedbackEvent, finishItems, improveWorkflow, onFeedback, pen
 import { isOffDay } from '../shared/holidays.ts';
 import { githubInbox, jiraMentions } from './integrations.ts';
 import { LEARN_DIR } from './reflect.ts';
-import { slackMentions } from './slack.ts';
+import { claudeCommand } from './platform.ts';
+import { run as runCommand, type RunError } from './run.ts';
+import { slackConversation, slackMentions, slackTargetOf } from './slack.ts';
 import { DATA_DIR, type FeedbackWave, newId, persist, type SessionMeta, state, touch, type WorkflowRun } from './store.ts';
 
 export const WORKFLOWS_DIR = path.join(CLAUDE_DIR, 'agents');
@@ -38,6 +41,9 @@ const MARK = '[durun-dashboard ワークフロー]';
 const DIRECT_SECTION = 'Needs your review';
 const MENTION_ERROR = 'Slack のメンションを読めません';
 const JIRA_MENTION_ERROR = 'JIRA のメンションを読めません';
+const THREAD_ERROR = 'Slack のスレッドを読めません';
+// claude -p が曲を探すなど、ツールを何度か呼んでも終わる長さ。
+const ONESHOT_TIMEOUT_MS = 5 * 60_000;
 const ID_PATTERN = /^[\w-]+$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 // 溜まったイベントを 1 つの依頼にまとめるときの区切り。
@@ -54,6 +60,11 @@ const intsOf = (v: unknown, ok: (n: number) => boolean): number[] | undefined =>
 const triggerOf = (raw: unknown): WorkflowTrigger => {
   if (isObject(raw) && (raw.kind === 'github-review' || raw.kind === 'slack-mention' || raw.kind === 'jira-mention')) return { kind: raw.kind };
   if (isObject(raw) && raw.kind === 'feedback') return { kind: 'feedback' };
+  if (isObject(raw) && raw.kind === 'slack-thread' && typeof raw.url === 'string') {
+    const target = slackTargetOf(raw.url);
+    if (!target || !('thread' in target) || !target.thread) throw new Error(`${raw.url} は Slack のスレッドのリンクではありません`);
+    return { kind: 'slack-thread', url: raw.url, ...(typeof raw.ignorePrefix === 'string' && raw.ignorePrefix ? { ignorePrefix: raw.ignorePrefix } : {}) };
+  }
   if (isObject(raw) && raw.kind === 'schedule' && typeof raw.at === 'string' && TIME_PATTERN.test(raw.at)) {
     const days = intsOf(raw.days, (d) => d >= 0 && d <= 6);
     const dates = intsOf(raw.dates, (d) => d !== 0 && Math.abs(d) <= 31);
@@ -100,7 +111,7 @@ const readAgent = (file: string): Agent => (fs.existsSync(file) ? parseAgent(fs.
 export const defOf = (id: string, dir: string, raw: unknown, agent: Agent, agentFile = agentPath(dir, id)): WorkflowDef => {
   if (!isObject(raw)) throw new Error(`${id} の ${SETTINGS_FILE} がオブジェクトではありません`);
   const { name, enabled, cwd, theme, triggers, mode, burstMinutes, maxSessions, compact, compactWindow, account } = raw;
-  const [prompt, model, effort] = [agent.body, agentField(agent, 'model'), agentField(agent, 'effort')];
+  const [prompt, model, effort, tools] = [agent.body, agentField(agent, 'model'), agentField(agent, 'effort'), agentField(agent, 'tools')];
   if (!ID_PATTERN.test(id)) throw new Error(`フォルダー名 ${id} は英数字とハイフンで書いてください`);
   if (typeof cwd !== 'string' || !path.isAbsolute(cwd)) throw new Error(`${id} の cwd は絶対パスで書いてください`);
   if (!prompt) throw new Error(`${id} の ${agentFile} に指示がありません`);
@@ -116,13 +127,14 @@ export const defOf = (id: string, dir: string, raw: unknown, agent: Agent, agent
     ...(typeof theme === 'string' && theme.trim() ? { theme: theme.trim() } : {}),
     prompt,
     triggers: Array.isArray(triggers) ? triggers.map(triggerOf) : [],
-    mode: mode === 'continue' ? 'continue' : 'new',
+    mode: mode === 'continue' || mode === 'oneshot' ? mode : 'new',
     ...(burst ? { burstMinutes: burst } : {}),
     ...(mode === 'continue' && compact === true ? { compact: true } : {}),
     ...(mode === 'continue' && isCompactWindow(compactWindow) ? { compactWindow } : {}),
     ...(Number.isInteger(maxSessions) && (maxSessions as number) > 0 ? { maxSessions: maxSessions as number } : {}),
     ...(typeof model === 'string' && (MODELS as readonly string[]).includes(model) ? { model } : {}),
     ...(typeof effort === 'string' && (EFFORT_LEVELS as readonly string[]).includes(effort) ? { effort } : {}),
+    ...(mode === 'oneshot' && tools ? { tools } : {}),
     ...(typeof account === 'string' && account ? { account } : {}),
   };
 };
@@ -289,6 +301,36 @@ const launch = (w: WorkflowDef, run: WorkflowRun, text: string, onStarted?: (met
     });
 };
 
+/**
+ * イベントを 1 つ、claude -p で 1 回動かす。指示はシステムプロンプトに足し、イベントを依頼として渡す。
+ * フックと CLAUDE.md を読まないよう設定ファイルは読まず、agent の tools に書いたツールのほかは断る。claude.ai のコネクタは使える。
+ * 終えたら、待たせている次のイベントを渡す。
+ */
+const oneshot = (w: WorkflowDef, run: WorkflowRun, event: string): void => {
+  launching.set(w.id, (launching.get(w.id) ?? 0) + 1);
+  run.lastRunAt = Date.now();
+  const args = [
+    '-p', '--no-session-persistence', '--setting-sources', '', '--permission-mode', 'dontAsk',
+    ...(w.tools ? ['--allowedTools', w.tools] : []),
+    ...(w.model ? ['--model', w.model] : []),
+    ...(w.effort ? ['--effort', w.effort] : []),
+    '--append-system-prompt', w.prompt,
+  ];
+  const claude = claudeCommand(args);
+  runCommand(claude.file, claude.args, { cwd: w.cwd, timeout: ONESHOT_TIMEOUT_MS, input: `${MARK}「${w.name}」 ${event}` })
+    .then(() => {
+      run.error = undefined;
+    })
+    .catch((e: RunError) => {
+      run.error = e.killed ? `claude -p が ${ONESHOT_TIMEOUT_MS / 60_000} 分以内に終わりませんでした` : `claude -p が失敗しました: ${(e.stderr || e.stdout || e.message).trim().slice(-300)}`;
+    })
+    .finally(() => {
+      launching.set(w.id, (launching.get(w.id) ?? 1) - 1);
+      dispatch(w);
+      persist();
+    });
+};
+
 /** 引き継いでいるセッション。会話を引き継いだ複製へ移っていたら、複製をたどる。アーカイブしていたら無い。 */
 const continuedSession = (run: WorkflowRun): string | undefined => {
   let id = run.sessionId;
@@ -329,6 +371,11 @@ const takeAll = (w: WorkflowDef, run: WorkflowRun): string => promptFor(w, run.q
 const dispatch = (w: WorkflowDef): void => {
   const run = runOf(w.id);
   if (!run.queue.length) return;
+  if (w.mode === 'oneshot') {
+    // 投稿ごとに返信するよう、イベントはまとめずに 1 つずつ渡す。
+    while (run.queue.length && (launching.get(w.id) ?? 0) < (w.maxSessions ?? 1)) oneshot(w, run, run.queue.shift() ?? '');
+    return touch();
+  }
   if (w.mode === 'new') {
     if (runningCount(w.id) >= (w.maxSessions ?? 1)) return;
     launch(w, run, takeAll(w, run));
@@ -503,6 +550,31 @@ const checkJiraMentions = async (list: WorkflowDef[], now: number): Promise<void
   }
 };
 
+/**
+ * スレッドのトリガーを持つワークフローに、スレッドに新しく届いた投稿を 1 つずつ積む。初めて読んだときに届いていた投稿では動かない。
+ * ignorePrefix で始まる投稿は、積まずに読んだことにする。
+ */
+const checkThreads = async (list: WorkflowDef[]): Promise<void> => {
+  for (const w of list) {
+    const run = runOf(w.id);
+    for (const t of w.triggers) {
+      if (t.kind !== 'slack-thread') continue;
+      const target = slackTargetOf(t.url);
+      if (!target) continue;
+      const { channel, thread, messages } = await slackConversation(target, true);
+      const last = run.seenThreads?.[t.url];
+      const fresh = last ? messages.filter((m) => Number(m.ts) > Number(last)) : [];
+      for (const m of fresh) {
+        if (t.ignorePrefix && m.text.startsWith(t.ignorePrefix)) continue;
+        enqueue(w, `Slack のスレッド ${t.url} に新しい投稿が届きました。\nチャンネル: ${channel}\nスレッドの親の ts: ${thread}\n投稿の ts: ${m.ts}\n投稿者: ${m.user}\n\n${m.text}`);
+      }
+      const newest = messages.at(-1)?.ts;
+      if (newest) (run.seenThreads ??= {})[t.url] = newest;
+    }
+    if (run.error?.startsWith(THREAD_ERROR)) run.error = undefined;
+  }
+};
+
 /** kind のトリガーを持つワークフローについて check を動かし、読めなければ理由をそれぞれに残す。 */
 const checkEvents = async (active: WorkflowDef[], kind: WorkflowTrigger['kind'], label: string, check: (list: WorkflowDef[]) => Promise<void>): Promise<void> => {
   const list = active.filter((w) => w.triggers.some((t) => t.kind === kind));
@@ -525,6 +597,7 @@ const tick = async (): Promise<void> => {
   await checkEvents(active, 'github-review', 'レビュー依頼を読めません', (list) => checkReviews(list, now));
   await checkEvents(active, 'slack-mention', MENTION_ERROR, (list) => checkMentions(list, now));
   await checkEvents(active, 'jira-mention', JIRA_MENTION_ERROR, (list) => checkJiraMentions(list, now));
+  await checkEvents(active, 'slack-thread', THREAD_ERROR, checkThreads);
   checkFeedback(active.filter(hasFeedback));
   for (const w of active) {
     const run = runOf(w.id);
