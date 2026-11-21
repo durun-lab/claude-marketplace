@@ -19,7 +19,7 @@ import { githubInbox, jiraMentions } from './integrations.ts';
 import { LEARN_DIR } from './reflect.ts';
 import { claudeCommand } from './platform.ts';
 import { run as runCommand, type RunError } from './run.ts';
-import { postSlackReply, slackConversation, slackMentions, slackTargetOf } from './slack.ts';
+import { addSlackReaction, postSlackReply, slackConversation, slackMentions, slackTargetOf } from './slack.ts';
 import { DATA_DIR, type FeedbackWave, newId, persist, type SessionMeta, state, touch, type WorkflowRun } from './store.ts';
 
 export const WORKFLOWS_DIR = path.join(CLAUDE_DIR, 'agents');
@@ -588,6 +588,10 @@ const checkThreads = async (list: WorkflowDef[]): Promise<void> => {
         const event = `Slack のスレッド ${t.url} に新しい投稿が届きました。\nチャンネル: ${channel}\nスレッドの親の ts: ${thread}\n投稿の ts: ${m.ts}\n投稿者: ${m.user}\n\n${m.text}`;
         if (thread) replyTargets.set(event, { channel, thread });
         enqueue(w, event);
+        // 投稿した人に、受け取ったことを見せる。付けられなくても、イベントは動かす。
+        addSlackReaction(channel, m.ts, 'eyes').catch((e: Error) => {
+          run.error = `${THREAD_ERROR}: リアクションを付けられません: ${e.message}`;
+        });
       }
       const newest = messages.at(-1)?.ts;
       if (newest) (run.seenThreads ??= {})[t.url] = newest;
