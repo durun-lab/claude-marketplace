@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { tempDir } from './tmp.ts';
+import { matchesFilter } from '../shared/types.ts';
 
 // 実際の定義と状態に触れないよう、データとワークフローの置き場所を一時ディレクトリに向けてから読み込む。
 process.env.DURUN_DASHBOARD_DATA_DIR = tempDir('durun-dashboard-workflow-');
@@ -10,14 +11,14 @@ process.env.CLAUDE_CONFIG_DIR = tempDir('durun-dashboard-workflow-claude-');
 const { dayMatches, flushBursts, scanWorkflows, scheduleDue, setWorkflowEnabled, startWorkflows, updateWorkflow, WORKFLOWS_DIR } = await import('../server/workflow.ts');
 
 const cwd = path.resolve('work');
-type Def = { id?: string; prompt?: string; model?: string; effort?: string; [key: string]: unknown };
+type Def = { id?: string; prompt?: string; model?: string; effort?: string; tools?: string; [key: string]: unknown };
 const def = (extra: Def = {}): Def => ({ id: 'daily', cwd, prompt: '朝の確認', triggers: [{ kind: 'schedule', at: '09:00' }], ...extra });
 
 /** root の下に、定義を 1 つのフォルダーとして書く。指示と model と effort は agent に、ほかは workflow.json に書く。 */
-const writeDir = (root: string, { id = 'daily', prompt = '', model, effort, ...settings }: Def): string => {
+const writeDir = (root: string, { id = 'daily', prompt = '', model, effort, tools, ...settings }: Def): string => {
   const dir = path.join(root, id);
   fs.mkdirSync(dir, { recursive: true });
-  const head = [`name: ${id}`, 'description: テスト', ...(model ? [`model: ${model}`] : []), ...(effort ? [`effort: ${effort}`] : [])];
+  const head = [`name: ${id}`, 'description: テスト', ...(model ? [`model: ${model}`] : []), ...(effort ? [`effort: ${effort}`] : []), ...(tools ? [`tools: ${tools}`] : [])];
   fs.writeFileSync(path.join(dir, `${id}.md`), `---\n${head.join('\n')}\n---\n\n${prompt}\n`);
   fs.writeFileSync(path.join(dir, 'workflow.json'), JSON.stringify(settings));
   return dir;
@@ -65,6 +66,29 @@ test('バーストは、最後のイベントからバースト時間が過ぎ�
   assert.deepEqual(flushBursts(w, run, 4 * 60_000), []);
   assert.deepEqual(flushBursts(w, run, 5 * 60_000), ['Slack で自分へのメンションが届きました:\na\nb', 'GitHub で自分へのレビュー依頼が届きました:\nx#1 t\nu']);
   assert.deepEqual(run.bursts, {});
+});
+
+test('ワンショットのモードと agent の tools と、Slack のスレッドのトリガーを読む', () => {
+  const url = 'https://example.slack.com/archives/C0123ABCD/p1700000000123456';
+  const { workflows } = parse(def({ mode: 'oneshot', maxSessions: 2, tools: 'Bash(node x.ts:*), mcp__s__send', triggers: [{ kind: 'slack-thread', url, filters: [{ op: 'not-contains', text: ':meow_' }, { op: 'starts-with', text: '' }, { op: 'nope', text: 'x' }] }, { kind: 'slack-thread', url, filters: [], intervalSeconds: 2 }, { kind: 'slack-thread', url, intervalSeconds: 15 }, { kind: 'slack-thread', url, intervalSeconds: -1 }] }));
+  assert.equal(workflows[0]?.mode, 'oneshot');
+  assert.equal(workflows[0]?.maxSessions, 2);
+  assert.equal(workflows[0]?.tools, 'Bash(node x.ts:*), mcp__s__send');
+  assert.deepEqual(workflows[0]?.triggers, [{ kind: 'slack-thread', url, filters: [{ op: 'not-contains', text: ':meow_' }] }, { kind: 'slack-thread', url, intervalSeconds: 5 }, { kind: 'slack-thread', url, intervalSeconds: 15 }, { kind: 'slack-thread', url }]);
+});
+
+test('投稿の本文のフィルタは、で始まる・で始まらない・を含む・を含まないを判定する', () => {
+  const body = ':meow_dj: ray';
+  assert.deepEqual(
+    (['starts-with', 'not-starts-with', 'contains', 'not-contains'] as const).map((op) => matchesFilter(body, { op, text: ':meow_' })),
+    [true, false, true, false],
+  );
+  assert.equal(matchesFilter(body, { op: 'contains', text: 'zzz' }), false);
+});
+
+test('スレッドでないリンクのトリガーは読めない。tools はワンショットでだけ読む', () => {
+  assert.match(parse(def({ triggers: [{ kind: 'slack-thread', url: 'https://example.slack.com/archives/C0123ABCD' }] })).error ?? '', /スレッドのリンクではありません/);
+  assert.equal(parse(def({ tools: 'Read' })).workflows[0]?.tools, undefined);
 });
 
 test('compact は引き継ぐモードでだけ読む', () => {

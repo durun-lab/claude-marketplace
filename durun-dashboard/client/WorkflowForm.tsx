@@ -1,11 +1,14 @@
 // ワークフローの「設定」。1 つのワークフローのフォルダーの workflow.json と agent を、画面で直して書き込む。
 import { useState } from 'preact/hooks';
-import { COMPACT_WINDOW_MAX, COMPACT_WINDOW_MIN, EFFORT_LEVELS, MODELS, type WorkflowInfo, type WorkflowSettings, type WorkflowTrigger } from '../shared/types.ts';
+import { COMPACT_WINDOW_MAX, COMPACT_WINDOW_MIN, EFFORT_LEVELS, MODELS, TEXT_FILTER_OPS, type TextFilter, THREAD_INTERVAL_DEFAULT, THREAD_INTERVAL_MIN, type WorkflowInfo, type WorkflowSettings, type WorkflowTrigger } from '../shared/types.ts';
 import { api, attempt } from './api.ts';
 import { Choice } from './ui.tsx';
 
 type Schedule = Extract<WorkflowTrigger, { kind: 'schedule' }>;
-type EventKind = Exclude<WorkflowTrigger['kind'], 'schedule'>;
+type Thread = Extract<WorkflowTrigger, { kind: 'slack-thread' }>;
+type EventKind = Exclude<WorkflowTrigger['kind'], 'schedule' | 'slack-thread'>;
+// 時刻とスレッドは、行ごとに中身が違うので、いくつでも足せる。
+const MULTI: WorkflowTrigger['kind'][] = ['schedule', 'slack-thread'];
 
 const DAYS = ['日', '月', '火', '水', '木', '金', '土'];
 const EVENTS: { kind: EventKind; label: string }[] = [
@@ -15,6 +18,7 @@ const EVENTS: { kind: EventKind; label: string }[] = [
   { kind: 'feedback', label: '改善要望' },
 ];
 const NEW_SCHEDULE: Schedule = { kind: 'schedule', at: '09:00' };
+const NEW_THREAD: Thread = { kind: 'slack-thread', url: '' };
 const DEFAULT_BURST_MINUTES = 5;
 
 const settingsOf = ({ name, cwd, theme, prompt, triggers, burstMinutes, mode, compact, compactWindow, maxSessions, model, effort, account }: WorkflowInfo): WorkflowSettings => ({ name, cwd, theme, prompt, triggers, burstMinutes, mode, compact, compactWindow, maxSessions, model, effort, account });
@@ -26,7 +30,7 @@ const cleaned = (s: WorkflowSettings): WorkflowSettings => ({
   compact: s.mode === 'continue' && s.compact ? true : undefined,
   // 範囲の外の値は定義に読まれず黙って消えるので、Claude Code が受け付ける範囲に収めて送る。
   compactWindow: s.mode === 'continue' && s.compactWindow ? Math.min(Math.max(s.compactWindow, COMPACT_WINDOW_MIN), COMPACT_WINDOW_MAX) : undefined,
-  maxSessions: s.mode === 'new' && s.maxSessions && s.maxSessions > 1 ? s.maxSessions : undefined,
+  maxSessions: s.mode !== 'continue' && s.maxSessions && s.maxSessions > 1 ? s.maxSessions : undefined,
   account: s.account || undefined,
   theme: s.theme?.trim() || undefined,
   model: s.model || undefined,
@@ -88,15 +92,66 @@ const ScheduleFields = ({ t, onChange }: { t: Schedule; onChange: (t: Schedule) 
   );
 };
 
-const KIND_LABEL: Record<WorkflowTrigger['kind'], string> = { schedule: '時刻', ...Object.fromEntries(EVENTS.map((e) => [e.kind, e.label])) } as Record<WorkflowTrigger['kind'], string>;
+const KIND_LABEL: Record<WorkflowTrigger['kind'], string> = { schedule: '時刻', 'slack-thread': 'Slack のスレッドへの投稿', ...Object.fromEntries(EVENTS.map((e) => [e.kind, e.label])) } as Record<WorkflowTrigger['kind'], string>;
 
-/** 1 つのトリガー。種類を選び、時刻なら日の指定を続ける。同じイベントのトリガーは 1 つまでなので、ほかの行で使っている種類は選べない。 */
+const FILTER_LABEL: Record<TextFilter['op'], string> = { 'starts-with': 'で始まる', 'not-starts-with': 'で始まらない', contains: 'を含む', 'not-contains': 'を含まない' };
+
+/**
+ * スレッドは「リンクをコピー」の URL で指す。フィルタがあれば、すべてに合う投稿だけで動く。
+ * 文字が空のフィルタは保存すると消えるので、打っている途中の行は手元に持つ。
+ */
+const ThreadFields = ({ t, onChange }: { t: Thread; onChange: (t: Thread) => void }) => {
+  const [rows, setRows] = useState<TextFilter[]>(t.filters ?? []);
+  const setFilters = (next: TextFilter[]) => {
+    setRows(next);
+    const { filters: _old, ...rest } = t;
+    onChange(next.length ? { ...rest, filters: next } : rest);
+  };
+  const setAt = (i: number, f?: TextFilter) => setFilters(rows.flatMap((r, j) => (j !== i ? [r] : f ? [f] : [])));
+  return (
+    <>
+      <input class="input input-sm" aria-label="スレッドのリンク" placeholder="https://example.slack.com/archives/C…/p…" value={t.url} onInput={(e) => onChange({ ...t, url: e.currentTarget.value.trim() })} />
+      <label class="workflow-day" title={`${THREAD_INTERVAL_MIN} 秒より短くはできません`}>
+        <input
+          type="number"
+          min={THREAD_INTERVAL_MIN}
+          class="input input-sm workflow-number"
+          aria-label="スレッドを読む間隔（秒）"
+          placeholder={String(THREAD_INTERVAL_DEFAULT)}
+          value={t.intervalSeconds ?? ''}
+          onInput={(e) => {
+            const { intervalSeconds: _old, ...rest } = t;
+            const n = Number(e.currentTarget.value);
+            onChange(n > 0 ? { ...rest, intervalSeconds: Math.max(Math.round(n), THREAD_INTERVAL_MIN) } : rest);
+          }}
+        />
+        秒ごとに読む
+      </label>
+      {rows.map((f, i) => (
+        <span key={i} class="workflow-day">
+          投稿が
+          <input class="input input-sm workflow-days-input" aria-label="フィルタの文字" value={f.text} onInput={(e) => setAt(i, { ...f, text: e.currentTarget.value })} />
+          <select class="input input-sm input-auto" aria-label="フィルタの条件" value={f.op} onChange={(e) => setAt(i, { ...f, op: e.currentTarget.value as TextFilter['op'] })}>
+            {TEXT_FILTER_OPS.map((op) => <option key={op} value={op}>{FILTER_LABEL[op]}</option>)}
+          </select>
+          <button type="button" class="btn btn-sm" title="このフィルタを消す" aria-label="このフィルタを消す" onClick={() => setAt(i)}>×</button>
+        </span>
+      ))}
+      <button type="button" class="btn btn-sm" title="投稿の本文で絞るフィルタを足す。すべてに合う投稿だけで動く" onClick={() => setFilters([...rows, { op: 'not-contains', text: '' }])}>フィルタを足す</button>
+    </>
+  );
+};
+
+const triggerFor = (kind: string): WorkflowTrigger => (kind === 'schedule' ? NEW_SCHEDULE : kind === 'slack-thread' ? NEW_THREAD : ({ kind } as WorkflowTrigger));
+
+/** 1 つのトリガー。種類を選び、時刻なら日の指定を、スレッドならリンクを続ける。ほかのイベントのトリガーは 1 つまでなので、ほかの行で使っている種類は選べない。 */
 const TriggerRow = ({ t, used, onChange, onRemove }: { t: WorkflowTrigger; used: Set<string>; onChange: (t: WorkflowTrigger) => void; onRemove: () => void }) => (
   <div class="workflow-schedule">
-    <select class="input input-sm input-auto" aria-label="トリガーの種類" value={t.kind} onChange={(e) => onChange(e.currentTarget.value === 'schedule' ? NEW_SCHEDULE : ({ kind: e.currentTarget.value } as WorkflowTrigger))}>
-      {(Object.keys(KIND_LABEL) as WorkflowTrigger['kind'][]).map((k) => <option key={k} value={k} disabled={k !== 'schedule' && k !== t.kind && used.has(k)}>{KIND_LABEL[k]}</option>)}
+    <select class="input input-sm input-auto" aria-label="トリガーの種類" value={t.kind} onChange={(e) => onChange(triggerFor(e.currentTarget.value))}>
+      {(Object.keys(KIND_LABEL) as WorkflowTrigger['kind'][]).map((k) => <option key={k} value={k} disabled={!MULTI.includes(k) && k !== t.kind && used.has(k)}>{KIND_LABEL[k]}</option>)}
     </select>
     {t.kind === 'schedule' && <ScheduleFields t={t} onChange={onChange} />}
+    {t.kind === 'slack-thread' && <ThreadFields t={t} onChange={onChange} />}
     <button type="button" class="btn btn-sm" title="このトリガーを消す" aria-label="このトリガーを消す" onClick={onRemove}>×</button>
   </div>
 );
@@ -133,7 +188,7 @@ const ActionField = ({ s, set, accounts }: { s: WorkflowSettings; set: (patch: P
     <label class="workflow-day">
       <input type="radio" name="workflow-mode" checked={s.mode === 'new'} onChange={() => set({ mode: 'new' })} />
       イベントごとに新しいセッション。同時に
-      <input type="number" min={1} class="input input-sm workflow-number" disabled={s.mode !== 'new'} value={s.maxSessions ?? 1} onInput={(e) => set({ maxSessions: Number(e.currentTarget.value) || 1 })} />
+      <input type="number" min={1} class="input input-sm workflow-number" disabled={s.mode !== 'new'} value={s.mode === 'new' ? (s.maxSessions ?? 1) : 1} onInput={(e) => set({ maxSessions: Number(e.currentTarget.value) || 1 })} />
       まで
     </label>
     <label class="workflow-day">
@@ -158,6 +213,12 @@ const ActionField = ({ s, set, accounts }: { s: WorkflowSettings; set: (patch: P
         onInput={(e) => set({ compactWindow: Number(e.currentTarget.value) * 1000 || undefined })}
       />
       千トークンに達したら自動で compact する（空なら Claude Code の設定）
+    </label>
+    <label class="workflow-day" title="指示は agent のファイルの本文を、確認せずに使わせるツールは agent の tools を使います。設定ファイルとフックは読みません">
+      <input type="radio" name="workflow-mode" checked={s.mode === 'oneshot'} onChange={() => set({ mode: 'oneshot' })} />
+      イベントごとに claude -p を 1 回動かす（セッションを起動しない）。同時に
+      <input type="number" min={1} class="input input-sm workflow-number" disabled={s.mode !== 'oneshot'} value={s.mode === 'oneshot' ? (s.maxSessions ?? 1) : 1} onInput={(e) => set({ maxSessions: Number(e.currentTarget.value) || 1 })} />
+      まで
     </label>
     <div class="workflow-events">
       <Choice label="モデル" value={s.model} options={MODELS} onChange={(model) => set({ model })} />

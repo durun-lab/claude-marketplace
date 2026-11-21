@@ -5,10 +5,11 @@
 // ダッシュボードが動きを前提にする指示（改善要望の対応など）は plugin の agents/ に同梱し、フォルダーに <id>.md が無ければそれを使う。
 // 定義は人間とエージェントが書く。ダッシュボードは書き換えを読み直してすぐ使い、画面で切り替えた ON と OFF と、「設定」で直した項目を書き込む。
 // 動きは 1 分ごとに確かめる。時刻のトリガーはその間に過ぎた時刻で、レビュー依頼のトリガーは GitHub の Inbox に新しく現れた PR で、メンションのトリガーは Slack の検索と JIRA のコメントに新しく現れたメンションで動く。
-// 改善要望のトリガーは、要望が届いたときと前のウェーブを終えたときにもすぐ確かめる。
+// 改善要望のトリガーは、要望が届いたときと前のウェーブを終えたときにもすぐ確かめる。スレッドのトリガーは、登録した Slack のスレッドに新しく現れた投稿で動く。
+// oneshot のワークフローは、セッションを起動せずに、イベントごとに claude -p を 1 回動かす。
 import fs from 'node:fs';
 import path from 'node:path';
-import { COMPACT_WINDOW_MAX, COMPACT_WINDOW_MIN, EFFORT_LEVELS, type BurstKind, type ImproveState, MODELS, type WorkflowDef, type WorkflowInfo, type WorkflowState, type WorkflowTrigger } from '../shared/types.ts';
+import { COMPACT_WINDOW_MAX, COMPACT_WINDOW_MIN, EFFORT_LEVELS, matchesFilter, TEXT_FILTER_OPS, type TextFilter, THREAD_INTERVAL_DEFAULT, THREAD_INTERVAL_MIN, type BurstKind, type ImproveState, MODELS, type WorkflowDef, type WorkflowInfo, type WorkflowState, type WorkflowTrigger } from '../shared/types.ts';
 import { CLAUDE_DIR, isAlive, readLiveSessions } from './claude.ts';
 import { archiveSession, COMPACT_COMMAND, compactSession, sendMessage, startTrackedSession } from './deliver.ts';
 import { handOverChildren } from './handover.ts';
@@ -16,7 +17,10 @@ import { DONE_MARK, feedbackEvent, finishItems, improveWorkflow, onFeedback, pen
 import { isOffDay } from '../shared/holidays.ts';
 import { githubInbox, jiraMentions } from './integrations.ts';
 import { LEARN_DIR } from './reflect.ts';
-import { slackMentions } from './slack.ts';
+import { API_KEY_ENV } from './claudeApi.ts';
+import { claudeCommand } from './platform.ts';
+import { run as runCommand, type RunError } from './run.ts';
+import { addSlackReaction, postSlackReply, slackConversation, slackMentions, slackTargetOf } from './slack.ts';
 import { DATA_DIR, type FeedbackWave, newId, persist, type SessionMeta, state, touch, type WorkflowRun } from './store.ts';
 
 export const WORKFLOWS_DIR = path.join(CLAUDE_DIR, 'agents');
@@ -30,6 +34,8 @@ const RESCAN_MS = 1000;
 // agent のフロントマターのうち、ワークフローが読み書きする項目。
 const AGENT_KEYS = ['model', 'effort'] as const;
 const TICK_MS = 60_000;
+// スレッドのトリガーの間隔は秒で決めるので、1 秒ごとに読む時刻が来たかを確かめる。
+const THREAD_TICK_MS = 1000;
 // スリープ明けなどで長く確かめていなかったときも、丸 1 日より前の時刻では動かさない。
 const LOOKBACK_MS = 24 * 60 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
@@ -38,6 +44,9 @@ const MARK = '[durun-dashboard ワークフロー]';
 const DIRECT_SECTION = 'Needs your review';
 const MENTION_ERROR = 'Slack のメンションを読めません';
 const JIRA_MENTION_ERROR = 'JIRA のメンションを読めません';
+const THREAD_ERROR = 'Slack のスレッドを読めません';
+// claude -p が曲を探すなど、ツールを何度か呼んでも終わる長さ。
+const ONESHOT_TIMEOUT_MS = 5 * 60_000;
 const ID_PATTERN = /^[\w-]+$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 // 溜まったイベントを 1 つの依頼にまとめるときの区切り。
@@ -54,6 +63,14 @@ const intsOf = (v: unknown, ok: (n: number) => boolean): number[] | undefined =>
 const triggerOf = (raw: unknown): WorkflowTrigger => {
   if (isObject(raw) && (raw.kind === 'github-review' || raw.kind === 'slack-mention' || raw.kind === 'jira-mention')) return { kind: raw.kind };
   if (isObject(raw) && raw.kind === 'feedback') return { kind: 'feedback' };
+  if (isObject(raw) && raw.kind === 'slack-thread' && typeof raw.url === 'string') {
+    const target = slackTargetOf(raw.url);
+    if (!target || !('thread' in target) || !target.thread) throw new Error(`${raw.url} は Slack のスレッドのリンクではありません`);
+    // 文字が空の条件は、どの投稿にも合うか合わないかに決まって意味が無いので捨てる。
+    const filters = Array.isArray(raw.filters) ? raw.filters.filter((f): f is TextFilter => isObject(f) && (TEXT_FILTER_OPS as readonly unknown[]).includes(f.op) && typeof f.text === 'string' && f.text !== '').map(({ op, text }) => ({ op, text })) : [];
+    const interval = positiveInt(raw.intervalSeconds);
+    return { kind: 'slack-thread', url: raw.url, ...(filters.length ? { filters } : {}), ...(interval ? { intervalSeconds: Math.max(interval, THREAD_INTERVAL_MIN) } : {}) };
+  }
   if (isObject(raw) && raw.kind === 'schedule' && typeof raw.at === 'string' && TIME_PATTERN.test(raw.at)) {
     const days = intsOf(raw.days, (d) => d >= 0 && d <= 6);
     const dates = intsOf(raw.dates, (d) => d !== 0 && Math.abs(d) <= 31);
@@ -100,7 +117,7 @@ const readAgent = (file: string): Agent => (fs.existsSync(file) ? parseAgent(fs.
 export const defOf = (id: string, dir: string, raw: unknown, agent: Agent, agentFile = agentPath(dir, id)): WorkflowDef => {
   if (!isObject(raw)) throw new Error(`${id} の ${SETTINGS_FILE} がオブジェクトではありません`);
   const { name, enabled, cwd, theme, triggers, mode, burstMinutes, maxSessions, compact, compactWindow, account } = raw;
-  const [prompt, model, effort] = [agent.body, agentField(agent, 'model'), agentField(agent, 'effort')];
+  const [prompt, model, effort, tools] = [agent.body, agentField(agent, 'model'), agentField(agent, 'effort'), agentField(agent, 'tools')];
   if (!ID_PATTERN.test(id)) throw new Error(`フォルダー名 ${id} は英数字とハイフンで書いてください`);
   if (typeof cwd !== 'string' || !path.isAbsolute(cwd)) throw new Error(`${id} の cwd は絶対パスで書いてください`);
   if (!prompt) throw new Error(`${id} の ${agentFile} に指示がありません`);
@@ -116,13 +133,14 @@ export const defOf = (id: string, dir: string, raw: unknown, agent: Agent, agent
     ...(typeof theme === 'string' && theme.trim() ? { theme: theme.trim() } : {}),
     prompt,
     triggers: Array.isArray(triggers) ? triggers.map(triggerOf) : [],
-    mode: mode === 'continue' ? 'continue' : 'new',
+    mode: mode === 'continue' || mode === 'oneshot' ? mode : 'new',
     ...(burst ? { burstMinutes: burst } : {}),
     ...(mode === 'continue' && compact === true ? { compact: true } : {}),
     ...(mode === 'continue' && isCompactWindow(compactWindow) ? { compactWindow } : {}),
     ...(Number.isInteger(maxSessions) && (maxSessions as number) > 0 ? { maxSessions: maxSessions as number } : {}),
     ...(typeof model === 'string' && (MODELS as readonly string[]).includes(model) ? { model } : {}),
     ...(typeof effort === 'string' && (EFFORT_LEVELS as readonly string[]).includes(effort) ? { effort } : {}),
+    ...(mode === 'oneshot' && tools ? { tools } : {}),
     ...(typeof account === 'string' && account ? { account } : {}),
   };
 };
@@ -253,6 +271,14 @@ const runOf = (id: string): WorkflowRun => {
  */
 const promptFor = (w: WorkflowDef, event: string): string => `${MARK}「${w.name}」 ${event}\n\n進め方は ${w.agentFile} の指示に従ってください。`;
 
+/**
+ * スレッドのトリガーで積んだイベントの返信先。oneshot が失敗したら、ダッシュボードがここへ理由を返信する。
+ * ダッシュボードが書いた返信の ts は ownReplies に覚え、新しい投稿として積まない。
+ */
+// ponytail: メモリに持つだけなので、サーバーを起動し直すと、待っているイベントの返信先と覚えた返信を忘れる。
+const replyTargets = new Map<string, { channel: string; thread: string }>();
+const ownReplies = new Set<string>();
+
 /** 起動を頼み、id をまだ受け取っていないセッションの数。ワークフローごとに数える。 */
 const launching = new Map<string, number>();
 
@@ -286,6 +312,48 @@ const launch = (w: WorkflowDef, run: WorkflowRun, text: string, onStarted?: (met
     .finally(() => {
       launching.set(w.id, (launching.get(w.id) ?? 1) - 1);
       touch();
+    });
+};
+
+/**
+ * イベントを 1 つ、claude -p で 1 回動かす。指示はシステムプロンプトに足し、イベントを依頼として渡す。
+ * フックと CLAUDE.md を読まないよう設定ファイルは読まず、agent の tools に書いたツールのほかは断る。claude.ai のコネクタは使える。
+ * 終えたら、待たせている次のイベントを渡す。
+ */
+const oneshot = (w: WorkflowDef, run: WorkflowRun, event: string): void => {
+  launching.set(w.id, (launching.get(w.id) ?? 0) + 1);
+  run.lastRunAt = Date.now();
+  const args = [
+    '-p', '--no-session-persistence', '--setting-sources', '', '--permission-mode', 'dontAsk',
+    ...(w.tools ? ['--allowedTools', w.tools] : []),
+    ...(w.model ? ['--model', w.model] : []),
+    ...(w.effort ? ['--effort', w.effort] : []),
+    '--append-system-prompt', w.prompt,
+  ];
+  const claude = claudeCommand(args);
+  // サブスクリプションの使用制限を減らさないよう、ダッシュボードの API のキーがあれば、そのクレジットで動かす。
+  const apiKey = process.env[API_KEY_ENV];
+  const env = apiKey ? { ...process.env, ANTHROPIC_API_KEY: apiKey } : undefined;
+  runCommand(claude.file, claude.args, { cwd: w.cwd, timeout: ONESHOT_TIMEOUT_MS, input: `${MARK}「${w.name}」 ${event}`, ...(env ? { env } : {}) })
+    .then(() => {
+      run.error = undefined;
+    })
+    .catch((e: RunError) => {
+      run.error = e.killed ? `claude -p が ${ONESHOT_TIMEOUT_MS / 60_000} 分以内に終わりませんでした` : `claude -p が失敗しました: ${(e.stderr || e.stdout || e.message).trim().slice(-300)}`;
+      const target = replyTargets.get(event);
+      if (target) {
+        postSlackReply(target.channel, target.thread, `ワークフロー「${w.name}」がこの投稿を処理できませんでした。\n理由: ${run.error}`)
+          .then((ts) => ts && ownReplies.add(ts))
+          .catch((err: Error) => {
+            run.error += `（スレッドにも返信できません: ${err.message}）`;
+          });
+      }
+    })
+    .finally(() => {
+      replyTargets.delete(event);
+      launching.set(w.id, (launching.get(w.id) ?? 1) - 1);
+      dispatch(w);
+      persist();
     });
 };
 
@@ -329,6 +397,11 @@ const takeAll = (w: WorkflowDef, run: WorkflowRun): string => promptFor(w, run.q
 const dispatch = (w: WorkflowDef): void => {
   const run = runOf(w.id);
   if (!run.queue.length) return;
+  if (w.mode === 'oneshot') {
+    // 投稿ごとに返信するよう、イベントはまとめずに 1 つずつ渡す。
+    while (run.queue.length && (launching.get(w.id) ?? 0) < (w.maxSessions ?? 1)) oneshot(w, run, run.queue.shift() ?? '');
+    return touch();
+  }
   if (w.mode === 'new') {
     if (runningCount(w.id) >= (w.maxSessions ?? 1)) return;
     launch(w, run, takeAll(w, run));
@@ -503,6 +576,67 @@ const checkJiraMentions = async (list: WorkflowDef[], now: number): Promise<void
   }
 };
 
+type ThreadTrigger = Extract<WorkflowTrigger, { kind: 'slack-thread' }>;
+
+/**
+ * スレッドのトリガー 1 つについて、スレッドに新しく届いた投稿を 1 つずつ積む。初めて読んだときに届いていた投稿では動かない。
+ * filters に合わない投稿は、積まずに読んだことにする。
+ */
+const checkThread = async (w: WorkflowDef, t: ThreadTrigger): Promise<void> => {
+  const run = runOf(w.id);
+  const target = slackTargetOf(t.url);
+  if (!target) return;
+  const { channel, thread, messages } = await slackConversation(target, true);
+  const last = run.seenThreads?.[t.url];
+  const fresh = last ? messages.filter((m) => Number(m.ts) > Number(last)) : [];
+  for (const m of fresh) {
+    if (ownReplies.has(m.ts) || !(t.filters ?? []).every((f) => matchesFilter(m.text, f))) continue;
+    const event = `Slack のスレッド ${t.url} に新しい投稿が届きました。\nチャンネル: ${channel}\nスレッドの親の ts: ${thread}\n投稿の ts: ${m.ts}\n投稿者: ${m.user}\n\n${m.text}`;
+    if (thread) replyTargets.set(event, { channel, thread });
+    enqueue(w, event);
+    // 投稿した人に、受け取ったことを見せる。付けられなくても、イベントは動かす。
+    addSlackReaction(channel, m.ts, 'eyes').catch((e: Error) => {
+      run.error = `${THREAD_ERROR}: リアクションを付けられません: ${e.message}`;
+    });
+  }
+  const newest = messages.at(-1)?.ts;
+  if (newest) (run.seenThreads ??= {})[t.url] = newest;
+};
+
+/** ワークフローとスレッドごとの、最後に読み始めた時刻。読んでいる間は inFlight に入れ、重ねて読まない。 */
+const threadPolledAt = new Map<string, number>();
+const threadInFlight = new Set<string>();
+
+/**
+ * スレッドのトリガーは、ほかのトリガーの 1 分ごとの確認とは別に、トリガーごとの間隔で読む。
+ * 投稿を積んだら、次の 1 分を待たずにすぐ渡す。
+ */
+const threadTick = (): void => {
+  const now = Date.now();
+  for (const w of readWorkflows().workflows.filter((d) => d.enabled)) {
+    for (const t of w.triggers) {
+      if (t.kind !== 'slack-thread') continue;
+      const key = `${w.id} ${t.url}`;
+      if (threadInFlight.has(key) || now - (threadPolledAt.get(key) ?? 0) < (t.intervalSeconds ?? THREAD_INTERVAL_DEFAULT) * 1000) continue;
+      threadPolledAt.set(key, now);
+      threadInFlight.add(key);
+      const run = runOf(w.id);
+      checkThread(w, t)
+        .then(() => {
+          if (run.error?.startsWith(THREAD_ERROR)) run.error = undefined;
+          dispatch(w);
+        })
+        .catch((e: Error) => {
+          run.error = `${THREAD_ERROR}: ${e.message}`;
+        })
+        .finally(() => {
+          threadInFlight.delete(key);
+          persist();
+        });
+    }
+  }
+};
+
 /** kind のトリガーを持つワークフローについて check を動かし、読めなければ理由をそれぞれに残す。 */
 const checkEvents = async (active: WorkflowDef[], kind: WorkflowTrigger['kind'], label: string, check: (list: WorkflowDef[]) => Promise<void>): Promise<void> => {
   const list = active.filter((w) => w.triggers.some((t) => t.kind === kind));
@@ -574,6 +708,7 @@ export const startWorkflows = (): void => {
   onFeedback(feedbackArrived);
   void tick();
   setInterval(() => void tick(), TICK_MS).unref();
+  setInterval(threadTick, THREAD_TICK_MS).unref();
 };
 
 const findDef = (id: string): WorkflowDef => {

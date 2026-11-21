@@ -37,9 +37,9 @@ const scheduleText = (t: Extract<WorkflowTrigger, { kind: 'schedule' }>): string
 };
 
 const triggerText = (t: WorkflowTrigger): string =>
-  t.kind === 'github-review' ? 'レビュー依頼' : t.kind === 'slack-mention' ? 'Slack のメンション' : t.kind === 'jira-mention' ? 'JIRA のメンション' : t.kind === 'feedback' ? '改善要望' : scheduleText(t);
+  t.kind === 'github-review' ? 'レビュー依頼' : t.kind === 'slack-mention' ? 'Slack のメンション' : t.kind === 'jira-mention' ? 'JIRA のメンション' : t.kind === 'feedback' ? '改善要望' : t.kind === 'slack-thread' ? 'Slack のスレッドへの投稿' : scheduleText(t);
 
-const actionText = (w: WorkflowInfo): string => (w.mode === 'continue' ? `1 つのセッションを引き継ぐ${w.compact ? '（毎回 compact）' : ''}${w.compactWindow ? `（${w.compactWindow / 1000} 千トークンで自動 compact）` : ''}` : `新しいセッション（同時 ${w.maxSessions ?? 1} まで）`);
+const actionText = (w: WorkflowInfo): string => (w.mode === 'oneshot' ? `claude -p を 1 回（同時 ${w.maxSessions ?? 1} まで）` : w.mode === 'continue' ? `1 つのセッションを引き継ぐ${w.compact ? '（毎回 compact）' : ''}${w.compactWindow ? `（${w.compactWindow / 1000} 千トークンで自動 compact）` : ''}` : `新しいセッション（同時 ${w.maxSessions ?? 1} まで）`);
 
 /** 相談のセッションを起動し、そのチャットへ移る。 */
 const consult = (id?: string) =>
