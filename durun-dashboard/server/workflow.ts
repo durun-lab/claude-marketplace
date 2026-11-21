@@ -9,7 +9,7 @@
 // oneshot のワークフローは、セッションを起動せずに、イベントごとに claude -p を 1 回動かす。
 import fs from 'node:fs';
 import path from 'node:path';
-import { COMPACT_WINDOW_MAX, COMPACT_WINDOW_MIN, EFFORT_LEVELS, type BurstKind, type ImproveState, MODELS, type WorkflowDef, type WorkflowInfo, type WorkflowState, type WorkflowTrigger } from '../shared/types.ts';
+import { COMPACT_WINDOW_MAX, COMPACT_WINDOW_MIN, EFFORT_LEVELS, matchesFilter, TEXT_FILTER_OPS, type TextFilter, type BurstKind, type ImproveState, MODELS, type WorkflowDef, type WorkflowInfo, type WorkflowState, type WorkflowTrigger } from '../shared/types.ts';
 import { CLAUDE_DIR, isAlive, readLiveSessions } from './claude.ts';
 import { archiveSession, COMPACT_COMMAND, compactSession, sendMessage, startTrackedSession } from './deliver.ts';
 import { handOverChildren } from './handover.ts';
@@ -63,7 +63,9 @@ const triggerOf = (raw: unknown): WorkflowTrigger => {
   if (isObject(raw) && raw.kind === 'slack-thread' && typeof raw.url === 'string') {
     const target = slackTargetOf(raw.url);
     if (!target || !('thread' in target) || !target.thread) throw new Error(`${raw.url} は Slack のスレッドのリンクではありません`);
-    return { kind: 'slack-thread', url: raw.url, ...(typeof raw.ignorePrefix === 'string' && raw.ignorePrefix ? { ignorePrefix: raw.ignorePrefix } : {}) };
+    // 文字が空の条件は、どの投稿にも合うか合わないかに決まって意味が無いので捨てる。
+    const filters = Array.isArray(raw.filters) ? raw.filters.filter((f): f is TextFilter => isObject(f) && (TEXT_FILTER_OPS as readonly unknown[]).includes(f.op) && typeof f.text === 'string' && f.text !== '').map(({ op, text }) => ({ op, text })) : [];
+    return { kind: 'slack-thread', url: raw.url, ...(filters.length ? { filters } : {}) };
   }
   if (isObject(raw) && raw.kind === 'schedule' && typeof raw.at === 'string' && TIME_PATTERN.test(raw.at)) {
     const days = intsOf(raw.days, (d) => d >= 0 && d <= 6);
@@ -569,7 +571,7 @@ const checkJiraMentions = async (list: WorkflowDef[], now: number): Promise<void
 
 /**
  * スレッドのトリガーを持つワークフローに、スレッドに新しく届いた投稿を 1 つずつ積む。初めて読んだときに届いていた投稿では動かない。
- * ignorePrefix で始まる投稿は、積まずに読んだことにする。
+ * filters に合わない投稿は、積まずに読んだことにする。
  */
 const checkThreads = async (list: WorkflowDef[]): Promise<void> => {
   for (const w of list) {
@@ -582,7 +584,7 @@ const checkThreads = async (list: WorkflowDef[]): Promise<void> => {
       const last = run.seenThreads?.[t.url];
       const fresh = last ? messages.filter((m) => Number(m.ts) > Number(last)) : [];
       for (const m of fresh) {
-        if (ownReplies.has(m.ts) || (t.ignorePrefix && m.text.startsWith(t.ignorePrefix))) continue;
+        if (ownReplies.has(m.ts) || !(t.filters ?? []).every((f) => matchesFilter(m.text, f))) continue;
         const event = `Slack のスレッド ${t.url} に新しい投稿が届きました。\nチャンネル: ${channel}\nスレッドの親の ts: ${thread}\n投稿の ts: ${m.ts}\n投稿者: ${m.user}\n\n${m.text}`;
         if (thread) replyTargets.set(event, { channel, thread });
         enqueue(w, event);

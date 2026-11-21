@@ -451,7 +451,7 @@ export type Harness = { items: HarnessItem[]; kindToggles: Partial<Record<Harnes
  * dates があればその日付だけ、businessDays があれば月の何営業日目かが合う日だけ動く。どちらも負の数は月末から数え、-1 が最後の日。営業日は土日と日本の祝日を除いた日。
  * github-review は、自分へのレビュー依頼が新しく届いたときに動く。slack-mention と jira-mention は、Slack と JIRA のコメントで自分へのメンションが新しく届いたときに動く。
  * feedback は、ダッシュボードへの改善要望がたまっているときに、前のウェーブを終えてから、たまった要望を 1 つのウェーブとして渡す。
- * slack-thread は、url の Slack のスレッドに新しい投稿が届いたときに、投稿ごとに動く。ignorePrefix で始まる投稿（ワークフローが自分で書いた返信など）では動かない。
+ * slack-thread は、url の Slack のスレッドに新しい投稿が届いたときに、投稿ごとに動く。filters があれば、すべてに合う投稿だけで動く（ワークフローが自分で書いた返信を外すなど）。
  */
 export type WorkflowTrigger =
   | { kind: 'schedule'; at: string; days?: number[]; dates?: number[]; businessDays?: number[] }
@@ -459,7 +459,15 @@ export type WorkflowTrigger =
   | { kind: 'slack-mention' }
   | { kind: 'jira-mention' }
   | { kind: 'feedback' }
-  | { kind: 'slack-thread'; url: string; ignorePrefix?: string };
+  | { kind: 'slack-thread'; url: string; filters?: TextFilter[] };
+
+export const TEXT_FILTER_OPS = ['starts-with', 'not-starts-with', 'contains', 'not-contains'] as const;
+/** 投稿の本文の条件。op は「で始まる」「で始まらない」「を含む」「を含まない」。 */
+export type TextFilter = { op: (typeof TEXT_FILTER_OPS)[number]; text: string };
+
+/** 本文が filter に合うか。 */
+export const matchesFilter = (body: string, { op, text }: TextFilter): boolean =>
+  op === 'starts-with' ? body.startsWith(text) : op === 'not-starts-with' ? !body.startsWith(text) : op === 'contains' ? body.includes(text) : !body.includes(text);
 /** バースト制御でまとめるトリガー。時刻と改善要望は、それぞれ 1 回で 1 つの依頼になるので含めない。 */
 /** Claude Code の autoCompactWindow が受け付けるトークン数。 */
 export const COMPACT_WINDOW_MIN = 100_000;

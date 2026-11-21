@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { tempDir } from './tmp.ts';
+import { matchesFilter } from '../shared/types.ts';
 
 // 実際の定義と状態に触れないよう、データとワークフローの置き場所を一時ディレクトリに向けてから読み込む。
 process.env.DURUN_DASHBOARD_DATA_DIR = tempDir('durun-dashboard-workflow-');
@@ -69,11 +70,20 @@ test('バーストは、最後のイベントからバースト時間が過ぎ�
 
 test('ワンショットのモードと agent の tools と、Slack のスレッドのトリガーを読む', () => {
   const url = 'https://example.slack.com/archives/C0123ABCD/p1700000000123456';
-  const { workflows } = parse(def({ mode: 'oneshot', maxSessions: 2, tools: 'Bash(node x.ts:*), mcp__s__send', triggers: [{ kind: 'slack-thread', url, ignorePrefix: '🎶' }, { kind: 'slack-thread', url, ignorePrefix: '' }] }));
+  const { workflows } = parse(def({ mode: 'oneshot', maxSessions: 2, tools: 'Bash(node x.ts:*), mcp__s__send', triggers: [{ kind: 'slack-thread', url, filters: [{ op: 'not-contains', text: ':meow_' }, { op: 'starts-with', text: '' }, { op: 'nope', text: 'x' }] }, { kind: 'slack-thread', url, filters: [] }] }));
   assert.equal(workflows[0]?.mode, 'oneshot');
   assert.equal(workflows[0]?.maxSessions, 2);
   assert.equal(workflows[0]?.tools, 'Bash(node x.ts:*), mcp__s__send');
-  assert.deepEqual(workflows[0]?.triggers, [{ kind: 'slack-thread', url, ignorePrefix: '🎶' }, { kind: 'slack-thread', url }]);
+  assert.deepEqual(workflows[0]?.triggers, [{ kind: 'slack-thread', url, filters: [{ op: 'not-contains', text: ':meow_' }] }, { kind: 'slack-thread', url }]);
+});
+
+test('投稿の本文のフィルタは、で始まる・で始まらない・を含む・を含まないを判定する', () => {
+  const body = ':meow_dj: ray';
+  assert.deepEqual(
+    (['starts-with', 'not-starts-with', 'contains', 'not-contains'] as const).map((op) => matchesFilter(body, { op, text: ':meow_' })),
+    [true, false, true, false],
+  );
+  assert.equal(matchesFilter(body, { op: 'contains', text: 'zzz' }), false);
 });
 
 test('スレッドでないリンクのトリガーは読めない。tools はワンショットでだけ読む', () => {
