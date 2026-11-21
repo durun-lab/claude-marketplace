@@ -279,6 +279,12 @@ export const parseSlackMentions = (text: string, userId: string): SlackMention[]
     return [{ url: decode(url), channel, text: toMarkdown(body).trim() }];
   });
 
+/** スレッドに返信し、返信の ts を返す。 */
+export const postSlackReply = async (channel: string, thread: string, message: string): Promise<string | undefined> => {
+  const sent = await callSlack('slack_send_message', { channel_id: channel, thread_ts: thread, message });
+  return (sent.message_context as { message_ts?: string } | undefined)?.message_ts;
+};
+
 /** 自分へのメンションを、新しい方から読む。 */
 export const slackMentions = (): Promise<SlackMention[]> =>
   cached('slack-mentions-v1', { maxAge: MENTIONS_MAX_AGE_MS }, async () => {
