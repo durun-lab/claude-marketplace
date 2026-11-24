@@ -104,8 +104,8 @@ export const parseSlackMessages = (text: string): SlackMessage[] =>
     .sort((a, b) => Number(a.ts) - Number(b.ts));
 
 type Credential = { serverUrl: string; accessToken: string; expiresAt?: number };
-
-type Entry = Credential & { server: string };
+type Entry = Credential & { server?: string };
+type Credentials = { claudeAiOauth?: { accessToken?: string }; mcpOAuth?: Record<string, Credential> };
 
 // トークンが切れたときに、接続し直すよう人間に尋ねる。auth.ts は import した時点で本物のデータに触れるので、main.ts から渡す。
 let askReconnect: (server: string) => void = () => {};
@@ -113,21 +113,48 @@ export const onSlackAuthExpired = (fn: (server: string) => void): void => {
   askReconnect = fn;
 };
 
-/** server は claude mcp login に渡す、MCP サーバーの名前。 */
-const expired = (server: string): Error => {
+/** server は claude mcp login に渡す、MCP サーバーの名前。claude.ai のコネクタなら無く、Claude にログインし直してもらう。 */
+const expired = (server: string | undefined): Error => {
+  if (!server) return new Error('Claude のログインが切れたため、claude.ai の Slack のコネクタを読めません。Claude にログインし直してください');
   askReconnect(server);
   return new Error('Slack の MCP のトークンが期限切れです。ダイアログから接続し直してください');
 };
 
+// claude.ai のコネクタは、Claude Code と同じく、Claude のログインのトークンでコネクタの一覧を読み、中継を通して呼ぶ。Claude Code の内部の仕様なので、更新で変わることがある。
+const CONNECTORS_URL = 'https://api.anthropic.com/v1/mcp_servers?limit=1000';
+const CONNECTOR_PROXY = 'https://mcp-proxy.anthropic.com/v1/mcp/';
+const CONNECTOR_HEADERS = { 'anthropic-version': '2023-06-01', 'anthropic-beta': 'mcp-servers-2025-12-04' };
+// コネクタの id は追加し直さない限り変わらないので、長く覚える。
+const CONNECTOR_MAX_AGE_MS = 24 * 60 * 60_000;
+
+type Connector = { id?: string; display_name?: string; url?: string };
+
+/** claude.ai のコネクタのうち、Slack のものの id。無ければ undefined。 */
+export const slackConnectorOf = (connectors: Connector[]): string | undefined =>
+  connectors.find((c) => /slack/i.test(c.display_name ?? '') || /(^|\.)slack\.com\//.test((c.url ?? '').replace(/^https?:\/\//, '')))?.id;
+
+const slackConnector = (token: string): Promise<string | null> =>
+  cached('slack-connector-v1', { maxAge: CONNECTOR_MAX_AGE_MS }, async () => {
+    const res = await fetch(CONNECTORS_URL, { headers: { authorization: `Bearer ${token}`, ...CONNECTOR_HEADERS }, signal: AbortSignal.timeout(30_000) });
+    if (res.status === 401) throw expired(undefined);
+    if (!res.ok) throw new Error(`claude.ai のコネクタの一覧が ${res.status} を返しました`);
+    return slackConnectorOf(((await res.json()) as { data?: Connector[] }).data ?? []) ?? null;
+  });
+
+/** claude.ai の Slack のコネクタがあれば中継を通して、無ければ /mcp で接続した Slack の MCP サーバーを呼ぶ。 */
 const credential = async (): Promise<Entry> => {
   const raw = await platform.claudeCredentials();
   if (!raw) throw new Error('Claude Code の認証情報を読めません');
+  const creds = JSON.parse(raw) as Credentials;
+  const token = creds.claudeAiOauth?.accessToken;
+  const connector = token ? await slackConnector(token) : null;
+  if (token && connector) return { serverUrl: `${CONNECTOR_PROXY}${connector}`, accessToken: token };
   // キーは「<サーバー名>|<ハッシュ>」の形。サーバー名は環境で揺れるので、slack を含むものを使う。
   // 別の名前で接続し直すと古い接続が残るので、期限のいちばん先のものを使う。期限の無いものは切れないとみなす。
-  const entries = Object.entries((JSON.parse(raw) as { mcpOAuth?: Record<string, Credential> }).mcpOAuth ?? {});
+  const entries = Object.entries(creds.mcpOAuth ?? {});
   const until = (c: Credential): number => c.expiresAt ?? Number.MAX_SAFE_INTEGER;
   const [key = '', entry] = entries.filter(([k]) => k.split('|')[0]?.toLowerCase().includes('slack')).sort(([, a], [, b]) => until(b) - until(a))[0] ?? [];
-  if (!entry?.accessToken) throw new Error('Slack の MCP に接続していません。Claude Code の /mcp から Slack に接続してください');
+  if (!entry?.accessToken) throw new Error('Slack に接続していません。claude.ai のコネクタか、Claude Code の /mcp から Slack に接続してください');
   const server = key.split('|')[0] ?? '';
   if (entry.expiresAt && entry.expiresAt < Date.now()) throw expired(server);
   return { ...entry, server };
@@ -150,7 +177,7 @@ const callSlackText = async (tool: string, args: Record<string, unknown>): Promi
   const send = async (payload: object): Promise<unknown> => {
     const res = await fetch(serverUrl, {
       method: 'POST',
-      headers: { authorization: `Bearer ${accessToken}`, 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(session ? { 'mcp-session-id': session } : {}) },
+      headers: { authorization: `Bearer ${accessToken}`, ...(server === undefined ? CONNECTOR_HEADERS : {}), 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(session ? { 'mcp-session-id': session } : {}) },
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(30_000),
     });
