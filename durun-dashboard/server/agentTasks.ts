@@ -127,7 +127,7 @@ export const changeTask = (owner: Owner, id: string | undefined, change: TaskCha
 /**
  * 親セッションのタスクを子セッションに任せる。タスクに子セッションを結び、子セッションにはそのタスクを写したルートのタスクを作る。
  * 起動するときにも、起動した後にも結べる。子セッションが 1 つ任されたタスクを持つ間は、ほかのタスクを結ばない。
- * ルートのタスクの実体は親のタスクで、子セッションが題、説明、状態を変えると親のタスクが変わる（mcp の update_task）。
+ * ルートのタスクの実体は親のタスクで、子セッションが題、説明、状態を変えると親のタスクが変わる（mcp の update_tasks）。
  */
 export const delegateTask = (parent: Owner & { id: string }, taskId: string, child: Owner & { id: string }, now = Date.now()): Result => {
   const task = parent.agentTasks?.find((t) => t.id === taskId);
