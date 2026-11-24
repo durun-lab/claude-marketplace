@@ -358,9 +358,14 @@ const oneshot = (w: WorkflowDef, run: WorkflowRun, event: string): void => {
 };
 
 /** 引き継いでいるセッション。会話を引き継いだ複製へ移っていたら、複製をたどる。アーカイブしていたら無い。 */
-const continuedSession = (run: WorkflowRun): string | undefined => {
-  let id = run.sessionId;
+/** 会話を引き継いだ複製へ移ったセッションは、いちばん新しい複製の id にする。 */
+const latestSession = (id: string | undefined): string | undefined => {
   for (let meta = id ? state.sessions[id] : undefined; meta?.movedTo; meta = state.sessions[meta.movedTo]) id = meta.movedTo;
+  return id;
+};
+
+const continuedSession = (run: WorkflowRun): string | undefined => {
+  const id = latestSession(run.sessionId);
   const meta = id ? state.sessions[id] : undefined;
   return meta && !meta.archived ? id : undefined;
 };
@@ -468,11 +473,15 @@ const kickFeedback = (): void => {
   persist();
 };
 
-/** 要望が届いたら、済んだ要望が無いまま止まって待機していたウェーブを解き、次のウェーブを始める。 */
+/**
+ * 要望が届いたら、済んだ要望が無いまま止まって待機していたウェーブを解き、次のウェーブを始める。
+ * 1 つのセッションを引き継ぐワークフローは、印を書かずに止まったウェーブも解く。次のウェーブも同じセッションに届くので、前のウェーブの続きを任せられる。
+ */
 const feedbackArrived = (): void => {
   for (const w of activeFeedback()) {
     const run = runOf(w.id);
-    if (run.feedback?.stalled !== 'nothing-done') continue;
+    const stalled = run.feedback?.stalled;
+    if (!(stalled === 'nothing-done' || (stalled === 'unmarked' && w.mode === 'continue'))) continue;
     run.feedback = undefined;
     run.error = undefined;
   }
@@ -492,7 +501,8 @@ export const endFeedbackWave = (sessionId: string, message: string | undefined):
   }
   const run = meta?.workflow ? state.workflowRuns?.[meta.workflow] : undefined;
   const wave = run?.feedback;
-  if (!run || wave?.sessionId !== sessionId) return;
+  // 引き継ぐセッションは、親セッションを新しくする前に渡したウェーブも区切れる。
+  if (!run || !wave || ![wave.sessionId, run.sessionId].some((id) => id && latestSession(id) === sessionId)) return;
   const done = finishItems(sessionId, message);
   if (done) {
     run.feedback = undefined;
@@ -745,6 +755,16 @@ export const renewWorkflowSession = (id: string): void => {
   if (!old) throw new Error('引き継いでいるセッションがありません。「実行」で新しく起動します');
   if (launching.get(w.id)) throw new Error('セッションを起動しているところです');
   const children = Object.values(state.sessions).filter((m) => m.parent === old && !m.movedTo && !m.archived).length;
+  // 前のセッションに渡したウェーブは、たまった要望とまとめて新しいセッションに渡し直す。前のセッションの「対応した要望:」は、アーカイブした後には届かない。
+  if (hasFeedback(w)) {
+    run.feedback = undefined;
+    run.error = undefined;
+    const items = pendingItems();
+    if (items.length) {
+      run.feedback = { items };
+      run.queue.push(feedbackEvent(items));
+    }
+  }
   const note = `指示を新しくするため、親セッションを新しくしました。前の親セッションが起動した子セッション ${children} 件と、前の親が登録したタスクを引き継いでいます。子セッションは list_sessions で確かめ、これまでどおり send_to_session と archive_session で扱ってください。`;
   launch(w, run, promptFor(w, [note, ...run.queue.splice(0)].join(SEPARATOR)), (meta) => {
     const from = state.sessions[old];
