@@ -18,7 +18,7 @@ export type TaskItem = {
   blockedBy: string[];
 };
 
-/** エージェントが create_tasks で登録し、update_task で進めたタスク。id はセッションの中で振る通し番号。 */
+/** エージェントが create_tasks で登録し、update_tasks で進めたタスク。id はセッションの中で振る通し番号。 */
 export type AgentTask = Pick<TaskItem, 'id' | 'subject' | 'status'> & {
   /** 何をするか、何をもって終えたとするかの説明。 */
   description?: string;

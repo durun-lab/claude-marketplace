@@ -150,7 +150,7 @@ const TOOLS = [
   },
   {
     name: 'create_tasks',
-    description: 'このセッションの作業をタスクに分けて、ダッシュボードに登録する。人間はダッシュボードで進み具合を見ている。登録したタスクの id が返るので、update_task で状態を変えるときに使う。',
+    description: 'このセッションの作業をタスクに分けて、ダッシュボードに登録する。人間はダッシュボードで進み具合を見ている。登録したタスクの id が返るので、update_tasks で状態を変えるときに使う。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -173,21 +173,31 @@ const TOOLS = [
     },
   },
   {
-    name: 'update_task',
-    description: 'create_tasks で登録したタスクの状態、内容、待つタスクを変える。取りかかるときに in_progress、終えたときに completed にする。下の手順が終わっていないタスクは completed にできない。要らなくなったタスクは deleted で消す。',
+    name: 'update_tasks',
+    description: 'create_tasks で登録したタスクの状態、内容、待つタスクを、まとめて変える。updates に並べた順に変え、変えられなかったものは理由を返す。取りかかるときに in_progress、終えたときに completed にする。下の手順が終わっていないタスクは completed にできないので、同じ呼び出しでは手順を先に並べる。要らなくなったタスクは deleted で消す。',
     inputSchema: {
       type: 'object',
       properties: {
-        id: { type: 'string', description: 'create_tasks か list_tasks が返したタスクの id。子セッションに任せたタスクの下の手順は、list_tasks が返す「任せたタスクの id/子の id」で変えられる' },
-        status: { type: 'string', enum: [...TASK_STATUSES, 'deleted'] },
-        subject: { type: 'string', description: '書き直した後のタスク' },
-        description: { type: 'string', description: '書き直した後の説明' },
-        add_blocked_by: { type: 'array', items: { type: 'string' }, description: '新たに終わるのを待つタスクの id' },
-        remove_blocked_by: { type: 'array', items: { type: 'string' }, description: '待つのをやめるタスクの id' },
-        parent: { type: 'string', description: '手順として下に置く親のタスクの id。空の文字列で親から外す' },
-        session: { type: 'string', description: 'このタスクを任せる、start_session で起動済みの自分の子セッションの id。タスクに子セッションを結び、子セッションではこのタスクがルートのタスクになる' },
+        updates: {
+          type: 'array',
+          description: '変えるタスクと、その変更',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: 'create_tasks か list_tasks が返したタスクの id。子セッションに任せたタスクの下の手順は、list_tasks が返す「任せたタスクの id/子の id」で変えられる' },
+              status: { type: 'string', enum: [...TASK_STATUSES, 'deleted'] },
+              subject: { type: 'string', description: '書き直した後のタスク' },
+              description: { type: 'string', description: '書き直した後の説明' },
+              add_blocked_by: { type: 'array', items: { type: 'string' }, description: '新たに終わるのを待つタスクの id' },
+              remove_blocked_by: { type: 'array', items: { type: 'string' }, description: '待つのをやめるタスクの id' },
+              parent: { type: 'string', description: '手順として下に置く親のタスクの id。空の文字列で親から外す' },
+              session: { type: 'string', description: 'このタスクを任せる、start_session で起動済みの自分の子セッションの id。タスクに子セッションを結び、子セッションではこのタスクがルートのタスクになる' },
+            },
+            required: ['id'],
+          },
+        },
       },
-      required: ['id'],
+      required: ['updates'],
     },
   },
   {
@@ -567,6 +577,24 @@ const taskTool = (sessionId: string, run: (meta: SessionMeta) => { text: string;
   return textResult(text, isError);
 };
 
+/** update_tasks。並べた順に変え、1 つずつ結果を返す。どれかが変えられなければエラーにする。 */
+const updateTasksTool = (sessionId: string, updates: ToolArgs[]): object => {
+  if (!updates.length) return textResult('updates に、変えるタスクを 1 つ以上渡してください。', true);
+  const results = updates.map((u) => {
+    const id = str(u.id);
+    if (str(u.session)) {
+      const linked = linkChild(sessionId, id, str(u.session) ?? '');
+      if (linked.isError) return { text: linked.text, isError: true };
+    }
+    const meta = state.sessions[sessionId];
+    if (!meta) return { text: 'このセッションはまだダッシュボードに登録されていません。', isError: true };
+    return updateTask(meta, id, state.sessions, { status: str(u.status), subject: str(u.subject), description: typeof u.description === 'string' ? u.description : undefined, addBlockedBy: u.add_blocked_by, removeBlockedBy: u.remove_blocked_by, parent: typeof u.parent === 'string' ? u.parent : undefined });
+  });
+  if (results.some((r) => 'changed' in r && r.changed)) touch();
+  const text = results.length === 1 ? (results[0]?.text ?? '') : results.map((r, i) => `- ${str(updates[i]?.id) ?? '?'}: ${r.text}`).join('\n');
+  return textResult(text, results.some((r) => r.isError));
+};
+
 /** list_tasks。jq を渡したら、絞り込んだタスクの JSON を jq に通す。 */
 const listTasksTool = async (sessionId: string, args: ToolArgs): Promise<object> => {
   const meta = state.sessions[sessionId];
@@ -579,7 +607,7 @@ const listTasksTool = async (sessionId: string, args: ToolArgs): Promise<object>
     depth: typeof args.depth === 'number' ? args.depth : jq ? Infinity : undefined,
     fields: list(args.fields),
   };
-  // 子セッションに任せたタスクの下には、子セッションの手順も「任せたタスクの id/子の id」で並べる。update_task でその id を変えられる。
+  // 子セッションに任せたタスクの下には、子セッションの手順も「任せたタスクの id/子の id」で並べる。update_tasks でその id を変えられる。
   const owner = { ...meta, agentTasks: viewTasks(meta, state.sessions) };
   if (!jq) return textResult(listTasks(owner, q).text);
   try {
@@ -859,12 +887,11 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
       return send(res, { id: rpcId, result: setTask(sessionId, args) });
     case 'create_tasks':
       return send(res, { id: rpcId, result: taskTool(sessionId, (m) => addTasksUnder(m, Array.isArray(args.tasks) ? (args.tasks as NewTask[]) : [], state.sessions, { ticketOf })) });
+    // update_task は、update_tasks にまとめる前の名前。ツールの一覧を読み直す前のセッションのために受け付ける。
     case 'update_task':
-      if (str(args.session)) {
-        const linked = linkChild(sessionId, str(args.id), str(args.session) ?? '');
-        if (linked.isError) return send(res, { id: rpcId, result: textResult(linked.text, true) });
-      }
-      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => updateTask(m, str(args.id), state.sessions, { status: str(args.status), subject: str(args.subject), description: typeof args.description === 'string' ? args.description : undefined, addBlockedBy: args.add_blocked_by, removeBlockedBy: args.remove_blocked_by, parent: typeof args.parent === 'string' ? args.parent : undefined })) });
+      return send(res, { id: rpcId, result: updateTasksTool(sessionId, [args]) });
+    case 'update_tasks':
+      return send(res, { id: rpcId, result: updateTasksTool(sessionId, Array.isArray(args.updates) ? (args.updates as ToolArgs[]) : []) });
     case 'list_tasks':
       return void listTasksTool(sessionId, args).then((result) => send(res, { id: rpcId, result }));
     case 'learn_digest':
