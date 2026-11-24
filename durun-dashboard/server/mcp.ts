@@ -16,7 +16,7 @@ import { proofCommentedAt, readProofFile, writeProofFile } from './proofFiles.ts
 import { MAX_SENTENCES, commentFindings, proofReport, proofread, revise } from './proofread.ts';
 import { learnDigest } from './reflect.ts';
 import { type ProofSentence, parseProof } from './proofText.ts';
-import { addTasks, delegateTask, listTasks, type NewTask, queryTasks, type TaskQuery, updateTask, viewTasks, TASK_STATUSES, type TicketOf } from './agentTasks.ts';
+import { addTasksUnder, delegateTask, listTasks, type NewTask, queryTasks, type TaskQuery, updateTask, viewTasks, TASK_STATUSES, type TicketOf } from './agentTasks.ts';
 import { run, type RunError } from './run.ts';
 import { changed, inferFormat, newId, type SessionMeta, state, touch, writeDocFile, type StoredAttention } from './store.ts';
 
@@ -162,7 +162,7 @@ const TOOLS = [
             properties: {
               subject: { type: 'string', description: '何をするかを 30 文字以内で書く。チケットのタスクは省くと、チケットの番号かキーにする' },
               ticket: { type: 'string', description: 'このタスクが PR、Issue、JIRA の課題そのものなら、その URL か課題のキー。人間はバッジとしてチケットとタスクの状態を見る。手順や説明は、parent にこのタスクを指した子のタスクに置く' },
-              parent: { type: 'string', description: '手順として下に置く親のタスクの id。同じ呼び出しで登録するタスクは #1 のように書く' },
+              parent: { type: 'string', description: '手順として下に置く親のタスクの id。同じ呼び出しで登録するタスクは #1 のように書く。子セッションに任せたタスクか、list_tasks が返す「任せたタスクの id/子の id」を渡すと、子セッションに登録する' },
               description: { type: 'string', description: '人間がタスクを開いたときに読む説明。何をするか、何をもって終えたとするか' },
               blocked_by: { type: 'array', items: { type: 'string' }, description: '終わるのを待つタスクの id。同じ呼び出しで登録するタスクは、tasks の何番目かを 1 から数えて #1 のように書く' },
             },
@@ -858,7 +858,7 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
     case 'set_task':
       return send(res, { id: rpcId, result: setTask(sessionId, args) });
     case 'create_tasks':
-      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => addTasks(m, Array.isArray(args.tasks) ? (args.tasks as NewTask[]) : [], { ticketOf })) });
+      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => addTasksUnder(m, Array.isArray(args.tasks) ? (args.tasks as NewTask[]) : [], state.sessions, { ticketOf })) });
     case 'update_task':
       if (str(args.session)) {
         const linked = linkChild(sessionId, str(args.id), str(args.session) ?? '');

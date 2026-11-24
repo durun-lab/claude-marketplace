@@ -195,6 +195,32 @@ export const updateTask = (owner: Owner, id: string | undefined, sessions: Sessi
 };
 
 /**
+ * タスクを登録する。parent に子セッションに任せたタスクか「任せたタスクの id/子の id」を渡すと、子セッションに登録する。孫セッションにもたどる。
+ * 1 回の呼び出しで登録できるのは 1 つのセッションだけなので、ほかのタスクは同じ子セッションの下か、#n でこの呼び出しのタスクの下に置く。
+ */
+export const addTasksUnder = (owner: Owner, given: NewTask[], sessions: Sessions, opts: { now?: number; ticketOf?: TicketOf } = {}): Result => {
+  const objs = given.map((t) => (typeof t === 'string' ? { subject: t } : (t ?? {})));
+  const local = (r: string): boolean => /^#\d+$/.test(r);
+  const parents = objs.map((o) => text(o.parent));
+  const delegated = (r: string): string | undefined => {
+    const id = r.split('/')[0] ?? '';
+    return owner.agentTasks?.find((t) => t.id === id)?.delegatedTo && (r === id || r.includes('/')) ? id : undefined;
+  };
+  const taskId = parents.map((r) => r && delegated(r)).find(Boolean);
+  if (!taskId) return addTasks(owner, given, opts);
+  const child = follow(sessions, owner.agentTasks?.find((t) => t.id === taskId)?.delegatedTo ?? '');
+  if (!child) return { text: `登録しませんでした。タスク ${taskId} を任せた子セッションが見つかりません。`, isError: true };
+  const prefix = `${taskId}/`;
+  const inner = (r: string): string | undefined => (local(r) ? r : r === taskId ? child.rootTask : r.startsWith(prefix) ? r.slice(prefix.length) : undefined);
+  const outside = objs.flatMap((o, i) => [parents[i] ?? 'parent の無いタスク', ...ids(o.blocked_by)].filter((r) => inner(r) === undefined));
+  if (outside.length) return { text: `登録しませんでした。子セッション（タスク ${taskId}）の下に登録するときは、ほかのタスクも同じ子セッションの下か、#n でこの呼び出しのタスクの下に置いてください（${outside.join('、')}）。`, isError: true };
+  const mapped = objs.map((o, i) => ({ ...o, parent: inner(parents[i] ?? ''), blocked_by: ids(o.blocked_by).map((r) => inner(r)) }));
+  const result = addTasksUnder(child, mapped, sessions, opts);
+  // 返す id は、親セッションの list_tasks と同じ「任せたタスクの id/子の id」にする。
+  return { ...result, text: result.text.replace(/^- (\S+) /gm, `- ${prefix}$1 `).replace(/（(.+?) を待つ）/g, (_, w: string) => `（${w.split('・').map((x) => prefix + x).join('・')} を待つ）`) };
+};
+
+/**
  * 子セッションに任せたタスクの下の手順を、親セッションから変える。id は viewTasks と同じ「任せたタスクの id/子の id」の形で、孫セッションの手順もたどれる。
  * 待つタスクと親のタスクも同じ形で受け取り、子セッションの中の id に直す。任せたタスクそのものを指したら、子セッションのルートのタスクにする。
  */

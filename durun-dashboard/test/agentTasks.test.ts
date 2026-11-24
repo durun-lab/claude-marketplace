@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addTasks, changeTask, delegateTask, listTasks, queryTasks, updateTask, viewTasks, withLiveRoot } from '../server/agentTasks.ts';
+import { addTasks, addTasksUnder, changeTask, delegateTask, listTasks, queryTasks, updateTask, viewTasks, withLiveRoot } from '../server/agentTasks.ts';
 import type { AgentTask } from '../shared/types.ts';
 
 test('タスクは通し番号で登録し、状態と内容を変えて消せ、一覧は既定で完了していないものだけを返す', () => {
@@ -151,4 +151,18 @@ test('親セッションは、子セッションに任せたタスクの下の�
   assert.equal(updateTask(parent, '2/1', sessions, { status: 'completed' }).isError, true);
   updateTask(parent, '1/3', sessions, { status: 'deleted' });
   assert.deepEqual(viewTasks(parent, sessions).map((t) => t.id), ['1', '1/2', '2']);
+});
+
+test('親セッションは、子セッションに任せたタスクの下に、子セッションのタスクとして登録できる', () => {
+  const parent: { id: string; agentTasks?: AgentTask[]; agentTaskSeq?: number } = { id: 'p' };
+  const child: { id: string; agentTasks?: AgentTask[]; agentTaskSeq?: number; rootTask?: string } = { id: 'c' };
+  addTasks(parent, ['移行する', '別の作業']);
+  delegateTask(parent, '1', child);
+  const sessions = { p: parent, c: child };
+  assert.equal(addTasksUnder(parent, [{ subject: '準備する', parent: '1' }, { subject: '流す', parent: '1', blocked_by: ['#1'] }], sessions).text, '登録しました。\n- 1/2 [未着手] 準備する\n- 1/3 [未着手] 流す（1/2 を待つ）');
+  assert.deepEqual(child.agentTasks?.map((t) => [t.id, t.parent]), [['1', undefined], ['2', '1'], ['3', '1']]);
+  addTasksUnder(parent, [{ subject: '細かく準備する', parent: '1/2' }], sessions);
+  assert.equal(child.agentTasks?.at(-1)?.parent, '2');
+  assert.equal(addTasksUnder(parent, [{ subject: '混ぜる', parent: '1' }, '外のタスク'], sessions).isError, true);
+  assert.equal(addTasksUnder(parent, ['自分のタスク'], sessions).text, '登録しました。\n- 3 [未着手] 自分のタスク');
 });
