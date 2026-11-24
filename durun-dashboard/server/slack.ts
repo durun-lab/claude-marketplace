@@ -184,7 +184,7 @@ const callSlackText = async (tool: string, args: Record<string, unknown>): Promi
     session ??= res.headers.get('mcp-session-id');
     // 期限の前でも、取り消されたトークンは 401 で断られる。
     if (res.status === 401) throw expired(server);
-    if (!res.ok) throw new Error(`Slack の MCP が ${res.status} を返しました`);
+    if (!res.ok) throw new Error(`Slack の MCP が ${res.status} を返しました: ${(await res.text()).slice(0, 200)}`);
     if (!('id' in payload)) return undefined;
     const msg = rpcResult(res.headers.get('content-type') ?? '', await res.text());
     if (msg?.error) throw new Error(`Slack の MCP がエラーを返しました: ${JSON.stringify(msg.error)}`);
