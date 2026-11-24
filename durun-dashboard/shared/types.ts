@@ -484,6 +484,7 @@ export type BurstKind = 'github-review' | 'slack-mention' | 'jira-mention';
  * ワークフローの定義。人間とエージェントがワークフローのフォルダーに書く。
  * mode が new ならイベントごとにセッションを起動し、動いているものを maxSessions（既定 1）までに抑える。
  * continue なら 1 つのセッションを引き継いでイベントを送り、セッションが無いかアーカイブされていたら起動する。compact なら、送る前に毎回前回までの会話を compact する。
+ * command ならイベントごとに command をシェルで動かし、LLM を使わない。sessionOnFailure なら、失敗したときだけ指示と出力を渡してセッションを起動する。
  * oneshot ならセッションを起動せず、イベントごとに claude -p を 1 回動かす。同時に動かす数は maxSessions（既定 1）までに抑える。DURUN_DASHBOARD_ANTHROPIC_API_KEY があれば、サブスクリプションでなくその API のクレジットで動かす。
  */
 export type WorkflowDef = {
@@ -499,7 +500,11 @@ export type WorkflowDef = {
   theme?: string;
   prompt: string;
   triggers: WorkflowTrigger[];
-  mode: 'new' | 'continue' | 'oneshot';
+  mode: 'new' | 'continue' | 'oneshot' | 'command';
+  /** mode が command のとき、作業ディレクトリでシェルに渡して動かすコマンドの行。 */
+  command?: string;
+  /** mode が command のとき、コマンドが失敗したら（終了コードが 0 以外か時間切れ）、指示と出力を渡して新しいセッションを起動する。 */
+  sessionOnFailure?: boolean;
   /** イベントが続けて届いたとき、最後のものからこの分数だけ次が届かなくなるまで待ち、トリガーの種類ごとに 1 つの依頼にまとめる。 */
   burstMinutes?: number;
   maxSessions?: number;

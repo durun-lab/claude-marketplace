@@ -8,7 +8,7 @@ import { matchesFilter } from '../shared/types.ts';
 // 実際の定義と状態に触れないよう、データとワークフローの置き場所を一時ディレクトリに向けてから読み込む。
 process.env.DURUN_DASHBOARD_DATA_DIR = tempDir('durun-dashboard-workflow-');
 process.env.CLAUDE_CONFIG_DIR = tempDir('durun-dashboard-workflow-claude-');
-const { dayMatches, flushBursts, scanWorkflows, scheduleDue, setWorkflowEnabled, startWorkflows, updateWorkflow, WORKFLOWS_DIR } = await import('../server/workflow.ts');
+const { dayMatches, flushBursts, runWorkflow, scanWorkflows, scheduleDue, setWorkflowEnabled, startWorkflows, updateWorkflow, workflowState, WORKFLOWS_DIR } = await import('../server/workflow.ts');
 
 const cwd = path.resolve('work');
 type Def = { id?: string; prompt?: string; model?: string; effort?: string; tools?: string; [key: string]: unknown };
@@ -188,4 +188,21 @@ test('日付と営業日を指定したトリガーは、月の前と後ろか�
   // 曜日と合わせると、どちらにも合う日だけ。
   assert.equal(dayMatches({ ...t, days: [1], businessDays: [1] }, day(2026, 11, 2)), true);
   assert.equal(dayMatches({ ...t, days: [2], businessDays: [1] }, day(2026, 11, 2)), false);
+});
+
+test('コマンドのアクションは command を読み、失敗してもセッションを起動しないなら指示を要らない', () => {
+  const { workflows, error } = parse(def({ prompt: '', mode: 'command', command: ' ~/.local/bin/prune ' }), def({ id: 'ask', prompt: '', mode: 'command', command: 'x', sessionOnFailure: true }), def({ id: 'empty', mode: 'command' }));
+  assert.deepEqual([workflows[0]?.mode, workflows[0]?.command, workflows[0]?.sessionOnFailure], ['command', '~/.local/bin/prune', undefined]);
+  assert.equal(workflows.length, 1);
+  assert.match(error ?? '', /ask の .*指示がありません/);
+  assert.match(error ?? '', /empty の command/);
+});
+
+test('コマンドのアクションは、コマンドを動かし、失敗したら終了コードと出力を理由に出す', async () => {
+  writeDir(WORKFLOWS_DIR, def({ id: 'sweep', cwd: tempDir('durun-dashboard-workflow-cwd-'), prompt: '', mode: 'command', command: 'echo 掃除できません && exit 3', triggers: [] }));
+  setWorkflowEnabled('sweep', false);
+  runWorkflow('sweep');
+  const errorOf = () => workflowState().workflows.find((w) => w.id === 'sweep')?.error;
+  for (let i = 0; i < 250 && !errorOf(); i++) await new Promise((r) => setTimeout(r, 20));
+  assert.match(errorOf() ?? '', /終了コード 3 で失敗しました: 掃除できません/);
 });

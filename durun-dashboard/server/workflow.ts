@@ -18,7 +18,7 @@ import { isOffDay } from '../shared/holidays.ts';
 import { githubInbox, jiraMentions } from './integrations.ts';
 import { LEARN_DIR } from './reflect.ts';
 import { API_KEY_ENV } from './claudeApi.ts';
-import { claudeCommand } from './platform.ts';
+import { claudeCommand, platform } from './platform.ts';
 import { run as runCommand, type RunError } from './run.ts';
 import { addSlackReaction, postSlackReply, slackConversation, slackMentions, slackTargetOf } from './slack.ts';
 import { DATA_DIR, type FeedbackWave, newId, persist, type SessionMeta, state, touch, type WorkflowRun } from './store.ts';
@@ -47,6 +47,10 @@ const JIRA_MENTION_ERROR = 'JIRA のメンションを読めません';
 const THREAD_ERROR = 'Slack のスレッドを読めません';
 // claude -p が曲を探すなど、ツールを何度か呼んでも終わる長さ。
 const ONESHOT_TIMEOUT_MS = 5 * 60_000;
+// 掃除などの定期のコマンドは長くかかることがあるので、claude -p より長く待つ。
+const COMMAND_TIMEOUT_MS = 30 * 60_000;
+// 失敗したときにセッションへ渡す出力の末尾の文字数。
+const COMMAND_OUTPUT_CHARS = 4000;
 const ID_PATTERN = /^[\w-]+$/;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
 // 溜まったイベントを 1 つの依頼にまとめるときの区切り。
@@ -116,11 +120,14 @@ const readAgent = (file: string): Agent => (fs.existsSync(file) ? parseAgent(fs.
 /** workflow.json の設定と agent の指示を合わせて、1 つの定義にする。 */
 export const defOf = (id: string, dir: string, raw: unknown, agent: Agent, agentFile = agentPath(dir, id)): WorkflowDef => {
   if (!isObject(raw)) throw new Error(`${id} の ${SETTINGS_FILE} がオブジェクトではありません`);
-  const { name, enabled, cwd, theme, triggers, mode, burstMinutes, maxSessions, compact, compactWindow, account } = raw;
+  const { name, enabled, cwd, theme, triggers, mode, burstMinutes, maxSessions, compact, compactWindow, account, command, sessionOnFailure } = raw;
   const [prompt, model, effort, tools] = [agent.body, agentField(agent, 'model'), agentField(agent, 'effort'), agentField(agent, 'tools')];
   if (!ID_PATTERN.test(id)) throw new Error(`フォルダー名 ${id} は英数字とハイフンで書いてください`);
   if (typeof cwd !== 'string' || !path.isAbsolute(cwd)) throw new Error(`${id} の cwd は絶対パスで書いてください`);
-  if (!prompt) throw new Error(`${id} の ${agentFile} に指示がありません`);
+  const isCommand = mode === 'command';
+  if (isCommand && (typeof command !== 'string' || !command.trim())) throw new Error(`${id} の command に、動かすコマンドを書いてください`);
+  // コマンドだけを動かすワークフローは、セッションを起動しないので指示が要らない。
+  if (!prompt && !(isCommand && sessionOnFailure !== true)) throw new Error(`${id} の ${agentFile} に指示がありません`);
   // メンションのトリガーごとに burstMinutes を書いた定義も、ワークフローのバースト時間として読む。
   const burst = positiveInt(burstMinutes) ?? (Array.isArray(triggers) ? triggers.map((t) => (isObject(t) ? positiveInt(t.burstMinutes) : undefined)).find(Boolean) : undefined);
   return {
@@ -133,7 +140,8 @@ export const defOf = (id: string, dir: string, raw: unknown, agent: Agent, agent
     ...(typeof theme === 'string' && theme.trim() ? { theme: theme.trim() } : {}),
     prompt,
     triggers: Array.isArray(triggers) ? triggers.map(triggerOf) : [],
-    mode: mode === 'continue' || mode === 'oneshot' ? mode : 'new',
+    mode: mode === 'continue' || mode === 'oneshot' || isCommand ? mode : 'new',
+    ...(isCommand ? { command: String(command).trim(), ...(sessionOnFailure === true ? { sessionOnFailure: true } : {}) } : {}),
     ...(burst ? { burstMinutes: burst } : {}),
     ...(mode === 'continue' && compact === true ? { compact: true } : {}),
     ...(mode === 'continue' && isCompactWindow(compactWindow) ? { compactWindow } : {}),
@@ -357,6 +365,31 @@ const oneshot = (w: WorkflowDef, run: WorkflowRun, event: string): void => {
     });
 };
 
+/**
+ * イベントを 1 つ受けて、command をシェルで動かす。LLM は使わない。
+ * 失敗したら理由を画面に出し、sessionOnFailure なら、指示とコマンドの出力を渡して新しいセッションを起動する。終えたら、待たせている次のイベントを渡す。
+ */
+const runShell = (w: WorkflowDef, run: WorkflowRun, event: string): void => {
+  launching.set(w.id, (launching.get(w.id) ?? 0) + 1);
+  run.lastRunAt = Date.now();
+  const { file, args } = platform.shellCommand(w.command ?? '');
+  runCommand(file, typeof args === 'string' ? [args] : args, { cwd: w.cwd, timeout: COMMAND_TIMEOUT_MS, windowsVerbatimArguments: typeof args === 'string' })
+    .then(() => {
+      run.error = undefined;
+    })
+    .catch((e: RunError) => {
+      const why = (name: string): string => (e.killed ? `${name}が ${COMMAND_TIMEOUT_MS / 60_000} 分以内に終わりませんでした` : typeof e.code === 'number' ? `${name}が終了コード ${e.code} で失敗しました` : `${name}を動かせませんでした`);
+      const output = `${e.stdout ?? ''}${e.stderr ? `\n${e.stderr}` : ''}`.trim() || e.message;
+      run.error = `${why('コマンド')}: ${output.slice(-300)}`;
+      if (w.sessionOnFailure) launch(w, run, promptFor(w, `${event}\n${why(`コマンド「${w.command}」`)}。出力の末尾:\n\`\`\`\n${output.slice(-COMMAND_OUTPUT_CHARS)}\n\`\`\``));
+    })
+    .finally(() => {
+      launching.set(w.id, (launching.get(w.id) ?? 1) - 1);
+      dispatch(w);
+      persist();
+    });
+};
+
 /** 引き継いでいるセッション。会話を引き継いだ複製へ移っていたら、複製をたどる。アーカイブしていたら無い。 */
 /** 会話を引き継いだ複製へ移ったセッションは、いちばん新しい複製の id にする。 */
 const latestSession = (id: string | undefined): string | undefined => {
@@ -402,6 +435,10 @@ const takeAll = (w: WorkflowDef, run: WorkflowRun): string => promptFor(w, run.q
 const dispatch = (w: WorkflowDef): void => {
   const run = runOf(w.id);
   if (!run.queue.length) return;
+  if (w.mode === 'command') {
+    while (run.queue.length && (launching.get(w.id) ?? 0) < (w.maxSessions ?? 1)) runShell(w, run, run.queue.shift() ?? '');
+    return touch();
+  }
   if (w.mode === 'oneshot') {
     // 投稿ごとに返信するよう、イベントはまとめずに 1 つずつ渡す。
     while (run.queue.length && (launching.get(w.id) ?? 0) < (w.maxSessions ?? 1)) oneshot(w, run, run.queue.shift() ?? '');
@@ -797,7 +834,7 @@ export const setWorkflowEnabled = (id: string, enabled: boolean): void => {
 };
 
 // 画面の「設定」で直す項目のうち、workflow.json に書くもの。id と ON と OFF は直さない。指示と model と effort は agent に書く。
-const EDITABLE = ['name', 'cwd', 'theme', 'triggers', 'burstMinutes', 'mode', 'compact', 'compactWindow', 'maxSessions', 'account'] as const;
+const EDITABLE = ['name', 'cwd', 'theme', 'triggers', 'burstMinutes', 'mode', 'compact', 'compactWindow', 'maxSessions', 'account', 'command', 'sessionOnFailure'] as const;
 
 /**
  * 画面の「設定」で直した項目を書き込む。送らなかった項目は消して既定に戻す。読めない値なら書かずに理由を返す。
