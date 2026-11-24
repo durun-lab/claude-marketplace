@@ -166,6 +166,7 @@ export type ErrorRecord = {
 };
 
 /** 今の枠の使用率の推移。resetsAt は枠の終わり（epoch ミリ秒）で、変わったら新しい枠なので点を捨てる。 */
+export type RateWindows = { fiveHour?: RateWindow; sevenDay?: RateWindow };
 export type RateWindow = { resetsAt: number; points: RatePoint[] };
 
 type State = {
@@ -210,7 +211,11 @@ type State = {
   /** 人間がホームで並べ替えたテーマの順 */
   themeOrder: string[];
   /** 5 時間と 7 日の使用制限それぞれの、今の枠の使用率の推移 */
-  rateWindows: { fiveHour?: RateWindow; sevenDay?: RateWindow };
+  rateWindows: RateWindows;
+  /** rateWindows を記録したプライマリアカウントの accountUuid */
+  rateAccount?: string;
+  /** プライマリアカウントを切り替えたときにしまった、ほかのアカウントの推移。accountUuid ごと */
+  otherRateWindows?: Record<string, RateWindows>;
 };
 
 const empty = (): State => ({ sessions: {}, attention: [], docs: [], outbox: [], queue: [], dismissed: [], errors: {}, prNotes: {}, sessionOrder: [], themeOrder: [], rateWindows: {} });

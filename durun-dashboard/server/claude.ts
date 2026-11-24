@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { Artifact, AskedQuestion, BgTask, ChatEntry, RateLimit, RateLimits, TaskItem, TokenTotals } from '../shared/types.ts';
-import { DATA_DIR, type RateWindow, state } from './store.ts';
+import { DATA_DIR, type RateWindow, type RateWindows, state } from './store.ts';
 
 export const CLAUDE_DIR = process.env.CLAUDE_CONFIG_DIR ?? path.join(os.homedir(), '.claude');
 export const SESSIONS_DIR = path.join(CLAUDE_DIR, 'sessions');
@@ -805,6 +805,27 @@ const newestLimit = (limits: (RawLimit | undefined)[], now: number): RateLimit |
 export const withPoints = (limit: RateLimit | undefined, recorded: RateWindow | undefined): RateLimit | undefined =>
   recorded && limit?.resetsAt === recorded.resetsAt ? { ...limit, points: recorded.points } : limit;
 
+// Claude Code がログインしているアカウントを持つファイル。CLAUDE_CONFIG_DIR を指定したときはその中に置く。
+const CLAUDE_JSON = process.env.CLAUDE_CONFIG_DIR ? path.join(CLAUDE_DIR, '.claude.json') : path.join(os.homedir(), '.claude.json');
+
+/**
+ * プライマリアカウントの、5 時間と 7 日の使用率の推移。
+ * ログインし直してアカウントを切り替えたら、前のアカウントの推移をしまい、切り替えた先のアカウントでしまっていた推移に戻す。
+ */
+export const primaryRateWindows = (): RateWindows => {
+  const account = readJsonCached<{ oauthAccount?: { accountUuid?: string } }>(CLAUDE_JSON)?.oauthAccount?.accountUuid;
+  if (!account || account === state.rateAccount) return state.rateWindows;
+  // 初めて読んだときの推移は、今のアカウントのものとみなす。
+  if (state.rateAccount) {
+    const others = (state.otherRateWindows ??= {});
+    others[state.rateAccount] = state.rateWindows;
+    state.rateWindows = others[account] ?? {};
+    delete others[account];
+  }
+  state.rateAccount = account;
+  return state.rateWindows;
+};
+
 /** 記録した推移の最後の使用率。枠が終わっていれば無い。 */
 const lastRecorded = (recorded: RateWindow | undefined, now: number): RateLimit | undefined =>
   recorded && recorded.resetsAt > now ? { usedPercent: recorded.points.at(-1)?.[1] ?? 0, resetsAt: recorded.resetsAt } : undefined;
@@ -839,14 +860,15 @@ export const readAccountRateLimits = (account: string): RateLimits | undefined =
  */
 export const readRateLimits = (maxAge = RATE_LIMIT_MAX_AGE_MS): RateLimits | undefined => {
   const now = Date.now();
+  const windows = primaryRateWindows();
   const all = statuslineLimits(now, maxAge, undefined);
   const fiveHour = newestLimit(all.map((l) => l?.five_hour), now);
   const fiveHourEnd = fiveHour?.resetsAt;
   const sevenDay =
     fiveHourEnd === undefined
-      ? lastRecorded(state.rateWindows.sevenDay, now)
+      ? lastRecorded(windows.sevenDay, now)
       : newestLimit(all.filter((l) => (l?.five_hour?.resets_at ?? 0) * 1000 === fiveHourEnd).map((l) => l?.seven_day), now);
   return fiveHour || sevenDay
-    ? { fiveHour: withPoints(fiveHour, state.rateWindows.fiveHour), sevenDay: withPoints(sevenDay, state.rateWindows.sevenDay), updatedAt: now }
+    ? { fiveHour: withPoints(fiveHour, windows.fiveHour), sevenDay: withPoints(sevenDay, windows.sevenDay), updatedAt: now }
     : undefined;
 };
