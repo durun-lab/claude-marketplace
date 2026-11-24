@@ -2,10 +2,10 @@
 // statusline の値は、描いたセッションが最後に API を呼んだときのもので、バックグラウンドのセッションは使用制限を載せない。
 import type { RateLimit, RateLimits } from '../shared/types.ts';
 import { peekCached } from './cache.ts';
-import { readAccountRateLimits, readRateLimits, withPoints } from './claude.ts';
+import { primaryRateWindows, readAccountRateLimits, readRateLimits, withPoints } from './claude.ts';
 import { accountNames } from './deliver.ts';
 import { askRateLimits } from './haiku.ts';
-import { type RateWindow, state, touch } from './store.ts';
+import { type RateWindow, touch } from './store.ts';
 
 const KEY = 'rate-limits';
 // これより前に描いた statusline の値は、ほかのセッションが使った分を含まないことがあるので、get_usage で読む。get_usage の値も、これより古ければ読み直す。
@@ -28,10 +28,11 @@ export const advanceRateWindow = (prev: RateWindow | undefined, limit: RateLimit
 /** 使用率を、今の枠の推移に記録する。変わったときだけ保存して、画面へ配る。 */
 const record = (limits: RateLimits | undefined, at: number): void => {
   let updated = false;
+  const windows = primaryRateWindows();
   for (const key of ['fiveHour', 'sevenDay'] as const) {
-    const next = advanceRateWindow(state.rateWindows[key], limits?.[key], at);
-    if (next === state.rateWindows[key]) continue;
-    state.rateWindows[key] = next;
+    const next = advanceRateWindow(windows[key], limits?.[key], at);
+    if (next === windows[key]) continue;
+    windows[key] = next;
     updated = true;
   }
   if (updated) touch();
@@ -52,7 +53,7 @@ const peekUsage = (now: number): RateLimits | undefined => {
   const fiveHour = current(limits.fiveHour);
   const sevenDay = current(limits.sevenDay);
   return fiveHour || sevenDay
-    ? { fiveHour: withPoints(fiveHour, state.rateWindows.fiveHour), sevenDay: withPoints(sevenDay, state.rateWindows.sevenDay), updatedAt: limits.updatedAt }
+    ? { fiveHour: withPoints(fiveHour, primaryRateWindows().fiveHour), sevenDay: withPoints(sevenDay, primaryRateWindows().sevenDay), updatedAt: limits.updatedAt }
     : undefined;
 };
 
@@ -61,7 +62,7 @@ const peekUsage = (now: number): RateLimits | undefined => {
  * 5 時間の枠の使用率は減らないので、API を呼ばずに描き直したセッションが、前に読んだ値を出しているとみなす。
  */
 const behind = (limit: RateLimit): boolean => {
-  const recorded = state.rateWindows.fiveHour;
+  const recorded = primaryRateWindows().fiveHour;
   return !!recorded && recorded.resetsAt === limit.resetsAt && (recorded.points.at(-1)?.[1] ?? 0) > limit.usedPercent;
 };
 

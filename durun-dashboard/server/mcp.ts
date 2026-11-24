@@ -173,7 +173,7 @@ const TOOLS = [
   },
   {
     name: 'update_task',
-    description: 'create_tasks で登録したタスクの状態、内容、待つタスクを変える。取りかかるときに in_progress、終えたときに completed にする。要らなくなったタスクは deleted で消す。',
+    description: 'create_tasks で登録したタスクの状態、内容、待つタスクを変える。取りかかるときに in_progress、終えたときに completed にする。下の手順が終わっていないタスクは completed にできない。要らなくなったタスクは deleted で消す。',
     inputSchema: {
       type: 'object',
       properties: {

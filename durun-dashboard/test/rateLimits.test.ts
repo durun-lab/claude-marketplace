@@ -10,11 +10,14 @@ import { tempDir } from './tmp.ts';
 // 状態ファイルは、使用率の推移を持たない前の形で置いておく。
 const dataDir = tempDir('durun-dashboard-rate-');
 process.env.DURUN_DASHBOARD_DATA_DIR = dataDir;
+// ログインしているアカウントは、一時ディレクトリの .claude.json に書く。
+const claudeDir = tempDir('durun-dashboard-rate-claude-');
+process.env.CLAUDE_CONFIG_DIR = claudeDir;
 fs.writeFileSync(
   path.join(dataDir, 'state.json'),
   JSON.stringify({ sessions: {}, attention: [], docs: [], outbox: [], dismissed: [], improve: { enabled: false }, errors: {}, prNotes: {}, sessionOrder: [] }),
 );
-const { STATUSLINE_DIR, readAccountRateLimits, readRateLimits, readStatusline } = await import('../server/claude.ts');
+const { STATUSLINE_DIR, primaryRateWindows, readAccountRateLimits, readRateLimits, readStatusline } = await import('../server/claude.ts');
 const { forgetCached } = await import('../server/cache.ts');
 const { askRateLimits, rateLimitsOf } = await import('../server/haiku.ts');
 const { advanceRateWindow, currentRateLimits, recordRateLimits } = await import('../server/rateLimits.ts');
@@ -240,4 +243,25 @@ test('追加アカウントで動いたセッションの使用制限は、プ�
   assert.deepEqual([sub?.fiveHour?.usedPercent, sub?.sevenDay?.usedPercent], [70, 80]);
   assert.equal(readAccountRateLimits('other'), undefined);
   delete state.sessions.extra;
+});
+
+test('プライマリアカウントを切り替えると、前のアカウントの推移をしまい、戻したらしまった推移を出す', () => {
+  const login = (accountUuid: string): void => {
+    const file = path.join(claudeDir, '.claude.json');
+    fs.writeFileSync(file, JSON.stringify({ oauthAccount: { accountUuid } }));
+    // 書いたばかりのファイルも、前と同じ更新時刻にならないよう時刻をずらす。
+    const at = new Date(Date.now() - 10_000 - Math.random() * 10_000);
+    fs.utimesSync(file, at, at);
+  };
+  const a = { fiveHour: { resetsAt: END, points: [[1, 10]] as [number, number][] } };
+  login('a');
+  state.rateWindows = a;
+  assert.equal(primaryRateWindows(), a);
+  login('b');
+  assert.deepEqual(primaryRateWindows(), {});
+  primaryRateWindows().fiveHour = { resetsAt: NEXT_END, points: [[2, 30]] };
+  login('a');
+  assert.equal(primaryRateWindows(), a);
+  login('b');
+  assert.deepEqual(primaryRateWindows().fiveHour?.points, [[2, 30]]);
 });
