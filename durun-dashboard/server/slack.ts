@@ -174,10 +174,12 @@ const rpcResult = (type: string, body: string): { result?: unknown; error?: unkn
 const callSlackText = async (tool: string, args: Record<string, unknown>): Promise<string> => {
   const { serverUrl, accessToken, server } = await credential();
   let session: string | null = null;
+  // claude.ai のコネクタの中継は、呼び出し元のセッションの id を求める。
+  const proxyHeaders = server === undefined ? { ...CONNECTOR_HEADERS, 'x-mcp-client-session-id': crypto.randomUUID() } : {};
   const send = async (payload: object): Promise<unknown> => {
     const res = await fetch(serverUrl, {
       method: 'POST',
-      headers: { authorization: `Bearer ${accessToken}`, ...(server === undefined ? CONNECTOR_HEADERS : {}), 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(session ? { 'mcp-session-id': session } : {}) },
+      headers: { authorization: `Bearer ${accessToken}`, ...proxyHeaders, 'content-type': 'application/json', accept: 'application/json, text/event-stream', ...(session ? { 'mcp-session-id': session } : {}) },
       body: JSON.stringify(payload),
       signal: AbortSignal.timeout(30_000),
     });
