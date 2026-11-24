@@ -182,6 +182,8 @@ const unfinishedSteps = (owner: Owner, task: AgentTask, sessions: Sessions): Age
  * 待つタスクと親のタスクは、子セッションの中の並びなので、子セッションのルートのタスクに付ける。
  */
 export const updateTask = (owner: Owner, id: string | undefined, sessions: Sessions, change: TaskChange, now = Date.now()): Result => {
+  const slash = id?.indexOf('/') ?? -1;
+  if (id && slash > 0) return updateChildTask(owner, id.slice(0, slash), id.slice(slash + 1), sessions, change, now);
   const source = id && id === owner.rootTask ? delegatedSource(owner, sessions) : undefined;
   const target = source ?? { owner, task: owner.agentTasks?.find((t) => t.id === id) };
   const left = change.status === 'completed' && target.task ? unfinishedSteps(target.owner, target.task, sessions) : [];
@@ -190,6 +192,23 @@ export const updateTask = (owner: Owner, id: string | undefined, sessions: Sessi
   const { status, subject, description, ...rest } = change;
   const result = changeTask(source.owner, source.task.id, { status, subject, description }, now);
   return result.isError ? result : changeTask(owner, id, rest, now);
+};
+
+/**
+ * 子セッションに任せたタスクの下の手順を、親セッションから変える。id は viewTasks と同じ「任せたタスクの id/子の id」の形で、孫セッションの手順もたどれる。
+ * 待つタスクと親のタスクも同じ形で受け取り、子セッションの中の id に直す。任せたタスクそのものを指したら、子セッションのルートのタスクにする。
+ */
+const updateChildTask = (owner: Owner, taskId: string, rest: string, sessions: Sessions, change: TaskChange, now: number): Result => {
+  const delegated = owner.agentTasks?.find((t) => t.id === taskId)?.delegatedTo;
+  const child = delegated ? follow(sessions, delegated) : undefined;
+  if (!child) return { text: `タスク ${taskId} は子セッションに任せていないので、${taskId}/${rest} はありません。`, isError: true };
+  const prefix = `${taskId}/`;
+  const inner = (ref: string): string | undefined => (ref === taskId ? child.rootTask : ref.startsWith(prefix) ? ref.slice(prefix.length) : undefined);
+  const refs = (v: unknown): string[] | undefined => (v === undefined ? undefined : ids(v).map((r) => inner(r) ?? r));
+  const outside = [...ids(change.addBlockedBy), ...(change.parent?.trim() ? [change.parent.trim()] : [])].filter((r) => inner(r) === undefined);
+  if (outside.length) return { text: `更新しませんでした。${outside.join('、')} は子セッションの外のタスクなので、${taskId}/${rest} の待つタスクや親にできません。`, isError: true };
+  const parent = change.parent === undefined ? undefined : change.parent.trim() ? inner(change.parent.trim()) : '';
+  return updateTask(child, rest, sessions, { ...change, addBlockedBy: refs(change.addBlockedBy), removeBlockedBy: refs(change.removeBlockedBy), parent }, now);
 };
 
 /**

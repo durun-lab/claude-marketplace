@@ -135,3 +135,20 @@ test('list_tasks は状態・チケット・深さで絞り、既定は外の階
   assert.deepEqual(queryTasks(owner.agentTasks ?? [], { status: ['completed'] }).map((t) => t.id), ['4']);
   assert.equal(listTasks(owner, { ticket: '12', fields: ['ticket', 'children'] }).text, '{"id":"1","subject":"PR を進める","status":"pending","ticket":"https://github.com/o/r/pull/12","children":1}');
 });
+
+test('親セッションは、子セッションに任せたタスクの下の手順を「任せたタスクの id/子の id」で変えられ、子の外のタスクは待たせない', () => {
+  const parent: { id: string; agentTasks?: AgentTask[]; agentTaskSeq?: number } = { id: 'p' };
+  const child: { id: string; agentTasks?: AgentTask[]; agentTaskSeq?: number; rootTask?: string } = { id: 'c' };
+  addTasks(parent, ['移行する', '別の作業']);
+  delegateTask(parent, '1', child);
+  addTasks(child, ['準備する', '流す']);
+  const sessions = { p: parent, c: child };
+  assert.equal(updateTask(parent, '1/2', sessions, { status: 'in_progress', subject: '準備を整える' }).text, '更新しました。');
+  assert.deepEqual([child.agentTasks?.[1]?.status, child.agentTasks?.[1]?.subject], ['in_progress', '準備を整える']);
+  updateTask(parent, '1/3', sessions, { addBlockedBy: ['1/2'] });
+  assert.deepEqual(child.agentTasks?.[2]?.blockedBy, ['2']);
+  assert.equal(updateTask(parent, '1/3', sessions, { addBlockedBy: ['2'] }).isError, true);
+  assert.equal(updateTask(parent, '2/1', sessions, { status: 'completed' }).isError, true);
+  updateTask(parent, '1/3', sessions, { status: 'deleted' });
+  assert.deepEqual(viewTasks(parent, sessions).map((t) => t.id), ['1', '1/2', '2']);
+});

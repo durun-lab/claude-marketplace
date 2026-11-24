@@ -16,7 +16,7 @@ import { proofCommentedAt, readProofFile, writeProofFile } from './proofFiles.ts
 import { MAX_SENTENCES, commentFindings, proofReport, proofread, revise } from './proofread.ts';
 import { learnDigest } from './reflect.ts';
 import { type ProofSentence, parseProof } from './proofText.ts';
-import { addTasks, delegateTask, listTasks, type NewTask, queryTasks, type TaskQuery, updateTask, withLiveRoot, TASK_STATUSES, type TicketOf } from './agentTasks.ts';
+import { addTasks, delegateTask, listTasks, type NewTask, queryTasks, type TaskQuery, updateTask, viewTasks, TASK_STATUSES, type TicketOf } from './agentTasks.ts';
 import { run, type RunError } from './run.ts';
 import { changed, inferFormat, newId, type SessionMeta, state, touch, writeDocFile, type StoredAttention } from './store.ts';
 
@@ -178,7 +178,7 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        id: { type: 'string', description: 'create_tasks か list_tasks が返したタスクの id' },
+        id: { type: 'string', description: 'create_tasks か list_tasks が返したタスクの id。子セッションに任せたタスクの下の手順は、list_tasks が返す「任せたタスクの id/子の id」で変えられる' },
         status: { type: 'string', enum: [...TASK_STATUSES, 'deleted'] },
         subject: { type: 'string', description: '書き直した後のタスク' },
         description: { type: 'string', description: '書き直した後の説明' },
@@ -579,7 +579,8 @@ const listTasksTool = async (sessionId: string, args: ToolArgs): Promise<object>
     depth: typeof args.depth === 'number' ? args.depth : jq ? Infinity : undefined,
     fields: list(args.fields),
   };
-  const owner = { ...meta, agentTasks: withLiveRoot(meta, state.sessions) };
+  // 子セッションに任せたタスクの下には、子セッションの手順も「任せたタスクの id/子の id」で並べる。update_task でその id を変えられる。
+  const owner = { ...meta, agentTasks: viewTasks(meta, state.sessions) };
   if (!jq) return textResult(listTasks(owner, q).text);
   try {
     const { stdout } = await run('jq', ['-c', jq], { input: JSON.stringify(queryTasks(owner.agentTasks, q)), timeout: 10_000 });
