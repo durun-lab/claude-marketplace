@@ -428,6 +428,12 @@ export const activeThemes = (exceptId: string): string[] => {
   return [...new Set(sessions.map((m) => themeOf(m).trim()))];
 };
 
+/** 一覧に出ているセッションを、スナップショットと同じ形で返す。スナップショットと違い、状態の記録やタイムラインは変えない。 */
+export const listedSessionViews = (): Session[] => {
+  const live = claude.readLiveSessions();
+  return listedSessions(live, Date.now()).map((m) => buildSession(m, live.get(m.id)));
+};
+
 export const buildSnapshot = (): Snapshot => {
   const now = Date.now();
   const live = claude.readLiveSessions();

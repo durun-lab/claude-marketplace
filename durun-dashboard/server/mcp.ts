@@ -18,6 +18,8 @@ import { learnDigest } from './reflect.ts';
 import { type ProofSentence, parseProof } from './proofText.ts';
 import { addTasksUnder, delegateTask, listTasks, type NewTask, queryTasks, type TaskQuery, updateTask, viewTasks, TASK_STATUSES, type TicketOf } from './agentTasks.ts';
 import { run, type RunError } from './run.ts';
+import { listedSessionViews } from './snapshot.ts';
+import { ticketSessionsText } from './ticketSessions.ts';
 import { changed, inferFormat, newId, type SessionMeta, state, touch, writeDocFile, type StoredAttention } from './store.ts';
 
 const FALLBACK_PROTOCOL = '2025-06-18';
@@ -36,6 +38,7 @@ const INSTRUCTIONS = `durun-dashboard は、人間が複数の Claude Code セ�
 - 手順が 3 つ以上ある作業や、PR・JIRA の課題を進めるときは、/durun-dashboard:tasks スキルに沿ってタスクを登録し、進み具合を人間に見せてください。
 - PR のタイトルと本文は write_pr で書き換えてください。読んでいない PR は、先に read_pr で読んでください。
 - 仕事を別のセッションに任せるときは、claude --bg を Bash で打たずに start_session で子セッションを起動してください。子セッションへの追加の依頼は send_to_session で送ってください。子セッションの状態は list_sessions で見て、仕事を終えた子セッションは archive_session で片付けてください。
+- PR や JIRA の課題の実装を始める前に、ticket_sessions で同じチケットを見ているほかのセッションを確かめてください。作業がぶつかりそうなら、send_to_session でそのセッションと調整してください。
 - Google Cloud（gcloud）や、Slack、Notion などの MCP サーバーの認証やログインが必要になったら、authenticate で人間に頼んでください。人間が認証を終えると結果が返ります。認証済みなら、尋ねずにすぐ返ります。
 - Web サービスにブラウザでログインしてほしいときは、authenticate の provider に browser を、url にログイン画面の URL を渡してください。人間がブラウザでログインを終えると結果が返ります。
 - 人間がメッセージに文章校正アプリを添付したら、proofread で文章を校正し、書き手の事情を知っている指摘に comment_proofread でコメントを返してください。主要な指摘にコメントを返したら、文章は直さずにターンを終えてください。人間がアプリで校正した版（v2 など）へのコメントを頼まれたら、proofread に file と version を渡して、その版の指摘を受け取ってください。人間に修正版を頼まれたら、revise_proofread に file と version を渡して作ってください。
@@ -262,14 +265,24 @@ const TOOLS = [
   {
     name: 'send_to_session',
     description:
-      'start_session で起動した自分の子セッションへ、追加の依頼を送る。人間がダッシュボードから送るときと同じく、子セッションが作業中なら作業を止めずに受け付けさせ、終わっていれば再開して渡す。アーカイブされた子セッションへは送れない。',
+      'ほかのセッションへ依頼を送る。start_session で起動した自分の子セッションのほか、ticket_sessions などで知った、親子でないセッションにも送れる。親子でないセッションには、送り手のセッションの名前と id を添えて届ける。人間がダッシュボードから送るときと同じく、相手が作業中なら作業を止めずに受け付けさせ、終わっていれば再開して渡す。アーカイブされたセッションへは送れない。',
     inputSchema: {
       type: 'object',
       properties: {
-        session_id: { type: 'string', description: 'start_session が返した子セッションの id' },
+        session_id: { type: 'string', description: '送る先のセッションの id。start_session、list_sessions、ticket_sessions が返す' },
         text: { type: 'string', description: '送る依頼' },
       },
       required: ['session_id', 'text'],
+    },
+  },
+  {
+    name: 'ticket_sessions',
+    description:
+      'PR か JIRA の課題をバッジにしている、このセッションのほかのセッションを返す。ダッシュボードの「関連セッション」と同じもの。実装を始める前に、同じチケットを見ているセッションと衝突しないかを確かめるときに使う。session_id、名前、状態、リポジトリ、ブランチ、そのチケットのタスクの状態を 1 行ずつ並べる。',
+    inputSchema: {
+      type: 'object',
+      properties: { ticket: { type: 'string', description: 'PR の URL か番号（#123）、JIRA の課題のキーか URL' } },
+      required: ['ticket'],
     },
   },
   {
@@ -790,15 +803,19 @@ const startSessionTool = (res: ServerResponse, rpcId: RpcId, params: RpcParams, 
   );
 };
 /** 子セッションが会話を引き継いだ複製へ移っていたら、複製へ送る。 */
-const sendToChild = (sessionId: string, args: ToolArgs): object => {
+/** 子セッションには依頼をそのまま、親子でないセッションには送り手を添えて送る。 */
+const sendToSession = (sessionId: string, args: ToolArgs): object => {
   const text = str(args.text);
-  let child = state.sessions[str(args.session_id) ?? ''];
-  while (child?.movedTo && state.sessions[child.movedTo]) child = state.sessions[child.movedTo];
+  let target = state.sessions[str(args.session_id) ?? ''];
+  while (target?.movedTo && state.sessions[target.movedTo]) target = state.sessions[target.movedTo];
   if (!text) return textResult('text を渡してください。', true);
-  if (child?.parent !== sessionId) return textResult('session_id に、start_session で起動した自分の子セッションの id を渡してください。', true);
-  if (child.archived || child.archiveWhenIdle) return textResult('子セッションはアーカイブされています。続けて任せるなら、start_session で起動し直してください。', true);
-  const { delivery } = sendMessage(child.id, text);
-  return textResult(delivery === 'queued' ? '子セッションは権限の確認を待っているので、答えた後に届けます。' : '子セッションへ送りました。');
+  if (!target || target.id === sessionId) return textResult('session_id に、送る先のほかのセッションの id を渡してください。', true);
+  const child = target.parent === sessionId;
+  if (target.archived || target.archiveWhenIdle) return textResult(child ? '子セッションはアーカイブされています。続けて任せるなら、start_session で起動し直してください。' : '送る先のセッションはアーカイブされています。', true);
+  const from = state.sessions[sessionId];
+  const { delivery } = sendMessage(target.id, child ? text : `[セッション「${from?.title ?? '名前なし'}」（session_id: ${sessionId}）からの依頼]\n${text}`);
+  const who = child ? '子セッション' : 'セッション';
+  return textResult(delivery === 'queued' ? `${who}は権限の確認を待っているので、答えた後に届けます。` : `${who}へ送りました。`);
 };
 /** 複製へ移った子セッションは、parent を引き継いだ複製だけを出す。 */
 const listChildren = (sessionId: string): object => {
@@ -902,7 +919,9 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
     case 'start_session':
       return startSessionTool(res, rpcId, params, sessionId, args);
     case 'send_to_session':
-      return send(res, { id: rpcId, result: sendToChild(sessionId, args) });
+      return send(res, { id: rpcId, result: sendToSession(sessionId, args) });
+    case 'ticket_sessions':
+      return send(res, { id: rpcId, result: str(args.ticket) ? textResult(ticketSessionsText(listedSessionViews(), str(args.ticket) ?? '', sessionId)) : textResult('ticket を渡してください。', true) });
     case 'list_sessions':
       return send(res, { id: rpcId, result: listChildren(sessionId) });
     case 'archive_session':
