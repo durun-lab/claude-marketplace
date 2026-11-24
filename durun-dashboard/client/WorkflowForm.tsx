@@ -21,7 +21,7 @@ const NEW_SCHEDULE: Schedule = { kind: 'schedule', at: '09:00' };
 const NEW_THREAD: Thread = { kind: 'slack-thread', url: '' };
 const DEFAULT_BURST_MINUTES = 5;
 
-const settingsOf = ({ name, cwd, theme, prompt, triggers, burstMinutes, mode, compact, compactWindow, maxSessions, model, effort, account }: WorkflowInfo): WorkflowSettings => ({ name, cwd, theme, prompt, triggers, burstMinutes, mode, compact, compactWindow, maxSessions, model, effort, account });
+const settingsOf = ({ name, cwd, theme, prompt, triggers, burstMinutes, mode, compact, compactWindow, maxSessions, model, effort, account, command, sessionOnFailure }: WorkflowInfo): WorkflowSettings => ({ name, cwd, theme, prompt, triggers, burstMinutes, mode, compact, compactWindow, maxSessions, model, effort, account, command, sessionOnFailure });
 
 /** モードに関わらない項目は落として送る。定義に読まれない項目を残さないため。 */
 const cleaned = (s: WorkflowSettings): WorkflowSettings => ({
@@ -30,7 +30,9 @@ const cleaned = (s: WorkflowSettings): WorkflowSettings => ({
   compact: s.mode === 'continue' && s.compact ? true : undefined,
   // 範囲の外の値は定義に読まれず黙って消えるので、Claude Code が受け付ける範囲に収めて送る。
   compactWindow: s.mode === 'continue' && s.compactWindow ? Math.min(Math.max(s.compactWindow, COMPACT_WINDOW_MIN), COMPACT_WINDOW_MAX) : undefined,
-  maxSessions: s.mode !== 'continue' && s.maxSessions && s.maxSessions > 1 ? s.maxSessions : undefined,
+  maxSessions: (s.mode === 'new' || s.mode === 'oneshot') && s.maxSessions && s.maxSessions > 1 ? s.maxSessions : undefined,
+  command: s.mode === 'command' ? s.command?.trim() || undefined : undefined,
+  sessionOnFailure: s.mode === 'command' && s.sessionOnFailure ? true : undefined,
   account: s.account || undefined,
   theme: s.theme?.trim() || undefined,
   model: s.model || undefined,
@@ -219,6 +221,17 @@ const ActionField = ({ s, set, accounts }: { s: WorkflowSettings; set: (patch: P
       イベントごとに claude -p を 1 回動かす（セッションを起動しない）。同時に
       <input type="number" min={1} class="input input-sm workflow-number" disabled={s.mode !== 'oneshot'} value={s.mode === 'oneshot' ? (s.maxSessions ?? 1) : 1} onInput={(e) => set({ maxSessions: Number(e.currentTarget.value) || 1 })} />
       まで
+    </label>
+    <label class="workflow-day">
+      <input type="radio" name="workflow-mode" checked={s.mode === 'command'} onChange={() => set({ mode: 'command' })} />
+      コマンドを動かす（LLM を使わない）
+    </label>
+    <label class="workflow-day workflow-indent" title="作業ディレクトリで、シェルに渡して動かします">
+      <input type="text" class="input input-sm" disabled={s.mode !== 'command'} placeholder="~/.local/bin/prune-merged-worktrees" value={s.command ?? ''} onInput={(e) => set({ command: e.currentTarget.value })} />
+    </label>
+    <label class="workflow-day workflow-indent">
+      <input type="checkbox" disabled={s.mode !== 'command'} checked={!!s.sessionOnFailure} onChange={(e) => set({ sessionOnFailure: e.currentTarget.checked })} />
+      失敗したら（終了コードが 0 以外か 30 分で時間切れ）、指示と出力を渡して新しいセッションを起動する
     </label>
     <div class="workflow-events">
       <Choice label="モデル" value={s.model} options={MODELS} onChange={(model) => set({ model })} />
