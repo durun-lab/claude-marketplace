@@ -211,8 +211,51 @@ export const viewTasks = (owner: Owner & { id: string }, sessions: Sessions, see
 };
 
 /** 既定では完了していないタスクだけを返す。説明は返さない。 */
-export const listTasks = (owner: Owner, includeCompleted: boolean): Result => {
+/**
+ * list_tasks の絞り込み。status は返す状態で、省くと完了していないものだけ。
+ * ticket は PR・Issue の番号か URL、JIRA の課題のキーで、そのチケットのタスクとその下の手順を返す。
+ * depth は返す深さで、ticket を省くといちばん外、渡すとチケットのタスクを 1 階層目と数える。省くと 1 階層だけ。
+ * fields を渡すと、id・subject・status のほかに、その項目を添えた JSON を 1 行ずつ返す。
+ */
+export type TaskQuery = { status?: string[]; ticket?: string; depth?: number; fields?: string[] };
+
+/** 絞り込んだタスク。depth は何階層目か、children は直下の手順の数。 */
+export type TaskRow = AgentTask & { depth: number; children: number };
+
+/** ticket は、番号なら PR・Issue の URL の末尾、課題のキーなら JIRA の URL の末尾、URL なら URL 全体と比べる。 */
+const ticketMatches = (url: string | undefined, ticket: string): boolean => {
+  if (!url) return false;
+  const want = ticket.trim().replace(/^#/, '').replace(/\/+$/, '');
+  const got = url.replace(/\/+$/, '');
+  return /^https?:/.test(want) ? got === want : got.toLowerCase().endsWith(`/${want.toLowerCase()}`);
+};
+
+/** 起点のタスクから parent を下にたどり、depth の階層までを、親の後ろに子を並べて返す。 */
+export const queryTasks = (tasks: AgentTask[], q: TaskQuery = {}): TaskRow[] => {
+  const known = new Set(tasks.map((t) => t.id));
+  const childrenOf = (id: string): AgentTask[] => tasks.filter((t) => t.parent === id);
+  const roots = q.ticket ? tasks.filter((t) => ticketMatches(t.ticket, q.ticket ?? '')) : tasks.filter((t) => !t.parent || !known.has(t.parent));
+  const statuses = q.status ?? ['pending', 'in_progress'];
+  const maxDepth = q.depth ?? 1;
+  const rows: TaskRow[] = [];
+  const walk = (t: AgentTask, depth: number, seen: Set<string>): void => {
+    if (depth > maxDepth || seen.has(t.id)) return;
+    seen.add(t.id);
+    const children = childrenOf(t.id);
+    if (statuses.includes(t.status)) rows.push({ ...t, depth, children: children.length });
+    for (const c of children) walk(c, depth + 1, seen);
+  };
+  const seen = new Set<string>();
+  for (const r of roots) walk(r, 1, seen);
+  return rows;
+};
+
+/** 既定は 1 行に id・状態・題を書き、下に手順を持つタスクにはその数を添える。fields を渡すと JSON を 1 行ずつ返す。 */
+export const listTasks = (owner: Owner, q: TaskQuery = {}): Result => {
   const all = owner.agentTasks ?? [];
-  const tasks = all.filter((t) => includeCompleted || t.status !== 'completed');
-  return { text: tasks.length ? tasks.map((t) => line(t, all)).join('\n') : includeCompleted ? '登録したタスクはありません。' : '完了していないタスクはありません。' };
+  const rows = queryTasks(all, q);
+  if (!rows.length) return { text: all.length ? '条件に合うタスクはありません。' : '登録したタスクはありません。' };
+  const { fields } = q;
+  if (fields) return { text: rows.map((r) => JSON.stringify(Object.fromEntries(Object.entries(r).filter(([k]) => ['id', 'subject', 'status', ...fields].includes(k))))).join('\n') };
+  return { text: rows.map((r) => `${'  '.repeat(r.depth - 1)}${line(r, all)}${r.children ? `（下に ${r.children} 件）` : ''}`).join('\n') };
 };

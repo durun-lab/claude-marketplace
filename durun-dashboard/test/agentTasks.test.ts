@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { addTasks, changeTask, delegateTask, listTasks, updateTask, viewTasks, withLiveRoot } from '../server/agentTasks.ts';
+import { addTasks, changeTask, delegateTask, listTasks, queryTasks, updateTask, viewTasks, withLiveRoot } from '../server/agentTasks.ts';
 import type { AgentTask } from '../shared/types.ts';
 
 test('タスクは通し番号で登録し、状態と内容を変えて消せ、一覧は既定で完了していないものだけを返す', () => {
@@ -11,14 +11,14 @@ test('タスクは通し番号で登録し、状態と内容を変えて消せ�
   changeTask(owner, '2', { status: 'in_progress', subject: 'テストを足して直す' });
   assert.equal(changeTask(owner, '2', { status: 'done' }).isError, true);
   assert.equal(changeTask(owner, '9', { status: 'completed' }).isError, true);
-  assert.equal(listTasks(owner, false).text, '- 2 [作業中] テストを足して直す\n- 3 [未着手] 確かめる');
-  assert.equal(listTasks(owner, true).text.split('\n').length, 3);
+  assert.equal(listTasks(owner).text, '- 2 [作業中] テストを足して直す\n- 3 [未着手] 確かめる');
+  assert.equal(listTasks(owner, { status: ['pending', 'in_progress', 'completed'] }).text.split('\n').length, 3);
   // 消したタスクの番号は使い直さない。
   changeTask(owner, '3', { status: 'deleted' });
   assert.equal(addTasks(owner, ['見直す']).text, '登録しました。\n- 4 [未着手] 見直す');
   changeTask(owner, '2', { status: 'completed' });
   changeTask(owner, '4', { status: 'completed' });
-  assert.equal(listTasks(owner, false).text, '完了していないタスクはありません。');
+  assert.equal(listTasks(owner).text, '条件に合うタスクはありません。');
 });
 
 test('下の手順が終わっていないタスクは完了にしない', () => {
@@ -35,7 +35,7 @@ test('タスクの詳細は、説明と、登録・着手・完了の時刻を�
   const task = (): AgentTask | undefined => owner.agentTasks?.[0];
   assert.deepEqual(task(), { id: '1', subject: '直す', description: 'テストが通るまで', status: 'pending', createdAt: 100 });
   // 一覧には説明を載せない。
-  assert.equal(listTasks(owner, false).text, '- 1 [未着手] 直す');
+  assert.equal(listTasks(owner).text, '- 1 [未着手] 直す');
   changeTask(owner, '1', { status: 'in_progress' }, 200);
   changeTask(owner, '1', { status: 'in_progress', description: '型も直す' }, 250);
   changeTask(owner, '1', { status: 'completed' }, 300);
@@ -56,7 +56,7 @@ test('待つタスクは、同じ呼び出しの #n と既存の id で登録し
   // 1 が 4 を待つと、4 → 3 → 2 → 1 → 4 の輪になる。
   assert.match(changeTask(owner, '1', { addBlockedBy: ['4'] }).text, /輪になります/);
   changeTask(owner, '1', { status: 'completed' });
-  assert.equal(listTasks(owner, false).text, '- 2 [未着手] 実装する\n- 3 [未着手] テストする（2 を待つ）\n- 4 [未着手] 見直す（2・3 を待つ）');
+  assert.equal(listTasks(owner).text, '- 2 [未着手] 実装する\n- 3 [未着手] テストする（2 を待つ）\n- 4 [未着手] 見直す（2・3 を待つ）');
   changeTask(owner, '4', { removeBlockedBy: ['2'] });
   changeTask(owner, '3', { status: 'deleted' });
   assert.deepEqual(owner.agentTasks?.map((t) => [t.id, t.blockedBy]), [['1', undefined], ['2', ['1']], ['4', []]]);
@@ -100,7 +100,7 @@ test('タスクを子セッションに任せると、子セッションのル�
   // 親がタスクを戻して書き直すと、子のルートにもそのまま見える。
   changeTask(parent, '1', { status: 'in_progress', subject: '移行して確かめる' }, 400);
   assert.deepEqual([withLiveRoot(child, sessions)[0]?.status, withLiveRoot(child, sessions)[0]?.subject], ['in_progress', '移行して確かめる']);
-  assert.equal(listTasks({ ...child, agentTasks: withLiveRoot(child, sessions) }, false).text.split('\n')[0], '- 1 [作業中] 移行して確かめる');
+  assert.equal(listTasks({ ...child, agentTasks: withLiveRoot(child, sessions) }).text.split('\n')[0], '- 1 [作業中] 移行して確かめる（下に 2 件）');
   // 親の画面では、子の手順が任せたタスクの下に並ぶ。
   assert.deepEqual(viewTasks(parent, sessions).map((t) => [t.id, t.parent, t.subject]), [['1', undefined, '移行して確かめる'], ['1/2', '1', '準備する'], ['1/3', '1', '外に置く']]);
   // ルートを消した後の登録は、いちばん外に置く。
@@ -121,4 +121,17 @@ test('起動済みの子セッションにも後からタスクを任せられ�
   assert.match(delegateTask(parent, '2', child).text, /すでに「調べる」を任されています/);
   addTasks(child, ['まとめる']);
   assert.equal(child.agentTasks?.at(-1)?.parent, '3');
+});
+
+test('list_tasks は状態・チケット・深さで絞り、既定は外の階層の未完了だけで、下の手順の数を添え、fields で項目を JSON で返す', () => {
+  const owner: { agentTasks?: AgentTask[]; agentTaskSeq?: number } = {};
+  addTasks(owner, [{ subject: 'PR を進める', ticket: 'https://github.com/o/r/pull/12' }, { subject: '直す', parent: '#1' }, { subject: '確かめる', parent: '#2' }, '別の作業', { subject: '課題', ticket: 'https://example.atlassian.net/browse/WEB-7' }], { ticketOf: (t) => ({ url: t, label: t }) });
+  changeTask(owner, '4', { status: 'completed' });
+  assert.equal(listTasks(owner).text, '- 1 [未着手] PR を進める（下に 1 件）\n- 5 [未着手] 課題');
+  assert.equal(listTasks(owner, { depth: 3 }).text, '- 1 [未着手] PR を進める（下に 1 件）\n  - 2 [未着手] 直す（下に 1 件）\n    - 3 [未着手] 確かめる\n- 5 [未着手] 課題');
+  assert.deepEqual(queryTasks(owner.agentTasks ?? [], { ticket: '#12', depth: 2 }).map((t) => t.id), ['1', '2']);
+  assert.deepEqual(queryTasks(owner.agentTasks ?? [], { ticket: 'web-7' }).map((t) => t.id), ['5']);
+  assert.deepEqual(queryTasks(owner.agentTasks ?? [], { ticket: '1' }).map((t) => t.id), []);
+  assert.deepEqual(queryTasks(owner.agentTasks ?? [], { status: ['completed'] }).map((t) => t.id), ['4']);
+  assert.equal(listTasks(owner, { ticket: '12', fields: ['ticket', 'children'] }).text, '{"id":"1","subject":"PR を進める","status":"pending","ticket":"https://github.com/o/r/pull/12","children":1}');
 });
