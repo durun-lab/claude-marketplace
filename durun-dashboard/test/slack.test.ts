@@ -6,7 +6,7 @@ import { test } from 'node:test';
 
 // slack.ts は cache.ts を通して、import した時点でデータの置き場所を読む。本物のデータに触れないよう、一時ディレクトリに向けてから読み込む。
 process.env.DURUN_DASHBOARD_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'durun-slack-'));
-const { parseSlackChannels, parseSlackMentions, parseSlackMessages, slackKeyOf, slackLinksIn, slackTargetOf, teamIdIn } = await import('../server/slack.ts');
+const { parseSlackChannels, parseSlackMentions, parseSlackMessages, slackConnectorOf, slackKeyOf, slackLinksIn, slackTargetOf, teamIdIn } = await import('../server/slack.ts');
 
 test('Slack のリンクから、メッセージならそのスレッドを、返信なら thread_ts の親を、チャンネルならチャンネルを読む先にする', () => {
   assert.deepEqual(slackTargetOf('https://example.slack.com/archives/C0AAA/p1700000000123456'), { channel: 'C0AAA', thread: '1700000000.123456', domain: 'example' });
@@ -111,4 +111,10 @@ test('検索の結果から、自分へのメンションを含む発言だけ�
   assert.deepEqual(parseSlackMentions(text, 'U1'), [
     { url: 'https://ws.slack.com/archives/C3/p3?thread_ts=3.4&cid=C3', channel: '#times', text: ': 私がやりました @Naoki & [資料](https://example.com)' },
   ]);
+});
+
+test('claude.ai のコネクタから、表示名か URL で Slack のものを選ぶ', () => {
+  assert.equal(slackConnectorOf([{ id: 'a', display_name: 'Notion' }, { id: 'b', display_name: 'Slack' }]), 'b');
+  assert.equal(slackConnectorOf([{ id: 'c', display_name: '社内', url: 'https://mcp.slack.com/mcp' }]), 'c');
+  assert.equal(slackConnectorOf([{ id: 'd', display_name: 'Notion', url: 'https://example.com/slack.com/' }]), undefined);
 });
