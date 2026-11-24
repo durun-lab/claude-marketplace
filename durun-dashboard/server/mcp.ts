@@ -16,7 +16,8 @@ import { proofCommentedAt, readProofFile, writeProofFile } from './proofFiles.ts
 import { MAX_SENTENCES, commentFindings, proofReport, proofread, revise } from './proofread.ts';
 import { learnDigest } from './reflect.ts';
 import { type ProofSentence, parseProof } from './proofText.ts';
-import { addTasks, delegateTask, listTasks, type NewTask, updateTask, withLiveRoot, TASK_STATUSES, type TicketOf } from './agentTasks.ts';
+import { addTasks, delegateTask, listTasks, type NewTask, queryTasks, type TaskQuery, updateTask, withLiveRoot, TASK_STATUSES, type TicketOf } from './agentTasks.ts';
+import { run, type RunError } from './run.ts';
 import { changed, inferFormat, newId, type SessionMeta, state, touch, writeDocFile, type StoredAttention } from './store.ts';
 
 const FALLBACK_PROTOCOL = '2025-06-18';
@@ -191,10 +192,22 @@ const TOOLS = [
   },
   {
     name: 'list_tasks',
-    description: 'create_tasks で登録したこのセッションのタスクを、id と状態を添えて返す。既定では完了していないタスクだけを返す。',
+    description:
+      'create_tasks で登録したこのセッションのタスクを、id と状態と題で返す。既定では、いちばん外の階層の、完了していないタスクだけを返し、下に手順を持つタスクにはその数を添える。jq を渡すと、絞り込んだタスクの JSON の配列に jq のクエリを当てた結果を返す。',
     inputSchema: {
       type: 'object',
-      properties: { include_completed: { type: 'boolean', description: 'true なら完了したタスクも返す' } },
+      properties: {
+        status: { type: 'array', items: { type: 'string', enum: [...TASK_STATUSES] }, description: '返す状態。省くと pending と in_progress' },
+        ticket: { type: 'string', description: 'PR・Issue の番号か URL、JIRA の課題のキー。そのチケットのタスクとその下の手順を返し、depth はチケットのタスクを 1 階層目と数える' },
+        depth: { type: 'integer', minimum: 1, description: '返す深さ。省くと 1 で、いちばん外の階層だけ' },
+        fields: {
+          type: 'array',
+          items: { type: 'string', enum: ['description', 'parent', 'blockedBy', 'ticket', 'delegatedTo', 'delegatedFrom', 'createdAt', 'updatedAt', 'startedAt', 'completedAt', 'depth', 'children'] },
+          description: 'id・subject・status のほかに返す項目。渡すと JSON を 1 行ずつ返す',
+        },
+        jq: { type: 'string', description: 'タスクの配列に当てる jq のクエリ。各タスクはすべての項目と depth・children を持つ。jq を渡したときは、status と depth を省くとすべての状態と深さを渡す' },
+        include_completed: { type: 'boolean', description: 'true なら完了したタスクも返す。status に 3 つの状態を渡すのと同じ' },
+      },
     },
   },
   {
@@ -554,6 +567,29 @@ const taskTool = (sessionId: string, run: (meta: SessionMeta) => { text: string;
   return textResult(text, isError);
 };
 
+/** list_tasks。jq を渡したら、絞り込んだタスクの JSON を jq に通す。 */
+const listTasksTool = async (sessionId: string, args: ToolArgs): Promise<object> => {
+  const meta = state.sessions[sessionId];
+  if (!meta) return textResult('このセッションはまだダッシュボードに登録されていません。', true);
+  const jq = str(args.jq);
+  const list = (v: unknown): string[] | undefined => (Array.isArray(v) && v.length ? v.filter((x): x is string => typeof x === 'string') : undefined);
+  const q: TaskQuery = {
+    status: list(args.status) ?? (args.include_completed === true || jq ? [...TASK_STATUSES] : undefined),
+    ticket: str(args.ticket),
+    depth: typeof args.depth === 'number' ? args.depth : jq ? Infinity : undefined,
+    fields: list(args.fields),
+  };
+  const owner = { ...meta, agentTasks: withLiveRoot(meta, state.sessions) };
+  if (!jq) return textResult(listTasks(owner, q).text);
+  try {
+    const { stdout } = await run('jq', ['-c', jq], { input: JSON.stringify(queryTasks(owner.agentTasks, q)), timeout: 10_000 });
+    return textResult(stdout.trim() || 'jq の結果は空でした。');
+  } catch (e) {
+    const err = e as RunError;
+    return textResult(err.code === 'ENOENT' ? 'jq のコマンドが見つかりません。jq を入れてください。' : `jq が失敗しました: ${err.stderr?.trim() || err.message}`, true);
+  }
+};
+
 const toView = (v: unknown): BranchView | undefined => {
   const { branch, base, label } = (v ?? {}) as ToolArgs;
   const name = str(branch);
@@ -829,7 +865,7 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
       }
       return send(res, { id: rpcId, result: taskTool(sessionId, (m) => updateTask(m, str(args.id), state.sessions, { status: str(args.status), subject: str(args.subject), description: typeof args.description === 'string' ? args.description : undefined, addBlockedBy: args.add_blocked_by, removeBlockedBy: args.remove_blocked_by, parent: typeof args.parent === 'string' ? args.parent : undefined })) });
     case 'list_tasks':
-      return send(res, { id: rpcId, result: taskTool(sessionId, (m) => listTasks({ ...m, agentTasks: withLiveRoot(m, state.sessions) }, args.include_completed === true)) });
+      return void listTasksTool(sessionId, args).then((result) => send(res, { id: rpcId, result }));
     case 'learn_digest':
       return send(res, { id: rpcId, result: learnDigestResult() });
     case 'read_pr':
