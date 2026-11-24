@@ -170,12 +170,22 @@ export const withLiveRoot = (child: Owner, sessions: Sessions): AgentTask[] => {
   return (child.agentTasks ?? []).map((t) => (t.id === child.rootTask ? { ...t, subject, description, status, ticket, createdAt, updatedAt, startedAt, completedAt } : t));
 };
 
+/** 完了していない、task の下の手順。子セッションに任せたタスクは、子セッションが登録した手順も数える。 */
+const unfinishedSteps = (owner: Owner, task: AgentTask, sessions: Sessions): AgentTask[] => {
+  const child = task.delegatedTo ? follow(sessions, task.delegatedTo) : undefined;
+  const steps = [...(owner.agentTasks ?? []).filter((t) => t.parent === task.id), ...(child?.agentTasks ?? []).filter((t) => t.id !== child?.rootTask)];
+  return steps.filter((t) => t.status !== 'completed');
+};
+
 /**
- * タスクを変える。子セッションのルートのタスクの題、説明、状態は、実体である親セッションのタスクを変える。親と子で同じタスクがずれないため。
+ * タスクを変える。下の手順が終わっていないタスクは完了にしない。子セッションのルートのタスクの題、説明、状態は、実体である親セッションのタスクを変える。親と子で同じタスクがずれないため。
  * 待つタスクと親のタスクは、子セッションの中の並びなので、子セッションのルートのタスクに付ける。
  */
 export const updateTask = (owner: Owner, id: string | undefined, sessions: Sessions, change: TaskChange, now = Date.now()): Result => {
   const source = id && id === owner.rootTask ? delegatedSource(owner, sessions) : undefined;
+  const target = source ?? { owner, task: owner.agentTasks?.find((t) => t.id === id) };
+  const left = change.status === 'completed' && target.task ? unfinishedSteps(target.owner, target.task, sessions) : [];
+  if (left.length) return { text: `更新しませんでした。下の手順 ${left.map((t) => `${t.id} ${t.subject}`).join('、')} が終わっていません。先に完了にするか、要らなければ消してください。`, isError: true };
   if (!source) return changeTask(owner, id, change, now);
   const { status, subject, description, ...rest } = change;
   const result = changeTask(source.owner, source.task.id, { status, subject, description }, now);

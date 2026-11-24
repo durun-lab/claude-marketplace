@@ -21,6 +21,14 @@ test('タスクは通し番号で登録し、状態と内容を変えて消せ�
   assert.equal(listTasks(owner, false).text, '完了していないタスクはありません。');
 });
 
+test('下の手順が終わっていないタスクは完了にしない', () => {
+  const owner: { agentTasks?: AgentTask[]; agentTaskSeq?: number } = {};
+  addTasks(owner, ['直す', { subject: '手順', parent: '#1' }]);
+  assert.match(updateTask(owner, '1', {}, { status: 'completed' }).text, /2 手順 が終わっていません/);
+  updateTask(owner, '2', {}, { status: 'completed' });
+  assert.equal(updateTask(owner, '1', {}, { status: 'completed' }).text, '更新しました。');
+});
+
 test('タスクの詳細は、説明と、登録・着手・完了の時刻を覚え、未着手に戻すと着手と完了の時刻を忘れる', () => {
   const owner: { agentTasks?: AgentTask[]; agentTaskSeq?: number } = {};
   addTasks(owner, [{ subject: '直す', description: 'テストが通るまで' }], { now: 100 });
@@ -81,6 +89,11 @@ test('タスクを子セッションに任せると、子セッションのル�
   addTasks(child, ['準備する', { subject: '外に置く', parent: '' }]);
   assert.deepEqual(child.agentTasks?.map((t) => t.parent), [undefined, '1', '1']);
   const sessions = { p: parent, c: child };
+  // 子の手順が残っている間は、子も親もルートを完了にできない。
+  assert.match(updateTask(child, '1', sessions, { status: 'completed' }, 250).text, /2 準備する、3 外に置く が終わっていません/);
+  assert.equal(updateTask(parent, '1', sessions, { status: 'completed' }, 250).isError, true);
+  updateTask(child, '2', sessions, { status: 'completed' }, 260);
+  updateTask(child, '3', sessions, { status: 'completed' }, 260);
   // 子がルートを完了にすると、親のタスクが完了になる。
   updateTask(child, '1', sessions, { status: 'completed' }, 300);
   assert.deepEqual([parent.agentTasks?.[0]?.status, parent.agentTasks?.[0]?.completedAt, parent.agentTasks?.[0]?.updatedAt], ['completed', 300, 300]);
