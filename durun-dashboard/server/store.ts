@@ -52,6 +52,10 @@ export type SessionMeta = {
   slack?: string[];
   /** 人間が「スレッド」のウィジェットで閉じた Slack の参照の鍵（slackKeyOf）。チャットに出たリンクも、ここにあれば出さない */
   hiddenSlack?: string[];
+  /** 人間が登録した関連セッションの id */
+  related?: string[];
+  /** 人間が外した関連セッションの id。チャットに出た id も、ここにあれば出さない */
+  hiddenRelated?: string[];
   /** 人間が資料に足したリンク */
   links?: SavedLink[];
   /** 人間がエクスプローラーから資料に足したファイル */
@@ -305,8 +309,8 @@ export const newId = (): string => randomUUID().slice(0, 8);
 export const moveSession = (from: string, to: string): void => {
   const old = state.sessions[from];
   if (!old || from === to) return;
-  const { parent, account, settingsFile, agentTasks, agentTaskSeq, rootTask, theme, title, jira, pinned, dangerous, badges, hiddenBadges, slack, hiddenSlack, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews } = old;
-  Object.assign(ensureSession(to, old.cwd), { parent, account, settingsFile, agentTasks, agentTaskSeq, rootTask, theme, title, jira, pinned, dangerous, badges, hiddenBadges, slack, hiddenSlack, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews });
+  const { parent, account, settingsFile, agentTasks, agentTaskSeq, rootTask, theme, title, jira, pinned, dangerous, badges, hiddenBadges, slack, hiddenSlack, related, hiddenRelated, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews } = old;
+  Object.assign(ensureSession(to, old.cwd), { parent, account, settingsFile, agentTasks, agentTaskSeq, rootTask, theme, title, jira, pinned, dangerous, badges, hiddenBadges, slack, hiddenSlack, related, hiddenRelated, links, files, proofFiles, sharedDocs, docOrder, hiddenDocs, docTitles, pinnedDocs, terms, hiddenTerms, bookmarks, replySeenAt, branchViews });
   Object.assign(old, { archived: true, movedTo: to, pinned: undefined, dangerous: undefined, bookmarks: undefined, jobId: undefined });
   for (const items of [state.attention, state.docs, state.outbox]) {
     for (const item of items) if (item.sessionId === from) item.sessionId = to;

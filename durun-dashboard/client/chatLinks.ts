@@ -1,6 +1,7 @@
 // 人間と Claude の発言に出たリンクを、セッションの資料として拾う。発言の #番号は、PR と Issue へのリンクにするために切り出す。
 import { Marked, type MarkedExtension, Tokenizer, type TokensList } from 'marked';
 import { type ChatEntry, type JiraIssue, REF_NUMBER, type RepoRef, notionPageId } from '../shared/types.ts';
+import { SESSION_ID, sessionIdOf } from '../shared/sessionIds.ts';
 import { safeDecode } from './router.ts';
 
 // 日本語の文では、URL の後ろに空白を置かずに文を続けることが多い。GFM は空白の手前までを URL とみなすので、閉じていない ) と、日本語の句読点や括弧から先を外す。
@@ -168,16 +169,6 @@ export const jiraSplitter = (issues: JiraIssue[]): ((text: string) => JiraPiece[
 
 /** 文の切れ端。session があれば、そのセッションの id。 */
 export type SessionPiece = { text: string; session?: string };
-
-// セッションの id は UUID。省略形は、bg のジョブの名前などに出る先頭の 8 文字。
-const SESSION_ID = /((?<![\w-])[0-9a-f]{8}(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?(?![\w-]))/;
-
-/** 文 1 つがまるごとセッションの id なら、その id。省略形は、先頭が合うセッションが 1 つだけのときに限る。コミットのハッシュなどを取り違えないため。 */
-export const sessionIdOf = (ids: string[], text: string): string | undefined => {
-  if (text.length > 8) return ids.includes(text) ? text : undefined;
-  const hits = ids.filter((id) => id.startsWith(text));
-  return hits.length === 1 ? hits[0] : undefined;
-};
 
 /** 文の中の、一覧にあるセッションの id とその省略形を切り出す。 */
 export const sessionSplitter = (ids: string[]): ((text: string) => SessionPiece[]) => (text) =>

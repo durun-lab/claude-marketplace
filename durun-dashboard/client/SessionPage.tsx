@@ -226,39 +226,68 @@ const DangerousToggle = ({ s }: { s: Session }) => (
 
 /** 名前の行をウィジェットの見出しにする。状態はウィンドウの中に置き、狭いウィンドウでもタイトルバーを 1 行に保つ。概要は下部に置く。 */
 /**
- * 別のセッションの ID を貼って、そのセッションをこのセッションの親か子として結ぶ。ID は見出しの「ID をコピー」で写す。
+ * 別のセッションの ID を貼って、そのセッションをこのセッションの親か子として結ぶか、関連セッションに登録する。ID は見出しの「ID をコピー」で写す。
  * 親子は start_session で起動したときと同じく、子の画面に親を、親の画面に子を並べる。
  */
 const FamilyLink = ({ s }: { s: Session }) => {
   const [value, setValue] = useState('');
-  const link = async (as: 'parent' | 'child') => {
+  const link = async (as: 'parent' | 'child' | 'related') => {
     const other = value.trim();
     if (!other) return;
-    const ok = await attempt(as === 'parent' ? '親の設定' : '子の設定', () => (as === 'parent' ? api.parent(s.id, other) : api.parent(other, s.id)));
+    const ok = await attempt(as === 'parent' ? '親の設定' : as === 'child' ? '子の設定' : '関連セッションの登録', () => (as === 'parent' ? api.parent(s.id, other) : as === 'child' ? api.parent(other, s.id) : api.related(s.id, other)));
     if (ok !== undefined) setValue('');
   };
   return (
     <span class="family-form">
       <CopyText text={s.id} title={`${s.id}（押すとセッション ID をコピー）`}>ID をコピー</CopyText>
-      <input class="input input-sm" value={value} placeholder="セッション ID を貼る" aria-label="親か子として結ぶセッションの ID" onInput={(e) => setValue(e.currentTarget.value)} />
+      <input class="input input-sm" value={value} placeholder="セッション ID を貼る" aria-label="親か子として結ぶか、関連セッションにするセッションの ID" onInput={(e) => setValue(e.currentTarget.value)} />
       <button type="button" class="btn btn-sm" disabled={!value.trim()} onClick={() => void link('parent')}>親にする</button>
       <button type="button" class="btn btn-sm" disabled={!value.trim()} onClick={() => void link('child')}>子にする</button>
+      <button type="button" class="btn btn-sm" disabled={!value.trim()} onClick={() => void link('related')}>関連にする</button>
     </span>
   );
 };
 
-const ChildLink = ({ c, faded }: { c: Session; faded?: boolean }) => (
+/** onRemove を渡すと、× で外せる。 */
+const SessionLink = ({ c, faded, onRemove }: { c: Session; faded?: boolean; onRemove?: (c: Session) => void }) => (
   <li class={`family-link${faded ? ' related-archived' : ''}`}>
     <StatusDot status={c.status} waitingFor={c.waitingFor} />
     <a href={href.session(c.id)}>{c.name}</a>
+    {onRemove && <button type="button" class="badge-remove" aria-label="関連セッションから外す" title="関連セッションから外す" onClick={() => onRemove(c)}>×</button>}
   </li>
 );
 
-/** 親と子のセッションへのリンク。start_session で起動したものと、人間が ID で結んだもの。親は × で外せる。アーカイブ済みの子は、関連セッションと同じく後ろに薄く出し、2 件以上なら畳む。 */
+/** 子や関連セッションの並び。アーカイブ済みは、PR と課題の画面の関連セッションと同じく後ろに薄く出し、2 件以上なら畳む。 */
+const SessionLinks = ({ label, list, onRemove }: { label: string; list: Session[]; onRemove?: (c: Session) => void }) => {
+  if (!list.length) return null;
+  const archived = list.filter((c) => c.archived);
+  return (
+    <div class="family-children">
+      {label}:
+      <ul>
+        {list.filter((c) => !c.archived).map((c) => <SessionLink key={c.id} c={c} onRemove={onRemove} />)}
+        {archived.length === 1 && <SessionLink c={archived[0] as Session} faded onRemove={onRemove} />}
+        {archived.length > 1 && (
+          <li class="related-archived">
+            <details>
+              <summary>アーカイブ済み {archived.length} 件</summary>
+              <ul>{archived.map((c) => <SessionLink key={c.id} c={c} onRemove={onRemove} />)}</ul>
+            </details>
+          </li>
+        )}
+      </ul>
+    </div>
+  );
+};
+
+/**
+ * 親と子と関連セッションへのリンク。子は start_session で起動したものと、人間が ID で結んだもの。親は × で外せる。
+ * 関連セッションは、人間が登録したものと、チャットに出たセッションの ID。× で外すと、チャットに出ても並べない。
+ */
 const Family = ({ s, sessions }: { s: Session; sessions: Session[] }) => {
   const parent = s.parent ? sessions.find((p) => p.id === s.parent) : undefined;
   const children = sessions.filter((c) => c.parent === s.id);
-  const archived = children.filter((c) => c.archived);
+  const related = (s.related ?? []).flatMap((id) => sessions.find((x) => x.id === id) ?? []);
   return (
     <div class="head-row family">
       {parent && (
@@ -268,23 +297,8 @@ const Family = ({ s, sessions }: { s: Session; sessions: Session[] }) => {
           <button type="button" class="badge-remove" aria-label="親から外す" title="親から外す" onClick={() => void attempt('親から外す', () => api.parent(s.id, ''))}>×</button>
         </span>
       )}
-      {children.length > 0 && (
-        <div class="family-children">
-          子:
-          <ul>
-            {children.filter((c) => !c.archived).map((c) => <ChildLink key={c.id} c={c} />)}
-            {archived.length === 1 && <ChildLink c={archived[0] as Session} faded />}
-            {archived.length > 1 && (
-              <li class="related-archived">
-                <details>
-                  <summary>アーカイブ済み {archived.length} 件</summary>
-                  <ul>{archived.map((c) => <ChildLink key={c.id} c={c} />)}</ul>
-                </details>
-              </li>
-            )}
-          </ul>
-        </div>
-      )}
+      <SessionLinks label="子" list={children} />
+      <SessionLinks label="関連" list={related} onRemove={(c) => void attempt('関連セッションから外す', () => api.related(s.id, c.id, true))} />
       <FamilyLink s={s} />
     </div>
   );

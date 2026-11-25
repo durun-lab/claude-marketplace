@@ -267,6 +267,8 @@ export type Session = {
   movedTo?: string;
   /** このセッションを start_session で起動した親のセッションの id。 */
   parent?: string;
+  /** 関連セッションの id。人間が登録したものを先に、チャットに出たものを後に並べる。親と子は含めない。 */
+  related?: string[];
   /** ダッシュボードが追加アカウントで起動したときの、そのアカウントの名前。 */
   account?: string;
   /** 人間がピン留めした。一覧の先頭にまとめて出す。 */
