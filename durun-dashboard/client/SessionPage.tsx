@@ -247,10 +247,18 @@ const FamilyLink = ({ s }: { s: Session }) => {
   );
 };
 
-/** 親と子のセッションへのリンク。start_session で起動したものと、人間が ID で結んだもの。親は × で外せる。 */
+const ChildLink = ({ c, faded }: { c: Session; faded?: boolean }) => (
+  <li class={`family-link${faded ? ' related-archived' : ''}`}>
+    <StatusDot status={c.status} waitingFor={c.waitingFor} />
+    <a href={href.session(c.id)}>{c.name}</a>
+  </li>
+);
+
+/** 親と子のセッションへのリンク。start_session で起動したものと、人間が ID で結んだもの。親は × で外せる。アーカイブ済みの子は、関連セッションと同じく後ろに薄く出し、2 件以上なら畳む。 */
 const Family = ({ s, sessions }: { s: Session; sessions: Session[] }) => {
   const parent = s.parent ? sessions.find((p) => p.id === s.parent) : undefined;
   const children = sessions.filter((c) => c.parent === s.id);
+  const archived = children.filter((c) => c.archived);
   return (
     <div class="head-row family">
       {parent && (
@@ -264,12 +272,16 @@ const Family = ({ s, sessions }: { s: Session; sessions: Session[] }) => {
         <div class="family-children">
           子:
           <ul>
-            {children.map((c) => (
-              <li key={c.id} class="family-link">
-                <StatusDot status={c.status} waitingFor={c.waitingFor} />
-                <a href={href.session(c.id)}>{c.name}</a>
+            {children.filter((c) => !c.archived).map((c) => <ChildLink key={c.id} c={c} />)}
+            {archived.length === 1 && <ChildLink c={archived[0] as Session} faded />}
+            {archived.length > 1 && (
+              <li class="related-archived">
+                <details>
+                  <summary>アーカイブ済み {archived.length} 件</summary>
+                  <ul>{archived.map((c) => <ChildLink key={c.id} c={c} />)}</ul>
+                </details>
               </li>
-            ))}
+            )}
           </ul>
         </div>
       )}
