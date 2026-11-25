@@ -165,3 +165,23 @@ export const jiraSplitter = (issues: JiraIssue[]): ((text: string) => JiraPiece[
   const key = new RegExp(`((?<![\\w-])(?:${[...spaces].join('|')})-\\d+(?![\\w-]))`);
   return (text) => text.split(key).flatMap((part, i) => (!part ? [] : i % 2 ? [{ text: part, url: base + part }] : [{ text: part }]));
 };
+
+/** 文の切れ端。session があれば、そのセッションの id。 */
+export type SessionPiece = { text: string; session?: string };
+
+// セッションの id は UUID。省略形は、bg のジョブの名前などに出る先頭の 8 文字。
+const SESSION_ID = /((?<![\w-])[0-9a-f]{8}(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?(?![\w-]))/;
+
+/** 文 1 つがまるごとセッションの id なら、その id。省略形は、先頭が合うセッションが 1 つだけのときに限る。コミットのハッシュなどを取り違えないため。 */
+export const sessionIdOf = (ids: string[], text: string): string | undefined => {
+  if (text.length > 8) return ids.includes(text) ? text : undefined;
+  const hits = ids.filter((id) => id.startsWith(text));
+  return hits.length === 1 ? hits[0] : undefined;
+};
+
+/** 文の中の、一覧にあるセッションの id とその省略形を切り出す。 */
+export const sessionSplitter = (ids: string[]): ((text: string) => SessionPiece[]) => (text) =>
+  text.split(SESSION_ID).flatMap((part, i) => {
+    const session = i % 2 ? sessionIdOf(ids, part) : undefined;
+    return !part ? [] : session ? [{ text: part, session }] : [{ text: part }];
+  });

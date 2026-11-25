@@ -5,7 +5,7 @@ import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, u
 import { type Attention, type BgTask, type Bookmark, type ChatEntry, JIRA_ISSUE_KEY, type AgentTask, type OutboxMessage, PR_URL, REF_NUMBER, type RepoRef, type Session, type Snapshot, type Subagent, bookmarkKey } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
-import { jiraSplitter, refSplitter } from './chatLinks.ts';
+import { jiraSplitter, refSplitter, sessionIdOf, sessionSplitter } from './chatLinks.ts';
 import type { Badges } from './completion.ts';
 import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
 import { WidgetPanel, showWidget } from './Dashboard.tsx';
@@ -514,11 +514,11 @@ export const Summary = ({ s }: { s: Session }) => {
 };
 
 /**
- * 文の #番号のうち、セッションのリポジトリの新しい PR と Issue に番号が合うものを、マウスを載せると題名が出るリンクにする。JIRA の課題のキーもリンクにする。ほかの文は mark で描く。
+ * 文の #番号のうち、セッションのリポジトリの新しい PR と Issue に番号が合うものを、マウスを載せると題名が出るリンクにする。JIRA の課題のキーと、一覧にあるセッションの id もリンクにする。ほかの文は mark で描く。
  * PR と課題はイルカが吹き出しで説明するので、題名はイルカのいない軽量モードでだけ出す。
  * PR と課題へのリンクは、押すとダッシュボードの中で開く。
  */
-const useRefMarks = (s: Session, entries: ChatEntry[], mark?: MarkText): MarkText => {
+const useRefMarks = (s: Session, entries: ChatEntry[], sessionIds: string[], mark?: MarkText): MarkText => {
   // 新しい PR と Issue に入らない古い番号もリンクにするため、発言に出た番号を渡して番号でも探させる。
   const numbers = [...new Set(entries.flatMap((e) => e.kind === 'tool' ? [] : [...e.text.matchAll(REF_NUMBER)].map((m) => Number(m[1]?.slice(1)))))];
   const numbersKey = numbers.join(',');
@@ -530,9 +530,11 @@ const useRefMarks = (s: Session, entries: ChatEntry[], mark?: MarkText): MarkTex
     const splitJira = jiraSplitter(issues ?? []);
     const title = (r: RepoRef) => (r.kind === 'pr' && !light ? undefined : r.title);
     const summaries = new Map(light ? (issues ?? []).map((j) => [j.key, j.summary]) : []);
-    const rest = (text: string) => splitJira(text).map((p, i) => (p.url ? <Ext key={i} href={p.url} title={summaries.get(p.text)}>{p.text}</Ext> : mark ? mark(p.text) : p.text));
+    const splitSessions = sessionSplitter(sessionIds);
+    const plain = (text: string) => splitSessions(text).map((p, i) => (p.session ? <a key={i} href={href.session(p.session)}>{p.text}</a> : mark ? <Fragment key={i}>{mark(p.text)}</Fragment> : p.text));
+    const rest = (text: string) => splitJira(text).map((p, i) => (p.url ? <Ext key={i} href={p.url} title={summaries.get(p.text)}>{p.text}</Ext> : <Fragment key={i}>{plain(p.text)}</Fragment>));
     return (text: string) => split(text).map((p, i) => (p.ref ? <Ext key={i} href={p.ref.url} title={title(p.ref)}>{p.text}</Ext> : <Fragment key={i}>{rest(p.text)}</Fragment>));
-  }, [data, issues, mark, light]);
+  }, [data, issues, mark, light, sessionIds]);
 };
 
 type LinkMenu = { x: number; y: number; items: MenuItem[] };
@@ -680,7 +682,7 @@ export type Jump = { index: number };
  * unread は Claude がまだ読んでいない送ったメッセージで、会話の後ろに並べる。
  * asks は Claude が人間の操作を待っている質問、コマンドの実行の依頼、権限の確認。質問と依頼は送信欄の代わりに、権限の確認は送信欄の上に出す。
  */
-export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session; entries?: ChatEntry[]; chatError?: string; unread: OutboxMessage[]; asks: Attention[]; jump?: Jump }) => {
+export const Chat = ({ s, entries, chatError, unread, asks, jump, sessions }: { s: Session; entries?: ChatEntry[]; chatError?: string; unread: OutboxMessage[]; asks: Attention[]; jump?: Jump; sessions: Session[] }) => {
   const list = entries ?? [];
   // 表示の始まりは最初に届いたときに決めて固定し、発言が増えても上の発言を押し出さない。
   const [start, setStart] = useState<number>();
@@ -749,11 +751,21 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump }: { s: Session
     e.preventDefault();
     toPrompt(dir);
   };
-  const codeLink = useMemo(() => fileLink(s.id), [s.id]);
+  // スナップショットは届くたびに作り直されるので、セッションの顔ぶれが同じ間は同じ配列を渡し、吹き出しを描き直させない。
+  const idsKey = sessions.map((x) => x.id).join();
+  const sessionIds = useMemo(() => sessions.map((x) => x.id), [idsKey]);
+  const codeLink = useMemo((): CodeLink => {
+    const File = fileLink(s.id);
+    // インラインのコードに書いたセッションの id も、そのセッションへのリンクにする。
+    return ({ text }) => {
+      const id = sessionIdOf(sessionIds, text);
+      return id ? <a href={href.session(id)}><code>{text}</code></a> : <File text={text} />;
+    };
+  }, [s.id, sessionIds]);
   // スナップショットは届くたびに作り直されるので、中身が同じ間は同じものを渡し、吹き出しを描き直させない。
   const badgesKey = JSON.stringify([s.prs, s.issues, s.jira]);
   const badges = useMemo<Badges>(() => ({ prs: s.prs, issues: s.issues, jira: s.jira }), [badgesKey]);
-  const markText = useRefMarks(s, list, useTermMarks(s));
+  const markText = useRefMarks(s, list, sessionIds, useTermMarks(s));
   const marked = new Set(s.bookmarks?.map(bookmarkKey));
   const [linkMenu, setLinkMenu] = useState<LinkMenu>();
   // 発言の右クリックの「翻訳」より先に受け取り、PR と課題のリンクでは、PR と JIRA のウィジェットに並べるバッジに足すメニューを、ファイルのリンクでは、メモ帳で開くメニューを出す。
