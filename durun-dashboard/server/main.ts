@@ -851,6 +851,19 @@ const setParent = (id: string, body: unknown): void => {
   touch();
 };
 
+/** 関連セッションを登録するか外す。外した id は、チャットに出ても関連セッションにしない。 */
+const setRelated = (id: string, body: unknown): void => {
+  const meta = sessionMeta(id);
+  const given = field<string>(body, 'session', 'string').trim();
+  const other = state.sessions[given];
+  if (!other) throw new HttpError(400, `セッション ID（${given}）のセッションが見つかりません`);
+  if (other.id === meta.id) throw new HttpError(400, '自分自身は関連セッションにできません');
+  const remove = (body as { remove?: unknown }).remove === true;
+  meta.related = remove ? meta.related?.filter((r) => r !== other.id) : [...new Set([...(meta.related ?? []), other.id])];
+  meta.hiddenRelated = remove ? [...new Set([...(meta.hiddenRelated ?? []), other.id])] : meta.hiddenRelated?.filter((r) => r !== other.id);
+  touch();
+};
+
 const setTheme = (id: string, body: unknown): void => {
   moveToTheme(Object.values(state.sessions), sessionMeta(id).id, field<string>(body, 'theme', 'string').trim() || undefined);
   touch();
@@ -1374,6 +1387,7 @@ const POST_ROUTES: Route[] = [
   [/^\/api\/sessions\/order$/, (_, b) => orderSessions(b)],
   [/^\/api\/sessions\/([^/]+)\/theme$/, ([, id = ''], b) => setTheme(id, b)],
   [/^\/api\/sessions\/([^/]+)\/parent$/, ([, id = ''], b) => setParent(id, b)],
+  [/^\/api\/sessions\/([^/]+)\/related$/, ([, id = ''], b) => setRelated(id, b)],
   [/^\/api\/themes\/rename$/, (_, b) => setThemeName(b)],
   [/^\/api\/themes\/order$/, (_, b) => orderThemes(b)],
   [/^\/api\/dashboards$/, (_, b) => saveDashboard(b)],

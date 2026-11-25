@@ -9,6 +9,7 @@ import { accountNames, autoActionOf, isAllowable, trashOf } from './deliver.ts';
 import { isHelperSession } from './haiku.ts';
 import { improveState, workflowNameOf, workflowState } from './workflow.ts';
 import { slackKeyOf, slackLinksIn } from './slack.ts';
+import { sessionIdsIn } from '../shared/sessionIds.ts';
 import { badgeIssue, badgeOf, badgePr, cachedPr, findJiraKeys, jiraBase, jiraIssue, jiraKeyOfUrl, jiraRefreshedAt, mentionedBadges, prPending } from './integrations.ts';
 import { hasJev } from './jev.ts';
 import { notionEnabled } from './notion.ts';
@@ -194,6 +195,13 @@ const slackRefs = (meta: SessionMeta, log: claude.LogSummary | undefined): strin
   return [...byKey.values()];
 };
 
+/** 関連セッション。人間が登録したものを先に、チャットに出た id を後に並べる。自分と親と子、人間が外したもの、一覧に無いものは除く。 */
+const relatedOf = (meta: SessionMeta, log: claude.LogSummary | undefined, ids: string[]): string[] => {
+  const said = log?.texts.flatMap((t) => (t.kind === 'tool' ? [] : [t.text])) ?? [];
+  const family = (id: string): boolean => id === meta.id || id === meta.parent || state.sessions[id]?.parent === meta.id;
+  return [...new Set([...(meta.related ?? []), ...sessionIdsIn(ids, said)])].filter((id) => ids.includes(id) && !family(id) && !meta.hiddenRelated?.includes(id));
+};
+
 const warmedListeners = new Set<() => void>();
 
 /** その場で読まずに裏へ回した会話ログを、読み終えたときに呼ぶ。読み終えた要約で配り直すために使う。 */
@@ -205,7 +213,7 @@ const notifyWarmed = (): void => {
   for (const fn of warmedListeners) fn();
 };
 
-const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): Session => {
+const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined, ids: string[] = []): Session => {
   // Claude Code は、worktree に入ったセッションの会話ログを、その worktree のディレクトリへ移すことがある。覚えた場所に無ければ探し直す。
   if (!meta.transcriptPath || !claude.statOf(meta.transcriptPath)) {
     const found = claude.findTranscript(meta.id);
@@ -266,6 +274,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined): 
     prsPending: branches.some((b) => prPending(meta.cwd, b, keep)),
     jira: shown([...jiraKeys].map((key) => jiraIssue(key, keep))),
     slack: slackRefs(meta, log),
+    related: relatedOf(meta, log, ids),
     issues: shown(badges.flatMap((b) => (b.kind === 'issue' && badgeIssue(b.url, keep)) || [])),
     usage: buildUsage(meta.id, log, subs),
     archived: meta.archived,
@@ -431,7 +440,9 @@ export const activeThemes = (exceptId: string): string[] => {
 /** 一覧に出ているセッションを、スナップショットと同じ形で返す。スナップショットと違い、状態の記録やタイムラインは変えない。 */
 export const listedSessionViews = (): Session[] => {
   const live = claude.readLiveSessions();
-  return listedSessions(live, Date.now()).map((m) => buildSession(m, live.get(m.id)));
+  const listed = listedSessions(live, Date.now());
+  const ids = listed.map((m) => m.id);
+  return listed.map((m) => buildSession(m, live.get(m.id), ids));
 };
 
 export const buildSnapshot = (): Snapshot => {
@@ -439,7 +450,9 @@ export const buildSnapshot = (): Snapshot => {
   const live = claude.readLiveSessions();
   // ダッシュボードが補助に動かす claude -p は、一覧に出さないので、状態に記録しない。
   for (const l of live.values()) if (!isHelperSession(l.sessionId)) rememberLive(ensureSession(l.sessionId, l.cwd), l);
-  const sessions = listedSessions(live, now).map((m) => buildSession(m, live.get(m.id)));
+  const listed = listedSessions(live, now);
+  const ids = listed.map((m) => m.id);
+  const sessions = listed.map((m) => buildSession(m, live.get(m.id), ids));
   // 画面はテーマの前後の空白を除いてまとめるので、並べ替えた順と突き合わせられるよう、ここでも除く。
   const themes = arrangeThemes([...new Set(sessions.flatMap((s) => [s.theme.trim(), s.repo]))], state.themeOrder);
   const attention = deriveAttention(sessions);

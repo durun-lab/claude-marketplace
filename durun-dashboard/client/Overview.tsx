@@ -5,7 +5,8 @@ import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, u
 import { type Attention, type BgTask, type Bookmark, type ChatEntry, JIRA_ISSUE_KEY, type AgentTask, type OutboxMessage, PR_URL, REF_NUMBER, type RepoRef, type Session, type Snapshot, type Subagent, bookmarkKey } from '../shared/types.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import { DesktopIcon } from './apps.tsx';
-import { jiraSplitter, refSplitter, sessionIdOf, sessionSplitter } from './chatLinks.ts';
+import { jiraSplitter, refSplitter, sessionSplitter } from './chatLinks.ts';
+import { sessionIdOf } from '../shared/sessionIds.ts';
 import type { Badges } from './completion.ts';
 import { type Float, FloatFrame, dock, floatUp } from './Float.tsx';
 import { WidgetPanel, showWidget } from './Dashboard.tsx';
@@ -547,6 +548,12 @@ const badgeLinkOf = (e: MouseEvent): string | undefined => {
   return a && (PR_URL.test(a.href) || JIRA_ISSUE_KEY.test(a.href.split('/browse/')[1] ?? '')) ? a.href : undefined;
 };
 
+/** チャットに出たセッションの ID のリンクなら、そのセッションの id。 */
+const sessionLinkOf = (e: MouseEvent): string | undefined => {
+  const a = e.target instanceof Element ? e.target.closest('a') : null;
+  return a?.getAttribute('href')?.match(/^#\/s\/([0-9a-f-]{36})$/)?.[1];
+};
+
 /** PR と JIRA の課題へのリンクにマウスを載せたら、イルカが吹き出しで説明する。コメントなど PR や課題の中の場所へのリンクは説明しない。 */
 const explainLink = (e: MouseEvent) => {
   const a = e.target instanceof Element ? e.target.closest('a') : null;
@@ -772,7 +779,14 @@ export const Chat = ({ s, entries, chatError, unread, asks, jump, sessions }: { 
   const onContextMenu = (e: MouseEvent) => {
     const url = badgeLinkOf(e);
     const file = url ? undefined : fileLinkOf(e);
-    const items: MenuItem[] = url ? [{ label: 'バッジに追加', onClick: () => void addBadge(url) }] : file ? [{ label: 'メモ帳で開く', onClick: () => void openInNotepad(s.id, s.cwd, file) }] : [];
+    const other = url || file ? undefined : sessionLinkOf(e);
+    const items: MenuItem[] = url
+      ? [{ label: 'バッジに追加', onClick: () => void addBadge(url) }]
+      : file
+        ? [{ label: 'メモ帳で開く', onClick: () => void openInNotepad(s.id, s.cwd, file) }]
+        : other && other !== s.id
+          ? [{ label: '関連セッションに登録', onClick: () => void attempt('関連セッションの登録', () => api.related(s.id, other)) }]
+          : [];
     if (!items.length) return;
     e.preventDefault();
     e.stopPropagation();
