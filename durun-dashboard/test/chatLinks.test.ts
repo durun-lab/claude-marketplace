@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { chatLinks, chatMarkdownFiles, jiraSplitter, lexMarkdown, mergeLinks, refSplitter, withTitles } from '../client/chatLinks.ts';
+import { chatLinks, chatMarkdownFiles, jiraSplitter, lexMarkdown, mergeLinks, refSplitter, sessionSplitter, withTitles } from '../client/chatLinks.ts';
 
 test('人間と Claude の発言に出たリンクを、題名を付けて新しい順に 1 件ずつ拾い、ダッシュボード自身とコードの中の URL は除く', () => {
   const links = chatLinks(
@@ -116,4 +116,14 @@ test('jiraSplitter は、知っているスペースの課題のキーだけを�
     { text: ' の下書き。UTF-8、XLPO-2、LPO-3a、LPO-4-5 はキーではない' },
   ]);
   assert.deepEqual(jiraSplitter([])('LPO-1'), [{ text: 'LPO-1' }]);
+});
+
+test('一覧にあるセッションの id と先頭 8 文字の省略形を切り出し、合わない id と先頭の重なる省略形はそのままにする', () => {
+  const a = '1403684c-9348-4c8e-95aa-2c7bb977f334';
+  const b = 'abcdef12-0000-4000-8000-000000000001';
+  const c = 'abcdef12-0000-4000-8000-000000000002';
+  const split = sessionSplitter([a, b, c]);
+  assert.deepEqual(split(`親は ${a}、ジョブは 1403684c。`), [{ text: '親は ' }, { text: a, session: a }, { text: '、ジョブは ' }, { text: '1403684c', session: a }, { text: '。' }]);
+  assert.deepEqual(split('abcdef12 と deadbeef と x1403684c'), [{ text: 'abcdef12' }, { text: ' と ' }, { text: 'deadbeef' }, { text: ' と x1403684c' }]);
+  assert.deepEqual(split('00000000-0000-4000-8000-000000000000'), [{ text: '00000000-0000-4000-8000-000000000000' }]);
 });
