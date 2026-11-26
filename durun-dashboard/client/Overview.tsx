@@ -84,45 +84,44 @@ const useTaskFolds = (sessionId: string): TaskFolds => {
   };
 };
 
-/** 押すと、エージェントが書いた説明と、登録・着手・完了の時刻を開く。手順と待っているタスクは、その下に字下げして並べる。 */
+/**
+ * 題か丸にマウスを載せると、エージェントが書いた説明と、登録・着手・完了の時刻をイルカが吹き出しで出す。イルカのいない軽量モードでは、説明をツールチップに出す。
+ * 下にタスクを持つ行は、題か丸を押すと下のタスクを開け閉めする。手順と待っているタスクは、その下に字下げして並べる。
+ */
 const TaskRow = ({ t, s, children, folds, seen = new Set() }: { t: AgentTask; s: Session; children: Map<string, AgentTask[]>; folds: TaskFolds; seen?: Set<string> }) => {
-  const waits = t.blockedBy ?? [];
   const below = seen.has(t.id) ? [] : (children.get(t.id) ?? []);
   const inner = new Set([...seen, t.id]);
   const folded = folds.has(t.id);
-  const times = ([['登録', t.createdAt], ['編集', t.updatedAt], ['着手', t.startedAt], ['完了', t.completedAt]] as const).flatMap(([label, at]) => (at ? [`${label} ${dateTime(at)}`] : []));
+  const light = useLightMode();
+  const show = (e: MouseEvent) => {
+    if (!light) explain({ task: t, at: e.currentTarget as Element });
+  };
+  const toggle = (e: MouseEvent) => {
+    // 題のチケットのチップや子セッションのリンクは、そのまま開かせる。
+    if ((e.target as Element).closest('a')) return;
+    folds.toggle(t.id);
+  };
+  const tip = light ? t.description : undefined;
   return (
     <li class={`task task-${t.status}`}>
-      <details>
-        <summary>
-          {below.length > 0 ? (
-            <button
-              type="button"
-              class="task-icon task-fold"
-              aria-expanded={!folded}
-              aria-label={`${TASK_LABEL[t.status]}。下のタスクを${folded ? '開く' : '畳む'}`}
-              title={`下のタスクを${folded ? '開く' : '畳む'}`}
-              onClick={(e) => {
-                // 題を押したときの詳細の開閉と分ける。
-                e.preventDefault();
-                e.stopPropagation();
-                folds.toggle(t.id);
-              }}
-            />
-          ) : (
-            <span class="task-icon" role="img" aria-label={TASK_LABEL[t.status]} />
-          )}
-          <span class="task-text"><TaskTitle t={t} s={s} /></span>
-          {folded && <span class="task-fold-count" title="畳んでいる下のタスクの数">+{countBelow(t, children)}</span>}
-          {t.delegatedTo && <a class="task-session" href={href.session(t.delegatedTo)} title="任せた子セッションを開く" onClick={(e) => e.stopPropagation()}>子セッション</a>}
-        </summary>
-        <div class="task-detail">
-          {t.description ? <Markdown text={t.description} /> : <p class="muted">説明はありません。</p>}
-          {waits.length > 1 && <p class="task-times">{waits.join('・')} の完了を待つ</p>}
-          {t.delegatedTo && <p class="task-times"><a href={href.session(t.delegatedTo)}>任せた子セッションを開く</a></p>}
-          {times.length > 0 && <p class="task-times">{times.join('・')}</p>}
-        </div>
-      </details>
+      <div class={`task-head${below.length ? ' is-foldable' : ''}`}>
+        {below.length > 0 ? (
+          <button
+            type="button"
+            class="task-icon task-fold"
+            aria-expanded={!folded}
+            aria-label={`${TASK_LABEL[t.status]}。下のタスクを${folded ? '開く' : '畳む'}`}
+            title={tip}
+            onMouseEnter={show}
+            onClick={toggle}
+          />
+        ) : (
+          <span class="task-icon" role="img" aria-label={TASK_LABEL[t.status]} title={tip} onMouseEnter={show} />
+        )}
+        <span class="task-text" title={tip} onMouseEnter={show} onClick={below.length ? toggle : undefined}><TaskTitle t={t} s={s} /></span>
+        {folded && <span class="task-fold-count" title="畳んでいる下のタスクの数">+{countBelow(t, children)}</span>}
+        {t.delegatedTo && <a class="task-session" href={href.session(t.delegatedTo)} title="任せた子セッションを開く">子セッション</a>}
+      </div>
       {/* 子が 1 つだけなら、順に 1 つずつ進む手順なので、字下げせずに親の丸からまっすぐ線でつなぐ。狭いウィジェットに収めるため。 */}
       {below.length > 0 && !folded && <ul class={`tasks task-children${below.length === 1 ? ' is-chain' : ''}`}><Siblings tasks={below} s={s} children={children} folds={folds} seen={inner} /></ul>}
     </li>

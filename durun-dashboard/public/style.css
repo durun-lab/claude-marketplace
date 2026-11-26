@@ -1221,12 +1221,12 @@ a.skype-time:hover { color: #0078ca; text-decoration: underline; }
 .tasks { display: grid; gap: 7px; }
 .task { display: flex; align-items: flex-start; gap: 8px; }
 .task-icon { position: relative; flex: none; width: 14px; height: 14px; margin-top: 3px; border: 2px solid var(--muted); border-radius: 50%; }
-.task-in_progress > details .task-icon { border-color: var(--accent); background: conic-gradient(var(--accent) 0 50%, transparent 0 100%); }
-.task-completed > details .task-icon { border-color: var(--good); background: var(--good); }
-.task-completed > details .task-icon::after { content: ""; position: absolute; left: 2.5px; top: -0.5px; width: 3px; height: 6px; border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
+.task-in_progress > .task-head .task-icon { border-color: var(--accent); background: conic-gradient(var(--accent) 0 50%, transparent 0 100%); }
+.task-completed > .task-head .task-icon { border-color: var(--good); background: var(--good); }
+.task-completed > .task-head .task-icon::after { content: ""; position: absolute; left: 2.5px; top: -0.5px; width: 3px; height: 6px; border: solid #fff; border-width: 0 1.5px 1.5px 0; transform: rotate(45deg); }
 /* 子の並びは折り返して行の下に置く。行と子の並びの間は、子の並びの上の余白だけにし、枝の線が途切れないようにする。 */
 .task { flex-wrap: wrap; row-gap: 0; }
-.task > details { flex: 1; min-width: 0; }
+.task > details, .task-head { flex: 1; min-width: 0; }
 /* 待っているタスクは、待つタスクの下に、縦の線から枝を出して並べる。 */
 .task-children { flex-basis: 100%; margin: 4px 0 0 6px; padding-left: 14px; }
 .task-children > .task { position: relative; }
@@ -1235,16 +1235,18 @@ a.skype-time:hover { color: #0078ca; text-decoration: underline; }
  * 子を持つ行は、自分の丸の下から子の並びの手前まで縦の線を引く。行の高さはチケットのチップや開いた説明で変わるので、行の側から引く。
  * 子は、行の頭から自分の丸の中心の高さまで └ を引き、次の兄弟がある子だけ、縦の線を次の行まで延ばして ├ にする。最後の子の下へは延ばさない。
  */
-.task:has(> .task-children) > details { position: relative; }
-.task:has(> .task-children) > details::after { content: ""; position: absolute; left: 6px; top: 17px; bottom: -4px; border-left: 1px solid var(--border-strong); }
+.task:has(> .task-children) > .task-head { position: relative; }
+.task:has(> .task-children) > .task-head::after { content: ""; position: absolute; left: 6px; top: 17px; bottom: -4px; border-left: 1px solid var(--border-strong); }
 .task-children > .task::before { content: ""; position: absolute; left: -14px; top: 0; width: 10px; height: 10px; border-left: 1px solid var(--border-strong); border-bottom: 1px solid var(--border-strong); }
 .task-children > .task:not(:last-child)::after { content: ""; position: absolute; left: -14px; top: 10px; bottom: -7px; border-left: 1px solid var(--border-strong); }
 /* 子が 1 つだけの並びは字下げせず、親の丸の下から子の丸の上まで、まっすぐの線でつなぐ。 */
 .task-children.is-chain { margin-left: 0; padding-left: 0; }
 .task-children.is-chain > .task::before { left: 6px; width: 0; height: 3px; border-bottom: 0; }
-.task summary { display: flex; align-items: flex-start; gap: 8px; list-style: none; cursor: pointer; }
+.task summary, .task-head { display: flex; align-items: flex-start; gap: 8px; list-style: none; cursor: pointer; }
+.task-head { cursor: default; }
+/* 下にタスクを持つ行は、題を押すと下のタスクを開け閉めする。 */
+.task-head.is-foldable .task-text { cursor: pointer; }
 .task summary::-webkit-details-marker { display: none; }
-.task-detail { margin: 4px 0 2px 22px; font-size: 12px; }
 .task-times { margin: 4px 0 0; color: var(--muted); font-size: 11px; }
 .task-text { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .task-fold { appearance: none; padding: 0; background: none; cursor: pointer; }
@@ -1264,8 +1266,8 @@ a.skype-time:hover { color: #0078ca; text-decoration: underline; }
 .task-mark-in_progress { border-color: var(--accent); background: conic-gradient(var(--accent) 0 50%, transparent 0 100%); }
 .task-mark-completed { border-color: var(--good); background: var(--good); }
 .task-mark-completed::after { content: ""; position: absolute; left: 2px; top: 0; width: 2px; height: 4.5px; border: solid #fff; border-width: 0 1.3px 1.3px 0; transform: rotate(45deg); }
-.task-in_progress > details .task-text { font-weight: 600; }
-.task-completed > details .task-text { color: var(--muted); text-decoration: line-through; }
+.task-in_progress > .task-head .task-text { font-weight: 600; }
+.task-completed > .task-head .task-text { color: var(--muted); text-decoration: line-through; }
 
 .subagent { padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
 .subagent-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 10px; list-style: none; cursor: pointer; }
