@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import path from 'node:path';
 import { applyEvent, emptyRun, newVersion, reviseInput, titleOf } from '../shared/proofread.ts';
-import { type BranchView, type DiffRange, type DocFormat, EFFORT_LEVELS, MODELS, type ProofFile, type ProofVersion } from '../shared/types.ts';
+import { type BranchView, type DiffRange, type DocFormat, EFFORT_LEVELS, fromAgent, MODELS, type ProofFile, type ProofVersion } from '../shared/types.ts';
 import { authProvider, requestAuth } from './auth.ts';
 import { readLiveSessions } from './claude.ts';
 import { archiveSession, autoRunCommand, dropStaleRequests, sendMessage, startChildSession, unwait, waitFor } from './deliver.ts';
@@ -265,7 +265,7 @@ const TOOLS = [
   {
     name: 'send_to_session',
     description:
-      'ほかのセッションへ依頼を送る。start_session で起動した自分の子セッションのほか、ticket_sessions などで知った、親子でないセッションにも送れる。親子でないセッションには、送り手のセッションの名前と id を添えて届ける。人間がダッシュボードから送るときと同じく、相手が作業中なら作業を止めずに受け付けさせ、終わっていれば再開して渡す。アーカイブされたセッションへは送れない。',
+      'ほかのセッションへ依頼を送る。start_session で起動した自分の子セッションのほか、ticket_sessions などで知った、親子でないセッションにも送れる。送り手のセッションの名前と id を添えて届ける。人間がダッシュボードから送るときと同じく、相手が作業中なら作業を止めずに受け付けさせ、終わっていれば再開して渡す。アーカイブされたセッションへは送れない。',
     inputSchema: {
       type: 'object',
       properties: {
@@ -791,7 +791,7 @@ const startSessionTool = (res: ServerResponse, rpcId: RpcId, params: RpcParams, 
   if (task && !parent?.agentTasks?.some((t) => t.id === task)) return send(res, { id: rpcId, result: textResult('task に、create_tasks か list_tasks が返したタスクの id を渡してください。', true) });
   const finish = openStream(res, rpcId, params, () => '子セッションを起動しています');
   const account = str(args.account);
-  startChildSession(sessionId, prompt, str(args.name), model, effort, account === 'primary' ? '' : account).then(
+  startChildSession(sessionId, fromAgent(state.sessions[sessionId]?.title, sessionId, prompt), str(args.name), model, effort, account === 'primary' ? '' : account).then(
     (child) => {
       if (task && parent) {
         delegateTask(parent, task, child);
@@ -803,7 +803,7 @@ const startSessionTool = (res: ServerResponse, rpcId: RpcId, params: RpcParams, 
   );
 };
 /** 子セッションが会話を引き継いだ複製へ移っていたら、複製へ送る。 */
-/** 子セッションには依頼をそのまま、親子でないセッションには送り手を添えて送る。 */
+/** 送り手のセッションを添えて送る。受け手と人間が、人間の指示と見分けられるように。 */
 const sendToSession = (sessionId: string, args: ToolArgs): object => {
   const text = str(args.text);
   let target = state.sessions[str(args.session_id) ?? ''];
@@ -813,7 +813,7 @@ const sendToSession = (sessionId: string, args: ToolArgs): object => {
   const child = target.parent === sessionId;
   if (target.archived || target.archiveWhenIdle) return textResult(child ? '子セッションはアーカイブされています。続けて任せるなら、start_session で起動し直してください。' : '送る先のセッションはアーカイブされています。', true);
   const from = state.sessions[sessionId];
-  const { delivery } = sendMessage(target.id, child ? text : `[セッション「${from?.title ?? '名前なし'}」（session_id: ${sessionId}）からの依頼]\n${text}`);
+  const { delivery } = sendMessage(target.id, fromAgent(from?.title, sessionId, text));
   const who = child ? '子セッション' : 'セッション';
   return textResult(delivery === 'queued' ? `${who}は権限の確認を待っているので、答えた後に届けます。` : `${who}へ送りました。`);
 };

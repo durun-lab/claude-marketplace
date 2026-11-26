@@ -9,7 +9,7 @@
 // oneshot のワークフローは、セッションを起動せずに、イベントごとに claude -p を 1 回動かす。
 import fs from 'node:fs';
 import path from 'node:path';
-import { COMPACT_WINDOW_MAX, COMPACT_WINDOW_MIN, EFFORT_LEVELS, matchesFilter, TEXT_FILTER_OPS, type TextFilter, THREAD_INTERVAL_DEFAULT, THREAD_INTERVAL_MIN, type BurstKind, type ImproveState, MODELS, type WorkflowDef, type WorkflowInfo, type WorkflowState, type WorkflowTrigger } from '../shared/types.ts';
+import { WORKFLOW_MARK, COMPACT_WINDOW_MAX, COMPACT_WINDOW_MIN, EFFORT_LEVELS, matchesFilter, TEXT_FILTER_OPS, type TextFilter, THREAD_INTERVAL_DEFAULT, THREAD_INTERVAL_MIN, type BurstKind, type ImproveState, MODELS, type WorkflowDef, type WorkflowInfo, type WorkflowState, type WorkflowTrigger } from '../shared/types.ts';
 import { CLAUDE_DIR, isAlive, readLiveSessions } from './claude.ts';
 import { archiveSession, COMPACT_COMMAND, compactSession, sendMessage, startTrackedSession } from './deliver.ts';
 import { handOverChildren } from './handover.ts';
@@ -40,7 +40,7 @@ const THREAD_TICK_MS = 1000;
 const LOOKBACK_MS = 24 * 60 * 60_000;
 const DAY_MS = 24 * 60 * 60_000;
 const SEEN_KEPT = 500;
-const MARK = '[durun-dashboard ワークフロー]';
+const MARK = WORKFLOW_MARK;
 const DIRECT_SECTION = 'Needs your review';
 const MENTION_ERROR = 'Slack のメンションを読めません';
 const JIRA_MENTION_ERROR = 'JIRA のメンションを読めません';
