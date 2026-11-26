@@ -1,6 +1,7 @@
 import type { RefObject } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
-import type { AssistantMessage, AssistantReply, GlossaryTerm } from '../shared/types.ts';
+import type { AgentTask, AssistantMessage, AssistantReply, GlossaryTerm } from '../shared/types.ts';
+import { dateTime } from './format.ts';
 import { DELIVERY_TOAST, api, attempt } from './api.ts';
 import type { Pose } from './dolphin3d.ts';
 import type { DolphinMessage } from './dolphinWorker.ts';
@@ -77,14 +78,28 @@ type Motion = { x: number; y: number; vx: number; vy: number; tx: number; ty: nu
 type Drag = { dx: number; dy: number; x: number; y: number; moved: boolean; samples: Sample[]; windUp: number };
 
 /** 説明しているものと、マウスを載せている要素。説明するのは、用語か、URL で指した PR か、キーで指した JIRA の課題。 */
-type Explained = { at: Element } & ({ term: GlossaryTerm } | { pr: string } | { jira: string });
+type Explained = { at: Element } & ({ term: GlossaryTerm } | { pr: string } | { jira: string } | { task: AgentTask });
 
 /** 毎フレームの処理が読む画面の状態。描き直しを待たずに読めるよう ref に持つ。 */
 type Live = { hover: boolean; open: boolean; thinking: boolean; drag?: Drag; explained?: Explained };
 
+/** タスクの説明と、待っているタスク、登録・着手・完了の時刻。 */
+const TaskTip = ({ t }: { t: AgentTask }) => {
+  const times = ([['登録', t.createdAt], ['編集', t.updatedAt], ['着手', t.startedAt], ['完了', t.completedAt]] as const).flatMap(([label, at]) => (at ? [`${label} ${dateTime(at)}`] : []));
+  const waits = t.blockedBy ?? [];
+  return (
+    <>
+      <strong>{t.subject}</strong>
+      {t.description ? <Markdown text={t.description} /> : <p class="dolphin-say muted">説明はありません。</p>}
+      {waits.length > 0 && <p class="task-times">{waits.join('・')} の完了を待つ</p>}
+      {times.length > 0 && <p class="task-times">{times.join('・')}</p>}
+    </>
+  );
+};
+
 const explainers = new Set<(e?: Explained) => void>();
 
-/** 用語か PR か課題へのリンクにマウスを載せたら呼ぶ。マウスが要素から外れるまで、イルカが止まって吹き出しで説明する。引数を渡さなければ、説明をやめる。 */
+/** 用語か PR か課題へのリンクか、タスクの題にマウスを載せたら呼ぶ。マウスが要素から外れるまで、イルカが止まって吹き出しで説明する。引数を渡さなければ、説明をやめる。 */
 export const explain = (e?: Explained): void => explainers.forEach((fn) => fn(e));
 
 const clamp = (v: number, min: number, max: number): number => Math.min(Math.max(v, min), Math.max(min, max));
@@ -531,12 +546,14 @@ export const Dolphin = ({ jev }: { jev?: boolean }) => {
         </div>
       )}
       {explained && (
-        <div class={`card dolphin-chat ${'term' in explained ? 'dolphin-term' : 'dolphin-pr'}`} ref={tip} role="tooltip">
+        <div class={`card dolphin-chat ${'term' in explained || 'task' in explained ? 'dolphin-term' : 'dolphin-pr'}`} ref={tip} role="tooltip">
           {/* useCached は読み込み中も前の PR や課題を残すので、PR と課題ごとに作り直す。 */}
           {'pr' in explained ? (
             <PrTip key={explained.pr} url={explained.pr} />
           ) : 'jira' in explained ? (
             <JiraTip key={explained.jira} issueKey={explained.jira} />
+          ) : 'task' in explained ? (
+            <TaskTip t={explained.task} />
           ) : (
             <>
               <strong>{explained.term.term}</strong>
