@@ -1116,7 +1116,20 @@ export type MovieMakerView = {
 /** タイムラインの状態の鍵。StatusBadge と同じ見出しの鍵で、gone は一覧から消えて線を引かない区間。 */
 export type TimelineState = SessionStatus | WaitingFor | 'gone';
 /** タイムラインに置く出来事。prompt はチャットの指示、question と answer は人間への質問とその回答、compact は会話の compact。 */
-export type TimelineEventKind = 'prompt' | 'question' | 'answer' | 'compact';
+/** prompt は人間が送ったチャットの指示、agent-prompt はほかのセッションのエージェントが送った指示、workflow-prompt はワークフローが送った指示。 */
+export type TimelineEventKind = 'prompt' | 'agent-prompt' | 'workflow-prompt' | 'question' | 'answer' | 'compact';
+
+/** ダッシュボードのワークフローが送る指示の頭の印。 */
+export const WORKFLOW_MARK = '[durun-dashboard ワークフロー]';
+/** ほかのセッションのエージェントが send_to_session や start_session で送る指示の頭の印。 */
+export const AGENT_MARK = '[durun-dashboard セッション';
+
+/** エージェントが送る指示に、送り手のセッションを添える。受け手の Claude と人間が、人間の指示と見分けられるように。 */
+export const fromAgent = (title: string | undefined, sessionId: string, text: string): string => `${AGENT_MARK}「${title ?? '名前なし'}」（session_id: ${sessionId}）からの依頼]\n${text}`;
+
+/** チャットの指示を、送り手でタイムラインの印に分ける。 */
+export const promptKind = (text: string): TimelineEventKind =>
+  text.startsWith('/compact') ? 'compact' : text.startsWith(WORKFLOW_MARK) ? 'workflow-prompt' : text.startsWith(AGENT_MARK) ? 'agent-prompt' : 'prompt';
 /** タイムラインの 1 行。states は状態が変わった時刻とその状態を古い順に並べ、events は出来事を古い順に並べる。 */
 /** archived はアーカイブ済みのセッション。行の並びで下にまとめる。 */
 export type TimelineRow = { id: string; name: string; archived: boolean; states: [number, TimelineState][]; events: [number, TimelineEventKind][] };

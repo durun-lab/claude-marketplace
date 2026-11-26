@@ -37,13 +37,15 @@ const LINE: Record<Exclude<TimelineState, 'gone'>, { color: string; width: numbe
 };
 
 const MARK: Record<TimelineEventKind, { glyph: string; label: string }> = {
-  prompt: { glyph: '▼', label: 'チャットの指示' },
+  prompt: { glyph: '▼', label: '人間の指示' },
+  'agent-prompt': { glyph: '▼', label: 'エージェントの指示' },
+  'workflow-prompt': { glyph: '▼', label: 'ワークフローの指示' },
   question: { glyph: '?', label: '質問' },
   answer: { glyph: '✓', label: '回答' },
   compact: { glyph: '◆', label: 'compact' },
 };
 
-const lastPrompt = (r: TimelineRow): number => r.events.findLast(([, kind]) => kind === 'prompt')?.[0] ?? 0;
+const lastPrompt = (r: TimelineRow): number => r.events.findLast(([, kind]) => kind.endsWith('prompt'))?.[0] ?? 0;
 
 const lastAt = (r: TimelineRow): number => Math.max(r.states.at(-1)?.[0] ?? 0, r.events.at(-1)?.[0] ?? 0);
 

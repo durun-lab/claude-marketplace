@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { ticketSessionsText } from '../server/ticketSessions.ts';
-import type { Session } from '../shared/types.ts';
+import { fromAgent, promptKind, type Session } from '../shared/types.ts';
 
 const pr = 'https://github.com/o/r/pull/12';
 const jira = 'https://example.atlassian.net/browse/WEB-7';
@@ -21,4 +21,11 @@ test('チケットの関連セッションは、自分を除き、タスクに�
   assert.match(ticketSessionsText(sessions, 'web-7', 'self'), /session_id: issue/);
   assert.match(ticketSessionsText(sessions, jira, 'self'), /session_id: issue/);
   assert.equal(ticketSessionsText(sessions, 'WEB-8', 'self'), 'WEB-8 をバッジにしているほかのセッションはありません。');
+});
+
+test('チャットの指示を、人間・エージェント・ワークフローの印で分ける', () => {
+  assert.equal(promptKind('直してください'), 'prompt');
+  assert.equal(promptKind(fromAgent('親', 'p', '続けて')), 'agent-prompt');
+  assert.equal(promptKind('[durun-dashboard ワークフロー]「改善要望の対応」 改善要望が 1 件'), 'workflow-prompt');
+  assert.equal(promptKind('/compact'), 'compact');
 });

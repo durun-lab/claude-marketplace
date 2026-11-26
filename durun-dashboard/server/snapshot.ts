@@ -1,7 +1,7 @@
 // 画面に出す全体像を、Claude Code のファイル、外部の情報源、ダッシュボードの状態から組み立てる。
 import fs from 'node:fs';
 import path from 'node:path';
-import type { Attention, BgTask, Session, SessionStatus, Snapshot, Subagent, TimelineRow, Usage } from '../shared/types.ts';
+import { type Attention, type BgTask, promptKind, type Session, type SessionStatus, type Snapshot, type Subagent, type TimelineRow, type Usage } from '../shared/types.ts';
 import { authRequests, claudeLoginState } from './auth.ts';
 import { cacheVersion } from './cache.ts';
 import * as claude from './claude.ts';
@@ -502,7 +502,7 @@ export const timelineRows = (now = Date.now()): TimelineRow[] => {
     const meta = state.sessions[id];
     if (!meta) return [];
     const log = meta.transcriptPath ? claude.peekLog(meta.transcriptPath, false, noop).summary : undefined;
-    const said = (log?.texts ?? []).flatMap((e): TimelineRow['events'] => (e.kind === 'prompt' && e.at && e.at >= cutoff ? [[e.at, e.text.startsWith('/compact') ? 'compact' : 'prompt']] : []));
+    const said = (log?.texts ?? []).flatMap((e): TimelineRow['events'] => (e.kind === 'prompt' && e.at && e.at >= cutoff ? [[e.at, promptKind(e.text)]] : []));
     return [{ id, name: displayName(meta, log), archived: meta.archived, states: r.states, events: [...said, ...r.events].sort((a, b) => a[0] - b[0]) }];
   });
 };
