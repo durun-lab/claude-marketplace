@@ -287,8 +287,17 @@ const PR_TEXT_EDIT = /\bgh\s+pr\s+edit\b[^\n;|&]*?\s(?:--body(?:-file)?|--title|
 const prTextEdit = (command: unknown): HookOutput | undefined =>
   typeof command === 'string' && PR_TEXT_EDIT.test(command) ? decide('deny', 'PR のタイトルと本文は、durun-dashboard の write_pr で書き換えてください。読んでいない PR は、先に read_pr で読んでください。') : undefined;
 
+/** PR を作るコマンド。gh pr create と、gh api で pulls へ POST するもの（値を送るものは POST になる）。コマンドを区切りごとに見る。 */
+const createsPr = (command: string): boolean =>
+  command.split(/[;|&\n]/).some((c) => /\bgh\s+pr\s+create\b/.test(c) || (/\bgh\s+api\b/.test(c) && /\/pulls(?![/\w])/.test(c) && /-X\s*POST|--method\s+POST|\s-[fF]\s|\s--(?:raw-)?field\b|\s--input\b/.test(c)));
+const PR_CREATE_REASON = 'PR は durun-dashboard の create_pr で作ってください。作ったセッションを PR の作成者として記録するため、ほかの経路は durun-dashboard が断ります。';
+
+/** PR は create_pr で作らせる。作ったセッションを、PR の作成者として記録するため。 */
+const prCreate = (command: unknown): HookOutput | undefined => (typeof command === 'string' && createsPr(command) ? decide('deny', PR_CREATE_REASON) : undefined);
+
 /**
- * EnterWorktree の PreToolUse には、使ってよいかを返す。Bash の PreToolUse は、PR のタイトルか本文を書き換える gh pr edit を断る。
+ * EnterWorktree の PreToolUse には、使ってよいかを返す。Bash の PreToolUse は、PR のタイトルか本文を書き換える gh pr edit と、PR を作るコマンドを断る。
+ * GitHub の MCP サーバーの PR を作るツールも断る。
  * FL Connect とムービーメーカーでつないだセッションの UserPromptSubmit と PostToolUse には、前に知らせてから人間がそのアプリでした操作を添える。
  * サブエージェントに渡すと、本体のセッションに届かないまま読んだことになるので、本体にだけ渡す。
  */
@@ -303,7 +312,8 @@ export const handleHook = (input: HookInput, pid: number): HookOutput | undefine
   nameUntitled(meta, input, responded);
   if (responded) endFeedbackWave(input.session_id, input.last_assistant_message);
   if (event === 'PreToolUse' && input.tool_name === ENTER_WORKTREE) return enterWorktree(input.session_id, input.cwd, input.tool_input);
-  if (event === 'PreToolUse' && input.tool_name === 'Bash') return prTextEdit(input.tool_input?.command);
+  if (event === 'PreToolUse' && input.tool_name === 'Bash') return prTextEdit(input.tool_input?.command) ?? prCreate(input.tool_input?.command);
+  if (event === 'PreToolUse' && input.tool_name?.endsWith('create_pull_request')) return decide('deny', PR_CREATE_REASON);
   if (!input.agent_id && (event === 'UserPromptSubmit' || event === 'PostToolUse')) {
     const additionalContext = [flHookContext(input.session_id), mmHookContext(input.session_id)].filter(Boolean).join('\n\n');
     if (additionalContext) return { hookSpecificOutput: { hookEventName: event, additionalContext } };

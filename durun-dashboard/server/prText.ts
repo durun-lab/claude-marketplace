@@ -34,3 +34,14 @@ export const writePr = async (sessionId: string, ref: string, next: { title?: st
   seen.set(k, await live(gh, pr.url));
   return { text: `${pr.url} を書き換えました。` };
 };
+
+/**
+ * PR を作り、作ったタイトルと本文を読んだものとして覚える。作った直後に write_pr で直せるように。
+ * head を省くと、cwd の今のブランチから作る。gh pr create は作った PR の URL を最後の行に出す。
+ */
+export const createPr = async (sessionId: string, args: { title: string; body: string; base?: string; head?: string; draft?: boolean }, cwd?: string, gh: Gh = realGh): Promise<Result & { url?: string }> => {
+  const out = await gh(['pr', 'create', '--title', args.title, '--body-file', '-', ...(args.base ? ['--base', args.base] : []), ...(args.head ? ['--head', args.head] : []), ...(args.draft ? ['--draft'] : [])], args.body, cwd);
+  const url = out.trim().split('\n').at(-1) ?? '';
+  seen.set(key(sessionId, url), await live(gh, url));
+  return { text: `${url} を作りました。`, url };
+};

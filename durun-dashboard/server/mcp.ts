@@ -11,7 +11,7 @@ import { callFlTool, FL_TOOL_NAMES } from './flconnect.ts';
 import { callMmTool, MM_TOOL_NAMES } from './movieMaker.ts';
 import { sessionIdForPid } from './hooks.ts';
 import { badgeOf, jiraKeyOfUrl, resolveCommit, resolveRange } from './integrations.ts';
-import { readPr, writePr } from './prText.ts';
+import { createPr, readPr, writePr } from './prText.ts';
 import { proofCommentedAt, readProofFile, writeProofFile } from './proofFiles.ts';
 import { MAX_SENTENCES, commentFindings, proofReport, proofread, revise } from './proofread.ts';
 import { learnDigest } from './reflect.ts';
@@ -36,7 +36,7 @@ const INSTRUCTIONS = `durun-dashboard は、人間が複数の Claude Code セ�
 - レビューする PR など、作業ツリーに無いブランチを人間に見せたいときは、show_branches でコードの表示をそのブランチに切り替えてください。
 - 作業のテーマや関連する JIRA 課題が分かったら set_task で登録してください。
 - 手順が 3 つ以上ある作業や、PR・JIRA の課題を進めるときは、/durun-dashboard:tasks スキルに沿ってタスクを登録し、進み具合を人間に見せてください。
-- PR のタイトルと本文は write_pr で書き換えてください。読んでいない PR は、先に read_pr で読んでください。
+- PR は create_pr で作り、タイトルと本文は write_pr で書き換えてください。読んでいない PR は、先に read_pr で読んでください。
 - 仕事を別のセッションに任せるときは、claude --bg を Bash で打たずに start_session で子セッションを起動してください。子セッションへの追加の依頼は send_to_session で送ってください。子セッションの状態は list_sessions で見て、仕事を終えた子セッションは archive_session で片付けてください。
 - PR や JIRA の課題の実装を始める前に、ticket_sessions で同じチケットを見ているほかのセッションを確かめてください。作業がぶつかりそうなら、send_to_session でそのセッションと調整してください。
 - Google Cloud（gcloud）や、Slack、Notion などの MCP サーバーの認証やログインが必要になったら、authenticate で人間に頼んでください。人間が認証を終えると結果が返ります。認証済みなら、尋ねずにすぐ返ります。
@@ -230,6 +230,22 @@ const TOOLS = [
       type: 'object',
       properties: { pr: { type: 'string', description: 'PR の URL か番号。番号は、このセッションの作業ディレクトリのリポジトリで探す。' } },
       required: ['pr'],
+    },
+  },
+  {
+    name: 'create_pr',
+    description:
+      'GitHub の PR を作る。PR はこのツールで作る（gh pr create などほかの経路は durun-dashboard が断る）。作った PR はこのセッションを作成者として記録し、ダッシュボードの PR の画面から、このセッションへ移れるようにする。作ったタイトルと本文は読んだものとして覚えるので、続けて write_pr で直せる。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'PR のタイトル。' },
+        body: { type: 'string', description: 'PR の本文。' },
+        base: { type: 'string', description: 'マージ先のブランチ。省くとリポジトリの既定のブランチ。' },
+        head: { type: 'string', description: 'PR にするブランチ。省くと、このセッションの作業ディレクトリの今のブランチ。先に push しておく。' },
+        draft: { type: 'boolean', description: 'true ならドラフトで作る。' },
+      },
+      required: ['title', 'body'],
     },
   },
   {
@@ -858,6 +874,25 @@ const prText = async (sessionId: string, write: boolean, args: ToolArgs): Promis
   }
 };
 
+/** PR を作り、このセッションを作成者として記録する。セッションのバッジにも足し、PR の画面の関連セッションに並ぶようにする。 */
+const createPrTool = async (sessionId: string, args: ToolArgs): Promise<object> => {
+  const title = str(args.title);
+  const body = typeof args.body === 'string' ? args.body : undefined;
+  if (!title || body === undefined) return textResult('title と body を渡してください。', true);
+  const meta = state.sessions[sessionId];
+  try {
+    const { text, url } = await createPr(sessionId, { title, body, base: str(args.base), head: str(args.head), draft: args.draft === true }, meta?.cwd);
+    if (meta && url) {
+      meta.authoredPrs = [...new Set([...(meta.authoredPrs ?? []), url])];
+      meta.badges = [...(meta.badges ?? []).filter((u) => u !== url), url];
+      touch();
+    }
+    return textResult(text);
+  } catch (e) {
+    return textResult(`PR を作れませんでした。${(e as Error).message}`, true);
+  }
+};
+
 const learnDigestResult = () => {
   const digest = learnDigest();
   if (!digest) return textResult('前回より後に、人間の発言がありません。');
@@ -913,6 +948,8 @@ const callTool = (req: IncomingMessage, res: ServerResponse, rpcId: RpcId, param
       return void listTasksTool(sessionId, args).then((result) => send(res, { id: rpcId, result }));
     case 'learn_digest':
       return send(res, { id: rpcId, result: learnDigestResult() });
+    case 'create_pr':
+      return void createPrTool(sessionId, args).then((result) => send(res, { id: rpcId, result }));
     case 'read_pr':
     case 'write_pr':
       return void prText(sessionId, params.name === 'write_pr', args).then((result) => send(res, { id: rpcId, result }));

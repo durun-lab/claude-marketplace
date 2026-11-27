@@ -275,6 +275,7 @@ const buildSession = (meta: SessionMeta, live: claude.LiveSession | undefined, i
     jira: shown([...jiraKeys].map((key) => jiraIssue(key, keep))),
     slack: slackRefs(meta, log),
     related: relatedOf(meta, log, ids),
+    authoredPrs: meta.authoredPrs,
     issues: shown(badges.flatMap((b) => (b.kind === 'issue' && badgeIssue(b.url, keep)) || [])),
     usage: buildUsage(meta.id, log, subs),
     archived: meta.archived,
