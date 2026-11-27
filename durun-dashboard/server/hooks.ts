@@ -280,16 +280,39 @@ const enterWorktree = (sessionId: string, cwd: string, input: HookInput['tool_in
   return decide('allow', 'ほかのセッションがいない worktree なので、durun-dashboard が許可しました。');
 };
 
+/**
+ * コマンドの行のうち、gh を動かす部分。引用符の外の ; | & 改行 ( ` で区切り、頭（前に置いた環境変数は除く）が gh のものだけを、引用符を外して返す。
+ * 引用符の中の文字は区切らないので、grep や git commit -m に書いた gh のコマンドの文字は拾わない。
+ */
+// ponytail: シェルを読み切らないので、ヒアドキュメントの中の行の頭が gh でも拾う。困ったら shell-quote などで読む。
+const ghCalls = (command: string): string[] => {
+  const parts: string[] = [];
+  let cur = '';
+  let quote = '';
+  for (const ch of command) {
+    if (quote) {
+      if (ch === quote) quote = '';
+      else cur += ch;
+    } else if (ch === "'" || ch === '"') quote = ch;
+    else if (/[;|&\n(`]/.test(ch)) {
+      parts.push(cur);
+      cur = '';
+    } else cur += ch;
+  }
+  parts.push(cur);
+  return parts.map((c) => c.trim().replace(/^(?:\w+=\S*\s+)*/, '')).filter((c) => /^(?:\S*\/)?gh\s/.test(c));
+};
+
 /** gh pr edit でタイトルか本文を書き換えるコマンド。ラベルやレビュアーだけを変えるものは通す。 */
-const PR_TEXT_EDIT = /\bgh\s+pr\s+edit\b[^\n;|&]*?\s(?:--body(?:-file)?|--title|-[bFt])(?=[\s=]|$)/;
+const PR_TEXT_EDIT = /^(?:\S*\/)?gh\s+pr\s+edit\b.*?\s(?:--body(?:-file)?|--title|-[bFt])(?=[\s=]|$)/;
 
 /** PR のタイトルと本文を、読まずに上書きさせない。read_pr と write_pr は、読んだ後に人間が GitHub 上で足した変更を見つけて断る。 */
 const prTextEdit = (command: unknown): HookOutput | undefined =>
-  typeof command === 'string' && PR_TEXT_EDIT.test(command) ? decide('deny', 'PR のタイトルと本文は、durun-dashboard の write_pr で書き換えてください。読んでいない PR は、先に read_pr で読んでください。') : undefined;
+  typeof command === 'string' && ghCalls(command).some((c) => PR_TEXT_EDIT.test(c)) ? decide('deny', 'PR のタイトルと本文は、durun-dashboard の write_pr で書き換えてください。読んでいない PR は、先に read_pr で読んでください。') : undefined;
 
-/** PR を作るコマンド。gh pr create と、gh api で pulls へ POST するもの（値を送るものは POST になる）。コマンドを区切りごとに見る。 */
+/** PR を作る gh。gh pr create と、gh api で pulls へ POST するもの（値を送るものは POST になる）。 */
 const createsPr = (command: string): boolean =>
-  command.split(/[;|&\n]/).some((c) => /\bgh\s+pr\s+create\b/.test(c) || (/\bgh\s+api\b/.test(c) && /\/pulls(?![/\w])/.test(c) && /-X\s*POST|--method\s+POST|\s-[fF]\s|\s--(?:raw-)?field\b|\s--input\b/.test(c)));
+  ghCalls(command).some((c) => /^\S*gh\s+pr\s+create\b/.test(c) || (/^\S*gh\s+api\b/.test(c) && /\/pulls(?![/\w])/.test(c) && /-X\s*POST|--method\s+POST|\s-[fF]\s|\s--(?:raw-)?field\b|\s--input\b/.test(c)));
 const PR_CREATE_REASON = 'PR は durun-dashboard の create_pr で作ってください。作ったセッションを PR の作成者として記録するため、ほかの経路は durun-dashboard が断ります。';
 
 /** PR は create_pr で作らせる。作ったセッションを、PR の作成者として記録するため。 */

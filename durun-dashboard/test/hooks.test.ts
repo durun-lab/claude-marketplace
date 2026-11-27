@@ -211,6 +211,13 @@ test('Bash の gh pr edit は、タイトルか本文を書き換えるものだ
   for (const command of ['gh pr create --title x --body y', 'git push -u origin x && gh pr create -f', 'gh api repos/o/r/pulls -f title=x -f head=b', 'gh api -X POST repos/o/r/pulls --input pr.json']) {
     assert.equal(bash(command), 'deny', command);
   }
+  for (const command of ['GH_TOKEN=x gh pr create -f', '(cd repo; gh pr create -f)', 'gh api "repos/o/r/pulls" -f title=x', 'cd repo && gh pr edit 3 --body "x"']) {
+    assert.equal(bash(command), 'deny', command);
+  }
+  // gh を動かさず、文字として書いただけのものは通す。
+  for (const command of ['grep -c "gh pr create" hooks.json', "echo 'x; gh pr create -f'", 'git commit -m "gh pr create を断る; gh pr edit 1 --body x"', "rg 'gh pr edit .* --title' server"]) {
+    assert.equal(bash(command), undefined, command);
+  }
   const mcp = handleHook({ session_id: 'pr-edit', cwd: tmp, hook_event_name: 'PreToolUse', tool_name: 'mcp__github__create_pull_request', tool_input: {} }, 0)?.hookSpecificOutput;
   assert.equal(mcp && 'permissionDecision' in mcp ? mcp.permissionDecision : undefined, 'deny');
 });
