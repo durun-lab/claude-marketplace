@@ -1,0 +1,8 @@
+load("@rules_rust//rust:defs.bzl", "rust_test")
+
+# libwebp-sys の build script（cc クレートが libwebp の C を cl.exe でビルドする）と、そのリンクまで通るかを確かめる。
+rust_test(
+    name = "webp_probe",
+    srcs = ["webp_probe.rs"],
+    deps = ["@crates//:webp"],
+)

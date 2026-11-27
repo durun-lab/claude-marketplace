@@ -1,0 +1,38 @@
+load("@rules_rust//cargo:defs.bzl", "cargo_build_script")
+load("@rules_rust//rust:defs.bzl", "rust_library", "rust_test")
+
+# build.rs が src/migrations/ を読んで OUT_DIR に移行の表を書く。
+cargo_build_script(
+    name = "build_script",
+    srcs = ["build.rs"],
+    data = glob(["src/**"]),
+)
+
+DEPS = [
+    "//crates/mm-types:mm_types",
+    "@crates//:schemars",
+    "@crates//:serde",
+    "@crates//:serde_json",
+]
+
+rust_library(
+    name = "mm_doc",
+    srcs = glob(["src/**/*.rs"]),
+    crate_features = ["schema"],
+    visibility = ["//visibility:public"],
+    deps = DEPS + [":build_script"],
+)
+
+rust_test(
+    name = "mm_doc_test",
+    crate = ":mm_doc",
+    data = ["//:fixtures"],
+)
+
+rust_test(
+    name = "it",
+    srcs = glob(["tests/it/**/*.rs"]),
+    crate_root = "tests/it/main.rs",
+    data = ["//:fixtures"],
+    deps = DEPS + [":mm_doc"],
+)
