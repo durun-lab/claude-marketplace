@@ -24,6 +24,7 @@ export const githubInboxControls = (): Control[] => [
 const FIELDS = [
   { key: 'type', label: 'タイプ' },
   { key: 'repo', label: 'リポジトリ' },
+  { key: 'base', label: 'base branch' },
   { key: 'review', label: 'レビューの判定' },
   { key: 'checks', label: 'チェックの状態' },
   { key: 'author', label: '作成者' },
@@ -62,6 +63,7 @@ const ItemRow = ({ item, fields }: { item: GithubItem; fields: Set<string> }) =>
           {/* 空白だけの文字はフレックスの中で消えるので、番号と 1 つの文字にする。 */}
           {`${fields.has('repo') ? ' ' : ''}#${item.number}`}
         </span>
+        {fields.has('base') && item.base && <span class="jira-key-trim" title="base branch">→ {item.base}</span>}
         {fields.has('checks') && item.checks && <ChecksIcon state={item.checks} />}
         {fields.has('review') && item.review && <Chip tone={REVIEW_TONE[item.review]}>{REVIEW_LABEL[item.review] ?? item.review}</Chip>}
         <span class="jira-rule" aria-hidden="true" />
@@ -97,7 +99,7 @@ const GITHUB_SPEC: ListSpec<GithubItem> = {
   groupings: GITHUB_GROUPINGS,
   groupKeysOf: (settings) => withType(keysOf(settings.groups)),
   keyOf: (i) => i.url,
-  textOf: (i) => [i.repo, `#${i.number}`, i.title, i.author, i.section],
+  textOf: (i) => [i.repo, `#${i.number}`, i.title, i.author, i.section, i.base],
   Row: ({ item, fields }) => <ItemRow item={item} fields={fields} />,
   GroupName,
 };
