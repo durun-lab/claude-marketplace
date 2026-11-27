@@ -309,13 +309,13 @@ const SEARCH_QUERY = `query($q: String!, $n: Int!) {
     issueCount
     nodes {
       __typename
-      ... on PullRequest { url number title state isDraft reviewDecision mergeable updatedAt repository { nameWithOwner } author { login } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } reviewRequests(first: 20) { nodes { requestedReviewer { __typename ... on User { login } ... on Team { id } } } } }
+      ... on PullRequest { url number title state isDraft reviewDecision mergeable baseRefName updatedAt repository { nameWithOwner } author { login } commits(last: 1) { nodes { commit { statusCheckRollup { state } } } } reviewRequests(first: 20) { nodes { requestedReviewer { __typename ... on User { login } ... on Team { id } } } } }
       ... on Issue { url number title state stateReason updatedAt repository { nameWithOwner } author { login } }
     }
   }
 }`;
 
-type GhSearchPr = GhInboxPr & Pick<GhRef, 'state'> & { __typename: 'PullRequest'; reviewRequests: { nodes: { requestedReviewer: { __typename: string; login?: string; id?: string } | null }[] } };
+type GhSearchPr = GhInboxPr & Pick<GhRef, 'state'> & { __typename: 'PullRequest'; baseRefName?: string; reviewRequests: { nodes: { requestedReviewer: { __typename: string; login?: string; id?: string } | null }[] } };
 type GhSearchIssue = Pick<GhInboxPr, 'url' | 'number' | 'title' | 'updatedAt' | 'repository' | 'author'> & Pick<GhRef, 'state' | 'stateReason'> & { __typename: 'Issue' };
 export type GhSearch = { viewer: { login: string }; search: { issueCount: number; nodes: (GhSearchPr | GhSearchIssue)[] } };
 
@@ -355,6 +355,7 @@ export const toGithubSearch = ({ viewer, search }: GhSearch, teams: Set<string>)
         state: refState(pr),
         review: pr.reviewDecision ?? undefined,
         checks: pr.commits.nodes[0]?.commit.statusCheckRollup?.state,
+        ...(pr.baseRefName ? { base: pr.baseRefName } : {}),
         section: sectionOf(pr, viewer.login, teams),
       },
     ];
@@ -363,7 +364,7 @@ export const toGithubSearch = ({ viewer, search }: GhSearch, teams: Set<string>)
 
 /** GitHub Inbox のウィジェットが、設定した検索の条件で PR と Issue を探す。並びは条件の sort: に任せる。 */
 export const githubSearch = (q: string, max: number, fresh = false): Promise<GithubSearch> =>
-  cached(`github-search-v2:${max} ${q}`, { maxAge: INBOX_MAX_AGE, fresh }, async () => {
+  cached(`github-search-v3:${max} ${q}`, { maxAge: INBOX_MAX_AGE, fresh }, async () => {
     const [{ data }, teams] = await Promise.all([ghApi<{ data: GhSearch }>(['graphql', '-f', `query=${SEARCH_QUERY}`, '-f', `q=${q}`, '-F', `n=${max}`]), myTeams()]);
     return toGithubSearch(data, new Set(teams));
   });

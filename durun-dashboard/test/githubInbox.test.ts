@@ -59,13 +59,14 @@ test('toGithubSearch は、検索の結果を返った順のまま並べ、PR �
         node(2, { author: { login: 'you' } }, reviewers({ __typename: 'Team', id: 'mine' })),
         node(6, { author: { login: 'you' } }, reviewers({ __typename: 'Team', id: 'other' })),
         node(3, { isDraft: true }, reviewers(), 'FAILURE'),
-        node(4, { author: { login: 'you' }, reviewDecision: 'APPROVED' }, reviewers(), 'SUCCESS', 'MERGED'),
+        node(4, { author: { login: 'you' }, reviewDecision: 'APPROVED', baseRefName: 'release' } as Partial<Pr>, reviewers(), 'SUCCESS', 'MERGED'),
         { __typename: 'Issue', state: 'CLOSED', stateReason: 'NOT_PLANNED', url: 'https://github.com/o/r/issues/5', number: 5, title: 'Issue 5', updatedAt: '2026-10-09T00:00:00Z', repository: { nameWithOwner: 'o/r' }, author: { login: 'you' } },
         { __typename: 'Discussion' } as unknown as GhSearch['search']['nodes'][number],
       ],
     },
   }, new Set(['mine']));
   assert.equal(found.total, 9);
+  assert.deepEqual(found.items.map((i) => i.base), [undefined, undefined, undefined, undefined, 'release', undefined]);
   assert.deepEqual(
     found.items.map((i) => [i.number, i.kind, i.section, i.review, i.checks, i.state]),
     [
