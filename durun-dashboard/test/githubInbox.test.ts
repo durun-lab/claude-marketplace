@@ -48,14 +48,14 @@ test('toInbox は、自分の PR をドラフト、要対応、マージ可、�
 });
 
 test('toGithubSearch は、検索の結果を返った順のまま並べ、PR を Inbox の区分に分け、チームへの依頼は自分が入っているチームのときだけ数え、Issue とほかの種類を見分ける', () => {
-  const reviewers = (...nodes: { __typename: string; login?: string; id?: string }[]) => ({ nodes: nodes.map((requestedReviewer) => ({ requestedReviewer })) });
+  const reviewers = (...nodes: { __typename: string; login?: string; id?: string; name?: string }[]) => ({ nodes: nodes.map((requestedReviewer) => ({ requestedReviewer })) });
   const node = (number: number, over: Partial<Pr> = {}, requested = reviewers(), checks?: string, state: 'OPEN' | 'MERGED' = 'OPEN') => ({ ...pr(number, over, checks), __typename: 'PullRequest' as const, state, reviewRequests: requested });
   const found = toGithubSearch({
     viewer: { login: 'me' },
     search: {
       issueCount: 9,
       nodes: [
-        node(1, { author: { login: 'you' } }, reviewers({ __typename: 'User', login: 'me' })),
+        node(1, { author: { login: 'you' }, latestReviews: { nodes: [{ author: { login: 'he' } }] } } as Partial<Pr>, reviewers({ __typename: 'User', login: 'me' }, { __typename: 'Team', id: 't', name: 'core' })),
         node(2, { author: { login: 'you' } }, reviewers({ __typename: 'Team', id: 'mine' })),
         node(6, { author: { login: 'you' } }, reviewers({ __typename: 'Team', id: 'other' })),
         node(3, { isDraft: true }, reviewers(), 'FAILURE'),
@@ -66,6 +66,7 @@ test('toGithubSearch は、検索の結果を返った順のまま並べ、PR �
     },
   }, new Set(['mine']));
   assert.equal(found.total, 9);
+  assert.deepEqual(found.items[0]?.reviewers, ['he', 'me', 'core']);
   assert.deepEqual(found.items.map((i) => i.base), [undefined, undefined, undefined, undefined, 'release', undefined]);
   assert.deepEqual(
     found.items.map((i) => [i.number, i.kind, i.section, i.review, i.checks, i.state]),

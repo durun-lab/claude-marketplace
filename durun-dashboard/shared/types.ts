@@ -122,10 +122,10 @@ export type PrNotes = { notes: Record<string, PrThreadNote>; failed?: string };
 /** GitHub Inbox の一覧に出す PR。repo は owner/name。 */
 export type InboxPr = { url: string; repo: string; number: number; title: string; author: string; updatedAt: number };
 /**
- * GitHub Inbox のウィジェットに並べる PR と Issue。base は PR の base branch。review は PR のレビューの判定（APPROVED、CHANGES_REQUESTED、REVIEW_REQUIRED）、checks は最後のコミットのチェックの状態。
+ * GitHub Inbox のウィジェットに並べる PR と Issue。base は PR の base branch、reviewers はレビューした人と依頼中の人とチーム。review は PR のレビューの判定（APPROVED、CHANGES_REQUESTED、REVIEW_REQUIRED）、checks は最後のコミットのチェックの状態。
  * section は PR のダッシュボード（github.com/pulls）の Inbox の区分で、どの区分にも入らないものは undefined。
  */
-export type GithubItem = InboxPr & { kind: 'pr' | 'issue'; state: RepoRef['state']; review?: string; checks?: string; section?: string; base?: string };
+export type GithubItem = InboxPr & { kind: 'pr' | 'issue'; state: RepoRef['state']; review?: string; checks?: string; section?: string; base?: string; reviewers?: string[] };
 /** GitHub の検索の結果。total は条件に合う件数で、items より多ければ表示する件数を超えている。 */
 export type GithubSearch = { items: GithubItem[]; total: number };
 

@@ -28,6 +28,7 @@ const FIELDS = [
   { key: 'review', label: 'レビューの判定' },
   { key: 'checks', label: 'チェックの状態' },
   { key: 'author', label: '作成者' },
+  { key: 'reviewers', label: 'レビュアー' },
 ] as const;
 
 /** PR/Issue（kind）とドラフト（draft）を別々に選んでいた設定は、まとめたタイプ（type）として読む。 */
@@ -69,6 +70,7 @@ const ItemRow = ({ item, fields }: { item: GithubItem; fields: Set<string> }) =>
         <span class="jira-rule" aria-hidden="true" />
         <span class="jira-meta">
           {fields.has('author') && <>{item.author} · </>}
+          {fields.has('reviewers') && item.reviewers && <span title="レビュアー">👀 {item.reviewers.join(', ')} · </span>}
           <Time at={item.updatedAt} />
         </span>
       </span>
@@ -99,7 +101,7 @@ const GITHUB_SPEC: ListSpec<GithubItem> = {
   groupings: GITHUB_GROUPINGS,
   groupKeysOf: (settings) => withType(keysOf(settings.groups)),
   keyOf: (i) => i.url,
-  textOf: (i) => [i.repo, `#${i.number}`, i.title, i.author, i.section, i.base],
+  textOf: (i) => [i.repo, `#${i.number}`, i.title, i.author, i.section, i.base, ...(i.reviewers ?? [])],
   Row: ({ item, fields }) => <ItemRow item={item} fields={fields} />,
   GroupName,
 };
