@@ -204,9 +204,15 @@ test('Bash の gh pr edit は、タイトルか本文を書き換えるものだ
   for (const command of ['gh pr edit 12 --body "x"', 'gh pr edit 12 --body-file body.md', 'cd repo && gh pr edit -t "題名"', 'gh pr edit 12 --add-label bug -F -', 'gh pr edit 12 --title=x']) {
     assert.equal(bash(command), 'deny', command);
   }
-  for (const command of ['gh pr edit 12 --add-label bug', 'gh pr view 12 --json title,body', 'gh pr edit 12 --add-reviewer a && gh pr comment 12 --body "x"', 'gh pr create --title x --body y']) {
+  for (const command of ['gh pr edit 12 --add-label bug', 'gh pr view 12 --json title,body', 'gh pr edit 12 --add-reviewer a && gh pr comment 12 --body "x"', 'gh api repos/o/r/pulls/12', 'gh api repos/o/r/pulls?state=open --paginate']) {
     assert.equal(bash(command), undefined, command);
   }
+  // PR は create_pr で作らせる。
+  for (const command of ['gh pr create --title x --body y', 'git push -u origin x && gh pr create -f', 'gh api repos/o/r/pulls -f title=x -f head=b', 'gh api -X POST repos/o/r/pulls --input pr.json']) {
+    assert.equal(bash(command), 'deny', command);
+  }
+  const mcp = handleHook({ session_id: 'pr-edit', cwd: tmp, hook_event_name: 'PreToolUse', tool_name: 'mcp__github__create_pull_request', tool_input: {} }, 0)?.hookSpecificOutput;
+  assert.equal(mcp && 'permissionDecision' in mcp ? mcp.permissionDecision : undefined, 'deny');
 });
 
 test('PermissionRequest のフックは、端末とバックグラウンドのセッションの本体の確認だけを要対応にして待たせ、人間が許可したら許可を返し、ほかで答え終えたら何も返さずに片付ける', { timeout: 10_000 }, async (t) => {

@@ -5,7 +5,7 @@ import { tempDir } from './tmp.ts';
 
 // 実際の状態に触れないよう、データの置き場所を一時ディレクトリに向けてから読み込む。
 process.env.DURUN_DASHBOARD_DATA_DIR = path.join(tempDir('durun-dashboard-pr-text-'), 'data');
-const { readPr, writePr } = await import('../server/prText.ts');
+const { createPr, readPr, writePr } = await import('../server/prText.ts');
 
 /** PR を 1 つ持つ偽の gh。pr view はタイトルと本文を返し、pr edit は --title の値と標準入力の本文に書き換える。 */
 const fakeGh = (n: number) => {
@@ -56,4 +56,19 @@ test('ほかのセッションが読んでいても、自分が読んでいな�
   await readPr('s1', '4', undefined, gh);
   assert.equal((await writePr('s2', '4', { body: '新しい本文' }, undefined, gh)).isError, true);
   assert.equal(pr.body, '元の本文');
+});
+
+test('作った PR は、作ったタイトルと本文を読んだものとして覚え、続けて書き換えられる', async () => {
+  const { pr, gh } = fakeGh(3);
+  const calls: string[][] = [];
+  const create = async (args: string[], input?: string): Promise<string> => {
+    if (args[1] !== 'create') return gh(args, input);
+    calls.push(args);
+    Object.assign(pr, { title: args[args.indexOf('--title') + 1], body: input });
+    return `Creating pull request\n${pr.url}\n`;
+  };
+  const made = await createPr('s1', { title: '題名', body: '本文', base: 'main', draft: true }, '/repo', create);
+  assert.deepEqual([made.url, made.text], [pr.url, `${pr.url} を作りました。`]);
+  assert.deepEqual(calls[0], ['pr', 'create', '--title', '題名', '--body-file', '-', '--base', 'main', '--draft']);
+  assert.equal((await writePr('s1', pr.url, { body: '直した本文' }, undefined, create)).isError, undefined);
 });

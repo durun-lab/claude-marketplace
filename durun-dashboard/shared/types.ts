@@ -267,6 +267,8 @@ export type Session = {
   movedTo?: string;
   /** このセッションを start_session で起動した親のセッションの id。 */
   parent?: string;
+  /** create_pr でこのセッションが作った PR の URL。PR の画面で、このセッションを作成者として出す。 */
+  authoredPrs?: string[];
   /** 関連セッションの id。人間が登録したものを先に、チャットに出たものを後に並べる。親と子は含めない。 */
   related?: string[];
   /** ダッシュボードが追加アカウントで起動したときの、そのアカウントの名前。 */

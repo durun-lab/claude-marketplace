@@ -12,7 +12,7 @@ effort: medium
 - ダッシュボードは、このセッションの作業ディレクトリ（手元専用のブランチ local/dashboard の durun-dashboard）で動いています。ここには並行するセッションの書きかけがあるので、このチェックアウトでは実装せず、書きかけにも触らないでください。
 - 実装を始める前に git fetch origin main を実行し、git worktree add <リポジトリのルート>/.worktrees/improve-<日時> -b fix/dashboard-improve-<日時> origin/main で worktree を作ってください。worktree の durun-dashboard で pnpm install を実行してから、そこで実装します。Bash の作業ディレクトリはコールをまたいで保たれないので、毎回 cd <絶対パス> && を付けるか git -C を使ってください。
 - まとまりごとに worktree で pnpm check と pnpm test を通し、1 つのコミットにしてください。コードレビューは依頼せず、そのまま次のまとまりへ進んでください。
-- main は直接 push できません。すべてのまとまりを終えたら、ブランチを push -u し、PR を作って gh pr merge --auto でマージキューに載せてください。
+- main は直接 push できません。すべてのまとまりを終えたら、ブランチを push -u し、durun-dashboard の create_pr で PR を作って gh pr merge --auto でマージキューに載せてください。
 - 続けて、作業ディレクトリで local/dashboard にいることを確かめ、git merge --no-edit fix/dashboard-improve-<日時> でこのウェーブを取り込んでください。衝突したら両方の意図を残して解消してください。local/dashboard は push しないでください。取り込んだら git worktree remove で worktree を片付けてください。
 - 判断に迷う点は ask_human で人間に聞いてください。
 - 終えたら、まとまりごとに何をどう変えたかを 2、3 行で書いてください。

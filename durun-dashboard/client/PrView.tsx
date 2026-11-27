@@ -109,6 +109,7 @@ const RelatedLink = ({ s, url, faded }: { s: Session; url: string; faded?: boole
     <StatusDot status={s.status} waitingFor={s.waitingFor} />
     <TaskMark status={ticketStatus(s, url)} />
     <a href={href.session(s.id)}>{s.name}</a>
+    {s.authoredPrs?.includes(url) && <Chip title="create_pr でこの PR を作ったセッション">作成者</Chip>}
   </li>
 );
 
@@ -171,9 +172,12 @@ export const PrTip = ({ url }: { url: string }) => {
   );
 };
 
-/** url の PR をバッジにしているセッション。here はウィジェットを出しているセッションで、今開いている画面なので並べない。 */
-const prSessions = (sessions: Session[], url: string, here?: string): Session[] =>
-  ticketFirst(sessions.filter((s) => s.id !== here && s.prs?.some((p) => p.url === url)), url);
+/** url の PR をバッジにしているセッション。PR を作ったセッションを先に並べる。here はウィジェットを出しているセッションで、今開いている画面なので並べない。 */
+const prSessions = (sessions: Session[], url: string, here?: string): Session[] => {
+  const related = ticketFirst(sessions.filter((s) => s.id !== here && s.prs?.some((p) => p.url === url)), url);
+  // PR を作ったセッションを先頭に置き、作成者へすぐ移れるようにする。
+  return [...related.filter((s) => s.authoredPrs?.includes(url)), ...related.filter((s) => !s.authoredPrs?.includes(url))];
+};
 
 export type PickTab = { key: string; title?: string; label: ComponentChildren };
 
